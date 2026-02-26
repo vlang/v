@@ -13,6 +13,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		node.left_type = left_type
 		return ast.void_type
 	}
+	left_type = c.maybe_wrap_index_expr_smartcast(mut node.left, left_type)
 	mut left_sym := c.table.sym(left_type)
 	node.left_type = left_type
 	c.expected_type = left_type
@@ -93,6 +94,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		return ast.void_type
 	}
+	right_type = c.maybe_wrap_index_expr_smartcast(mut node.right, right_type)
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
@@ -891,6 +893,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				node.promoted_type = return_type
 				return return_type
 			}
+
 			left_is_option := left_type.has_flag(.option) || (left_sym.kind == .alias
 				&& (left_sym.info as ast.Alias).parent_type.has_flag(.option))
 			right_is_option := right_type.has_flag(.option)
@@ -989,6 +992,32 @@ fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, rig
 }
 
 // `if node is ast.Ident && node.is_mut { ... }` -> `if node is ast.Ident && (node as ast.Ident).is_mut { ... }`
+fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type ast.Type) ast.Type {
+	if isnil(c.fn_scope) || expr_type in [ast.no_type, ast.void_type] {
+		return expr_type
+	}
+	if expr is ast.IndexExpr {
+		index_expr := expr as ast.IndexExpr
+		scope := c.fn_scope.innermost(index_expr.pos.pos)
+		expr_key := smartcast_index_expr_scope_key(index_expr)
+		if var := scope.find_var(expr_key) {
+			if var.smartcasts.len > 0 {
+				cast_type := var.smartcasts.last()
+				if cast_type != expr_type {
+					expr = ast.AsCast{
+						expr:      ast.Expr(index_expr)
+						typ:       cast_type
+						expr_type: expr_type
+						pos:       index_expr.pos
+					}
+				}
+				return cast_type
+			}
+		}
+	}
+	return expr_type
+}
+
 fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
 	if '${right}' == from_expr.str() {
 		right = ast.AsCast{
