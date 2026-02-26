@@ -645,7 +645,7 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, i
 	type_check := if typ.is_int() || typ.is_float() {
 		'${none_check}cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && strlen(jsonroot_${tmp}->valuestring))'
 	} else if typ.is_string() {
-		'${none_check}cJSON_IsString(jsonroot_${tmp})'
+		'${none_check}(cJSON_IsString(jsonroot_${tmp}) || cJSON_IsObject(jsonroot_${tmp}) || cJSON_IsArray(jsonroot_${tmp}))'
 	} else if typ.is_bool() {
 		'${none_check}cJSON_IsBool(jsonroot_${tmp})'
 	} else {
