@@ -241,6 +241,10 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 	if p.os == get_host_os() {
 		return
 	}
+	if p.ccompiler_set_by_flag {
+		// Respect explicit `-cc` selection even in cross-compilation mode.
+		return
+	}
 	if p.os == .windows && p.ccompiler == 'msvc' {
 		// Allow for explicit overrides like `v -showcc -cc msvc -os windows file.v`,
 		// this makes flag passing more easily debuggable on other OSes too, not only
