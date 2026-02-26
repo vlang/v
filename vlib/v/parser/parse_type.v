@@ -119,6 +119,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 		defer {
 			p.fixed_array_dim--
 		}
+		elem_type_pos := p.tok.pos()
+		if p.tok.kind == .name && p.tok.lit == 'byte' {
+			p.error_with_pos('byte is deprecated, use u8 instead', elem_type_pos)
+		}
 		elem_type := p.parse_type()
 		if elem_type.idx() == 0 {
 			// error is handled by parse_type
@@ -141,6 +145,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	}
 	// array
 	p.check(.rsbr)
+	elem_type_pos := p.tok.pos()
+	if p.tok.kind == .name && p.tok.lit == 'byte' {
+		p.error_with_pos('byte is deprecated, use u8 instead', elem_type_pos)
+	}
 	elem_type := p.parse_type()
 	if elem_type.idx() == 0 {
 		// error is set in parse_type
