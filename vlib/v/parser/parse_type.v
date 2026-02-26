@@ -261,12 +261,14 @@ fn (mut p Parser) parse_thread_type() ast.Type {
 		idx := p.table.find_or_register_thread(ret_type)
 		return ast.new_type(idx)
 	}
-	is_opt := p.peek_tok.kind == .question
-	is_result := p.peek_tok.kind == .not
+	is_same_line := p.peek_tok.line_nr == p.tok.line_nr
+	is_opt := is_same_line && p.peek_tok.kind == .question
+	is_result := is_same_line && p.peek_tok.kind == .not
 	if is_opt || is_result {
 		p.next()
 	}
-	if p.peek_tok.kind !in [.name, .key_pub, .key_mut, .amp, .lsbr] {
+	if p.peek_tok.line_nr > p.tok.line_nr
+		|| p.peek_tok.kind !in [.name, .key_pub, .key_mut, .amp, .lsbr] {
 		p.next()
 		if is_opt {
 			mut ret_type := ast.void_type
