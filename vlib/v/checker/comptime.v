@@ -1010,7 +1010,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 					node.pos)
 				node.ct_skip = true
 			} else {
-				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
+				node.ct_skip = !c.pref.is_user_compile_define(node.ct_expr.name)
 			}
 			node.ct_evaled = true
 			return node.ct_skip
@@ -1018,11 +1018,11 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			if node.ct_expr.name !in ast.valid_comptime_not_user_defined {
 				c.note('`@[if ${node.ct_expr.name}]` is deprecated. Use `@[if ${node.ct_expr.name} ?]` instead',
 					node.pos)
-				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
+				node.ct_skip = !c.pref.is_user_compile_define(node.ct_expr.name)
 				node.ct_evaled = true
 				return node.ct_skip
 			} else {
-				if node.ct_expr.name in c.pref.compile_defines {
+				if c.pref.is_user_compile_define(node.ct_expr.name) {
 					// explicitly allow custom user overrides with `-d linux` for example, for easier testing:
 					node.ct_skip = false
 					node.ct_evaled = true
@@ -1244,7 +1244,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			is_user_ident = true
 			ident_name = cname
 			sb.write_string('defined(CUSTOM_DEFINE_${cname})')
-			is_true = cname in c.pref.compile_defines
+			is_true = c.pref.is_user_compile_define(cname)
 			return is_true, false
 		}
 		ast.InfixExpr {
