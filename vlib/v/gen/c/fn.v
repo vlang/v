@@ -1796,13 +1796,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	is_interface := left_sym.kind == .interface
 		&& g.table.sym(node.receiver_type).kind == .interface
+	mut receiver_expr_is_addressable := node.left.is_lvalue()
+	if node.left is ast.IndexExpr && node.left.left_type != 0 {
+		indexed_container_sym := g.table.final_sym(g.unwrap_generic(node.left.left_type))
+		if indexed_container_sym.kind == .string && !node.left.left_type.is_ptr() {
+			receiver_expr_is_addressable = false
+		}
+	}
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
 		if !is_range_slice {
-			if !node.left.is_lvalue() {
+			if !receiver_expr_is_addressable {
 				if node.left.is_as_cast() {
 					g.inside_smartcast = true
 					if node.left is ast.SelectorExpr && !left_type.is_ptr() {

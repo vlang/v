@@ -1,0 +1,8 @@
+fn read_char() string {
+	msg := 'foo'
+	return unsafe { msg[0].vstring() }
+}
+
+fn main() {
+	_ := read_char()
+}
