@@ -298,6 +298,11 @@ fn get_all_commands() []Command {
 			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
 			rmfile: 'str_array'
 		}
+		res << Command{
+			line:   '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
+			okmsg:  'V can compile time.now() with -freestanding on Linux with GCC.'
+			rmfile: 'time_now'
+		}
 	}
 	////////////////////////////////////////////////////////////////////////
 	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
