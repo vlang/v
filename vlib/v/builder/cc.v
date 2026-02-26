@@ -959,8 +959,8 @@ pub fn (mut v Builder) cc() {
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
-			if ccompiler.contains('tcc.exe') {
-				// a TCC problem? Retry with the system cc:
+			if is_tcc_compilation_failure(ccompiler, v.ccoptions.cc, res.output) {
+				// A TCC problem? Retry with a non-tcc system compiler:
 				if tried_compilation_commands.len > 1 {
 					eprintln('Recompilation loop detected (ccompiler: ${ccompiler}):')
 					for recompile_command in tried_compilation_commands {
@@ -970,11 +970,19 @@ pub fn (mut v Builder) cc() {
 				}
 				if v.pref.retry_compilation {
 					tcc_output = res
+					old_ccompiler := v.pref.ccompiler
 					v.pref.default_c_compiler()
-					if v.pref.is_verbose {
-						eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
+					if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
+						|| is_tcc_alias_compiler(v.pref.ccompiler) {
+						v.pref.ccompiler = first_available_ccompiler([old_ccompiler, ccompiler,
+							v.pref.ccompiler])
 					}
-					continue
+					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
+						if v.pref.is_verbose {
+							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
+						}
+						continue
+					}
 				}
 			}
 			if res.exit_code == 127 {
@@ -1496,6 +1504,45 @@ fn missing_compiler_info() string {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
 	return 'Install a C compiler, like gcc or clang'
+}
+
+fn is_tcc_compilation_failure(ccompiler string, cc_kind CC, output string) bool {
+	return cc_kind == .tcc || is_tcc_compiler_name(ccompiler) || is_tcc_error_output(output)
+}
+
+fn is_tcc_compiler_name(ccompiler string) bool {
+	name := os.file_name(ccompiler).to_lower()
+	return name.starts_with('tcc') || name.starts_with('tinyc')
+}
+
+fn is_tcc_error_output(output string) bool {
+	trimmed_output := output.trim_space()
+	return trimmed_output.starts_with('tcc: error:') || trimmed_output.contains('\ntcc: error:')
+}
+
+fn is_tcc_alias_compiler(ccompiler string) bool {
+	if ccompiler != 'cc' {
+		return false
+	}
+	cc_version := os.execute('cc --version')
+	if cc_version.exit_code != 0 {
+		return false
+	}
+	lcc_version := cc_version.output.to_lower()
+	return lcc_version.contains('tiny c compiler') || lcc_version.contains('tinycc')
+		|| lcc_version.contains('\ntcc') || lcc_version.starts_with('tcc')
+}
+
+fn first_available_ccompiler(excluded []string) string {
+	for candidate in ['cc', 'clang', 'gcc'] {
+		if candidate in excluded {
+			continue
+		}
+		if os.find_abs_path_of_executable(candidate) or { '' } != '' {
+			return candidate
+		}
+	}
+	return ''
 }
 
 fn highlight_word(keyword string) string {
