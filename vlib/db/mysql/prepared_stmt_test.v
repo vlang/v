@@ -58,3 +58,45 @@ fn test_prep() {
 		},
 	]
 }
+
+fn test_stmt_bind_result_buffer_without_bind_res() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	config := mysql.Config{
+		host:     '127.0.0.1'
+		port:     3306
+		username: 'root'
+		password: ''
+		dbname:   'mysql'
+	}
+
+	mut db := mysql.connect(config)!
+	defer {
+		db.close() or {}
+	}
+
+	db.exec('drop table if exists stmt_result_buffer_test')!
+	db.exec('create table if not exists stmt_result_buffer_test (
+	                        id INT PRIMARY KEY AUTO_INCREMENT,
+	                        value TEXT)')!
+	db.exec_param('insert into stmt_result_buffer_test (value) values (?)', 'hello')!
+
+	mut stmt := db.init_stmt('select value from stmt_result_buffer_test where id = ?')
+	defer {
+		stmt.close() or {}
+	}
+	stmt.prepare()!
+	id := 1
+	stmt.bind_int(&id)
+	stmt.bind_params()!
+	stmt.execute()!
+	stmt.bind_result_buffer()!
+	stmt.store_result()!
+	first_fetch := stmt.fetch_stmt()!
+	assert first_fetch != 100
+	second_fetch := stmt.fetch_stmt()!
+	assert second_fetch == 100
+}
