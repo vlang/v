@@ -198,11 +198,9 @@ mut:
 	array_last_index_types    []ast.Type
 	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
-	sumtype_clone_fns         []SumtypeCloneFn
 	anon_fn_definitions       []string        // anon generated functions definition list
 	anon_fns                  shared []string // remove duplicate anon generated functions
 	sumtype_definitions       map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	sumtype_clone_definitions map[u32]bool    // `_SumType_sumtype_clone()` fns that have been generated
 	trace_fn_definitions      []string
 	json_types                []ast.Type           // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -456,9 +454,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			for k, v in g.sumtype_definitions {
 				global_g.sumtype_definitions[k] = v
 			}
-			for k, v in g.sumtype_clone_definitions {
-				global_g.sumtype_clone_definitions[k] = v
-			}
 			for k, v in g.coverage_files {
 				global_g.coverage_files[k] = v
 			}
@@ -475,11 +470,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			for scf in g.sumtype_casting_fns {
 				if scf !in global_g.sumtype_casting_fns {
 					global_g.sumtype_casting_fns << scf
-				}
-			}
-			for scf in g.sumtype_clone_fns {
-				if scf !in global_g.sumtype_clone_fns {
-					global_g.sumtype_clone_fns << scf
 				}
 			}
 
@@ -529,9 +519,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	for sumtype_casting_fn in global_g.sumtype_casting_fns {
 		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
-	}
-	for sumtype_clone_fn in global_g.sumtype_clone_fns {
-		global_g.write_sumtype_clone_fn(sumtype_clone_fn)
 	}
 	global_g.write_shareds()
 	global_g.write_chan_pop_option_fns()
@@ -3001,39 +2988,6 @@ struct SumtypeCastingFn {
 	exp     ast.Type
 }
 
-struct SumtypeCloneFn {
-	fn_name string
-	typ     ast.Type
-}
-
-fn (mut g Gen) get_sumtype_clone_fn(sum_type_ ast.Type) string {
-	mut sum_type := sum_type_.idx_type()
-	mut sum_sym := g.table.sym(sum_type)
-	if sum_sym.kind != .sum_type {
-		final_sum_sym := g.table.final_sym(sum_type)
-		if final_sum_sym.kind != .sum_type {
-			return ''
-		}
-		sum_type = ast.idx_to_type(final_sum_sym.idx)
-		sum_sym = g.table.sym(sum_type)
-	}
-	fn_name := '${sum_sym.cname}_sumtype_clone'
-	i := u32(sum_type)
-	if g.sumtype_clone_definitions[i] {
-		return fn_name
-	}
-	sum_info := sum_sym.info as ast.SumType
-	for variant in sum_info.variants {
-		g.get_sumtype_casting_fn(variant, sum_type)
-	}
-	g.sumtype_clone_definitions[i] = true
-	g.sumtype_clone_fns << SumtypeCloneFn{
-		fn_name: fn_name
-		typ:     sum_type
-	}
-	return fn_name
-}
-
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	mut got, exp := got_.idx_type(), exp_.idx_type()
 	i := u32(got) | u32(u32(exp) << 18) | u32(u32(exp_.has_flag(.option)) << 17) | u32(u32(got_.has_flag(.option)) << 16)
@@ -3148,34 +3102,6 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		}
 	}
 	sb.writeln('};\n}')
-	g.auto_fn_definitions << sb.str()
-}
-
-fn (mut g Gen) write_sumtype_clone_fn(fun SumtypeCloneFn) {
-	sum_type := fun.typ
-	sum_sym := g.table.sym(sum_type)
-	if sum_sym.info !is ast.SumType {
-		return
-	}
-	sum_info := sum_sym.info as ast.SumType
-	sum_cname := sum_sym.cname
-	g.definitions.writeln('${sum_cname} ${fun.fn_name}(${sum_cname} x);')
-	mut sb := strings.new_builder(128)
-	sb.writeln('${sum_cname} ${fun.fn_name}(${sum_cname} x) {')
-	sb.writeln('\tswitch (x._typ) {')
-	for variant in sum_info.variants {
-		variant_sym := g.table.sym(variant)
-		variant_name := g.get_sumtype_variant_name(variant, variant_sym)
-		cast_fn_name := g.get_sumtype_casting_fn(variant, sum_type)
-		if variant_sym.info is ast.FnType {
-			sb.writeln('\t\tcase ${g.type_sidx(variant)}: return ${cast_fn_name}(x._${variant_name});')
-		} else {
-			sb.writeln('\t\tcase ${g.type_sidx(variant)}: return ${cast_fn_name}(x._${variant_name}, false);')
-		}
-	}
-	sb.writeln('\t\tdefault: return x;')
-	sb.writeln('\t}')
-	sb.writeln('}')
 	g.auto_fn_definitions << sb.str()
 }
 
