@@ -1345,7 +1345,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	if mut inter_sym.info is ast.Interface {
 		mut generic_type := interface_type
 		mut generic_info := inter_sym.info
-		if inter_sym.info.parent_type.has_flag(.generic) {
+		if inter_sym.info.parent_type.has_flag(.generic) && (inter_sym.info.concrete_types.len == 0
+			|| inter_sym.info.concrete_types.any(it.has_flag(.generic))) {
 			parent_sym := c.table.sym(inter_sym.info.parent_type)
 			if parent_sym.info is ast.Interface {
 				generic_type = inter_sym.info.parent_type
