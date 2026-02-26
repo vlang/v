@@ -7695,6 +7695,14 @@ sudo pacman -S mingw-w64-gcc
 If you don't have any C dependencies, that's all you need to do. This works even
 when compiling GUI apps using the `ui` module or graphical apps using `gg`.
 
+If you need a custom cross compiler, pass `-cc <compiler>` for one build, or set
+`VCROSS_COMPILER_NAME` in your environment.
+Example:
+
+```shell
+v -os linux -cc cosmocc .
+```
+
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
 

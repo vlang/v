@@ -168,6 +168,7 @@ pub mut:
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 	m64                       bool         // true = generate 64-bit code, defaults to x64
 	ccompiler                 string       // the name of the C compiler used
+	ccompiler_set_by_flag     bool         // true when the compiler receives `-cc`
 	ccompiler_type            CompilerType // the type of the C compiler used
 	cppcompiler               string       // the name of the CPP compiler used
 	third_party_option        string
@@ -899,6 +900,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(args[i..], '-cc', 'cc')
+				res.ccompiler_set_by_flag = true
 				res.build_options << '${arg} "${res.ccompiler}"'
 				i++
 			}
