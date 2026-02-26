@@ -946,6 +946,21 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.register_free_method(var_type)
 				}
 			}
+			if !cloned && node_.op in [.assign, .decl_assign] && var_type.nr_muls() == 0
+				&& unwrapped_val_type.nr_muls() == 0 && !var_type.has_option_or_result()
+				&& !unwrapped_val_type.has_option_or_result()
+				&& val in [ast.Ident, ast.SelectorExpr]
+				&& g.table.final_sym(var_type).kind == .sum_type
+				&& g.table.final_sym(unwrapped_val_type).kind == .sum_type
+				&& g.table.final_sym(var_type).idx == g.table.final_sym(unwrapped_val_type).idx {
+				sumtype_clone_fn := g.get_sumtype_clone_fn(var_type)
+				if sumtype_clone_fn != '' {
+					g.write('${sumtype_clone_fn}(')
+					g.expr(val)
+					g.write(')')
+					cloned = true
+				}
+			}
 			if !cloned {
 				if g.comptime.comptime_for_field_var == ''
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
