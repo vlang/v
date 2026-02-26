@@ -298,6 +298,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut old_len := u64(0)
 	mut new_len := u64(0)
 	mut expected_size := u64(0)
+	mut has_content_length := false
 	mut status_code := -1
 	for {
 		readcounter++
@@ -328,23 +329,27 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 				body_buffer_offset := bidx + 4
 				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
 				body_pos = u64(old_len) + u64(body_buffer_offset)
+				for line in schunk[..bidx].split('\r\n') {
+					if line.to_lower().starts_with('content-length:') {
+						size_text := line.all_after(':').trim_space()
+						if size_text != '' && size_text.bytes().all(it.is_digit()) {
+							expected_size = size_text.u64()
+							has_content_length = true
+						}
+						break
+					}
+				}
 			}
 		}
 		body_so_far := u64(new_len) - body_pos
 		if req.on_progress_body != unsafe { nil } {
-			if expected_size == 0 {
-				lidx := schunk.index_('Content-Length: ')
-				if lidx > 0 {
-					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
-					if esize > 0 {
-						expected_size = esize
-					}
-				}
-			}
 			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		}
+		if has_content_length && body_pos > 0 && body_so_far >= expected_size {
+			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
 			break

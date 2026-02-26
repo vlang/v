@@ -1,6 +1,8 @@
 // vtest build: !windows
 import net.http
+import net
 import io
+import time
 
 struct StringReader {
 	text string
@@ -298,4 +300,44 @@ fn test_parse_request_head_str_multiple_same_header() {
 	assert req.method == .get
 	assert req.host == 'example.com'
 	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
+}
+
+fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	t := spawn fn (mut listener net.TcpListener) {
+		mut conn := listener.accept() or {
+			listener.close() or {}
+			return
+		}
+		defer {
+			conn.close() or {}
+			listener.close() or {}
+		}
+
+		mut request_buf := []u8{len: 2048}
+		_ = conn.read(mut request_buf) or { return }
+		response := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok'
+		conn.write(response.bytes()) or { return }
+
+		conn.set_read_timeout(5 * time.second)
+		mut drain_buf := []u8{len: 128}
+		for {
+			n := conn.read(mut drain_buf) or { break }
+			if n <= 0 {
+				break
+			}
+		}
+	}(mut listener)
+
+	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
+	req.read_timeout = 2 * time.second
+	start := time.now()
+	res := req.do()!
+	elapsed := time.since(start)
+	t.wait()
+
+	assert res.status() == .ok
+	assert res.body == 'ok'
+	assert elapsed < time.second
 }
