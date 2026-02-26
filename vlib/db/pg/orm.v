@@ -8,9 +8,10 @@ import net.conv
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
+	where_with_tenant := orm.apply_tenant_filter(config.table, where)
+	query := orm.orm_select_gen(config, '"', true, '$', 1, where_with_tenant)
 
-	rows := pg_stmt_worker(db, query, where, data)!
+	rows := pg_stmt_worker(db, query, where_with_tenant, data)!
 
 	mut ret := [][]orm.Primitive{}
 
@@ -39,15 +40,17 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where)
-	pg_stmt_worker(db, query, data, where)!
+	where_with_tenant := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where_with_tenant)
+	pg_stmt_worker(db, query, data, where_with_tenant)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '"', .delete, true, '$', 1, orm.QueryData{},
-		where)
-	pg_stmt_worker(db, query, orm.QueryData{}, where)!
+		where_with_tenant)
+	pg_stmt_worker(db, query, orm.QueryData{}, where_with_tenant)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries

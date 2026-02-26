@@ -5,12 +5,13 @@ import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+	where_with_tenant := orm.apply_tenant_filter(config.table, where)
 	$if trace_orm_where ? {
 		eprintln('> sqlite.select: where.fields.len = ${where.fields.len}')
 		eprintln('> sqlite.select: where.kinds.len = ${where.kinds.len}')
 	}
 	// 1. Create query and bind necessary data
-	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
+	query := orm.orm_select_gen(config, '`', true, '?', 1, where_with_tenant)
 	$if trace_sqlite ? {
 		eprintln('> select query: "${query}"')
 	}
@@ -19,7 +20,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		stmt.finalize()
 	}
 	mut c := 1
-	sqlite_stmt_binder(stmt, where, query, mut c)!
+	sqlite_stmt_binder(stmt, where_with_tenant, query, mut c)!
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 
 	mut ret := [][]orm.Primitive{}
@@ -64,15 +65,17 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, where)
-	sqlite_stmt_worker(db, query, data, where)!
+	where_with_tenant := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, where_with_tenant)
+	sqlite_stmt_worker(db, query, data, where_with_tenant)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .delete, true, '?', 1, orm.QueryData{},
-		where)
-	sqlite_stmt_worker(db, query, orm.QueryData{}, where)!
+		where_with_tenant)
+	sqlite_stmt_worker(db, query, orm.QueryData{}, where_with_tenant)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
