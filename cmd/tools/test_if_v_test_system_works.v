@@ -118,6 +118,7 @@ fn main() {
 		exit(1)
 	}()
 	println('> vroot: ${vroot} | vexe: ${vexe} | tdir: ${tdir}')
+	os.setenv('VTEST_HIDE_OK', '0', true)
 	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')!
 	if check_ok('${vexe} ${ok_fpath}') != '' {
 		exit(1)

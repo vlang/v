@@ -72,8 +72,23 @@ pub fn run(all_tasks map[string]Task) {
 	task_name := os.args[1]
 	if task_name == 'all' {
 		log.info(term.colorize(term.green, 'Run everything...'))
+		mut failed_tasks := []string{}
 		for tname, t in all_tasks {
-			t.run(tname)
+			cmd := '${self_command} ${tname}'
+			log.info('Start ${term.colorize(term.yellow, t.label)}, cmd: `${cmd}`')
+			start := time.now()
+			result := os.system(cmd)
+			dt := time.now() - start
+			if result != 0 {
+				log.error('FAILED ${term.colorize(term.red, t.label)} in ${dt.milliseconds()} ms, cmd: `${cmd}`')
+				failed_tasks << tname
+			} else {
+				log.info('Finished ${term.colorize(term.yellow, t.label)} in ${dt.milliseconds()} ms, cmd: `${cmd}`')
+			}
+		}
+		if failed_tasks.len > 0 {
+			log.error('${failed_tasks.len} task(s) failed: ${failed_tasks}')
+			exit(1)
 		}
 		exit(0)
 	}

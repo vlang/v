@@ -14,6 +14,18 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
+fn execute_in_dir(dir string, cmd string) os.Result {
+	old_dir := os.getwd()
+	os.chdir(dir) or { return os.Result{
+		exit_code: -1
+		output:    'failed to chdir: ${err}'
+	} }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	return os.execute(cmd)
+}
+
 fn test_link_and_unlink_current_project() {
 	module_name := 'author.coollib'
 	project_path := os.join_path(test_path, 'project')
@@ -28,7 +40,7 @@ fn test_link_and_unlink_current_project() {
 	}
 	link_path := os.join_path(test_path, 'author', 'coollib')
 
-	link_res := os.execute('cd ${os.quoted_path(project_subdir)} && ${vexe} link')
+	link_res := execute_in_dir(project_subdir, '${vexe} link')
 	if link_res.exit_code != 0 && is_symlink_privilege_error(link_res.output) {
 		eprintln('Skipping symlink test due to missing privileges.')
 		return
@@ -38,12 +50,12 @@ fn test_link_and_unlink_current_project() {
 	assert os.real_path(link_path) == os.real_path(project_path)
 	assert link_res.output.contains('Linked `${module_name}`'), link_res.output
 
-	link_again_res := os.execute('cd ${os.quoted_path(project_path)} && ${vexe} link')
+	link_again_res := execute_in_dir(project_path, '${vexe} link')
 	assert link_again_res.exit_code == 0, link_again_res.output
 	assert link_again_res.output.contains('already linked')
 		|| link_again_res.output.contains('already available'), link_again_res.output
 
-	unlink_res := os.execute('cd ${os.quoted_path(project_subdir)} && ${vexe} unlink')
+	unlink_res := execute_in_dir(project_subdir, '${vexe} unlink')
 	assert unlink_res.exit_code == 0, unlink_res.output
 	assert !os.exists(link_path) && !os.is_link(link_path)
 	assert !os.exists(os.join_path(test_path, 'author'))
@@ -56,7 +68,7 @@ fn test_link_without_vmod() {
 		assert false, err.msg()
 		return
 	}
-	res := os.execute('cd ${os.quoted_path(path)} && ${vexe} link')
+	res := execute_in_dir(path, '${vexe} link')
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('no `v.mod` file found'), res.output
 }

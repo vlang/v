@@ -36,8 +36,8 @@ fn maybe_delegate_to_vvmrc(command string, prefs &pref.Preferences) {
 		eprintln('v: warning: `${vvmrc_path}` requests V `${requested_version}`, but no matching compiler executable was found. Continuing with V ${version.v_version}.')
 		return
 	}
-	current_vexe := os.real_path(pref.vexe_path())
-	if os.real_path(vversion_exe) == current_vexe {
+	this_vexe := os.real_path(pref.vexe_path())
+	if os.real_path(vversion_exe) == this_vexe {
 		return
 	}
 	if prefs.is_verbose {

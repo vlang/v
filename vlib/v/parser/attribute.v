@@ -209,6 +209,10 @@ fn (mut p Parser) is_attributes() bool {
 		}
 		i++
 	}
+	if i == 1 {
+		// empty `[]` is an array literal, not an attribute
+		return false
+	}
 	peek_rsbr_tok := p.peek_token(i + 1)
 	if peek_rsbr_tok.line_nr == p.tok.line_nr && peek_rsbr_tok.kind != .rcbr {
 		return false

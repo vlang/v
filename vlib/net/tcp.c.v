@@ -1,5 +1,6 @@
 module net
 
+import io
 import time
 import strings
 
@@ -159,6 +160,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 	ecode := error_code()
+	if res == 0 {
+		return io.Eof{}
+	}
 	if res > 0 {
 		$if trace_tcp ? {
 			eprintln(

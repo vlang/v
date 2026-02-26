@@ -93,7 +93,7 @@ pub fn cstring_to_vstring(const_s &char) string {
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn tos_clone(const_s &u8) string {
-	return unsafe { tos2(byteptr(const_s)) }.clone()
+	return unsafe { tos2(&u8(const_s)) }.clone()
 }
 
 // tos creates a V string, given a C style pointer to a 0 terminated block.

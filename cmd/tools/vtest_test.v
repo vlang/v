@@ -16,6 +16,7 @@ fn testsuite_begin() {
 	os.setenv('VFLAGS', '', true)
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '2', true)
+	os.setenv('VTEST_HIDE_OK', '0', true)
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!
 

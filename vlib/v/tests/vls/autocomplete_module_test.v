@@ -108,7 +108,7 @@ const test_data = [
 	TestData{
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
-		output: 'unresolved type, maybe "builtin" was not defined. otherwise this is a bug, should never happen; please report'
+		output: ''
 	},
 	TestData{
 		method: .definition
@@ -154,9 +154,9 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"unexpected name `strings`, expecting `)`",
-"line_nr":27,
-"col":2,
+"message":"unexpected token `:=`, expecting `)`",
+"line_nr":29,
+"col":4,
 "len":0
 }
 ,
@@ -210,17 +210,17 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`` (no value) used as value in argument 1 to `string.all_before_last`",
-"line_nr":26,
-"col":27,
+"message":"undefined ident: `strings`",
+"line_nr":27,
+"col":2,
 "len":0
 }
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`string` has no property ``",
-"line_nr":26,
-"col":11,
+"message":"`strings` does not return a value",
+"line_nr":27,
+"col":2,
 "len":0
 }
 ,
@@ -236,6 +236,22 @@ const test_data = [
 "path":"${json_errors_text_file}",
 "message":"`builtin` does not return a value",
 "line_nr":28,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${json_errors_text_file}",
+"message":"undefined ident: `v`",
+"line_nr":29,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${json_errors_text_file}",
+"message":"expected 1 argument, but got 4",
+"line_nr":27,
 "col":2,
 "len":0
 }
@@ -321,8 +337,7 @@ fn test_main() {
 		}
 
 		// Try to decode the response message and verify
-		// TODO: remove `unresolved type, maybe`
-		if t.output.trim_space().len > 0 && !t.output.starts_with('unresolved type, maybe') {
+		if t.output.trim_space().len > 0 {
 			dump(t.output)
 			match t.method {
 				.definition {

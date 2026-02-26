@@ -33,9 +33,13 @@ pub const show_longest_by_runtime = os.getenv('VTEST_SHOW_LONGEST_BY_RUNTIME').i
 pub const show_longest_by_comptime = os.getenv('VTEST_SHOW_LONGEST_BY_COMPTIME').int()
 pub const show_longest_by_totaltime = os.getenv('VTEST_SHOW_LONGEST_BY_TOTALTIME').int()
 
+pub const is_ci = os.getenv('CI') != '' || os.getenv('GITHUB_JOB') != ''
+
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
+	|| (is_ci && os.getenv('VTEST_HIDE_SKIP') != '0')
 
 pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+	|| (is_ci && os.getenv('VTEST_HIDE_OK') != '0')
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 

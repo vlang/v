@@ -25,15 +25,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.write(name)
 	}
 	f.write_generic_types(node.generic_types)
-	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln(' {}')
-		return
-	}
-	mut type_align := new_field_align(use_break_line: true)
-	mut default_expr_align := new_field_align(use_threshold: true)
-	mut attr_align := new_field_align(use_threshold: true)
-	mut comment_align := new_field_align(use_threshold: true)
-	mut field_types := []string{cap: node.fields.len}
 	if node.is_implements {
 		f.write(' implements ')
 		for i, t in node.implements_types {
@@ -43,6 +34,15 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 		}
 	}
+	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln(' {}')
+		return
+	}
+	mut type_align := new_field_align(use_break_line: true)
+	mut default_expr_align := new_field_align(use_threshold: true)
+	mut attr_align := new_field_align(use_threshold: true)
+	mut comment_align := new_field_align(use_threshold: true)
+	mut field_types := []string{cap: node.fields.len}
 	// Calculate the alignments first
 	f.calculate_alignment(node.fields, mut type_align, mut comment_align, mut default_expr_align, mut
 		attr_align, mut field_types)

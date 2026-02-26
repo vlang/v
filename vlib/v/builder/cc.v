@@ -285,7 +285,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-		if v.pref.is_shared {
+		if v.pref.is_shared || v.disable_flto {
 			// Keep shared libraries away from LTO to avoid runtime loader regressions.
 			have_flto = false
 		}
@@ -311,7 +311,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-		if v.pref.is_shared {
+		if v.pref.is_shared || v.disable_flto {
 			// Keep shared libraries away from LTO to avoid runtime loader regressions.
 			have_flto = false
 		}
@@ -959,6 +959,18 @@ pub fn (mut v Builder) cc() {
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
+			// Some GCC+linker setups fail bootstrapping with `-flto` and then report a missing `main` symbol.
+			// Retry once without `-flto`, while still keeping the remaining -prod options.
+			if v.pref.building_v && v.pref.is_prod && !v.pref.no_prod_options && !v.disable_flto
+				&& v.ccoptions.cc == .gcc && response_file_content.contains('-flto')
+				&& (res.output.contains('undefined symbol: main')
+				|| res.output.contains('undefined reference to `main')) {
+				v.disable_flto = true
+				if !v.pref.is_quiet {
+					eprintln('Retrying compiler build without `-flto` after a linker failure with missing `main`.')
+				}
+				continue
+			}
 			if is_tcc_compilation_failure(ccompiler, v.ccoptions.cc, res.output) {
 				// A TCC problem? Retry with a non-tcc system compiler:
 				if tried_compilation_commands.len > 1 {
@@ -1251,7 +1263,8 @@ fn (mut b Builder) cc_freebsd_cross() {
 fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
 	cross_compiler_name := c.pref.ccompiler
-	cross_compiler_name_path := if cross_compiler_name.contains('/') || cross_compiler_name.contains('\\') {
+	cross_compiler_name_path := if cross_compiler_name.contains('/')
+		|| cross_compiler_name.contains('\\') {
 		cross_compiler_name
 	} else {
 		os.find_abs_path_of_executable(cross_compiler_name) or {

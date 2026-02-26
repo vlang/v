@@ -819,7 +819,8 @@ fn (mut app App) handle_swipe() {
 	dmax := if math.max(adx, ady) > 0 { math.max(adx, ady) } else { 1 }
 	tdiff := (e.time - s.time).milliseconds()
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(math.min(w, h) * tdiff / 100)) + 20
+	distance_factor := f64(math.min(w, h)) * f64(tdiff) / 100.0
+	min_swipe_distance := int(math.sqrt(distance_factor)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}

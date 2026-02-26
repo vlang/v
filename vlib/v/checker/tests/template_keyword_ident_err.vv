@@ -9,7 +9,7 @@ pub struct Context {
 pub struct Application {}
 
 pub fn (mut app Application) index() veb.Result {
-	return $veb.html('./templates/template_keyword_ident_err.html')
+	return $veb.html('templates/template_keyword_ident_err.html')
 }
 
 fn main() {

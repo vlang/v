@@ -679,10 +679,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
 				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct]
 			mut is_mut_arg_pointer_rebind := false
-			// Keep pointer traversal assignments on auto-deref vars as local pointer rebinds.
+			// Keep pointer traversal assignments on auto-deref vars as local pointer rebinds,
+			// but only for function arguments (is_arg), not for loop iteration variables.
 			if !is_decl && !is_shared_re_assign && !var_type.has_flag(.option)
 				&& var_type.is_any_kind_of_pointer() && unwrapped_val_type.is_any_kind_of_pointer()
-				&& left.is_auto_deref_var() && !val.is_auto_deref_var() && node.op == .assign {
+				&& left.is_auto_deref_var() && !val.is_auto_deref_var() && node.op == .assign
+				&& left.is_auto_deref_arg() {
 				is_mut_arg_pointer_rebind = true
 			}
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
@@ -951,21 +953,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				} else if right_sym.info is ast.Interface && var_type != ast.error_type {
 					g.register_free_method(var_type)
-				}
-			}
-			if !cloned && node_.op in [.assign, .decl_assign] && var_type.nr_muls() == 0
-				&& unwrapped_val_type.nr_muls() == 0 && !var_type.has_option_or_result()
-				&& !unwrapped_val_type.has_option_or_result()
-				&& val in [ast.Ident, ast.SelectorExpr]
-				&& g.table.final_sym(var_type).kind == .sum_type
-				&& g.table.final_sym(unwrapped_val_type).kind == .sum_type
-				&& g.table.final_sym(var_type).idx == g.table.final_sym(unwrapped_val_type).idx {
-				sumtype_clone_fn := g.get_sumtype_clone_fn(var_type)
-				if sumtype_clone_fn != '' {
-					g.write('${sumtype_clone_fn}(')
-					g.expr(val)
-					g.write(')')
-					cloned = true
 				}
 			}
 			if !cloned {

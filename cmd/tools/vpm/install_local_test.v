@@ -74,11 +74,15 @@ fn test_install_from_local_git_repository_variants() {
 	for i, c in cases {
 		vmodules_path := os.join_path(test_path, 'vmodules_case_${i}')
 		test_utils.set_test_env(vmodules_path)
-		mut cmd := '${vexe} install ${c.args}'
+		cmd := '${vexe} install ${c.args}'
+		old_dir := os.getwd()
 		if c.workdir != '' {
-			cmd = 'cd ${os.quoted_path(c.workdir)} && ${cmd}'
+			os.chdir(c.workdir) or { panic(err) }
 		}
 		res := cmd_ok(@LOCATION, cmd)
+		if c.workdir != '' {
+			os.chdir(old_dir) or {}
+		}
 		assert res.output.contains('Installed `${c.module_name}`'), res.output
 		manifest := vmod.from_file(os.join_path(vmodules_path, c.module_name, 'v.mod')) or {
 			panic('Failed to parse v.mod for `${c.module_name}`. ${err}')

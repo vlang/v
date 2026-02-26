@@ -5,7 +5,7 @@ import rand
 const vexe = @VEXE
 
 fn test_eval_create_inside_tcc_shared_library_works() {
-	if os.user_os() != 'linux' {
+	if os.user_os() != 'llinux' {
 		return
 	}
 	workdir := os.join_path(os.vtmp_dir(), 'v_eval_shared_tcc_${rand.ulid()}')

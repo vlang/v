@@ -2566,6 +2566,21 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 	}
 }
 
+pub fn (expr Expr) is_auto_deref_arg() bool {
+	return match expr {
+		Ident {
+			if expr.obj is Var {
+				expr.obj.is_auto_deref && expr.obj.is_arg
+			} else {
+				false
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 // returns if an expression can be used in `lock x, y.z {`
 pub fn (e &Expr) is_lockable() bool {
 	return match e {

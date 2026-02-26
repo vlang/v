@@ -9,6 +9,7 @@ import rand
 import v.help
 import v.vmod
 
+const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']
 const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly

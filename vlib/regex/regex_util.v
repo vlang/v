@@ -311,24 +311,24 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-				s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
-				if s >= 0 && e > s {
-					abs_start := i + s
-					abs_end := i + e
-					ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
-					if !ok {
+			if s >= 0 && e > s {
+				abs_start := i + s
+				abs_end := i + e
+				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+				if !ok {
 					if stop_scan {
 						break
 					}
 					i++
 					continue
-					}
-					res << abs_start
-					res << abs_end
-					i += e
-					continue
 				}
+				res << abs_start
+				res << abs_end
+				i += e
+				continue
+			}
 			/*
 			if e > 0 {
 				i += e
@@ -385,21 +385,21 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-				s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
-				if s >= 0 && e > s {
-					abs_start := i + s
-					abs_end := i + e
-					ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
-					if !ok {
+			if s >= 0 && e > s {
+				abs_start := i + s
+				abs_end := i + e
+				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+				if !ok {
 					if stop_scan {
 						break
 					}
 					i++
-						continue
-					}
-					tmp_str := tos(in_txt.str + i, in_txt.len - i)
-					mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
+					continue
+				}
+				tmp_str := tos(in_txt.str + i, in_txt.len - i)
+				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
 				// println("Found: ${s}:${e} [${tmp_str[s..e]}]")
 				res << tmp_str[s..tmp_e]
 				i += e
