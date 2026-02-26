@@ -578,6 +578,11 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 						return err
 					}
 				}
+				C.MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET {
+					// TLS 1.3 servers can deliver tickets asynchronously while the
+					// connection is otherwise healthy. Keep reading application data.
+					continue
+				}
 				C.MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: 0 C.MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY')
