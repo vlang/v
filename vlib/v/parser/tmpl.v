@@ -74,12 +74,174 @@ fn is_html_open_tag(name string, s string) bool {
 	}
 }
 
+fn is_tmpl_ident_start(c u8) bool {
+	return c.is_letter() || c == `_`
+}
+
+fn is_tmpl_ident_part(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_`
+}
+
+fn find_tmpl_balanced_end(line string, start int, open u8, close u8) int {
+	if start >= line.len || line[start] != open {
+		return -1
+	}
+	mut depth := 0
+	mut i := start
+	mut in_single_quote := false
+	mut in_double_quote := false
+	for i < line.len {
+		ch := line[i]
+		if ch == `\\` {
+			i += 2
+			continue
+		}
+		if in_single_quote {
+			if ch == `'` {
+				in_single_quote = false
+			}
+			i++
+			continue
+		}
+		if in_double_quote {
+			if ch == `"` {
+				in_double_quote = false
+			}
+			i++
+			continue
+		}
+		if ch == `'` {
+			in_single_quote = true
+			i++
+			continue
+		}
+		if ch == `"` {
+			in_double_quote = true
+			i++
+			continue
+		}
+		if ch == open {
+			depth++
+		} else if ch == close {
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+fn find_tmpl_complex_at_expr_end(line string, start int) int {
+	mut i := start
+	if i >= line.len || !is_tmpl_ident_start(line[i]) {
+		return -1
+	}
+	i++
+	for i < line.len && is_tmpl_ident_part(line[i]) {
+		i++
+	}
+	for i + 1 < line.len && line[i] == `.` && is_tmpl_ident_start(line[i + 1]) {
+		i += 2
+		for i < line.len && is_tmpl_ident_part(line[i]) {
+			i++
+		}
+	}
+	mut has_complex_suffix := false
+	for i < line.len {
+		if line[i] == `[` {
+			expr_end := find_tmpl_balanced_end(line, i, `[`, `]`)
+			if expr_end == -1 {
+				return -1
+			}
+			i = expr_end
+			has_complex_suffix = true
+			continue
+		}
+		if line[i] == `(` {
+			expr_end := find_tmpl_balanced_end(line, i, `(`, `)`)
+			if expr_end == -1 {
+				return -1
+			}
+			i = expr_end
+			has_complex_suffix = true
+			continue
+		}
+		if i + 1 < line.len && line[i] == `.` && is_tmpl_ident_start(line[i + 1]) {
+			i += 2
+			for i < line.len && is_tmpl_ident_part(line[i]) {
+				i++
+			}
+			continue
+		}
+		break
+	}
+	if !has_complex_suffix {
+		return -1
+	}
+	return i
+}
+
+fn rewrite_complex_template_at_expressions(line string) string {
+	mut b := strings.new_builder(line.len + 8)
+	mut i := 0
+	for i < line.len {
+		if line[i] != `@` {
+			b.write_u8(line[i])
+			i++
+			continue
+		}
+		if i > 0 && line[i - 1] == `\\` {
+			b.write_u8(`@`)
+			i++
+			continue
+		}
+		if i + 1 >= line.len {
+			b.write_u8(`@`)
+			i++
+			continue
+		}
+		next := line[i + 1]
+		if next == `@` || next == `{` {
+			b.write_u8(`@`)
+			i++
+			continue
+		}
+		if next == `(` {
+			expr_end := find_tmpl_balanced_end(line, i + 1, `(`, `)`)
+			if expr_end != -1 && expr_end > i + 2 {
+				b.write_string('@{')
+				b.write_string(line[i + 2..expr_end - 1])
+				b.write_u8(`}`)
+				i = expr_end
+				continue
+			}
+			b.write_u8(`@`)
+			i++
+			continue
+		}
+		expr_end := find_tmpl_complex_at_expr_end(line, i + 1)
+		if expr_end != -1 {
+			b.write_string('@{')
+			b.write_string(line[i + 1..expr_end])
+			b.write_u8(`}`)
+			i = expr_end
+			continue
+		}
+		b.write_u8(`@`)
+		i++
+	}
+	return b.str()
+}
+
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `veb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
 	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@@', r'@', r'@', r'$', r'$$', r'\@']
-	mut rline := line.replace_each(replace_pairs)
+	rewritten_line := rewrite_complex_template_at_expressions(line)
+	mut rline := rewritten_line.replace_each(replace_pairs)
 	comptime_call_str := rline.find_between('\${', '}')
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
