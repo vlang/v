@@ -346,41 +346,42 @@ fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr i
 }
 
 fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
+	mut token_content := ''
 	match typ {
 		.unone, .operator, .punctuation {
-			buf.write_string(tok.kind.str())
+			token_content = tok.kind.str()
 		}
 		.string_interp {
 			// tok.kind.str() for this returns $2 instead of $
-			buf.write_byte(`$`)
+			token_content = '$'
 		}
 		.opening_string {
-			buf.write_string("'${tok.lit}")
+			token_content = "'${tok.lit}"
 		}
 		.closing_string {
 			// A string as the next token of the expression
 			// inside the string interpolation indicates that
 			// this is the closing of string interpolation
-			buf.write_string("${tok.lit}'")
+			token_content = "${tok.lit}'"
 		}
 		.string {
-			buf.write_string("'${tok.lit}'")
+			token_content = "'${tok.lit}'"
 		}
 		.char {
-			buf.write_string('`${tok.lit}`')
+			token_content = '`${tok.lit}`'
 		}
 		.comment {
-			buf.write_string('//')
 			if tok.lit != '' && tok.lit[0] == 1 {
-				buf.write_string(tok.lit[1..])
+				token_content = '//${tok.lit[1..]}'
 			} else {
-				buf.write_string(tok.lit)
+				token_content = '//${tok.lit}'
 			}
 		}
 		else {
-			buf.write_string(tok.lit)
+			token_content = tok.lit
 		}
 	}
+	buf.write_string(html.escape(token_content))
 }
 
 fn html_highlight(code string, tb &ast.Table) string {
