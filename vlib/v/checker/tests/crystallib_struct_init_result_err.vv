@@ -1,0 +1,21 @@
+struct Path {}
+
+struct Doc {
+mut:
+	content string
+	path    Path
+}
+
+fn get_file(path string, create bool) !Path {
+	return Path{}
+}
+
+fn main() {
+	mut doc := Doc{
+		content: 'this is a first line.'
+		path:    get_file('config.md', true)
+	}
+	println('First println\n' + doc.content + '\n')
+	doc.content += '\nthis is a second line.'
+	println('Second println\n' + doc.content)
+}
