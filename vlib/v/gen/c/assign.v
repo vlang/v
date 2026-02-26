@@ -679,10 +679,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
 				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct]
 			mut is_mut_arg_pointer_rebind := false
-			// Keep pointer traversal assignments on auto-deref vars as local pointer rebinds.
+			// Keep pointer traversal assignments on auto-deref vars as local pointer rebinds,
+			// but only for function arguments (is_arg), not for loop iteration variables.
 			if !is_decl && !is_shared_re_assign && !var_type.has_flag(.option)
 				&& var_type.is_any_kind_of_pointer() && unwrapped_val_type.is_any_kind_of_pointer()
-				&& left.is_auto_deref_var() && !val.is_auto_deref_var() && node.op == .assign {
+				&& left.is_auto_deref_var() && !val.is_auto_deref_var() && node.op == .assign
+				&& left.is_auto_deref_arg() {
 				is_mut_arg_pointer_rebind = true
 			}
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {

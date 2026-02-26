@@ -5934,7 +5934,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			}
 			g.expr(node.expr)
 		}
-	} else if !node_typ_is_option && final_sym.kind == .u64
+	} else if !node_typ_is_option && !node_typ.is_ptr() && !expr_type.is_ptr()
+		&& final_sym.kind == .u64
 		&& final_expr_sym.kind in [.f32, .f64, .float_literal] {
 		if g.inside_const {
 			g.write('((uint64_t)(')
