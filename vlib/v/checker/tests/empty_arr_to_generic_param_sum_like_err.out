@@ -1,0 +1,13 @@
+vlib/v/checker/tests/empty_arr_to_generic_param_sum_like_err.vv:15:11: error: cannot use empty array as generic argument
+   13 | 
+   14 | fn main() {
+   15 |     sum_like([]) or { panic(err) }
+      |              ~~
+   16 |     arrays.sum([]) or { panic(err) }
+   17 | }
+vlib/v/checker/tests/empty_arr_to_generic_param_sum_like_err.vv:16:13: error: cannot use empty array as generic argument
+   14 | fn main() {
+   15 |     sum_like([]) or { panic(err) }
+   16 |     arrays.sum([]) or { panic(err) }
+      |                ~~
+   17 | }

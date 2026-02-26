@@ -1541,6 +1541,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.pos)
 	}
 	mut has_decompose := false
+	mut has_unresolved_generic_param := false
 	mut nr_multi_values := 0
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
@@ -1665,7 +1666,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if arg_typ_sym.kind == .none && !param.typ.has_flag(.option) {
 				c.error('cannot use `none` as generic argument', call_arg.pos)
 			}
-			c.check_unresolved_generic_param(node, call_arg)
+			has_unresolved_generic_param = c.check_unresolved_generic_param(node, call_arg)
+				|| has_unresolved_generic_param
 		}
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && args_len - 1 > i {
@@ -1938,6 +1940,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					call_arg.pos)
 			}
 		}
+	}
+	if has_unresolved_generic_param {
+		node.return_type = func.return_type
+		return func.return_type
 	}
 	if is_json_encode {
 		// json.encode param is set voidptr, we should bound the proper type here
@@ -2548,6 +2554,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	c.check_expected_arg_count(mut node, method) or { return method.return_type }
 	mut exp_arg_typ := ast.no_type // type of 1st arg for special builtin methods
+	mut has_unresolved_generic_param := false
 	mut param_is_mut := false
 	mut no_type_promotion := false
 	if left_sym.info is ast.Chan {
@@ -2692,7 +2699,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		if exp_arg_typ.has_flag(.generic) {
-			c.check_unresolved_generic_param(node, arg)
+			has_unresolved_generic_param = c.check_unresolved_generic_param(node, arg)
+				|| has_unresolved_generic_param
 			method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
 				rec_concrete_types
 			} else {
@@ -2787,6 +2795,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				arg.pos)
 		}
 	}
+	if has_unresolved_generic_param {
+		return method.return_type
+	}
 	if method.is_unsafe && !c.inside_unsafe {
 		if !c.pref.translated && !c.file.is_translated {
 			c.warn('method `${left_sym.name}.${method_name}` must be called from an `unsafe` block',
@@ -2877,11 +2888,13 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, mut lambda ast.
 	}
 }
 
-fn (mut c Checker) check_unresolved_generic_param(node &ast.CallExpr, arg ast.CallArg) {
+fn (mut c Checker) check_unresolved_generic_param(node &ast.CallExpr, arg ast.CallArg) bool {
 	if node.raw_concrete_types.len == 0 && arg.expr is ast.ArrayInit
 		&& arg.expr.typ == ast.void_type {
 		c.error('cannot use empty array as generic argument', arg.pos)
+		return true
 	}
+	return false
 }
 
 fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
