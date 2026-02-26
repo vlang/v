@@ -158,6 +158,23 @@ pub fn (re &RE) matches_string(in_txt string) bool {
 * Finders
 *
 ******************************************************************************/
+@[direct_array_access; inline]
+fn (re &RE) check_anchors(in_txt string, start int, end int) (bool, bool) {
+	// `^` means start of the source string.
+	if (re.flag & f_ms) != 0 && start > 0 {
+		return false, true
+	}
+	// `$` means end of the source string, or right before a newline.
+	if (re.flag & f_me) != 0 && end < in_txt.len {
+		if in_txt[end] in new_line_list {
+			return true, false
+		}
+		// When `^` is also present, scanning forward can never recover.
+		return false, (re.flag & f_ms) != 0
+	}
+	return true, false
+}
+
 /*
 // find internal implementation HERE for reference do not remove!!
 @[direct_array_access]
@@ -195,6 +212,16 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
 
 			if s >= 0 && e > s {
+				abs_start := i + s
+				abs_end := i + e
+				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+				if !ok {
+					if stop_scan {
+						break
+					}
+					i++
+					continue
+				}
 				// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
 				// re.flag = old_flag
 				mut gi := 0
@@ -202,15 +229,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 					re.groups[gi] += i
 					gi++
 				}
-				// when ^ (f_ms) is used, it must match on beginning of string
-				if (re.flag & f_ms) != 0 && s > 0 {
-					break
-				}
-				// when $ (f_me) is used, it must match on ending of string
-				if (re.flag & f_me) != 0 && i + e < in_txt.len {
-					break
-				}
-				return i + s, i + e
+				return abs_start, abs_end
 			}
 			i++
 		}
@@ -243,6 +262,16 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 		// s,e = re.find_imp(in_txt[i..])
 		//------------------------
 		if s >= 0 && e > s {
+			abs_start := i + s
+			abs_end := i + e
+			ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+			if !ok {
+				if stop_scan {
+					break
+				}
+				i++
+				continue
+			}
 			// println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
 			re.flag = old_flag
 			mut gi := 0
@@ -250,7 +279,7 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 				re.groups[gi] += i
 				gi++
 			}
-			return i + s, i + e
+			return abs_start, abs_end
 		} else {
 			i++
 		}
@@ -285,8 +314,18 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
-				res << i + s
-				res << i + e
+				abs_start := i + s
+				abs_end := i + e
+				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+				if !ok {
+					if stop_scan {
+						break
+					}
+					i++
+					continue
+				}
+				res << abs_start
+				res << abs_end
 				i += e
 				continue
 			}
@@ -349,10 +388,20 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
+				abs_start := i + s
+				abs_end := i + e
+				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
+				if !ok {
+					if stop_scan {
+						break
+					}
+					i++
+					continue
+				}
 				tmp_str := tos(in_txt.str + i, in_txt.len - i)
 				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
 				// println("Found: ${s}:${e} [${tmp_str[s..e]}]")
-				res << tmp_str[..tmp_e]
+				res << tmp_str[s..tmp_e]
 				i += e
 				continue
 			}
