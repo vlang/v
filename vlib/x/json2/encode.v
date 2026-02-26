@@ -303,8 +303,8 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 		$for member in T.values {
 			if member.value == val {
 				for attr in member.attrs {
-					if attr.starts_with('json: ') {
-						attr_value = attr[6..]
+					if json_attr := json_attr_value(attr) {
+						attr_value = json_attr
 					}
 				}
 			}
@@ -379,11 +379,12 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 					else {}
 				}
 				if attr.starts_with('json:') {
-					if attr == 'json: -' {
+					json_attr := json_attr_value(attr) or { continue }
+					if json_attr == '-' {
 						is_skip = true
 						break
 					}
-					key_name = attr[6..]
+					key_name = json_attr
 				}
 			}
 			field_infos << EncoderFieldInfo{

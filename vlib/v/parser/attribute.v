@@ -3,6 +3,17 @@ module parser
 import v.ast
 import v.token
 
+@[inline]
+fn (p &Parser) current_attr_string_quote() u8 {
+	if p.tok.kind == .string && p.tok.pos >= 0 && p.tok.pos < p.scanner.text.len {
+		quote := p.scanner.text[p.tok.pos]
+		if quote in [`'`, `"`] {
+			return quote
+		}
+	}
+	return `'`
+}
+
 fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
 	p.inside_attr_decl = true
@@ -22,6 +33,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut name := ''
 	mut has_arg := false
 	mut arg := ''
+	mut quote := u8(`'`)
 	mut comptime_cond := ast.empty_expr
 	mut comptime_cond_opt := false
 	if p.tok.kind == .key_if {
@@ -40,6 +52,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 		name = comptime_cond.str()
 	} else if p.tok.kind == .string {
 		name = p.tok.lit
+		quote = p.current_attr_string_quote()
 		kind = .string
 		p.next()
 	} else {
@@ -63,6 +76,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 			} else if p.tok.kind == .string { // `name: 'arg'`
 				kind = .string
 				arg = p.tok.lit
+				quote = p.current_attr_string_quote()
 				p.next()
 			} else if p.tok.kind == .key_true || p.tok.kind == .key_false { // `name: true`
 				kind = .bool
@@ -81,6 +95,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 		has_arg: has_arg
 		arg:     arg
 		kind:    kind
+		quote:   quote
 		ct_expr: comptime_cond
 		ct_opt:  comptime_cond_opt
 		pos:     apos.extend(p.tok.pos())
