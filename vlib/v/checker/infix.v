@@ -1104,7 +1104,9 @@ fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
 }
 
 fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
-	if c.inside_sql {
+	// SQL expressions can compare optional values directly, but anon fn bodies in SQL
+	// should keep regular option checks.
+	if c.inside_sql && !c.inside_anon_fn {
 		return
 	}
 	left_is_option := left_type.has_flag(.option)
