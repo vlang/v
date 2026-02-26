@@ -24,8 +24,24 @@ enum MemoryProtectAtrr {
 }
 
 // refer to https://godbolt.org/z/r7P3EYv6c for a complete assembly
+//
+// NOTE: Keep the first branch as the longest byte sequence. In translated/bootstrap C mode
+// (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
 // vfmt off
-pub const closure_thunk = $if amd64 {
+pub const closure_thunk = $if ppc64le {
+    [
+    u8(0xa6), 0x02, 0x08, 0x7c,	// mflr   %r0
+        0x05, 0x00, 0x00, 0x48,	// bl     here
+        0xa6, 0x02, 0xc8, 0x7d,	// here:  mflr %r14
+        0xf8, 0xbf, 0xce, 0x39,	// addi   %r14, %r14, -16392
+        0x00, 0x00, 0xce, 0xc9,	// lfd    %f14, 0(%r14)
+        0x08, 0x00, 0xce, 0xe9,	// ld     %r14, 8(%r14)
+        0x78, 0x73, 0xcc, 0x7d,	// mr     %r12, %r14
+        0xa6, 0x03, 0x08, 0x7c,	// mtlr   %r0
+        0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
+        0x20, 0x04, 0x80, 0x4e,	// bctr
+    ]!
+} $else $if amd64 {
     [
     u8(0xF3), 0x44, 0x0F, 0x7E, 0x3D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm15, QWORD PTR [rip - userdata]
         0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
@@ -74,19 +90,6 @@ pub const closure_thunk = $if amd64 {
         0xE3, 0x10, 0x10, 0x08, 0x00, 0x04,  // lg   %r1, 8(%r1)
         0x07, 0xF1,                          // br   %r1
     ]!
-} $else $if ppc64le {
-    [
-    u8(0xa6), 0x02, 0x08, 0x7c,	// mflr   %r0
-        0x05, 0x00, 0x00, 0x48,	// bl     here
-        0xa6, 0x02, 0xc8, 0x7d,	// here:  mflr %r14
-        0xf8, 0xbf, 0xce, 0x39,	// addi   %r14, %r14, -16392
-        0x00, 0x00, 0xce, 0xc9,	// lfd    %f14, 0(%r14)
-        0x08, 0x00, 0xce, 0xe9,	// ld     %r14, 8(%r14)
-        0x78, 0x73, 0xcc, 0x7d,	// mr     %r12, %r14
-        0xa6, 0x03, 0x08, 0x7c,	// mtlr   %r0
-        0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
-        0x20, 0x04, 0x80, 0x4e,	// bctr
-    ]!
 } $else $if loongarch64 {
     [
     u8(0x92), 0xFF, 0xFF, 0x1D,  // pcaddu12i t6, -4
@@ -98,7 +101,15 @@ pub const closure_thunk = $if amd64 {
     [u8(0)]!
 }
 
-const closure_get_data_bytes = $if amd64 {
+// NOTE: Keep the first branch as the longest byte sequence. In translated/bootstrap C mode
+// (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
+const closure_get_data_bytes = $if arm32 {
+    [
+    u8(0x90), 0x0A, 0x17, 0xEE,  // vmov r0, s15
+        0x04, 0x00, 0x10, 0xE5,  // ldr r0, [r0, #-4]
+        0x1E, 0xFF, 0x2F, 0xE1   // bx lr
+    ]!
+} $else $if amd64 {
     [
     u8(0x66), 0x4C, 0x0F, 0x7E, 0xF8,  // movq rax, xmm15
         0xC3                           // ret
@@ -113,12 +124,6 @@ const closure_get_data_bytes = $if amd64 {
     [
     u8(0x20), 0x02, 0x66, 0x9E,  // fmov x0, d17
         0xC0, 0x03, 0x5F, 0xD6   // ret
-    ]!
-} $else $if arm32 {
-    [
-    u8(0x90), 0x0A, 0x17, 0xEE,  // vmov r0, s15
-        0x04, 0x00, 0x10, 0xE5,  // ldr r0, [r0, #-4]
-        0x1E, 0xFF, 0x2F, 0xE1   // bx lr
     ]!
 } $else $if rv64 {
     [
@@ -148,6 +153,7 @@ const closure_get_data_bytes = $if amd64 {
 } $else {
     [u8(0)]!
 }
+
 // vfmt on
 
 // equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
