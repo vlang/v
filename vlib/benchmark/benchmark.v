@@ -146,7 +146,7 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
 	b.measured_steps << b.step_message_with_label(b_spent, 'in ${label}')
-	b.step_data[label] << res
+	b.step_data[label] << f64(res)
 	b.step()
 	return res
 }

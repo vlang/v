@@ -184,6 +184,10 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			|| (expected == ast.rune_type && got == ast.u8_type) {
 			return true
 		}
+		if !c.pref.translated && c.table.unalias_num_type(expected).idx() == ast.f64_type_idx
+			&& c.table.unalias_num_type(got).idx() in [ast.i64_type_idx, ast.u64_type_idx] {
+			return false
+		}
 		if c.promote_num(expected, got) != expected {
 			// println('could not promote ${c.table.sym(got).name} to ${c.table.sym(expected).name}')
 			return false
