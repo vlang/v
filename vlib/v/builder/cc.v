@@ -285,10 +285,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-		if v.pref.is_shared {
-			// Keep shared libraries away from LTO to avoid runtime loader regressions.
-			have_flto = false
-		}
+			if v.pref.is_shared || v.disable_flto {
+				// Keep shared libraries away from LTO to avoid runtime loader regressions.
+				have_flto = false
+			}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -311,10 +311,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-		if v.pref.is_shared {
-			// Keep shared libraries away from LTO to avoid runtime loader regressions.
-			have_flto = false
-		}
+			if v.pref.is_shared || v.disable_flto {
+				// Keep shared libraries away from LTO to avoid runtime loader regressions.
+				have_flto = false
+			}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -959,6 +959,18 @@ pub fn (mut v Builder) cc() {
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
+			// Some GCC+linker setups fail bootstrapping with `-flto` and then report a missing `main` symbol.
+			// Retry once without `-flto`, while still keeping the remaining -prod options.
+			if v.pref.building_v && v.pref.is_prod && !v.pref.no_prod_options && !v.disable_flto
+				&& v.ccoptions.cc == .gcc && response_file_content.contains('-flto')
+				&& (res.output.contains('undefined symbol: main')
+				|| res.output.contains('undefined reference to `main')) {
+				v.disable_flto = true
+				if !v.pref.is_quiet {
+					eprintln('Retrying compiler build without `-flto` after a linker failure with missing `main`.')
+				}
+				continue
+			}
 			if is_tcc_compilation_failure(ccompiler, v.ccoptions.cc, res.output) {
 				// A TCC problem? Retry with a non-tcc system compiler:
 				if tried_compilation_commands.len > 1 {
