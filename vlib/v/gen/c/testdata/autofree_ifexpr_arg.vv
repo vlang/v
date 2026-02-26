@@ -1,0 +1,9 @@
+// vtest vflags: -autofree
+import strings
+
+fn main() {
+	mut sb := strings.new_builder(16)
+	hour := 13
+	sb.write_string(if hour > 12 { hour - 12 } else { hour }.str())
+	println(sb.str())
+}
