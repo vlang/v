@@ -3,11 +3,22 @@ module tar
 import compress.gzip
 import os
 
+// read_tar_file reads a given local .tar file and parses all blocks with a
+// given reader.
+pub fn read_tar_file(path string, reader Reader) ! {
+	all_blocks := os.read_bytes(path)!
+	read_tar_blocks(all_blocks, reader)!
+}
+
 // read_tar_gz_file decompresses a given local file and reads all the blocks
 // with a given reader.
 pub fn read_tar_gz_file(path string, reader Reader) ! {
 	tar_gz := os.read_bytes(path)!
 	all_blocks := gzip.decompress(tar_gz)!
+	read_tar_blocks(all_blocks, reader)!
+}
+
+fn read_tar_blocks(all_blocks []u8, reader Reader) ! {
 	mut untar := Untar{
 		reader: reader
 	}
@@ -251,7 +262,7 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 			// after sending all complete blocks move the remaining not sent bytes
 			// to the start of the reused buffer to be prepended before next chunk
 			for i := cut; i < d.pending; i++ {
-				d.buffer[cut - 512] = d.buffer[i]
+				d.buffer[i - cut] = d.buffer[i]
 			}
 			d.pending -= cut
 			return .continue
