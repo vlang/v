@@ -439,6 +439,8 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
+	mut invalid_test_file_name := ''
+	mut invalid_test_file_pos := token.Pos{}
 	// Determine the project directory when using -line-info
 	mut project_dir := ''
 	if c.pref.is_vls && c.pref.line_info != '' {
@@ -471,6 +473,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				if c.file_has_main_fn(file) {
 					has_main_fn = true
 				}
+			}
+			if invalid_test_file_name == '' && is_likely_invalid_test_file_name(file) {
+				invalid_test_file_name = file.path_base
+				invalid_test_file_pos = file.mod.pos
 			}
 			c.timers.show('checker_check ${file.path}')
 		}
@@ -569,11 +575,21 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		return
 	}
 	if !has_main_mod_file {
-		c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
-			token.Pos{})
+		if invalid_test_file_name != '' {
+			c.add_error_detail('Test files should have names ending with `_test.v`.')
+			c.error('invalid test file name `${invalid_test_file_name}`', invalid_test_file_pos)
+		} else {
+			c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
+				token.Pos{})
+		}
 	} else if !has_main_fn && !c.pref.is_o {
 		c.error('function `main` must be declared in the main module', token.Pos{})
 	}
+}
+
+fn is_likely_invalid_test_file_name(file &ast.File) bool {
+	return !file.is_test && (file.path_base.ends_with('.v') || file.path_base.ends_with('.vv'))
+		&& file.path_base.starts_with('test_')
 }
 
 fn (mut c Checker) stmts_has_main_fn(stmts []ast.Stmt) bool {
