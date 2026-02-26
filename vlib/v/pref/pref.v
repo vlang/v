@@ -208,9 +208,11 @@ pub mut:
 	file_list []string // A list of .v files or directories. All .v files found recursively in directories will be included in the compilation.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
-	compile_defines     []string          // just ['vfmt']
-	compile_defines_all []string          // contains both: ['vfmt','another']
-	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
+	compile_defines        []string          // active compile defines (system + user), for example ['vfmt']
+	compile_defines_all    []string          // all known compile defines, for example ['vfmt','another']
+	compile_defines_user   []string          // contains active user defines from `-d`, plus CLI defines meant for `$if x ?`
+	compile_defines_system []string          // contains active system defines added by the compiler itself
+	compile_values         map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -885,7 +887,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-d', '-define' {
 				if define := args[i..][1] {
-					res.parse_define(define)
+					res.parse_user_define(define)
 				}
 				i++
 			}
@@ -1288,6 +1290,14 @@ fn (mut prefs Preferences) parse_compile_value(define string) {
 }
 
 fn (mut prefs Preferences) parse_define(define string) {
+	prefs.parse_define_with_origin(define, false)
+}
+
+fn (mut prefs Preferences) parse_user_define(define string) {
+	prefs.parse_define_with_origin(define, true)
+}
+
+fn (mut prefs Preferences) parse_define_with_origin(define string, is_user bool) {
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d ${define}'
 	}
@@ -1295,6 +1305,11 @@ fn (mut prefs Preferences) parse_define(define string) {
 		prefs.compile_values[define] = 'true'
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
+		if is_user {
+			prefs.compile_defines_user << define
+		} else {
+			prefs.compile_defines_system << define
+		}
 		return
 	}
 	dname := define.all_before('=')
@@ -1305,8 +1320,20 @@ fn (mut prefs Preferences) parse_define(define string) {
 		'' {}
 		else {
 			prefs.compile_defines << dname
+			if is_user {
+				prefs.compile_defines_user << dname
+			} else {
+				prefs.compile_defines_system << dname
+			}
 		}
 	}
+}
+
+// is_user_compile_define reports whether `name` should be treated as a user-defined
+// compile flag in `$if name ?` checks.
+pub fn (pref &Preferences) is_user_compile_define(name string) bool {
+	return name in pref.compile_defines_user
+		|| (name in pref.compile_defines && name !in pref.compile_defines_system)
 }
 
 pub fn supported_test_runners_list() string {

@@ -32,3 +32,13 @@ fn test_test_ident() {
 
 	assert result == '23689'
 }
+
+fn test_gcboehm_full_is_not_treated_as_user_define() {
+	mut result := ''
+	$if gcboehm_full ? {
+		result += 'a'
+	} $else {
+		result += 'b'
+	}
+	assert result == 'b'
+}
