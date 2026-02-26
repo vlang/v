@@ -1226,8 +1226,12 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		if field.typ in checked_types {
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
-			&& !field.has_default_expr {
+		if field.has_default_expr {
+			// The field is already initialized by its default expression.
+			// Its nested reference fields should not be treated as missing.
+			continue
+		}
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option) {
 			c.error('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
 				pos)
 			continue
@@ -1273,8 +1277,12 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 		if field.typ in checked_types {
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
-			&& !field.has_default_expr {
+		if field.has_default_expr {
+			// The field is already initialized by its default expression.
+			// Its nested reference fields should not be treated as missing.
+			continue
+		}
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option) {
 			c.note('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
 				pos)
 			continue
