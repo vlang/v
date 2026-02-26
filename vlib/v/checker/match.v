@@ -134,7 +134,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 	}
-	for mut branch in node.branches {
+	for i, mut branch in node.branches {
 		if node.is_comptime {
 			// `idx_str` is composed of two parts:
 			// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
@@ -252,6 +252,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 
 		if !c.pref.translated && !c.file.is_translated {
+			mut did_warn_self_comparison_branch := false
 			// check for always true/false match branch
 			for mut expr in branch.exprs {
 				mut check_expr := ast.InfixExpr{
@@ -263,6 +264,17 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				if t_expr is ast.BoolLiteral {
 					if t_expr.val {
 						c.note('match is always true', expr.pos())
+						if c.is_always_true_self_comparison(ast.Expr(ast.InfixExpr{
+							op:         .eq
+							left:       node.cond
+							right:      expr
+							left_type:  node.cond_type
+							right_type: node.cond_type
+						})) && i < node.branches.len - 1 && !did_warn_self_comparison_branch {
+							c.warn('self-comparison match branch is always true; following branches may be unreachable',
+								expr.pos())
+							did_warn_self_comparison_branch = true
+						}
 					} else {
 						c.note('match is always false', expr.pos())
 					}
