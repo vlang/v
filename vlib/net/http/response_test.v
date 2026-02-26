@@ -1,5 +1,8 @@
 module http
 
+import compress.gzip
+import compress.zlib
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok
@@ -78,4 +81,34 @@ fn test_parse_response_with_weird_cookie() {
 	mut xx := parse_response(content_weird)!
 	weird_cookie := xx.cookies()
 	assert weird_cookie[0].str() == 'a=b'
+}
+
+fn test_parse_response_with_gzip_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := gzip.compress(expected_body.bytes())!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_deflate_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := zlib.compress(expected_body.bytes())!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_chunked_and_gzip_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := gzip.compress(expected_body.bytes())!
+	chunked_body := '${compressed_body.len:x}\r\n' + compressed_body.bytestr() + '\r\n0\r\n\r\n'
+	content := 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Encoding: gzip\r\n\r\n' +
+		chunked_body
+	resp := parse_response(content)!
+	assert resp.body == expected_body
 }
