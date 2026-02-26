@@ -389,6 +389,26 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 	}
 }
 
+@[inline]
+fn (p &Parser) is_start_of_call_arg_expr() bool {
+	if p.tok.kind == .name && p.peek_tok.kind == .string && p.tok.lit !in ['c', 'r', 'js'] {
+		return false
+	}
+	return match p.tok.kind {
+		.name, .number, .string, .chartoken, .dot, .at, .dollar, .amp, .mul, .not, .bit_not,
+		.arrow, .minus, .lpar, .lsbr, .lcbr, .pipe, .logical_or, .question, .key_fn, .key_type,
+		.key_struct, .key_none, .key_nil, .key_true, .key_false, .key_if, .key_match, .key_select,
+		.key_lock, .key_rlock, .key_go, .key_spawn, .key_unsafe, .key_likely, .key_unlikely,
+		.key_typeof, .key_sizeof, .key_isreftype, .key_offsetof, .key_dump, .key_mut, .key_shared,
+		.key_atomic, .key_static, .key_volatile {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut p Parser) call_args() []ast.CallArg {
 	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
@@ -447,7 +467,10 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			pos:      pos
 		}
 		if p.tok.kind != .comma {
-			break
+			if !p.is_start_of_call_arg_expr() {
+				break
+			}
+			continue
 		}
 		p.next()
 	}
