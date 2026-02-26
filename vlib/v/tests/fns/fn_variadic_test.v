@@ -48,6 +48,19 @@ fn test_fn_variadic_forward() {
 	assert variadic_forward_a('a', 'b', 'c') == 'abc'
 }
 
+fn variadic_fn_head_tail(head string, tail ...string) string {
+	return '${head}|${tail.join(',')}'
+}
+
+fn variadic_forward_with_fixed_arg(args ...string) string {
+	return variadic_fn_head_tail(...args)
+}
+
+fn test_fn_variadic_forward_with_fixed_arg() {
+	assert variadic_forward_with_fixed_arg('a') == 'a|'
+	assert variadic_forward_with_fixed_arg('a', 'b', 'c') == 'a|b,c'
+}
+
 fn fn_variadic_with_arg_no_vargs(name string, groups ...VaTestGroup) {
 	assert groups.len == 0
 }
