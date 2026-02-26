@@ -1,0 +1,17 @@
+import arrays
+
+fn sum_like[T](array []T) !T {
+	if array.len == 0 {
+		return error('Cannot sum up array of nothing.')
+	}
+	mut head := array[0]
+	for e in array[1..] {
+		head += e
+	}
+	return head
+}
+
+fn main() {
+	sum_like([]) or { panic(err) }
+	arrays.sum([]) or { panic(err) }
+}
