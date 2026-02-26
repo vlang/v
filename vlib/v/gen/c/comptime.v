@@ -621,17 +621,19 @@ fn (mut g Gen) pop_comptime_info() {
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	sym := if node.typ != g.field_data_type {
-		g.table.final_sym(g.unwrap_generic(node.typ))
+	for_typ := if node.typ != g.field_data_type {
+		g.unwrap_generic(node.typ)
 	} else {
-		g.table.final_sym(g.comptime.comptime_for_field_type)
+		g.comptime.comptime_for_field_type
 	}
-	g.writeln('/* \$for ${node.val_var} in ${sym.name}.${node.kind.str()} */ {')
+	sym := g.table.final_sym(for_typ)
+	iter_sym_name := if node.kind == .methods { g.table.sym(for_typ).name } else { sym.name }
+	g.writeln('/* \$for ${node.val_var} in ${iter_sym_name}.${node.kind.str()} */ {')
 	g.indent++
 	mut i := 0
 	old_defer_stmts := g.defer_stmts
 	if node.kind == .methods {
-		methods := sym.get_methods()
+		methods := g.table.get_type_methods(for_typ)
 		if methods.len > 0 {
 			g.writeln('FunctionData ${node.val_var} = {0};')
 		}

@@ -48,6 +48,11 @@ fn test_aliased_app_compiles_and_starts() {
 fn test_static_root() {
 	x := http.get('http://127.0.0.1:${app_port}/')!
 	eprintln('>>>> http request was sent and received')
-	assert x.status() == .not_found
-	assert x.body == '404 Not Found'
+	assert x.status() == .ok
+	assert x.body == 'index success'
+}
+
+@['/'; get]
+fn (mut app AliasApp) index(mut ctx AliasContext) veb.Result {
+	return ctx.text('index success')
 }

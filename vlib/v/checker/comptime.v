@@ -434,7 +434,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .methods {
-		mut methods := sym.get_methods()
+		mut methods := c.table.get_type_methods(typ)
 		if methods.len == 0 {
 			// force eval `node.stmts` to set their types
 			methods << ast.Fn{}
