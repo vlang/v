@@ -7,3 +7,10 @@ Hello world!
 Hello $ world! $
 '
 }
+
+fn test_keeps_at_in_html_urls() {
+	title := 'template ok'
+	res := $tmpl('at_in_url_template.html')
+	assert res.contains('https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.slim.min.js')
+	assert res.contains('<div>template ok</div>')
+}
