@@ -24,6 +24,8 @@ pub struct C.cJSON {
 }
 
 fn C.cJSON_IsTrue(&C.cJSON) bool
+fn C.cJSON_IsObject(&C.cJSON) bool
+fn C.cJSON_IsArray(&C.cJSON) bool
 
 fn C.cJSON_CreateNumber(f64) &C.cJSON
 
@@ -163,10 +165,14 @@ fn decode_string(root &C.cJSON) string {
 	if isnil(root) {
 		return ''
 	}
-	if isnil(root.valuestring) {
-		return ''
+	if !isnil(root.valuestring) {
+		return unsafe { tos_clone(&u8(root.valuestring)) } // , _strlen(root.valuestring))
 	}
-	return unsafe { tos_clone(&u8(root.valuestring)) } // , _strlen(root.valuestring))
+	// Object/array values can be stringified JSON payloads (e.g. `{}` from JSON.stringify()).
+	if C.cJSON_IsObject(root) || C.cJSON_IsArray(root) {
+		return json_print(root)
+	}
+	return ''
 }
 
 @[markused]
