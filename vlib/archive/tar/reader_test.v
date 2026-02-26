@@ -74,6 +74,49 @@ fn test_long_long_short() {
 	assert r1.texts[cat] == 'https://en.wikipedia.org/wiki/Cat'
 }
 
+@[heap]
+struct ChunksCollector {
+mut:
+	blocks [][]u8
+}
+
+fn test_chunks_reader_keeps_pending_bytes_between_chunks() {
+	mut collector := &ChunksCollector{}
+	read_block := fn [mut collector] (block []u8) !ReadResult {
+		collector.blocks << block.clone()
+		return .continue
+	}
+
+	mut block1 := []u8{len: 512}
+	mut block2 := []u8{len: 512}
+	for i in 0 .. 512 {
+		block1[i] = u8((i * 3) % 251)
+		block2[i] = u8((i * 7) % 251)
+	}
+
+	mut data := []u8{}
+	data << block1
+	data << block2
+
+	mut chunks := ChunksReader{
+		read_block_fn: read_block
+	}
+
+	assert chunks.read_blocks(data[..700]) == .continue
+	assert collector.blocks.len == 1
+	assert collector.blocks[0] == block1
+	assert chunks.pending == 188
+
+	assert chunks.read_blocks(data[700..900]) == .continue
+	assert collector.blocks.len == 1
+	assert chunks.pending == 388
+
+	assert chunks.read_blocks(data[900..]) == .continue
+	assert collector.blocks.len == 2
+	assert collector.blocks[1] == block2
+	assert chunks.pending == 0
+}
+
 struct TestReader {
 	debug bool
 mut:
@@ -92,11 +135,7 @@ fn new_test_reader(tar_file string, debug bool) !&TestReader {
 	mut reader := &TestReader{
 		debug: debug
 	}
-	mut untar := Untar{
-		reader: reader
-	}
-	all_blocks := os.read_bytes('${testdata}/${tar_file}')!
-	untar.read_all_blocks(all_blocks)!
+	read_tar_file('${testdata}/${tar_file}', reader)!
 	return reader
 }
 
@@ -105,13 +144,7 @@ fn new_test_reader_gz(tar_gz_file string, debug bool) !&TestReader {
 	mut reader := &TestReader{
 		debug: debug
 	}
-	mut untar := Untar{
-		reader: reader
-	}
-	mut decompressor := new_decompressor(untar)
-	tar_gz := os.read_bytes('${testdata}/${tar_gz_file}')!
-	decompressor.read_all(tar_gz)!
-
+	read_tar_gz_file('${testdata}/${tar_gz_file}', reader)!
 	return reader
 }
 
