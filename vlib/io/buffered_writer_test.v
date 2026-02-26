@@ -21,6 +21,50 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 	return res
 }
 
+struct ChunkedArrayWriter {
+	chunk int
+pub mut:
+	result []u8
+}
+
+fn (mut cw ChunkedArrayWriter) write(buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
+	n := if buf.len < cw.chunk { buf.len } else { cw.chunk }
+	for i := 0; i < n; i++ {
+		cw.result << buf[i]
+	}
+	return n
+}
+
+struct FailOnceChunkedWriter {
+	chunk int
+pub mut:
+	result []u8
+mut:
+	writes int
+}
+
+fn (mut fw FailOnceChunkedWriter) write(buf []u8) !int {
+	if fw.writes == 1 {
+		fw.writes++
+		return error('forced write failure')
+	}
+	fw.writes++
+	n := if buf.len < fw.chunk { buf.len } else { fw.chunk }
+	for i := 0; i < n; i++ {
+		fw.result << buf[i]
+	}
+	return n
+}
+
+struct ZeroProgressWriter {}
+
+fn (mut w ZeroProgressWriter) write(buf []u8) !int {
+	return 0
+}
+
 // write less than max bytes, returns number of bytes written
 // data is written in chunks.
 fn write_random_data(mut aw ArrayWriter, mut bw io.BufferedWriter, max int) !int {
@@ -134,4 +178,55 @@ fn test_simple_flush() {
 	bw.flush()!
 	assert bw.buffered() == 0
 	assert aw.result.len == 7
+}
+
+fn test_flush_handles_partial_writes() {
+	mut cw := ChunkedArrayWriter{
+		chunk: 2
+	}
+	mut bw := io.new_buffered_writer(writer: cw, cap: 8)!
+	data := 'abcdefg'.bytes()
+
+	written := bw.write(data)!
+	assert written == data.len
+	assert bw.buffered() == data.len
+	assert cw.result.len == 0
+
+	bw.flush()!
+	assert bw.buffered() == 0
+	assert cw.result == data
+}
+
+fn test_flush_preserves_unwritten_data_on_error() {
+	mut fw := FailOnceChunkedWriter{
+		chunk: 3
+	}
+	mut bw := io.new_buffered_writer(writer: fw, cap: 8)!
+	data := 'abcdefg'.bytes()
+	_ = bw.write(data)!
+
+	if _ := bw.flush() {
+		assert false
+	} else {
+		assert err.msg() == 'forced write failure'
+	}
+	assert fw.result == 'abc'.bytes()
+	assert bw.buffered() == 4
+	assert bw.buf[..bw.buffered()] == 'defg'.bytes()
+
+	bw.flush()!
+	assert bw.buffered() == 0
+	assert fw.result == data
+}
+
+fn test_write_returns_error_for_zero_progress_writes() {
+	mut zw := ZeroProgressWriter{}
+	mut bw := io.new_buffered_writer(writer: zw, cap: 4)!
+
+	if _ := bw.write('12345'.bytes()) {
+		assert false
+	} else {
+		assert err.msg() == 'writer returned an invalid number of bytes while writing'
+	}
+	assert bw.buffered() == 0
 }
