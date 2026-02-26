@@ -2950,6 +2950,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
+	if node.ct_low_level_cond.len > 0
+		&& node.ct_low_level_cond !in ast.valid_comptime_not_user_defined {
+		c.error('invalid OS/platform condition `${node.ct_low_level_cond}` in #${node.kind}',
+			node.pos)
+	}
 	if c.pref.backend == .golang || c.is_js_backend {
 		// consider the best way to handle the .go.vv files
 		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')

@@ -810,8 +810,9 @@ pub:
 // #flag / #include
 pub struct Directive {
 pub:
-	name  string
-	value string
+	name    string
+	value   string
+	ct_cond string // optional comptime condition e.g. 'linux', 'darwin' for `#include linux <pty.h>`
 }
 
 pub struct EnumDecl {

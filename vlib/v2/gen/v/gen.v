@@ -125,6 +125,10 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.write('#')
 			g.write(stmt.name)
 			g.write(' ')
+			if stmt.ct_cond.len > 0 {
+				g.write(stmt.ct_cond)
+				g.write(' ')
+			}
 			g.writeln(stmt.value)
 		}
 		ast.EmptyStmt {}
