@@ -15,6 +15,7 @@ fn vpm_install(query []string) {
 		help.print_and_exit('vpm')
 	}
 
+	mut selector := new_install_server_selector()
 	mut modules := parse_query(if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
@@ -34,7 +35,7 @@ fn vpm_install(query []string) {
 		}
 	} else {
 		query
-	})
+	}, mut selector)
 
 	installed_modules := get_installed_modules()
 
@@ -65,10 +66,10 @@ fn vpm_install(query []string) {
 		}
 	}
 
-	install_modules(modules)
+	install_modules(modules, selector.selected_url)
 }
 
-fn install_modules(modules []Module) {
+fn install_modules(modules []Module, selected_server_url string) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
 	for m in modules {
@@ -84,7 +85,7 @@ fn install_modules(modules []Module) {
 			}
 		}
 		if !m.is_external {
-			increment_module_download_count(m.name) or {
+			increment_module_download_count(m.name, selected_server_url) or {
 				vpm_error('failed to increment the download count for `${m.name}`',
 					details: err.msg()
 				)

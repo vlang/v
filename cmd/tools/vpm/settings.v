@@ -5,8 +5,6 @@ import os.cmdline
 import log
 import v.vmod
 
-const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']
-
 struct VpmSettings {
 mut:
 	is_help               bool
@@ -15,6 +13,7 @@ mut:
 	is_force              bool
 	is_local              bool
 	server_urls           []string
+	mirror_urls           []string
 	vmodules_path         string
 	tmp_path              string
 	no_dl_count_increment bool
@@ -71,7 +70,8 @@ fn init_settings() VpmSettings {
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
 		is_local:              is_local
-		server_urls:           parse_server_urls(args)
+		server_urls:           get_server_urls_from_args(args)
+		mirror_urls:           get_mirror_urls_from_args(args)
 		vcs:                   if '--hg' in opts { .hg } else { .git }
 		vmodules_path:         vmodules_path
 		tmp_path:              os.join_path(os.vtmp_dir(), 'vpm_modules')
@@ -81,16 +81,33 @@ fn init_settings() VpmSettings {
 	}
 }
 
-fn parse_server_urls(args []string) []string {
+fn get_server_urls_from_args(args []string) []string {
 	mut server_urls := []string{}
-	for option_name in server_url_option_names {
-		for raw_url in cmdline.options(args, option_name) {
-			url := raw_url.trim_space().trim_string_right('/')
-			if url == '' || url in server_urls {
-				continue
-			}
-			server_urls << url
+	server_urls << cmdline.options(args, '-server-url')
+	server_urls << cmdline.options(args, '--server-url')
+	server_urls << cmdline.options(args, '--server-urls')
+	return unique_server_urls(server_urls)
+}
+
+fn get_mirror_urls_from_args(args []string) []string {
+	mut mirror_urls := []string{}
+	mirror_urls << cmdline.options(args, '-m')
+	mirror_urls << cmdline.options(args, '--mirror')
+	return unique_server_urls(mirror_urls)
+}
+
+fn unique_server_urls(urls []string) []string {
+	mut unique_urls := []string{}
+	for raw_url in urls {
+		url := normalize_server_url(raw_url)
+		if url == '' || url in unique_urls {
+			continue
 		}
+		unique_urls << url
 	}
-	return server_urls
+	return unique_urls
+}
+
+fn normalize_server_url(url string) string {
+	return url.trim_space().trim_string_right('/')
 }
