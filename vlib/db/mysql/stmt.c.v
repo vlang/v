@@ -66,8 +66,10 @@ pub struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
 	query string
 mut:
-	binds []C.MYSQL_BIND
-	res   []C.MYSQL_BIND
+	binds            []C.MYSQL_BIND
+	res              []C.MYSQL_BIND
+	auto_res_lengths []u32
+	auto_res_is_null []bool
 }
 
 // str returns a text representation of the given mysql statement `s`.
@@ -269,6 +271,13 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 
 // bind_res will store one result in the statement `stmt`
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
+	stmt.auto_res_lengths = []u32{}
+	stmt.auto_res_is_null = []bool{}
+	if num_fields <= 0 {
+		stmt.res = []C.MYSQL_BIND{}
+		return
+	}
+	stmt.res = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].type }
@@ -279,9 +288,35 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []
 	}
 }
 
+fn (mut stmt Stmt) ensure_default_result_binds() {
+	if stmt.res.len > 0 {
+		return
+	}
+	num_fields := int(stmt.get_field_count())
+	if num_fields <= 0 {
+		return
+	}
+	stmt.auto_res_lengths = []u32{len: num_fields}
+	stmt.auto_res_is_null = []bool{len: num_fields}
+	stmt.res = []C.MYSQL_BIND{cap: num_fields}
+	for i in 0 .. num_fields {
+		stmt.res << C.MYSQL_BIND{
+			buffer_type:   mysql_type_string
+			buffer:        0
+			buffer_length: 0
+			length:        unsafe { &stmt.auto_res_lengths[i] }
+			is_null:       unsafe { &stmt.auto_res_is_null[i] }
+		}
+	}
+}
+
 // bind_result_buffer binds one result value, by calling mysql_stmt_bind_result .
 // See https://dev.mysql.com/doc/c-api/8.0/en/mysql-stmt-bind-result.html
 pub fn (mut stmt Stmt) bind_result_buffer() ! {
+	stmt.ensure_default_result_binds()
+	if stmt.res.len == 0 {
+		return
+	}
 	result := C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.res.data) })
 
 	if result && stmt.get_error_msg() != '' {
