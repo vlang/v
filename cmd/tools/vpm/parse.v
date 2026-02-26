@@ -31,6 +31,7 @@ enum ModuleKind {
 	https
 	http
 	ssh
+	local
 }
 
 fn parse_query(query []string) []Module {
@@ -49,6 +50,7 @@ fn (mut p Parser) parse_module(m string) {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
 		m.starts_with('http://') { ModuleKind.http }
+		is_local_repository(m) { ModuleKind.local }
 		else { ModuleKind.registered }
 	}
 	ident, version := if kind == .ssh {
@@ -190,6 +192,30 @@ fn (mut p Parser) parse_module(m string) {
 			p.parse_module(d)
 		}
 	}
+}
+
+fn is_local_repository(query string) bool {
+	if query.starts_with('file://') {
+		return true
+	}
+	mut path_candidates := [query]
+	if !query.starts_with('git@') {
+		ident, _ := query.rsplit_once('@') or { query, '' }
+		if ident != query {
+			path_candidates << ident
+		}
+	}
+	for candidate in path_candidates {
+		path := os.expand_tilde_to_home(candidate)
+		if os.is_abs_path(path) || path.starts_with('./') || path.starts_with('../')
+			|| path.starts_with('~/') {
+			return true
+		}
+		if os.exists(path) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut m Module) get_installed() {
