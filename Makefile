@@ -2,6 +2,7 @@ CC ?= cc
 VFLAGS ?=
 CFLAGS ?=
 LDFLAGS ?=
+BOOTSTRAP_VFLAGS := $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(LDFLAGS)),-ldflags "$(LDFLAGS)")
 
 .PHONY: all check download_vc v
 
@@ -25,8 +26,8 @@ download_vc:
 
 v:
 	$(CC) $(CFLAGS) -std=gnu11 -w -o v1 vc/v.c -lm -lexecinfo -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
-	./v1 -no-parallel -o v2 $(VFLAGS) cmd/v
-	./v2 -o v $(VFLAGS) cmd/v
+	./v1 -no-parallel -o v2 $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
+	./v2 -o v $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	rm -rf v1 v2
 	./v run ./cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
