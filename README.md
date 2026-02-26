@@ -253,6 +253,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 - [JetBrains](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html)
 - [Sublime Text 3](https://github.com/vlang/awesome-v#sublime-text-3)
 - [Vim](https://github.com/vlang/awesome-v#vim)
+- [Vim/Neovim Runtime Files](editors/vim)
 - [VS Code](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 - [zed](https://github.com/lv37/zed-v)
 
