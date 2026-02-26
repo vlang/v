@@ -521,15 +521,106 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	}
 }
 
+fn (mut c Checker) find_comptime_eval_fn(node ast.CallExpr) ?ast.Fn {
+	if f := c.table.find_fn(node.name) {
+		return f
+	}
+	if node.mod != '' && !node.name.contains('.') {
+		if f := c.table.find_fn('${node.mod}.${node.name}') {
+			return f
+		}
+	}
+	if !node.name.contains('.') {
+		if f := c.table.find_fn('${c.mod}.${node.name}') {
+			return f
+		}
+		if f := c.table.find_fn('builtin.${node.name}') {
+			return f
+		}
+	}
+	return none
+}
+
+fn (c &Checker) find_comptime_eval_fn_decl(func ast.Fn) ?ast.FnDecl {
+	if func.source_fn != unsafe { nil } {
+		fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
+		if fn_decl != unsafe { nil } {
+			return *fn_decl
+		}
+	}
+	if c.file != unsafe { nil } {
+		for stmt in c.file.stmts {
+			if stmt is ast.FnDecl && stmt.name == func.name {
+				return stmt
+			}
+		}
+	}
+	return none
+}
+
+fn (mut c Checker) eval_comptime_fn_decl_value_with_locals(fn_decl ast.FnDecl, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
+	mut stmts := fn_decl.stmts.clone()
+	if stmts.len == 1 && stmts[0] is ast.Block {
+		unsafe_block := stmts[0] as ast.Block
+		if unsafe_block.is_unsafe {
+			stmts = unsafe_block.stmts.clone()
+		}
+	}
+	if stmts.len != 1 {
+		return none
+	}
+	stmt := stmts[0]
+	match stmt {
+		ast.Return {
+			if stmt.exprs.len != 1 {
+				return none
+			}
+			return c.eval_comptime_const_expr_with_locals(stmt.exprs[0], nlevel + 1, local_values)
+		}
+		ast.ExprStmt {
+			return c.eval_comptime_const_expr_with_locals(stmt.expr, nlevel + 1, local_values)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
+	if node.is_method || node.is_fn_var || node.is_fn_a_const {
+		return none
+	}
+	func := c.find_comptime_eval_fn(node) or { return none }
+	if !func.attrs.contains('comptime') {
+		return none
+	}
+	if func.is_method || func.is_variadic || func.is_c_variadic || func.no_body
+		|| func.generic_names.len > 0 || func.params.len != node.args.len {
+		return none
+	}
+	fn_decl := c.find_comptime_eval_fn_decl(func) or { return none }
+	mut local_args := map[string]ast.ComptTimeConstValue{}
+	for idx, param in func.params {
+		arg_value := c.eval_comptime_const_expr_with_locals(node.args[idx].expr, nlevel + 1,
+			local_values) or { return none }
+		local_args[param.name] = arg_value
+	}
+	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
+}
+
 // comptime const eval
 fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
+	return c.eval_comptime_const_expr_with_locals(expr, nlevel, map[string]ast.ComptTimeConstValue{})
+}
+
+fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
 	if nlevel > 100 {
 		// protect against a too deep comptime eval recursion
 		return none
 	}
 	match expr {
 		ast.ParExpr {
-			return c.eval_comptime_const_expr(expr.expr, nlevel + 1)
+			return c.eval_comptime_const_expr_with_locals(expr.expr, nlevel + 1, local_values)
 		}
 		ast.EnumVal {
 			enum_name := if expr.enum_name == '' {
@@ -565,7 +656,9 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				for i, val in expr.vals {
 					sb.write_string(val)
 					if e := expr.exprs[i] {
-						if value := c.eval_comptime_const_expr(e, nlevel + 1) {
+						if value := c.eval_comptime_const_expr_with_locals(e, nlevel + 1,
+							local_values)
+						{
 							sb.write_string(value.string() or { '' })
 						} else {
 							c.error('unsupport expr `${e.str()}`', e.pos())
@@ -583,9 +676,13 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return none
 		}
 		ast.Ident {
+			if value := local_values[expr.name] {
+				return value
+			}
 			if expr.obj is ast.ConstField {
 				// an existing constant?
-				return c.eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
+				return c.eval_comptime_const_expr_with_locals(expr.obj.expr, nlevel + 1,
+					local_values)
 			}
 			if c.table.cur_fn != unsafe { nil } {
 				idx := c.table.cur_fn.generic_names.index(expr.name)
@@ -613,7 +710,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.CastExpr {
-			cast_expr_value := c.eval_comptime_const_expr(expr.expr, nlevel + 1) or { return none }
+			cast_expr_value := c.eval_comptime_const_expr_with_locals(expr.expr, nlevel + 1,
+				local_values) or { return none }
 			if expr.typ == ast.i8_type {
 				return cast_expr_value.i8() or { return none }
 			}
@@ -654,8 +752,11 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				return ast.ComptTimeConstValue(ptrvalue)
 			}
 		}
+		ast.CallExpr {
+			return c.eval_comptime_fn_call_expr_with_locals(expr, nlevel, local_values)
+		}
 		ast.InfixExpr {
-			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			left := c.eval_comptime_const_expr_with_locals(expr.left, nlevel + 1, local_values)?
 			saved_expected_type := c.expected_type
 			if expr.left is ast.EnumVal {
 				c.expected_type = expr.left.typ
@@ -672,7 +773,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					c.expected_type = infixexpr.left.typ
 				}
 			}
-			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
+			right := c.eval_comptime_const_expr_with_locals(expr.right, nlevel + 1, local_values)?
 			c.expected_type = saved_expected_type
 			if left is string && right is string {
 				match expr.op {
@@ -682,6 +783,51 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					else {
 						return none
 					}
+				}
+			} else if left is u32 && right is i64 {
+				match expr.op {
+					.plus { return i64(left) + right }
+					.minus { return i64(left) - right }
+					.mul { return i64(left) * right }
+					.div { return i64(left) / right }
+					.mod { return i64(left) % right }
+					.xor { return i64(left) ^ right }
+					.pipe { return i64(left) | right }
+					.amp { return i64(left) & right }
+					.left_shift { return i64(u64(left) << right) }
+					.right_shift { return i64(u64(left) >> right) }
+					.unsigned_right_shift { return i64(u64(left) >>> right) }
+					else { return none }
+				}
+			} else if left is i64 && right is u32 {
+				match expr.op {
+					.plus { return left + i64(right) }
+					.minus { return left - i64(right) }
+					.mul { return left * i64(right) }
+					.div { return left / i64(right) }
+					.mod { return left % i64(right) }
+					.xor { return left ^ i64(right) }
+					.pipe { return left | i64(right) }
+					.amp { return left & i64(right) }
+					.left_shift { return i64(u64(left) << i64(right)) }
+					.right_shift { return i64(u64(left) >> i64(right)) }
+					.unsigned_right_shift { return i64(u64(left) >>> i64(right)) }
+					else { return none }
+				}
+			} else if left is u32 && right is u32 {
+				match expr.op {
+					.plus { return i64(left) + i64(right) }
+					.minus { return i64(left) - i64(right) }
+					.mul { return i64(left) * i64(right) }
+					.div { return i64(left) / i64(right) }
+					.mod { return i64(left) % i64(right) }
+					.xor { return i64(left) ^ i64(right) }
+					.pipe { return i64(left) | i64(right) }
+					.amp { return i64(left) & i64(right) }
+					.left_shift { return i64(u64(left) << right) }
+					.right_shift { return i64(u64(left) >> right) }
+					.unsigned_right_shift { return i64(u64(left) >>> right) }
+					else { return none }
 				}
 			} else if left is u64 && right is i64 {
 				match expr.op {
@@ -772,13 +918,15 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					if is_true {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
-							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
+							return c.eval_comptime_const_expr_with_locals(last_stmt.expr,
+								nlevel + 1, local_values)
 						}
 					}
 				} else {
 					last_stmt := branch.stmts.last()
 					if last_stmt is ast.ExprStmt {
-						return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
+						return c.eval_comptime_const_expr_with_locals(last_stmt.expr,
+							nlevel + 1, local_values)
 					}
 				}
 			}
