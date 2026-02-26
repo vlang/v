@@ -19,6 +19,18 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
+## Language specification
+
+V does not yet have a separate formal language specification document like the Go spec.
+
+Until V 1.0, the language reference is defined by:
+* This document (`doc/docs.md`) for syntax and semantics.
+* The compiler implementation in `vlib/v/`.
+* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/`,
+  `vlib/v/checker/`, and `vlib/v/slow_tests/inout/`.
+
+When documentation and implementation diverge, compiler behavior and tests are the source of truth.
+
 ## Installing V from source
 
 The best way to get the latest and greatest V, is to install it from source.
@@ -59,6 +71,7 @@ by using any of the following commands in a terminal:
 <table>
 <tr><td width=33% valign=top>
 
+* [Language specification](#language-specification)
 * [Hello world](#hello-world)
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
