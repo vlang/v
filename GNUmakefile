@@ -78,7 +78,6 @@ endif
 
 ifdef WIN32
 TCCOS := windows
-VCFILE := v_win.c
 endif
 
 TCCARCH := $(shell uname -m 2>/dev/null || echo unknown)

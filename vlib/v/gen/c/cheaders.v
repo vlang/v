@@ -327,6 +327,34 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers
 #undef __attribute__
 #endif
+#if defined(_MSC_VER)
+// Ensure C99-like return semantics and NUL-termination for MSVC snprintf/vsnprintf.
+#ifndef va_copy
+	#define va_copy(dest, src) ((dest) = (src))
+#endif
+static int v__vsnprintf(char *s, size_t n, const char *fmt, va_list ap) {
+	va_list ap_copy;
+	va_copy(ap_copy, ap);
+	const int needed = _vscprintf(fmt, ap_copy);
+	va_end(ap_copy);
+	if (n > 0) {
+		const int written = _vsnprintf_s(s, n, _TRUNCATE, fmt, ap);
+		if (written < 0) {
+			s[n - 1] = 0;
+		}
+	}
+	return needed;
+}
+static int v__snprintf(char *s, size_t n, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	const int needed = v__vsnprintf(s, n, fmt, ap);
+	va_end(ap);
+	return needed;
+}
+#define vsnprintf v__vsnprintf
+#define snprintf v__snprintf
+#endif
 //================================== GLOBALS =================================*/
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
@@ -423,7 +451,7 @@ void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #if defined(__CYGWIN__) && !defined(_WIN32)
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
-#if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
+#if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__)) || defined(_MSC_VER)
 	#undef PRId64
 	#undef PRIi64
 	#undef PRIo64
