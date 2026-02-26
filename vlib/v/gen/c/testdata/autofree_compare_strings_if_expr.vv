@@ -1,0 +1,29 @@
+// vtest vflags: -autofree
+import os
+
+fn string_compare(a string, b string, ignore_case bool) int {
+	return match ignore_case {
+		true { compare_strings(a.to_lower(), b.to_lower()) }
+		else { compare_strings(a, b) }
+	}
+}
+
+fn right_pad_end(s string, width int) string {
+	pad := width - s.len
+	if pad > 0 {
+		return s + ' '.repeat(pad)
+	}
+	return s
+}
+
+fn main() {
+	ext_cmp := compare_strings(os.file_ext('foo.v'), os.file_ext('bar.md'))
+	println(ext_cmp)
+	println(string_compare('Ab', 'aB', true))
+	show_header := true
+	title := 'name'
+	mut buffer := '>'
+	buffer += right_pad_end(if show_header { title } else { '' }, 6)
+	buffer += '<'
+	println(buffer)
+}
