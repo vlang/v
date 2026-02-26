@@ -94,3 +94,31 @@ fn test_unknown_option_flags_with_run() {
 	assert res_run_no_o.output.trim_space() == 'Hello, World!'
 	assert !os.exists(tfile)
 }
+
+fn test_generate_c_project_flag_parsing() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['-generate-c-project', 'cproj', target],
+		false)
+	assert prefs.generate_c_project == 'cproj'
+	assert prefs.use_cache == false
+}
+
+fn test_generate_c_project_creates_build_files() {
+	output_dir := os.join_path(os.vtmp_dir(), 'v_generate_c_project_json')
+	os.rmdir_all(output_dir) or {}
+	defer {
+		os.rmdir_all(output_dir) or {}
+	}
+	target := os.join_path(vroot, 'examples', 'json.v')
+	cmd := '${os.quoted_path(vexe)} -generate-c-project ${os.quoted_path(output_dir)} ${os.quoted_path(target)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, res.output
+	for rel_path in ['json.c', 'build_command.txt', 'build.sh', 'build.bat', 'Makefile'] {
+		assert os.is_file(os.join_path(output_dir, rel_path))
+	}
+	build_command := os.read_file(os.join_path(output_dir, 'build_command.txt')) or { panic(err) }
+	assert build_command.contains(os.join_path(output_dir, 'json.c'))
+	assert build_command.contains('cJSON.c')
+	assert !build_command.contains('.tmp.c')
+	assert !build_command.contains('.module.')
+}

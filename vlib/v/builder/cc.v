@@ -639,6 +639,132 @@ pub fn (mut v Builder) tcc_quoted_path(p string) string {
 	return os.quoted_path(p)
 }
 
+fn (v &Builder) c_project_source_name() string {
+	mut output_name := os.file_name(v.pref.out_name)
+	if output_name == '' {
+		output_name = 'main'
+	}
+	base_name := output_name.all_before_last('.')
+	return if base_name == '' { '${output_name}.c' } else { '${base_name}.c' }
+}
+
+fn (mut v Builder) c_project_output_name() string {
+	mut output_name := os.file_name(v.pref.out_name)
+	if output_name == '' {
+		output_name = 'main'
+	}
+	if output_name.ends_with('.c') {
+		output_name = output_name.trim_string_right('.c')
+	}
+	if output_name == '' {
+		output_name = 'main'
+	}
+	if !v.pref.is_shared && v.pref.build_mode != .build_module && v.pref.os == .windows
+		&& !v.pref.is_o && !output_name.ends_with('.exe') {
+		output_name += '.exe'
+	}
+	if v.pref.is_shared && !output_name.ends_with(v.ccoptions.shared_postfix) {
+		output_name += v.ccoptions.shared_postfix
+	}
+	return output_name
+}
+
+fn (mut v Builder) c_project_dependency_replacements() map[string]string {
+	mut replacements := map[string]string{}
+	for flag in v.get_os_cflags() {
+		if !flag.value.ends_with('.o') && !flag.value.ends_with('.obj') {
+			continue
+		}
+		cached_value := if flag.cached == '' { os.real_path(flag.value) } else { flag.cached }
+		obj_path := os.real_path(flag.value)
+		replacement_value := if source_path := c_project_source_from_object_path(obj_path) {
+			os.quoted_path(source_path)
+		} else if os.exists(obj_path) {
+			os.quoted_path(obj_path)
+		} else {
+			os.quoted_path(cached_value)
+		}
+		for key in [
+			cached_value,
+			os.quoted_path(cached_value),
+			'"${cached_value}"',
+			flag.format() or { '' },
+		] {
+			if key == '' {
+				continue
+			}
+			replacements[key] = replacement_value
+		}
+	}
+	return replacements
+}
+
+fn (mut v Builder) generate_c_project() {
+	if v.pref.backend != .c {
+		verror('`-generate-c-project` is currently supported only for the C backend.')
+	}
+	mut project_dir := v.pref.generate_c_project
+	if !os.is_abs_path(project_dir) {
+		project_dir = os.real_path(project_dir)
+	}
+	if os.exists(project_dir) && !os.is_dir(project_dir) {
+		verror('`-generate-c-project` expects a directory path, got file: ${os.quoted_path(project_dir)}')
+	}
+	os.mkdir_all(project_dir) or {
+		verror('Cannot create `-generate-c-project` directory ${os.quoted_path(project_dir)}: ${err}')
+	}
+	c_source_path := os.join_path(project_dir, v.c_project_source_name())
+	os.mv_by_cp(v.out_name_c, c_source_path) or {
+		verror('Cannot write generated C source to ${os.quoted_path(c_source_path)}: ${err}')
+	}
+
+	mut ccompiler := v.pref.ccompiler
+	if v.pref.os == .wasm32 {
+		ccompiler = 'clang'
+	}
+	v.setup_ccompiler_options(ccompiler)
+	if v.pref.build_mode == .build_module {
+		v.ccoptions.pre_args << '-c'
+	}
+	mut project_o_args := v.ccoptions.o_args.filter(!it.starts_with('-o '))
+	project_o_args << [
+		'-o ${v.tcc_quoted_path(os.join_path(project_dir, v.c_project_output_name()))}',
+	]
+	v.ccoptions.o_args = project_o_args
+	for idx, source_arg in v.ccoptions.source_args {
+		if source_arg.contains(v.out_name_c) || source_arg.ends_with('.tmp.c')
+			|| source_arg.contains(".tmp.c'") || source_arg.contains('.tmp.c"') {
+			v.ccoptions.source_args[idx] = v.tcc_quoted_path(c_source_path)
+		}
+	}
+
+	mut all_args := v.all_args(v.ccoptions)
+	replacements := v.c_project_dependency_replacements()
+	for idx, arg in all_args {
+		if replacement := replacements[arg] {
+			all_args[idx] = replacement
+		}
+	}
+	v.dump_c_options(all_args)
+	cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.join(' ')}'
+	os.write_file(os.join_path(project_dir, 'build_command.txt'), cc_cmd + '\n') or {
+		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build_command.txt'))}: ${err}')
+	}
+	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${cc_cmd}\n') or {
+		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'Makefile'))}: ${err}')
+	}
+	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${cc_cmd}\n') or {
+		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build.sh'))}: ${err}')
+	}
+	os.write_file(os.join_path(project_dir, 'build.bat'), '@echo off\r\n${cc_cmd}\r\n') or {
+		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build.bat'))}: ${err}')
+	}
+	$if !windows {
+		os.chmod(os.join_path(project_dir, 'build.sh'), 0o755) or {}
+	}
+	println('Generated C project in ${os.quoted_path(project_dir)}')
+}
+
 pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -663,6 +789,11 @@ pub fn (mut v Builder) cc() {
 		content := os.read_file(v.out_name_c) or { panic(err) }
 		println(content)
 		os.rm(v.out_name_c) or {}
+		return
+	}
+	if v.pref.generate_c_project != '' {
+		v.pref.skip_running = true
+		v.generate_c_project()
 		return
 	}
 	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
@@ -1209,6 +1340,20 @@ enum SourceKind {
 	unknown
 }
 
+fn c_project_source_from_object_path(obj_path string) ?string {
+	if !obj_path.ends_with('.o') && !obj_path.ends_with('.obj') {
+		return none
+	}
+	base := obj_path.all_before_last('.')
+	for ext in ['.c', '.cpp', '.S'] {
+		source_file := base + ext
+		if os.exists(source_file) {
+			return source_file
+		}
+	}
+	return none
+}
+
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
@@ -1221,18 +1366,18 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
-	base := obj_path[..obj_path.len - 2]
-
-	source_kind, source_file := if os.exists(base + '.c') {
-		SourceKind.c, base + '.c'
-	} else if os.exists(base + '.cpp') {
-		SourceKind.cpp, base + '.cpp'
-	} else if os.exists(base + '.S') {
-		SourceKind.asm, base + '.S'
+	mut source_file := c_project_source_from_object_path(obj_path) or { '' }
+	source_kind := if source_file.ends_with('.c') {
+		SourceKind.c
+	} else if source_file.ends_with('.cpp') {
+		SourceKind.cpp
+	} else if source_file.ends_with('.S') {
+		SourceKind.asm
 	} else {
-		SourceKind.unknown, ''
+		SourceKind.unknown
 	}
 	if source_kind == .unknown {
+		base := obj_path.all_before_last('.')
 		eprintln('> File not found: ${base}{.c,.cpp,.S}')
 		verror('build_thirdparty_obj_file only support .c, .cpp, and .S source file.')
 	}
