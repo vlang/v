@@ -2518,7 +2518,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if method.return_type.has_flag(.generic) {
 		node.return_type_generic = method.return_type
 	}
-	if !method.is_pub && method.mod != c.mod {
+	is_used_outside_receiver_module := left_sym.mod != c.mod && method.mod != c.mod
+	if !method.is_pub && is_used_outside_receiver_module {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
 		// println('warn ${method_name} lef.mod=${left_type_sym.mod} c.mod=${c.mod}')
