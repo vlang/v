@@ -245,7 +245,7 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 				return false
 			}
 			cname := (cond.expr as ast.Ident).name
-			return e.pref.is_user_compile_define(cname)
+			return cname in e.pref.compile_defines
 		}
 		ast.ParExpr {
 			return e.comptime_cond(cond.expr)

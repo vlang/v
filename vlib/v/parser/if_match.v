@@ -711,7 +711,7 @@ fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
 				return false
 			}
 			cname := (cond.expr as ast.Ident).name
-			return p.pref.is_user_compile_define(cname)
+			return cname in p.pref.compile_defines
 		}
 		ast.InfixExpr {
 			match cond.op {
