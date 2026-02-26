@@ -1,0 +1,17 @@
+struct Struc {}
+
+type StrucOpt = ?Struc
+
+struct StrucContainer {
+	a [](?Struc) = [](?Struc){}
+	b []?Struc   = []?Struc{}
+	c ?[]Struc
+}
+
+fn main() {
+	a := [](?Struc){}
+	b := []?Struc{}
+	c := []StrucOpt{}
+	d := [](?Struc)(b)
+	println(a.len + b.len + c.len + d.len)
+}
