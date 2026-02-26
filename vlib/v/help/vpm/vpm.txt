@@ -2,6 +2,8 @@ Package Management Utilities:
 
   install   Installs each PACKAGE.
 
+  link      Symlink the current project into VMODULES.
+
   list      List all installed packages.
 
   outdated  List all installed modules that need updates.
@@ -11,6 +13,8 @@ Package Management Utilities:
   search    Searches https://vpm.vlang.io/ for matching KEYWORDs and displays the details
 
   show      Display information about a module on vpm.
+
+  unlink    Remove the current project's symlink from VMODULES.
 
   update    Updates each PACKAGE.
 

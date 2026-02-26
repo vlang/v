@@ -68,8 +68,11 @@ V supports the following commands:
 
 * Package Management Utilities:
   install                      Install a module from VPM.
+  link                         Symlink the current project into VMODULES.
   remove                       Remove a module that was installed from VPM.
   search                       Search for a module from VPM.
+  unlink                       Remove the symlink for the current project
+                               from VMODULES.
   update                       Update an installed module from VPM.
   upgrade                      Upgrade all the outdated modules.
   list                         List all installed modules.
@@ -83,5 +86,5 @@ Use "v help other" to see less frequently used commands.
 Use "v help topics" to see a list of all known help topics.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, watch, search, install, 
-remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, watch, search, install,
+link, remove, unlink, update, bin2v, check-md are properly documented currently.
