@@ -43,6 +43,12 @@ type StructLists = Cat | []Cat | map[string]Dog
 
 type SumAlias = Sum
 
+struct Empty1 {
+	a ?string @[omitempty]
+}
+
+type Elem1 = int | Empty1
+
 pub struct Stru {
 	val  int
 	val2 string
@@ -123,6 +129,17 @@ fn test_sum_type_struct() {
 
 	// struct sumtype in random order
 	assert json.decode[StructSumTypes]('{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "steak": "leleu"}, "val4": 2147483000, "val5": 2147483000}')! == StructSumTypes(Stru{1, 'lala', Stru2{2, 'leleu'}, 2147483000, 2147483000})
+}
+
+fn test_sum_type_array_with_single_struct_variant() {
+	assert json.decode[Elem1]('{"a":"b"}')! == Elem1(Empty1{
+		a: 'b'
+	})
+
+	assert json.decode[[]Elem1]('[0, {"a":"b"}, 2]')! == [Elem1(0), Elem1(Empty1{
+		a: 'b'
+	}),
+		Elem1(2)]
 }
 
 fn test_sum_type_mixed() {
