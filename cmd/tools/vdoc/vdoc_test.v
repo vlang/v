@@ -6,6 +6,7 @@ import os
 import arrays
 import v.ast
 import document as doc
+import markdown
 
 const vexe_path = @VEXE
 const vexe_ = os.quoted_path(vexe_path)
@@ -196,4 +197,30 @@ fn test_gen_modules_toc_uses_prefix_module_page_when_available() {
 	]
 	toc := vd.gen_modules_toc('db')
 	assert toc.contains('<div class="menu-row"><a href="./db.html">db</a></div>')
+}
+
+fn test_resolve_relative_markdown_link() {
+	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
+	assert resolve_relative_markdown_link(base, 'parser_test.v') == 'https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v'
+	assert resolve_relative_markdown_link(base, './html_test.v') == 'https://github.com/vlang/v/blob/master/vlib/net/html/html_test.v'
+	assert resolve_relative_markdown_link(base, '../README.md#usage') == 'https://github.com/vlang/v/blob/master/vlib/net/README.md#usage'
+}
+
+fn test_resolve_relative_markdown_link_keeps_absolute_urls() {
+	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
+	assert resolve_relative_markdown_link(base, 'https://vlang.io') == 'https://vlang.io'
+	assert resolve_relative_markdown_link(base, '/rooted/path') == '/rooted/path'
+	assert resolve_relative_markdown_link(base, '#local') == '#local'
+}
+
+fn test_markdown_renderer_resolves_relative_links() ! {
+	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{
+			table:              ast.new_table()
+			relative_link_base: base
+		}
+	}
+	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)!
+	assert out.contains('<a href="https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v">')
 }

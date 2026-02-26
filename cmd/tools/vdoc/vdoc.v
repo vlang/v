@@ -14,6 +14,7 @@ import term
 struct Readme {
 	frontmatter map[string]string
 	content     string
+	path        string
 }
 
 enum OutputType {
@@ -257,6 +258,7 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	return Readme{
 		frontmatter: readme_frontmatter
 		content:     readme_contents
+		path:        readme_path
 	}
 }
 
@@ -341,6 +343,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				head:           doc.DocNode{
 					is_readme:   true
 					name:        readme_name
+					file_path:   readme.path
 					frontmatter: readme.frontmatter
 					comments:    [comment]
 				}
@@ -375,6 +378,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				text:        readme.content
 			}
 			dcs.head.comments = [comment]
+			dcs.head.file_path = readme.path
 		}
 		if cfg.pub_only {
 			for name, dc in dcs.contents {
