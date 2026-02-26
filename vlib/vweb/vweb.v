@@ -573,10 +573,11 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		}
 	}
 
-	ch := chan &RequestParams{cap: params.pool_channel_slots}
+	ch := chan &net.TcpConn{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
-		ws << new_worker[T](ch, worker_number)
+		ws << new_worker[T](ch, worker_number, unsafe { global_app }, controllers_sorted,
+			&routes)
 	}
 	if params.show_startup_message {
 		println('[Vweb] We have ${ws.len} workers')
@@ -595,12 +596,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
-		ch <- &RequestParams{
-			connection:  connection
-			global_app:  unsafe { global_app }
-			controllers: controllers_sorted
-			routes:      &routes
-		}
+		ch <- connection
 	}
 }
 
@@ -1190,23 +1186,21 @@ fn filter(s string) string {
 }
 
 // Worker functions for the thread pool:
-struct RequestParams {
+struct Worker[T] {
+	id          int
+	ch          chan &net.TcpConn
 	global_app  voidptr
 	controllers []&ControllerPath
 	routes      &map[string]Route
-mut:
-	connection &net.TcpConn
 }
 
-struct Worker[T] {
-	id int
-	ch chan &RequestParams
-}
-
-fn new_worker[T](ch chan &RequestParams, id int) thread {
+fn new_worker[T](ch chan &net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) thread {
 	mut w := &Worker[T]{
-		id: id
-		ch: ch
+		id:          id
+		ch:          ch
+		global_app:  global_app
+		controllers: controllers
+		routes:      unsafe { routes }
 	}
 	return spawn w.process_incoming_requests[T]()
 }
@@ -1214,12 +1208,11 @@ fn new_worker[T](ch chan &RequestParams, id int) thread {
 fn (mut w Worker[T]) process_incoming_requests() {
 	sid := '[vweb] tid: ${w.id:03d} received request'
 	for {
-		mut params := <-w.ch or { break }
+		mut connection := <-w.ch or { break }
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		handle_conn[T](mut params.connection, params.global_app, params.controllers, params.routes,
-			w.id)
+		handle_conn[T](mut connection, w.global_app, w.controllers, w.routes, w.id)
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')
