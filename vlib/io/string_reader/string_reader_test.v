@@ -36,6 +36,10 @@ fn (mut r TwoByteReader) read(mut buf []u8) !int {
 	return min
 }
 
+fn read_from_reader_interface(mut r io.Reader, mut buf []u8) !int {
+	return r.read(mut buf)
+}
+
 fn test_read_all() {
 	mut reader := StringReader.new()
 
@@ -102,6 +106,34 @@ fn test_from_string() {
 
 	if _ := reader.read_all(false) {
 		assert false, 'should return Eof'
+	} else {
+		assert err is io.Eof
+	}
+}
+
+fn test_read_from_source_read() {
+	source := 'line 1\nline 2\n'
+	mut reader := StringReader.new(source: source)
+	mut buf := []u8{len: 100}
+	read := reader.read(mut buf)!
+	assert read == source.len
+	assert buf[..read].bytestr() == source
+	if _ := reader.read(mut buf) {
+		assert false, 'should return io.Eof'
+	} else {
+		assert err is io.Eof
+	}
+}
+
+fn test_read_from_source_read_via_reader_interface() {
+	source := 'line 1\nline 2\n'
+	mut reader := StringReader.new(source: source)
+	mut buf := []u8{len: 100}
+	read := read_from_reader_interface(mut reader, mut buf)!
+	assert read == source.len
+	assert buf[..read].bytestr() == source
+	if _ := read_from_reader_interface(mut reader, mut buf) {
+		assert false, 'should return io.Eof'
 	} else {
 		assert err is io.Eof
 	}
