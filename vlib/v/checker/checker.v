@@ -4672,6 +4672,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			name = '${node.mod}.${node.name}'
 		}
 		pobj = c.file.global_scope.find_ptr(name)
+		if pobj == unsafe { nil } && c.pref.is_vsh && !node.name.contains('.') {
+			os_name := 'os.${node.name}'
+			pobj = c.file.global_scope.find_ptr(os_name)
+			if pobj != unsafe { nil } {
+				name = os_name
+			}
+		}
 		if pobj != unsafe { nil } {
 			mut obj := *pobj
 			match mut obj {
