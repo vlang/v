@@ -186,9 +186,11 @@ mut:
 	render_text bool = true
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
-	image_cache   []Image
-	needs_refresh bool = true
-	ticks         int // for ui mode only
+	image_cache                 []Image
+	needs_refresh               bool = true
+	ticks                       int // for ui mode only
+	last_bg_overlay_frame       u64
+	translucent_bg_seed_pending bool
 pub:
 	native_rendering bool
 pub mut:
@@ -196,6 +198,7 @@ pub mut:
 	width       int
 	height      int
 	clear_pass  gfx.PassAction
+	bg_color    Color
 	window      sapp.Desc
 	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
@@ -594,8 +597,10 @@ pub fn (ctx &Context) quit() {
 
 // set_bg_color sets the color of the window background to `c`.
 pub fn (mut ctx Context) set_bg_color(c Color) {
+	ctx.bg_color = c
 	ctx.clear_pass = gfx.create_clear_pass_action(f32(c.r) / 255.0, f32(c.g) / 255.0,
 		f32(c.b) / 255.0, f32(c.a) / 255.0)
+	ctx.translucent_bg_seed_pending = c.a < 255
 }
 
 // Resize the context's Window
@@ -618,6 +623,13 @@ pub fn (ctx &Context) begin() {
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	if ctx.bg_color.a < 255 && ctx.last_bg_overlay_frame != ctx.frame {
+		mut ctx_mut := unsafe { &Context(ctx) }
+		ctx_mut.last_bg_overlay_frame = ctx.frame
+		// Sokol clear actions replace pixels and do not blend.
+		// Draw a translucent fullscreen quad once per frame to get trail/fade behavior.
+		ctx.draw_rect_filled(0, 0, f32(ctx.width), f32(ctx.height), ctx.bg_color)
+	}
 }
 
 pub enum EndEnum {
@@ -647,6 +659,27 @@ const dontcare_pass = gfx.PassAction{
 		},
 		gfx.ColorAttachmentAction{
 			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+	]!
+}
+
+const load_pass = gfx.PassAction{
+	colors: [
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
 			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 	]!
@@ -684,7 +717,17 @@ pub fn (ctx &Context) end(options EndOptions) {
 	}
 	pass := match options.how {
 		.clear {
-			create_default_pass(ctx.clear_pass)
+			if ctx.bg_color.a < 255 {
+				if ctx.translucent_bg_seed_pending {
+					mut ctx_mut := unsafe { &Context(ctx) }
+					ctx_mut.translucent_bg_seed_pending = false
+					create_default_pass(ctx.clear_pass)
+				} else {
+					create_default_pass(load_pass)
+				}
+			} else {
+				create_default_pass(ctx.clear_pass)
+			}
 		}
 		.passthru {
 			create_default_pass(dontcare_pass)
