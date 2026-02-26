@@ -342,6 +342,30 @@ pub fn (t &Table) has_method(s &TypeSymbol, name string) bool {
 	return true
 }
 
+// get_type_methods returns methods available on `typ`.
+// For aliases, it includes alias-defined methods first, then inherited parent methods.
+pub fn (t &Table) get_type_methods(typ Type) []Fn {
+	mut ts := t.sym(typ)
+	mut methods := ts.get_methods()
+	if ts.kind != .alias {
+		return methods
+	}
+	mut seen_method_names := map[string]bool{}
+	for method in methods {
+		seen_method_names[method.name] = true
+	}
+	for ts.parent_idx != 0 {
+		ts = t.type_symbols[ts.parent_idx]
+		for method in ts.get_methods() {
+			if method.name !in seen_method_names {
+				methods << method
+				seen_method_names[method.name] = true
+			}
+		}
+	}
+	return methods
+}
+
 // find_method searches from current type up through each parent looking for method
 pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 	mut ts := unsafe { s }
