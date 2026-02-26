@@ -329,7 +329,17 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 	$if T is $alias {
-		decoder.decode_error('Type aliased sumtypes not supported.')!
+		$if T.unaliased_typ is Any {
+			mut unaliased_val := Any{}
+			value_info := decoder.current_node.value
+
+			decoder.init_sumtype_by_value_kind(mut unaliased_val, value_info)!
+
+			unaliased_val = decoder.get_decoded_sumtype_workaround(unaliased_val)!
+			val = T(unaliased_val)
+		} $else {
+			decoder.decode_error('Type aliased sumtypes not supported.')!
+		}
 	} $else {
 		value_info := decoder.current_node.value
 
