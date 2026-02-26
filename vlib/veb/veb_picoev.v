@@ -98,6 +98,12 @@ $if !new_veb ? {
 			is_blocking: false
 		}
 		fast_send_resp(mut conn, http_408) or {}
+		if params.file_responses[fd].open {
+			params.file_responses[fd].done()
+		}
+		if params.string_responses[fd].open {
+			params.string_responses[fd].done()
+		}
 		pv.close_conn(fd)
 		params.request_done(fd)
 	}

@@ -136,8 +136,10 @@ $if !new_veb ? {
 
 	// reset request parameters for `fd`:
 	// reset content-length index and the http request
+	@[manualfree]
 	pub fn (mut params RequestParams) request_done(fd int) {
-		params.incomplete_requests[fd] = http.Request{}
+		mut request := &params.incomplete_requests[fd]
+		request.reset()
 		params.idx[fd] = 0
 		$if trace_handle_read ? {
 			eprintln('>>>>> fd: ${fd} | request_done.')
