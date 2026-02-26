@@ -56,8 +56,75 @@ pub mut:
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
+@[manualfree]
 fn (mut req Request) free() {
-	unsafe { req.header.free() }
+	mut freed_ptrs := map[u64]bool{}
+	unsafe {
+		req.cookies.free()
+		for i := 0; i < req.header.cur_pos; i++ {
+			mut key := req.header.data[i].key
+			mut value := req.header.data[i].value
+			key_ptr := u64(usize(key.str))
+			if key_ptr !in freed_ptrs {
+				key.free()
+				freed_ptrs[key_ptr] = true
+			}
+			value_ptr := u64(usize(value.str))
+			if value_ptr !in freed_ptrs {
+				value.free()
+				freed_ptrs[value_ptr] = true
+			}
+		}
+		mut host := req.host
+		host_ptr := u64(usize(host.str))
+		if host_ptr !in freed_ptrs {
+			host.free()
+			freed_ptrs[host_ptr] = true
+		}
+		mut data := req.data
+		data_ptr := u64(usize(data.str))
+		if data_ptr !in freed_ptrs {
+			data.free()
+			freed_ptrs[data_ptr] = true
+		}
+		mut url := req.url
+		url_ptr := u64(usize(url.str))
+		if url_ptr !in freed_ptrs {
+			url.free()
+			freed_ptrs[url_ptr] = true
+		}
+		mut user_agent := req.user_agent
+		user_agent_ptr := u64(usize(user_agent.str))
+		if user_agent_ptr !in freed_ptrs {
+			user_agent.free()
+			freed_ptrs[user_agent_ptr] = true
+		}
+		mut verify := req.verify
+		verify_ptr := u64(usize(verify.str))
+		if verify_ptr !in freed_ptrs {
+			verify.free()
+			freed_ptrs[verify_ptr] = true
+		}
+		mut cert := req.cert
+		cert_ptr := u64(usize(cert.str))
+		if cert_ptr !in freed_ptrs {
+			cert.free()
+			freed_ptrs[cert_ptr] = true
+		}
+		mut cert_key := req.cert_key
+		cert_key_ptr := u64(usize(cert_key.str))
+		if cert_key_ptr !in freed_ptrs {
+			cert_key.free()
+			freed_ptrs[cert_key_ptr] = true
+		}
+	}
+}
+
+// reset frees request-owned data and resets the request to default values.
+@[manualfree]
+pub fn (mut req Request) reset() {
+	req.free()
+	req = Request{}
 }
 
 // add_header adds the key and value of an HTTP request header
@@ -442,13 +509,13 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	for line != '' {
 		// key, value := parse_header(line)!
 		mut pos := parse_header_fast(line)!
-		key := line.substr_unsafe(0, pos)
+		key := line[..pos]
 		for pos < line.len - 1 && line[pos + 1].is_space() {
 			// Skip space or tab in value name
 			pos++
 		}
 		if pos + 1 < line.len {
-			value := line.substr_unsafe(pos + 1, line.len)
+			value := line[pos + 1..]
 			_, _ = key, value
 			// println('key,value=${key},${value}')
 			header.add_custom(key, value)!
@@ -466,7 +533,7 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		method:  method
 		url:     target.str()
 		header:  header
-		host:    header.get(.host) or { '' }
+		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
@@ -500,7 +567,7 @@ pub fn parse_request_head_str(s string) !Request {
 		}
 
 		mut pos := parse_header_fast(line)!
-		key := line.substr_unsafe(0, pos)
+		key := line[..pos]
 
 		// Skip space or tab after the colon
 		mut val_start := pos + 1
@@ -509,7 +576,7 @@ pub fn parse_request_head_str(s string) !Request {
 		}
 
 		if val_start < line.len {
-			value := line.substr_unsafe(val_start, line.len)
+			value := line[val_start..]
 			header.add_custom(key, value)!
 		}
 	}
@@ -523,7 +590,7 @@ pub fn parse_request_head_str(s string) !Request {
 		method:  method
 		url:     target.str()
 		header:  header
-		host:    header.get(.host) or { '' }
+		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
