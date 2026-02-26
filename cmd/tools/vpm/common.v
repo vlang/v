@@ -23,13 +23,45 @@ struct ErrorOptions {
 
 const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
+const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
+
+fn merge_server_urls(default_urls []string, custom_urls []string) []string {
+	mut server_urls := default_urls.clone()
+	for url in custom_urls {
+		if url in server_urls {
+			continue
+		}
+		server_urls << url
+	}
+	return server_urls
+}
+
+fn get_server_urls() []string {
+	return merge_server_urls(vpm_server_urls, settings.server_urls)
+}
+
+fn selected_server_url(set bool, url string) string {
+	if set {
+		os.setenv(selected_server_url_env, url, true)
+	}
+	return os.getenv(selected_server_url_env)
+}
+
+fn active_server_urls() []string {
+	selected_url := selected_server_url(false, '')
+	if selected_url != '' {
+		return [selected_url]
+	}
+	return get_server_urls()
+}
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
 		return error('invalid module name `${name}`.')
 	}
 	mut errors := []string{}
-	for url in vpm_server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in active_server_urls() {
 		modurl := url + '/api/packages/${name}'
 		verbose_println_more(@FILE_LINE, @FN, 'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
 		r := http.get(modurl) or {
@@ -58,6 +90,9 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 		if '' == mod.url || '' == mod.name {
 			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
 		}
 		verbose_println_more(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
 		return mod
@@ -173,16 +208,15 @@ fn get_path_of_existing_module(mod_name string) ?string {
 }
 
 fn get_working_server_url() string {
-	server_urls := if settings.server_urls.len > 0 {
-		settings.server_urls
-	} else {
-		vpm_server_urls
-	}
-	for url in server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in active_server_urls() {
 		verbose_println('Trying server url: ${url}')
 		http.head(url) or {
 			vpm_error('failed to connect to server url `${url}`.', details: err.msg())
 			continue
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
 		}
 		verbose_println_more(@FILE_LINE, @FN, 'found url: ${url}')
 		return url
@@ -208,7 +242,8 @@ fn increment_module_download_count(name string) ! {
 		return
 	}
 	mut errors := []string{}
-	for url in vpm_server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in active_server_urls() {
 		modurl := url + '/api/packages/${name}/incr_downloads'
 		verbose_println_more(@FILE_LINE, @FN, 'making a POST request to modurl: ${modurl} ...')
 		r := http.post(modurl, '') or {
@@ -219,6 +254,9 @@ fn increment_module_download_count(name string) ! {
 		if r.status_code != 200 {
 			errors << 'Failed to increment the download count for module `${name}`, since `${url}` responded with ${r.status_code} http status code. Please try again later.'
 			continue
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
 		}
 		return
 	}

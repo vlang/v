@@ -5,6 +5,8 @@ import os.cmdline
 import log
 import v.vmod
 
+const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']
+
 struct VpmSettings {
 mut:
 	is_help               bool
@@ -69,7 +71,7 @@ fn init_settings() VpmSettings {
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
 		is_local:              is_local
-		server_urls:           cmdline.options(args, '--server-urls')
+		server_urls:           parse_server_urls(args)
 		vcs:                   if '--hg' in opts { .hg } else { .git }
 		vmodules_path:         vmodules_path
 		tmp_path:              os.join_path(os.vtmp_dir(), 'vpm_modules')
@@ -77,4 +79,18 @@ fn init_settings() VpmSettings {
 		fail_on_prompt:        os.getenv('VPM_FAIL_ON_PROMPT') != ''
 		logger:                logger
 	}
+}
+
+fn parse_server_urls(args []string) []string {
+	mut server_urls := []string{}
+	for option_name in server_url_option_names {
+		for raw_url in cmdline.options(args, option_name) {
+			url := raw_url.trim_space().trim_string_right('/')
+			if url == '' || url in server_urls {
+				continue
+			}
+			server_urls << url
+		}
+	}
+	return server_urls
 }
