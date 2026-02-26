@@ -5148,10 +5148,12 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
-	if g.is_cc_msvc {
+	// Explicit-size enums are emitted as typedef + defines, so all C compilers
+	// (including tinyc) respect the selected storage size.
+	if g.is_cc_msvc || node.typ != ast.int_type {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
-		if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
+		if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
 			return
 		}
 		g.enum_typedefs.writeln('')
