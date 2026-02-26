@@ -510,6 +510,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			live_fncall = '${type_name} res = ${live_fncall}'
 			live_fnreturn = 'return res;'
 		}
+		if is_livemain {
+			g.definitions.writeln('${type_name} no_impl_${name}(' + fn_args_list.join(', ') + ');')
+		}
 		g.definitions.writeln('${type_name} ${name}(' + fn_args_list.join(', ') + ');')
 		g.hotcode_definitions.writeln('${type_name} ${name}(' + fn_args_list.join(', ') + '){')
 		g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')

@@ -41,13 +41,23 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 		mut load_code := []string{}
 		if g.pref.os != .windows {
 			for so_fn in g.hotcode_fn_names {
-				load_code << '\timpl_live_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
+				load_code << '\tvoid* live_sym_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
+				load_code << '\tif (live_sym_${so_fn}) {'
+				load_code << '\t\timpl_live_${so_fn} = live_sym_${so_fn};'
+				load_code << '\t} else {'
+				load_code << '\t\timpl_live_${so_fn} = no_impl_${so_fn};'
+				load_code << '\t}'
 			}
 			load_code << 'void (* fn_set_live_reload_pointer)(void *) = (void *)dlsym(live_lib, "set_live_reload_pointer");'
 			phd = posix_hotcode_definitions_1
 		} else {
 			for so_fn in g.hotcode_fn_names {
-				load_code << '\timpl_live_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");  '
+				load_code << '\tvoid* live_sym_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");'
+				load_code << '\tif (live_sym_${so_fn}) {'
+				load_code << '\t\timpl_live_${so_fn} = live_sym_${so_fn};'
+				load_code << '\t} else {'
+				load_code << '\t\timpl_live_${so_fn} = no_impl_${so_fn};'
+				load_code << '\t}'
 			}
 			load_code << 'void (* fn_set_live_reload_pointer)(void *) = (void *)GetProcAddress(live_lib, "set_live_reload_pointer");'
 			phd = windows_hotcode_definitions_1
@@ -81,7 +91,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	g.writeln2('\t// live code initialization section:', '\t{')
 	g.writeln('\t\t// initialization of live function pointers')
 	for fname in g.hotcode_fn_names {
-		g.writeln('\t\timpl_live_${fname} = 0;')
+		g.writeln('\t\timpl_live_${fname} = no_impl_${fname};')
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
