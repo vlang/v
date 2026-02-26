@@ -1,0 +1,18 @@
+// vfmt off
+@[unsafe()]
+fn allow_unsafe_parentheses() {}
+
+@[deprecated('use new_fn instead')]
+fn old_positional() {}
+
+@[deprecated(msg: 'use new_fn instead', after: '2999-10-10')]
+fn old_named() {}
+
+@[deprecated('use new_fn instead', after: '2999-10-10')]
+fn old_mixed() {}
+
+@[custom(flag: true, count: 2)]
+fn custom_named_args() {}
+// vfmt on
+
+fn new_fn() {}
