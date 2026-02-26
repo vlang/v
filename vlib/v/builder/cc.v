@@ -373,6 +373,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if !windows {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
+		if v.pref.os == .linux && 'gcboehm' in v.pref.compile_defines_all {
+			// Keep shared-library GC symbols bound to the shared object itself.
+			// This avoids cross-DSO symbol interposition between multiple V binaries
+			// in one process (for example, host executable + loaded V plugin).
+			ccoptions.linker_flags << '-Wl,-Bsymbolic'
+		}
 	}
 	if v.pref.is_bare && v.pref.os != .wasm32 {
 		ccoptions.args << '-fno-stack-protector'
