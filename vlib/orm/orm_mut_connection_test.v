@@ -103,5 +103,5 @@ fn test_orm_mut_connection() {
 		drop table User
 	}!
 
-	assert db.last_query == 'DROP TABLE User;'
+	assert db.last_query == 'DROP TABLE user;'
 }
