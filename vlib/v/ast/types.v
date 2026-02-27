@@ -106,7 +106,6 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.type_symbols`.
 // See also: Table.sym.
-@[minify]
 pub struct TypeSymbol {
 pub mut:
 	parent_idx    int
@@ -169,7 +168,6 @@ pub mut:
 	func     Fn
 }
 
-@[minify]
 pub struct Struct {
 pub:
 	attrs       []Attr
@@ -199,7 +197,6 @@ pub mut:
 	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
-@[minify]
 pub struct Interface {
 pub mut:
 	types   []Type // all types that implement this interface
@@ -228,7 +225,6 @@ pub:
 	name_pos         token.Pos
 }
 
-@[minify]
 pub struct Alias {
 pub mut:
 	parent_type Type
@@ -253,7 +249,6 @@ pub mut:
 	elem_type Type
 }
 
-@[minify]
 pub struct ArrayFixed {
 pub:
 	size      int
@@ -281,7 +276,6 @@ pub mut:
 	name_pos   token.Pos
 }
 
-@[minify]
 pub struct SumType {
 pub mut:
 	fields       []StructField
@@ -1736,7 +1730,6 @@ fn (t &Table) shorten_user_defined_typenames(original_name string, import_aliase
 	return '${mod}.${typ}'
 }
 
-@[minify]
 pub struct FnSignatureOpts {
 pub:
 	skip_receiver bool
