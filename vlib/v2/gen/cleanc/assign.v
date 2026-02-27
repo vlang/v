@@ -227,7 +227,12 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				g.sb.write_string('${elem_type} ${name}[')
 				g.expr(fixed_typ.len)
 				if array_init.exprs.len == 0 {
-					if is_literal_size {
+					if array_init.init !is ast.EmptyExpr && is_literal_size {
+						// Has init: clause - expand to repeated init values
+						g.sb.write_string('] = ')
+						g.gen_array_init_expr(array_init)
+						g.sb.writeln(';')
+					} else if is_literal_size {
 						g.sb.writeln('] = {0};')
 					} else {
 						// Non-literal sizes are VLAs in C99 and cannot use = {0}

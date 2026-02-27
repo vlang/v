@@ -235,9 +235,12 @@ fn (mut g Gen) emit_runtime_aliases() {
 				body_key := 'body_${name}'
 				g.emitted_types[alias_key] = true
 				g.emitted_types[body_key] = true
-				// Emit fallback str macros for fixed array types
-				g.sb.writeln('#define ${name}_str(a) ((string){.str = "${name}", .len = ${name.len}, .is_lit = 1})')
-				g.sb.writeln('#define ${name}__str(a) ${name}_str(a)')
+				// Emit fallback str macros for fixed array types (only if no real function was generated)
+				str_fn := '${name}_str'
+				if str_fn !in g.fn_return_types {
+					g.sb.writeln('#define ${name}_str(a) ((string){.str = "${name}", .len = ${name.len}, .is_lit = 1})')
+					g.sb.writeln('#define ${name}__str(a) ${name}_str(a)')
+				}
 			}
 		}
 	}

@@ -675,6 +675,50 @@ fn (g &Gen) should_use_memcmp_eq(lhs_type string, rhs_type string) bool {
 	return true
 }
 
+// struct_has_ref_fields checks if a struct has any reference-type fields
+// (string, array, map) that require deep comparison instead of memcmp.
+fn (g &Gen) struct_has_ref_fields(s types.Struct) bool {
+	for field in s.fields {
+		match field.typ {
+			types.String, types.Array, types.Map { return true }
+			else {}
+		}
+	}
+	return false
+}
+
+// gen_struct_field_eq_expr generates an inline field-by-field equality expression
+// for structs with reference-type fields.
+fn (mut g Gen) gen_struct_field_eq_expr(s types.Struct, va string, vb string) string {
+	mut parts := []string{}
+	for field in s.fields {
+		fname := field.name
+		match field.typ {
+			types.String {
+				parts << 'string__eq(${va}.${fname}, ${vb}.${fname})'
+			}
+			types.Array {
+				parts << '__v2_array_eq(${va}.${fname}, ${vb}.${fname})'
+			}
+			types.Map {
+				c_type := g.types_type_to_c(field.typ)
+				if c_type.starts_with('Map_') {
+					parts << '${c_type}_map_eq(${va}.${fname}, ${vb}.${fname})'
+				} else {
+					parts << 'map_map_eq(${va}.${fname}, ${vb}.${fname})'
+				}
+			}
+			else {
+				parts << '${va}.${fname} == ${vb}.${fname}'
+			}
+		}
+	}
+	if parts.len == 0 {
+		return '1'
+	}
+	return parts.join(' && ')
+}
+
 fn (mut g Gen) method_receiver_base_type(expr ast.Expr) string {
 	if expr is ast.Ident {
 		if local_type := g.get_local_var_c_type(expr.name) {

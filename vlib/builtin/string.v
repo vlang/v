@@ -1916,13 +1916,14 @@ fn (s string) trim_chars(cutset string, mode TrimMode) string {
 @[direct_array_access]
 fn (s string) trim_runes(cutset string, mode TrimMode) string {
 	s_runes := s.runes()
+	cs_runes := cutset.runes()
 	mut pos_left := 0
 	mut pos_right := s_runes.len - 1
 	mut cs_match := true
 	for pos_left <= s_runes.len && pos_right >= -1 && cs_match {
 		cs_match = false
 		if mode in [.trim_left, .trim_both] {
-			for cs in cutset.runes_iterator() {
+			for cs in cs_runes {
 				if s_runes[pos_left] == cs {
 					pos_left++
 					cs_match = true
@@ -1931,7 +1932,7 @@ fn (s string) trim_runes(cutset string, mode TrimMode) string {
 			}
 		}
 		if mode in [.trim_right, .trim_both] {
-			for cs in cutset.runes_iterator() {
+			for cs in cs_runes {
 				if s_runes[pos_right] == cs {
 					pos_right--
 					cs_match = true

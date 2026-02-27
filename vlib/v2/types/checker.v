@@ -76,7 +76,7 @@ pub fn (mut e Environment) set_expr_type(id int, typ Type) {
 pub fn (e &Environment) get_expr_type(id int) ?Type {
 	if id > 0 && id < e.expr_type_values.len {
 		typ := e.expr_type_values[id]
-		if typ is Void {
+		if typ is Void || type_has_null_data(typ) {
 			return none
 		}
 		return typ
@@ -84,13 +84,26 @@ pub fn (e &Environment) get_expr_type(id int) ?Type {
 		idx := -id
 		if idx < e.expr_type_neg_values.len {
 			typ := e.expr_type_neg_values[idx]
-			if typ is Void {
+			if typ is Void || type_has_null_data(typ) {
 				return none
 			}
 			return typ
 		}
 	}
 	return none
+}
+
+// type_has_null_data checks if a Type sumtype has a null internal data pointer.
+// In cleanc-generated code, sumtype variants are heap-allocated and referenced
+// by pointer. A zero-initialized Type has tag 0 (Alias) with a null data pointer,
+// which would crash if any variant field were accessed. This function detects
+// that case without dereferencing the data pointer.
+fn type_has_null_data(t Type) bool {
+	// Layout: { int _tag (4 bytes); padding (4 bytes); void* _data (8 bytes) }
+	// The data pointer lives at byte offset 8.
+	p := unsafe { &u8(&t) + 8 }
+	data_ptr := unsafe { *(&voidptr(p)) }
+	return data_ptr == unsafe { nil }
 }
 
 // lookup_method looks up a method by receiver type name and method name

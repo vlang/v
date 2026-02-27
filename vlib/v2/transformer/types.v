@@ -1859,6 +1859,18 @@ fn (t &Transformer) array_value_elem_type(expr ast.Expr) ?string {
 	return none
 }
 
+// array_elem_needs_deep_eq returns true if the array element type is a struct or map,
+// meaning memcmp-based comparison won't work (strings, maps, nested structs need deep comparison).
+fn (t &Transformer) array_elem_needs_deep_eq(expr ast.Expr) bool {
+	recv_type := t.get_expr_type(expr) or { return false }
+	base := t.unwrap_alias_and_pointer_type(recv_type)
+	if base is types.Array {
+		elem_base := t.unwrap_alias_and_pointer_type(base.elem_type)
+		return elem_base is types.Struct || elem_base is types.Map
+	}
+	return false
+}
+
 // get_struct_field_type returns the type of a struct field from a SelectorExpr
 fn (t &Transformer) get_array_type_str(expr ast.Expr) ?string {
 	recv_type := t.get_expr_type(expr) or { return none }
@@ -2225,6 +2237,10 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 		types.Array {
 			elem_name := t.type_to_c_name(typ.elem_type)
 			return 'Array_${elem_name}_str'
+		}
+		types.ArrayFixed {
+			elem_name := t.type_to_c_name(typ.elem_type)
+			return 'Array_fixed_${elem_name}_${typ.len}_str'
 		}
 		types.Map {
 			key_name := t.type_to_c_name(typ.key_type)

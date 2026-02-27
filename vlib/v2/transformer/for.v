@@ -475,6 +475,7 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 	mut value_lhs := ast.Expr(ast.Ident{
 		name: value_name
 	})
+	mut is_mut_value := false
 	if for_in.value is ast.Ident {
 		value_name = for_in.value.name
 		value_lhs = ast.Expr(for_in.value)
@@ -482,6 +483,9 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 		if for_in.value.expr is ast.Ident {
 			value_name = for_in.value.expr.name
 			value_lhs = ast.Expr(for_in.value.expr)
+			if for_in.value.kind == .key_mut {
+				is_mut_value = true
+			}
 		}
 	}
 
@@ -505,17 +509,24 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 	}
 	transformed_expr := t.transform_expr(for_in.expr)
 
+	index_expr := ast.Expr(ast.IndexExpr{
+		lhs:  transformed_expr
+		expr: ast.Ident{
+			name: key_name
+		}
+	})
+	value_rhs := if is_mut_value {
+		ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: index_expr
+		})
+	} else {
+		index_expr
+	}
 	value_assign := ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [value_lhs]
-		rhs: [
-			ast.Expr(ast.IndexExpr{
-				lhs:  transformed_expr
-				expr: ast.Ident{
-					name: key_name
-				}
-			}),
-		]
+		rhs: [value_rhs]
 	}
 
 	mut new_stmts := []ast.Stmt{cap: stmt.stmts.len + 1}
@@ -577,6 +588,7 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	mut value_lhs := ast.Expr(ast.Ident{
 		name: value_name
 	})
+	mut is_mut_value := false
 	if for_in.value is ast.Ident {
 		value_name = for_in.value.name
 		value_lhs = ast.Expr(for_in.value)
@@ -584,6 +596,9 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 		if for_in.value.expr is ast.Ident {
 			value_name = for_in.value.expr.name
 			value_lhs = ast.Expr(for_in.value.expr)
+			if for_in.value.kind == .key_mut {
+				is_mut_value = true
+			}
 		}
 	}
 
@@ -610,18 +625,26 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 
 	transformed_expr := t.transform_expr(for_in.expr)
 
-	// Build: elem := arr[_idx]
+	// Build: elem := arr[_idx] (or elem := &arr[_idx] for mut)
+	index_expr := ast.Expr(ast.IndexExpr{
+		lhs:  transformed_expr
+		expr: ast.Ident{
+			name: key_name
+		}
+	})
+	value_rhs := if is_mut_value {
+		// mut loop variable: take address for in-place mutation
+		ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: index_expr
+		})
+	} else {
+		index_expr
+	}
 	value_assign := ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [value_lhs]
-		rhs: [
-			ast.Expr(ast.IndexExpr{
-				lhs:  transformed_expr
-				expr: ast.Ident{
-					name: key_name
-				}
-			}),
-		]
+		rhs: [value_rhs]
 	}
 
 	mut new_stmts := []ast.Stmt{cap: stmt.stmts.len + 1}

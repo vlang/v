@@ -61,7 +61,12 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			// Keep codegen valid by converting them to a cast of the underlying
 			// result/option expression to the checker-inferred value type.
 			if expr.op in [.not, .question] {
-				inner := t.transform_expr(expr.expr)
+				mut inner := t.transform_expr(expr.expr)
+				// For string range with `!` propagation, use checked version
+				if expr.expr is ast.IndexExpr && expr.expr.expr is ast.RangeExpr
+					&& t.is_string_expr(expr.expr.lhs) {
+					inner = t.rename_substr_to_checked(inner)
+				}
 				mut type_name := ''
 				if inner_type := t.get_expr_type(expr.expr) {
 					match inner_type {
@@ -2217,13 +2222,23 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			// Create (T[]){ elem } expression for single element push
 			// Note: cleanc will add _MOV wrapper when generating ArrayInitExpr
 			transformed_rhs := t.transform_expr(expr.rhs)
-			// Wrap in sumtype if the array element type is a sumtype
-			push_elem := if t.is_sum_type(elem_type_name) {
-				t.wrap_sumtype_value_transformed(transformed_rhs, elem_type_name) or {
-					transformed_rhs
-				}
+			// Clone strings when pushing to arrays to prevent use-after-free
+			// (V1 does: array_push(&arr, _MOV((string[]){ string_clone(s) })))
+			cloned_rhs := if elem_type_name == 'string' {
+				ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'string__clone'
+					}
+					args: [transformed_rhs]
+				})
 			} else {
 				transformed_rhs
+			}
+			// Wrap in sumtype if the array element type is a sumtype
+			push_elem := if t.is_sum_type(elem_type_name) {
+				t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or { cloned_rhs }
+			} else {
+				cloned_rhs
 			}
 			arr_literal := ast.ArrayInitExpr{
 				typ:   ast.Expr(ast.Type(ast.ArrayType{
@@ -2410,10 +2425,15 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		lhs_arr_type := t.get_array_type_str(expr.lhs)
 		rhs_arr_type := t.get_array_type_str(expr.rhs)
 		if lhs_arr_type != none && rhs_arr_type != none {
+			// Use type-specific equality for arrays of structs/maps (memcmp won't work)
+			mut eq_fn_name := 'array__eq'
+			if t.array_elem_needs_deep_eq(expr.lhs) || t.array_elem_needs_deep_eq(expr.rhs) {
+				eq_fn_name = '${lhs_arr_type}__eq'
+			}
 			// Transform array comparisons to function calls
 			eq_call := ast.CallExpr{
 				lhs:  ast.Ident{
-					name: 'array__eq'
+					name: eq_fn_name
 				}
 				args: [t.transform_expr(expr.lhs), t.transform_expr(expr.rhs)]
 				pos:  expr.pos

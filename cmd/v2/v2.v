@@ -26,6 +26,20 @@ fn main() {
 
 	mut b := builder.new_builder(prefs)
 	b.build(files)
+
+	// Auto-run test binaries after compilation (matching v1 behavior)
+	if prefs.output_file == '' && is_test_file(files) {
+		output_name := os.file_name(files.last()).all_before_last('.v')
+		if os.exists(output_name) {
+			ret := os.system('./' + output_name)
+			os.rm(output_name) or {}
+			c_file := output_name + '.c'
+			if !prefs.keep_c && os.exists(c_file) {
+				os.rm(c_file) or {}
+			}
+			exit(ret)
+		}
+	}
 }
 
 fn run_ast_command(args []string) {
@@ -58,6 +72,15 @@ fn run_ast_command(args []string) {
 	if result.exit_code != 0 {
 		exit(result.exit_code)
 	}
+}
+
+fn is_test_file(files []string) bool {
+	for file in files {
+		if file.ends_with('_test.v') {
+			return true
+		}
+	}
+	return false
 }
 
 // get_files extracts source files from args, excluding options and their values

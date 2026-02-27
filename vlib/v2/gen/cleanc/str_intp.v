@@ -103,13 +103,43 @@ fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
 
 fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 	mut fmt := '%'
+	mut width := inter.width
+	mut precision := inter.precision
+	// Extract width/precision from format_expr if not set explicitly
+	if width == 0 && precision == 0 && inter.format_expr !is ast.EmptyExpr {
+		if inter.format_expr is ast.BasicLiteral {
+			val := inter.format_expr.value
+			if val.contains('.') {
+				// ".3" or "0.3" → precision
+				parts := val.split('.')
+				if parts.len == 2 {
+					if parts[0].len > 0 && parts[0] != '0' {
+						width = parts[0].int()
+					}
+					precision = parts[1].int()
+				}
+			} else {
+				// Plain number → width (e.g., "03" for zero-padded)
+				if val.starts_with('0') && val.len > 1 {
+					fmt += '0'
+				}
+				width = val.int()
+			}
+		} else if inter.format_expr is ast.PrefixExpr {
+			// Negative alignment: -10 → left-align with width 10
+			if inter.format_expr.op == .minus && inter.format_expr.expr is ast.BasicLiteral {
+				fmt += '-'
+				width = inter.format_expr.expr.value.int()
+			}
+		}
+	}
 	// Width
-	if inter.width > 0 {
-		fmt += '${inter.width}'
+	if width > 0 {
+		fmt += '${width}'
 	}
 	// Precision
-	if inter.precision > 0 {
-		fmt += '.${inter.precision}'
+	if precision > 0 {
+		fmt += '.${precision}'
 	}
 	// Format specifier
 	if inter.format != .unformatted {

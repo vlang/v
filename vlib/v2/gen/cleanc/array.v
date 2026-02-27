@@ -104,9 +104,12 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			body_key := 'body_${name}'
 			g.emitted_types[alias_key] = true
 			g.emitted_types[body_key] = true
-			// Emit fallback str macros for fixed array types
-			g.sb.writeln('#define ${name}_str(a) ((string){.str = "${name}", .len = ${name.len}, .is_lit = 1})')
-			g.sb.writeln('#define ${name}__str(a) ${name}_str(a)')
+			// Emit fallback str macros for fixed array types (only if no real function was generated)
+			str_fn := '${name}_str'
+			if str_fn !in g.fn_return_types {
+				g.sb.writeln('#define ${name}_str(a) ((string){.str = "${name}", .len = ${name.len}, .is_lit = 1})')
+				g.sb.writeln('#define ${name}__str(a) ${name}_str(a)')
+			}
 		}
 	}
 }
@@ -441,6 +444,27 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 		g.sb.write_string('}')
 		return
 	}
+	// Handle fixed array with init: clause (e.g., [3]int{init: 10} → {10, 10, 10})
+	if node.init !is ast.EmptyExpr && !is_dyn {
+		mut size := 0
+		if node.typ is ast.Type && node.typ is ast.ArrayFixedType {
+			fixed_typ := node.typ as ast.ArrayFixedType
+			if fixed_typ.len is ast.BasicLiteral && fixed_typ.len.kind == .number {
+				size = fixed_typ.len.value.int()
+			}
+		}
+		if size > 0 {
+			g.sb.write_string('{')
+			for i := 0; i < size; i++ {
+				if i > 0 {
+					g.sb.write_string(', ')
+				}
+				g.expr(node.init)
+			}
+			g.sb.write_string('}')
+			return
+		}
+	}
 	// Empty array: should have been lowered by transformer to __new_array_with_default_noscan()
 	// Fallback: zero-init
 	g.sb.write_string('(array){0}')
@@ -576,4 +600,132 @@ fn (mut g Gen) gen_fixed_array_cmp_operand(expr ast.Expr, fixed_type string) {
 		}
 	}
 	g.expr(expr)
+}
+
+// gen_typed_array_eq generates inline element-wise array comparison for struct/map element types.
+// Uses GCC statement expression: ({ array _a = ...; array _b = ...; bool _eq = ...; ... _eq; })
+fn (mut g Gen) gen_typed_array_eq(elem_type string, call_args []ast.Expr) {
+	g.sb.write_string('({ array _a = ')
+	if g.expr_is_pointer(call_args[0]) {
+		g.sb.write_string('*')
+	}
+	g.expr(call_args[0])
+	g.sb.write_string('; array _b = ')
+	if g.expr_is_pointer(call_args[1]) {
+		g.sb.write_string('*')
+	}
+	g.expr(call_args[1])
+	g.sb.writeln('; bool _eq = (_a.len == _b.len);')
+	g.sb.writeln(' for (int _i = 0; _eq && _i < _a.len; _i++) {')
+	g.sb.writeln('  ${elem_type} _sa = ((${elem_type}*)_a.data)[_i];')
+	g.sb.writeln('  ${elem_type} _sb = ((${elem_type}*)_b.data)[_i];')
+	if elem_type.starts_with('Map_') {
+		g.sb.writeln('  if (!${elem_type}_map_eq(_sa, _sb)) _eq = false;')
+	} else {
+		struct_type := g.lookup_struct_type_by_c_name(elem_type)
+		if struct_type.fields.len > 0 {
+			for field in struct_type.fields {
+				fname := field.name
+				ftype := field.typ
+				match ftype {
+					types.String {
+						g.sb.writeln('  if (!string__eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+					}
+					types.Map {
+						c_type := g.types_type_to_c(ftype)
+						if c_type.starts_with('Map_') {
+							g.sb.writeln('  if (!${c_type}_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+						} else {
+							g.sb.writeln('  if (!map_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+						}
+					}
+					types.Array {
+						g.sb.writeln('  if (!__v2_array_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+					}
+					else {
+						g.sb.writeln('  if (_sa.${fname} != _sb.${fname}) _eq = false;')
+					}
+				}
+			}
+		} else {
+			// Struct not found, fall back to memcmp
+			g.sb.writeln('  if (memcmp(&_sa, &_sb, sizeof(${elem_type})) != 0) _eq = false;')
+		}
+	}
+	g.sb.writeln(' }')
+	g.sb.write_string(' _eq; })')
+}
+
+// parse_fixed_array_elem_type extracts element type and length from "Array_fixed_T_N".
+fn parse_fixed_array_elem_type(fixed_type string) (string, int) {
+	without_prefix := fixed_type['Array_fixed_'.len..]
+	// Find the last underscore followed by digits (the array length)
+	for i := without_prefix.len - 1; i >= 0; i-- {
+		if without_prefix[i] == `_` {
+			len_str := without_prefix[i + 1..]
+			elem_type := without_prefix[..i]
+			return elem_type, len_str.int()
+		}
+	}
+	return without_prefix, 0
+}
+
+// fixed_array_elem_needs_deep_eq returns true if the element type requires deep comparison.
+fn fixed_array_elem_needs_deep_eq(elem_type string) bool {
+	if elem_type == 'string' || elem_type == 'array' || elem_type.starts_with('Map_') {
+		return true
+	}
+	// Dynamic arrays (Array_T but not Array_fixed_T) always need deep eq
+	if elem_type.starts_with('Array_') && !elem_type.starts_with('Array_fixed_') {
+		return true
+	}
+	// For nested fixed arrays (Array_fixed_T_N), recursively check inner element type
+	if elem_type.starts_with('Array_fixed_') {
+		inner_elem, _ := parse_fixed_array_elem_type(elem_type)
+		return fixed_array_elem_needs_deep_eq(inner_elem)
+	}
+	return false
+}
+
+// gen_fixed_array_deep_eq generates element-wise comparison for fixed arrays with non-trivial elements.
+// Uses pointers to avoid C array assignment issues (C arrays can't be initialized with =).
+// For nested fixed arrays (e.g., [2][2]string), flattens to the innermost non-fixed element type.
+fn (mut g Gen) gen_fixed_array_deep_eq(fixed_type string, elem_type string, arr_len int, call_args []ast.Expr) {
+	// Flatten nested fixed arrays to innermost element type
+	mut flat_elem := elem_type
+	mut total_len := arr_len
+	for flat_elem.starts_with('Array_fixed_') {
+		inner, inner_len := parse_fixed_array_elem_type(flat_elem)
+		if inner_len <= 0 {
+			break
+		}
+		total_len *= inner_len
+		flat_elem = inner
+	}
+	// Determine C element type for pointer casting
+	c_elem_type := if flat_elem == 'string' {
+		'string'
+	} else if flat_elem == 'array' || flat_elem.starts_with('Array_') {
+		'array'
+	} else if flat_elem.starts_with('Map_') {
+		flat_elem
+	} else {
+		flat_elem
+	}
+	// Cast to flat element pointers (fixed arrays are contiguous in memory)
+	g.sb.write_string('({ ${c_elem_type} *_pa = (${c_elem_type}*)')
+	g.gen_fixed_array_cmp_operand(call_args[0], fixed_type)
+	g.sb.write_string('; ${c_elem_type} *_pb = (${c_elem_type}*)')
+	g.gen_fixed_array_cmp_operand(call_args[1], fixed_type)
+	g.sb.writeln('; bool _eq = true;')
+	g.sb.writeln(' for (int _i = 0; _eq && _i < ${total_len}; _i++) {')
+	if flat_elem == 'string' {
+		g.sb.writeln('  if (!string__eq(_pa[_i], _pb[_i])) _eq = false;')
+	} else if flat_elem == 'array' || flat_elem.starts_with('Array_') {
+		g.sb.writeln('  if (!__v2_array_eq(_pa[_i], _pb[_i])) _eq = false;')
+	} else if flat_elem.starts_with('Map_') {
+		g.sb.writeln('  if (!${flat_elem}_map_eq(_pa[_i], _pb[_i])) _eq = false;')
+	}
+	g.sb.writeln(' }')
+	g.sb.write_string(' _eq; })')
 }
