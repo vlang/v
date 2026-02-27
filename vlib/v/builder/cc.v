@@ -285,10 +285,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-			if v.pref.is_shared || v.disable_flto {
-				// Keep shared libraries away from LTO to avoid runtime loader regressions.
-				have_flto = false
-			}
+		if v.pref.is_shared || v.disable_flto {
+			// Keep shared libraries away from LTO to avoid runtime loader regressions.
+			have_flto = false
+		}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -311,10 +311,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
-			if v.pref.is_shared || v.disable_flto {
-				// Keep shared libraries away from LTO to avoid runtime loader regressions.
-				have_flto = false
-			}
+		if v.pref.is_shared || v.disable_flto {
+			// Keep shared libraries away from LTO to avoid runtime loader regressions.
+			have_flto = false
+		}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -1263,7 +1263,8 @@ fn (mut b Builder) cc_freebsd_cross() {
 fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
 	cross_compiler_name := c.pref.ccompiler
-	cross_compiler_name_path := if cross_compiler_name.contains('/') || cross_compiler_name.contains('\\') {
+	cross_compiler_name_path := if cross_compiler_name.contains('/')
+		|| cross_compiler_name.contains('\\') {
 		cross_compiler_name
 	} else {
 		os.find_abs_path_of_executable(cross_compiler_name) or {

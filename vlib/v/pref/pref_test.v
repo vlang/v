@@ -41,11 +41,13 @@ fn test_cross_compile_keeps_explicit_cc() {
 	target_os := if pref.get_host_os() == .windows { 'linux' } else { 'windows' }
 	custom_cc := 'cosmocc'
 
-	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os], false)
+	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os],
+		false)
 	assert first.ccompiler_set_by_flag
 	assert first.ccompiler == custom_cc
 
-	second, _ := pref.parse_args_and_show_errors(['help'], ['', '-os', target_os, '-cc', custom_cc], false)
+	second, _ := pref.parse_args_and_show_errors(['help'], ['', '-os', target_os, '-cc', custom_cc],
+		false)
 	assert second.ccompiler_set_by_flag
 	assert second.ccompiler == custom_cc
 }

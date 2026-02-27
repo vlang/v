@@ -152,9 +152,12 @@ fn testsuite_begin() {
 	app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
 
 	app.Middleware.route_use('/after', handler: after_middleware, after: true)
-	app.Middleware.route_use('/admin/auth', handler: auth_required_middleware, methods: [
-		.get,
-	])
+	app.Middleware.route_use('/admin/auth',
+		handler: auth_required_middleware
+		methods: [
+			.get,
+		]
+	)
 
 	// Gzip middleware tests
 	app.Middleware.use(veb.decode_gzip[Context]())
