@@ -112,7 +112,7 @@ jobs:
     needs: release-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
