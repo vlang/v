@@ -232,8 +232,8 @@ fn test_encode_gzip_middleware() {
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == 'gzip', 'Expected gzip encoding, got: ${encoding}'
 
-	decompressed := gzip.decompress(x.body.bytes())!
-	assert decompressed.bytestr() == 'gzip response, 2'
+	// HTTP client auto-decompresses gzip content
+	assert x.body == 'gzip response, 2'
 }
 
 // Verifies that decode_gzip middleware decompresses request bodies
@@ -293,8 +293,8 @@ fn test_encode_auto_gzip_fallback() {
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == 'gzip', 'Expected gzip encoding when zstd is not in Accept-Encoding, got: ${encoding}'
 
-	decompressed := gzip.decompress(x.body.bytes())!
-	assert decompressed.bytestr() == 'content response, 2'
+	// HTTP client auto-decompresses gzip content
+	assert x.body == 'content response, 2'
 }
 
 // Verifies that encode_auto sends uncompressed when no encoding is supported

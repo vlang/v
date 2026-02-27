@@ -205,16 +205,8 @@ fn test_gzip_compression_with_accept_encoding() {
 	assert x.header.get(.content_encoding)! == 'gzip'
 	assert x.header.get(.vary)! == 'Accept-Encoding'
 
-	// Verify Content-Length header matches actual body size
-	content_length := x.header.get(.content_length)!.int()
-	assert content_length == x.body.len, 'Content-Length should match actual body size'
-
-	// Verify the body is compressed
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'failed to decompress response: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == test_file_content
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == test_file_content
 }
 
 fn test_no_compression_without_accept_encoding() {
@@ -277,13 +269,8 @@ fn test_already_compressed_flag() {
 
 	assert x.status() == .ok
 	// The file should be compressed only once (in send_file, not by middleware)
-	// We can't directly test the already_compressed flag, but we can verify
-	// that the response is valid gzip
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'response should be valid gzip: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == test_file_content
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == test_file_content
 }
 
 fn test_readonly_filesystem_fallback() {
@@ -315,12 +302,8 @@ fn test_readonly_filesystem_fallback() {
 	gz_path := '${readonly_file}.gz'
 	assert !os.exists(gz_path), '.gz cache file should not be created beside readonly source files'
 
-	// Verify content is valid gzip
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'response should be valid gzip even on readonly fs: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == 'This is a readonly file test'
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == 'This is a readonly file test'
 }
 
 fn test_readonly_filesystem_fallback_zstd() {
@@ -374,13 +357,9 @@ fn test_precompressed_gz_file_served() {
 	assert x.header.get(.content_encoding)! == 'gzip'
 	assert x.header.get(.vary)! == 'Accept-Encoding'
 
-	// Verify it's the pre-compressed content
+	// HTTP client auto-decompresses gzip, so verify the content directly
 	large_content := 'X'.repeat(2000)
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'manual .gz should be valid: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == large_content
+	assert x.body == large_content
 }
 
 fn test_no_auto_compression_with_max_size_zero() {
@@ -397,12 +376,9 @@ fn test_no_auto_compression_with_max_size_zero() {
 	assert x.header.get(.content_encoding)! == 'gzip'
 	assert x.header.get(.vary)! == 'Accept-Encoding'
 
+	// HTTP client auto-decompresses gzip, so verify the content directly
 	large_content := 'X'.repeat(2000)
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'manual .gz should be valid with max_size=0: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == large_content
+	assert x.body == large_content
 
 	// 2. Verify auto-compression is disabled for files without .gz
 	mut req2 := http.new_request(.get, '${localserver_no_auto}/no_auto.txt', '')
@@ -496,12 +472,8 @@ fn test_gzip_fallback_when_zstd_not_supported() {
 	assert x.status() == .ok
 	assert x.header.get(.content_encoding)! == 'gzip', 'should fallback to gzip when zstd not supported'
 
-	// Verify the body is valid gzip
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'failed to decompress gzip response: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == test_file_content
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == test_file_content
 }
 
 // Tests for enable_static_gzip only (backward compatibility)
@@ -516,12 +488,8 @@ fn test_gzip_only_serves_gzip() {
 	assert x.header.get(.content_encoding)! == 'gzip', 'gzip-only mode should serve gzip'
 	assert x.header.get(.vary)! == 'Accept-Encoding'
 
-	// Verify the body is valid gzip
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'failed to decompress gzip response: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == test_file_content
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == test_file_content
 }
 
 fn test_gzip_only_ignores_zstd_request() {
@@ -534,11 +502,8 @@ fn test_gzip_only_ignores_zstd_request() {
 	// Should serve gzip, NOT zstd (because only enable_static_gzip is set)
 	assert x.header.get(.content_encoding)! == 'gzip', 'gzip-only mode should serve gzip even when client supports zstd'
 
-	decompressed := gzip.decompress(x.body.bytes()) or {
-		assert false, 'failed to decompress gzip response: ${err}'
-		return
-	}
-	assert decompressed.bytestr() == test_file_content
+	// HTTP client auto-decompresses gzip, so verify the content directly
+	assert x.body == test_file_content
 }
 
 fn test_gzip_only_no_compression_without_gzip_header() {

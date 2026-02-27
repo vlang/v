@@ -1370,13 +1370,15 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		mut inferred_type := interface_type
-		if generic_info.is_generic {
+		is_fully_concrete := inter_sym.info.concrete_types.len > 0
+			&& !inter_sym.info.concrete_types.any(it.has_flag(.generic))
+		if generic_info.is_generic && !is_fully_concrete {
 			inferred_type = c.unwrap_generic_interface(typ, generic_type, pos)
 			if inferred_type == 0 {
 				return false
 			}
 		}
-		if inter_sym.info.is_generic {
+		if inter_sym.info.is_generic && !is_fully_concrete {
 			if inferred_type == interface_type {
 				// terminate early, since otherwise we get an infinite recursion/segfault:
 				return false
