@@ -36,7 +36,7 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 			continue
 		}
 		if attr.starts_with('host:') {
-			host = attr.all_after('host:').trim_space().trim("'\"")
+			host = attr.all_after('host:').trim_space().trim('\'"')
 			x.delete(i)
 			continue
 		}
