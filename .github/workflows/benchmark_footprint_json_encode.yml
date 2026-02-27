@@ -23,7 +23,7 @@ jobs:
         run: (echo '```sh'; v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v; echo '```') > vlib/v/tests/bench/bench_json_vs_json2_out.md
 
       - name: Upload result file
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: program-output
           path: vlib/v/tests/bench/bench_json_vs_json2_out.md

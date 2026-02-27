@@ -102,7 +102,7 @@ jobs:
           mv ${{ matrix.artifact }} v/
           cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
