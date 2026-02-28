@@ -295,9 +295,12 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
 	mut body_pos := u64(0)
+	mut headers_end := -1
+	mut expected_size := u64(0)
+	mut has_content_length := false
+	mut header_buf := strings.new_builder(1024)
 	mut old_len := u64(0)
 	mut new_len := u64(0)
-	mut expected_size := u64(0)
 	mut status_code := -1
 	for {
 		readcounter++
@@ -322,29 +325,65 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if req.on_progress != unsafe { nil } {
 			req.on_progress(req, bchunk, u64(new_len))!
 		}
-		if body_pos == 0 {
-			bidx := schunk.index_(headers_body_boundary)
-			if bidx > 0 {
-				body_buffer_offset := bidx + 4
-				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
-				body_pos = u64(old_len) + u64(body_buffer_offset)
-			}
-		}
-		body_so_far := u64(new_len) - body_pos
-		if req.on_progress_body != unsafe { nil } {
-			if expected_size == 0 {
-				lidx := schunk.index_('Content-Length: ')
-				if lidx > 0 {
-					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
-					if esize > 0 {
-						expected_size = esize
+		if headers_end < 0 {
+			unsafe { header_buf.write_ptr(bp, len) }
+			if header_buf.len >= headers_body_boundary.len {
+				header_str := header_buf.bytestr()
+				hidx := header_str.index_(headers_body_boundary)
+				if hidx >= 0 {
+					headers_end = hidx + headers_body_boundary.len
+					body_pos = u64(headers_end)
+					for line in header_str[..hidx].split('\r\n') {
+						if line.len == 0 {
+							continue
+						}
+						low := line.to_lower()
+						if low.starts_with('content-length:') {
+							raw_cl := line.all_after(':').trim_space()
+							mut valid_cl := raw_cl.len > 0
+							for ch in raw_cl {
+								if !ch.is_digit() {
+									valid_cl = false
+									break
+								}
+							}
+							if valid_cl {
+								expected_size = raw_cl.u64()
+								has_content_length = true
+							}
+						}
 					}
 				}
 			}
+		}
+		if headers_end >= 0 && old_len < u64(headers_end) {
+			header_bytes_in_chunk := int(u64(headers_end) - old_len)
+			if header_bytes_in_chunk >= len {
+				bchunk = []u8{}
+			} else {
+				bchunk = unsafe { (&u8(bchunk.data) + header_bytes_in_chunk).vbytes(len - header_bytes_in_chunk) }
+			}
+		}
+		mut body_so_far := u64(0)
+		if headers_end >= 0 && new_len > body_pos {
+			body_so_far = u64(new_len) - body_pos
+		}
+		if req.on_progress_body != unsafe { nil } {
 			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		}
+		if has_content_length {
+			if expected_size > 0 && body_so_far >= expected_size {
+				break
+			}
+			// Some streaming responses may incorrectly send `Content-Length: 0` and then stream data.
+			// Only short-circuit zero-length bodies for statuses/methods that must not have a body.
+			if expected_size == 0
+				&& (req.method == .head || status_code in [101, 102, 103, 204, 304]) {
+				break
+			}
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
 			break
