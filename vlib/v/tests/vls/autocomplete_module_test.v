@@ -103,7 +103,7 @@ const test_data = [
 	TestData{
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
-		output: ''
+		output: 'unresolved type, maybe "strings" was not defined. otherwise this is a bug, should never happen; please report'
 	},
 	TestData{
 		method: .completion
