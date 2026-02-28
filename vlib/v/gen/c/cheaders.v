@@ -414,6 +414,9 @@ void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #endif
 #endif
 #ifdef _WIN32
+	#ifdef WINVER
+		#undef WINVER
+	#endif
 	#define WINVER 0x0600
 	#ifdef _WIN32_WINNT
 		#undef _WIN32_WINNT

@@ -5,7 +5,7 @@ module sync
 
 import time
 
-// synchapi.h is already provided through windows.h in V's static C headers
+#include <synchapi.h>
 #include <time.h>
 
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
