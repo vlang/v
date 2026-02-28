@@ -255,11 +255,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		c.module_autocomplete(mod_name)
 		exit(0)
 	}
-	if node.kind == .unresolved {
-		eprintln('unresolved type, maybe "${node.name}" was not defined. otherwise this is a bug, should never happen; please report')
-		exit(1)
-	}
-	if node.obj.typ == ast.no_type {
+	if node.kind == .unresolved || node.obj.typ == ast.no_type {
 		exit(0)
 	}
 	sym := c.table.sym(c.unwrap_generic(node.obj.typ))
