@@ -5063,6 +5063,32 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		mut last_stmt := node.stmts.last()
 		if mut last_stmt is ast.ExprStmt {
 			c.expected_type = expected_type
+			// Check for shared array slice - auto clone for safety
+			if mut last_stmt.expr is ast.IndexExpr {
+				index_expr := last_stmt.expr
+				if index_expr.index is ast.RangeExpr && index_expr.left_type.has_flag(.shared_f)
+					&& !c.inside_unsafe {
+					// Slicing a shared array creates a view over shared memory.
+					// Auto-clone for safety to avoid data races.
+					c.add_error_detail_with_pos('To silence this notice, use either an explicit `.clone()`,
+or use an explicit `unsafe{ ... }` block, if you do not want a copy of the slice.',
+						index_expr.pos)
+					c.note('an implicit clone of the shared array slice was done here',
+						index_expr.pos)
+					slice_type := index_expr.typ
+					last_stmt.expr = ast.CallExpr{
+						name:           'clone'
+						kind:           .clone
+						left:           index_expr
+						left_type:      slice_type
+						is_method:      true
+						receiver_type:  slice_type
+						return_type:    slice_type
+						scope:          c.fn_scope
+						is_return_used: true
+					}
+				}
+			}
 			ret_type = c.expr(mut last_stmt.expr)
 		}
 	}
@@ -5529,12 +5555,13 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
+		// shared array[1..2] => array (slicing creates a new non-shared array)
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
 			idx := c.table.find_or_register_array(elem_type)
 			typ = ast.new_type(idx)
 		} else {
-			typ = typ.set_nr_muls(0)
+			typ = typ.set_nr_muls(0).clear_flag(.shared_f)
 		}
 	} else { // [1]
 		if typ_sym.kind == .map {
