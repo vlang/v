@@ -153,6 +153,14 @@ fn (selector VpmInstallServerSelector) metadata_server_urls() []string {
 
 fn get_ident_from_url(raw_url string) !(string, string) {
 	verbose_println_more(@FILE_LINE, @FN, 'raw_url: ${raw_url}')
+	// On Windows, absolute paths like `C:\...` are misinterpreted by urllib.parse
+	// (the drive letter `C:` is treated as a URL scheme). Handle local paths first.
+	if os.is_abs_path(raw_url) || raw_url.starts_with('./') || raw_url.starts_with('../')
+		|| raw_url.starts_with('~/') || raw_url.starts_with('.\\') || raw_url.starts_with('..\\') {
+		normalized := raw_url.replace('\\', '/')
+		_, name := normalized.rsplit_once('/') or { return '', normalized.trim_string_right('.git') }
+		return '', name.trim_string_right('.git')
+	}
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
 	normalized_path := url.path.trim_left('/').trim_space()
 	publisher, mut name := normalized_path.rsplit_once('/') or {
@@ -160,9 +168,7 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 			verbose_println_more(@FILE_LINE, @FN, 'ok, publisher: "", name: "test_module"')
 			return '', 'test_module'
 		}
-		if (url.scheme in ['file', ''] || os.is_abs_path(raw_url)
-			|| raw_url.starts_with('./') || raw_url.starts_with('../')
-			|| raw_url.starts_with('~/')) && normalized_path.len > 0 {
+		if url.scheme in ['file', ''] && normalized_path.len > 0 {
 			return '', normalized_path
 		}
 		final_error := 'failed to retrieve module name for `${url}`.'
