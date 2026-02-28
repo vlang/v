@@ -1,7 +1,6 @@
 module closure
 
-#include <synchapi.h>
-
+// synchapi.h is already provided through windows.h in V's static C headers
 struct ClosureMutex {
 	closure_mtx C.SRWLOCK
 }
