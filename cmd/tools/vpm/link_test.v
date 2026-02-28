@@ -16,7 +16,10 @@ fn testsuite_end() {
 
 fn execute_in_dir(dir string, cmd string) os.Result {
 	old_dir := os.getwd()
-	os.chdir(dir) or { return os.Result{exit_code: -1, output: 'failed to chdir: ${err}'} }
+	os.chdir(dir) or { return os.Result{
+		exit_code: -1
+		output:    'failed to chdir: ${err}'
+	} }
 	defer {
 		os.chdir(old_dir) or {}
 	}

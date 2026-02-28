@@ -158,7 +158,9 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 	if os.is_abs_path(raw_url) || raw_url.starts_with('./') || raw_url.starts_with('../')
 		|| raw_url.starts_with('~/') || raw_url.starts_with('.\\') || raw_url.starts_with('..\\') {
 		normalized := raw_url.replace('\\', '/')
-		_, name := normalized.rsplit_once('/') or { return '', normalized.trim_string_right('.git') }
+		_, name := normalized.rsplit_once('/') or {
+			return '', normalized.trim_string_right('.git')
+		}
 		return '', name.trim_string_right('.git')
 	}
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
