@@ -58,13 +58,18 @@ pub enum OpCode {
 	sitofp
 	bitcast
 
-	// Comparisons
+	// Comparisons (signed)
 	lt
 	gt
 	le
 	ge
 	eq
 	ne
+	// Comparisons (unsigned)
+	ult
+	ugt
+	ule
+	uge
 
 	// Other
 	phi

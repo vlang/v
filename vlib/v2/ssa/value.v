@@ -44,5 +44,6 @@ pub:
 	linkage       Linkage
 	alignment     int
 	is_constant   bool
-	initial_value i64 // For constants/enums, the initial integer value
+	initial_value i64  // For constants/enums, the initial integer value
+	initial_data  []u8 // For constant arrays: serialized element data
 }

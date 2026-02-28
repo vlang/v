@@ -32,11 +32,19 @@ fn (mut t Transformer) prop_stmt(stmt ast.Stmt) {
 			t.prop_expr(stmt.extra)
 		}
 		ast.AssignStmt {
-			for e in stmt.lhs {
-				t.prop_expr(e)
-			}
+			// Process RHS first so types are available for LHS propagation
 			for e in stmt.rhs {
 				t.prop_expr(e)
+			}
+			for i, e in stmt.lhs {
+				t.prop_expr(e)
+				// Propagate type from RHS to LHS if LHS is still untyped
+				lhs_pos := e.pos()
+				if lhs_pos.is_valid() && !t.has_prop_type(lhs_pos.id) && i < stmt.rhs.len {
+					if rhs_type := t.get_expr_type(stmt.rhs[i]) {
+						t.env.set_expr_type(lhs_pos.id, rhs_type)
+					}
+				}
 			}
 		}
 		ast.BlockStmt {
@@ -405,9 +413,50 @@ fn (mut t Transformer) infer_prop_type(expr ast.Expr) ?types.Type {
 		ast.SelectorExpr {
 			// Try to look up the field type using the LHS type
 			if lhs_type := t.get_expr_type(expr.lhs) {
+				base := t.unwrap_alias_and_pointer_type(lhs_type)
+				// Handle built-in type fields directly
+				if base is types.Array {
+					match expr.rhs.name {
+						'len', 'cap', 'element_size' {
+							return types.Type(types.int_)
+						}
+						'data' {
+							return types.Type(types.Pointer{
+								base_type: types.Type(types.void_)
+							})
+						}
+						else {}
+					}
+				}
+				if base is types.String {
+					if expr.rhs.name == 'len' || expr.rhs.name == 'is_lit' {
+						return types.Type(types.int_)
+					}
+					if expr.rhs.name == 'str' {
+						return types.Type(types.Pointer{
+							base_type: types.Type(types.Primitive{
+								props: .integer | .unsigned
+								size:  8
+							})
+						})
+					}
+				}
+				if base is types.Map {
+					if expr.rhs.name == 'len' {
+						return types.Type(types.int_)
+					}
+				}
+				// Try struct field lookup with the original type name
 				type_name := lhs_type.name()
 				if field_type := t.lookup_struct_field_type(type_name, expr.rhs.name) {
 					return field_type
+				}
+				// Try with the unwrapped base type name
+				base_name := base.name()
+				if base_name != type_name {
+					if field_type := t.lookup_struct_field_type(base_name, expr.rhs.name) {
+						return field_type
+					}
 				}
 			}
 			return none

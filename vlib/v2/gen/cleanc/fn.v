@@ -343,6 +343,24 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 			g.write_indent()
 			g.sb.writeln('${init_call}();')
 		}
+		// Call module init() functions (e.g., rand__init) that the transformer
+		// doesn't inject. These must run before user code.
+		for init_fn, _ in g.fn_return_types {
+			if init_fn.ends_with('__init') && init_fn.count('__') == 1 {
+				first_char := init_fn[0]
+				if first_char >= `a` && first_char <= `z` {
+					if params := g.fn_param_is_ptr[init_fn] {
+						if params.len == 0 {
+							g.write_indent()
+							g.sb.writeln('${init_fn}();')
+						}
+					} else {
+						g.write_indent()
+						g.sb.writeln('${init_fn}();')
+					}
+				}
+			}
+		}
 	}
 	g.gen_stmts(node.stmts)
 

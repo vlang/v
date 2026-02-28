@@ -95,6 +95,11 @@ fn asm_sdiv(rd Reg, rn Reg, rm Reg) u32 {
 	return 0x9AC00C00 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
 }
 
+// udiv rd, rn, rm
+fn asm_udiv(rd Reg, rn Reg, rm Reg) u32 {
+	return 0x9AC00800 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
 // msub rd, rn, rm, ra (rd = ra - rn * rm)
 fn asm_msub(rd Reg, rn Reg, rm Reg, ra Reg) u32 {
 	return 0x9B008000 | (u32(rm) << 16) | (u32(ra) << 10) | (u32(rn) << 5) | u32(rd)
@@ -154,9 +159,14 @@ fn asm_ubfx_lower(rd Reg, rn Reg, width u32) u32 {
 
 // === Compare ===
 
-// cmp rn, rm (subs xzr, rn, rm)
+// cmp rn, rm (subs xzr, rn, rm) — 64-bit
 fn asm_cmp_reg(rn Reg, rm Reg) u32 {
 	return 0xEB00001F | (u32(rm) << 16) | (u32(rn) << 5)
+}
+
+// cmp wn, wm (subs wzr, wn, wm) — 32-bit, sign-aware for i32
+fn asm_cmp_reg_w(rn Reg, rm Reg) u32 {
+	return 0x6B00001F | (u32(rm) << 16) | (u32(rn) << 5)
 }
 
 // === Conditional Set ===
@@ -189,6 +199,33 @@ fn asm_cset_le(rd Reg) u32 {
 // cset rd, ge
 fn asm_cset_ge(rd Reg) u32 {
 	return 0x9A9FB7E0 | u32(rd)
+}
+
+// cset rd, hi (unsigned greater than)
+fn asm_cset_hi(rd Reg) u32 {
+	return 0x9A9F97E0 | u32(rd)
+}
+
+// cset rd, hs (unsigned greater or equal)
+fn asm_cset_hs(rd Reg) u32 {
+	return 0x9A9F37E0 | u32(rd)
+}
+
+// cset rd, lo (unsigned less than)
+fn asm_cset_lo(rd Reg) u32 {
+	return 0x9A9F27E0 | u32(rd)
+}
+
+// cset rd, ls (unsigned less or equal)
+fn asm_cset_ls(rd Reg) u32 {
+	return 0x9A9F87E0 | u32(rd)
+}
+
+// === Float Compare ===
+
+// fcmp dn, dm (compare two double-precision floats, sets NZCV)
+fn asm_fcmp_d(dn Reg, dm Reg) u32 {
+	return 0x1E602000 | (u32(dm) << 16) | (u32(dn) << 5)
 }
 
 // === Memory ===
@@ -246,6 +283,12 @@ fn asm_ldr(rt Reg, rn Reg) u32 {
 // ldr wt, [rn] (load 32-bit, zero-extend to x)
 fn asm_ldr_w(rt Reg, rn Reg) u32 {
 	return 0xB9400000 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrsw xt, [rn] (load 32-bit, sign-extend to 64-bit x)
+// Used for signed i32 loads to preserve negative values in 64-bit registers.
+fn asm_ldrsw(rt Reg, rn Reg) u32 {
+	return 0xB9800000 | (u32(rn) << 5) | u32(rt)
 }
 
 // ldrh wt, [rn] (load 16-bit, zero-extend to x)
@@ -458,6 +501,26 @@ fn asm_ucvtf_d_x(dd int, xn Reg) u32 {
 // fcvtzu xd, dn (float to unsigned int, truncate toward zero)
 fn asm_fcvtzu_x_d(xd Reg, dn int) u32 {
 	return 0x9E790000 | (u32(dn) << 5) | u32(xd)
+}
+
+// fmov sd, wn (copy 32-bit integer to single-precision float register)
+fn asm_fmov_s_w(sd int, wn Reg) u32 {
+	return 0x1E270000 | (u32(wn) << 5) | u32(sd)
+}
+
+// fmov wd, sn (copy single-precision float to 32-bit integer register)
+fn asm_fmov_w_s(wd Reg, sn int) u32 {
+	return 0x1E260000 | (u32(sn) << 5) | u32(wd)
+}
+
+// fcvt dd, sn (convert single-precision to double-precision float)
+fn asm_fcvt_d_s(dd int, sn int) u32 {
+	return 0x1E22C000 | (u32(sn) << 5) | u32(dd)
+}
+
+// fcvt sd, dn (convert double-precision to single-precision float)
+fn asm_fcvt_s_d(sd int, dn int) u32 {
+	return 0x1E624000 | (u32(dn) << 5) | u32(sd)
 }
 
 // === Special ===

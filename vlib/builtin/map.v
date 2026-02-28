@@ -212,6 +212,29 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+// map_map_eq compares two maps for equality.
+// Returns true if both maps have the same keys and associated values.
+fn map_map_eq(a map, b map) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i := 0; i < a.key_values.len; i++ {
+		if !a.key_values.has_index(i) {
+			continue
+		}
+		k := a.key_values.key(i)
+		if !b.exists(k) {
+			return false
+		}
+		va := a.key_values.value(i)
+		vb := b.get(k, va)
+		if unsafe { C.memcmp(va, vb, a.value_bytes) } != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 @[inline]
 fn map_clone_string(dest voidptr, pkey voidptr) {
 	unsafe {

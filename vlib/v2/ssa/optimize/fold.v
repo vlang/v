@@ -149,6 +149,22 @@ fn constant_fold(mut m ssa.Module) bool {
 								result = if l_int >= r_int { 1 } else { 0 }
 								folded = true
 							}
+							.ult {
+								result = if u64(l_int) < u64(r_int) { 1 } else { 0 }
+								folded = true
+							}
+							.ugt {
+								result = if u64(l_int) > u64(r_int) { 1 } else { 0 }
+								folded = true
+							}
+							.ule {
+								result = if u64(l_int) <= u64(r_int) { 1 } else { 0 }
+								folded = true
+							}
+							.uge {
+								result = if u64(l_int) >= u64(r_int) { 1 } else { 0 }
+								folded = true
+							}
 							else {}
 						}
 

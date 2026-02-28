@@ -60,6 +60,9 @@ mut:
 	interface_concrete_types map[string]string
 	// Track needed auto-generated sort comparator functions
 	needed_sort_fns map[string]SortComparatorInfo
+	// Override array element types for variables whose checker-inferred type is wrong
+	// (e.g. .map(fn_name) typed as []voidptr instead of []ReturnType)
+	array_elem_type_overrides map[string]string
 	// File set for resolving positions to line numbers (for assert messages)
 	file_set &token.FileSet = unsafe { nil }
 	// Current file and function name (for assert messages)
@@ -511,6 +514,7 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 			}
 		}
 	}
+	t.inject_test_main(mut result)
 	t.inject_main_runtime_const_init_calls(mut result)
 	t.propagate_types(result)
 	return result
@@ -634,6 +638,122 @@ fn (mut t Transformer) inject_runtime_const_init_fns(mut files []ast.File) {
 			}
 			break
 		}
+	}
+}
+
+// inject_test_main synthesizes a main() function for test files that have
+// test_ functions but no explicit main. The generated main calls each test
+// function and prints progress messages. This is needed for all backends
+// (cleanc has its own synthesis in the C emitter, but native backends rely
+// on the transformer to provide main).
+fn (mut t Transformer) inject_test_main(mut files []ast.File) {
+	// Check if there is already a main function
+	mut has_main := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && !stmt.is_method && stmt.name == 'main' {
+				has_main = true
+				break
+			}
+		}
+		if has_main {
+			break
+		}
+	}
+	if has_main {
+		return
+	}
+
+	// Collect test function names
+	mut test_fn_names := []string{}
+	mut test_file_idx := -1
+	for i, file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && !stmt.is_method && stmt.name.starts_with('test_') {
+				test_fn_names << stmt.name
+				if test_file_idx == -1 {
+					test_file_idx = i
+				}
+			}
+		}
+	}
+	if test_fn_names.len == 0 {
+		return
+	}
+
+	// Build main() body: println + call for each test, then summary
+	mut main_stmts := []ast.Stmt{}
+	for test_fn in test_fn_names {
+		// println('Running test: test_fn...')
+		main_stmts << ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'println'
+				}
+				args: [
+					ast.Expr(ast.StringLiteral{
+						kind:  .v
+						value: quote_v_string_literal('Running test: ${test_fn}...')
+					}),
+				]
+			}
+		}
+		// test_fn()
+		main_stmts << ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs: ast.Ident{
+					name: test_fn
+				}
+			}
+		}
+		// println('  OK')
+		main_stmts << ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'println'
+				}
+				args: [
+					ast.Expr(ast.StringLiteral{
+						kind:  .v
+						value: quote_v_string_literal('  OK')
+					}),
+				]
+			}
+		}
+	}
+	// println('All N tests passed.')
+	main_stmts << ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'println'
+			}
+			args: [
+				ast.Expr(ast.StringLiteral{
+					kind:  .v
+					value: quote_v_string_literal('All ${test_fn_names.len} tests passed.')
+				}),
+			]
+		}
+	}
+
+	main_fn := ast.FnDecl{
+		name:  'main'
+		stmts: main_stmts
+	}
+
+	// Add to the file that contains test functions
+	file := files[test_file_idx]
+	mut new_stmts := []ast.Stmt{cap: file.stmts.len + 1}
+	for stmt in file.stmts {
+		new_stmts << stmt
+	}
+	new_stmts << main_fn
+	files[test_file_idx] = ast.File{
+		attributes: file.attributes
+		mod:        file.mod
+		name:       file.name
+		stmts:      new_stmts
+		imports:    file.imports
 	}
 }
 
@@ -1144,6 +1264,18 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 				if wrapped := t.wrap_sumtype_value_transformed(rhs[0], lhs_type_name) {
 					rhs = [wrapped]
 				}
+			}
+		}
+	}
+	// Propagate array element type overrides from RHS temp variables to LHS variables.
+	// When .map(fn_name) expansion creates _filter_tN with a type override, propagate
+	// it to the declared variable (e.g. r2 := _filter_tN → r2 gets the same override).
+	if stmt.op == .decl_assign && rhs.len == 1 && rhs[0] is ast.Ident {
+		rhs_name := (rhs[0] as ast.Ident).name
+		if override := t.array_elem_type_overrides[rhs_name] {
+			lhs_name := t.get_var_name(stmt.lhs[0])
+			if lhs_name != '' {
+				t.array_elem_type_overrides[lhs_name] = override
 			}
 		}
 	}
@@ -1734,6 +1866,21 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	// Expand `a := fn() or { fallback }` to:
 	//   _t := fn(); a := if _t { _t } else { fallback }
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		// For string range with or, use inline bounds checking
+		// to avoid calling string__substr which panics on out-of-bounds.
+		if is_string_range_or {
+			idx_expr := call_expr as ast.IndexExpr
+			mut stmts := []ast.Stmt{}
+			result_expr := t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut
+				stmts)
+			stmts << ast.AssignStmt{
+				op:  stmt.op
+				lhs: stmt.lhs
+				rhs: [result_expr]
+				pos: stmt.pos
+			}
+			return stmts
+		}
 		temp_name := t.gen_temp_name()
 		temp_ident := ast.Ident{
 			name: temp_name
@@ -1979,6 +2126,7 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	is_filter := method_name == 'filter'
 	// For map, determine result element type from the checker's type info
 	mut result_elem := elem_type
+	mut resolved_via_fn_type := false
 	if !is_filter {
 		if typ := t.get_expr_type(body_expr) {
 			// For function types (fn pointer/literal args), use the return type
@@ -1986,11 +2134,37 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 			if typ is types.FnType {
 				if rt := typ.get_return_type() {
 					resolved_typ = rt
+					resolved_via_fn_type = true
 				}
 			}
 			c_name := t.type_to_c_name(resolved_typ)
 			if c_name != '' && c_name != 'void' && c_name != 'int_literal' {
 				result_elem = c_name
+			}
+		}
+		// Fallback: try using the full .map() expression's type (the checker
+		// knows the result type of .map() calls including element type).
+		// Skip this fallback if we already resolved via FnType return type,
+		// because the checker may type .map(fn_name) as []voidptr rather than
+		// using the function's actual return type.
+		if result_elem == elem_type && !resolved_via_fn_type {
+			if map_type := t.get_expr_type(expr) {
+				c_name := t.type_to_c_name(map_type)
+				if c_name.starts_with('Array_') {
+					map_elem := c_name['Array_'.len..]
+					if map_elem != '' {
+						result_elem = map_elem
+					}
+				}
+			}
+		}
+		// Also handle FnLiteral: use its declared return type
+		if result_elem == elem_type && body_expr is ast.FnLiteral {
+			if ret_type := t.get_expr_type(body_expr.typ.return_type) {
+				c_name := t.type_to_c_name(ret_type)
+				if c_name != '' && c_name != 'void' {
+					result_elem = c_name
+				}
 			}
 		}
 	}
@@ -1999,8 +2173,14 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	temp_ident := ast.Ident{
 		name: temp_name
 	}
+	// When the fn-by-name return type was resolved, record an override so that
+	// println/str resolution uses the correct element type instead of the checker's
+	// incorrect []voidptr typing for .map(fn_name) expressions.
+	if resolved_via_fn_type {
+		t.array_elem_type_overrides[temp_name] = result_elem
+	}
 	it_ident := ast.Ident{
-		name: '_filter_it'
+		name: '_filter_it${t.temp_counter}'
 	}
 	// 1. mut _filter_t1 := []ResultType{cap: 0}
 	init_stmt := ast.Stmt(ast.AssignStmt{
@@ -2034,9 +2214,13 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	//   → ... string _v = _filter_it.str(); ...
 	transformed_body := if body_expr is ast.Ident && !t.expr_contains_ident_named(body_expr, 'it')
 		&& t.is_fn_ident(body_expr) {
-		ast.Expr(ast.CallExpr{
-			lhs:  t.transform_expr(body_expr)
-			args: [ast.Expr(it_ident)]
+		// Generate CallOrCastExpr (not CallExpr) so it goes through
+		// transform_call_or_cast_expr during transform_stmt(for_stmt),
+		// which produces the same code path as the (it) syntax case.
+		ast.Expr(ast.CallOrCastExpr{
+			lhs:  body_expr
+			expr: it_ident
+			pos:  body_expr.pos
 		})
 	} else if body_expr is ast.FnLiteral && body_expr.typ.params.len == 1 {
 		// Inline FnLiteral: extract its single return expression and replace param with _filter_it
@@ -2044,9 +2228,9 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 		//   → ... _filter_it.str() ...
 		param_name := body_expr.typ.params[0].name
 		ret_expr := t.extract_fn_literal_return_expr(body_expr)
-		t.replace_named_ident(ret_expr, param_name, '_filter_it')
+		t.replace_named_ident(ret_expr, param_name, it_ident.name)
 	} else {
-		t.replace_it_ident(body_expr, '_filter_it')
+		t.replace_it_ident(body_expr, it_ident.name)
 	}
 
 	// Build the for loop body
@@ -2207,6 +2391,19 @@ fn (t &Transformer) replace_it_ident(expr ast.Expr, new_name string) ast.Expr {
 			}
 		}
 		ast.CallExpr {
+			// For nested .map()/.filter() method calls, don't replace 'it'
+			// in the body argument — it belongs to the inner scope.
+			if expr.lhs is ast.SelectorExpr {
+				sel := expr.lhs as ast.SelectorExpr
+				sel_name := sel.rhs.name
+				if (sel_name == 'map' || sel_name == 'filter') && expr.args.len == 1 {
+					return ast.CallExpr{
+						lhs:  t.replace_it_ident(expr.lhs, new_name)
+						args: expr.args // keep body untouched
+						pos:  expr.pos
+					}
+				}
+			}
 			mut new_args := []ast.Expr{cap: expr.args.len}
 			for arg in expr.args {
 				new_args << t.replace_it_ident(arg, new_name)
@@ -2218,6 +2415,19 @@ fn (t &Transformer) replace_it_ident(expr ast.Expr, new_name string) ast.Expr {
 			}
 		}
 		ast.CallOrCastExpr {
+			// For nested .map()/.filter() calls, don't replace 'it' in the body
+			// argument — it belongs to the inner scope.
+			if expr.lhs is ast.SelectorExpr {
+				sel := expr.lhs as ast.SelectorExpr
+				sel_name := sel.rhs.name
+				if sel_name == 'map' || sel_name == 'filter' {
+					return ast.CallOrCastExpr{
+						lhs:  t.replace_it_ident(expr.lhs, new_name)
+						expr: expr.expr // keep body untouched
+						pos:  expr.pos
+					}
+				}
+			}
 			return ast.CallOrCastExpr{
 				lhs:  t.replace_it_ident(expr.lhs, new_name)
 				expr: t.replace_it_ident(expr.expr, new_name)
@@ -2821,6 +3031,11 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 	// Native backends (arm64/x64) don't use Option/Result structs.
 	// Expand `fn() or { fallback }` to: { _t := fn(); if _t { _t } else { fallback } }
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		// For string range with or, use inline bounds checking
+		if is_string_range_or {
+			idx_expr := call_expr as ast.IndexExpr
+			return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
+		}
 		temp_name := t.gen_temp_name()
 		temp_ident := ast.Ident{
 			name: temp_name
@@ -5352,6 +5567,53 @@ fn (t &Transformer) rename_substr_to_checked(expr ast.Expr) ast.Expr {
 		}
 	}
 	return expr
+}
+
+// expand_string_range_or_native generates inline bounds checking for
+// s[start..end] or { fallback } on native backends.
+// Instead of calling string__substr (which panics on out-of-bounds),
+// generates: _s := s; _start := start; _end := end;
+//   if _start >= 0 && _start <= _end && _end <= _s.len { string__substr(_s, _start, _end) } else { fallback }
+fn (mut t Transformer) expand_string_range_or_native_expr(idx_expr ast.IndexExpr, or_stmts []ast.Stmt, mut prefix_stmts []ast.Stmt) ast.Expr {
+	range_expr := idx_expr.expr as ast.RangeExpr
+
+	str_expr := t.transform_expr(idx_expr.lhs)
+
+	// Start expression
+	start_expr := if range_expr.start is ast.EmptyExpr {
+		ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		})
+	} else {
+		t.transform_expr(range_expr.start)
+	}
+
+	// End expression (max_i32 sentinel for open-ended ranges)
+	end_expr := if range_expr.end is ast.EmptyExpr {
+		ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '2147483647'
+		})
+	} else {
+		t.transform_expr(range_expr.end)
+	}
+
+	// Or value and side-effect stmts
+	or_side_stmts, or_value := t.get_or_block_stmts_and_value(or_stmts)
+
+	// Side-effect stmts from or block
+	for s in or_side_stmts {
+		prefix_stmts << s
+	}
+
+	// Call string__substr_or(s, start, end, fallback) which handles bounds checking
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'string__substr_or'
+		}
+		args: [str_expr, start_expr, end_expr, or_value]
+	}
 }
 
 // is_string_expr returns true if the expression is known to be a string

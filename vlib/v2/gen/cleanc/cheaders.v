@@ -485,20 +485,24 @@ fn (mut g Gen) emit_fixed_array_str_write(ptr_var string, elem_type string, arr_
 
 // emit_map_eq_functions generates Map_K_V_map_eq functions for all map types.
 fn (mut g Gen) emit_map_eq_functions() {
-	// Generic fallback for when the specific map type is not known
-	g.sb.writeln('')
-	g.sb.writeln('bool map_map_eq(map a, map b) {')
-	g.sb.writeln('\tif (a.len != b.len) return false;')
-	g.sb.writeln('\tfor (int i = 0; i < a.key_values.len; ++i) {')
-	g.sb.writeln('\t\tif (!DenseArray__has_index(&a.key_values, i)) continue;')
-	g.sb.writeln('\t\tvoid* k = DenseArray__key(&a.key_values, i);')
-	g.sb.writeln('\t\tif (!map__exists(&b, k)) return false;')
-	g.sb.writeln('\t\tvoid* va = DenseArray__value(&a.key_values, i);')
-	g.sb.writeln('\t\tvoid* vb_p = map__get(&b, k, va);')
-	g.sb.writeln('\t\tif (memcmp(va, vb_p, a.value_bytes) != 0) return false;')
-	g.sb.writeln('\t}')
-	g.sb.writeln('\treturn true;')
-	g.sb.writeln('}')
+	// Generic fallback for when the specific map type is not known.
+	// Only emit if not already provided via the V source (builtin/map.v)
+	// or via the cache (builtin.o).
+	if 'map_map_eq' !in g.fn_return_types && g.cached_init_calls.len == 0 {
+		g.sb.writeln('')
+		g.sb.writeln('bool map_map_eq(map a, map b) {')
+		g.sb.writeln('\tif (a.len != b.len) return false;')
+		g.sb.writeln('\tfor (int i = 0; i < a.key_values.len; ++i) {')
+		g.sb.writeln('\t\tif (!DenseArray__has_index(&a.key_values, i)) continue;')
+		g.sb.writeln('\t\tvoid* k = DenseArray__key(&a.key_values, i);')
+		g.sb.writeln('\t\tif (!map__exists(&b, k)) return false;')
+		g.sb.writeln('\t\tvoid* va = DenseArray__value(&a.key_values, i);')
+		g.sb.writeln('\t\tvoid* vb_p = map__get(&b, k, va);')
+		g.sb.writeln('\t\tif (memcmp(va, vb_p, a.value_bytes) != 0) return false;')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\treturn true;')
+		g.sb.writeln('}')
+	}
 
 	mut map_names := g.map_aliases.keys()
 	map_names.sort()

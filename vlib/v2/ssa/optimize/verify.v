@@ -265,7 +265,7 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 			errors << verify_binary_op(m, func_id, blk_id, val_id, instr)
 		}
 		// Comparisons - operands should have same type
-		.lt, .gt, .le, .ge, .eq, .ne {
+		.lt, .gt, .le, .ge, .eq, .ne, .ult, .ugt, .ule, .uge {
 			errors << verify_binary_op(m, func_id, blk_id, val_id, instr)
 		}
 		// Memory operations

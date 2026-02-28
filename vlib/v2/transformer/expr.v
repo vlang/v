@@ -2424,11 +2424,21 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// Check for array comparisons: arr1 == arr2 or arr1 != arr2
 		lhs_arr_type := t.get_array_type_str(expr.lhs)
 		rhs_arr_type := t.get_array_type_str(expr.rhs)
-		if lhs_arr_type != none && rhs_arr_type != none {
+		// For native backends, fixed arrays use memcmp, not array__eq.
+		// get_array_type_str returns 'Array_fixed_...' for fixed arrays.
+		mut is_fixed_array := false
+		if lhs_str := lhs_arr_type {
+			if lhs_str.starts_with('Array_fixed_') {
+				is_fixed_array = true
+			}
+		}
+		if lhs_arr_type != none && rhs_arr_type != none && !is_fixed_array {
 			// Use type-specific equality for arrays of structs/maps (memcmp won't work)
 			mut eq_fn_name := 'array__eq'
-			if t.array_elem_needs_deep_eq(expr.lhs) || t.array_elem_needs_deep_eq(expr.rhs) {
-				eq_fn_name = '${lhs_arr_type}__eq'
+			if t.pref.backend != .arm64 && t.pref.backend != .x64 {
+				if t.array_elem_needs_deep_eq(expr.lhs) || t.array_elem_needs_deep_eq(expr.rhs) {
+					eq_fn_name = '${lhs_arr_type}__eq'
+				}
 			}
 			// Transform array comparisons to function calls
 			eq_call := ast.CallExpr{
@@ -2448,6 +2458,131 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			}
 			// arr1 == arr2 -> array__eq(arr1, arr2)
 			return eq_call
+		}
+		// Check for fixed array comparisons: [N]T == [N]T
+		// For native backends, lower to C.memcmp(&a, &b, N * sizeof(T)) == 0
+		// Only for memcmp-safe element types (primitives, fixed arrays of primitives).
+		// Dynamic arrays, strings, maps, and structs contain heap pointers.
+		if (t.pref.backend == .arm64 || t.pref.backend == .x64) && expr.op in [.eq, .ne] {
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				lhs_base := t.unwrap_alias_and_pointer_type(lhs_type)
+				if lhs_base is types.ArrayFixed {
+					if t.is_memcmp_safe_type(lhs_base.elem_type) {
+						// Primitives/fixed arrays of primitives: use memcmp
+						elem_size := t.type_sizeof(lhs_base.elem_type)
+						total_size := lhs_base.len * elem_size
+						memcmp_call := ast.CallExpr{
+							lhs:  ast.Ident{
+								name: 'C__memcmp'
+							}
+							args: [
+								ast.Expr(ast.PrefixExpr{
+									op:   .amp
+									expr: t.transform_expr(expr.lhs)
+									pos:  expr.pos
+								}),
+								ast.Expr(ast.PrefixExpr{
+									op:   .amp
+									expr: t.transform_expr(expr.rhs)
+									pos:  expr.pos
+								}),
+								ast.Expr(ast.BasicLiteral{
+									kind:  .number
+									value: total_size.str()
+								}),
+							]
+							pos:  expr.pos
+						}
+						zero_lit := ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						}
+						return ast.InfixExpr{
+							op:  expr.op
+							lhs: memcmp_call
+							rhs: zero_lit
+							pos: expr.pos
+						}
+					}
+					// Non-memcmp-safe elements (dynamic arrays, strings, maps):
+					// Generate element-by-element comparison using the appropriate
+					// equality function, since synthesized AST nodes lack type info.
+					elem_base := t.unwrap_alias_and_pointer_type(lhs_base.elem_type)
+					eq_fn := if elem_base is types.Array {
+						'array__eq'
+					} else if t.type_to_c_name(elem_base) == 'string' {
+						'string__=='
+					} else if elem_base is types.Map {
+						'map_map_eq'
+					} else {
+						'' // unsupported element type
+					}
+					if eq_fn != '' {
+						lhs_trans := t.transform_expr(expr.lhs)
+						rhs_trans := t.transform_expr(expr.rhs)
+						mut chain := ast.Expr(ast.CallExpr{
+							lhs:  ast.Ident{
+								name: eq_fn
+							}
+							args: [
+								ast.Expr(ast.IndexExpr{
+									lhs:  lhs_trans
+									expr: ast.BasicLiteral{
+										kind:  .number
+										value: '0'
+									}
+								}),
+								ast.Expr(ast.IndexExpr{
+									lhs:  rhs_trans
+									expr: ast.BasicLiteral{
+										kind:  .number
+										value: '0'
+									}
+								}),
+							]
+							pos:  expr.pos
+						})
+						for i := 1; i < lhs_base.len; i++ {
+							elem_cmp := ast.CallExpr{
+								lhs:  ast.Ident{
+									name: eq_fn
+								}
+								args: [
+									ast.Expr(ast.IndexExpr{
+										lhs:  lhs_trans
+										expr: ast.BasicLiteral{
+											kind:  .number
+											value: i.str()
+										}
+									}),
+									ast.Expr(ast.IndexExpr{
+										lhs:  rhs_trans
+										expr: ast.BasicLiteral{
+											kind:  .number
+											value: i.str()
+										}
+									}),
+								]
+								pos:  expr.pos
+							}
+							chain = ast.Expr(ast.InfixExpr{
+								op:  .and
+								lhs: chain
+								rhs: elem_cmp
+								pos: expr.pos
+							})
+						}
+						if expr.op == .ne {
+							return ast.PrefixExpr{
+								op:   .not
+								expr: chain
+								pos:  expr.pos
+							}
+						}
+						return chain
+					}
+				}
+			}
 		}
 		// Check for map comparisons: map1 == map2 or map1 != map2
 		// Exclude pointer-to-map types (those should be pointer comparisons)
@@ -2469,7 +2604,12 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				rhs_map_type := t.get_map_type_for_expr(expr.rhs)
 				if lhs_map_type != none || rhs_map_type != none {
 					map_type_name := lhs_map_type or { rhs_map_type or { 'map' } }
-					eq_fn := '${map_type_name}_map_eq'
+					// For native backends, use generic map_map_eq (no type-specific wrappers)
+					eq_fn := if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+						'map_map_eq'
+					} else {
+						'${map_type_name}_map_eq'
+					}
 					map_eq_call := ast.CallExpr{
 						lhs:  ast.Ident{
 							name: eq_fn

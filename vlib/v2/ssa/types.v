@@ -29,6 +29,8 @@ pub:
 	params      []TypeID // For Funcs
 	ret_type    TypeID
 	is_c_struct bool // True for C interop structs (use raw field names, typedef to C struct)
+	is_union    bool // True for union types (all fields overlap at offset 0)
+	is_unsigned bool // True for unsigned integer types (u8, u16, u32, u64)
 }
 
 pub struct TypeStore {
@@ -49,6 +51,16 @@ pub fn (mut ts TypeStore) get_int(width int) TypeID {
 		return id
 	}
 	id := ts.register(Type{ kind: .int_t, width: width })
+	ts.cache[key] = id
+	return id
+}
+
+pub fn (mut ts TypeStore) get_uint(width int) TypeID {
+	key := 'u${width}'
+	if id := map_get_type_id(ts.cache, key) {
+		return id
+	}
+	id := ts.register(Type{ kind: .int_t, width: width, is_unsigned: true })
 	ts.cache[key] = id
 	return id
 }

@@ -580,6 +580,10 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	}
 
 	// Transform function body
+	// Clear per-function state: array_elem_type_overrides tracks .map() result types
+	// and must not leak across function boundaries (e.g., variable 'a' in one function
+	// must not affect variable 'a' in another function).
+	t.array_elem_type_overrides = map[string]string{}
 	old_fn_name_str := t.cur_fn_name_str
 	t.cur_fn_name_str = decl.name
 	transformed_stmts := t.transform_stmts(decl.stmts)
@@ -930,6 +934,67 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 						}
 					}
 				}
+				// insert(i, arr) → insert_many(i, arr.data, arr.len)
+				if resolved.ends_with('__insert') && expr.args.len == 2 {
+					if arg_type := t.get_expr_type(expr.args[1]) {
+						arg_base := t.unwrap_alias_and_pointer_type(arg_type)
+						if arg_base is types.Array {
+							arr_arg := t.transform_expr(expr.args[1])
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: resolved.replace('__insert', '__insert_many')
+								}
+								args: [
+									t.transform_expr(sel.lhs),
+									t.transform_expr(expr.args[0]),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'data'
+										}
+									}),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'len'
+										}
+									}),
+								]
+								pos:  expr.pos
+							}
+						}
+					}
+				}
+				// prepend(arr) → prepend_many(arr.data, arr.len)
+				if resolved.ends_with('__prepend') && expr.args.len == 1 {
+					if arg_type := t.get_expr_type(expr.args[0]) {
+						arg_base := t.unwrap_alias_and_pointer_type(arg_type)
+						if arg_base is types.Array {
+							arr_arg := t.transform_expr(expr.args[0])
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: resolved.replace('__prepend', '__prepend_many')
+								}
+								args: [
+									t.transform_expr(sel.lhs),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'data'
+										}
+									}),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'len'
+										}
+									}),
+								]
+								pos:  expr.pos
+							}
+						}
+					}
+				}
 				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 				is_static := t.is_static_method_call(sel.lhs)
 				mut transformed_call_args := []ast.Expr{cap: call_args.len}
@@ -1087,7 +1152,7 @@ fn (t &Transformer) receiver_type_to_c_prefix(typ types.Type) string {
 		types.Struct, types.Enum, types.SumType {
 			return t.type_to_c_name(typ)
 		}
-		types.Primitive {
+		types.Primitive, types.Char, types.Rune {
 			return t.type_to_c_name(typ)
 		}
 		else {
@@ -1856,6 +1921,61 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			&& t.lookup_var_type(sel.lhs.name) == none
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+				// prepend(arr) → prepend_many(arr.data, arr.len)
+				if resolved.ends_with('__prepend') && expr.expr !is ast.EmptyExpr {
+					if arg_type := t.get_expr_type(expr.expr) {
+						arg_base := t.unwrap_alias_and_pointer_type(arg_type)
+						if arg_base is types.Array {
+							arr_arg := t.transform_expr(expr.expr)
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: resolved.replace('__prepend', '__prepend_many')
+								}
+								args: [
+									t.transform_expr(sel.lhs),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'data'
+										}
+									}),
+									ast.Expr(ast.SelectorExpr{
+										lhs: arr_arg
+										rhs: ast.Ident{
+											name: 'len'
+										}
+									}),
+								]
+								pos:  expr.pos
+							}
+						}
+					}
+				}
+				// For nested array .repeat(n), use repeat_to_depth with the correct depth
+				// so inner arrays are deeply cloned instead of shallow-copied.
+				if resolved == 'array__repeat' {
+					if recv_type := t.get_expr_type(sel.lhs) {
+						depth := t.get_array_nesting_depth(recv_type)
+						if depth > 1 {
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: 'array__repeat_to_depth'
+								}
+								args: [
+									t.transform_expr(sel.lhs),
+									t.transform_expr(expr.expr),
+									ast.Expr(ast.BasicLiteral{
+										kind:  .number
+										value: '${depth - 1}'
+									}),
+								]
+								pos:  expr.pos
+							}
+						}
+					}
+				}
+				// insert(i, arr) in single-arg form won't happen (needs 2 args)
+				// but handle it for safety
 				is_static := t.is_static_method_call(sel.lhs)
 				mut call_args := []ast.Expr{}
 				if expr.expr !is ast.EmptyExpr {

@@ -166,6 +166,22 @@ pub fn (mut m Module) add_global_with_value(name string, typ TypeID, is_const bo
 	return m.add_value_node(.global, ptr_typ, name, id)
 }
 
+pub fn (mut m Module) add_global_with_data(name string, elem_type TypeID, is_const bool, data []u8) int {
+	id := m.globals.len
+	g := GlobalVar{
+		name:         name
+		typ:          elem_type
+		linkage:      .private
+		is_constant:  is_const
+		initial_data: data
+	}
+	m.globals << g
+
+	// The Value is a POINTER to element data (for direct indexing)
+	ptr_typ := m.type_store.get_ptr(elem_type)
+	return m.add_value_node(.global, ptr_typ, name, id)
+}
+
 // add_external_global adds an external global variable (defined outside this module)
 // Returns the ValueID for the global pointer
 pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {

@@ -39,6 +39,8 @@ pub mut:
 
 	// Stack offset where x8 (indirect return pointer) is saved for large struct returns
 	x8_save_offset int
+	// Cache for deduplicating string data in cstring section (content -> offset)
+	string_data_cache map[string]int
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
@@ -60,7 +62,11 @@ pub fn (mut g Gen) gen() {
 		// Align to 8 bytes
 		data_offset = (data_offset + 7) & ~7
 		g.macho.add_symbol('_' + gvar.name, data_offset, true, 3)
-		size := g.type_size(gvar.typ)
+		size := if gvar.initial_data.len > 0 {
+			gvar.initial_data.len
+		} else {
+			g.type_size(gvar.typ)
+		}
 		data_offset += u64(size)
 	}
 
@@ -84,6 +90,11 @@ pub fn (mut g Gen) gen() {
 		}
 		for g.macho.data_data.len % 8 != 0 {
 			g.macho.data_data << 0
+		}
+		// Constant arrays: emit raw element data directly
+		if gvar.initial_data.len > 0 {
+			g.macho.data_data << gvar.initial_data
+			continue
 		}
 		// Calculate actual size of the global variable based on its type.
 		size := g.type_size(gvar.typ)
@@ -428,6 +439,8 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	if func.name == 'main' {
 		g.store_entry_arg_to_global(0, 'g_main_argc')
 		g.store_entry_arg_to_global(1, 'g_main_argv')
+		// Call _vinit to initialize dynamic array constants
+		g.emit_call_to_named_fn('_vinit')
 	}
 
 	// Spill params
@@ -541,7 +554,6 @@ fn (mut g Gen) gen_func(func mir.Function) {
 fn (mut g Gen) gen_instr(val_id int) {
 	instr := g.mod.instrs[g.mod.values[val_id].index]
 	op := g.selected_opcode(instr)
-
 	match op {
 		.fadd, .fsub, .fmul, .fdiv, .frem {
 			// Float operations using scalar SIMD instructions (d0-d7)
@@ -606,11 +618,23 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load integer operand to x8
 			src_reg := g.get_operand_reg(instr.operands[0], 8)
 
+			// Check if target is f32
+			result_is_f32 := g.mod.values[val_id].typ > 0
+				&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].width == 32
+
 			// SCVTF Dd, Xn (convert signed int to double)
 			g.emit(asm_scvtf_d_x(0, Reg(src_reg)))
 
-			// FMOV Xd, D0 (copy back bit pattern to integer reg for storage)
-			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+			if result_is_f32 {
+				// Convert f64→f32 and move to integer register as 32-bit pattern
+				g.emit(asm_fcvt_s_d(0, 0))
+				g.emit(asm_fmov_w_s(Reg(dest_reg), 0))
+			} else {
+				// FMOV Xd, D0 (copy f64 bit pattern to integer reg for storage)
+				g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+			}
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -623,11 +647,23 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load integer operand to x8
 			src_reg := g.get_operand_reg(instr.operands[0], 8)
 
+			// Check if target is f32
+			result_is_f32 := g.mod.values[val_id].typ > 0
+				&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].width == 32
+
 			// UCVTF Dd, Xn (convert unsigned int to double)
 			g.emit(asm_ucvtf_d_x(0, Reg(src_reg)))
 
-			// FMOV Xd, D0 (copy float bit pattern to integer reg for storage)
-			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+			if result_is_f32 {
+				// Convert f64→f32 and move to integer register as 32-bit pattern
+				g.emit(asm_fcvt_s_d(0, 0))
+				g.emit(asm_fmov_w_s(Reg(dest_reg), 0))
+			} else {
+				// FMOV Xd, D0 (copy float bit pattern to integer reg for storage)
+				g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+			}
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -647,8 +683,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.store_reg_to_val(dest_reg, val_id)
 			}
 		}
-		.add, .sub, .mul, .sdiv, .srem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq, .ne, .lt, .gt,
-		.le, .ge {
+		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq,
+		.ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
 			// Optimization: Use actual registers if allocated, avoid shuffling to x8/x9
 			// Dest register
 			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
@@ -697,6 +733,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 				.sdiv {
 					g.emit(asm_sdiv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
+				.udiv {
+					g.emit(asm_udiv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
+				}
 				.srem {
 					// Signed modulo: a % b = a - (a / b) * b
 					// Choose temp register for quotient that doesn't conflict with inputs
@@ -708,6 +747,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 					g.emit(asm_sdiv(Reg(temp_reg), Reg(lhs_reg), Reg(rhs_reg)))
+					g.emit(asm_msub(Reg(dest_reg), Reg(temp_reg), Reg(rhs_reg), Reg(lhs_reg)))
+				}
+				.urem {
+					// Unsigned modulo: a % b = a - (a / b) * b
+					mut temp_reg := 10
+					if lhs_reg == 10 || rhs_reg == 10 {
+						temp_reg = 11
+						if lhs_reg == 11 || rhs_reg == 11 {
+							temp_reg = 12
+						}
+					}
+					g.emit(asm_udiv(Reg(temp_reg), Reg(lhs_reg), Reg(rhs_reg)))
 					g.emit(asm_msub(Reg(dest_reg), Reg(temp_reg), Reg(rhs_reg), Reg(lhs_reg)))
 				}
 				.and_ {
@@ -728,10 +779,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 				.lshr {
 					g.emit(asm_lsrv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
-				.eq, .ne, .lt, .gt, .le, .ge {
-					g.emit(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
+				.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
+					lhs_typ := g.mod.values[instr.operands[0]].typ
+					is_float := lhs_typ > 0 && lhs_typ < g.mod.type_store.types.len
+						&& g.mod.type_store.types[lhs_typ].kind == .float_t
+					if is_float {
+						// Float comparison: load to FP regs, use FCMP
+						g.load_float_operand(instr.operands[0], 0) // d0
+						g.load_float_operand(instr.operands[1], 1) // d1
+						g.emit(asm_fcmp_d(Reg(0), Reg(1)))
+					} else {
+						// Integer comparison
+						// Use 32-bit CMP for i32 operands to preserve sign semantics.
+						use_32bit := lhs_typ > 0 && lhs_typ < g.mod.type_store.types.len
+							&& g.mod.type_store.types[lhs_typ].kind == .int_t
+							&& g.mod.type_store.types[lhs_typ].width == 32
+						if use_32bit {
+							g.emit(asm_cmp_reg_w(Reg(lhs_reg), Reg(rhs_reg)))
+						} else {
+							g.emit(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
+						}
+					}
 
-					// CSET Rd, cond
+					// CSET Rd, cond (works for both integer and float NZCV flags)
 					match op {
 						.eq { g.emit(asm_cset_eq(Reg(dest_reg))) }
 						.ne { g.emit(asm_cset_ne(Reg(dest_reg))) }
@@ -739,6 +809,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 						.gt { g.emit(asm_cset_gt(Reg(dest_reg))) }
 						.le { g.emit(asm_cset_le(Reg(dest_reg))) }
 						.ge { g.emit(asm_cset_ge(Reg(dest_reg))) }
+						.ugt { g.emit(asm_cset_hi(Reg(dest_reg))) }
+						.uge { g.emit(asm_cset_hs(Reg(dest_reg))) }
+						.ult { g.emit(asm_cset_lo(Reg(dest_reg))) }
+						.ule { g.emit(asm_cset_ls(Reg(dest_reg))) }
 						else {}
 					}
 				}
@@ -1096,7 +1170,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Struct field GEP with constant index: use real field byte offsets.
-			if idx_id > 0 && idx_id < g.mod.values.len && pointee_typ_id > 0
+			// Distinguish from array-style GEP: if the GEP result type equals the
+			// base pointer type, this is array indexing (ptr(struct)[i] → ptr(struct)),
+			// not struct field access (ptr(struct), field_idx → ptr(field_type)).
+			mut is_array_gep := false
+			base_val_typ := g.mod.values[instr.operands[0]].typ
+			if instr.typ == base_val_typ {
+				is_array_gep = true
+			}
+			if !is_array_gep && idx_id > 0 && idx_id < g.mod.values.len && pointee_typ_id > 0
 				&& pointee_typ_id < g.mod.type_store.types.len {
 				idx_val := g.mod.values[idx_id]
 				pointee_typ := g.mod.type_store.types[pointee_typ_id]
@@ -1791,11 +1873,41 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit(asm_b(0))
 			}
 		}
-		.bitcast, .trunc, .sext, .zext {
+		.trunc, .zext {
+			if instr.operands.len > 0 {
+				// Check if this is a float-to-float conversion
+				src_val := g.mod.values[instr.operands[0]]
+				src_is_float := src_val.typ > 0 && src_val.typ < g.mod.type_store.types.len
+					&& g.mod.type_store.types[src_val.typ].kind == .float_t
+				dst_is_float := g.mod.values[val_id].typ > 0
+					&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+					&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+				if src_is_float && dst_is_float {
+					dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+					if instr.op == .trunc {
+						// f64 → f32: load f64 into d0, convert to s0, move bits to int reg
+						g.load_float_operand(instr.operands[0], 0)
+						g.emit(asm_fcvt_s_d(0, 0))
+						g.emit(asm_fmov_w_s(Reg(dest_reg), 0))
+					} else {
+						// f32 → f64: load_float_operand already widens f32→f64
+						g.load_float_operand(instr.operands[0], 0)
+						g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+					}
+					if val_id !in g.reg_map {
+						g.store_reg_to_val(dest_reg, val_id)
+					}
+				} else {
+					// Integer conversions: just copy (registers are 64-bit)
+					g.load_val_to_reg(8, instr.operands[0])
+					g.store_reg_to_val(8, val_id)
+				}
+			}
+		}
+		.bitcast, .sext {
 			// For arm64: all registers are 64-bit, so integer type conversions
-			// are mostly just copies. Truncation uses the lower bits naturally.
-			// Sign/zero extension would matter for 8/16 bit values but we
-			// operate on full 64-bit registers throughout.
+			// are mostly just copies. Sign extension would matter for 8/16 bit
+			// values but we operate on full 64-bit registers throughout.
 			if instr.operands.len > 0 {
 				g.load_val_to_reg(8, instr.operands[0])
 				g.store_reg_to_val(8, val_id)
@@ -2032,14 +2144,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.store_reg_to_val(8, val_id)
 					}
 				} else if field_elem_size in [1, 2, 4] {
-					// Use sized load to avoid reading adjacent packed fields
-					// (e.g., extracting u32 from a (u32, u32) tuple).
+					// Use sized load to avoid reading adjacent packed fields.
+					// For signed integer fields, use sign-extending loads.
 					field_offset := tuple_offset + field_byte_off
 					g.emit_add_fp_imm(9, field_offset)
+					field_is_unsigned := if instr.typ > 0 && instr.typ < g.mod.type_store.types.len {
+						g.mod.type_store.types[instr.typ].is_unsigned
+					} else {
+						false
+					}
 					match field_elem_size {
-						1 { g.emit(asm_ldr_b(Reg(8), Reg(9))) }
-						2 { g.emit(asm_ldr_h(Reg(8), Reg(9))) }
-						4 { g.emit(asm_ldr_w(Reg(8), Reg(9))) }
+						1 {
+							g.emit(asm_ldr_b(Reg(8), Reg(9)))
+						}
+						2 {
+							g.emit(asm_ldr_h(Reg(8), Reg(9)))
+						}
+						4 {
+							if field_is_unsigned {
+								g.emit(asm_ldr_w(Reg(8), Reg(9)))
+							} else {
+								g.emit(asm_ldrsw(Reg(8), Reg(9)))
+							}
+						}
 						else {}
 					}
 					g.store_reg_to_val(8, val_id)
@@ -2431,16 +2558,23 @@ fn (mut g Gen) canonicalize_narrow_int_result(reg int, typ_id ssa.TypeID) {
 	if typ.kind != .int_t || typ.width <= 0 || typ.width >= 64 {
 		return
 	}
-	shift := 64 - typ.width
-	mut shreg := 11
-	if reg == shreg {
-		shreg = 12
+	// For 1-bit booleans and other narrow unsigned types, zero-extend
+	// by masking with (1 << width) - 1. Arithmetic shift right would
+	// sign-extend, turning bool true (1) into -1.
+	if typ.width <= 32 {
+		mask := (u64(1) << typ.width) - 1
+		g.emit_mov_imm64(11, i64(mask))
+		g.emit(asm_and(Reg(reg), Reg(reg), Reg(11)))
+	} else {
+		shift := 64 - typ.width
+		mut shreg := 11
+		if reg == shreg {
+			shreg = 12
+		}
+		g.emit_mov_imm64(shreg, shift)
+		g.emit(asm_lslv(Reg(reg), Reg(reg), Reg(shreg)))
+		g.emit(asm_asrv(Reg(reg), Reg(reg), Reg(shreg)))
 	}
-	g.emit_mov_imm64(shreg, shift)
-	// Sign-extend from the declared width so callers do not observe
-	// undefined upper bits from sub-64-bit ABI returns.
-	g.emit(asm_lslv(Reg(reg), Reg(reg), Reg(shreg)))
-	g.emit(asm_asrv(Reg(reg), Reg(reg), Reg(shreg)))
 }
 
 fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ ssa.TypeID) {
@@ -2498,19 +2632,36 @@ fn (mut g Gen) load_address_of_val_to_reg(reg int, val_id int) {
 // For memory values, loads from stack into integer reg then moves to float reg.
 fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 	val := g.mod.values[val_id]
+	is_f32 := val.typ > 0 && val.typ < g.mod.type_store.types.len
+		&& g.mod.type_store.types[val.typ].kind == .float_t
+		&& g.mod.type_store.types[val.typ].width == 32
 	if val.kind == .constant {
 		// Parse float constant and load into float register
-		// First load the bit pattern into an integer register
-		f_val := val.name.f64()
-		bits := *unsafe { &u64(&f_val) }
-
-		// Load the 64-bit bits into x8
-		g.emit_mov_imm64(8, i64(bits))
-		g.emit(asm_fmov_d_x(dreg, Reg(8)))
+		if is_f32 {
+			// f32 constant: parse as f64, convert to f32, load via s-register
+			f_val := f32(val.name.f64())
+			bits := *unsafe { &u32(&f_val) }
+			g.emit_mov_imm64(8, i64(bits))
+			g.emit(asm_fmov_s_w(dreg, Reg(8)))
+			g.emit(asm_fcvt_d_s(dreg, dreg))
+		} else {
+			// f64 constant: load 64-bit bit pattern
+			f_val := val.name.f64()
+			bits := *unsafe { &u64(&f_val) }
+			g.emit_mov_imm64(8, i64(bits))
+			g.emit(asm_fmov_d_x(dreg, Reg(8)))
+		}
 	} else {
-		// Load from stack into integer register then move to float
-		g.load_val_to_reg(8, val_id)
-		g.emit(asm_fmov_d_x(dreg, Reg(8)))
+		if is_f32 {
+			// f32 from stack: load 32-bit value, move to s-register, convert to double
+			g.load_val_to_reg(8, val_id)
+			g.emit(asm_fmov_s_w(dreg, Reg(8)))
+			g.emit(asm_fcvt_d_s(dreg, dreg))
+		} else {
+			// f64 from stack: load 64-bit value, move to d-register
+			g.load_val_to_reg(8, val_id)
+			g.emit(asm_fmov_d_x(dreg, Reg(8)))
+		}
 	}
 }
 
@@ -2584,6 +2735,18 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			g.emit(asm_adrp(Reg(reg)))
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 			g.emit(asm_add_pageoff(Reg(reg)))
+		} else if val_typ.kind == .float_t {
+			// Float constant: load IEEE 754 bit pattern, not truncated integer
+			if val_typ.width == 32 {
+				// f32 constant: store 32-bit IEEE 754 pattern
+				f_val := f32(val.name.f64())
+				bits := *unsafe { &u32(&f_val) }
+				g.emit_mov_imm64(reg, i64(bits))
+			} else {
+				f_val := val.name.f64()
+				bits := *unsafe { &u64(&f_val) }
+				g.emit_mov_imm64(reg, i64(bits))
+			}
 		} else {
 			int_val := g.get_const_int(val_id)
 			g.emit_mov_imm64(reg, int_val)
@@ -2631,10 +2794,16 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			str_content := val.name
 			str_len := val.index
 
-			// Create the string data in cstring section
-			str_offset2 := g.macho.str_data.len
-			g.macho.str_data << str_content.bytes()
-			g.macho.str_data << 0 // null terminator
+			// Create the string data in cstring section (deduplicate identical strings)
+			str_offset2 := if existing := g.string_data_cache[str_content] {
+				existing
+			} else {
+				offset := g.macho.str_data.len
+				g.macho.str_data << str_content.bytes()
+				g.macho.str_data << 0 // null terminator
+				g.string_data_cache[str_content] = offset
+				offset
+			}
 
 			// Track that we've materialized this string literal
 			g.string_literal_offsets[val_id] = str_offset2
@@ -2890,6 +3059,12 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 	}
 }
 
+fn (mut g Gen) emit_call_to_named_fn(fn_name string) {
+	sym_idx := g.macho.add_undefined('_' + fn_name)
+	g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+	g.emit(asm_bl_reloc())
+}
+
 fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
 	if global_name == '' {
 		return
@@ -3053,6 +3228,17 @@ fn (g Gen) type_size(typ_id ssa.TypeID) int {
 			return typ.len * elem_size
 		}
 		.struct_t {
+			if typ.is_union {
+				// Union: size = max(field_sizes), aligned to largest field
+				mut max_size := 0
+				for field_typ in typ.fields {
+					fs := g.type_size(field_typ)
+					if fs > max_size {
+						max_size = fs
+					}
+				}
+				return if max_size > 0 { max_size } else { 8 }
+			}
 			mut total := 0
 			mut max_align := 1
 			for field_typ in typ.fields {
@@ -3111,6 +3297,10 @@ fn (g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int) in
 	typ := g.mod.type_store.types[struct_typ_id]
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
 		return field_idx * 8
+	}
+	// Union types: all fields overlap at offset 0
+	if typ.is_union {
+		return 0
 	}
 	mut offset := 0
 	for i, field_typ in typ.fields {

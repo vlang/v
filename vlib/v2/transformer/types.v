@@ -1873,6 +1873,13 @@ fn (t &Transformer) array_elem_needs_deep_eq(expr ast.Expr) bool {
 
 // get_struct_field_type returns the type of a struct field from a SelectorExpr
 fn (t &Transformer) get_array_type_str(expr ast.Expr) ?string {
+	// Check for array element type overrides first (e.g. from .map(fn_name) expansion
+	// where the checker incorrectly types the result as []voidptr).
+	if expr is ast.Ident {
+		if override := t.array_elem_type_overrides[expr.name] {
+			return 'Array_${override}'
+		}
+	}
 	recv_type := t.get_expr_type(expr) or { return none }
 	base := t.unwrap_alias_and_pointer_type(recv_type)
 	if base is types.Array {
@@ -2451,6 +2458,53 @@ fn (t &Transformer) types_type_to_v(typ types.Type) string {
 		}
 		else {
 			return 'int'
+		}
+	}
+}
+
+// type_sizeof returns the byte size of a type for the native (arm64/x64) backend.
+// is_memcmp_safe_type checks if a type can be compared with memcmp.
+// Primitives and fixed arrays of primitives are safe. Types containing
+// heap pointers (dynamic arrays, strings, maps, structs) are not.
+fn (t &Transformer) is_memcmp_safe_type(typ types.Type) bool {
+	match typ {
+		types.Primitive { return true }
+		types.ArrayFixed { return t.is_memcmp_safe_type(typ.elem_type) }
+		types.Alias { return t.is_memcmp_safe_type(typ.base_type) }
+		types.Enum { return true }
+		else { return false }
+	}
+}
+
+fn (t &Transformer) type_sizeof(typ types.Type) int {
+	match typ {
+		types.Primitive {
+			if typ.size > 0 {
+				return int(typ.size) / 8
+			}
+			// bool has size 0, treat as 1 byte
+			return 1
+		}
+		types.Pointer {
+			return 8
+		}
+		types.Array {
+			return 32 // dynamic array struct: ptr(8) + 5*i32(20) padded to 32
+		}
+		types.ArrayFixed {
+			return typ.len * t.type_sizeof(typ.elem_type)
+		}
+		types.Map {
+			return 120
+		}
+		types.Alias {
+			return t.type_sizeof(typ.base_type)
+		}
+		types.Struct {
+			return 8 // fallback; structs need field-level computation
+		}
+		else {
+			return 8
 		}
 	}
 }

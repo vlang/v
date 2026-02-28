@@ -1208,6 +1208,17 @@ pub fn (s string) substr_unsafe(start int, _end int) string {
 	}
 }
 
+// substr_or returns substr(start, end) if bounds are valid, otherwise returns fallback.
+// Used by the native backend for `s[start..end] or { fallback }` expressions.
+@[direct_array_access]
+pub fn (s string) substr_or(start int, _end int, fallback string) string {
+	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end }
+	if start < 0 || start > end || end > s.len {
+		return fallback
+	}
+	return s.substr(start, end)
+}
+
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 @[direct_array_access]
