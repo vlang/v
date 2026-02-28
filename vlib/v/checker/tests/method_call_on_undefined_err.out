@@ -56,10 +56,3 @@ vlib/v/checker/tests/method_call_on_undefined_err.vv:14:13: error: expected 0 ar
    16 |         exit(1)
 Details: have (string)
          want ()
-vlib/v/checker/tests/method_call_on_undefined_err.vv:14:31: error: unexpected `or` block, the function `foo` does not return an Option or a Result
-   12 | 
-   13 | fn main() {
-   14 |     res := foo('fe80::1234%ne0') or {
-      |                                  ~~~~
-   15 |         eprintln(err)
-   16 |         exit(1)

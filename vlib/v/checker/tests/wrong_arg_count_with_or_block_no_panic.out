@@ -1,0 +1,16 @@
+vlib/v/checker/tests/wrong_arg_count_with_or_block_no_panic.vv:9:6: notice: condition is always true
+    7 |     // Test case: function with no params, called with extra args and or block with if-else
+    8 |     foo(1, 2, 3) or {
+    9 |         if true {
+      |            ~~~~
+   10 |             println('error')
+   11 |         } else {
+vlib/v/checker/tests/wrong_arg_count_with_or_block_no_panic.vv:8:6: error: expected 0 arguments, but got 3
+    6 | fn main() {
+    7 |     // Test case: function with no params, called with extra args and or block with if-else
+    8 |     foo(1, 2, 3) or {
+      |         ~~~~~~~
+    9 |         if true {
+   10 |             println('error')
+Details: have (int literal, int literal, int literal)
+         want ()

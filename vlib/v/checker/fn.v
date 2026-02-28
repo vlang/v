@@ -1517,7 +1517,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
-		c.check_expected_arg_count(mut node, func) or { return func.return_type }
+		c.check_expected_arg_count(mut node, func) or {
+			node.return_type = func.return_type
+			return func.return_type
+		}
 	}
 	// println / eprintln / panic can print anything
 	if args_len > 0 && fn_name in print_everything_fns {
@@ -2358,7 +2361,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				node.is_field = true
 				info := field_sym.info as ast.FnType
 
-				c.check_expected_arg_count(mut node, info.func) or { return info.func.return_type }
+				c.check_expected_arg_count(mut node, info.func) or {
+					node.return_type = info.func.return_type
+					return info.func.return_type
+				}
 				node.return_type = info.func.return_type
 				mut earg_types := []ast.Type{}
 
@@ -2546,7 +2552,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& method.ctdefine_idx != ast.invalid_type_idx {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 	}
-	c.check_expected_arg_count(mut node, method) or { return method.return_type }
+	c.check_expected_arg_count(mut node, method) or {
+		node.return_type = method.return_type
+		return method.return_type
+	}
 	mut exp_arg_typ := ast.no_type // type of 1st arg for special builtin methods
 	mut param_is_mut := false
 	mut no_type_promotion := false
