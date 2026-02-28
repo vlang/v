@@ -21,7 +21,7 @@ jobs:
         run: (echo '```txt'; v -prod crun vlib/x/json2/tests/bench.v; echo '```') > vlib/x/json2/tests/bench_out.md
 
       - name: Upload result file
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: program-output
           path: vlib/x/json2/tests/bench_out.md
