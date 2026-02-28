@@ -245,7 +245,8 @@ fn test_sub_expression() {
 const one = 'one'
 
 fn test_match_constant_string() {
-	match one {
+	s := one
+	match s {
 		one {
 			assert true
 		}
