@@ -1,0 +1,4 @@
+_option_bool optional;
+main__Status status : 2;
+_option_main__Priority priority;
+bool done : 1;

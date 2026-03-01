@@ -1,0 +1,35 @@
+// Test that minified structs with option fields don't use bit-fields
+// Bit-fields can only have integral types in C, not struct types
+// Option types are represented as structs in C
+
+module main
+
+enum Status as u8 {
+	pending
+	active
+	inactive
+}
+
+enum Priority as u8 {
+	low
+	medium
+	high
+}
+
+@[minify]
+struct Task {
+	status   Status
+	priority ?Priority
+	done     bool
+	optional ?bool
+}
+
+fn main() {
+	task := Task{
+		status: .active
+	}
+	println(task.status)
+	println(task.priority or { Priority.low })
+	println(task.done)
+	println(task.optional or { false })
+}

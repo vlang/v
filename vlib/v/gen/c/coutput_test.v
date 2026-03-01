@@ -284,6 +284,12 @@ fn should_skip(relpath string) bool {
 				return true
 			}
 		}
+		$if msvc {
+			if relpath.contains('_not_msvc_windows.vv') {
+				eprintln('> skipping ${relpath} on msvc')
+				return true
+			}
+		}
 	} else {
 		if relpath.contains('_windows.vv') {
 			eprintln('> skipping ${relpath} on !windows')

@@ -703,7 +703,8 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 			field_name := c_name(field.name)
 			volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 			mut size_suffix := ''
-			if is_minify && !g.is_cc_msvc && !g.pref.output_cross_c {
+			if is_minify && !g.is_cc_msvc && !g.pref.output_cross_c && !field.typ.has_flag(.option)
+				&& !field.typ.has_flag(.result) {
 				if field.typ == ast.bool_type_idx {
 					size_suffix = ' : 1'
 				} else {
