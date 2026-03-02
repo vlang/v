@@ -166,3 +166,7 @@ autofuzz.log
 
 # ignore serena agent working directory
 .serena/*
+CHANGELOG.md
+v
+vnew
+vnew.*

@@ -98,6 +98,7 @@ fn C.EVP_EncryptUpdate(ctx EVP_CIPHER_CTX, out &u8, outl &int, in_ &u8, inl int)
 fn C.EVP_DecryptUpdate(ctx EVP_CIPHER_CTX, out &u8, outl &int, in_ &u8, inl int) int
 fn C.EVP_EncryptFinal_ex(ctx EVP_CIPHER_CTX, out &u8, outl &int) int
 fn C.EVP_DecryptFinal_ex(ctx EVP_CIPHER_CTX, out &u8, outl &int) int
+fn C.EVP_CIPHER_CTX_ctrl(ctx EVP_CIPHER_CTX, typ int, arg int, ptr voidptr) int
 
 fn C.EVP_PKEY_CTX_new_id(id int, e voidptr) EVP_PKEY_CTX
 fn C.EVP_PKEY_CTX_free(ctx EVP_PKEY_CTX)
@@ -110,6 +111,13 @@ fn C.EVP_PKEY_CTX_add1_hkdf_info(ctx EVP_PKEY_CTX, info &u8, infolen int) int
 fn C.EVP_PKEY_derive(ctx EVP_PKEY_CTX, key &u8, keylen &u64) int
 
 fn C.RAND_bytes(buf &u8, num int) int
+
+// GCM tag control constants (from OpenSSL evp.h)
+// EVP_CTRL_GCM_GET_TAG retrieves the 16-byte auth tag after encryption.
+// EVP_CTRL_GCM_SET_TAG sets the expected tag before EVP_DecryptFinal_ex.
+const gcm_tag_len = 16
+const evp_ctrl_gcm_get_tag = 0x10
+const evp_ctrl_gcm_set_tag = 0x11
 
 // new_crypto_context creates a new crypto context for client
 pub fn new_crypto_context_client(alpn []string) !CryptoContext {
@@ -429,7 +437,16 @@ pub fn (mut ctx CryptoContext) encrypt_packet(plaintext []u8, ad []u8, base_iv [
 			return error('failed to finalize encryption')
 		}
 	}
-	return ciphertext[..outlen + final_len]
+	ciphertext_len := outlen + final_len
+	// Extract the GCM authentication tag (16 bytes) and append it to the
+	// ciphertext so that decrypt_packet can verify integrity (RFC 5116).
+	mut tag := []u8{len: gcm_tag_len}
+	if C.EVP_CIPHER_CTX_ctrl(ctx.tx_cipher_ctx, evp_ctrl_gcm_get_tag, gcm_tag_len, tag.data) != 1 {
+		return error('failed to get GCM auth tag')
+	}
+	mut result := ciphertext[..ciphertext_len].clone()
+	result << tag
+	return result
 }
 
 // decrypt_packet decrypts a QUIC packet using AES-128-GCM.
@@ -441,6 +458,14 @@ pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8, base_iv 
 	if base_iv.len != 12 {
 		return error('base_iv must be 12 bytes for AES-128-GCM')
 	}
+	// Ciphertext must contain at least the GCM tag.
+	if ciphertext.len < gcm_tag_len {
+		return error('ciphertext too short: missing GCM auth tag')
+	}
+
+	// Split ciphertext into encrypted data and the trailing GCM auth tag.
+	enc_data := ciphertext[..ciphertext.len - gcm_tag_len]
+	tag := ciphertext[ciphertext.len - gcm_tag_len..]
 
 	// Derive nonce using the same method as encrypt_packet (RFC 9001 §5.3)
 	nonce := derive_nonce(base_iv, packet_number)
@@ -454,6 +479,11 @@ pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8, base_iv 
 		return error('failed to init decryption')
 	}
 
+	// Set the expected GCM auth tag before finalising so OpenSSL can verify it.
+	if C.EVP_CIPHER_CTX_ctrl(ctx.rx_cipher_ctx, evp_ctrl_gcm_set_tag, gcm_tag_len, tag.data) != 1 {
+		return error('failed to set GCM auth tag')
+	}
+
 	// Set additional authenticated data
 	mut outlen := 0
 	if ad.len > 0 {
@@ -462,17 +492,18 @@ pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8, base_iv 
 		}
 	}
 
-	// Decrypt
-	mut plaintext := []u8{len: ciphertext.len}
-	if C.EVP_DecryptUpdate(ctx.rx_cipher_ctx, plaintext.data, &outlen, ciphertext.data,
-		ciphertext.len) != 1 {
+	// Decrypt the ciphertext (without the trailing tag).
+	mut plaintext := []u8{len: enc_data.len}
+	if C.EVP_DecryptUpdate(ctx.rx_cipher_ctx, plaintext.data, &outlen, enc_data.data,
+		enc_data.len) != 1 {
 		return error('failed to decrypt')
 	}
 
 	mut final_len := 0
 	unsafe {
-		if C.EVP_DecryptFinal_ex(ctx.rx_cipher_ctx, &u8(plaintext.data) + outlen, &final_len) != 1 {
-			return error('failed to finalize decryption')
+		// EVP_DecryptFinal_ex verifies the GCM tag; returns <= 0 on auth failure.
+		if C.EVP_DecryptFinal_ex(ctx.rx_cipher_ctx, &u8(plaintext.data) + outlen, &final_len) <= 0 {
+			return error('GCM authentication tag verification failed: packet tampered or wrong key')
 		}
 	}
 	return plaintext[..outlen + final_len]

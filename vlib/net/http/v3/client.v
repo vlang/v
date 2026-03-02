@@ -320,7 +320,7 @@ pub:
 }
 
 // encode_headers encodes headers using QPACK
-fn encode_headers(headers []HeaderField) []u8 {
+fn encode_headers(headers []HeaderField) ![]u8 {
 	// Simplified QPACK encoding
 	// In a real implementation, this would use dynamic/static tables
 	mut result := []u8{}
@@ -328,8 +328,8 @@ fn encode_headers(headers []HeaderField) []u8 {
 	for header in headers {
 		// Literal with name and value
 		result << 0x20 // Literal without indexing
-		result << encode_string(header.name) or { panic('encode_headers: ${err}') }
-		result << encode_string(header.value) or { panic('encode_headers: ${err}') }
+		result << encode_string(header.name)!
+		result << encode_string(header.value)!
 	}
 
 	return result

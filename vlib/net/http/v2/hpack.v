@@ -118,7 +118,11 @@ pub fn (h HeaderField) size() int {
 	return 32 + h.name.len + h.value.len
 }
 
-// DynamicTable represents the HPACK dynamic table
+// DynamicTable represents the HPACK dynamic table.
+// HPACK uses LIFO ordering per RFC 7541 §2.3.3: the newest entry is always at
+// index 0 (front of array). Older entries are pushed toward higher indices and
+// evicted from the back. This is the opposite of QPACK (HTTP/3), which uses
+// absolute/relative indexing with entries appended to the back.
 pub struct DynamicTable {
 mut:
 	entries  []HeaderField

@@ -97,7 +97,10 @@ fn test_encode_decode_headers() {
 		HeaderField{'custom-header', 'custom-value'},
 	]
 
-	encoded := encode_headers(headers)
+	encoded := encode_headers(headers) or {
+		assert false, 'Failed to encode headers: ${err}'
+		return
+	}
 	decoded := decode_headers(encoded) or {
 		assert false, 'Failed to decode headers'
 		return

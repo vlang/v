@@ -85,7 +85,10 @@ fn test_header_helpers() {
 	]
 
 	// Test simplified encoding (literal)
-	encoded := encode_headers(headers)
+	encoded := encode_headers(headers) or {
+		assert false, 'Failed to encode headers: ${err}'
+		return
+	}
 	assert encoded.len > 0
 
 	// Test simplified decoding
