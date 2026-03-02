@@ -158,6 +158,11 @@ pub fn (mut g Gen) gen() {
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
+	if func.is_c_extern {
+		// C extern functions are provided by external libraries (libc, etc.).
+		// Don't emit any local symbol — let the linker resolve them as undefined externals.
+		return
+	}
 	if func.blocks.len == 0 {
 		// Emit a minimal stub: just a ret instruction
 		// This is needed for functions like __v_init_consts that are called but have no body
@@ -334,10 +339,10 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				continue
 			}
 
-			// Keep full stack storage for struct values so aggregate copies have
+			// Keep full stack storage for struct/array values so aggregate copies have
 			// stable backing bytes even when values are register-allocated.
 			val_typ := g.mod.type_store.types[val.typ]
-			if val_typ.kind == .struct_t {
+			if val_typ.kind == .struct_t || val_typ.kind == .array_t {
 				mut struct_size := g.type_size(val.typ)
 				if struct_size <= 0 {
 					struct_size = if val_typ.fields.len > 0 { val_typ.fields.len * 8 } else { 8 }
@@ -447,12 +452,30 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	// ARM64 ABI: args in x0..x7, args 8+ on caller stack.
 	// Struct params ≤ 16 bytes occupy ceil(size/8) consecutive registers.
 	// Struct params > 16 bytes are passed by pointer (one register).
+	// ARM64 ABI: integer params in x0-x7, float params in d0-d7 (independent allocation)
 	mut reg_idx := 0
+	mut float_reg_idx := 0
 	for i, pid in func.params {
 		param_typ := g.mod.values[pid].typ
 		param_type_info := g.mod.type_store.types[param_typ]
 		param_size := g.type_size(param_typ)
 		is_indirect_param := i < func.abi_param_class.len && func.abi_param_class[i] == .indirect
+
+		// Float parameters arrive in d-registers; move to x-register for storage
+		if param_type_info.kind == .float_t && !is_indirect_param {
+			if float_reg_idx < 8 {
+				// fmov xN, dN to get float bits into integer register
+				g.emit(asm_fmov_x_d(Reg(9), float_reg_idx))
+				if reg := g.reg_map[pid] {
+					g.emit_mov_reg(reg, 9)
+				} else {
+					offset := g.stack_map[pid]
+					g.emit_str_reg_offset(9, 29, offset)
+				}
+			}
+			float_reg_idx++
+			continue
+		}
 
 		mut src_reg := reg_idx
 		if reg_idx >= 8 {
@@ -903,7 +926,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					if elem_typ.kind in [.ptr_t, .func_t] {
 						dst_elem_is_ptrlike = true
 					}
-					if elem_typ.kind == .struct_t {
+					if elem_typ.kind == .struct_t || elem_typ.kind == .array_t {
 						dst_struct_typ_id = ptr_typ.elem_type
 						if elem_size > 16 {
 							dst_is_large_struct = true
@@ -917,7 +940,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			mut should_zero_large_store := is_undef_aggregate
 			if !should_zero_large_store && (dst_is_large_struct
-				|| (val_typ.kind == .struct_t && val_size > 16 && !dst_elem_is_ptrlike))
+				|| (val_typ.kind in [.struct_t, .array_t] && val_size > 16 && !dst_elem_is_ptrlike))
 				&& !src_has_storage {
 				should_zero_large_store = true
 			}
@@ -990,8 +1013,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 					} else if num_fields == 1 {
 						// Single-slot struct values in registers can be stored directly.
 						g.emit(asm_str(Reg(val_reg), Reg(ptr_reg)))
-					} else if val_typ.kind == .struct_t && src_id > 0 && src_id < g.mod.values.len {
-						// Source is a struct value whose register holds a pointer
+					} else if val_typ.kind in [.struct_t, .array_t] && src_id > 0
+						&& src_id < g.mod.values.len {
+						// Source is a struct/array value whose register holds a pointer
 						// (e.g., from a .load of a struct without a stack slot).
 						// Use the register as a source pointer for field-by-field copy.
 						src_val_info := g.mod.values[src_id]
@@ -1018,8 +1042,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 				}
-			} else if dst_struct_typ_id > 0 && val_typ.kind == .struct_t && val_size > 16
-				&& !dst_elem_is_ptrlike {
+			} else if dst_struct_typ_id > 0 && val_typ.kind in [.struct_t, .array_t]
+				&& val_size > 16 && !dst_elem_is_ptrlike {
 				// Large struct source with non-pointer destination slot:
 				// copy pointee bytes into destination memory.
 				num_fields := (val_size + 7) / 8
@@ -1079,7 +1103,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 				if result_typ_id > 0 && result_typ_id < g.mod.type_store.types.len {
 					result_typ := g.mod.type_store.types[result_typ_id]
 					result_size := g.type_size(result_typ_id)
-					if result_typ.kind == .struct_t && result_size > 8 && result_size <= 16 {
+					if (result_typ.kind == .struct_t || result_typ.kind == .array_t)
+						&& result_size > 8 && result_size <= 16 {
 						if result_offset := g.stack_map[val_id] {
 							num_chunks := (result_size + 7) / 8
 							for i in 0 .. num_chunks {
@@ -1091,7 +1116,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 							// Fallback when no aggregate slot is available.
 							g.emit_mov_reg(dest_reg, ptr_reg)
 						}
-					} else if result_typ.kind == .struct_t && result_size > 16 {
+					} else if (result_typ.kind == .struct_t || result_typ.kind == .array_t)
+						&& result_size > 16 {
 						if result_offset := g.stack_map[val_id] {
 							// Materialize large load results by value in their stack slot.
 							num_chunks := (result_size + 7) / 8
@@ -1309,59 +1335,100 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				} else {
 					// Non-variadic call:
-					// - first 8 register slots in x0-x7
-					// - remaining slots on stack (8-byte each)
-					// Compute register mapping: some struct args use 2 registers.
-					mut arg_reg_start := []int{len: num_args}
-					mut arg_reg_cnt := []int{len: num_args}
-					mut total_reg_slots := 0
+					// ARM64 ABI: integer args in x0-x7, float args in d0-d7
+					// Integer and float registers are allocated independently.
+
+					// Classify each argument as float or integer
+					mut is_float_arg := []bool{len: num_args}
+					mut arg_int_reg := []int{len: num_args, init: -1}
+					mut arg_float_reg := []int{len: num_args, init: -1}
+					mut arg_int_cnt := []int{len: num_args}
+					mut int_reg_idx := 0
+					mut float_reg_idx := 0
+
 					for a in 0 .. num_args {
-						arg_reg_start[a] = total_reg_slots
-						cnt := g.call_arg_reg_count(instr.operands[a + 1], a, instr)
-						arg_reg_cnt[a] = cnt
-						total_reg_slots += cnt
+						arg_val := g.mod.values[instr.operands[a + 1]]
+						mut is_float := false
+						if arg_val.typ > 0 && int(arg_val.typ) < g.mod.type_store.types.len {
+							arg_typ := g.mod.type_store.types[arg_val.typ]
+							if arg_typ.kind == .float_t {
+								is_float = true
+							}
+						}
+						if is_float {
+							is_float_arg[a] = true
+							arg_float_reg[a] = float_reg_idx
+							float_reg_idx++
+						} else {
+							cnt := g.call_arg_reg_count(instr.operands[a + 1], a, instr)
+							arg_int_reg[a] = int_reg_idx
+							arg_int_cnt[a] = cnt
+							int_reg_idx += cnt
+						}
 					}
-					num_stack_slots := if total_reg_slots > 8 {
-						total_reg_slots - 8
-					} else {
-						0
-					}
-					stack_space := ((num_stack_slots * 8) + 15) & ~0xF
+
+					// Handle stack-spilled integer args (>8 int regs)
+					num_int_stack := if int_reg_idx > 8 { int_reg_idx - 8 } else { 0 }
+					num_float_stack := if float_reg_idx > 8 { float_reg_idx - 8 } else { 0 }
+					total_stack_slots := num_int_stack + num_float_stack
+					stack_space := ((total_stack_slots * 8) + 15) & ~0xF
 					if stack_space > 0 {
 						g.emit_sub_sp(stack_space)
-						// Store stack-bound args
 						mut stack_idx := 0
 						for a in 0 .. num_args {
-							if arg_reg_start[a] >= 8 {
-								cnt := arg_reg_cnt[a]
-								for ri in 0 .. cnt {
-									if cnt > 1 {
-										// Multi-register struct: load from struct address
-										g.load_address_of_val_to_reg(9, instr.operands[a + 1])
-										g.emit(asm_ldr_imm(Reg(9), Reg(9), u32(ri)))
-									} else {
-										g.load_call_arg_to_reg(9, instr.operands[a + 1],
-											a, instr)
-									}
-									imm12 := u32(stack_idx)
-									g.emit(asm_str_imm(Reg(9), sp, imm12))
+							if is_float_arg[a] {
+								if arg_float_reg[a] >= 8 {
+									g.load_val_to_reg(9, instr.operands[a + 1])
+									g.emit(asm_str_imm(Reg(9), sp, u32(stack_idx)))
 									stack_idx++
+								}
+							} else {
+								if arg_int_reg[a] >= 8 {
+									cnt := arg_int_cnt[a]
+									for ri in 0 .. cnt {
+										if cnt > 1 {
+											g.load_address_of_val_to_reg(9, instr.operands[a + 1])
+											g.emit(asm_ldr_imm(Reg(9), Reg(9), u32(ri)))
+										} else {
+											g.load_call_arg_to_reg(9, instr.operands[a + 1],
+												a, instr)
+										}
+										g.emit(asm_str_imm(Reg(9), sp, u32(stack_idx)))
+										stack_idx++
+									}
 								}
 							}
 						}
 					}
 
-					// Load register args (reverse order to avoid clobbering)
+					// Load integer args to x-registers (reverse order)
 					for a := num_args - 1; a >= 0; a-- {
-						reg := arg_reg_start[a]
-						if reg >= 8 {
-							continue // stack arg, already handled
+						if is_float_arg[a] {
+							continue
 						}
-						if arg_reg_cnt[a] == 2 {
+						reg := arg_int_reg[a]
+						if reg >= 8 {
+							continue // stack arg
+						}
+						if arg_int_cnt[a] == 2 {
 							g.load_struct_arg_to_regs(reg, instr.operands[a + 1])
 						} else {
 							g.load_call_arg_to_reg(reg, instr.operands[a + 1], a, instr)
 						}
+					}
+
+					// Load float args to d-registers
+					for a in 0 .. num_args {
+						if !is_float_arg[a] {
+							continue
+						}
+						freg := arg_float_reg[a]
+						if freg >= 8 {
+							continue // stack float arg
+						}
+						// Load value bits to x9, then fmov to dN
+						g.load_val_to_reg(9, instr.operands[a + 1])
+						g.emit(asm_fmov_d_x(freg, Reg(9)))
 					}
 
 					sym_idx := g.macho.add_undefined('_' + fn_name)
@@ -1380,44 +1447,67 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 
 				if result_typ.kind != .void_t {
-					// Also check callee's registered return type: when the SSA value type
-					// isn't struct_t (e.g. i64 fallback), use the callee's return type.
-					mut call_ret_is_multi_reg := result_typ.kind == .struct_t && result_size > 8
-					mut actual_call_ret_size := result_size
-					if !call_ret_is_multi_reg && !is_indirect_return {
-						callee_val := g.mod.values[instr.operands[0]]
-						if callee_val.kind == .func_ref {
+					// Check if this is a float return: result comes in d0 instead of x0
+					mut is_float_return := result_typ.kind == .float_t
+					if !is_float_return {
+						// Also check the callee's registered return type
+						callee_fn_val := g.mod.values[instr.operands[0]]
+						if callee_fn_val.kind == .func_ref {
 							for f in g.mod.funcs {
-								if f.name == callee_val.name {
-									callee_ret_typ := g.mod.type_store.types[f.typ]
-									callee_ret_size := g.type_size(f.typ)
-									if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
-										&& callee_ret_size <= 16 {
-										call_ret_is_multi_reg = true
-										actual_call_ret_size = callee_ret_size
+								if f.name == callee_fn_val.name {
+									callee_ret := g.mod.type_store.types[f.typ]
+									if callee_ret.kind == .float_t {
+										is_float_return = true
 									}
 									break
 								}
 							}
 						}
 					}
-					if call_ret_is_multi_reg {
-						if !is_indirect_return {
-							if val_id in g.stack_map {
-								result_offset := g.stack_map[val_id]
-								num_chunks := (actual_call_ret_size + 7) / 8
-								for i in 0 .. num_chunks {
-									if i < 8 {
-										g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+					if is_float_return {
+						// Float return: move d0 to x0 for integer storage
+						g.emit(asm_fmov_x_d(Reg(0), 0))
+						g.store_reg_to_val(0, val_id)
+					} else {
+						// Also check callee's registered return type: when the SSA value type
+						// isn't struct_t (e.g. i64 fallback), use the callee's return type.
+						mut call_ret_is_multi_reg := result_typ.kind == .struct_t && result_size > 8
+						mut actual_call_ret_size := result_size
+						if !call_ret_is_multi_reg && !is_indirect_return {
+							callee_val2 := g.mod.values[instr.operands[0]]
+							if callee_val2.kind == .func_ref {
+								for f in g.mod.funcs {
+									if f.name == callee_val2.name {
+										callee_ret_typ := g.mod.type_store.types[f.typ]
+										callee_ret_size := g.type_size(f.typ)
+										if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
+											&& callee_ret_size <= 16 {
+											call_ret_is_multi_reg = true
+											actual_call_ret_size = callee_ret_size
+										}
+										break
 									}
 								}
-							} else {
-								g.store_reg_to_val(0, val_id)
 							}
 						}
-					} else {
-						g.canonicalize_narrow_int_result(0, g.mod.values[val_id].typ)
-						g.store_reg_to_val(0, val_id)
+						if call_ret_is_multi_reg {
+							if !is_indirect_return {
+								if val_id in g.stack_map {
+									result_offset := g.stack_map[val_id]
+									num_chunks := (actual_call_ret_size + 7) / 8
+									for i in 0 .. num_chunks {
+										if i < 8 {
+											g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+										}
+									}
+								} else {
+									g.store_reg_to_val(0, val_id)
+								}
+							}
+						} else {
+							g.canonicalize_narrow_int_result(0, g.mod.values[val_id].typ)
+							g.store_reg_to_val(0, val_id)
+						}
 					}
 				}
 			}
@@ -1734,6 +1824,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				} else {
 					g.load_val_to_reg(0, ret_val_id)
+				}
+				// For float return types, move result from x0 to d0
+				if fn_ret_typ.kind == .float_t {
+					g.emit(asm_fmov_d_x(0, Reg(0))) // fmov d0, x0
 				}
 			}
 			if g.mod.type_store.types[g.cur_func_ret_type].kind == .void_t {
@@ -2558,14 +2652,18 @@ fn (mut g Gen) canonicalize_narrow_int_result(reg int, typ_id ssa.TypeID) {
 	if typ.kind != .int_t || typ.width <= 0 || typ.width >= 64 {
 		return
 	}
-	// For 1-bit booleans and other narrow unsigned types, zero-extend
-	// by masking with (1 << width) - 1. Arithmetic shift right would
-	// sign-extend, turning bool true (1) into -1.
-	if typ.width <= 32 {
-		mask := (u64(1) << typ.width) - 1
-		g.emit_mov_imm64(11, i64(mask))
-		g.emit(asm_and(Reg(reg), Reg(reg), Reg(11)))
+	if typ.is_unsigned || typ.width <= 1 {
+		// For booleans (width=1) and unsigned types, zero-extend by masking.
+		// Bool is get_int(1) which is signed, but sign-extending 1-bit value 1
+		// would give -1 (0xFFFFFFFFFFFFFFFF), so always zero-extend.
+		if typ.width <= 32 {
+			mask := (u64(1) << typ.width) - 1
+			g.emit_mov_imm64(11, i64(mask))
+			g.emit(asm_and(Reg(reg), Reg(reg), Reg(11)))
+		}
+		// Unsigned 33-63 bit: no action needed (upper bits already zero)
 	} else {
+		// For signed types, sign-extend via LSL + ASR
 		shift := 64 - typ.width
 		mut shreg := 11
 		if reg == shreg {
@@ -2670,7 +2768,14 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 	if cached := g.const_cache[val_id] {
 		return cached
 	}
-	int_val := g.mod.values[val_id].name.i64()
+	// Parse as u64 first to handle hex values with bit 63 set (e.g., 0x800fffffffffffff)
+	// that would overflow i64 parsing. Then reinterpret as i64 to preserve the bit pattern.
+	name := g.mod.values[val_id].name
+	int_val := if name.len > 2 && name[0] == `0` && (name[1] == `x` || name[1] == `X`) {
+		i64(name.u64())
+	} else {
+		name.i64()
+	}
 	g.const_cache[val_id] = int_val
 	return int_val
 }
@@ -2873,8 +2978,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		// passing by pointer, so load the address instead of the value
 		typ := val_typ
 		val_size := g.type_size(val.typ)
-		if typ.kind == .struct_t && val_size > 16 {
-			// Large structs can be materialized either by-value (slot contains bytes)
+		if (typ.kind == .struct_t || typ.kind == .array_t) && val_size > 16 {
+			// Large structs/arrays can be materialized either by-value (slot contains bytes)
 			// or indirectly (slot contains a pointer to bytes). Preserve the producer's
 			// representation when loading from stack.
 			if reg_idx := g.reg_map[val_id] {
@@ -2882,7 +2987,10 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 					g.emit_mov_reg(reg, reg_idx)
 				}
 			} else if offset := g.stack_map[val_id] {
-				if g.large_struct_stack_value_is_pointer(val_id) {
+				if typ.kind == .array_t {
+					// Array values in stack slots are always by-value (data bytes directly).
+					g.emit_add_fp_imm(reg, offset)
+				} else if g.large_struct_stack_value_is_pointer(val_id) {
 					g.emit_ldr_reg_offset(reg, 29, offset)
 				} else {
 					g.emit_add_fp_imm(reg, offset)

@@ -88,7 +88,16 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf',
 	'_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs',
 	'_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue',
-	'_abs']
+	'_abs',
+	// Math
+	'_cos', '_sin', '_tan', '_acos', '_asin', '_atan', '_atan2',
+	'_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh',
+	'_exp', '_exp2', '_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt',
+	'_ceil', '_floor', '_round', '_trunc', '_fmod', '_remainder',
+	'_fabs', '_copysign', '_fmax', '_fmin', '_hypot',
+	'_ldexp', '_frexp', '_modf', '_scalbn', '_ilogb', '_logb',
+	'_erf', '_erfc', '_lgamma', '_tgamma',
+	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn']
 
 // vfmt on
 

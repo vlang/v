@@ -86,16 +86,19 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 		name: delta_name
 	}
 
-	// Transform the map expression
-	map_expr := t.transform_expr(for_in.expr)
-
-	// For lvalue expressions (simple Ident or SelectorExpr), use the original
-	// directly so mutations during iteration (delete/set) are visible.
+	// For lvalue expressions (simple Ident or SelectorExpr), transform and use directly
+	// so mutations during iteration (delete/set) are visible.
 	// For rvalue expressions (function calls, map literals), store in a temp variable.
-	is_lvalue := map_expr is ast.Ident || map_expr is ast.SelectorExpr
-	mut map_ref := map_expr
+	// NOTE: rvalue expressions must NOT be pre-transformed here, because the expansion
+	// result goes through transform_stmt again. Pre-transforming would cause double
+	// transformation (e.g., ArrayInitExpr args in new_map_init become full array
+	// construction calls instead of raw data arrays).
+	is_lvalue := for_in.expr is ast.Ident || for_in.expr is ast.SelectorExpr
+	mut map_ref := ast.Expr(ast.Ident{})
 	mut stmts := []ast.Stmt{}
-	if !is_lvalue {
+	if is_lvalue {
+		map_ref = t.transform_expr(for_in.expr)
+	} else {
 		map_tmp_name := t.gen_map_iter_temp_name('map')
 		map_tmp_ident := ast.Ident{
 			name: map_tmp_name
@@ -103,7 +106,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 		stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: [ast.Expr(map_tmp_ident)]
-			rhs: [ast.Expr(map_expr)]
+			rhs: [ast.Expr(for_in.expr)]
 		}
 		map_ref = ast.Expr(map_tmp_ident)
 	}

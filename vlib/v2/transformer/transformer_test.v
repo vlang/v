@@ -4,12 +4,14 @@
 module transformer
 
 import v2.ast
+import v2.pref as vpref
 import v2.types
 
 // Helper to create a minimal transformer for testing
 fn create_test_transformer() &Transformer {
 	env := &types.Environment{}
 	return &Transformer{
+		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
@@ -26,6 +28,7 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 		scope.insert(name, typ)
 	}
 	return &Transformer{
+		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		scope:                       scope
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}

@@ -945,6 +945,50 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 				})
 				continue
 			}
+			// Native backends: expand sincos(x) → sin(x), cos(x) since sincos uses
+			// ChebSeries struct constants that aren't initialized by the native backend.
+			// The separate sin/cos functions use C library calls via .c.v overrides.
+			if is_native_be && stmt.lhs.len >= 2 && stmt.rhs.len == 1 {
+				if sincos_arg := t.try_extract_sincos_arg(stmt.rhs[0]) {
+					lhs0 := stmt.lhs[0]
+					lhs1 := stmt.lhs[1]
+					is_blank0 := lhs0 is ast.Ident && (lhs0 as ast.Ident).name == '_'
+					is_blank1 := lhs1 is ast.Ident && (lhs1 as ast.Ident).name == '_'
+					if !is_blank0 {
+						result << t.transform_stmt(ast.AssignStmt{
+							op:  stmt.op
+							lhs: [lhs0]
+							rhs: [
+								ast.Expr(ast.CallExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'sin'
+									})
+									args: [sincos_arg]
+									pos:  stmt.pos
+								}),
+							]
+							pos: stmt.pos
+						})
+					}
+					if !is_blank1 {
+						result << t.transform_stmt(ast.AssignStmt{
+							op:  stmt.op
+							lhs: [lhs1]
+							rhs: [
+								ast.Expr(ast.CallExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'cos'
+									})
+									args: [sincos_arg]
+									pos:  stmt.pos
+								}),
+							]
+							pos: stmt.pos
+						})
+					}
+					continue
+				}
+			}
 			if expanded_or_assign := t.try_expand_or_expr_assign_stmts(stmt) {
 				// Note: expand_direct_or_expr_assign already transforms expressions internally,
 				// so we don't call transform_stmt again to avoid double transformation
@@ -1299,6 +1343,38 @@ fn (t &Transformer) get_var_name(expr ast.Expr) string {
 		}
 	}
 	return ''
+}
+
+// try_extract_sincos_arg checks if an expression is a call to `sincos(x)` and returns the argument.
+fn (t &Transformer) try_extract_sincos_arg(expr ast.Expr) ?ast.Expr {
+	if expr is ast.CallExpr {
+		if expr.lhs is ast.Ident {
+			name := (expr.lhs as ast.Ident).name
+			if name == 'sincos' && expr.args.len == 1 {
+				return expr.args[0]
+			}
+		} else if expr.lhs is ast.SelectorExpr {
+			sel := expr.lhs as ast.SelectorExpr
+			if sel.rhs.name == 'sincos' && expr.args.len == 1 {
+				return expr.args[0]
+			}
+		}
+	}
+	// sincos(x) with single arg may be parsed as CallOrCastExpr
+	if expr is ast.CallOrCastExpr {
+		if expr.lhs is ast.Ident {
+			name := (expr.lhs as ast.Ident).name
+			if name == 'sincos' {
+				return expr.expr
+			}
+		} else if expr.lhs is ast.SelectorExpr {
+			sel := expr.lhs as ast.SelectorExpr
+			if sel.rhs.name == 'sincos' {
+				return expr.expr
+			}
+		}
+	}
+	return none
 }
 
 // try_expand_or_expr_assign checks if an assignment has an OrExpr RHS (used by transform_stmt)
@@ -6157,9 +6233,24 @@ fn (mut t Transformer) get_str_fn_info_for_expr(expr ast.Expr) StrFnInfo {
 	// Try to infer map type
 	if map_type := t.get_map_type_for_expr(expr) {
 		// map_type is like 'Map_string_int'
+		// Encode key|val type names for map str function generation
+		mut elem_info := map_type
+		if typ := t.get_expr_type(expr) {
+			unwrapped := t.unwrap_alias_and_pointer_type(typ)
+			base := if unwrapped is types.Alias {
+				(unwrapped as types.Alias).base_type
+			} else {
+				unwrapped
+			}
+			if base is types.Map {
+				key_c := t.type_to_c_name(base.key_type)
+				val_c := t.type_to_c_name(base.value_type)
+				elem_info = '${key_c}|${val_c}'
+			}
+		}
 		return StrFnInfo{
 			str_fn_name: '${map_type}_str'
-			elem_type:   map_type
+			elem_type:   elem_info
 		}
 	}
 	// Handle ArrayInitExpr directly for inline array literals
@@ -6246,6 +6337,11 @@ fn (mut t Transformer) generate_str_functions() []ast.Stmt {
 				generated[fn_name] = true
 				found_new = true
 				result << t.generate_array_str_fn(fn_name, elem_type)
+			} else if fn_name.starts_with('Map_') {
+				// Generate map str function
+				generated[fn_name] = true
+				found_new = true
+				result << t.generate_map_str_fn(fn_name, elem_type)
 			}
 		}
 		if !found_new {
@@ -7072,6 +7168,397 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 		attributes: []ast.Attribute{}
 		typ:        ast.FnType{
 			params:      [param_a]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts:      body_stmts
+	}
+}
+
+fn (mut t Transformer) generate_map_str_fn(fn_name string, elem_type string) ast.Stmt {
+	// Parse key and value types from elem_type (format: 'key_type|val_type')
+	map_type_name := fn_name[..fn_name.len - 4] // Remove '_str' suffix
+	parts := elem_type.split('|')
+	key_type := parts[0]
+	val_type := if parts.len > 1 { parts[1] } else { 'int' }
+
+	param_m := ast.Parameter{
+		name: 'm'
+		typ:  ast.Ident{
+			name: map_type_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, 'builtin', [param_m])
+
+	sb_ident := ast.Ident{
+		name: 'sb'
+	}
+	sb_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: sb_ident
+	})
+	m_ident := ast.Ident{
+		name: 'm'
+	}
+
+	// Helper to generate: strings__Builder__write_string(&sb, str_expr)
+	write_string_call := fn (sb_ref_ ast.Expr, s ast.Expr) ast.Stmt {
+		return ast.Stmt(ast.ExprStmt{
+			expr: ast.Expr(ast.CallExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'strings__Builder__write_string'
+				})
+				args: [sb_ref_, s]
+			})
+		})
+	}
+
+	mut body_stmts := []ast.Stmt{}
+
+	// mut sb := strings__new_builder(2 + m.len * 20)
+	body_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.ModifierExpr{
+			kind: .key_mut
+			expr: sb_ident
+		})]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'strings__new_builder'
+				}
+				args: [
+					ast.Expr(ast.InfixExpr{
+						op:  .plus
+						lhs: ast.BasicLiteral{
+							kind:  .number
+							value: '2'
+						}
+						rhs: ast.InfixExpr{
+							op:  .mul
+							lhs: t.synth_selector(m_ident, 'len', types.Type(types.int_))
+							rhs: ast.BasicLiteral{
+								kind:  .number
+								value: '20'
+							}
+						}
+					}),
+				]
+			}),
+		]
+	}
+
+	// strings__Builder__write_string(&sb, '{')
+	body_stmts << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '{' }))
+
+	// mut _map_written := 0
+	written_ident := ast.Ident{
+		name: '_map_written'
+	}
+	body_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.ModifierExpr{
+			kind: .key_mut
+			expr: written_ident
+		})]
+		rhs: [ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		})]
+	}
+
+	// key_values selector: m.key_values
+	key_values_expr := t.synth_selector(m_ident, 'key_values', types.Type(types.Struct{
+		name: 'DenseArray'
+	}))
+	// key_values.len selector: m.key_values.len
+	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len', types.Type(types.int_))
+	kv_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: key_values_expr
+	})
+
+	// _map_kv_len := m.key_values.len
+	kv_len_ident := ast.Ident{
+		name: '_map_kv_len'
+	}
+	body_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(kv_len_ident)]
+		rhs: [ast.Expr(key_values_len_expr)]
+	}
+
+	// Build loop body
+	idx_ident := ast.Ident{
+		name: '_map_i'
+	}
+	mut loop_body := []ast.Stmt{}
+
+	// if !DenseArray__has_index(&m.key_values, _map_i) { continue }
+	loop_body << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  ast.PrefixExpr{
+				op:   .not
+				expr: ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'DenseArray__has_index'
+					}
+					args: [kv_ref, ast.Expr(idx_ident)]
+				}
+			}
+			stmts: [ast.Stmt(ast.FlowControlStmt{
+				op: .key_continue
+			})]
+		}
+	}
+
+	// if _map_written > 0 { strings__Builder__write_string(&sb, ', ') }
+	loop_body << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  ast.InfixExpr{
+				op:  .gt
+				lhs: written_ident
+				rhs: ast.BasicLiteral{
+					kind:  .number
+					value: '0'
+				}
+			}
+			stmts: [
+				write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: ', ' })),
+			]
+		}
+	}
+
+	// k := *(KeyType*)DenseArray__key(&m.key_values, _map_i)
+	key_call := ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'DenseArray__key'
+		}
+		args: [kv_ref, ast.Expr(idx_ident)]
+	}
+	key_deref := ast.PrefixExpr{
+		op:   .mul
+		expr: ast.CastExpr{
+			typ:  ast.Ident{
+				name: '${key_type}*'
+			}
+			expr: key_call
+		}
+	}
+	k_ident := ast.Ident{
+		name: 'k'
+	}
+	loop_body << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(k_ident)]
+		rhs: [ast.Expr(key_deref)]
+	}
+
+	// Write key with proper formatting
+	if key_type == 'string' {
+		// String keys: write 'key'
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: "'" }))
+		loop_body << write_string_call(sb_ref, ast.Expr(k_ident))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: "': " }))
+	} else if key_type == 'rune' {
+		// Rune keys: write `key`
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '`' }))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'rune__str'
+			}
+			args: [ast.Expr(k_ident)]
+		}))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '`: ' }))
+	} else {
+		// Other keys (int, etc.): write key_str(k): (space)
+		key_str_fn := if key_type.starts_with('Array_') || key_type.starts_with('Map_') {
+			'${key_type}_str'
+		} else {
+			'${key_type}__str'
+		}
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: key_str_fn
+			}
+			args: [ast.Expr(k_ident)]
+		}))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: ': ' }))
+	}
+
+	// v := *(ValueType*)DenseArray__value(&m.key_values, _map_i)
+	// For fixed arrays, use pointer since C can't assign fixed arrays by value:
+	//   vp := (ValueType*)DenseArray__value(...); then use *vp
+	value_call := ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'DenseArray__value'
+		}
+		args: [kv_ref, ast.Expr(idx_ident)]
+	}
+	is_fixed_array_val := val_type.starts_with('Array_fixed_')
+	v_ident := if is_fixed_array_val {
+		ast.Ident{
+			name: '_vp'
+		}
+	} else {
+		ast.Ident{
+			name: 'v'
+		}
+	}
+	if is_fixed_array_val {
+		// _vp := (ValueType*)DenseArray__value(...)
+		value_ptr := ast.CastExpr{
+			typ:  ast.Ident{
+				name: '${val_type}*'
+			}
+			expr: value_call
+		}
+		loop_body << ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(v_ident)]
+			rhs: [ast.Expr(value_ptr)]
+		}
+	} else {
+		// v := *(ValueType*)DenseArray__value(...)
+		value_deref := ast.PrefixExpr{
+			op:   .mul
+			expr: ast.CastExpr{
+				typ:  ast.Ident{
+					name: '${val_type}*'
+				}
+				expr: value_call
+			}
+		}
+		loop_body << ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(v_ident)]
+			rhs: [ast.Expr(value_deref)]
+		}
+	}
+	// For fixed arrays, val_expr is *_vp; otherwise just v
+	val_expr := if is_fixed_array_val {
+		ast.Expr(ast.PrefixExpr{
+			op:   .mul
+			expr: v_ident
+		})
+	} else {
+		ast.Expr(v_ident)
+	}
+
+	// Write value with proper formatting
+	if val_type == 'string' {
+		// String values: write 'value'
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: "'" }))
+		loop_body << write_string_call(sb_ref, val_expr)
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: "'" }))
+	} else if val_type == 'rune' {
+		// Rune values: write `value`
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '`' }))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'rune__str'
+			}
+			args: [val_expr]
+		}))
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '`' }))
+	} else {
+		// Other values: write val_str(v)
+		val_str_fn := if val_type.starts_with('Array_') || val_type.starts_with('Map_') {
+			'${val_type}_str'
+		} else {
+			'${val_type}__str'
+		}
+		loop_body << write_string_call(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: val_str_fn
+			}
+			args: [val_expr]
+		}))
+	}
+
+	// Recursively register str functions for complex key/value types
+	for inner_type in [key_type, val_type] {
+		if inner_type.starts_with('Array_fixed_') {
+			inner_fn := '${inner_type}_str'
+			if inner_fn !in t.needed_str_fns {
+				inner_payload := inner_type['Array_fixed_'.len..]
+				inner_elem := inner_payload.all_before_last('_')
+				t.needed_str_fns[inner_fn] = inner_elem
+			}
+		} else if inner_type.starts_with('Array_') {
+			inner_fn := '${inner_type}_str'
+			if inner_fn !in t.needed_str_fns {
+				inner_elem := inner_type['Array_'.len..]
+				t.needed_str_fns[inner_fn] = inner_elem
+			}
+		} else if inner_type.starts_with('Map_') {
+			inner_fn := '${inner_type}_str'
+			if inner_fn !in t.needed_str_fns {
+				t.needed_str_fns[inner_fn] = inner_type
+			}
+		}
+	}
+
+	// _map_written += 1
+	loop_body << ast.AssignStmt{
+		op:  .plus_assign
+		lhs: [ast.Expr(written_ident)]
+		rhs: [ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '1'
+		})]
+	}
+
+	// for _map_i := 0; _map_i < _map_kv_len; _map_i++ { ... }
+	body_stmts << ast.ForStmt{
+		init:  ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			})]
+		}
+		cond:  ast.InfixExpr{
+			op:  .lt
+			lhs: idx_ident
+			rhs: kv_len_ident
+		}
+		post:  ast.AssignStmt{
+			op:  .plus_assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			})]
+		}
+		stmts: loop_body
+	}
+
+	// strings__Builder__write_string(&sb, '}')
+	body_stmts << write_string_call(sb_ref, ast.Expr(ast.StringLiteral{ kind: .v, value: '}' }))
+
+	// return strings__Builder__str(&sb)
+	body_stmts << ast.ReturnStmt{
+		exprs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'strings__Builder__str'
+				}
+				args: [sb_ref]
+			}),
+		]
+	}
+
+	return ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_m]
 			return_type: ast.Ident{
 				name: 'string'
 			}

@@ -614,6 +614,14 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
+	// Inline generic math functions for native backends (arm64/x64).
+	// The SSA builder skips generic function declarations, so abs[T], min[T], max[T]
+	// become unresolved symbols. Inline them as simple if-expressions.
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if inlined := t.try_inline_generic_math_call(expr) {
+			return inlined
+		}
+	}
 	// Expand .filter() / .map() calls to hoisted statements + temp variable
 	if expanded := t.try_expand_filter_or_map_expr(expr) {
 		return expanded
@@ -1700,6 +1708,12 @@ fn (t &Transformer) is_sort_compare_lambda_expr(expr ast.Expr) bool {
 }
 
 fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
+	// Inline generic math functions for native backends (arm64/x64).
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if inlined := t.try_inline_generic_math_coce(expr) {
+			return inlined
+		}
+	}
 	// Expand .filter() / .map() calls to hoisted statements + temp variable
 	if expanded := t.try_expand_filter_or_map_expr(expr) {
 		return expanded
@@ -2277,4 +2291,337 @@ fn (t &Transformer) get_call_return_type(expr ast.Expr) string {
 		}
 	}
 	return ''
+}
+
+// --- Generic math function inlining for native backends ---
+
+// try_inline_generic_math_call handles CallExpr (multi-arg calls):
+// - min(a, b) → if a < b { a } else { b }
+// - max(a, b) → if a > b { a } else { b }
+// - maxof[T]() / minof[T]() → numeric constant
+fn (mut t Transformer) try_inline_generic_math_call(expr ast.CallExpr) ?ast.Expr {
+	// Handle maxof[T]() and minof[T]() - these have GenericArgs lhs
+	if expr.lhs is ast.GenericArgs && expr.args.len == 0 {
+		ga := expr.lhs as ast.GenericArgs
+		if ga.lhs is ast.Ident && ga.args.len == 1 {
+			fn_name := (ga.lhs as ast.Ident).name
+			type_name := ga.args[0].name()
+			if fn_name == 'maxof' {
+				if val := t.maxof_constant(type_name) {
+					return val
+				}
+			} else if fn_name == 'minof' {
+				if val := t.minof_constant(type_name) {
+					return val
+				}
+			}
+		}
+	}
+	// Handle maxof[T]() and minof[T]() - parser may produce GenericArgOrIndexExpr for single arg
+	if expr.lhs is ast.GenericArgOrIndexExpr && expr.args.len == 0 {
+		gaoi := expr.lhs as ast.GenericArgOrIndexExpr
+		if gaoi.lhs is ast.Ident {
+			fn_name := (gaoi.lhs as ast.Ident).name
+			type_name := gaoi.expr.name()
+			if fn_name == 'maxof' {
+				if val := t.maxof_constant(type_name) {
+					return val
+				}
+			} else if fn_name == 'minof' {
+				if val := t.minof_constant(type_name) {
+					return val
+				}
+			}
+		}
+	}
+	// Handle abs(x) - single-arg call (may be CallExpr within math module)
+	if expr.lhs is ast.Ident && expr.args.len == 1 {
+		name := (expr.lhs as ast.Ident).name
+		if name == 'abs' {
+			arg := t.transform_expr(expr.args[0])
+			return ast.Expr(ast.IfExpr{
+				cond:      ast.InfixExpr{
+					op:  .lt
+					lhs: arg
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				}
+				stmts:     [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.PrefixExpr{
+							op:   .minus
+							expr: arg
+						}
+					}),
+				]
+				else_expr: ast.IfExpr{
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: arg
+						}),
+					]
+				}
+			})
+		}
+	}
+	// Handle math.abs(x) - module-qualified single-arg call
+	if expr.lhs is ast.SelectorExpr && expr.args.len == 1 {
+		sel := expr.lhs as ast.SelectorExpr
+		if sel.lhs is ast.Ident && (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' {
+			arg := t.transform_expr(expr.args[0])
+			return ast.Expr(ast.IfExpr{
+				cond:      ast.InfixExpr{
+					op:  .lt
+					lhs: arg
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				}
+				stmts:     [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.PrefixExpr{
+							op:   .minus
+							expr: arg
+						}
+					}),
+				]
+				else_expr: ast.IfExpr{
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: arg
+						}),
+					]
+				}
+			})
+		}
+	}
+	// Handle min(a, b) and max(a, b) - bare ident calls within math module
+	if expr.lhs is ast.Ident && expr.args.len == 2 {
+		name := (expr.lhs as ast.Ident).name
+		if name == 'min' || name == 'max' {
+			a := t.transform_expr(expr.args[0])
+			b := t.transform_expr(expr.args[1])
+			op := if name == 'min' { token.Token.lt } else { token.Token.gt }
+			return t.make_inline_if_expr(a, b, op)
+		}
+	}
+	// Handle math.min(a, b) and math.max(a, b) - module-qualified calls
+	if expr.lhs is ast.SelectorExpr && expr.args.len == 2 {
+		sel := expr.lhs as ast.SelectorExpr
+		if sel.lhs is ast.Ident && (sel.lhs as ast.Ident).name == 'math' {
+			name := sel.rhs.name
+			if name == 'min' || name == 'max' {
+				a := t.transform_expr(expr.args[0])
+				b := t.transform_expr(expr.args[1])
+				op := if name == 'min' { token.Token.lt } else { token.Token.gt }
+				return t.make_inline_if_expr(a, b, op)
+			}
+		}
+	}
+	// Handle already-resolved maxof_T() and minof_T() names (0-arg calls)
+	if expr.lhs is ast.Ident && expr.args.len == 0 {
+		name := (expr.lhs as ast.Ident).name
+		if name.starts_with('maxof_') {
+			type_name := name[6..]
+			if val := t.maxof_constant(type_name) {
+				return val
+			}
+		} else if name.starts_with('minof_') {
+			type_name := name[6..]
+			if val := t.minof_constant(type_name) {
+				return val
+			}
+		}
+	}
+	return none
+}
+
+// try_inline_generic_math_coce handles CallOrCastExpr (single-arg calls):
+// - abs(x) → if x < 0 { -x } else { x }
+fn (mut t Transformer) try_inline_generic_math_coce(expr ast.CallOrCastExpr) ?ast.Expr {
+	// Handle maxof[T]() / minof[T]() when parsed as CallOrCastExpr
+	if expr.lhs is ast.GenericArgOrIndexExpr && expr.expr is ast.EmptyExpr {
+		gaoi := expr.lhs as ast.GenericArgOrIndexExpr
+		if gaoi.lhs is ast.Ident {
+			fn_name := (gaoi.lhs as ast.Ident).name
+			type_name := gaoi.expr.name()
+			if fn_name == 'maxof' {
+				if val := t.maxof_constant(type_name) {
+					return val
+				}
+			} else if fn_name == 'minof' {
+				if val := t.minof_constant(type_name) {
+					return val
+				}
+			}
+		}
+	}
+	if expr.lhs is ast.GenericArgs && expr.expr is ast.EmptyExpr {
+		ga := expr.lhs as ast.GenericArgs
+		if ga.lhs is ast.Ident && ga.args.len == 1 {
+			fn_name := (ga.lhs as ast.Ident).name
+			type_name := ga.args[0].name()
+			if fn_name == 'maxof' {
+				if val := t.maxof_constant(type_name) {
+					return val
+				}
+			} else if fn_name == 'minof' {
+				if val := t.minof_constant(type_name) {
+					return val
+				}
+			}
+		}
+	}
+	if expr.lhs is ast.Ident {
+		name := (expr.lhs as ast.Ident).name
+		if name == 'abs' && expr.expr !is ast.EmptyExpr {
+			arg := t.transform_expr(expr.expr)
+			return ast.Expr(ast.IfExpr{
+				cond:      ast.InfixExpr{
+					op:  .lt
+					lhs: arg
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				}
+				stmts:     [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.PrefixExpr{
+							op:   .minus
+							expr: arg
+						}
+					}),
+				]
+				else_expr: ast.IfExpr{
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: arg
+						}),
+					]
+				}
+			})
+		}
+	}
+	// Handle math.abs(x)
+	if expr.lhs is ast.SelectorExpr {
+		sel := expr.lhs as ast.SelectorExpr
+		if sel.lhs is ast.Ident
+			&& (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' && expr.expr !is ast.EmptyExpr {
+			arg := t.transform_expr(expr.expr)
+			return ast.Expr(ast.IfExpr{
+				cond:      ast.InfixExpr{
+					op:  .lt
+					lhs: arg
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				}
+				stmts:     [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.PrefixExpr{
+							op:   .minus
+							expr: arg
+						}
+					}),
+				]
+				else_expr: ast.IfExpr{
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: arg
+						}),
+					]
+				}
+			})
+		}
+	}
+	return none
+}
+
+// make_inline_if_expr creates: if a OP b { a } else { b }
+fn (t &Transformer) make_inline_if_expr(a ast.Expr, b ast.Expr, op token.Token) ast.Expr {
+	return ast.IfExpr{
+		cond:      ast.InfixExpr{
+			op:  op
+			lhs: a
+			rhs: b
+		}
+		stmts:     [
+			ast.Stmt(ast.ExprStmt{
+				expr: a
+			}),
+		]
+		else_expr: ast.IfExpr{
+			stmts: [
+				ast.Stmt(ast.ExprStmt{
+					expr: b
+				}),
+			]
+		}
+	}
+}
+
+fn (t &Transformer) maxof_constant(type_name string) ?ast.Expr {
+	val := match type_name {
+		'i8' { '127' }
+		'i16' { '32767' }
+		'i32' { '2147483647' }
+		'int' { '2147483647' }
+		'i64' { '9223372036854775807' }
+		'u8' { '255' }
+		'byte' { '255' }
+		'u16' { '65535' }
+		'u32' { '4294967295' }
+		'u64' { '18446744073709551615' }
+		'f32' { '3.40282346638528859811704183484516925440e+38' }
+		'f64' { '1.797693134862315708145274237317043567981e+308' }
+		else { return none }
+	}
+	return ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: val
+	})
+}
+
+fn (t &Transformer) minof_constant(type_name string) ?ast.Expr {
+	// For i64 min, use subtraction expression to avoid overflow in literal parsing:
+	// -9223372036854775807 - 1
+	if type_name == 'i64' {
+		return ast.Expr(ast.InfixExpr{
+			op:  .minus
+			lhs: ast.PrefixExpr{
+				op:   .minus
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '9223372036854775807'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+		})
+	}
+	val := match type_name {
+		'i8' { '-128' }
+		'i16' { '-32768' }
+		'i32' { '-2147483648' }
+		'int' { '-2147483648' }
+		'u8' { '0' }
+		'byte' { '0' }
+		'u16' { '0' }
+		'u32' { '0' }
+		'u64' { '0' }
+		'f32' { '-3.40282346638528859811704183484516925440e+38' }
+		'f64' { '-1.797693134862315708145274237317043567981e+308' }
+		else { return none }
+	}
+	return ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: val
+	})
 }

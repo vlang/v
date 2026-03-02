@@ -332,7 +332,9 @@ fn (mut b Builder) expr_type(e ast.Expr) TypeID {
 			if e.kind == .key_true || e.kind == .key_false {
 				return b.mod.type_store.get_int(1)
 			}
-			if e.kind == .number && e.value.contains('.') {
+			if e.kind == .number && (e.value.contains('.')
+				|| (!e.value.starts_with('0x') && !e.value.starts_with('0X')
+				&& (e.value.contains('e') || e.value.contains('E')))) {
 				return b.mod.type_store.get_float(64)
 			}
 			return b.mod.type_store.get_int(64)
@@ -681,9 +683,18 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 					}
 					// Check if this is a float constant - store for inline resolution
 					if field.value is ast.BasicLiteral && field.value.kind == .number
-						&& field.value.value.contains('.') {
+						&& (field.value.value.contains('.')
+						|| (!field.value.value.starts_with('0x')
+						&& !field.value.value.starts_with('0X')
+						&& (field.value.value.contains('e') || field.value.value.contains('E')))) {
 						b.float_const_values[const_name] = field.value.value
 						b.float_const_values[field.name] = field.value.value
+					} else if b.is_float_cast_expr(field.value) {
+						if fval := b.try_eval_computed_float(field.value) {
+							fval_str := fval.str()
+							b.float_const_values[const_name] = fval_str
+							b.float_const_values[field.name] = fval_str
+						}
 					}
 					initial_value := b.try_eval_const_int(field.value)
 					// Detect sum type constants: these are multi-word values that
@@ -1073,6 +1084,116 @@ fn (b &Builder) try_eval_const_float(expr ast.Expr) f64 {
 	return 0.0
 }
 
+// is_float_cast_expr returns true if the expression is a cast to a float type
+// (e.g., f64(literal), f32(expr)), which should be evaluated as a float constant.
+// This prevents pure integer expressions like `64 - 11 - 1` from being stored
+// as float constants.
+fn (b &Builder) is_float_cast_expr(expr ast.Expr) bool {
+	if expr is ast.CastExpr {
+		if expr.typ is ast.Ident {
+			return expr.typ.name == 'f64' || expr.typ.name == 'f32'
+		}
+	}
+	if expr is ast.CallOrCastExpr {
+		if expr.lhs is ast.Ident {
+			return expr.lhs.name == 'f64' || expr.lhs.name == 'f32'
+		}
+	}
+	if expr is ast.BasicLiteral {
+		if expr.kind == .number {
+			return expr.value.contains('.')
+				|| (!expr.value.starts_with('0x') && !expr.value.starts_with('0X')
+				&& (expr.value.contains('e') || expr.value.contains('E')))
+		}
+	}
+	// Check for InfixExpr/PrefixExpr involving float operations
+	// (e.g., `1.0 / ln2` or `-0.5`)
+	if expr is ast.PrefixExpr {
+		return b.is_float_cast_expr(expr.expr)
+	}
+	if expr is ast.InfixExpr {
+		return b.is_float_cast_expr(expr.lhs) || b.is_float_cast_expr(expr.rhs)
+	}
+	return false
+}
+
+// try_eval_computed_float evaluates a constant expression to a float value.
+// Handles computed float constants like `pi / 2.0`, `1.0 / ln2`, etc.
+// Returns none if the expression can't be evaluated as a compile-time float.
+fn (mut b Builder) try_eval_computed_float(expr ast.Expr) ?f64 {
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .number && expr.value.contains('.') {
+				return expr.value.f64()
+			}
+			if expr.kind == .number {
+				return f64(expr.value.i64())
+			}
+			return none
+		}
+		ast.Ident {
+			// Look up the identifier in float_const_values
+			if fval := b.float_const_values[expr.name] {
+				return fval.f64()
+			}
+			qualified := '${b.cur_module}__${expr.name}'
+			if fval := b.float_const_values[qualified] {
+				return fval.f64()
+			}
+			return none
+		}
+		ast.InfixExpr {
+			lhs := b.try_eval_computed_float(expr.lhs) or { return none }
+			rhs := b.try_eval_computed_float(expr.rhs) or { return none }
+			return match expr.op {
+				.plus {
+					lhs + rhs
+				}
+				.minus {
+					lhs - rhs
+				}
+				.mul {
+					lhs * rhs
+				}
+				.div {
+					if rhs != 0.0 {
+						lhs / rhs
+					} else {
+						f64(0.0)
+					}
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .minus {
+				val := b.try_eval_computed_float(expr.expr) or { return none }
+				return -val
+			}
+			return none
+		}
+		ast.CastExpr {
+			// Only evaluate as float if casting to a float type (f64, f32)
+			if expr.typ is ast.Ident && (expr.typ.name == 'f64' || expr.typ.name == 'f32') {
+				return b.try_eval_computed_float(expr.expr)
+			}
+			return none
+		}
+		ast.CallOrCastExpr {
+			// Only evaluate as float if casting to a float type (f64, f32)
+			if expr.lhs is ast.Ident && (expr.lhs.name == 'f64' || expr.lhs.name == 'f32') {
+				return b.try_eval_computed_float(expr.expr)
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 	match expr {
 		ast.BasicLiteral {
@@ -1083,6 +1204,11 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 					&& (expr.value.contains('e') || expr.value.contains('E')
 					|| expr.value.contains('.')) {
 					return i64(expr.value.f64())
+				}
+				// Parse hex values as u64 first to handle values with bit 63 set
+				// (e.g., 0x800fffffffffffff), then reinterpret as i64.
+				if expr.value.starts_with('0x') || expr.value.starts_with('0X') {
+					return i64(expr.value.u64())
 				}
 				return expr.value.i64()
 			}
@@ -1589,7 +1715,11 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	}
 	for param in decl.typ.params {
 		param_type := b.ast_type_to_ssa(param.typ)
-		actual_type := if param.is_mut {
+		// For `mut` params, add a pointer level for pass-by-reference semantics,
+		// but NOT if the type is already a pointer (e.g., `mut buf &u8` → param is already ptr(i8)).
+		// In C, `mut buf &u8` is just `u8* buf`, not `u8** buf`.
+		actual_type := if param.is_mut && !(param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t) {
 			b.mod.type_store.get_ptr(param_type)
 		} else {
 			param_type
@@ -1608,7 +1738,7 @@ fn (mut b Builder) mangle_fn_name(decl ast.FnDecl) string {
 	if decl.language == .c {
 		return decl.name
 	}
-	if decl.name == 'main' && b.cur_module == 'main' {
+	if decl.name == 'main' {
 		return 'main'
 	}
 	if b.cur_module != '' && b.cur_module != 'main' {
@@ -1757,7 +1887,12 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 
 	for param in decl.typ.params {
 		param_type := b.ast_type_to_ssa(param.typ)
-		actual_type := if param.is_mut {
+		// For `mut` params, add pointer level only if the type isn't already a pointer.
+		// `mut buf &u8` → param_type is ptr(i8), no extra level needed (like C: u8* buf).
+		// `mut val int` → param_type is i32, needs ptr(i32) for pass-by-reference.
+		is_already_ptr := param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t
+		actual_type := if param.is_mut && !is_already_ptr {
 			b.mod.type_store.get_ptr(param_type)
 		} else {
 			param_type
@@ -1769,12 +1904,6 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 			[]ValueID{})
 		b.mod.add_instr(.store, entry, 0, [param_val, alloca])
 		b.vars[param.name] = alloca
-		// Track mut pointer params that need extra dereference in build_ident.
-		// e.g., mut buf &u8 → actual_type is ptr(ptr(i8)), but user sees buf as &u8.
-		if param.is_mut && param_type < b.mod.type_store.types.len
-			&& b.mod.type_store.types[param_type].kind == .ptr_t {
-			b.mut_ptr_params[param.name] = true
-		}
 	}
 
 	// Build body
@@ -1938,6 +2067,49 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 		}
 		return
 	}
+	// For multi-assign with plain assignment (a, b = b, a), evaluate all RHS
+	// values before any stores to avoid aliasing issues.
+	if stmt.lhs.len > 1 && stmt.rhs.len > 1 && stmt.op == .assign {
+		mut rhs_vals := []ValueID{cap: stmt.rhs.len}
+		for rhs_expr in stmt.rhs {
+			rhs_vals << b.build_expr(rhs_expr)
+		}
+		for i, lhs in stmt.lhs {
+			if i >= rhs_vals.len {
+				break
+			}
+			rhs_val := rhs_vals[i]
+			if ident := b.unwrap_ident(lhs) {
+				if ident.name == '_' {
+					continue
+				}
+				mut ptr := ValueID(0)
+				if p := b.vars[ident.name] {
+					ptr = p
+				} else if glob_id := b.find_global(ident.name) {
+					ptr = glob_id
+				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
+					ptr = glob_id
+				} else if glob_id := b.find_global('builtin__${ident.name}') {
+					ptr = glob_id
+				}
+				if ptr != 0 {
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, ptr])
+				}
+			} else if lhs is ast.SelectorExpr {
+				base := b.build_addr(lhs)
+				if base != 0 {
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, base])
+				}
+			} else if lhs is ast.IndexExpr {
+				base := b.build_addr(lhs)
+				if base != 0 {
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, base])
+				}
+			}
+		}
+		return
+	}
 	for i, lhs in stmt.lhs {
 		if i >= stmt.rhs.len {
 			break
@@ -2016,8 +2188,27 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 								else { OpCode.add }
 							}
 						}
+						// If LHS is float but RHS is int, convert RHS to float
+						mut actual_rhs := rhs_val
+						if ca_is_float {
+							rhs_typ := b.mod.values[rhs_val].typ
+							rhs_is_float := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+								&& b.mod.type_store.types[rhs_typ].kind == .float_t
+							if !rhs_is_float {
+								rhs_unsigned := rhs_typ > 0
+									&& int(rhs_typ) < b.mod.type_store.types.len
+									&& b.mod.type_store.types[rhs_typ].is_unsigned
+								conv_op := if rhs_unsigned {
+									OpCode.uitofp
+								} else {
+									OpCode.sitofp
+								}
+								actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
+									[rhs_val])
+							}
+						}
 						result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-							[loaded, rhs_val])
+							[loaded, actual_rhs])
 						b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
 					}
 				}
@@ -2063,8 +2254,26 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 							else { OpCode.add }
 						}
 					}
+					// If LHS is float but RHS is int, convert RHS to float
+					mut actual_rhs := rhs_val
+					if sf_is_float {
+						rhs_typ := b.mod.values[rhs_val].typ
+						rhs_is_float := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+							&& b.mod.type_store.types[rhs_typ].kind == .float_t
+						if !rhs_is_float {
+							rhs_unsigned := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+								&& b.mod.type_store.types[rhs_typ].is_unsigned
+							conv_op := if rhs_unsigned {
+								OpCode.uitofp
+							} else {
+								OpCode.sitofp
+							}
+							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
+								[rhs_val])
+						}
+					}
 					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-						[loaded, rhs_val])
+						[loaded, actual_rhs])
 					b.mod.add_instr(.store, b.cur_block, 0, [result, base])
 				}
 			}
@@ -2102,9 +2311,28 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 						else { OpCode.add }
 					}
 				}
+				// If LHS is float but RHS is int, convert RHS to float
+				mut actual_rhs := rhs_val
+				if pd_is_float {
+					rhs_typ := b.mod.values[rhs_val].typ
+					rhs_is_float := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+						&& b.mod.type_store.types[rhs_typ].kind == .float_t
+					if !rhs_is_float {
+						rhs_unsigned := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+							&& b.mod.type_store.types[rhs_typ].is_unsigned
+						conv_op := if rhs_unsigned {
+							OpCode.uitofp
+						} else {
+							OpCode.sitofp
+						}
+						actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ, [
+							rhs_val,
+						])
+					}
+				}
 				result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ, [
 					loaded,
-					rhs_val,
+					actual_rhs,
 				])
 				b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
 			}
@@ -2149,8 +2377,26 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 							else { OpCode.add }
 						}
 					}
+					// If LHS is float but RHS is int, convert RHS to float
+					mut actual_rhs := rhs_val
+					if ix_is_float {
+						rhs_typ := b.mod.values[rhs_val].typ
+						rhs_is_float := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+							&& b.mod.type_store.types[rhs_typ].kind == .float_t
+						if !rhs_is_float {
+							rhs_unsigned := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+								&& b.mod.type_store.types[rhs_typ].is_unsigned
+							conv_op := if rhs_unsigned {
+								OpCode.uitofp
+							} else {
+								OpCode.sitofp
+							}
+							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
+								[rhs_val])
+						}
+					}
 					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-						[loaded, rhs_val])
+						[loaded, actual_rhs])
 					b.mod.add_instr(.store, b.cur_block, 0, [result, base])
 				}
 			}
@@ -2162,7 +2408,19 @@ fn (mut b Builder) build_return(stmt ast.ReturnStmt) {
 	if stmt.exprs.len == 0 {
 		b.mod.add_instr(.ret, b.cur_block, 0, []ValueID{})
 	} else if stmt.exprs.len == 1 {
-		val := b.build_expr(stmt.exprs[0])
+		mut val := b.build_expr(stmt.exprs[0])
+		// If function returns float but value is int, convert (e.g., `return 1` in fn() f64)
+		if b.cur_func >= 0 && b.cur_func < b.mod.funcs.len {
+			fn_ret_type := b.mod.funcs[b.cur_func].typ
+			if fn_ret_type > 0 && int(fn_ret_type) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[fn_ret_type].kind == .float_t {
+				val_type := b.mod.values[val].typ
+				if val_type > 0 && int(val_type) < b.mod.type_store.types.len
+					&& b.mod.type_store.types[val_type].kind != .float_t {
+					val = b.mod.add_instr(.sitofp, b.cur_block, fn_ret_type, [val])
+				}
+			}
+		}
 		b.mod.add_instr(.ret, b.cur_block, 0, [val])
 	} else {
 		// Multiple return values -> build a tuple via insertvalue
@@ -2501,7 +2759,9 @@ fn (mut b Builder) build_basic_literal(lit ast.BasicLiteral) ValueID {
 			return b.mod.get_or_add_const(typ, char_val.str())
 		}
 		.number {
-			if lit.value.contains('.') {
+			if lit.value.contains('.')
+				|| (!lit.value.starts_with('0x') && !lit.value.starts_with('0X')
+				&& (lit.value.contains('e') || lit.value.contains('E'))) {
 				typ := b.mod.type_store.get_float(64)
 				return b.mod.get_or_add_const(typ, lit.value)
 			}
@@ -3058,11 +3318,17 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 	is_float := lhs_is_float || rhs_is_float
 	if is_float {
 		if lhs_is_float && !rhs_is_float {
-			// Promote RHS int to float (sitofp)
-			rhs_v = b.mod.add_instr(.sitofp, b.cur_block, lhs_type, [rhs_v])
+			// Promote RHS int to float: use uitofp for unsigned types, sitofp for signed
+			rhs_unsigned := rhs_type_id > 0 && int(rhs_type_id) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[rhs_type_id].is_unsigned
+			conv_op := if rhs_unsigned { OpCode.uitofp } else { OpCode.sitofp }
+			rhs_v = b.mod.add_instr(conv_op, b.cur_block, lhs_type, [rhs_v])
 		} else if rhs_is_float && !lhs_is_float {
-			// Promote LHS int to float (sitofp)
-			lhs_v = b.mod.add_instr(.sitofp, b.cur_block, rhs_type_id, [lhs_v])
+			// Promote LHS int to float: use uitofp for unsigned types, sitofp for signed
+			lhs_unsigned := lhs_type > 0 && int(lhs_type) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[lhs_type].is_unsigned
+			conv_op := if lhs_unsigned { OpCode.uitofp } else { OpCode.sitofp }
+			lhs_v = b.mod.add_instr(conv_op, b.cur_block, rhs_type_id, [lhs_v])
 		}
 	}
 
@@ -3253,19 +3519,38 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 		}
 	}
 
+	// Special case: negation of float literal → create negated constant directly.
+	// This handles -0.0 correctly (fsub(0,0) = +0.0 per IEEE 754, but -0.0 has sign bit set).
+	if expr.op == .minus && expr.expr is ast.BasicLiteral {
+		lit := expr.expr as ast.BasicLiteral
+		is_float_lit := lit.value.contains('.')
+			|| (!lit.value.starts_with('0x') && !lit.value.starts_with('0X')
+			&& (lit.value.contains('e') || lit.value.contains('E')))
+		if is_float_lit {
+			neg_str := '-' + lit.value
+			float_type := b.mod.type_store.get_float(64)
+			return b.mod.get_or_add_const(float_type, neg_str)
+		}
+	}
+
 	val := b.build_expr(expr.expr)
 
 	match expr.op {
 		.minus {
 			val_type := b.mod.values[val].typ
-			zero := b.mod.get_or_add_const(val_type, '0')
-			neg_op := if val_type > 0 && int(val_type) < b.mod.type_store.types.len
-				&& b.mod.type_store.types[val_type].kind == .float_t {
-				OpCode.fsub
-			} else {
-				OpCode.sub
+			is_float := val_type > 0 && int(val_type) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[val_type].kind == .float_t
+			if is_float {
+				// Float negation at runtime: XOR with sign bit mask.
+				// Use integer type for XOR since it's a bit operation.
+				i64_type := b.mod.type_store.get_int(64)
+				sign_mask := b.mod.get_or_add_const(i64_type, '0x8000000000000000')
+				int_val := b.mod.add_instr(.bitcast, b.cur_block, i64_type, [val])
+				xored := b.mod.add_instr(.xor, b.cur_block, i64_type, [int_val, sign_mask])
+				return b.mod.add_instr(.bitcast, b.cur_block, val_type, [xored])
 			}
-			return b.mod.add_instr(neg_op, b.cur_block, val_type, [zero, val])
+			zero := b.mod.get_or_add_const(val_type, '0')
+			return b.mod.add_instr(.sub, b.cur_block, val_type, [zero, val])
 		}
 		.not {
 			// Logical NOT: !x → (x == 0)
@@ -3545,18 +3830,40 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 					}
 				}
 			} else {
-				addr := b.build_addr(arg.expr)
-				if addr != 0 {
-					args << addr
+				// Check if the parameter type is already a pointer (e.g., `mut buf &u8`).
+				// If so, the function takes a plain pointer, not pointer-to-pointer,
+				// so evaluate the expression directly instead of taking its address.
+				param_idx2 := args.len
+				mut param_is_already_ptr := false
+				if param_idx2 < fn_params.len {
+					pt := b.mod.values[fn_params[param_idx2]].typ
+					if pt < b.mod.type_store.types.len && b.mod.type_store.types[pt].kind == .ptr_t {
+						pointee2 := b.mod.type_store.types[pt].elem_type
+						// Only skip addr-of if pointee is NOT a struct (struct mut params need addr-of)
+						if pointee2 < b.mod.type_store.types.len
+							&& b.mod.type_store.types[pointee2].kind != .struct_t {
+							param_is_already_ptr = true
+						}
+					}
+				}
+				if param_is_already_ptr
+					|| (arg.expr is ast.PrefixExpr && (arg.expr as ast.PrefixExpr).op == .amp) {
+					// Parameter already expects a pointer value (not pointer-to-value),
+					// or argument explicitly provides a pointer with &.
+					args << b.build_expr(arg.expr)
 				} else {
-					// Can't take address directly (e.g., `mut &buffer[0]`).
-					// Evaluate the expression, store in a temp alloca, pass alloca address.
-					val := b.build_expr(arg.expr)
-					val_type := b.mod.values[val].typ
-					alloca_type := b.mod.type_store.get_ptr(val_type)
-					tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type, []ValueID{})
-					b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
-					args << tmp_alloca
+					addr := b.build_addr(arg.expr)
+					if addr != 0 {
+						args << addr
+					} else {
+						val := b.build_expr(arg.expr)
+						val_type := b.mod.values[val].typ
+						alloca_type := b.mod.type_store.get_ptr(val_type)
+						tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type,
+							[]ValueID{})
+						b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+						args << tmp_alloca
+					}
 				}
 			}
 		} else {
@@ -3630,12 +3937,18 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 					b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
 					args[ai] = alloca
 				}
-				// Scalar arg but voidptr param: auto-ref for array methods
-				// (insert, prepend, etc. take val voidptr which means "pointer to element")
+				// Int arg but float param: auto-convert (sitofp)
+				if arg_kind == .int_t && param_kind == .float_t {
+					args[ai] = b.mod.add_instr(.sitofp, b.cur_block, param_type, [
+						args[ai],
+					])
+				}
+				// Scalar arg but voidptr param: auto-ref for builtin methods
+				// (array insert/prepend, map delete/set/get, etc. take voidptr = "pointer to element")
 				i8_t := b.mod.type_store.get_int(8)
 				voidptr_t := b.mod.type_store.get_ptr(i8_t)
 				if param_type == voidptr_t && arg_kind in [.int_t, .float_t]
-					&& fn_name.contains('array__') {
+					&& (fn_name.contains('array__') || fn_name.contains('map__')) {
 					ptr_type := b.mod.type_store.get_ptr(arg_type)
 					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
 					b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
@@ -4070,6 +4383,10 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 	if expr.lhs is ast.Ident {
 		mod_name := expr.lhs.name.replace('.', '_')
 		qualified := '${mod_name}__${expr.rhs.name}'
+		// Try as float constant (inline as f64)
+		if fval := b.float_const_values[qualified] {
+			return b.mod.get_or_add_const(b.mod.type_store.get_float(64), fval)
+		}
 		// Try as compile-time constant
 		if qualified in b.const_values {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[qualified].str())
@@ -4358,6 +4675,28 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 		return b.mod.add_instr(.load, b.cur_block, i8_t, [elem_addr])
 	}
 
+	// Handle fixed-size array values (from [1,2,3]! load): base is array_t, not ptr_t.
+	// Trace back through the load instruction to find the original alloca pointer,
+	// then use the pointer-based GEP+load path.
+	if base_type_id > 0 && base_type_id < b.mod.type_store.types.len {
+		base_typ := b.mod.type_store.types[base_type_id]
+		if base_typ.kind == .array_t && base_typ.elem_type != 0 {
+			base_value := b.mod.values[base_val]
+			if base_value.kind == .instruction {
+				instr := b.mod.instrs[base_value.index]
+				if instr.op == .load && instr.operands.len > 0 {
+					// Found the original alloca pointer — use it for GEP+load
+					alloca_ptr := instr.operands[0]
+					elem_type := base_typ.elem_type
+					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+					elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
+						[alloca_ptr, index])
+					return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+				}
+			}
+		}
+	}
+
 	// Check if base is a pointer (e.g., from alloca for fixed-size array literal)
 	// For ptr(T), element type is T — use that instead of expr_type fallback
 	if base_type_id < b.mod.type_store.types.len {
@@ -4383,6 +4722,64 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 	return b.mod.add_instr(.get_element_ptr, b.cur_block, result_type, [base_val, index])
 }
 
+// infer_if_expr_type tries to infer the result type of a transformer-generated
+// IfExpr that has no position annotation (so expr_type returns i64 fallback).
+// Checks both then and else branches for type information.
+fn (mut b Builder) infer_if_expr_type(node ast.IfExpr, i64_t TypeID) TypeID {
+	// Try to infer from branch expressions (check both then and else branches)
+	branches := [node.stmts, if node.else_expr is ast.IfExpr {
+		(node.else_expr as ast.IfExpr).stmts
+	} else {
+		[]ast.Stmt{}
+	}]
+	for branch_stmts in branches {
+		if branch_stmts.len == 0 {
+			continue
+		}
+		last := branch_stmts[branch_stmts.len - 1]
+		if last !is ast.ExprStmt {
+			continue
+		}
+		// Unwrap PrefixExpr (e.g., -f has the same type as f)
+		mut expr := (last as ast.ExprStmt).expr
+		for expr is ast.PrefixExpr {
+			expr = (expr as ast.PrefixExpr).expr
+		}
+		if expr is ast.StringLiteral || expr is ast.StringInterLiteral {
+			str_type := b.get_string_type()
+			if str_type != 0 {
+				return str_type
+			}
+		} else if expr is ast.Ident {
+			ident_name := (expr as ast.Ident).name
+			if alloca_id := b.vars[ident_name] {
+				alloca_val := b.mod.values[alloca_id]
+				if alloca_val.typ > 0 && alloca_val.typ < b.mod.type_store.types.len {
+					alloca_typ := b.mod.type_store.types[alloca_val.typ]
+					if alloca_typ.kind == .ptr_t && alloca_typ.elem_type > 0
+						&& alloca_typ.elem_type < b.mod.type_store.types.len {
+						elem := b.mod.type_store.types[alloca_typ.elem_type]
+						if elem.kind == .struct_t || elem.kind == .float_t {
+							return alloca_typ.elem_type
+						}
+					}
+				}
+			}
+		} else if expr is ast.BasicLiteral {
+			bl := expr as ast.BasicLiteral
+			if bl.kind == .number && bl.value.contains('.') {
+				return b.mod.type_store.get_float(64)
+			}
+		} else {
+			inferred := b.expr_type(expr)
+			if inferred != i64_t && inferred != 0 {
+				return inferred
+			}
+		}
+	}
+	return i64_t
+}
+
 fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	// If used as expression, returns a value
 	mut result_type := b.expr_type(ast.Expr(node))
@@ -4391,45 +4788,7 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	// IfExpr chains without position IDs, so expr_type returns i64 fallback.
 	i64_t := b.mod.type_store.get_int(64)
 	if result_type == i64_t {
-		// Check if "then" branch last statement is a string literal or string expr
-		if node.stmts.len > 0 {
-			last := node.stmts[node.stmts.len - 1]
-			if last is ast.ExprStmt {
-				if last.expr is ast.StringLiteral || last.expr is ast.StringInterLiteral {
-					str_type := b.get_string_type()
-					if str_type != 0 {
-						result_type = str_type
-					}
-				} else if last.expr is ast.Ident {
-					// Look up the identifier's SSA type from variables or function return types.
-					// This handles transformer-generated patterns like:
-					//   _t := fn_returning_struct()
-					//   src := if _t { _t } else { fallback }
-					// where _t has a struct type (e.g., string) but the IfExpr has no type annotation.
-					ident_name := (last.expr as ast.Ident).name
-					if alloca_id := b.vars[ident_name] {
-						alloca_val := b.mod.values[alloca_id]
-						if alloca_val.typ > 0 && alloca_val.typ < b.mod.type_store.types.len {
-							alloca_typ := b.mod.type_store.types[alloca_val.typ]
-							if alloca_typ.kind == .ptr_t && alloca_typ.elem_type > 0
-								&& alloca_typ.elem_type < b.mod.type_store.types.len {
-								elem := b.mod.type_store.types[alloca_typ.elem_type]
-								if elem.kind == .struct_t || elem.kind == .float_t {
-									result_type = alloca_typ.elem_type
-								}
-							}
-						}
-					}
-				} else {
-					// Try to infer type from the expression using expr_type.
-					// This handles CallExpr, SelectorExpr, etc. that may return struct types.
-					inferred := b.expr_type(last.expr)
-					if inferred != i64_t && inferred != 0 {
-						result_type = inferred
-					}
-				}
-			}
-		}
+		result_type = b.infer_if_expr_type(node, i64_t)
 	}
 	result_alloca := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(result_type),
 		[]ValueID{})
@@ -4591,8 +4950,10 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 		// This ensures variables store actual array data so that:
 		// 1. &a gives the address of the data (the variable alloca), enabling memcmp
 		// 2. a == b compares values, not pointer addresses
-		// Fixed arrays are identified by expr.len being PostfixExpr{.not} or
-		// expr.typ being ArrayFixedType.
+		// The ARM64 backend handles array_t values > 8 bytes via memcpy-style
+		// load/store, similar to struct_t handling.
+		// build_index handles indexing into array_t values by tracing back to
+		// the original alloca pointer.
 		mut is_fixed := false
 		if expr.len is ast.PostfixExpr {
 			postfix := expr.len as ast.PostfixExpr
@@ -5095,8 +5456,18 @@ fn (mut b Builder) build_postfix(expr ast.PostfixExpr) ValueID {
 			ptr_typ := b.mod.values[ptr].typ
 			elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 			loaded := b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
-			one := b.mod.get_or_add_const(elem_typ, '1')
-			op := if expr.op == .inc { OpCode.add } else { OpCode.sub }
+			is_float := elem_typ > 0 && int(elem_typ) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[elem_typ].kind == .float_t
+			one := if is_float {
+				b.mod.get_or_add_const(elem_typ, '1.0')
+			} else {
+				b.mod.get_or_add_const(elem_typ, '1')
+			}
+			op := if is_float {
+				if expr.op == .inc { OpCode.fadd } else { OpCode.fsub }
+			} else {
+				if expr.op == .inc { OpCode.add } else { OpCode.sub }
+			}
 			result := b.mod.add_instr(op, b.cur_block, elem_typ, [loaded, one])
 			b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
 			return loaded // postfix returns old value
@@ -5113,8 +5484,18 @@ fn (mut b Builder) build_postfix(expr ast.PostfixExpr) ValueID {
 				b.mod.type_store.get_int(32)
 			}
 			loaded := b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
-			one := b.mod.get_or_add_const(elem_typ, '1')
-			op := if expr.op == .inc { OpCode.add } else { OpCode.sub }
+			is_float := elem_typ > 0 && int(elem_typ) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[elem_typ].kind == .float_t
+			one := if is_float {
+				b.mod.get_or_add_const(elem_typ, '1.0')
+			} else {
+				b.mod.get_or_add_const(elem_typ, '1')
+			}
+			op := if is_float {
+				if expr.op == .inc { OpCode.fadd } else { OpCode.fsub }
+			} else {
+				if expr.op == .inc { OpCode.add } else { OpCode.sub }
+			}
 			result := b.mod.add_instr(op, b.cur_block, elem_typ, [loaded, one])
 			b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
 			return loaded // postfix returns old value
@@ -5172,6 +5553,24 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			result_type := b.expr_type(ast.Expr(expr))
 			return b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(result_type),
 				[base, idx_val])
+		}
+		ast.ParenExpr {
+			return b.build_addr(expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .mul {
+				// Dereference: addr of (*ptr) is just ptr itself
+				return b.build_expr(expr.expr)
+			}
+			if expr.op == .amp {
+				// Address-of: addr of (&x) — evaluate x's address
+				return b.build_addr(expr.expr)
+			}
+			return 0
+		}
+		ast.CastExpr {
+			// Cast preserves pointer value — evaluate the inner expression
+			return b.build_expr(expr)
 		}
 		ast.IndexExpr {
 			// Try address-based access first for fixed-size arrays and struct fields.
@@ -5323,7 +5722,8 @@ fn (mut b Builder) build_fn_literal(expr ast.FnLiteral) ValueID {
 	// Add parameters
 	for param in expr.typ.params {
 		param_type := b.ast_type_to_ssa(param.typ)
-		actual_type := if param.is_mut {
+		actual_type := if param.is_mut && !(param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t) {
 			b.mod.type_store.get_ptr(param_type)
 		} else {
 			param_type

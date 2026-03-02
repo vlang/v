@@ -1952,7 +1952,13 @@ fn (t &Transformer) normalize_array_type(array_type string) string {
 // Unwraps aliases and pointers (e.g., mut map parameters) before checking.
 fn (t &Transformer) get_map_type_for_expr(expr ast.Expr) ?string {
 	typ := t.get_expr_type(expr) or { return none }
-	base := t.unwrap_alias_and_pointer_type(typ)
+	unwrapped := t.unwrap_alias_and_pointer_type(typ)
+	// Also unwrap aliases (unwrap_alias_and_pointer_type only handles pointers)
+	base := if unwrapped is types.Alias {
+		(unwrapped as types.Alias).base_type
+	} else {
+		unwrapped
+	}
 	if base is types.Map {
 		key_c := t.type_to_c_name(base.key_type)
 		val_c := t.type_to_c_name(base.value_type)
