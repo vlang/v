@@ -5,8 +5,12 @@ module v2
 
 import net
 import net.ssl
+import time
 
-// Method represents HTTP request methods
+// Method represents HTTP request methods.
+// Note: this enum mirrors net.http.Method and exists independently to avoid
+// circular imports between net.http and net.http.v2.
+// TODO: Unify with net.http.Method once cross-module import constraints allow.
 pub enum Method {
 	get
 	post
@@ -62,6 +66,9 @@ mut:
 	remote_window_size i64 = 65535
 	last_stream_id     u32
 	closed             bool
+	// Flow control: track inbound data to replenish the receive window
+	recv_window          i64 = 65535
+	recv_window_consumed i64
 }
 
 // Settings holds HTTP/2 connection settings per RFC 7540 Section 6.5
@@ -85,6 +92,9 @@ pub mut:
 	data        []u8
 	end_stream  bool
 	end_headers bool
+	// raw_header_block accumulates header block fragments when HEADERS arrives
+	// without END_HEADERS; cleared once END_HEADERS is seen on a CONTINUATION frame.
+	raw_header_block []u8
 }
 
 // StreamState represents HTTP/2 stream states per RFC 7540 Section 5.1
@@ -98,11 +108,20 @@ pub enum StreamState {
 	closed
 }
 
-// Client represents an HTTP/2 client with connection pooling
+// ClientConfig holds configuration options for the HTTP/2 client
+pub struct ClientConfig {
+pub:
+	// response_timeout is the maximum time to wait for a complete response.
+	// Defaults to 30 seconds when zero.
+	response_timeout time.Duration
+}
+
+// Client represents an HTTP/2 client
+// TODO: buffer pooling can be added later for performance (see optimization.v BufferPool)
 pub struct Client {
 mut:
-	conn        Connection
-	buffer_pool BufferPool
+	conn   Connection
+	config ClientConfig
 }
 
 // new_client creates a new HTTP/2 client with TLS + ALPN 'h2' negotiation,
@@ -134,13 +153,17 @@ pub fn new_client(address string) !Client {
 	conn.write_settings()!
 	conn.read_settings()!
 
-	// Create buffer pool for efficient frame encoding
-	pool := new_buffer_pool(16384, 10)
-
 	return Client{
-		conn:        conn
-		buffer_pool: pool
+		conn: conn
 	}
+}
+
+// new_client_with_config creates a new HTTP/2 client with custom configuration.
+// The address should be in the form 'hostname:port' (e.g. 'example.com:443').
+pub fn new_client_with_config(address string, config ClientConfig) !Client {
+	mut client := new_client(address)!
+	client.config = config
+	return client
 }
 
 // write_settings sends a SETTINGS frame to configure connection parameters
@@ -280,7 +303,10 @@ pub fn (mut c Connection) read_frame() !Frame {
 	mut header_buf := []u8{len: frame_header_size}
 	read_exact(mut c.ssl_conn, mut header_buf)!
 
-	header := parse_frame_header(header_buf)!
+	header := parse_frame_header(header_buf) or {
+		// Per RFC 7540 §4.1: unknown frame type — discard this frame
+		return error('unknown frame type, frame discarded')
+	}
 
 	mut payload := []u8{len: int(header.length)}
 	if header.length > 0 {
@@ -315,11 +341,36 @@ fn read_exact(mut conn ssl.SSLConn, mut buf []u8) ! {
 	}
 }
 
+// send_window_update sends a WINDOW_UPDATE frame to increment the receive window.
+// stream_id=0 applies to the connection level; a non-zero stream_id applies to
+// the specified stream (RFC 7540 §6.9).
+pub fn (mut c Connection) send_window_update(stream_id u32, increment u32) ! {
+	payload := [
+		u8(increment >> 24) & 0x7f,
+		u8(increment >> 16),
+		u8(increment >> 8),
+		u8(increment),
+	]
+	frame := Frame{
+		header:  FrameHeader{
+			length:     4
+			frame_type: .window_update
+			flags:      0
+			stream_id:  stream_id
+		}
+		payload: payload
+	}
+	c.write_frame(frame)!
+}
+
 // request sends an HTTP/2 request and returns the response from the server
 pub fn (mut c Client) request(req Request) !Response {
 	// Allocate new stream ID (client uses odd stream IDs)
 	stream_id := c.conn.next_stream_id
 	c.conn.next_stream_id += 2
+
+	// Track the highest stream ID for GOAWAY
+	c.conn.last_stream_id = stream_id
 
 	// Create and register stream
 	mut stream := &Stream{
@@ -386,17 +437,38 @@ pub fn (mut c Client) request(req Request) !Response {
 	return c.read_response(stream_id)!
 }
 
-// read_response reads and assembles the response for a specific stream
+// response_timeout_duration returns the effective response timeout duration.
+// Defaults to 30 seconds when not configured.
+fn (c Client) response_timeout_duration() time.Duration {
+	if c.config.response_timeout == 0 {
+		return 30 * time.second
+	}
+	return c.config.response_timeout
+}
+
+// read_response reads and assembles the response for a specific stream.
+// Returns an error if the response is not received within the configured timeout.
 fn (mut c Client) read_response(stream_id u32) !Response {
 	mut stream := c.conn.streams[stream_id] or { return error('stream ${stream_id} not found') }
 
+	deadline := time.now().add(c.response_timeout_duration())
+
 	for !stream.end_stream || !stream.end_headers {
+		// Check timeout on each iteration
+		if time.now() > deadline {
+			return error('read_response timeout after ${c.response_timeout_duration()}')
+		}
+
 		frame := c.conn.read_frame()!
 
 		// Handle frames for this stream or connection-level frames
 		match frame.header.frame_type {
 			.headers {
 				c.handle_headers_frame(frame, mut stream, stream_id)!
+			}
+			.continuation {
+				// CONTINUATION frames extend a HEADERS block when END_HEADERS was not set
+				c.handle_continuation_frame(frame, mut stream, stream_id)!
 			}
 			.data {
 				c.handle_data_frame(frame, mut stream, stream_id)!
@@ -436,34 +508,94 @@ fn (mut c Client) read_response(stream_id u32) !Response {
 		}
 	}
 
-	return c.build_response(stream)
+	resp := c.build_response(stream)
+	// Remove completed stream from map to prevent unbounded growth (Issue #10)
+	c.conn.streams.delete(stream_id)
+	return resp
 }
 
-// handle_headers_frame processes HEADERS frame for a stream
+// handle_headers_frame processes a HEADERS frame for a stream.
+// When END_HEADERS is not set, the raw header block fragment is stored in
+// stream.raw_header_block; subsequent CONTINUATION frames will append to it
+// until END_HEADERS is seen, at which point the complete block is decoded.
 fn (mut c Client) handle_headers_frame(frame Frame, mut stream Stream, stream_id u32) ! {
 	if frame.header.stream_id != stream_id {
 		return
 	}
 
-	headers := c.conn.decoder.decode(frame.payload)!
-	stream.headers << headers
-
 	if frame.header.has_flag(.end_headers) {
+		// All header data is present in this single frame — decode immediately.
+		headers := c.conn.decoder.decode(frame.payload)!
+		stream.headers << headers
 		stream.end_headers = true
+	} else {
+		// Header block is fragmented across CONTINUATION frames; accumulate raw bytes.
+		stream.raw_header_block << frame.payload
 	}
+
 	if frame.header.has_flag(.end_stream) {
 		stream.end_stream = true
 		stream.state = .half_closed_remote
 	}
 }
 
-// handle_data_frame processes DATA frame for a stream
-fn (c Client) handle_data_frame(frame Frame, mut stream Stream, stream_id u32) ! {
+// handle_continuation_frame processes CONTINUATION frames that extend a HEADERS block.
+// Per RFC 7540 §6.10, CONTINUATION frames must follow a HEADERS frame (or another
+// CONTINUATION frame) on the same stream until END_HEADERS is set.
+fn (mut c Client) handle_continuation_frame(frame Frame, mut stream Stream, stream_id u32) ! {
 	if frame.header.stream_id != stream_id {
 		return
 	}
 
+	stream.raw_header_block << frame.payload
+
+	if frame.header.has_flag(.end_headers) {
+		// All fragments collected — decode the complete header block now.
+		headers := c.conn.decoder.decode(stream.raw_header_block)!
+		stream.headers << headers
+		stream.raw_header_block = []u8{}
+		stream.end_headers = true
+	}
+}
+
+// handle_data_frame processes DATA frame for a stream.
+// Tracks consumed bytes and sends WINDOW_UPDATE when the receive window is
+// half-depleted to prevent flow control deadlock (RFC 7540 §6.9).
+fn (mut c Client) handle_data_frame(frame Frame, mut stream Stream, stream_id u32) ! {
+	if frame.header.stream_id != stream_id {
+		return
+	}
+
+	data_len := i64(frame.payload.len)
 	stream.data << frame.payload
+
+	// Update connection-level receive window tracking
+	c.conn.recv_window_consumed += data_len
+
+	// Send WINDOW_UPDATE at connection level when half the window is consumed
+	threshold := c.conn.recv_window / 2
+	if c.conn.recv_window_consumed >= threshold && threshold > 0 {
+		increment := u32(c.conn.recv_window_consumed)
+		c.conn.send_window_update(0, increment) or {
+			// Non-fatal: log and continue
+			$if trace_http2 ? {
+				eprintln('[HTTP/2] failed to send connection WINDOW_UPDATE: ${err}')
+			}
+		}
+		c.conn.recv_window_consumed = 0
+	}
+
+	// Send WINDOW_UPDATE at stream level when half the stream window is consumed
+	if data_len > 0 {
+		stream_threshold := stream.window_size / 2
+		if data_len >= stream_threshold && stream_threshold > 0 {
+			c.conn.send_window_update(stream_id, u32(data_len)) or {
+				$if trace_http2 ? {
+					eprintln('[HTTP/2] failed to send stream WINDOW_UPDATE: ${err}')
+				}
+			}
+		}
+	}
 
 	if frame.header.has_flag(.end_stream) {
 		stream.end_stream = true
@@ -512,13 +644,16 @@ fn (c Client) build_response(stream &Stream) Response {
 	}
 }
 
-// close closes the HTTP/2 connection gracefully with GOAWAY frame
+// close closes the HTTP/2 connection gracefully with GOAWAY frame.
+// The last_stream_id field in the GOAWAY frame is set to the highest
+// stream ID processed on this connection (RFC 7540 §6.8).
 pub fn (mut c Client) close() {
 	if c.conn.closed {
 		return
 	}
 
-	// Send GOAWAY frame (last stream ID = 0, error code = 0)
+	// Encode last_stream_id into the GOAWAY payload (RFC 7540 §6.8)
+	last_id := c.conn.last_stream_id
 	goaway := Frame{
 		header:  FrameHeader{
 			length:     8
@@ -526,7 +661,17 @@ pub fn (mut c Client) close() {
 			flags:      0
 			stream_id:  0
 		}
-		payload: [u8(0), 0, 0, 0, 0, 0, 0, 0]
+		payload: [
+			u8((last_id >> 24) & 0x7f),
+			u8(last_id >> 16),
+			u8(last_id >> 8),
+			u8(last_id),
+			// error code = 0 (NO_ERROR)
+			u8(0),
+			u8(0),
+			u8(0),
+			u8(0),
+		]
 	}
 
 	c.conn.write_frame(goaway) or {}

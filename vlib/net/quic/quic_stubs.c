@@ -20,17 +20,23 @@
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 
-// Storage for socket addresses used by the QUIC path.
-// These persist for the lifetime of the connection.
-static struct sockaddr_storage g_local_addr;
-static struct sockaddr_storage g_remote_addr;
-static socklen_t g_local_addrlen;
-static socklen_t g_remote_addrlen;
+// Per-connection address storage for the QUIC path.
+// Each connection allocates its own QuicPathAddrs so that multiple
+// connections can coexist without sharing global state.
+typedef struct {
+  struct sockaddr_storage local_addr;
+  struct sockaddr_storage remote_addr;
+  socklen_t               local_addrlen;
+  socklen_t               remote_addrlen;
+} QuicPathAddrs;
 
-// quic_resolve_and_set_path resolves the hostname:port and fills the
-// ngtcp2_path structure with proper sockaddr data.
+// quic_resolve_and_set_path resolves the hostname:port, writes the resulting
+// sockaddr data into the caller-provided QuicPathAddrs, and fills the
+// ngtcp2_path structure with pointers into that per-connection storage.
+// The caller must keep addrs alive for the lifetime of the connection.
 // Returns 0 on success, -1 on failure.
 static int quic_resolve_and_set_path(ngtcp2_path *path,
+                                     QuicPathAddrs *addrs,
                                      const char *hostname, int port) {
   struct addrinfo hints, *result;
   char port_str[16];
@@ -46,33 +52,33 @@ static int quic_resolve_and_set_path(ngtcp2_path *path,
     return -1;
   }
 
-  // Copy remote address
-  memcpy(&g_remote_addr, result->ai_addr, result->ai_addrlen);
-  g_remote_addrlen = (socklen_t)result->ai_addrlen;
+  // Copy remote address into per-connection storage
+  memcpy(&addrs->remote_addr, result->ai_addr, result->ai_addrlen);
+  addrs->remote_addrlen = (socklen_t)result->ai_addrlen;
 
   // Create a matching local address (any address, any port)
-  memset(&g_local_addr, 0, sizeof(g_local_addr));
+  memset(&addrs->local_addr, 0, sizeof(addrs->local_addr));
   if (result->ai_family == AF_INET6) {
-    struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&g_local_addr;
+    struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addrs->local_addr;
     addr6->sin6_family = AF_INET6;
     addr6->sin6_addr = in6addr_any;
     addr6->sin6_port = 0;
-    g_local_addrlen = sizeof(struct sockaddr_in6);
+    addrs->local_addrlen = sizeof(struct sockaddr_in6);
   } else {
-    struct sockaddr_in *addr4 = (struct sockaddr_in *)&g_local_addr;
+    struct sockaddr_in *addr4 = (struct sockaddr_in *)&addrs->local_addr;
     addr4->sin_family = AF_INET;
     addr4->sin_addr.s_addr = INADDR_ANY;
     addr4->sin_port = 0;
-    g_local_addrlen = sizeof(struct sockaddr_in);
+    addrs->local_addrlen = sizeof(struct sockaddr_in);
   }
 
   freeaddrinfo(result);
 
-  // Set up the ngtcp2 path
-  path->local.addr = (ngtcp2_sockaddr *)&g_local_addr;
-  path->local.addrlen = g_local_addrlen;
-  path->remote.addr = (ngtcp2_sockaddr *)&g_remote_addr;
-  path->remote.addrlen = g_remote_addrlen;
+  // Set up the ngtcp2 path with pointers into per-connection storage
+  path->local.addr = (ngtcp2_sockaddr *)&addrs->local_addr;
+  path->local.addrlen = addrs->local_addrlen;
+  path->remote.addr = (ngtcp2_sockaddr *)&addrs->remote_addr;
+  path->remote.addrlen = addrs->remote_addrlen;
   path->user_data = NULL;
 
   return 0;

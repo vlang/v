@@ -121,3 +121,103 @@ fn test_indexed_header() {
 	assert decoded[0].name == ':method'
 	assert decoded[0].value == 'GET'
 }
+
+// Issue #12: RFC 7541 §6.2.3 — Literal Header Field Never Indexed
+fn test_decode_never_indexed_literal_new_name() {
+	mut decoder := new_decoder()
+
+	// Manually craft a "never indexed" header with new name (index=0, prefix=4-bit):
+	//   0x10 = 0001 0000  → never indexed, index=0 (new name)
+	// Then two literal strings: name and value (non-Huffman, 1-byte length prefix)
+	name := 'x-secret'
+	value := 'top-secret'
+	mut data := []u8{}
+	data << u8(0x10) // never indexed, new name
+	data << u8(name.len)
+	data << name.bytes()
+	data << u8(value.len)
+	data << value.bytes()
+
+	headers := decoder.decode(data) or {
+		assert false, 'Failed to decode never-indexed header: ${err}'
+		return
+	}
+
+	assert headers.len == 1
+	assert headers[0].name == name
+	assert headers[0].value == value
+	// Field must NOT be added to the dynamic table
+	assert decoder.dynamic_table.entries.len == 0
+}
+
+// Issue #12: Never indexed with indexed name reference (static table)
+fn test_decode_never_indexed_indexed_name() {
+	mut decoder := new_decoder()
+
+	// 0x10 | 2 = 0x12 → never indexed, name from static table index 2 (:method)
+	value := 'DELETE'
+	mut data := []u8{}
+	data << u8(0x12) // never indexed, name index=2 (:method)
+	data << u8(value.len)
+	data << value.bytes()
+
+	headers := decoder.decode(data) or {
+		assert false, 'Failed to decode never-indexed header with indexed name: ${err}'
+		return
+	}
+
+	assert headers.len == 1
+	assert headers[0].name == ':method'
+	assert headers[0].value == value
+	// Must NOT be added to dynamic table
+	assert decoder.dynamic_table.entries.len == 0
+}
+
+// Issue #13: DynamicTable.add must evict entries when new entry alone exceeds max_size
+fn test_dynamic_table_add_entry_larger_than_max_size() {
+	mut dt := DynamicTable{
+		max_size: 50
+	}
+
+	// A header whose size (32 + name.len + value.len) > 50
+	big_field := HeaderField{'big-name', 'big-value-that-overflows-max'}
+	// big_field.size() = 32 + 8 + 28 = 68 > 50
+	dt.add(big_field)
+
+	// Table must be empty — the entry is too large to fit
+	assert dt.entries.len == 0
+	assert dt.size == 0
+}
+
+// Issue #13: Eviction order — oldest (end) entries evicted first
+fn test_dynamic_table_eviction_order() {
+	mut dt := DynamicTable{
+		max_size: 200
+	}
+
+	// Each entry: 32 + 6 + 1 = 39 bytes
+	dt.add(HeaderField{'first!', '1'})
+	dt.add(HeaderField{'secnd!', '2'})
+	dt.add(HeaderField{'third!', '3'})
+	dt.add(HeaderField{'fourt!', '4'})
+	dt.add(HeaderField{'fifth!', '5'})
+	// 5 * 39 = 195 bytes — fits within 200
+
+	// Now add a 6th — total would be 234, need to evict 1 oldest (first!)
+	dt.add(HeaderField{'sixth!', '6'})
+
+	// 6 entries would be 234 > 200, so oldest must be gone
+	assert dt.size <= dt.max_size
+	// Newest (sixth!) must be at index 1
+	newest := dt.get(1) or {
+		assert false, 'Could not get newest entry'
+		return
+	}
+	assert newest.name == 'sixth!'
+	// Oldest (first!) must have been evicted — index 5 should be second-oldest
+	oldest := dt.get(dt.entries.len) or {
+		assert false, 'Could not get oldest remaining entry'
+		return
+	}
+	assert oldest.name != 'first!', 'first! should have been evicted'
+}

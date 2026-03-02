@@ -35,7 +35,10 @@ pub mut:
 	qpack_blocked_streams    u64 = 100
 }
 
-// HTTP Method
+// Method represents HTTP request methods.
+// Note: this enum mirrors net.http.Method and exists independently to avoid
+// circular imports between net.http and net.http.v3.
+// TODO: Unify with net.http.Method once cross-module import constraints allow.
 pub enum Method {
 	get
 	post
@@ -83,7 +86,7 @@ mut:
 	address           string
 	quic_conn         quic.Connection
 	settings          Settings
-	next_stream_id    u64 = 1
+	next_stream_id    u64
 	qpack_encoder     Encoder
 	qpack_decoder     Decoder
 	session_cache     quic.SessionCache
@@ -128,9 +131,9 @@ To enable HTTP/3:
 
 // request sends an HTTP/3 request and returns the response from the server
 pub fn (mut c Client) request(req Request) !Response {
-	// Allocate stream ID (client uses odd IDs)
+	// Allocate stream ID (client-initiated bidirectional: 0, 4, 8, 12, ...)
 	stream_id := c.next_stream_id
-	c.next_stream_id += 4 // HTTP/3 uses bidirectional streams
+	c.next_stream_id += 4 // RFC 9114: client-initiated bidirectional streams increment by 4
 
 	// Build headers with capacity
 	mut headers := []HeaderField{cap: 4 + req.headers.len}
@@ -192,8 +195,8 @@ fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
 	mut data := []u8{}
 
 	// Variable-length integer encoding for type and length
-	data << encode_varint(u64(frame.frame_type))
-	data << encode_varint(frame.length)
+	data << encode_varint(u64(frame.frame_type))!
+	data << encode_varint(frame.length)!
 	data << frame.payload
 
 	// Send on QUIC stream
@@ -234,13 +237,18 @@ fn (mut c Client) read_response(stream_id u64) !Response {
 
 		match frame_type {
 			.headers {
-				headers = decode_headers(payload)!
+				// Use proper QPACK Decoder for consistency with encoder (Issue #17)
+				headers = c.qpack_decoder.decode(payload)!
 			}
 			.data {
 				body << payload
 			}
+			.goaway {
+				// Server initiated graceful shutdown; stop processing
+				break
+			}
 			else {
-				// Ignore unknown frames
+				// Ignore unknown frames per RFC 9114 §9
 			}
 		}
 	}
@@ -266,7 +274,42 @@ fn (mut c Client) read_response(stream_id u64) !Response {
 
 // close closes the HTTP/3 client and terminates the QUIC connection
 pub fn (mut c Client) close() {
+	// Send GOAWAY to signal graceful shutdown (best-effort; ignore errors)
+	c.send_goaway(c.next_stream_id) or {}
 	c.quic_conn.close()
+}
+
+// send_settings sends an HTTP/3 SETTINGS frame on the control stream (RFC 9114 §6.2.1).
+// An empty SETTINGS frame is valid and means all settings use their default values.
+// This must be called once after connection setup.
+pub fn (mut c Client) send_settings() ! {
+	// Control stream uses stream ID 2 (client-initiated unidirectional, per RFC 9114 §6.2)
+	control_stream_id := u64(2)
+
+	// Stream type byte for control stream (0x00)
+	mut data := []u8{}
+	data << encode_varint(u64(0x00))! // control stream type
+
+	// SETTINGS frame: type=0x04, length=0 (empty body — all defaults)
+	data << encode_varint(u64(FrameType.settings))!
+	data << encode_varint(u64(0))! // length = 0
+
+	c.quic_conn.send(control_stream_id, data)!
+}
+
+// send_goaway sends a GOAWAY frame on the control stream (RFC 9114 §7.2.6).
+// stream_id is the highest request stream ID the server will process.
+// Clients send GOAWAY to initiate graceful shutdown of the connection.
+pub fn (mut c Client) send_goaway(stream_id u64) ! {
+	control_stream_id := u64(2)
+	payload := encode_varint(stream_id)!
+
+	mut data := []u8{}
+	data << encode_varint(u64(FrameType.goaway))!
+	data << encode_varint(u64(payload.len))!
+	data << payload
+
+	c.quic_conn.send(control_stream_id, data)!
 }
 
 // HeaderField represents a name-value pair
@@ -285,8 +328,8 @@ fn encode_headers(headers []HeaderField) []u8 {
 	for header in headers {
 		// Literal with name and value
 		result << 0x20 // Literal without indexing
-		result << encode_string(header.name)
-		result << encode_string(header.value)
+		result << encode_string(header.name) or { panic('encode_headers: ${err}') }
+		result << encode_string(header.value) or { panic('encode_headers: ${err}') }
 	}
 
 	return result

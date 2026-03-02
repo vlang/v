@@ -504,7 +504,12 @@ pub fn new_qpack_encoder(max_table_capacity int, max_blocked u64) Encoder {
 	}
 }
 
-// encode encodes headers using QPACK compression for HTTP/3
+// encode encodes headers using QPACK compression for HTTP/3.
+// Checks the static table first (O(1) via hashmap), then the dynamic table.
+// Entries not found in either table are encoded as literals and added to the
+// dynamic table for future reuse.
+// TODO: Emit encoder stream instructions (RFC 9204 Section 4.3) to synchronise
+// the dynamic table with the peer decoder.
 pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	// Pre-allocate result with estimated size
 	mut estimated_size := 2 // Required Insert Count + Delta Base
@@ -513,40 +518,67 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	}
 	mut result := []u8{cap: estimated_size}
 
-	// Encode Required Insert Count and Delta Base (simplified - always 0 for now)
-	result << 0x00 // Required Insert Count = 0
-	result << 0x00 // Delta Base = 0
+	// Placeholder bytes for Required Insert Count and Delta Base; filled in below.
+	result << u8(0)
+	result << u8(0)
 
 	for header in headers {
-		// Try exact match in static table using hashmap (O(1))
+		// 1. Try exact match in static table (O(1))
 		exact_key := '${header.name}:${header.value}'
-		mut found_index := -1
-		mut exact_match := false
-
 		if exact_key in qpack_static_exact_map {
-			found_index = qpack_static_exact_map[exact_key]
-			exact_match = true
+			result << encode_indexed_static(qpack_static_exact_map[exact_key])
+			continue
 		}
 
-		// If no exact match, try name-only match in static table
-		if !exact_match && header.name in qpack_static_name_map {
-			indices := qpack_static_name_map[header.name]
-			if indices.len > 0 {
-				found_index = indices[0] // Use first match
+		// 2. Try exact match in dynamic table
+		mut dyn_exact_idx := -1
+		mut dyn_name_idx := -1
+		for i := 0; i < e.dynamic_table.entries.len; i++ {
+			entry := e.dynamic_table.entries[e.dynamic_table.entries.len - 1 - i]
+			if entry.field.name == header.name {
+				if dyn_name_idx == -1 {
+					dyn_name_idx = i
+				}
+				if entry.field.value == header.value {
+					dyn_exact_idx = i
+					break
+				}
 			}
 		}
 
-		if exact_match {
-			// Indexed Field Line (static table)
-			result << encode_indexed_static(found_index)
-		} else if found_index >= 0 {
-			// Literal Field Line with Name Reference (static table)
-			result << encode_literal_with_name_ref_static(found_index, header.value)
-		} else {
-			// Literal Field Line without Name Reference
-			result << encode_literal_without_name_ref(header.name, header.value)
+		if dyn_exact_idx >= 0 {
+			// Indexed Field Line referencing dynamic table (post-base index)
+			result << encode_indexed_dynamic(dyn_exact_idx)
+			continue
 		}
+
+		// 3. Name-only match in static table
+		if header.name in qpack_static_name_map {
+			indices := qpack_static_name_map[header.name]
+			if indices.len > 0 {
+				result << encode_literal_with_name_ref_static(indices[0], header.value)
+				e.dynamic_table.insert(header)
+				continue
+			}
+		}
+
+		// 4. Name-only match in dynamic table
+		if dyn_name_idx >= 0 {
+			result << encode_literal_with_name_ref_dynamic(dyn_name_idx, header.value)
+			e.dynamic_table.insert(header)
+			continue
+		}
+
+		// 5. Fully literal — no match anywhere
+		result << encode_literal_without_name_ref(header.name, header.value)
+		e.dynamic_table.insert(header)
 	}
+
+	// Required Insert Count and Delta Base stay 0 for now.
+	// TODO: full Required Insert Count encoding per RFC 9204 Section 3.2.6
+	// when encoder/decoder stream handling is implemented.
+	result[0] = 0x00
+	result[1] = 0x00
 
 	return result
 }
@@ -566,6 +598,22 @@ fn encode_indexed_static(index int) []u8 {
 	return result
 }
 
+// encode_indexed_dynamic encodes an indexed field line referencing the dynamic table.
+// Uses the post-base index format: 0001XXXX (RFC 9204 Section 3.2.3).
+@[inline]
+fn encode_indexed_dynamic(index int) []u8 {
+	mut result := []u8{cap: 6}
+	// Post-base indexed: 0001XXXX
+	if index < 16 {
+		result << u8(0x10 | index)
+	} else {
+		mut suffix := encode_integer(index, 4)
+		suffix[0] |= 0x10
+		result << suffix
+	}
+	return result
+}
+
 // encode_literal_with_name_ref_static encodes a literal with name reference from static table
 fn encode_literal_with_name_ref_static(index int, value string) []u8 {
 	// Pre-allocate with estimated size
@@ -579,6 +627,22 @@ fn encode_literal_with_name_ref_static(index int, value string) []u8 {
 		result << suffix
 	}
 	// Encode value length and value
+	result << encode_qpack_string(value)
+	return result
+}
+
+// encode_literal_with_name_ref_dynamic encodes a literal with a dynamic table name reference.
+// Uses post-base name reference format: 00000XXX (RFC 9204 Section 3.2.4).
+fn encode_literal_with_name_ref_dynamic(index int, value string) []u8 {
+	mut result := []u8{cap: 10 + value.len}
+	// Post-base literal name ref: 00000XXX
+	if index < 8 {
+		result << u8(0x00 | index)
+	} else {
+		mut suffix := encode_integer(index, 3)
+		suffix[0] |= 0x00
+		result << suffix
+	}
 	result << encode_qpack_string(value)
 	return result
 }
@@ -648,7 +712,11 @@ pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 	}
 }
 
-// decode decodes QPACK-encoded headers into header fields
+// decode decodes QPACK-encoded headers into header fields.
+// Handles static table indexed, dynamic table indexed (post-base), and literal
+// forms both with and without name references.
+// TODO: parse Required Insert Count and Delta Base for blocked-stream support
+// (RFC 9204 Section 3.2.5 / 4.4).
 pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	if data.len < 2 {
 		return error('QPACK data too short')
@@ -657,7 +725,7 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	mut headers := []HeaderField{}
 	mut idx := 0
 
-	// Skip Required Insert Count and Delta Base (simplified)
+	// Skip Required Insert Count and Delta Base (simplified; always 0 for now)
 	idx += 2
 
 	// Decode header fields
@@ -665,18 +733,30 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 		first_byte := data[idx]
 
 		if (first_byte & 0xc0) == 0xc0 {
-			// Indexed Field Line (static table)
+			// Indexed Field Line — static table (11XXXXXX)
 			index, bytes_read := d.decode_indexed_field_line(data[idx..])!
 			headers << static_table[index]
 			idx += bytes_read
+		} else if (first_byte & 0xf0) == 0x10 {
+			// Post-base Indexed Field Line — dynamic table (0001XXXX)
+			field, bytes_read := d.decode_indexed_dynamic(data[idx..])!
+			headers << field
+			idx += bytes_read
 		} else if (first_byte & 0xf0) == 0x50 {
-			// Literal with Name Reference (static table)
+			// Literal with Name Reference — static table (0101XXXX)
 			header, bytes_read := d.decode_literal_name_ref(data[idx..])!
 			headers << header
 			idx += bytes_read
 		} else if (first_byte & 0xe0) == 0x20 {
-			// Literal without Name Reference
+			// Literal without Name Reference (001XXXXX)
 			header, bytes_read := d.decode_literal_no_ref(data[idx..])!
+			d.dynamic_table.insert(header)
+			headers << header
+			idx += bytes_read
+		} else if (first_byte & 0xf8) == 0x00 {
+			// Post-base Literal with Name Reference — dynamic table (00000XXX)
+			header, bytes_read := d.decode_literal_name_ref_dynamic(data[idx..])!
+			d.dynamic_table.insert(header)
 			headers << header
 			idx += bytes_read
 		} else {
@@ -711,45 +791,42 @@ fn (d Decoder) decode_indexed_field_line(data []u8) !(int, int) {
 	return index_val, len
 }
 
-fn (d Decoder) decode_literal_name_ref(data []u8) !(HeaderField, int) {
-	first_byte := data[0]
-	index_prefix := int(first_byte & 0x0f)
-	mut idx := 1
-	mut index := index_prefix
-
-	if index_prefix == 15 {
-		// decode prefixed integer
-		// We pass the whole buffer, but function needs to handle prefix
-		// Re-using manual logic here for correction as extract helper
-		mut m := 0
-		mut decoded_int := i64(0)
-		// Start loop from current idx (1)
-		// We're inside the buffer passed as slice data[idx..], so index 1 is data[1]
-		mut inner_idx := 1
-		for inner_idx < data.len {
-			b := data[inner_idx]
-			decoded_int += i64(u64(b & 0x7f) << m)
-			m += 7
-			inner_idx++
-			if (b & 0x80) == 0 {
-				break
-			}
-		}
-		index = index_prefix + int(decoded_int)
-		idx = inner_idx
+// decode_indexed_dynamic decodes a post-base indexed field line (0001XXXX).
+fn (d Decoder) decode_indexed_dynamic(data []u8) !(HeaderField, int) {
+	index, bytes_read := decode_prefixed_integer(data, 4)!
+	field := d.dynamic_table.get(index) or {
+		return error('Dynamic table post-base index out of range: ${index}')
 	}
+	return field, bytes_read
+}
+
+fn (d Decoder) decode_literal_name_ref(data []u8) !(HeaderField, int) {
+	// Use decode_prefixed_integer to parse the 4-bit name index
+	index, idx := decode_prefixed_integer(data, 4)!
 
 	if index >= static_table.len {
 		return error('Static table index out of range: ${index}')
 	}
 
 	value, bytes_read := decode_qpack_string(data[idx..])!
-	idx += bytes_read
 
 	return HeaderField{
 		name:  static_table[index].name
 		value: value
-	}, idx
+	}, idx + bytes_read
+}
+
+// decode_literal_name_ref_dynamic decodes a post-base literal with dynamic name reference (00000XXX).
+fn (d Decoder) decode_literal_name_ref_dynamic(data []u8) !(HeaderField, int) {
+	index, idx := decode_prefixed_integer(data, 3)!
+	field_name := d.dynamic_table.get(index) or {
+		return error('Dynamic table post-base name index out of range: ${index}')
+	}
+	value, bytes_read := decode_qpack_string(data[idx..])!
+	return HeaderField{
+		name:  field_name.name
+		value: value
+	}, idx + bytes_read
 }
 
 fn (d Decoder) decode_literal_no_ref(data []u8) !(HeaderField, int) {
@@ -767,8 +844,8 @@ fn (d Decoder) decode_literal_no_ref(data []u8) !(HeaderField, int) {
 	}, idx
 }
 
-// decode_prefixed_integer decodes an integer with N-bit prefix
-// data should start at the byte containing the prefix
+// decode_prefixed_integer decodes an integer with N-bit prefix.
+// data should start at the byte containing the prefix.
 fn decode_prefixed_integer(data []u8, prefix_bits int) !(int, int) {
 	if data.len == 0 {
 		return error('empty data')
@@ -798,71 +875,345 @@ fn decode_prefixed_integer(data []u8, prefix_bits int) !(int, int) {
 	return prefix_val + int(decoded_int), idx
 }
 
-// decode_integer decodes an integer with N-bit prefix
-fn decode_integer(data []u8, n int) !(int, int) {
+// qpack_huffman_table holds the HPACK/QPACK Huffman codes (RFC 7541 Appendix B).
+// Each entry is [code, bit_length]. QPACK uses the identical table as HPACK.
+const qpack_huffman_table = [
+	[u32(0x1ff8), u32(13)], // 0
+	[u32(0x7fffd8), u32(23)], // 1
+	[u32(0xfffffe2), u32(28)], // 2
+	[u32(0xfffffe3), u32(28)], // 3
+	[u32(0xfffffe4), u32(28)], // 4
+	[u32(0xfffffe5), u32(28)], // 5
+	[u32(0xfffffe6), u32(28)], // 6
+	[u32(0xfffffe7), u32(28)], // 7
+	[u32(0xfffffe8), u32(28)], // 8
+	[u32(0xffffea), u32(24)], // 9
+	[u32(0x3ffffffc), u32(30)], // 10
+	[u32(0xfffffe9), u32(28)], // 11
+	[u32(0xfffffea), u32(28)], // 12
+	[u32(0x3ffffffd), u32(30)], // 13
+	[u32(0xfffffeb), u32(28)], // 14
+	[u32(0xfffffec), u32(28)], // 15
+	[u32(0xfffffed), u32(28)], // 16
+	[u32(0xfffffee), u32(28)], // 17
+	[u32(0xfffffef), u32(28)], // 18
+	[u32(0xffffff0), u32(28)], // 19
+	[u32(0xffffff1), u32(28)], // 20
+	[u32(0xffffff2), u32(28)], // 21
+	[u32(0x3ffffffe), u32(30)], // 22
+	[u32(0xffffff3), u32(28)], // 23
+	[u32(0xffffff4), u32(28)], // 24
+	[u32(0xffffff5), u32(28)], // 25
+	[u32(0xffffff6), u32(28)], // 26
+	[u32(0xffffff7), u32(28)], // 27
+	[u32(0xffffff8), u32(28)], // 28
+	[u32(0xffffff9), u32(28)], // 29
+	[u32(0xffffffa), u32(28)], // 30
+	[u32(0xffffffb), u32(28)], // 31
+	[u32(0x14), u32(6)], // 32 ' '
+	[u32(0x3f8), u32(10)], // 33 '!'
+	[u32(0x3f9), u32(10)], // 34 '"'
+	[u32(0xffa), u32(12)], // 35 '#'
+	[u32(0x1ff9), u32(13)], // 36 '$'
+	[u32(0x15), u32(6)], // 37 '%'
+	[u32(0xf8), u32(8)], // 38 '&'
+	[u32(0x7fa), u32(11)], // 39 '\''
+	[u32(0x3fa), u32(10)], // 40 '('
+	[u32(0x3fb), u32(10)], // 41 ')'
+	[u32(0xf9), u32(8)], // 42 '*'
+	[u32(0x7fb), u32(11)], // 43 '+'
+	[u32(0xfa), u32(8)], // 44 ','
+	[u32(0x16), u32(6)], // 45 '-'
+	[u32(0x17), u32(6)], // 46 '.'
+	[u32(0x18), u32(6)], // 47 '/'
+	[u32(0x0), u32(5)], // 48 '0'
+	[u32(0x1), u32(5)], // 49 '1'
+	[u32(0x2), u32(5)], // 50 '2'
+	[u32(0x19), u32(6)], // 51 '3'
+	[u32(0x1a), u32(6)], // 52 '4'
+	[u32(0x1b), u32(6)], // 53 '5'
+	[u32(0x1c), u32(6)], // 54 '6'
+	[u32(0x1d), u32(6)], // 55 '7'
+	[u32(0x1e), u32(6)], // 56 '8'
+	[u32(0x1f), u32(6)], // 57 '9'
+	[u32(0x5c), u32(7)], // 58 ':'
+	[u32(0xfb), u32(8)], // 59 ';'
+	[u32(0x7ffc), u32(15)], // 60 '<'
+	[u32(0x20), u32(6)], // 61 '='
+	[u32(0xffb), u32(12)], // 62 '>'
+	[u32(0x3fc), u32(10)], // 63 '?'
+	[u32(0x1ffa), u32(13)], // 64 '@'
+	[u32(0x21), u32(6)], // 65 'A'
+	[u32(0x5d), u32(7)], // 66 'B'
+	[u32(0x5e), u32(7)], // 67 'C'
+	[u32(0x5f), u32(7)], // 68 'D'
+	[u32(0x60), u32(7)], // 69 'E'
+	[u32(0x61), u32(7)], // 70 'F'
+	[u32(0x62), u32(7)], // 71 'G'
+	[u32(0x63), u32(7)], // 72 'H'
+	[u32(0x64), u32(7)], // 73 'I'
+	[u32(0x65), u32(7)], // 74 'J'
+	[u32(0x66), u32(7)], // 75 'K'
+	[u32(0x67), u32(7)], // 76 'L'
+	[u32(0x68), u32(7)], // 77 'M'
+	[u32(0x69), u32(7)], // 78 'N'
+	[u32(0x6a), u32(7)], // 79 'O'
+	[u32(0x6b), u32(7)], // 80 'P'
+	[u32(0x6c), u32(7)], // 81 'Q'
+	[u32(0x6d), u32(7)], // 82 'R'
+	[u32(0x6e), u32(7)], // 83 'S'
+	[u32(0x6f), u32(7)], // 84 'T'
+	[u32(0x70), u32(7)], // 85 'U'
+	[u32(0x71), u32(7)], // 86 'V'
+	[u32(0x72), u32(7)], // 87 'W'
+	[u32(0xfc), u32(8)], // 88 'X'
+	[u32(0x73), u32(7)], // 89 'Y'
+	[u32(0xfd), u32(8)], // 90 'Z'
+	[u32(0x1ffb), u32(13)], // 91 '['
+	[u32(0x7fff0), u32(19)], // 92 '\'
+	[u32(0x1ffc), u32(13)], // 93 ']'
+	[u32(0x3ffc), u32(14)], // 94 '^'
+	[u32(0x22), u32(6)], // 95 '_'
+	[u32(0x7ffd), u32(15)], // 96 '`'
+	[u32(0x3), u32(5)], // 97 'a'
+	[u32(0x23), u32(6)], // 98 'b'
+	[u32(0x4), u32(5)], // 99 'c'
+	[u32(0x24), u32(6)], // 100 'd'
+	[u32(0x5), u32(5)], // 101 'e'
+	[u32(0x25), u32(6)], // 102 'f'
+	[u32(0x26), u32(6)], // 103 'g'
+	[u32(0x27), u32(6)], // 104 'h'
+	[u32(0x6), u32(5)], // 105 'i'
+	[u32(0x74), u32(7)], // 106 'j'
+	[u32(0x75), u32(7)], // 107 'k'
+	[u32(0x28), u32(6)], // 108 'l'
+	[u32(0x29), u32(6)], // 109 'm'
+	[u32(0x2a), u32(6)], // 110 'n'
+	[u32(0x7), u32(5)], // 111 'o'
+	[u32(0x2b), u32(6)], // 112 'p'
+	[u32(0x76), u32(7)], // 113 'q'
+	[u32(0x2c), u32(6)], // 114 'r'
+	[u32(0x8), u32(5)], // 115 's'
+	[u32(0x9), u32(5)], // 116 't'
+	[u32(0x2d), u32(6)], // 117 'u'
+	[u32(0x77), u32(7)], // 118 'v'
+	[u32(0x78), u32(7)], // 119 'w'
+	[u32(0x79), u32(7)], // 120 'x'
+	[u32(0x7a), u32(7)], // 121 'y'
+	[u32(0x7b), u32(7)], // 122 'z'
+	[u32(0x7ffe), u32(15)], // 123 '{'
+	[u32(0x7fc), u32(11)], // 124 '|'
+	[u32(0x3ffd), u32(14)], // 125 '}'
+	[u32(0x1ffd), u32(13)], // 126 '~'
+	[u32(0xffffffc), u32(28)], // 127
+	[u32(0xfffe6), u32(20)], // 128
+	[u32(0x3fffd2), u32(22)], // 129
+	[u32(0xfffe7), u32(20)], // 130
+	[u32(0xfffe8), u32(20)], // 131
+	[u32(0x3fffd3), u32(22)], // 132
+	[u32(0x3fffd4), u32(22)], // 133
+	[u32(0x3fffd5), u32(22)], // 134
+	[u32(0x7fffd9), u32(23)], // 135
+	[u32(0x3fffd6), u32(22)], // 136
+	[u32(0x7fffda), u32(23)], // 137
+	[u32(0x7fffdb), u32(23)], // 138
+	[u32(0x7fffdc), u32(23)], // 139
+	[u32(0x7fffdd), u32(23)], // 140
+	[u32(0x7fffde), u32(23)], // 141
+	[u32(0xffffeb), u32(24)], // 142
+	[u32(0x7fffdf), u32(23)], // 143
+	[u32(0xffffec), u32(24)], // 144
+	[u32(0xffffed), u32(24)], // 145
+	[u32(0x3fffd7), u32(22)], // 146
+	[u32(0x7fffe0), u32(23)], // 147
+	[u32(0xffffee), u32(24)], // 148
+	[u32(0x7fffe1), u32(23)], // 149
+	[u32(0x7fffe2), u32(23)], // 150
+	[u32(0x7fffe3), u32(23)], // 151
+	[u32(0x7fffe4), u32(23)], // 152
+	[u32(0x1fffdc), u32(21)], // 153
+	[u32(0x3fffd8), u32(22)], // 154
+	[u32(0x7fffe5), u32(23)], // 155
+	[u32(0x3fffd9), u32(22)], // 156
+	[u32(0x7fffe6), u32(23)], // 157
+	[u32(0x7fffe7), u32(23)], // 158
+	[u32(0xffffef), u32(24)], // 159
+	[u32(0x3fffda), u32(22)], // 160
+	[u32(0x1fffdd), u32(21)], // 161
+	[u32(0xfffe9), u32(20)], // 162
+	[u32(0x3fffdb), u32(22)], // 163
+	[u32(0x3fffdc), u32(22)], // 164
+	[u32(0x7fffe8), u32(23)], // 165
+	[u32(0x7fffe9), u32(23)], // 166
+	[u32(0x1fffde), u32(21)], // 167
+	[u32(0x7fffea), u32(23)], // 168
+	[u32(0x3fffdd), u32(22)], // 169
+	[u32(0x3fffde), u32(22)], // 170
+	[u32(0xfffff0), u32(24)], // 171
+	[u32(0x1fffdf), u32(21)], // 172
+	[u32(0x3fffdf), u32(22)], // 173
+	[u32(0x7fffeb), u32(23)], // 174
+	[u32(0x7fffec), u32(23)], // 175
+	[u32(0x1fffe0), u32(21)], // 176
+	[u32(0x1fffe1), u32(21)], // 177
+	[u32(0x3fffe0), u32(22)], // 178
+	[u32(0x1fffe2), u32(21)], // 179
+	[u32(0x7fffed), u32(23)], // 180
+	[u32(0x3fffe1), u32(22)], // 181
+	[u32(0x7fffee), u32(23)], // 182
+	[u32(0x7fffef), u32(23)], // 183
+	[u32(0xfffea), u32(20)], // 184
+	[u32(0x3fffe2), u32(22)], // 185
+	[u32(0x3fffe3), u32(22)], // 186
+	[u32(0x3fffe4), u32(22)], // 187
+	[u32(0x7ffff0), u32(23)], // 188
+	[u32(0x3fffe5), u32(22)], // 189
+	[u32(0x3fffe6), u32(22)], // 190
+	[u32(0x7ffff1), u32(23)], // 191
+	[u32(0x3ffffe0), u32(26)], // 192
+	[u32(0x3ffffe1), u32(26)], // 193
+	[u32(0xfffeb), u32(20)], // 194
+	[u32(0x7fff1), u32(19)], // 195
+	[u32(0x3fffe7), u32(22)], // 196
+	[u32(0x7ffff2), u32(23)], // 197
+	[u32(0x3fffe8), u32(22)], // 198
+	[u32(0x1ffffec), u32(25)], // 199
+	[u32(0x3ffffe2), u32(26)], // 200
+	[u32(0x3ffffe3), u32(26)], // 201
+	[u32(0x3ffffe4), u32(26)], // 202
+	[u32(0x7ffffde), u32(27)], // 203
+	[u32(0x7ffffdf), u32(27)], // 204
+	[u32(0x3ffffe5), u32(26)], // 205
+	[u32(0xfffff1), u32(24)], // 206
+	[u32(0x1ffffed), u32(25)], // 207
+	[u32(0x7fff2), u32(19)], // 208
+	[u32(0x1fffe3), u32(21)], // 209
+	[u32(0x3ffffe6), u32(26)], // 210
+	[u32(0x7ffffe0), u32(27)], // 211
+	[u32(0x7ffffe1), u32(27)], // 212
+	[u32(0x3ffffe7), u32(26)], // 213
+	[u32(0x7ffffe2), u32(27)], // 214
+	[u32(0xfffff2), u32(24)], // 215
+	[u32(0x1fffe4), u32(21)], // 216
+	[u32(0x1fffe5), u32(21)], // 217
+	[u32(0x3ffffe8), u32(26)], // 218
+	[u32(0x3ffffe9), u32(26)], // 219
+	[u32(0xffffffd), u32(28)], // 220
+	[u32(0x7ffffe3), u32(27)], // 221
+	[u32(0x7ffffe4), u32(27)], // 222
+	[u32(0x7ffffe5), u32(27)], // 223
+	[u32(0xfffec), u32(20)], // 224
+	[u32(0xfffff3), u32(24)], // 225
+	[u32(0xfffed), u32(20)], // 226
+	[u32(0x1fffe6), u32(21)], // 227
+	[u32(0x3fffe9), u32(22)], // 228
+	[u32(0x1fffe7), u32(21)], // 229
+	[u32(0x1fffe8), u32(21)], // 230
+	[u32(0x7ffff3), u32(23)], // 231
+	[u32(0x3fffea), u32(22)], // 232
+	[u32(0x3fffeb), u32(22)], // 233
+	[u32(0x1ffffee), u32(25)], // 234
+	[u32(0x1ffffef), u32(25)], // 235
+	[u32(0xfffff4), u32(24)], // 236
+	[u32(0xfffff5), u32(24)], // 237
+	[u32(0x3ffffea), u32(26)], // 238
+	[u32(0x7ffff4), u32(23)], // 239
+	[u32(0x3ffffeb), u32(26)], // 240
+	[u32(0x7ffffe6), u32(27)], // 241
+	[u32(0x3ffffec), u32(26)], // 242
+	[u32(0x3ffffed), u32(26)], // 243
+	[u32(0x7ffffe7), u32(27)], // 244
+	[u32(0x7ffffe8), u32(27)], // 245
+	[u32(0x7ffffe9), u32(27)], // 246
+	[u32(0x7ffffea), u32(27)], // 247
+	[u32(0x7ffffeb), u32(27)], // 248
+	[u32(0xffffffe), u32(28)], // 249
+	[u32(0x7ffffec), u32(27)], // 250
+	[u32(0x7ffffed), u32(27)], // 251
+	[u32(0x7ffffee), u32(27)], // 252
+	[u32(0x7ffffef), u32(27)], // 253
+	[u32(0x7fffff0), u32(27)], // 254
+	[u32(0x3ffffee), u32(26)], // 255
+]
+
+// huffman_decode decodes a Huffman-encoded byte slice using the RFC 7541 table.
+// Remaining padding bits (up to 7) must be all 1s per RFC 7541 Section 5.2.
+fn huffman_decode(data []u8) ![]u8 {
 	if data.len == 0 {
-		return error('No data to decode integer')
+		return []u8{}
 	}
 
-	max_prefix := (1 << n) - 1
-	mut value := int(data[0] & u8(max_prefix))
-	mut idx := 1
+	mut result := []u8{cap: data.len * 2}
+	mut code := u32(0)
+	mut code_len := u32(0)
 
-	if value < max_prefix {
-		return value, idx
-	}
+	for b in data {
+		for bit_pos := 7; bit_pos >= 0; bit_pos-- {
+			code = (code << 1) | u32((b >> bit_pos) & 1)
+			code_len++
 
-	mut m := 0
-	for idx < data.len {
-		b := data[idx]
-		value += int(u64(b & 0x7f) << m)
-		m += 7
-		idx++
+			// Minimum code length in RFC 7541 table is 5 bits
+			if code_len < 5 {
+				continue
+			}
 
-		if (b & 0x80) == 0 {
-			break
+			mut found := false
+			for sym := 0; sym < 256; sym++ {
+				if qpack_huffman_table[sym][1] == code_len && qpack_huffman_table[sym][0] == code {
+					result << u8(sym)
+					code = 0
+					code_len = 0
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
+			// Maximum code length in RFC 7541 table is 30 bits
+			if code_len > 30 {
+				return error('invalid Huffman code: no match at ${code_len} bits')
+			}
 		}
 	}
 
-	return value, idx
+	// Remaining bits must be EOS padding (all 1s), at most 7 bits
+	if code_len > 7 {
+		return error('invalid Huffman padding: ${code_len} bits remaining')
+	}
+	if code_len > 0 {
+		padding_mask := (u32(1) << code_len) - 1
+		if (code & padding_mask) != padding_mask {
+			return error('invalid Huffman padding bits')
+		}
+	}
+
+	return result
 }
 
-// decode_qpack_string decodes a string with length prefix
+// decode_qpack_string decodes a QPACK string literal with 7-bit length prefix.
+// If the Huffman flag (MSB of the first byte) is set, the payload is Huffman
+// decoded using the RFC 7541/RFC 9204 static table.
 fn decode_qpack_string(data []u8) !(string, int) {
 	if data.len == 0 {
 		return error('No data to decode string')
 	}
 
-	huffman := (data[0] & 0x80) != 0
-	length_data := []u8{len: 1, init: data[0] & 0x7f}
+	is_huffman := (data[0] & 0x80) != 0
+	length, hdr_bytes := decode_prefixed_integer(data, 7)!
 
-	mut length := int(length_data[0])
-	mut idx := 1
-
-	if length == 127 {
-		mut m := 0
-		mut decoded_len := 0
-		for idx < data.len {
-			b := data[idx]
-			decoded_len += int(u64(b & 0x7f) << m)
-			m += 7
-			idx++
-			if (b & 0x80) == 0 {
-				break
-			}
-		}
-		length = 127 + decoded_len
-	}
-
-	if idx + length > data.len {
+	end := hdr_bytes + length
+	if end > data.len {
 		return error('String length exceeds data length')
 	}
 
-	if huffman {
-		// Huffman decoding not implemented yet
-		return error('Huffman decoding not yet implemented')
+	payload := data[hdr_bytes..end]
+
+	if is_huffman {
+		decoded := huffman_decode(payload)!
+		return decoded.bytestr(), end
 	}
 
-	str_bytes := data[idx..idx + length]
-	return str_bytes.bytestr(), idx + length
+	return payload.bytestr(), end
 }

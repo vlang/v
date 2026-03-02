@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module quic
 
+import crypto.rand
 import net
 import time
 
@@ -52,6 +53,7 @@ pub mut:
 	validated   bool
 	active      bool
 	mtu         u16 = 1200 // Default minimum MTU
+	created_at  time.Time // Time when this path was created, used for cleanup timeout
 }
 
 // new_path_info creates a new PathInfo for the given local and remote addresses.
@@ -62,6 +64,7 @@ pub fn new_path_info(local_addr net.Addr, remote_addr net.Addr) PathInfo {
 		rtt:         time.Duration(0)
 		validated:   false
 		active:      false
+		created_at:  time.now()
 	}
 }
 
@@ -146,6 +149,8 @@ pub fn (mut cm ConnectionMigration) probe_path(local_addr net.Addr, remote_addr 
 	challenge := generate_path_challenge()
 	path_key := path_to_key(new_path)
 	cm.pending_challenges[path_key] = challenge
+
+	// TODO: implement actual PATH_CHALLENGE frame sending over QUIC connection
 
 	// Add to alternative paths
 	cm.alternative_paths << new_path
@@ -278,13 +283,11 @@ pub fn (cm &ConnectionMigration) select_best_path() ?PathInfo {
 
 // cleanup_paths removes invalid or old paths
 pub fn (mut cm ConnectionMigration) cleanup_paths() {
-	now := time.now()
-
-	// Remove unvalidated paths older than probe timeout
+	// Keep validated paths, or unvalidated paths that are still within the probe timeout window.
 	cm.alternative_paths = cm.alternative_paths.filter(it.validated
-		|| (now - time.Time{}).seconds() < cm.probe_timeout.seconds())
+		|| time.since(it.created_at) < cm.probe_timeout)
 
-	// Clean up pending challenges
+	// Clean up all pending challenges (they correspond to paths that may no longer exist).
 	mut to_remove := []string{}
 	for key, _ in cm.pending_challenges {
 		// Remove challenges older than timeout
@@ -341,10 +344,14 @@ pub fn (stats &MigrationStats) success_rate() f64 {
 // Helper functions
 
 fn generate_path_challenge() PathChallenge {
-	// In production, use cryptographically secure random bytes
+	// RFC 9000 §8.2.1: PATH_CHALLENGE data must be 8 cryptographically random bytes.
+	random_bytes := rand.read(8) or {
+		// Fallback: fill with zero bytes on error; caller should treat failure as a probe error.
+		return PathChallenge{}
+	}
 	mut data := [8]u8{}
 	for i in 0 .. 8 {
-		data[i] = u8(i * 17) // Simple pattern for now
+		data[i] = random_bytes[i]
 	}
 	return PathChallenge{
 		data: data

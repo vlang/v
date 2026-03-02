@@ -40,8 +40,33 @@ pub:
 // Handler processes requests
 pub type Handler = fn (ServerRequest) ServerResponse
 
-// Server is an HTTP/2 server
+// ClientSettings holds the peer's SETTINGS values parsed from its SETTINGS frame.
+// These are tracked per RFC 7540 §6.5.2 and may affect encoding, flow control, etc.
+pub struct ClientSettings {
+pub mut:
+	header_table_size      u32 = 4096 // SETTINGS_HEADER_TABLE_SIZE (0x1)
+	max_concurrent_streams u32 // SETTINGS_MAX_CONCURRENT_STREAMS (0x3); 0 = no limit (initial)
+	initial_window_size    u32 = 65535 // SETTINGS_INITIAL_WINDOW_SIZE (0x4)
+	max_frame_size         u32 = 16384 // SETTINGS_MAX_FRAME_SIZE (0x5)
+	max_header_list_size   u32 // SETTINGS_MAX_HEADER_LIST_SIZE (0x6); 0 = unlimited (initial)
+}
+
+// Server is an HTTP/2 server.
+//
+// NOTE: This implementation uses plain TCP (net.TcpConn), NOT TLS.
+// Real HTTP/2 deployments require TLS with ALPN "h2" negotiation for
+// browser clients (RFC 7540 §3.3). The `tls` field is reserved for
+// future implementation.
+//
+// TODO: Implement TLS with ALPN h2 negotiation (e.g. via net.ssl.SSLConn)
+// to support browser-compatible HTTP/2 over TLS (h2).
+// The plain-TCP mode ("h2c") is only supported by clients that explicitly
+// opt in (e.g. `curl --http2-prior-knowledge`).
 pub struct Server {
+pub mut:
+	// tls indicates whether TLS should be used. Currently always false;
+	// TLS with ALPN h2 negotiation is not yet implemented.
+	tls bool
 mut:
 	config   ServerConfig
 	handler  ?Handler
@@ -49,7 +74,8 @@ mut:
 	running  bool
 }
 
-// new_server creates a new HTTP/2 server with the given configuration and handler
+// new_server creates a new HTTP/2 server with the given configuration and handler.
+// The returned server uses plain TCP (h2c). TLS is not yet implemented.
 pub fn new_server(config ServerConfig, handler Handler) !&Server {
 	listener := net.listen_tcp(.ip, config.addr)!
 
@@ -60,10 +86,14 @@ pub fn new_server(config ServerConfig, handler Handler) !&Server {
 	}
 }
 
-// listen_and_serve starts the HTTP/2 server and begins accepting connections
+// listen_and_serve starts the HTTP/2 server and begins accepting connections.
+// It blocks until stop() is called. The server uses plain TCP (h2c mode).
+// For TLS-based h2, TLS with ALPN negotiation must be implemented first.
 pub fn (mut s Server) listen_and_serve() ! {
 	s.running = true
-	println('[HTTP/2] Server listening on ${s.config.addr}')
+	$if debug {
+		eprintln('[HTTP/2] Server listening on ${s.config.addr}')
+	}
 
 	for s.running {
 		mut conn := s.listener.accept() or {
@@ -77,13 +107,30 @@ pub fn (mut s Server) listen_and_serve() ! {
 	}
 }
 
-// stop stops the HTTP/2 server and closes all active connections
+// stop stops the HTTP/2 server and closes the listener.
 pub fn (mut s Server) stop() {
 	s.running = false
 	s.listener.close() or {}
 }
 
-// handle_connection handles a client connection
+// read_exact_tcp reads exactly `needed` bytes from a TCP connection into buf[0..needed].
+// It loops on partial reads as required for TCP streams (TCP is a stream protocol and
+// a single read() call may return fewer bytes than requested).
+// Returns the number of bytes read (always == needed on success).
+// Returns an error if the connection closes or an I/O error occurs before needed bytes arrive.
+fn read_exact_tcp(mut conn net.TcpConn, mut buf []u8, needed int) !int {
+	mut total := 0
+	for total < needed {
+		n := conn.read(mut buf[total..needed]) or { return error('read_exact_tcp: ${err}') }
+		if n == 0 {
+			return error('read_exact_tcp: connection closed after ${total}/${needed} bytes')
+		}
+		total += n
+	}
+	return total
+}
+
+// handle_connection handles a single client TCP connection.
 fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	defer {
 		conn.close() or {}
@@ -93,17 +140,19 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	mut preface_buf := []u8{len: preface.len}
 	conn.set_read_timeout(s.config.read_timeout)
 
-	n := conn.read(mut preface_buf) or {
+	read_exact_tcp(mut conn, mut preface_buf, preface.len) or {
 		eprintln('[HTTP/2] Failed to read preface: ${err}')
 		return
 	}
 
-	if n != preface.len || preface_buf.bytestr() != preface {
+	if preface_buf.bytestr() != preface {
 		eprintln('[HTTP/2] Invalid preface')
 		return
 	}
 
-	println('[HTTP/2] Preface received')
+	$if debug {
+		eprintln('[HTTP/2] Preface received')
+	}
 
 	// Send SETTINGS frame
 	s.write_settings(mut conn) or {
@@ -114,6 +163,9 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	// Create encoder/decoder
 	mut encoder := new_encoder()
 	mut decoder := new_decoder()
+
+	// Track settings received from the client
+	mut client_settings := ClientSettings{}
 
 	// Main loop
 	for {
@@ -129,7 +181,7 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 		// Process frame
 		match frame.header.frame_type {
 			.settings {
-				s.handle_settings(mut conn, frame) or {
+				s.handle_settings(mut conn, frame, mut client_settings) or {
 					eprintln('[HTTP/2] Settings error: ${err}')
 				}
 			}
@@ -150,10 +202,12 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 		}
 	}
 
-	println('[HTTP/2] Connection closed')
+	$if debug {
+		eprintln('[HTTP/2] Connection closed')
+	}
 }
 
-// write_settings sends initial SETTINGS frame with pre-allocated buffer
+// write_settings sends the server's initial SETTINGS frame with a pre-allocated buffer.
 fn (mut s Server) write_settings(mut conn net.TcpConn) ! {
 	// Pre-allocate payload with exact size (3 settings * 6 bytes = 18 bytes)
 	mut payload := []u8{cap: 18}
@@ -184,20 +238,60 @@ fn (mut s Server) write_settings(mut conn net.TcpConn) ! {
 	}
 
 	s.write_frame(mut conn, frame)!
-	println('[HTTP/2] Sent SETTINGS')
+	$if debug {
+		eprintln('[HTTP/2] Sent SETTINGS')
+	}
 }
 
-// handle_settings processes SETTINGS frame
-fn (mut s Server) handle_settings(mut conn net.TcpConn, frame Frame) ! {
+// handle_settings processes a SETTINGS frame from the client.
+// If the frame is an ACK, it is silently accepted.
+// Otherwise, each setting key-value pair is parsed and stored in client_settings,
+// and a SETTINGS ACK is sent back per RFC 7540 §6.5.
+fn (mut s Server) handle_settings(mut conn net.TcpConn, frame Frame, mut client_settings ClientSettings) ! {
 	// Check for ACK
 	if frame.header.flags & u8(FrameFlags.ack) != 0 {
-		println('[HTTP/2] Received SETTINGS ACK')
+		$if debug {
+			eprintln('[HTTP/2] Received SETTINGS ACK')
+		}
 		return
 	}
 
-	println('[HTTP/2] Received SETTINGS')
+	$if debug {
+		eprintln('[HTTP/2] Received SETTINGS')
+	}
 
-	// Send ACK
+	// Parse and apply client settings (each setting is 6 bytes: 2-byte ID + 4-byte value)
+	payload := frame.payload
+	mut i := 0
+	for i + 6 <= payload.len {
+		id := (u16(payload[i]) << 8) | u16(payload[i + 1])
+		val := (u32(payload[i + 2]) << 24) | (u32(payload[i + 3]) << 16) | (u32(payload[i + 4]) << 8) | u32(payload[
+			i + 5])
+		i += 6
+
+		match id {
+			u16(SettingId.header_table_size) {
+				client_settings.header_table_size = val
+			}
+			u16(SettingId.max_concurrent_streams) {
+				client_settings.max_concurrent_streams = val
+			}
+			u16(SettingId.initial_window_size) {
+				client_settings.initial_window_size = val
+			}
+			u16(SettingId.max_frame_size) {
+				client_settings.max_frame_size = val
+			}
+			u16(SettingId.max_header_list_size) {
+				client_settings.max_header_list_size = val
+			}
+			else {
+				// Unknown setting identifiers must be ignored per RFC 7540 §6.5
+			}
+		}
+	}
+
+	// Send SETTINGS ACK
 	ack := Frame{
 		header:  FrameHeader{
 			length:     0
@@ -209,10 +303,13 @@ fn (mut s Server) handle_settings(mut conn net.TcpConn, frame Frame) ! {
 	}
 
 	s.write_frame(mut conn, ack)!
-	println('[HTTP/2] Sent SETTINGS ACK')
+	$if debug {
+		eprintln('[HTTP/2] Sent SETTINGS ACK')
+	}
 }
 
-// handle_headers processes HEADERS frame
+// handle_headers processes a HEADERS frame, decodes the header block,
+// invokes the request handler, and sends the response.
 fn (mut s Server) handle_headers(mut conn net.TcpConn, frame Frame, mut decoder Decoder, mut encoder Encoder) ! {
 	stream_id := frame.header.stream_id
 
@@ -244,7 +341,9 @@ fn (mut s Server) handle_headers(mut conn net.TcpConn, frame Frame, mut decoder 
 		stream_id: stream_id
 	}
 
-	println('[HTTP/2] Request: ${method} ${path}')
+	$if debug {
+		eprintln('[HTTP/2] Request: ${method} ${path}')
+	}
 
 	// Call handler
 	h := s.handler or {
@@ -267,7 +366,7 @@ fn (mut s Server) handle_headers(mut conn net.TcpConn, frame Frame, mut decoder 
 	s.send_response(mut conn, stream_id, response, mut encoder)!
 }
 
-// send_response sends HTTP/2 response with optimized header encoding
+// send_response encodes and sends an HTTP/2 response (HEADERS + optional DATA frame).
 fn (mut s Server) send_response(mut conn net.TcpConn, stream_id u32, response ServerResponse, mut encoder Encoder) ! {
 	// Pre-allocate headers array with capacity
 	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
@@ -327,10 +426,12 @@ fn (mut s Server) send_response(mut conn net.TcpConn, stream_id u32, response Se
 		s.write_frame(mut conn, data_frame)!
 	}
 
-	println('[HTTP/2] Response sent: ${response.status_code} (${response.body.len} bytes)')
+	$if debug {
+		eprintln('[HTTP/2] Response sent: ${response.status_code} (${response.body.len} bytes)')
+	}
 }
 
-// handle_ping processes PING frame
+// handle_ping processes a PING frame and sends a PING ACK per RFC 7540 §6.7.
 fn (mut s Server) handle_ping(mut conn net.TcpConn, frame Frame) ! {
 	// Send PING ACK
 	ack := Frame{
@@ -344,34 +445,33 @@ fn (mut s Server) handle_ping(mut conn net.TcpConn, frame Frame) ! {
 	}
 
 	s.write_frame(mut conn, ack)!
-	println('[HTTP/2] PING/PONG')
+	$if debug {
+		eprintln('[HTTP/2] PING/PONG')
+	}
 }
 
-// read_frame reads a frame from connection
+// read_frame reads a complete HTTP/2 frame from the connection.
+// Uses read_exact to ensure all bytes of both the 9-byte header and
+// the variable-length payload are fully received before returning.
 fn (mut s Server) read_frame(mut conn net.TcpConn) !Frame {
-	// Read header (9 bytes)
+	// Read header (9 bytes) — use read_exact to handle partial TCP reads
 	mut header_buf := []u8{len: frame_header_size}
 	conn.set_read_timeout(s.config.read_timeout)
 
-	n := conn.read(mut header_buf) or { return error('read header: ${err}') }
-
-	if n == 0 {
-		return error('EOF')
+	read_exact_tcp(mut conn, mut header_buf, frame_header_size) or {
+		return error('read header: ${err}')
 	}
 
-	if n != frame_header_size {
-		return error('incomplete header')
+	header := parse_frame_header(header_buf) or {
+		// Per RFC 7540 §4.1: unknown frame type — discard this frame
+		return error('unknown frame type, frame discarded')
 	}
 
-	header := parse_frame_header(header_buf)!
-
-	// Read payload
+	// Read payload — use read_exact to handle partial TCP reads
 	mut payload := []u8{len: int(header.length)}
 	if header.length > 0 {
-		bytes_read := conn.read(mut payload) or { return error('read payload: ${err}') }
-
-		if bytes_read != int(header.length) {
-			return error('incomplete payload')
+		read_exact_tcp(mut conn, mut payload, int(header.length)) or {
+			return error('read payload: ${err}')
 		}
 	}
 
@@ -381,7 +481,7 @@ fn (mut s Server) read_frame(mut conn net.TcpConn) !Frame {
 	}
 }
 
-// write_frame writes a frame to connection
+// write_frame encodes a frame and writes it to the connection.
 fn (mut s Server) write_frame(mut conn net.TcpConn, frame Frame) ! {
 	data := encode_frame(frame)
 	conn.set_write_timeout(s.config.write_timeout)

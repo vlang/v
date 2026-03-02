@@ -9,6 +9,7 @@ import time
 // Allows clients to send data in the first flight without waiting for handshake completion
 
 // SessionTicket represents a session ticket for 0-RTT resumption
+// TODO: integrate with Connection type for 0-RTT resumption support
 pub struct SessionTicket {
 pub mut:
 	ticket          []u8
@@ -28,6 +29,8 @@ pub mut:
 }
 
 // SessionCache manages session tickets for 0-RTT resumption
+// TODO: integrate with Connection type for 0-RTT resumption support
+// TODO: requires synchronization for concurrent use
 pub struct SessionCache {
 mut:
 	tickets map[string]SessionTicket // key: server_name
@@ -41,6 +44,7 @@ pub fn new_session_cache() SessionCache {
 }
 
 // store stores a session ticket for a server
+// TODO: requires synchronization for concurrent use
 pub fn (mut sc SessionCache) store(server_name string, ticket SessionTicket) {
 	sc.tickets[server_name] = ticket
 }
@@ -78,6 +82,7 @@ pub fn (mut sc SessionCache) cleanup() {
 }
 
 // ZeroRTTConfig configures 0-RTT behavior
+// TODO: integrate with Connection type for 0-RTT resumption support
 pub struct ZeroRTTConfig {
 pub:
 	enabled        bool = true
@@ -95,6 +100,8 @@ pub enum ZeroRTTState {
 }
 
 // ZeroRTTConnection manages a 0-RTT connection
+// TODO: integrate with Connection type for 0-RTT resumption support
+// TODO: add mutex/atomic protection for concurrent access
 pub struct ZeroRTTConnection {
 pub mut:
 	state          ZeroRTTState
@@ -156,6 +163,7 @@ pub fn (zc &ZeroRTTConnection) get_early_data() []EarlyData {
 }
 
 // AntiReplayCache prevents replay attacks on 0-RTT data
+// TODO: requires synchronization for concurrent use
 pub struct AntiReplayCache {
 mut:
 	seen_tokens map[string]time.Time

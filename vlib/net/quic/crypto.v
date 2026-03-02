@@ -4,6 +4,7 @@
 module quic
 
 import os
+import crypto.aes
 
 // TLS 1.3 crypto callbacks for ngtcp2
 // This implements the cryptographic operations needed for QUIC
@@ -263,10 +264,11 @@ pub fn (ctx CryptoContext) is_handshake_complete() bool {
 }
 
 // derive_initial_secrets derives initial secrets for QUIC
+// RFC 9001 Section 5.2: Initial Secrets
 pub fn derive_initial_secrets(dcid []u8, is_server bool) !([]u8, []u8) {
-	// QUIC initial salt (RFC 9001)
-	initial_salt := [u8(0x38), 0xb7, 0x2a, 0x50, 0xc5, 0x8c, 0x6f, 0x8a, 0x8b, 0x8d, 0x6c, 0x8f,
-		0x9b, 0x8e, 0x7c, 0x8a, 0x8d, 0x7e, 0x8c, 0x6d]
+	// QUIC initial salt per RFC 9001 Section 5.2 (QUIC version 1)
+	initial_salt := [u8(0x38), 0x76, 0x2c, 0xf7, 0xf5, 0x59, 0x34, 0xb3, 0x4d, 0x17, 0x9a, 0xe6,
+		0xa4, 0xc8, 0x0c, 0xad, 0xcc, 0xbb, 0x7f, 0x0a]
 
 	// Extract initial secret using HKDF-Extract
 	initial_secret := hkdf_extract(initial_salt, dcid)!
@@ -385,18 +387,24 @@ fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
 	return out[..int(outlen)]
 }
 
-// encrypt_packet encrypts a QUIC packet
-pub fn (mut ctx CryptoContext) encrypt_packet(plaintext []u8, ad []u8) ![]u8 {
+// encrypt_packet encrypts a QUIC packet using AES-128-GCM.
+// RFC 9001 Section 5.3: Per-Packet Keys and IVs.
+// The nonce is derived by XORing the base IV (from traffic secret) with the
+// left-zero-padded packet number. base_iv must be 12 bytes (GCM IV length).
+pub fn (mut ctx CryptoContext) encrypt_packet(plaintext []u8, ad []u8, base_iv []u8, packet_number u64) ![]u8 {
+	if base_iv.len != 12 {
+		return error('base_iv must be 12 bytes for AES-128-GCM')
+	}
+
+	// Derive nonce: base_iv XOR left-padded packet_number (RFC 9001 §5.3)
+	nonce := derive_nonce(base_iv, packet_number)
+
 	// Use AES-128-GCM for encryption
 	cipher := C.EVP_aes_128_gcm()
 
-	// Generate IV (12 bytes for GCM)
-	mut iv := []u8{len: 12}
-	C.RAND_bytes(iv.data, 12)
-
-	// Initialize encryption
+	// Initialize encryption with derived nonce
 	if C.EVP_EncryptInit_ex(ctx.tx_cipher_ctx, cipher, unsafe { nil }, ctx.tx_secret.data,
-		iv.data) != 1 {
+		nonce.data) != 1 {
 		return error('failed to init encryption')
 	}
 
@@ -424,21 +432,25 @@ pub fn (mut ctx CryptoContext) encrypt_packet(plaintext []u8, ad []u8) ![]u8 {
 	return ciphertext[..outlen + final_len]
 }
 
-// decrypt_packet decrypts a QUIC packet
-pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8) ![]u8 {
+// decrypt_packet decrypts a QUIC packet using AES-128-GCM.
+// RFC 9001 Section 5.3: Per-Packet Keys and IVs.
+// The nonce is derived by XORing the base IV (from traffic secret) with the
+// left-zero-padded packet number, matching encrypt_packet's derivation.
+// base_iv must be 12 bytes (GCM IV length).
+pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8, base_iv []u8, packet_number u64) ![]u8 {
+	if base_iv.len != 12 {
+		return error('base_iv must be 12 bytes for AES-128-GCM')
+	}
+
+	// Derive nonce using the same method as encrypt_packet (RFC 9001 §5.3)
+	nonce := derive_nonce(base_iv, packet_number)
+
 	// Use AES-128-GCM for decryption
 	cipher := C.EVP_aes_128_gcm()
 
-	// Extract IV (first 12 bytes)
-	if ciphertext.len < 12 {
-		return error('ciphertext too short')
-	}
-	iv := ciphertext[..12]
-	encrypted_data := ciphertext[12..]
-
-	// Initialize decryption
+	// Initialize decryption with derived nonce
 	if C.EVP_DecryptInit_ex(ctx.rx_cipher_ctx, cipher, unsafe { nil }, ctx.rx_secret.data,
-		iv.data) != 1 {
+		nonce.data) != 1 {
 		return error('failed to init decryption')
 	}
 
@@ -451,9 +463,9 @@ pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8) ![]u8 {
 	}
 
 	// Decrypt
-	mut plaintext := []u8{len: encrypted_data.len}
-	if C.EVP_DecryptUpdate(ctx.rx_cipher_ctx, plaintext.data, &outlen, encrypted_data.data,
-		encrypted_data.len) != 1 {
+	mut plaintext := []u8{len: ciphertext.len}
+	if C.EVP_DecryptUpdate(ctx.rx_cipher_ctx, plaintext.data, &outlen, ciphertext.data,
+		ciphertext.len) != 1 {
 		return error('failed to decrypt')
 	}
 
@@ -466,28 +478,103 @@ pub fn (mut ctx CryptoContext) decrypt_packet(ciphertext []u8, ad []u8) ![]u8 {
 	return plaintext[..outlen + final_len]
 }
 
-// apply_header_protection applies header protection
+// apply_header_protection applies QUIC header protection per RFC 9001 Section 5.4.1.
+// For AES-based ciphers, the mask is produced by AES-ECB encryption of the sample
+// using the header protection key (hp_key). The mask is applied as follows:
+//   - mask[0] is applied to the first header byte (packet number length bits / key phase bit)
+//   - mask[1..5] are XORed onto the packet number bytes
+// The hp_key and sample must each be 16 bytes (AES block size).
 pub fn (ctx CryptoContext) apply_header_protection(header []u8, sample []u8) ![]u8 {
-	// Simplified header protection
-	// In a real implementation, this would use AES-ECB
-	mut protected := []u8{len: header.len}
+	if sample.len < aes.block_size {
+		return error('sample must be at least ${aes.block_size} bytes')
+	}
+	if ctx.tx_hp_key.len != aes.block_size {
+		return error('tx_hp_key must be ${aes.block_size} bytes')
+	}
 
-	// Copy and XOR in one pass
-	for i in 0 .. header.len {
-		if i < sample.len {
-			protected[i] = header[i] ^ sample[i]
-		} else {
-			protected[i] = header[i]
+	// Compute mask = AES-ECB(hp_key, sample[0..16]) per RFC 9001 §5.4.1
+	mask := aes_ecb_encrypt(ctx.tx_hp_key, sample[..aes.block_size])!
+
+	return apply_hp_mask(header, mask)
+}
+
+// remove_header_protection removes QUIC header protection per RFC 9001 Section 5.4.1.
+// Uses the rx_hp_key. The mask derivation is identical to apply_header_protection;
+// header protection is self-inverse when the same mask is applied twice.
+pub fn (ctx CryptoContext) remove_header_protection(header []u8, sample []u8) ![]u8 {
+	if sample.len < aes.block_size {
+		return error('sample must be at least ${aes.block_size} bytes')
+	}
+	if ctx.rx_hp_key.len != aes.block_size {
+		return error('rx_hp_key must be ${aes.block_size} bytes')
+	}
+
+	// Compute mask = AES-ECB(hp_key, sample[0..16]) per RFC 9001 §5.4.1
+	mask := aes_ecb_encrypt(ctx.rx_hp_key, sample[..aes.block_size])!
+
+	return apply_hp_mask(header, mask)
+}
+
+// aes_ecb_encrypt encrypts a single 16-byte block using AES-ECB.
+// This is the core primitive for QUIC header protection per RFC 9001 §5.4.1.
+fn aes_ecb_encrypt(key []u8, block []u8) ![]u8 {
+	if block.len != aes.block_size {
+		return error('aes_ecb_encrypt: block must be exactly ${aes.block_size} bytes')
+	}
+	cipher_block := aes.new_cipher(key)
+	mut dst := []u8{len: aes.block_size}
+	cipher_block.encrypt(mut dst, block)
+	return dst
+}
+
+// apply_hp_mask applies the header protection mask per RFC 9001 §5.4.
+// mask[0] is applied to first-byte bits; mask[1..5] XOR the packet number bytes.
+fn apply_hp_mask(header []u8, mask []u8) ![]u8 {
+	if header.len == 0 {
+		return error('header must not be empty')
+	}
+	mut protected := header.clone()
+
+	// Determine long vs short header from the high bit of the first byte
+	is_long_header := (protected[0] & 0x80) != 0
+
+	if is_long_header {
+		// Long header: mask the low 4 bits of the first byte (packet number length)
+		protected[0] ^= mask[0] & 0x0f
+	} else {
+		// Short header: mask the low 5 bits (key phase + packet number length bits)
+		protected[0] ^= mask[0] & 0x1f
+	}
+
+	// XOR mask[1..5] onto the packet number bytes (last 4 bytes of header prefix)
+	// Packet number starts right after the first byte in the simplest case;
+	// for a full implementation the caller is responsible for passing the correct slice.
+	pn_len := int(protected[0] & 0x03) + 1 // encoded packet number length
+	pn_offset := header.len - pn_len
+	for i in 0 .. pn_len {
+		if pn_offset + i < protected.len && i + 1 < mask.len {
+			protected[pn_offset + i] ^= mask[i + 1]
 		}
 	}
 
 	return protected
 }
 
-// remove_header_protection removes header protection
-pub fn (ctx CryptoContext) remove_header_protection(header []u8, sample []u8) ![]u8 {
-	// Header protection is symmetric
-	return ctx.apply_header_protection(header, sample)
+// derive_nonce derives the per-packet nonce per RFC 9001 Section 5.3.
+// nonce = base_iv XOR left-zero-padded packet_number
+// base_iv must be 12 bytes (GCM IV length).
+fn derive_nonce(base_iv []u8, packet_number u64) []u8 {
+	mut nonce := base_iv.clone()
+	// Encode packet_number big-endian into the last 8 bytes of the 12-byte nonce
+	nonce[4] ^= u8(packet_number >> 56)
+	nonce[5] ^= u8(packet_number >> 48)
+	nonce[6] ^= u8(packet_number >> 40)
+	nonce[7] ^= u8(packet_number >> 32)
+	nonce[8] ^= u8(packet_number >> 24)
+	nonce[9] ^= u8(packet_number >> 16)
+	nonce[10] ^= u8(packet_number >> 8)
+	nonce[11] ^= u8(packet_number)
+	return nonce
 }
 
 // load_certificate loads a certificate from a PEM file

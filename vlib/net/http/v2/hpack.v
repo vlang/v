@@ -126,17 +126,29 @@ mut:
 	max_size int = 4096 // Default from RFC 7541
 }
 
-// add adds an entry to the dynamic table
+// add adds an entry to the dynamic table, evicting oldest entries as needed (RFC 7541 §4.4).
+// If the new entry alone exceeds max_size, the table is emptied and the entry is not added.
 pub fn (mut dt DynamicTable) add(field HeaderField) {
-	// Evict entries if necessary
-	for dt.size + field.size() > dt.max_size && dt.entries.len > 0 {
+	entry_size := field.size()
+
+	// Per RFC 7541 §4.4: if the new entry is larger than max_size, empty the table
+	if entry_size > dt.max_size {
+		dt.entries = []HeaderField{}
+		dt.size = 0
+		return
+	}
+
+	// Evict oldest entries (from end of array) until there is room
+	for dt.size + entry_size > dt.max_size && dt.entries.len > 0 {
 		removed := dt.entries.pop()
 		dt.size -= removed.size()
 	}
 
-	// Add new entry at the beginning
+	// Add new entry at the beginning (newest = index 1).
+	// insert(0) is O(n), but max_size enforcement keeps the array small
+	// (default 4096 bytes → at most ~128 entries), so this is acceptable.
 	dt.entries.insert(0, field)
-	dt.size += field.size()
+	dt.size += entry_size
 }
 
 // get retrieves an entry from the dynamic table (1-indexed)
@@ -419,6 +431,30 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 			size, bytes_read := decode_integer(data[idx..], 5)!
 			idx += bytes_read
 			d.dynamic_table.set_max_size(size)
+		} else if (first_byte & 0xf0) == 0x10 {
+			// Literal Header Field Never Indexed (RFC 7541 §6.2.3)
+			// Semantically identical to "without indexing" but intermediaries must
+			// never re-encode this field with indexing (important for sensitive headers).
+			index, bytes_read := decode_integer(data[idx..], 4)!
+			idx += bytes_read
+
+			mut name := ''
+			if index == 0 {
+				mut name_bytes_read := 0
+				name, name_bytes_read = decode_string(data[idx..])!
+				idx += name_bytes_read
+			} else {
+				field := get_indexed(&d.dynamic_table, index) or {
+					return error('invalid index: ${index}')
+				}
+				name = field.name
+			}
+
+			value, bytes_read2 := decode_string(data[idx..])!
+			idx += bytes_read2
+
+			// Never add to dynamic table; preserve never-indexed semantics
+			headers << HeaderField{name, value}
 		} else {
 			// Literal header field without indexing (RFC 7541 Section 6.2.2)
 			index, bytes_read := decode_integer(data[idx..], 4)!

@@ -74,51 +74,74 @@ fn encode_frame_optimized(frame Frame, mut buf []u8) int {
 }
 
 // encode_optimized performs HPACK encoding with buffer reuse for better performance.
+// It searches the static and dynamic tables for exact or name-only matches and
+// uses RFC 7541-compliant multi-byte integer encoding for indices >= 127.
+// Updates the dynamic table when emitting literal representations.
 // Returns the number of bytes written to the buffer.
 pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int {
 	mut offset := 0
 
 	for header in headers {
-		// Try to find in static table
-		mut found := false
+		mut found_exact_idx := 0
+		mut found_name_idx := 0
+
+		// Search static table for exact or name-only match
 		for i, entry in static_table {
 			if entry.name == header.name {
 				if entry.value == header.value {
-					// Indexed header field
-					if offset + 1 > buf.len {
-						return offset
-					}
-					buf[offset] = u8(0x80 | i)
-					offset++
-					found = true
+					found_exact_idx = i
 					break
-				} else if entry.value == '' {
-					// Literal with incremental indexing - indexed name
-					if offset + 2 + header.value.len > buf.len {
-						return offset
-					}
-					buf[offset] = u8(0x40 | i)
-					offset++
-
-					// Encode value
-					buf[offset] = u8(header.value.len)
-					offset++
-					for b in header.value.bytes() {
-						buf[offset] = b
-						offset++
-					}
-					found = true
-					break
+				} else if found_name_idx == 0 {
+					found_name_idx = i
 				}
 			}
 		}
 
-		if !found {
-			// Literal with incremental indexing - new name
+		// Search dynamic table if no static exact match found
+		if found_exact_idx == 0 {
+			for i := 0; i < e.dynamic_table.entries.len; i++ {
+				entry := e.dynamic_table.entries[i]
+				if entry.name == header.name {
+					dyn_idx := static_table.len + i
+					if entry.value == header.value {
+						found_exact_idx = dyn_idx
+						break
+					} else if found_name_idx == 0 {
+						found_name_idx = dyn_idx
+					}
+				}
+			}
+		}
+
+		if found_exact_idx > 0 {
+			// Indexed header field (RFC 7541 Section 6.1): prefix 7 bits, flag 0x80
+			encoded_len := encode_integer(u64(found_exact_idx), 7, mut buf, offset)
+			buf[offset] |= 0x80
+			offset += encoded_len
+		} else if found_name_idx > 0 {
+			// Literal with incremental indexing, indexed name (RFC 7541 Section 6.2.1)
+			// prefix 6 bits, flag 0x40
+			encoded_len := encode_integer(u64(found_name_idx), 6, mut buf, offset)
+			buf[offset] |= 0x40
+			offset += encoded_len
+
+			// Encode value as a plain string (length + bytes)
+			value_len := header.value.len
+			if offset + 1 + value_len > buf.len {
+				return offset
+			}
+			buf[offset] = u8(value_len)
+			offset++
+			for b in header.value.bytes() {
+				buf[offset] = b
+				offset++
+			}
+			e.dynamic_table.add(header)
+		} else {
+			// Literal with incremental indexing, new name (RFC 7541 Section 6.2.1)
 			name_len := header.name.len
 			value_len := header.value.len
 			required := 3 + name_len + value_len
-
 			if offset + required > buf.len {
 				return offset
 			}
@@ -139,6 +162,7 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 				buf[offset] = b
 				offset++
 			}
+			e.dynamic_table.add(header)
 		}
 	}
 
@@ -167,12 +191,6 @@ pub fn encode_integer(value u64, prefix_bits u8, mut buf []u8, offset int) int {
 
 	buf[pos] = u8(remaining)
 	return pos - offset + 1
-}
-
-// Fast string comparison for header matching
-@[inline]
-fn fast_string_equal(a string, b string) bool {
-	return a == b
 }
 
 // lookup_static_table_fast performs a fast lookup of header fields in the static table.
@@ -279,7 +297,8 @@ pub fn (fb FrameBuffer) bytes() []u8 {
 	return fb.data[..fb.offset]
 }
 
-// Connection pool for reusing connections
+// Connection pool for reusing connections.
+// TODO: integrate with HTTP/2 client for connection reuse
 pub struct ConnectionPool {
 mut:
 	connections map[string]&PooledConnection

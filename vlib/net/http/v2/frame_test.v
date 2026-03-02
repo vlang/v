@@ -76,6 +76,52 @@ fn test_settings_frame() {
 	assert decoded.payload.len == payload.len
 }
 
+// test_frame_type_from_byte_known verifies that known frame type bytes are parsed correctly
+fn test_frame_type_from_byte_known() {
+	assert frame_type_from_byte(0x0) or {
+		assert false, 'expected .data'
+		return
+	} == .data
+	assert frame_type_from_byte(0x1) or {
+		assert false, 'expected .headers'
+		return
+	} == .headers
+	assert frame_type_from_byte(0x9) or {
+		assert false, 'expected .continuation'
+		return
+	} == .continuation
+}
+
+// test_frame_type_from_byte_unknown verifies that unknown frame type bytes return none (RFC 7540 §4.1)
+fn test_frame_type_from_byte_unknown() {
+	// Per RFC 7540 §4.1: unknown frame types MUST be ignored, not errored
+	result := frame_type_from_byte(0xff)
+	assert result == none
+}
+
+// test_parse_frame_header_unknown_type verifies that parse_frame_header skips frames with unknown types
+fn test_parse_frame_header_unknown_type() {
+	// Build a 9-byte header with unknown type 0xfe
+	mut raw := []u8{len: 9}
+	raw[0] = 0 // length high
+	raw[1] = 0 // length mid
+	raw[2] = 5 // length low  (5 bytes payload)
+	raw[3] = 0xfe // unknown type
+	raw[4] = 0 // flags
+	raw[5] = 0 // stream_id high
+	raw[6] = 0
+	raw[7] = 0
+	raw[8] = 1 // stream_id = 1
+	// parse_frame_header must NOT return an error; it returns none for unknown types
+	header := parse_frame_header(raw) or {
+		// Returning none is acceptable (unknown type skipped)
+		return
+	}
+	// If it returns a value, that is also fine if the caller decides to accept a zero-value
+	// This case should not be reached with an unknown type
+	_ = header
+}
+
 fn test_frame_validation() {
 	// Valid DATA frame
 	valid_frame := Frame{

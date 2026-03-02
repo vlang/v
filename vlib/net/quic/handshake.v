@@ -30,7 +30,9 @@ pub fn (mut c Connection) perform_handshake() ! {
 		return error('ngtcp2 connection not initialized')
 	}
 
-	println('Starting QUIC handshake...')
+	$if trace_quic ? {
+		eprintln('[QUIC] Starting client handshake...')
+	}
 
 	// Handshake loop: write initial packet, then read/write until complete
 	max_attempts := 50
@@ -53,7 +55,9 @@ pub fn (mut c Connection) perform_handshake() ! {
 		// Check if handshake completed
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
-			println('Handshake complete!')
+			$if trace_quic ? {
+				eprintln('[QUIC] Client handshake complete')
+			}
 			return
 		}
 
@@ -87,7 +91,9 @@ pub fn (mut c Connection) perform_handshake() ! {
 		// Check again after processing
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
-			println('Handshake complete!')
+			$if trace_quic ? {
+				eprintln('[QUIC] Client handshake complete')
+			}
 			return
 		}
 	}
@@ -105,7 +111,9 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 		return error('ngtcp2 connection not initialized')
 	}
 
-	println('Starting server QUIC handshake...')
+	$if trace_quic ? {
+		eprintln('[QUIC] Starting server handshake...')
+	}
 
 	// Server handshake loop
 	max_attempts := 50
@@ -148,7 +156,9 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 		// Check if handshake completed
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
-			println('Server handshake complete!')
+			$if trace_quic ? {
+				eprintln('[QUIC] Server handshake complete')
+			}
 			return
 		}
 	}
@@ -206,7 +216,7 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 	mut pi := Ngtcp2PktInfo{}
 
 	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
-		if !err_is_fatal(ngtcp2_err_invalid_argument) {
+		if !err_is_fatal(err.code()) {
 			return []u8{}
 		}
 		return error('failed to read packet: ${err}')

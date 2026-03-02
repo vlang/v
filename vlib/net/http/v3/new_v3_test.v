@@ -54,7 +54,10 @@ fn test_varint_encoding_decoding() {
 	}
 
 	for val, expected_len in cases {
-		encoded := encode_varint(val)
+		encoded := encode_varint(val) or {
+			assert false, 'Failed to encode varint'
+			return
+		}
 		assert encoded.len == expected_len
 
 		decoded, bytes_read := decode_varint(encoded) or {

@@ -30,6 +30,9 @@ pub mut:
 	crypto_ctx CryptoContext
 	// Network path (persistent for the connection lifetime)
 	path Ngtcp2PathStruct
+	// Per-connection address storage; path.local.addr and path.remote.addr
+	// point into this struct, so it must outlive path.
+	path_addrs QuicPathAddrs
 }
 
 // Stream represents a QUIC stream
@@ -83,7 +86,8 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 
 	// Setup path with resolved remote address
 	mut path := Ngtcp2PathStruct{}
-	rv := C.quic_resolve_and_set_path(&path, &char(host.str), port)
+	mut path_addrs := QuicPathAddrs{}
+	rv := C.quic_resolve_and_set_path(&path, &path_addrs, &char(host.str), port)
 	if rv != 0 {
 		udp_socket.close() or {}
 		return error('failed to resolve remote address: ${host}:${port}')
@@ -153,6 +157,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		recv_buf:    []u8{len: 65536}
 		crypto_ctx:  crypto_ctx
 		path:        path
+		path_addrs:  path_addrs
 	}
 }
 
@@ -322,4 +327,47 @@ pub fn (mut c Connection) migrate_connection(new_addr string) ! {
 	// 1. Send PATH_CHALLENGE frame
 	// 2. Wait for PATH_RESPONSE
 	// 3. Update connection state
+}
+
+// get_expiry returns the next timer expiry time for the connection in nanoseconds.
+// Compare the returned value against time.sys_mono_now() to decide when to
+// call handle_expiry.
+pub fn get_expiry(conn &Connection) u64 {
+	return conn_get_expiry(conn.ngtcp2_conn)
+}
+
+// handle_expiry notifies ngtcp2 that the connection timer has fired.
+// ts is the current monotonic time in nanoseconds (time.sys_mono_now()).
+// After calling this, invoke write_pkt or conn_write_pkt to flush any
+// retransmission packets that ngtcp2 has queued as a result of the expiry.
+pub fn handle_expiry(mut conn Connection) ! {
+	if conn.closed {
+		return error('connection closed')
+	}
+	if conn.ngtcp2_conn == unsafe { nil } {
+		return error('ngtcp2 connection not initialized')
+	}
+	ts := time.sys_mono_now()
+	conn_handle_expiry(conn.ngtcp2_conn, ts)!
+}
+
+// check_and_handle_timers checks whether the connection timer has expired and,
+// if so, calls handle_expiry to process it.  After this returns without error,
+// the caller should send any pending packets via write_pkt so that ngtcp2
+// retransmissions and keep-alives are delivered to the peer.
+// Returns true when handle_expiry was invoked (timer fired), false otherwise.
+pub fn check_and_handle_timers(mut conn Connection) !bool {
+	if conn.closed {
+		return error('connection closed')
+	}
+	if conn.ngtcp2_conn == unsafe { nil } {
+		return error('ngtcp2 connection not initialized')
+	}
+	now := time.sys_mono_now()
+	expiry := get_expiry(&conn)
+	if now >= expiry {
+		handle_expiry(mut conn)!
+		return true
+	}
+	return false
 }

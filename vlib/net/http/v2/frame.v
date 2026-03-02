@@ -72,17 +72,20 @@ pub mut:
 	payload []u8
 }
 
-// parse_frame_header parses the 9-byte HTTP/2 frame header from raw bytes
-pub fn parse_frame_header(data []u8) !FrameHeader {
+// parse_frame_header parses the 9-byte HTTP/2 frame header from raw bytes.
+// Returns none if the data is too short or the frame type is unknown.
+// Per RFC 7540 §4.1: implementations MUST ignore and discard any frame
+// that has a type that is unknown to the implementation.
+pub fn parse_frame_header(data []u8) ?FrameHeader {
 	if data.len < frame_header_size {
-		return error('frame header too short: ${data.len} bytes, expected ${frame_header_size}')
+		return none
 	}
 
 	// Parse 24-bit length in network byte order (big-endian)
 	length := (u32(data[0]) << 16) | (u32(data[1]) << 8) | u32(data[2])
 
-	// Parse 8-bit frame type and flags
-	frame_type := frame_type_from_byte(data[3])!
+	// Parse 8-bit frame type — none means unknown, must be discarded per RFC 7540 §4.1
+	frame_type := frame_type_from_byte(data[3]) or { return none }
 	flags := data[4]
 
 	// Parse 31-bit stream ID (mask out reserved bit)
@@ -121,7 +124,9 @@ pub fn (h FrameHeader) has_flag(flag FrameFlags) bool {
 	return (h.flags & u8(flag)) != 0
 }
 
-// DataFrame represents the payload of an HTTP/2 DATA frame
+// DataFrame represents the payload of an HTTP/2 DATA frame (RFC 7540 §6.1).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct DataFrame {
 pub mut:
 	stream_id  u32
@@ -131,7 +136,9 @@ pub mut:
 	pad_length u8
 }
 
-// HeadersFrame represents the payload of an HTTP/2 HEADERS frame
+// HeadersFrame represents the payload of an HTTP/2 HEADERS frame (RFC 7540 §6.2).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct HeadersFrame {
 pub mut:
 	stream_id   u32
@@ -146,7 +153,9 @@ pub mut:
 	exclusive   bool
 }
 
-// SettingsFrame represents the payload of an HTTP/2 SETTINGS frame
+// SettingsFrame represents the payload of an HTTP/2 SETTINGS frame (RFC 7540 §6.5).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct SettingsFrame {
 pub mut:
 	ack      bool
@@ -163,14 +172,18 @@ pub enum SettingId as u16 {
 	max_header_list_size   = 0x6
 }
 
-// PingFrame represents the payload of an HTTP/2 PING frame
+// PingFrame represents the payload of an HTTP/2 PING frame (RFC 7540 §6.7).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct PingFrame {
 pub mut:
 	ack  bool
 	data [8]u8
 }
 
-// GoAwayFrame represents the payload of an HTTP/2 GOAWAY frame
+// GoAwayFrame represents the payload of an HTTP/2 GOAWAY frame (RFC 7540 §6.8).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct GoAwayFrame {
 pub mut:
 	last_stream_id u32
@@ -178,27 +191,33 @@ pub mut:
 	debug_data     []u8
 }
 
-// WindowUpdateFrame represents the payload of an HTTP/2 WINDOW_UPDATE frame
+// WindowUpdateFrame represents the payload of an HTTP/2 WINDOW_UPDATE frame (RFC 7540 §6.9).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct WindowUpdateFrame {
 pub mut:
 	stream_id        u32
 	window_increment u32
 }
 
-// RstStreamFrame represents the payload of an HTTP/2 RST_STREAM frame
+// RstStreamFrame represents the payload of an HTTP/2 RST_STREAM frame (RFC 7540 §6.4).
+// Available for structured frame handling.
+// TODO: integrate structured frame types into processing pipeline
 pub struct RstStreamFrame {
 pub mut:
 	stream_id  u32
 	error_code ErrorCode
 }
 
-// parse_frame parses a complete HTTP/2 frame from raw bytes
-pub fn parse_frame(data []u8) !Frame {
-	header := parse_frame_header(data)!
+// parse_frame parses a complete HTTP/2 frame from raw bytes.
+// Returns none if the data is too short or the frame type is unknown.
+// Per RFC 7540 §4.1: frames with unknown types must be silently discarded.
+pub fn parse_frame(data []u8) ?Frame {
+	header := parse_frame_header(data) or { return none }
 
 	expected_len := frame_header_size + int(header.length)
 	if data.len < expected_len {
-		return error('incomplete frame: expected ${expected_len} bytes, got ${data.len}')
+		return none
 	}
 
 	payload := data[frame_header_size..expected_len]
@@ -241,14 +260,17 @@ pub fn (f Frame) validate() ! {
 	}
 }
 
-// encode_frame encodes a frame to bytes using bulk copy for payload
+// encode_frame encodes a frame to bytes using bulk copy for payload.
+// Note: Frame.encode() provides equivalent functionality via method syntax.
+// TODO: consolidate with Frame.encode() once callers are updated
 pub fn encode_frame(frame Frame) []u8 {
 	mut buf := []u8{len: frame_header_size + frame.payload.len}
 	return encode_frame_to_buffer(frame, mut buf)
 }
 
-// encode_frame_to_buffer encodes a frame into a pre-allocated buffer
-// Returns the encoded frame data as a slice of the buffer
+// encode_frame_to_buffer encodes a frame into a pre-allocated buffer.
+// Returns the encoded frame data as a slice of the buffer.
+// Note: provides buffer-reuse optimization over Frame.encode().
 pub fn encode_frame_to_buffer(frame Frame, mut buf []u8) []u8 {
 	required_size := frame_header_size + frame.payload.len
 	if buf.len < required_size {
@@ -275,21 +297,23 @@ pub fn encode_frame_to_buffer(frame Frame, mut buf []u8) []u8 {
 	return buf[..required_size]
 }
 
-// frame_type_from_byte validates and converts a byte to a FrameType enum value.
-// Returns an error for unrecognized frame type values.
-pub fn frame_type_from_byte(b u8) !FrameType {
+// frame_type_from_byte converts a byte to a FrameType enum value.
+// Returns none for unrecognized frame type bytes.
+// Per RFC 7540 §4.1: implementations MUST ignore and discard any frame
+// that has a type that is unknown to the implementation.
+pub fn frame_type_from_byte(b u8) ?FrameType {
 	return match b {
-		0x0 { .data }
-		0x1 { .headers }
-		0x2 { .priority }
-		0x3 { .rst_stream }
-		0x4 { .settings }
-		0x5 { .push_promise }
-		0x6 { .ping }
-		0x7 { .goaway }
-		0x8 { .window_update }
-		0x9 { .continuation }
-		else { error('unknown frame type: 0x${b:02x}') }
+		0x0 { FrameType.data }
+		0x1 { FrameType.headers }
+		0x2 { FrameType.priority }
+		0x3 { FrameType.rst_stream }
+		0x4 { FrameType.settings }
+		0x5 { FrameType.push_promise }
+		0x6 { FrameType.ping }
+		0x7 { FrameType.goaway }
+		0x8 { FrameType.window_update }
+		0x9 { FrameType.continuation }
+		else { none }
 	}
 }
 

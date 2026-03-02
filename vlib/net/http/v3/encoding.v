@@ -5,9 +5,16 @@ module v3
 
 // Common encoding/decoding utilities for HTTP/3 (RFC 9000)
 
-// encode_varint encodes a variable-length integer using QUIC varint encoding
-// Supports values up to 2^62-1 with 1, 2, 4, or 8 byte encodings
-pub fn encode_varint(value u64) []u8 {
+// max_varint is the maximum value encodable as a QUIC variable-length integer (2^62 - 1).
+pub const max_varint = u64(0x3FFF_FFFF_FFFF_FFFF)
+
+// encode_varint encodes a variable-length integer using QUIC varint encoding.
+// Supports values from 0 to max_varint (2^62-1) with 1, 2, 4, or 8 byte encodings.
+// Returns an error if value exceeds max_varint.
+pub fn encode_varint(value u64) ![]u8 {
+	if value > max_varint {
+		return error('varint value ${value} exceeds maximum 62-bit value (max_varint)')
+	}
 	if value < 64 {
 		return [u8(value)]
 	} else if value < 16384 {
@@ -20,8 +27,8 @@ pub fn encode_varint(value u64) []u8 {
 	}
 }
 
-// decode_varint decodes a QUIC variable-length integer
-// Returns the decoded value and the number of bytes read
+// decode_varint decodes a QUIC variable-length integer.
+// Returns the decoded value and the number of bytes read.
 pub fn decode_varint(data []u8) !(u64, int) {
 	if data.len == 0 {
 		return error('empty data for varint decoding')
@@ -65,17 +72,17 @@ pub fn decode_varint(data []u8) !(u64, int) {
 	}
 }
 
-// encode_string encodes a string with varint length prefix
-pub fn encode_string(s string) []u8 {
+// encode_string encodes a string with varint length prefix.
+pub fn encode_string(s string) ![]u8 {
 	bytes := s.bytes()
 	mut result := []u8{cap: 8 + bytes.len}
-	result << encode_varint(u64(bytes.len))
+	result << encode_varint(u64(bytes.len))!
 	result << bytes
 	return result
 }
 
-// decode_string decodes a varint length-prefixed string
-// Returns the decoded string and the number of bytes read
+// decode_string decodes a varint length-prefixed string.
+// Returns the decoded string and the number of bytes read.
 pub fn decode_string(data []u8) !(string, int) {
 	length, bytes_read := decode_varint(data)!
 

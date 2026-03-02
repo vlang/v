@@ -335,13 +335,26 @@ fn C.ngtcp2_crypto_ossl_configure_client_session(ssl voidptr) int
 // TLS native handle
 fn C.ngtcp2_conn_set_tls_native_handle(conn voidptr, tls_native_handle voidptr)
 
+// QuicPathAddrs holds per-connection socket address storage.
+// It must outlive the ngtcp2_path that points into it.
+// Matches the QuicPathAddrs typedef in quic_stubs.c.
+// Fields use [16]u64 (128 bytes, 8-byte aligned) to match sockaddr_storage's
+// alignment requirement on 64-bit platforms.
+pub struct QuicPathAddrs {
+pub mut:
+	local_addr     [16]u64 // sockaddr_storage: 128 bytes, 8-byte aligned
+	remote_addr    [16]u64 // sockaddr_storage: 128 bytes, 8-byte aligned
+	local_addrlen  u32
+	remote_addrlen u32
+}
+
 // Custom C callbacks (defined in quic_stubs.c)
 fn C.quic_rand_cb(dest &u8, destlen usize, rand_ctx voidptr)
 fn C.quic_get_new_connection_id_cb(conn voidptr, cid voidptr, token &u8, cidlen usize, user_data voidptr) int
 fn C.quic_init_callbacks(cb &Ngtcp2CallbacksStruct)
 fn C.quic_setup_crypto(conn voidptr, ssl voidptr, hostname &char) int
 fn C.quic_cleanup_crypto(ssl voidptr)
-fn C.quic_resolve_and_set_path(path &Ngtcp2PathStruct, hostname &char, port int) int
+fn C.quic_resolve_and_set_path(path &Ngtcp2PathStruct, addrs &QuicPathAddrs, hostname &char, port int) int
 
 // OpenSSL helpers
 fn C.SSL_set_tlsext_host_name(ssl voidptr, name &char) int
@@ -449,6 +462,24 @@ pub fn conn_set_remote_transport_params(conn voidptr, params &Ngtcp2TransportPar
 // conn_get_handshake_completed checks if handshake is completed
 pub fn conn_get_handshake_completed(conn voidptr) bool {
 	return C.ngtcp2_conn_get_handshake_completed(conn) != 0
+}
+
+// conn_get_expiry returns the next expiry time for the connection in nanoseconds.
+// The caller should compare this against the current monotonic clock and call
+// conn_handle_expiry when the deadline is reached.
+pub fn conn_get_expiry(conn voidptr) u64 {
+	return C.ngtcp2_conn_get_expiry(conn)
+}
+
+// conn_handle_expiry notifies ngtcp2 that the timer for this connection has fired.
+// ts must be the current time in nanoseconds (use time.sys_mono_now()).
+// After calling this, invoke conn_write_pkt to send any retransmission packets
+// that ngtcp2 may have queued as a result.
+pub fn conn_handle_expiry(conn voidptr, ts u64) ! {
+	rv := C.ngtcp2_conn_handle_expiry(conn, ts)
+	if rv != 0 {
+		return error('ngtcp2_conn_handle_expiry failed: ${strerror(rv)}')
+	}
 }
 
 // strerror returns error string

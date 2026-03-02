@@ -5,6 +5,7 @@ module v3
 
 import net
 import net.quic
+import sync
 
 // HTTP/3 Server Implementation
 // Supports server-side HTTP/3 connections over QUIC
@@ -60,6 +61,15 @@ mut:
 	streams     map[u64]&ServerStream
 	settings    Settings
 	remote_addr string
+	// next_client_stream_id tracks client-initiated bidirectional stream IDs.
+	// Per RFC 9114 (and RFC 9000), client-initiated bidirectional streams use
+	// IDs: 0, 4, 8, 12, ... (multiples of 4).
+	// This counter is incremented by 4 for each new request stream.
+	// NOTE: This is a placeholder until proper QUIC stream demuxing is
+	// implemented; a real QUIC layer would supply stream IDs directly.
+	next_client_stream_id u64
+	mu                    sync.Mutex
+	encoder               Encoder
 }
 
 // ServerStream represents a single HTTP/3 stream on the server
@@ -69,6 +79,10 @@ mut:
 	headers []HeaderField
 	data    []u8
 	closed  bool
+	// request_complete is set to true once process_request has been called for
+	// this stream, preventing duplicate processing when both HEADERS and DATA
+	// frames are received (Issue #7).
+	request_complete bool
 }
 
 // new_server creates a new HTTP/3 server with the given configuration
@@ -168,10 +182,12 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 	}
 
 	return &ServerConnection{
-		quic_conn:   quic_conn
-		crypto_ctx:  crypto_ctx
-		remote_addr: remote_addr
-		settings:    Settings{
+		quic_conn:             quic_conn
+		crypto_ctx:            crypto_ctx
+		remote_addr:           remote_addr
+		next_client_stream_id: 0
+		encoder:               new_qpack_encoder(4096, 100)
+		settings:              Settings{
 			max_field_section_size:   8192
 			qpack_max_table_capacity: 4096
 			qpack_blocked_streams:    100
@@ -179,19 +195,26 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 	}
 }
 
-// handle_packet handles a received packet
+// handle_packet handles a received QUIC packet.
+// Each call runs in its own goroutine; all mutations to conn are protected by
+// conn.mu to prevent data races (Issue #31).
 fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
-	// Decrypt packet
-	decrypted := conn.crypto_ctx.decrypt_packet(packet, []u8{}) or {
+	// Decrypt packet.
+	// base_iv must be 12 bytes of zeros as a placeholder until proper per-key
+	// IV derivation is wired in from the QUIC handshake.
+	base_iv := []u8{len: 12}
+	decrypted := conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, 0) or {
 		eprintln('Failed to decrypt packet: ${err}')
 		return
 	}
 
-	// Parse frames
-	// NOTE: In a real QUIC implementation, the stream_id would come from
-	// the QUIC STREAM frame that wraps the HTTP/3 frames.
-	// For this implementation, we extract stream_id from the packet context.
-	// The QUIC layer should provide stream_id with each frame.
+	// Parse frames.
+	// NOTE: In a real QUIC implementation, stream_id is carried in the QUIC
+	// STREAM frame header and would be provided by the QUIC layer.  Here we
+	// maintain a per-connection counter that follows RFC 9000 §2.1:
+	//   client-initiated bidirectional: 0, 4, 8, 12, …
+	// current_stream_id is updated inside the mutex whenever a new HEADERS
+	// frame opens a fresh client stream (Issue #6).
 	mut idx := 0
 	mut current_stream_id := u64(0)
 
@@ -224,15 +247,16 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 			continue
 		}
 
-		// Extract stream_id from QUIC context
-		// In a proper implementation, this would be provided by the QUIC layer
-		// For now, we derive it from the connection state
 		if frame_type == .headers {
-			// Assign new stream ID for new request
-			current_stream_id = u64(conn.streams.len * 4 + 1)
+			// Allocate next client-initiated bidirectional stream ID
+			// (0, 4, 8, 12, …) under the mutex (Issue #31, #6).
+			conn.mu.lock()
+			current_stream_id = conn.next_client_stream_id
+			conn.next_client_stream_id += 4
+			conn.mu.unlock()
 		}
 
-		// Process frame with extracted stream_id
+		// Process frame with current stream_id
 		match frame_type {
 			.headers {
 				s.handle_headers_frame(mut conn, current_stream_id, payload) or {
@@ -256,12 +280,19 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 	}
 }
 
-// handle_headers_frame handles a HEADERS frame
+// handle_headers_frame handles a HEADERS frame.
+// It stores the decoded headers on the stream but does NOT call process_request
+// immediately: a request with a body will have DATA frames following the
+// HEADERS frame, and process_request is called only once — after the DATA
+// frame(s) — to avoid double-processing (Issue #7).
+// For requests without a body (GET, HEAD, etc.) process_request is called here
+// after verifying that the stream has not already been processed.
 fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
 	// Decode headers using QPACK
 	headers := decode_headers(payload)!
 
-	// Get or create stream
+	// Acquire lock before modifying shared streams map (Issue #31)
+	conn.mu.lock()
 	mut stream := conn.streams[stream_id] or {
 		new_stream := &ServerStream{
 			id: stream_id
@@ -269,23 +300,56 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64,
 		conn.streams[stream_id] = new_stream
 		new_stream
 	}
-
 	stream.headers << headers
+	conn.mu.unlock()
 
-	// Check if this is a complete request (no body expected)
-	// Process request
-	s.process_request(mut conn, stream)!
+	// Determine whether a body is expected by inspecting the :method header.
+	// Methods that carry a body in HTTP/3 are POST, PUT, and PATCH.
+	// For all other methods we process the request immediately.
+	mut method := ''
+	for h in stream.headers {
+		if h.name == ':method' {
+			method = h.value
+			break
+		}
+	}
+
+	has_body := method == 'POST' || method == 'PUT' || method == 'PATCH'
+	if !has_body {
+		// No DATA frame expected — process request immediately.
+		conn.mu.lock()
+		already_done := stream.request_complete
+		if !already_done {
+			stream.request_complete = true
+		}
+		conn.mu.unlock()
+
+		if !already_done {
+			s.process_request(mut conn, stream)!
+		}
+	}
+	// For methods with a body, process_request is deferred to handle_data_frame.
 }
 
-// handle_data_frame handles a DATA frame
+// handle_data_frame handles a DATA frame.
+// Appends the payload to the stream's body buffer and calls process_request
+// exactly once when data arrives, guarded by the request_complete flag (Issue #7).
 fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
-	mut stream := conn.streams[stream_id] or { return error('stream ${stream_id} not found') }
-
-	// Append data
+	conn.mu.lock()
+	mut stream := conn.streams[stream_id] or {
+		conn.mu.unlock()
+		return error('stream ${stream_id} not found')
+	}
 	stream.data << payload
+	already_done := stream.request_complete
+	if !already_done {
+		stream.request_complete = true
+	}
+	conn.mu.unlock()
 
-	// Process request if complete
-	s.process_request(mut conn, stream)!
+	if !already_done {
+		s.process_request(mut conn, stream)!
+	}
 }
 
 // handle_settings_frame handles a SETTINGS frame
@@ -348,42 +412,47 @@ fn (mut s Server) process_request(mut conn ServerConnection, stream &ServerStrea
 	s.send_response(mut conn, stream.id, response)!
 }
 
-// send_response sends an HTTP/3 response with optimized encoding
+// send_response sends an HTTP/3 response using the connection's QPACK Encoder
+// for proper header compression (RFC 9204).
 fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, response ServerResponse) ! {
 	// Build response headers with capacity
-	mut headers := []HeaderField{cap: 2 + response.headers.len}
-	headers << HeaderField{':status', response.status_code.str()}
+	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
+	resp_headers << HeaderField{':status', response.status_code.str()}
 
 	for key, value in response.headers {
-		headers << HeaderField{key, value}
+		resp_headers << HeaderField{key, value}
 	}
 
 	// Add content-length if not present
 	if 'content-length' !in response.headers && response.body.len > 0 {
-		headers << HeaderField{'content-length', response.body.len.str()}
+		resp_headers << HeaderField{'content-length', response.body.len.str()}
 	}
 
-	// Encode headers using QPACK
-	encoded_headers := encode_headers(headers)
+	// Encode headers using QPACK Encoder (Issue: was using simplified encode_headers)
+	conn.mu.lock()
+	encoded_headers := conn.encoder.encode(resp_headers)
+	conn.mu.unlock()
 
 	// Pre-allocate frame data with estimated size
 	estimated_size := 20 + encoded_headers.len + response.body.len
 	mut frame_data := []u8{cap: estimated_size}
 
 	// Build HEADERS frame
-	frame_data << encode_varint(u64(FrameType.headers))
-	frame_data << encode_varint(u64(encoded_headers.len))
+	frame_data << encode_varint(u64(FrameType.headers))!
+	frame_data << encode_varint(u64(encoded_headers.len))!
 	frame_data << encoded_headers
 
 	// Build DATA frame if body exists
 	if response.body.len > 0 {
-		frame_data << encode_varint(u64(FrameType.data))
-		frame_data << encode_varint(u64(response.body.len))
+		frame_data << encode_varint(u64(FrameType.data))!
+		frame_data << encode_varint(u64(response.body.len))!
 		frame_data << response.body
 	}
 
-	// Encrypt packet
-	encrypted := conn.crypto_ctx.encrypt_packet(frame_data, []u8{}) or {
+	// Encrypt packet using a zero base_iv placeholder (12 bytes) until proper
+	// per-key IV derivation from the QUIC handshake is wired in.
+	base_iv := []u8{len: 12}
+	encrypted := conn.crypto_ctx.encrypt_packet(frame_data, []u8{}, base_iv, stream_id) or {
 		return error('failed to encrypt response: ${err}')
 	}
 

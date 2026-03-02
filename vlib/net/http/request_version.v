@@ -7,8 +7,19 @@ import net.urllib
 import net.http.v2
 import net.http.v3
 
-// negotiate_version negotiates the HTTP version to use based on ALPN
-// Returns the negotiated version or falls back to HTTP/1.1
+// negotiate_version selects the HTTP version for a request.
+//
+// When req.version is explicitly set, that value is honoured directly.
+// For plain HTTP the function falls back to HTTP/1.1 because HTTP/2 and
+// HTTP/3 both require TLS.
+// For HTTPS it defaults to HTTP/2, which has the broadest server support.
+// HTTP/3 (QUIC) is still experimental and its QUIC transport layer is not
+// yet fully implemented in V.
+//
+// TODO: Implement real ALPN-based negotiation once TLS integration is
+// available.  The correct approach is to perform a TLS handshake with the
+// ALPN extension advertising ['h3', 'h2', 'http/1.1'] and return the
+// version that the server selects.
 fn (req &Request) negotiate_version(url urllib.URL) Version {
 	// If version is explicitly set, use it
 	if req.version != .unknown {
@@ -20,15 +31,75 @@ fn (req &Request) negotiate_version(url urllib.URL) Version {
 		return .v1_1
 	}
 
-	// TODO: Implement actual ALPN negotiation with TLS
-	// For now, we'll try HTTP/3 first for HTTPS URLs
-	// In the future, this should:
-	// 1. Perform TLS handshake with ALPN protocols: ['h3', 'h2', 'http/1.1']
-	// 2. Check which protocol the server selected
-	// 3. Return the corresponding Version
+	// Default to HTTP/2 for HTTPS connections.
+	// HTTP/2 is more widely supported than HTTP/3, and the HTTP/3 module
+	// is still experimental (QUIC transport is not complete).
+	return .v2_0
+}
 
-	// Default to HTTP/3 for HTTPS, will fallback to HTTP/2 then HTTP/1.1 if it fails
-	return .v3_0
+// to_v2_method converts a net.http.Method to the v2 module's Method enum.
+//
+// TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
+// These three definitions should eventually be unified into a single enum
+// in net.http once the cross-module import story is settled.
+fn to_v2_method(m Method) v2.Method {
+	return match m {
+		.get { v2.Method.get }
+		.post { v2.Method.post }
+		.put { v2.Method.put }
+		.patch { v2.Method.patch }
+		.delete { v2.Method.delete }
+		.head { v2.Method.head }
+		.options { v2.Method.options }
+		else { v2.Method.get }
+	}
+}
+
+// to_v3_method converts a net.http.Method to the v3 module's Method enum.
+//
+// TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
+// These three definitions should eventually be unified into a single enum
+// in net.http once the cross-module import story is settled.
+fn to_v3_method(m Method) v3.Method {
+	return match m {
+		.get { v3.Method.get }
+		.post { v3.Method.post }
+		.put { v3.Method.put }
+		.patch { v3.Method.patch }
+		.delete { v3.Method.delete }
+		.head { v3.Method.head }
+		.options { v3.Method.options }
+		else { v3.Method.get }
+	}
+}
+
+// build_headers_map builds a string-keyed headers map from the request,
+// injecting user-agent and content-length when absent.
+// Used by both do_http2 and do_http3.
+fn (req &Request) build_headers_map() map[string]string {
+	mut headers_map := map[string]string{}
+	for key in req.header.keys() {
+		values := req.header.custom_values(key)
+		if values.len > 0 {
+			headers_map[key] = values.join('; ')
+		}
+	}
+	// Add user-agent if not present
+	if 'user-agent' !in headers_map {
+		headers_map['user-agent'] = req.user_agent
+	}
+	// Add content-length if there's a body
+	if req.data.len > 0 && 'content-length' !in headers_map {
+		headers_map['content-length'] = req.data.len.str()
+	}
+	return headers_map
+}
+
+// build_request_path returns the full path (with optional query string) for
+// the request URL.
+fn build_request_path(url urllib.URL) string {
+	p := url.escaped_path().trim_left('/')
+	return if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 }
 
 // do_http2 performs an HTTP/2 request
@@ -48,47 +119,12 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 		client.close()
 	}
 
-	// Convert HTTP request to v2.Request
-	mut v2_method := v2.Method.get
-	match req.method {
-		.get { v2_method = .get }
-		.post { v2_method = .post }
-		.put { v2_method = .put }
-		.patch { v2_method = .patch }
-		.delete { v2_method = .delete }
-		.head { v2_method = .head }
-		.options { v2_method = .options }
-		else { v2_method = .get }
-	}
-
-	// Build headers map
-	mut headers_map := map[string]string{}
-	for key in req.header.keys() {
-		values := req.header.custom_values(key)
-		if values.len > 0 {
-			headers_map[key] = values.join('; ')
-		}
-	}
-
-	// Add user agent if not present
-	if 'user-agent' !in headers_map {
-		headers_map['user-agent'] = req.user_agent
-	}
-
-	// Add content-length if there's data
-	if req.data.len > 0 && 'content-length' !in headers_map {
-		headers_map['content-length'] = req.data.len.str()
-	}
-
-	p := url.escaped_path().trim_left('/')
-	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
-
 	v2_req := v2.Request{
-		method:  v2_method
-		url:     path
+		method:  to_v2_method(req.method)
+		url:     build_request_path(url)
 		host:    host_name
 		data:    req.data
-		headers: headers_map
+		headers: req.build_headers_map()
 	}
 
 	// Send request
@@ -124,47 +160,12 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 		client.close()
 	}
 
-	// Convert HTTP request to v3.Request
-	mut v3_method := v3.Method.get
-	match req.method {
-		.get { v3_method = .get }
-		.post { v3_method = .post }
-		.put { v3_method = .put }
-		.patch { v3_method = .patch }
-		.delete { v3_method = .delete }
-		.head { v3_method = .head }
-		.options { v3_method = .options }
-		else { v3_method = .get }
-	}
-
-	// Build headers map
-	mut headers_map := map[string]string{}
-	for key in req.header.keys() {
-		values := req.header.custom_values(key)
-		if values.len > 0 {
-			headers_map[key] = values.join('; ')
-		}
-	}
-
-	// Add user agent if not present
-	if 'user-agent' !in headers_map {
-		headers_map['user-agent'] = req.user_agent
-	}
-
-	// Add content-length if there's data
-	if req.data.len > 0 && 'content-length' !in headers_map {
-		headers_map['content-length'] = req.data.len.str()
-	}
-
-	p := url.escaped_path().trim_left('/')
-	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
-
 	v3_req := v3.Request{
-		method:  v3_method
-		url:     path
+		method:  to_v3_method(req.method)
+		url:     build_request_path(url)
 		host:    host_name
 		data:    req.data
-		headers: headers_map
+		headers: req.build_headers_map()
 	}
 
 	// Send request
