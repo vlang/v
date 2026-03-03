@@ -11,6 +11,7 @@ struct User {
 	age           int
 	role          string @[index]
 	status        int    @[index]
+	level         UserLevel
 	salary        int
 	title         string
 	score         int
@@ -40,6 +41,12 @@ struct User {
 	option_f64    ?f64
 	option_bool   ?bool
 	option_string ?string
+}
+
+enum UserLevel {
+	beginner
+	intermediate
+	advanced
 }
 
 // UserPart is part of User, so we can access only part of the `sys_users` table

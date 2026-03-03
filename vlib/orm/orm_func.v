@@ -847,6 +847,8 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 				} else {
 					qb.data << option_time_to_primitive(value.$(field.name))
 				}
+			} $else $if field.is_enum {
+				qb.data << int_to_primitive(int(value.$(field.name)))
 			}
 		}
 	}
