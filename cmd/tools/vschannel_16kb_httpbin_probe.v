@@ -85,24 +85,34 @@ fn run_parent_mode() {
 		exit(2)
 	}
 
-	self_exe := os.quoted_path(os.executable())
+	self_exe := os.executable()
 	println('probe url: ${probe_url}')
 	println('expect mode: ${mode}')
 	println('sizes: ${sizes}')
 
 	mut mismatches := 0
 	for size in sizes {
-		cmd := '${self_exe} --worker ${size}'
-		res := os.execute(cmd)
-		success := res.exit_code == 0
+		// Launch worker directly without going through a shell, and capture stdout/stderr separately.
+		mut p := os.new_process(self_exe)
+		p.set_args(['--worker', size.str()])
+		p.set_redirect_stdio()
+		p.run()
+		p.wait()
+		exit_code := p.code
+		stdout := p.stdout_read().trim_space()
+		stderr := p.stderr_read().trim_space()
+		p.close()
+		success := exit_code == 0
 		expected_success := expected_success_for_mode(mode, size)
 		status := if success { 'OK' } else { 'FAIL' }
 		expect_text := if expected_success { 'expect=OK' } else { 'expect=FAIL' }
-		println('${status:4} size=${size:6} exit=${res.exit_code:3} ${expect_text}')
+		println('${status:4} size=${size:6} exit=${exit_code:3} ${expect_text}')
 		if verbose || !success {
-			output := res.output.trim_space()
-			if output.len > 0 {
-				println(output)
+			if stdout.len > 0 {
+				println(stdout)
+			}
+			if stderr.len > 0 {
+				eprintln(stderr)
 			}
 		}
 		if mode != 'none' && success != expected_success {
@@ -138,8 +148,18 @@ fn parse_sizes_csv(raw string) ![]int {
 
 fn expected_success_for_mode(mode string, size int) bool {
 	return match mode {
-		'before' { size <= vschannel_16kb_boundary }
-		'after' { true }
-		else { true }
+		'before' {
+			size <= vschannel_16kb_boundary
+		}
+		'after' {
+			true
+		}
+		'none' {
+			true
+		}
+		else {
+			eprintln('unexpected mode `${mode}` in expected_success_for_mode')
+			false
+		}
 	}
 }
