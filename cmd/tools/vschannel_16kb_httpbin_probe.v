@@ -29,11 +29,11 @@ fn run_worker_mode() {
 	mut headers := http.new_header()
 	headers.add(.content_type, 'application/json')
 	mut req := http.Request{
-		method: .post
-		url: probe_url
-		header: headers
-		data: payload
-		read_timeout: 60 * time.second
+		method:        .post
+		url:           probe_url
+		header:        headers
+		data:          payload
+		read_timeout:  60 * time.second
 		write_timeout: 30 * time.second
 	}
 	resp := req.do() or {
@@ -58,8 +58,7 @@ fn run_parent_mode() {
 	fp.description('Probe net.http HTTPS POST behavior around 16KB payloads using https://httpbin.org/post.')
 	fp.skip_executable()
 
-	expect_mode := fp.string('expect', `e`, 'after',
-		'Expected behavior mode: before|after|none. before expects >16KB failures, after expects all succeed.')
+	expect_mode := fp.string('expect', `e`, 'after', 'Expected behavior mode: before|after|none. before expects >16KB failures, after expects all succeed.')
 	sizes_csv := fp.string('sizes', `s`, default_sizes_csv, 'Comma separated payload sizes in bytes.')
 	verbose := fp.bool('verbose', `v`, false, 'Print child process output for all sizes.')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
