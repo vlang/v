@@ -1,5 +1,8 @@
 #include <Cocoa/Cocoa.h>
 
+// Global view variable
+static NSView *g_view = nil;
+
 NSColor* nscolor(gg__Color c) {
 	float red = (float)c.r / 255.0f;
 	float green = (float)c.g / 255.0f;
@@ -109,6 +112,9 @@ void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) 
 void darwin_window_refresh() {
 	//[g_view setNeedsDisplay:YES];
 	// update UI on the main thread TODO separate fn
+	if (g_view == nil) {
+		return;
+	}
 
 	dispatch_async(dispatch_get_main_queue(), ^{
 	  [g_view setNeedsDisplay:YES];

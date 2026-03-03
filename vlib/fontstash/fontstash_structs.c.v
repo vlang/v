@@ -48,4 +48,10 @@ pub struct C.FONStextIter {
 
 pub struct C.FONSfont {}
 
-pub struct C.FONScontext {}
+pub struct C.FONScontext {
+pub:
+	params  C.FONSparams
+	itw     f32
+	ith     f32
+	texData &u8 = unsafe { nil }
+}

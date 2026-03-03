@@ -553,7 +553,9 @@ pub fn new_context(cfg Config) &Context {
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title:        &char(cfg.window_title.str)
 			icon:                cfg.icon
-			html5_canvas_name:   &char(cfg.html5_canvas_name.str)
+			html5:               sapp.Html5Desc{
+				canvas_selector: &char(cfg.html5_canvas_name.str)
+			}
 			width:               cfg.width
 			height:              cfg.height
 			sample_count:        cfg.sample_count

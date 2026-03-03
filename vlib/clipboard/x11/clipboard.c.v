@@ -14,18 +14,60 @@ $if freebsd {
 }
 #flag -lX11
 
-#include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt install libx11-dev`
-// X11
+// Include X11 headers BEFORE any type definitions to avoid incomplete type errors
+#preinclude <X11/Xlib.h>
+#preinclude <X11/Xatom.h>
+#preinclude <X11/Xutil.h>
 
+// X11 types are defined by X11 headers
+// For V check mode, we need to define C.Display
 @[typedef]
-pub struct C.Display {}
-
-fn (d &C.Display) str() string {
-	return 'C.Display{}'
+pub struct C.Display {
+pub mut:
+	_ int // opaque - actual definition from X11 headers
 }
 
+// Local type aliases for convenience
 type Window = u64
 type Atom = u64
+
+// Forward declarations for V type checking (actual types from X11 headers)
+@[typedef]
+pub struct C.XSelectionEvent {
+pub mut:
+	type      int
+	display   voidptr
+	requestor Window
+	selection Atom
+	target    Atom
+	property  Atom
+	time      int
+}
+
+@[typedef]
+pub struct C.XSelectionClearEvent {
+pub mut:
+	window    Window
+	selection Atom
+}
+
+@[typedef]
+pub struct C.XSelectionRequestEvent {
+pub mut:
+	display   voidptr
+	owner     Window
+	requestor Window
+	selection Atom
+	target    Atom
+	property  Atom
+	time      int
+}
+
+@[typedef]
+pub struct C.XDestroyWindowEvent {
+pub mut:
+	window Window
+}
 
 fn C.XInitThreads() i32
 
@@ -74,46 +116,12 @@ fn C.XFree(data voidptr)
 
 fn todo_del() {}
 
-@[typedef]
-pub struct C.XSelectionRequestEvent {
-mut:
-	display   &C.Display = unsafe { nil } // Display the event was read from
-	owner     Window
-	requestor Window
-	selection Atom
-	target    Atom
-	property  Atom
-	time      int
-}
-
-@[typedef]
-pub struct C.XSelectionEvent {
-mut:
-	type      int
-	display   &C.Display = unsafe { nil } // Display the event was read from
-	requestor Window
-	selection Atom
-	target    Atom
-	property  Atom
-	time      int
-}
-
-@[typedef]
-pub struct C.XSelectionClearEvent {
-mut:
-	window    Window
-	selection Atom
-}
-
-@[typedef]
-pub struct C.XDestroyWindowEvent {
-mut:
-	window Window
-}
+// X11 event types are defined in vlib/x/x11/x11.v
+// XEvent union is defined here since it's used by clipboard
 
 @[typedef]
 union C.XEvent {
-mut:
+pub mut:
 	type              int
 	xdestroywindow    C.XDestroyWindowEvent
 	xselectionclear   C.XSelectionClearEvent
@@ -281,17 +289,19 @@ pub fn (mut cb Clipboard) get_text() string {
 // transmit_selection is crucial to handling all the different data types.
 // If we ever support other mimetypes they should be handled here.
 fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
-	if xse.target == cb.get_atom(.targets) {
-		targets := cb.get_supported_targets()
-		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
-			32, C.PropModeReplace, targets.data, targets.len)
-	} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
-		cb.mutex.lock()
-		C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8, C.PropModeReplace,
-			cb.text.str, cb.text.len)
-		cb.mutex.unlock()
-	} else {
-		return false
+	unsafe {
+		if xse.target == cb.get_atom(.targets) {
+			targets := cb.get_supported_targets()
+			C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
+				32, C.PropModeReplace, targets.data, targets.len)
+		} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
+			cb.mutex.lock()
+			C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8,
+				C.PropModeReplace, cb.text.str, cb.text.len)
+			cb.mutex.unlock()
+		} else {
+			return false
+		}
 	}
 	return true
 }
@@ -315,70 +325,65 @@ fn (mut cb Clipboard) start_listener() {
 				}
 			}
 			C.SelectionClear {
-				if unsafe { event.xselectionclear.window == cb.window } && unsafe {
-					event.xselectionclear.selection == cb.selection
-				} {
-					cb.mutex.lock()
-					cb.is_owner = false
-					cb.text = ''
-					cb.mutex.unlock()
+				unsafe {
+					if event.xselectionclear.window == cb.window
+						&& event.xselectionclear.selection == cb.selection {
+						cb.mutex.lock()
+						cb.is_owner = false
+						cb.text = ''
+						cb.mutex.unlock()
+					}
 				}
 			}
 			C.SelectionRequest {
-				if unsafe { event.xselectionrequest.selection == cb.selection } {
-					mut xsre := &C.XSelectionRequestEvent{
-						display: 0
-					}
-					xsre = unsafe { &event.xselectionrequest }
+				unsafe {
+					if event.xselectionrequest.selection == cb.selection {
+						xsre := &event.xselectionrequest
 
-					mut xse := C.XSelectionEvent{
-						type:      C.SelectionNotify // 31
-						display:   xsre.display
-						requestor: xsre.requestor
-						selection: xsre.selection
-						time:      xsre.time
-						target:    xsre.target
-						property:  xsre.property
+						xse := C.XSelectionEvent{
+							type:      C.SelectionNotify // 31
+							display:   xsre.display
+							requestor: xsre.requestor
+							selection: xsre.selection
+							time:      xsre.time
+							target:    xsre.target
+							property:  xsre.property
+						}
+						if !cb.transmit_selection(&xse) {
+							xse.property = Atom(0)
+						}
+						C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask,
+							voidptr(&xse))
+						C.XFlush(cb.display)
 					}
-					if !cb.transmit_selection(&xse) {
-						xse.property = Atom(0)
-					}
-					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
-					C.XFlush(cb.display)
 				}
 			}
 			C.SelectionNotify {
-				if unsafe {
-					event.xselection.selection == cb.selection
-						&& event.xselection.property != Atom(0)
-				} {
-					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
-						sent_request = true
-						prop := read_property(cb.display, cb.window, cb.selection)
-						to_be_requested = cb.pick_target(prop)
-						if to_be_requested != Atom(0) {
-							C.XConvertSelection(cb.display, cb.selection, to_be_requested,
-								cb.selection, cb.window, C.CurrentTime)
-						}
-					} else if unsafe { event.xselection.target == to_be_requested } {
-						sent_request = false
-						to_be_requested = Atom(0)
-						cb.mutex.lock()
-						prop := unsafe {
-							read_property(event.xselection.display, event.xselection.requestor,
+				unsafe {
+					if event.xselection.selection == cb.selection
+						&& event.xselection.property != Atom(0) {
+						if event.xselection.target == cb.get_atom(.targets) && !sent_request {
+							sent_request = true
+							prop := read_property(cb.display, cb.window, cb.selection)
+							to_be_requested = cb.pick_target(prop)
+							if to_be_requested != Atom(0) {
+								C.XConvertSelection(cb.display, cb.selection, to_be_requested,
+									cb.selection, cb.window, C.CurrentTime)
+							}
+						} else if event.xselection.target == to_be_requested {
+							sent_request = false
+							to_be_requested = Atom(0)
+							cb.mutex.lock()
+							prop := read_property(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
-						}
-						unsafe {
 							C.XDeleteProperty(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
-						}
-						if cb.is_supported_target(prop.actual_type) {
-							cb.got_text = true
-							unsafe {
+							if cb.is_supported_target(prop.actual_type) {
+								cb.got_text = true
 								cb.text = prop.data.vstring() // TODO: return byteptr to support other mimetypes
 							}
+							cb.mutex.unlock()
 						}
-						cb.mutex.unlock()
 					}
 				}
 			}

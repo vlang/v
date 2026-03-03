@@ -55,7 +55,11 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
+	// Generate Wayland protocol files for sokol
+	exec('cd thirdparty/sokol && v run generate-wayland-protocols.vsh')
 	// The following is needed for examples/wkhtmltopdf.v
 	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
 	exec('v retry -- wget --quiet https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
@@ -179,6 +183,10 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
+	// Generate Wayland protocol files for sokol
+	exec('cd thirdparty/sokol && v run generate-wayland-protocols.vsh')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -301,6 +309,10 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
+	// Generate Wayland protocol files for sokol
+	exec('cd thirdparty/sokol && v run generate-wayland-protocols.vsh')
 	exec('v retry -- sudo apt install --quiet -y clang')
 }
 

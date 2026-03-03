@@ -3,11 +3,6 @@ module sapp
 import os
 import stbi
 
-#define SOKOL_VALIDATE_NON_FATAL 1
-
-// v_sapp_gl_read_rgba_pixels reads pixles from the OpenGL buffer into `pixels`.
-fn C.v_sapp_gl_read_rgba_pixels(x i32, y i32, width i32, height i32, pixels charptr)
-
 // screenshot takes a screenshot of the current window and
 // saves it to `path`. The format is inferred from the extension
 // of the file name in `path`.
@@ -47,6 +42,7 @@ pub fn screenshot_png(path string) ! {
 }
 
 // write_rgba_to_ppm writes `pixels` data in RGBA format to PPM3 format.
+@[direct_array_access]
 fn write_rgba_to_ppm(path string, w int, h int, components int, pixels &u8) ! {
 	mut f_out := os.create(path)!
 	defer {
