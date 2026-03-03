@@ -726,8 +726,12 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 	PBYTE pbMessage;
 	DWORD cbMessage;
 
-	DWORD cbData;
+	INT   cbData;
 	INT   i;
+	DWORD req_offset;
+	DWORD chunk_len;
+	DWORD to_send;
+	DWORD sent;
 
 
 	// Read stream encryption properties.
@@ -748,50 +752,57 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		return SEC_E_INTERNAL_ERROR;
 	}
 	
-	// Build an HTTP request to send to the server.
-
-	// Build the HTTP request offset into the data buffer by "header size"
-	// bytes. This enables Schannel to perform the encryption in place,
-	// which is a significant performance win.
+	// Build and send HTTP request in chunks no larger than cbMaximumMessage.
+	// EncryptMessage expects plaintext <= cbMaximumMessage.
 	pbMessage = pbIoBuffer + Sizes.cbHeader;
+	req_offset = 0;
+	while(req_offset < req_len) {
+		chunk_len = req_len - req_offset;
+		if(chunk_len > Sizes.cbMaximumMessage) {
+			chunk_len = Sizes.cbMaximumMessage;
+		}
 
-	// Build HTTP request. Note that I'm assuming that this is less than
-	// the maximum message size. If it weren't, it would have to be broken up.
-	memcpy(pbMessage, req, req_len);
-	cbMessage = req_len;
+		memcpy(pbMessage, req + req_offset, chunk_len);
+		cbMessage = chunk_len;
 
-	// Encrypt the HTTP request.
-	Buffers[0].pvBuffer     = pbIoBuffer;
-	Buffers[0].cbBuffer     = Sizes.cbHeader;
-	Buffers[0].BufferType   = SECBUFFER_STREAM_HEADER;
+		Buffers[0].pvBuffer     = pbIoBuffer;
+		Buffers[0].cbBuffer     = Sizes.cbHeader;
+		Buffers[0].BufferType   = SECBUFFER_STREAM_HEADER;
 
-	Buffers[1].pvBuffer     = pbMessage;
-	Buffers[1].cbBuffer     = cbMessage;
-	Buffers[1].BufferType   = SECBUFFER_DATA;
+		Buffers[1].pvBuffer     = pbMessage;
+		Buffers[1].cbBuffer     = cbMessage;
+		Buffers[1].BufferType   = SECBUFFER_DATA;
 
-	Buffers[2].pvBuffer     = pbMessage + cbMessage;
-	Buffers[2].cbBuffer     = Sizes.cbTrailer;
-	Buffers[2].BufferType   = SECBUFFER_STREAM_TRAILER;
+		Buffers[2].pvBuffer     = pbMessage + cbMessage;
+		Buffers[2].cbBuffer     = Sizes.cbTrailer;
+		Buffers[2].BufferType   = SECBUFFER_STREAM_TRAILER;
 
-	Buffers[3].BufferType   = SECBUFFER_EMPTY;
+		Buffers[3].BufferType   = SECBUFFER_EMPTY;
 
-	Message.ulVersion       = SECBUFFER_VERSION;
-	Message.cBuffers        = 4;
-	Message.pBuffers        = Buffers;
+		Message.ulVersion       = SECBUFFER_VERSION;
+		Message.cBuffers        = 4;
+		Message.pBuffers        = Buffers;
 
-	scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
+		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
+		if(FAILED(scRet)) {
+			wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			return scRet;
+		}
 
-	if(FAILED(scRet)) {
-		wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
-		return scRet;
-	}
+		// Send all encrypted bytes for this chunk.
+		to_send = Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer;
+		sent = 0;
+		while(sent < to_send) {
+			cbData = send(tls_ctx->socket, (char*)pbIoBuffer + sent, (int)(to_send - sent), 0);
+			if(cbData == SOCKET_ERROR || cbData == 0) {
+				wprintf(L"Error %d sending data to server (3)\n", WSAGetLastError());
+				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
+				return SEC_E_INTERNAL_ERROR;
+			}
+			sent += cbData;
+		}
 
-	// Send the encrypted data to the server.
-	cbData = send(tls_ctx->socket, pbIoBuffer, Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer, 0);
-	if(cbData == SOCKET_ERROR || cbData == 0) {
-		wprintf(L"Error %d sending data to server (3)\n",  WSAGetLastError());
-		tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
-		return SEC_E_INTERNAL_ERROR;
+		req_offset += chunk_len;
 	}
 
 	// Read data from server until done.
