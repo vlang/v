@@ -5,6 +5,7 @@ module token
 
 const orm_custom_operators = ['like', 'ilike']
 
+@[minify]
 pub struct Token {
 pub:
 	kind     Kind   // the token number/enum; for quick comparisons

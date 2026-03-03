@@ -703,6 +703,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 			field_name := c_name(field.name)
 			volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 			mut size_suffix := ''
+			mut is_enum_bitfield := false
 			if is_minify && !g.is_cc_msvc && !g.pref.output_cross_c && !field.typ.has_flag(.option)
 				&& !field.typ.has_flag(.result) {
 				if field.typ == ast.bool_type_idx {
@@ -718,6 +719,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 								l >>= 1
 							}
 							size_suffix = ' : ${bits_needed}'
+							is_enum_bitfield = true
 						}
 					}
 				}
@@ -734,7 +736,22 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 				}
 			}
 			if !field_is_anon {
-				g.type_definitions.writeln('\t${volatile_prefix}${type_name} ${field_name}${size_suffix};')
+				actual_type := if is_enum_bitfield {
+					enum_info := field_sym.info as ast.Enum
+					if enum_info.typ == ast.int_type {
+						// default enum base type (int): C bit-field signedness is
+						// implementation-defined; force unsigned to avoid Clang treating
+						// it as signed (which corrupts values >= 64 in a 7-bit field, etc.)
+						'unsigned int'
+					} else {
+						// explicit base type (as u8, as i8, as i32, …): the typedef
+						// already carries the correct signedness, so respect the user's choice
+						type_name
+					}
+				} else {
+					type_name
+				}
+				g.type_definitions.writeln('\t${volatile_prefix}${actual_type} ${field_name}${size_suffix};')
 			}
 		}
 	} else {
