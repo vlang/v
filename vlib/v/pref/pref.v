@@ -248,7 +248,7 @@ pub mut:
 	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
-	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
+	thread_stack_size                     int = $if i386 || arm32 || rv32 { 2097152 } $else { 8388608 }
 	// wasm settings:
 	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
