@@ -1,12 +1,13 @@
 #!/usr/bin/env -S v
+import log
 
 fn sh(cmd string) {
-	println('❯ ${cmd}')
+	log.info('Executing: ❯ ${cmd}')
 	print(execute_or_exit(cmd).output)
 }
 
 fn gen_protocol(protocols_dir string, output_dir string, name string, path string) {
-	println('Generating protocol: ${name}')
+	log.info('Generating protocol: ${name}')
 	sh('wayland-scanner client-header ${protocols_dir}/${path} ${output_dir}/${name}-client-protocol.h')
 	sh('wayland-scanner private-code ${protocols_dir}/${path} ${output_dir}/${name}-protocol.c')
 }

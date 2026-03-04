@@ -95,9 +95,7 @@ $if !no_sokol_app ? {
 	$if linux && sokol_wayland ? {
 		// Enable Wayland on Linux (when explicitly enabled with -d sokol_wayland)
 		#define SOKOL_WAYLAND
-		// Link Wayland protocol implementations (when explicitly enabled)
-		// The protocol .o files should be pre-compiled in thirdparty/sokol/
-		#flag -L@VEXEROOT/thirdparty/sokol -lxdg-shell-protocol -lfractional-scale-v1-protocol -lcursor-shape-v1-protocol -lpointer-constraints-unstable-v1-protocol -lrelative-pointer-unstable-v1-protocol -lviewporter-protocol -lxdg-decoration-unstable-v1-protocol -ltablet-unstable-v2-protocol
+		#flag -I@VEXEROOT/thirdparty/sokol
 	} $else $if linux {
 		// Explicitly disable Wayland on Linux when not using sokol_wayland
 		#define SOKOL_DISABLE_WAYLAND

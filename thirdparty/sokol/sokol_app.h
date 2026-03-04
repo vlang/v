@@ -15185,6 +15185,30 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
  *
  */
 
+#include "xdg-shell-client-protocol.h"
+#include "xdg-shell-protocol.c"
+
+#include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-decoration-unstable-v1-protocol.c"
+
+#include "viewporter-client-protocol.h"
+#include "viewporter-protocol.c"
+
+#include "xdg-toplevel-icon-v1-client-protocol.h"
+#include "tablet-unstable-v2-protocol.c"
+
+#include "fractional-scale-v1-client-protocol.h"
+#include "fractional-scale-v1-protocol.c"
+
+#include "relative-pointer-unstable-v1-client-protocol.h"
+#include "relative-pointer-unstable-v1-protocol.c"
+
+#include "pointer-constraints-unstable-v1-client-protocol.h"
+#include "pointer-constraints-unstable-v1-protocol.c"
+
+#include "cursor-shape-v1-client-protocol.h"
+#include "cursor-shape-v1-protocol.c"
+
 // XDG Shell protocol stubs (simplified)
 // XDG shell protocol functions are now provided by xdg-shell-client-protocol.h
 
