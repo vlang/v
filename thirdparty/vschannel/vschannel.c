@@ -799,7 +799,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 				return SEC_E_INTERNAL_ERROR;
 			}
-			sent += cbData;
+			sent += (DWORD)cbData;
 		}
 
 		req_offset += chunk_len;
