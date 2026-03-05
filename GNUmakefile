@@ -47,7 +47,7 @@ LDFLAGS += -lMacportsLegacySupport
 VFLAGS += -cc $(CC)
 VFLAGS += -cflags "$(CFLAGS)"
 VFLAGS += -ldflags -L$(LEGACYLIBS)/lib
-VFLAGS += -ldflags -lMacportsLegacySupport
+VFLAGS += -cflags $(LEGACYLIBS)/lib/libMacportsLegacySupport.a
 endif
 endif
 
