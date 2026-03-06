@@ -255,7 +255,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx = g.closure_ctx(node)
+		cur_closure_ctx = g.closure_ctx(node, [])
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -609,6 +609,24 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	}
 
 	if node.generic_names.len > 0 {
+		// For anonymous functions (including lambdas), replace generic type names
+		// in the function name with concrete types.
+		// This is needed because anonymous function names are generated in the
+		// parser/checker phase with generic type names, but we need concrete
+		// types in the C code.
+		// Note: we use a sanitized form of the type name, similar to generic_fn_name,
+		// to handle pointer types correctly (e.g., &Foo -> __ptr__Foo instead of Foo*)
+		if node.is_anon && g.anon_fn != unsafe { nil } {
+			concrete_types := g.get_anon_fn_concrete_types(g.anon_fn)
+			for i, gen_name in node.generic_names {
+				if i < concrete_types.len {
+					typ := concrete_types[i]
+					concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
+						g.styp(typ.set_nr_muls(0)).replace(' ', '_')
+					name = name.replace('__${gen_name}', '__${concrete_styp}')
+				}
+			}
+		}
 		name = g.generic_fn_name(g.cur_concrete_types, name)
 		name = name.replace_each(c_fn_name_escape_seq)
 	}
@@ -629,10 +647,49 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 const closure_ctx = '_V_closure_ctx'
 
+// get_anon_fn_concrete_types returns the concrete types for an anonymous function's
+// generic parameters, by mapping them from the parent function's generic parameters
+// and concrete types.
+fn (mut g Gen) get_anon_fn_concrete_types(node ast.AnonFn) []ast.Type {
+	if node.decl.generic_names.len == 0 {
+		return []
+	}
+	// If cur_fn is the parent function (not the anon fn itself),
+	// map the anon fn's generic names to the parent's concrete types.
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+		&& g.cur_fn.generic_names.len == g.cur_concrete_types.len {
+		mut concrete_types := []ast.Type{cap: node.decl.generic_names.len}
+		for anon_gen_name in node.decl.generic_names {
+			idx := g.cur_fn.generic_names.index(anon_gen_name)
+			if idx >= 0 && idx < g.cur_concrete_types.len {
+				concrete_types << g.cur_concrete_types[idx]
+			} else {
+				// Generic name not found in parent, this shouldn't happen
+				// if the checker validated correctly
+				return g.cur_concrete_types
+			}
+		}
+		return concrete_types
+	}
+	return g.cur_concrete_types
+}
+
 fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	mut fn_name := node.decl.name
 	if node.decl.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+		concrete_types := g.get_anon_fn_concrete_types(node)
+		// Replace generic type names in the function name with concrete types
+		// Use sanitized type names to handle pointer types correctly
+		for i, gen_name in node.decl.generic_names {
+			if i < concrete_types.len {
+				typ := concrete_types[i]
+				concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
+					g.styp(typ.set_nr_muls(0)).replace(' ', '_')
+				fn_name = fn_name.replace('__${gen_name}', '__${concrete_styp}')
+			}
+		}
+		// Add the generic suffix
+		fn_name = g.generic_fn_name(concrete_types, fn_name)
 	}
 	if node.has_ct_var {
 		fn_name += '_${g.comptime.comptime_loop_id}'
@@ -640,10 +697,22 @@ fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	return fn_name
 }
 
-fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
+fn (mut g Gen) closure_ctx(node ast.FnDecl, concrete_types []ast.Type) string {
 	mut fn_name := node.name
 	if node.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+		types := if concrete_types.len > 0 { concrete_types } else { g.cur_concrete_types }
+		// Replace generic type names in the function name with concrete types
+		// Use sanitized type names to handle pointer types correctly
+		for i, gen_name in node.generic_names {
+			if i < types.len {
+				typ := types[i]
+				concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
+					g.styp(typ.set_nr_muls(0)).replace(' ', '_')
+				fn_name = fn_name.replace('__${gen_name}', '__${concrete_styp}')
+			}
+		}
+		// Add the generic suffix
+		fn_name = g.generic_fn_name(types, fn_name)
 	}
 	return 'struct _V_${fn_name}_Ctx'
 }
@@ -660,7 +729,8 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(fn_name)
 		return
 	}
-	ctx_struct := g.closure_ctx(node.decl)
+	concrete_types := g.get_anon_fn_concrete_types(node)
+	ctx_struct := g.closure_ctx(node.decl, concrete_types)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
 	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
@@ -732,9 +802,11 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
+	// Get concrete types for the anon fn's generic parameters
+	concrete_types := g.get_anon_fn_concrete_types(node)
 	// Generate a closure struct
 	if node.inherited_vars.len > 0 {
-		ctx_struct := g.closure_ctx(node.decl)
+		ctx_struct := g.closure_ctx(node.decl, concrete_types)
 		if ctx_struct !in g.closure_structs {
 			g.closure_structs << ctx_struct
 			g.definitions.writeln('${ctx_struct} {')
@@ -759,7 +831,13 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.stmt_path_pos = []
 	g.skip_stmt_pos = false
 	g.anon_fn = node
+	// Save and set correct concrete types for the anon fn's generic parameters
+	save_cur_concrete_types := g.cur_concrete_types
+	if node.decl.generic_names.len > 0 {
+		g.cur_concrete_types = concrete_types
+	}
 	g.fn_decl(node.decl)
+	g.cur_concrete_types = save_cur_concrete_types
 	g.anon_fn = was_anon_fn
 	g.skip_stmt_pos = prev_skip_stmt_pos
 	g.stmt_path_pos = prev_stmt_path_pos
