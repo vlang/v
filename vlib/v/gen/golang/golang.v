@@ -2175,8 +2175,16 @@ pub fn (mut f Gen) sql_expr(node ast.SqlExpr) {
 	f.writeln(' {')
 	f.write('\tselect ')
 	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
-	if node.is_count {
-		f.write('count ')
+	if node.aggregate_kind != .none {
+		match node.aggregate_kind {
+			.count {
+				f.write('count ')
+			}
+			.sum, .avg, .min, .max {
+				f.write('${node.aggregate_kind}(${node.aggregate_field}) ')
+			}
+			.none {}
+		}
 	} else {
 		for i, fd in node.fields {
 			f.write(fd.name)

@@ -197,6 +197,51 @@ fn test_orm_select_gen_with_distinct_and_where() {
 	assert query == "SELECT DISTINCT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0;"
 }
 
+fn test_orm_select_gen_with_sum() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:           orm.Table{
+			name: 'test_table'
+		}
+		aggregate_kind:  .sum
+		aggregate_field: 'age'
+		fields:          ['age']
+		types:           [orm.type_idx['int']]
+	}, "'", true, '?', 0, orm.QueryData{})
+
+	assert query == "SELECT SUM('age') FROM 'test_table';"
+}
+
+fn test_orm_select_gen_with_avg_and_where() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:           orm.Table{
+			name: 'test_table'
+		}
+		aggregate_kind:  .avg
+		aggregate_field: 'score'
+		fields:          ['score']
+		types:           [orm.type_idx['f64']]
+		has_where:       true
+	}, "'", true, '?', 0, orm.QueryData{
+		fields: ['abc']
+		kinds:  [.eq]
+		is_and: []
+	})
+
+	assert query == "SELECT AVG('score') FROM 'test_table' WHERE 'abc' = ?0;"
+}
+
+fn test_orm_select_gen_with_count() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:          orm.Table{
+			name: 'test_table'
+		}
+		aggregate_kind: .count
+		types:          [orm.type_idx['int']]
+	}, "'", true, '?', 0, orm.QueryData{})
+
+	assert query == "SELECT COUNT(*) FROM 'test_table';"
+}
+
 fn test_orm_table_gen() {
 	table := orm.Table{
 		name: 'test_table'

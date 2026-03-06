@@ -176,17 +176,30 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		sub_structs[int(field.typ)] = subquery_expr
 	}
 
-	if node.is_count {
-		fields = [
-			ast.StructField{
-				typ: ast.int_type
-			},
-		]
-	}
-
-	node.fields = fields
-	node.sub_structs = sub_structs.move()
 	field_names := fields.map(it.name)
+	if node.aggregate_kind != .none {
+		node.sub_structs = map[int]ast.SqlExpr{}
+		if node.aggregate_kind == .count {
+			node.fields = [
+				ast.StructField{
+					typ: ast.int_type
+				},
+			]
+			node.aggregate_field_type = ast.int_type
+			node.typ = ast.int_type.set_flag(.result)
+		} else {
+			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind, node.aggregate_field,
+				fields, table_sym.name, node.pos) or { return ast.void_type }
+			node.aggregate_field_type = aggregate_field.typ
+			node.fields = [
+				aggregate_field,
+			]
+			node.typ = c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
+		}
+	} else {
+		node.fields = fields
+		node.sub_structs = sub_structs.move()
+	}
 
 	if node.has_where {
 		c.expr(mut node.where_expr)
@@ -585,6 +598,55 @@ fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_
 
 	if comptime_number < 0 {
 		c.orm_error('`${sql_keyword}` must be greater than or equal to zero', expr.pos())
+	}
+}
+
+fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_name string,
+	fields []ast.StructField, table_name string, pos token.Pos) ?ast.StructField {
+	field := fields.filter(it.name == field_name)
+	if field.len == 0 {
+		c.orm_error(util.new_suggestion(field_name, fields.map(it.name)).say('`${table_name}` structure has no field with name `${field_name}`'),
+			pos)
+		return none
+	}
+	resolved_field := field[0]
+	field_type := c.table.final_type(resolved_field.typ.clear_flag(.option))
+	field_sym := c.table.sym(field_type)
+	is_time := field_sym.name == 'time.Time'
+	is_numeric := field_type.is_number()
+	is_string := field_type.is_string()
+
+	if field_sym.kind in [.array, .struct] && !is_time {
+		c.orm_error('ORM aggregate functions do not support array or sub-struct fields',
+			pos)
+		return none
+	}
+
+	match kind {
+		.sum, .avg {
+			if !is_numeric {
+				c.orm_error('`${kind}` aggregate requires a numeric field', pos)
+				return none
+			}
+		}
+		.min, .max {
+			if !(is_numeric || is_string || is_time) {
+				c.orm_error('`${kind}` aggregate requires a numeric, string, or time.Time field',
+					pos)
+				return none
+			}
+		}
+		else {}
+	}
+	return resolved_field
+}
+
+fn (_ &Checker) orm_aggregate_return_type(kind ast.SqlAggregateKind, field_type ast.Type) ast.Type {
+	return match kind {
+		.count { ast.int_type }
+		.avg { ast.f64_type.set_flag(.option) }
+		.sum, .min, .max { field_type.clear_flag(.option).set_flag(.option) }
+		.none { ast.void_type }
 	}
 }
 

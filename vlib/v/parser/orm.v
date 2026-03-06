@@ -5,6 +5,17 @@ module parser
 
 import v.ast
 
+fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
+	return match name {
+		'count' { .count }
+		'sum' { .sum }
+		'avg' { .avg }
+		'min' { .min }
+		'max' { .max }
+		else { .none }
+	}
+}
+
 // select from User
 // insert user into User returning id
 fn (mut p Parser) sql_expr() ast.Expr {
@@ -27,7 +38,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.next()
 	// kind := if is_select { ast.SqlExprKind.select_ } else { ast.SqlExprKind.insert }
 	mut inserted_var := ''
-	mut is_count := false
+	mut aggregate_kind := ast.SqlAggregateKind.none
+	mut aggregate_field := ''
 	mut has_distinct := false
 	if is_insert {
 		inserted_var = p.check_name()
@@ -41,17 +53,34 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if n == 'distinct' {
 			has_distinct = true
 			n2 := p.check_name()
-			is_count = n2 == 'count'
+			aggregate_kind = sql_aggregate_kind_from_name(n2)
 		} else {
-			is_count = n == 'count'
+			aggregate_kind = sql_aggregate_kind_from_name(n)
 		}
 	}
 	mut typ := ast.void_type
 
-	if is_count {
+	if aggregate_kind == .count {
 		n := p.check_name() // from
 		if n != 'from' {
 			p.error('expecting "from" in a "select count" ORM statement')
+		}
+	} else if aggregate_kind != .none {
+		if p.tok.kind != .lpar {
+			p.error('expecting `(` after aggregate function in ORM select')
+		}
+		p.next()
+		if p.tok.kind != .name {
+			p.error('ORM aggregate functions only support a single field name argument')
+		}
+		aggregate_field = p.check_name()
+		if p.tok.kind != .rpar {
+			p.error('ORM aggregate functions only support a single field name argument')
+		}
+		p.next()
+		n := p.check_name() // from
+		if n != 'from' {
+			p.error('expecting `from` after ORM aggregate function')
 		}
 	}
 
@@ -116,8 +145,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		offset_expr = p.expr(0)
 	}
 
-	if is_count {
+	if aggregate_kind == .count {
 		typ = ast.int_type
+	} else if aggregate_kind != .none {
+		typ = ast.void_type
 	} else if table_type.has_flag(.generic) {
 		typ = ast.new_type(p.table.find_or_register_array(table_type)).set_flag(.generic)
 	} else {
@@ -131,30 +162,31 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.inside_match = tmp_inside_match
 
 	return ast.SqlExpr{
-		is_count:     is_count
-		is_insert:    is_insert
-		typ:          typ.set_flag(.result)
-		or_expr:      or_expr
-		db_expr:      db_expr
-		where_expr:   where_expr
-		has_where:    has_where
-		has_limit:    has_limit
-		limit_expr:   limit_expr
-		has_offset:   has_offset
-		offset_expr:  offset_expr
-		has_order:    has_order
-		order_expr:   order_expr
-		has_desc:     has_desc
-		has_distinct: has_distinct
-		is_array:     if is_count { false } else { true }
-		is_generated: false
-		inserted_var: inserted_var
-		pos:          pos.extend(p.prev_tok.pos())
-		table_expr:   ast.TypeNode{
+		aggregate_kind:  aggregate_kind
+		aggregate_field: aggregate_field
+		is_insert:       is_insert
+		typ:             typ.set_flag(.result)
+		or_expr:         or_expr
+		db_expr:         db_expr
+		where_expr:      where_expr
+		has_where:       has_where
+		has_limit:       has_limit
+		limit_expr:      limit_expr
+		has_offset:      has_offset
+		offset_expr:     offset_expr
+		has_order:       has_order
+		order_expr:      order_expr
+		has_desc:        has_desc
+		has_distinct:    has_distinct
+		is_array:        aggregate_kind == .none
+		is_generated:    false
+		inserted_var:    inserted_var
+		pos:             pos.extend(p.prev_tok.pos())
+		table_expr:      ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
-		joins:        joins
+		joins:           joins
 	}
 }
 

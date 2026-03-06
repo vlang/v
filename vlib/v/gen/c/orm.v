@@ -22,6 +22,15 @@ fn orm_field_access_name(field_name string) string {
 	return c_name(field_name)
 }
 
+fn (g &Gen) orm_primitive_field_name(typ ast.Type) string {
+	final_typ := g.table.final_type(typ.clear_flag(.option))
+	sym := g.table.sym(final_typ)
+	if sym.kind == .enum {
+		return 'i64'
+	}
+	return vint2int(sym.cname)
+}
+
 enum SqlExprSide {
 	left
 	right
@@ -983,7 +992,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('.table = ')
 	g.write_orm_table_struct(node.table_expr.typ)
 	g.writeln(',')
-	g.writeln('.is_count = ${node.is_count},')
+	g.writeln('.aggregate_kind = orm__AggregateKind__${node.aggregate_kind},')
+	g.writeln('.aggregate_field = _S("${node.aggregate_field}"),')
 	g.writeln('.has_where = ${node.has_where},')
 	g.writeln('.has_order = ${node.has_order},')
 
@@ -1013,7 +1023,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('.primary = _S("${primary_field.name}"),')
 	}
 
-	select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
+	mut select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
+	if node.aggregate_kind != .none {
+		select_fields = fields.clone()
+	}
 	g.writeln('.fields = builtin__new_array_from_c_array(${select_fields.len}, ${select_fields.len}, sizeof(string),')
 	g.indent++
 	mut types := []string{}
@@ -1022,7 +1035,12 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.indent++
 		for field in select_fields {
 			g.writeln('_S("${g.get_orm_column_name_from_struct_field(field)}"),')
-			final_field_typ := g.table.final_type(field.typ)
+			mut final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
+			if node.aggregate_kind == .avg {
+				final_field_typ = ast.f64_type
+			} else if node.aggregate_kind == .count {
+				final_field_typ = ast.int_type
+			}
 			sym := g.table.sym(final_field_typ)
 			if sym.name == 'time.Time' {
 				types << '_const_orm__time_'
@@ -1119,8 +1137,38 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('Array_Array_orm__Primitive ${select_unwrapped_result_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
 
-	if node.is_count {
-		g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *((*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)), 0))._${ast.int_type_name});')
+	if node.aggregate_kind != .none {
+		prim_var := g.new_tmp_var()
+		aggregate_type := if node.aggregate_kind == .avg {
+			ast.f64_type
+		} else {
+			node.aggregate_field_type
+		}
+		primitive_field_name := g.orm_primitive_field_name(aggregate_type)
+		aggregate_value_styp := g.styp(aggregate_type.clear_flag(.option))
+		if node.aggregate_kind == .count {
+			g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = 0;')
+			g.writeln('if (${select_unwrapped_result_var_name}.len > 0 && (*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)).len > 0) {')
+			g.indent++
+			g.writeln('orm__Primitive *${prim_var} = &(*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)), 0));')
+			g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *(${prim_var}->_${primitive_field_name});')
+			g.indent--
+			g.writeln('}')
+		} else {
+			aggregate_result_var := g.new_tmp_var()
+			g.writeln('${unwrapped_c_typ} ${aggregate_result_var} = (${unwrapped_c_typ}){ .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
+			g.writeln('if (${select_unwrapped_result_var_name}.len > 0 && (*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)).len > 0) {')
+			g.indent++
+			g.writeln('orm__Primitive *${prim_var} = &(*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)), 0));')
+			g.writeln('if (${prim_var}->_typ != ${g.table.find_type_idx('orm.Null')}) {')
+			g.indent++
+			g.writeln('builtin___option_ok(${prim_var}->_${primitive_field_name}, (_option *)&${aggregate_result_var}, sizeof(${aggregate_value_styp}));')
+			g.indent--
+			g.writeln('}')
+			g.indent--
+			g.writeln('}')
+			g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = ${aggregate_result_var};')
+		}
 	} else {
 		tmp := g.new_tmp_var()
 		idx := g.new_tmp_var()
@@ -1226,23 +1274,25 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					}
 
 					mut sql_expr_select_array := ast.SqlExpr{
-						typ:          final_field_typ.set_flag(.result)
-						is_count:     sub.is_count
-						db_expr:      sub.db_expr
-						has_where:    sub.has_where
-						has_offset:   sub.has_offset
-						offset_expr:  sub.offset_expr
-						has_order:    sub.has_order
-						order_expr:   sub.order_expr
-						has_desc:     sub.has_desc
-						is_array:     true
-						is_generated: true
-						pos:          sub.pos
-						has_limit:    sub.has_limit
-						limit_expr:   sub.limit_expr
-						table_expr:   sub.table_expr
-						fields:       sub.fields
-						where_expr:   where_expr
+						typ:                  final_field_typ.set_flag(.result)
+						aggregate_kind:       sub.aggregate_kind
+						aggregate_field:      sub.aggregate_field
+						db_expr:              sub.db_expr
+						has_where:            sub.has_where
+						has_offset:           sub.has_offset
+						offset_expr:          sub.offset_expr
+						has_order:            sub.has_order
+						order_expr:           sub.order_expr
+						has_desc:             sub.has_desc
+						is_array:             true
+						is_generated:         true
+						pos:                  sub.pos
+						has_limit:            sub.has_limit
+						limit_expr:           sub.limit_expr
+						table_expr:           sub.table_expr
+						fields:               sub.fields
+						where_expr:           where_expr
+						aggregate_field_type: sub.aggregate_field_type
 					}
 
 					sub_result_var := g.new_tmp_var()

@@ -1274,11 +1274,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 fn (mut g Gen) styp(t ast.Type) string {
 	if !t.has_option_or_result() {
 		return g.base_type(t)
+	} else if t.has_flag(.result) {
+		return g.register_result(t)
 	} else if t.has_flag(.option) {
 		// Register an optional if it's not registered yet
 		return g.register_option(t)
 	} else {
-		return g.register_result(t)
+		return g.base_type(t)
 	}
 }
 

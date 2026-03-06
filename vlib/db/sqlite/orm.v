@@ -23,17 +23,6 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 
 	mut ret := [][]orm.Primitive{}
-
-	if config.is_count {
-		// 2. Get count of returned values & add it to ret array
-		step := stmt.step()
-		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
-			return db.error_message(step, query)
-		}
-		count := stmt.sqlite_select_column(0, 8)!
-		ret << [count]
-		return ret
-	}
 	for {
 		// 2. Parse returned values
 		step := stmt.step()

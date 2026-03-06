@@ -59,7 +59,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
-	if config.is_count {
+	if config.aggregate_kind == .count {
 		types = [orm.type_idx['u64']]
 	}
 
@@ -113,7 +113,16 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			stmt.fetch_column(bind, index)!
 		}
 
-		result << data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		mut row := data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		if config.aggregate_kind == .count && row.len > 0 {
+			row[0] = match row[0] {
+				u64 { orm.Primitive(int(row[0])) }
+				i64 { orm.Primitive(int(row[0])) }
+				int { row[0] }
+				else { row[0] }
+			}
+		}
+		result << row
 	}
 
 	stmt.close()!

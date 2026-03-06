@@ -14,9 +14,6 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 	mut ret := [][]orm.Primitive{}
 
-	if config.is_count {
-	}
-
 	for row in rows {
 		mut row_data := []orm.Primitive{}
 		for i, val in row.vals {

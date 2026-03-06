@@ -3091,8 +3091,16 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
 		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
-	if node.is_count {
-		f.write('count ')
+	if node.aggregate_kind != .none {
+		match node.aggregate_kind {
+			.count {
+				f.write('count ')
+			}
+			.sum, .avg, .min, .max {
+				f.write('${node.aggregate_kind}(${node.aggregate_field}) ')
+			}
+			.none {}
+		}
 	} else {
 		for i, fd in node.fields {
 			f.write(fd.name)
