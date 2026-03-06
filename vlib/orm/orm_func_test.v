@@ -265,6 +265,7 @@ fn test_orm_func_stmts() {
 			age:         27
 			role:        'employer'
 			status:      5
+			level:       .intermediate
 			salary:      2500
 			title:       'doctor'
 			score:       81
@@ -531,6 +532,8 @@ fn test_orm_func_stmts() {
 	selected_users := qb.where('created_at IS NULL && ((salary > ? && age < ?) || (role LIKE ?))',
 		2000, 30, '%employee%')!.query()!
 	assert selected_users[0].name == 'Silly'
+	// Check enum
+	assert selected_users[0].level == .intermediate
 	assert selected_users.len == 1
 
 	// complex select with lowercase `is null` and `like`
