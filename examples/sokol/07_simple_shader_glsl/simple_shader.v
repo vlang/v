@@ -60,7 +60,6 @@ fn (mut a App) run() {
 		init_userdata_cb:    init
 		frame_userdata_cb:   frame
 		window_title:        &char(title.str)
-		html5_canvas_name:   &char(title.str)
 		cleanup_userdata_cb: cleanup
 		sample_count:        4 // Enables MSAA (Multisample anti-aliasing) x4 on rendered output, this can be omitted.
 	}

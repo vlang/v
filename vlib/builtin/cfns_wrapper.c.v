@@ -4,14 +4,14 @@ module builtin
 // The C string is expected to be a &u8 pointer.
 @[inline; unsafe]
 pub fn vstrlen(s &u8) int {
-	return unsafe { C.strlen(&char(s)) }
+	return int(unsafe { C.strlen(&char(s)) })
 }
 
 // vstrlen_char returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &char pointer.
 @[inline; unsafe]
 pub fn vstrlen_char(s &char) int {
-	return unsafe { C.strlen(s) }
+	return int(unsafe { C.strlen(s) })
 }
 
 // vmemcpy copies n bytes from memory area src to memory area dest.
