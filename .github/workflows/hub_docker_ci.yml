@@ -53,7 +53,7 @@ jobs:
             echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         name: Build and deploy v image
         with:
           builder: gh-builder
@@ -66,7 +66,7 @@ jobs:
           ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
           ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         name: Build and deploy developer build
         with:
           builder: gh-builder
