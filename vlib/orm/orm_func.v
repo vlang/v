@@ -524,7 +524,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { int(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is i64 || field.typ is ?i64 {
+					} $else $if field.typ is i64 || field.typ is ?i64 || field.is_enum {
 						instance.$(field.name) = match value {
 							i8 { i64(value) }
 							i16 { i64(value) }
@@ -847,6 +847,8 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 				} else {
 					qb.data << option_time_to_primitive(value.$(field.name))
 				}
+			} $else $if field.is_enum {
+				qb.data << i64_to_primitive(i64(value.$(field.name)))
 			}
 		}
 	}
