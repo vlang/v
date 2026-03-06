@@ -1,4 +1,5 @@
 // vtest vflags: -autofree
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 
 fn get_str_a() ?string {
 	return 'hello world?'
