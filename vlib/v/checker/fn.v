@@ -817,11 +817,15 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				continue
 			}
 			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]
-				|| (arg.expr is ast.CallExpr && arg.expr.or_block.kind != .absent) {
+				|| autofree_expr_has_or_block_in_chain(arg.expr) {
 				// Simple expressions like variables, string literals, selector expressions
 				// (`x.field`) can't result in allocations and don't need to be assigned to
 				// temporary vars.
 				// Only expressions like `str + 'b'` need to be freed.
+				// Expressions with result/option propagation in the call chain (e.g.
+				// `get_str()!.to_upper()`) cannot be pre-generated safely by
+				// autofree_call_pregen, because the or_block unwrapping internally calls
+				// go_before_last_stmt() which garbles the output buffer.
 				continue
 			}
 			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
@@ -4160,4 +4164,20 @@ fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_
 		c.error('cannot use `...${styp}` as `...${elem_styp}` in argument ${arg_num} to `${fn_name}`',
 			arg_pos)
 	}
+}
+
+// autofree_expr_has_or_block_in_chain returns true if expr is a CallExpr whose call chain
+// contains an or_block (i.e. result/option propagation via `!` or `?`). Used by autofree to
+// skip tmp-var pre-generation for arguments like `get_str()!.to_upper()`, where the inner
+// call's or_block would interfere with output-buffer positioning in autofree_call_pregen.
+fn autofree_expr_has_or_block_in_chain(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		if expr.or_block.kind != .absent {
+			return true
+		}
+		if expr.is_method {
+			return autofree_expr_has_or_block_in_chain(expr.left)
+		}
+	}
+	return false
 }
