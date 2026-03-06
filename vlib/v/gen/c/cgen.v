@@ -983,7 +983,8 @@ pub fn (mut g Gen) init() {
 		}
 		if g.pref.os == .linux {
 			// For gettid() declaration (and other GNU-specific bits).
-			g.cheaders.writeln('#define _GNU_SOURCE')
+			// Must come before any C declarations that use GNU extensions.
+			g.preincludes.writeln('#define _GNU_SOURCE')
 		}
 		if g.pref.os == .wasm32 {
 			g.cheaders.writeln('#define VWASM 1')

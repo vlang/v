@@ -1,13 +1,26 @@
 module c
 
+import sokol.memory as _
+
 #flag -I @VEXEROOT/thirdparty/sokol
 #flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
 
-#flag linux -lX11 -lGL -lXcursor -lXi -lpthread
+// Platform-specific library linking
+// X11 is the default on Linux
+// Use `-d sokol_wayland` to enable Wayland support
+#flag linux -DSOKOL_GLCORE
+$if sokol_wayland ? {
+	#flag linux -lwayland-client -lwayland-egl -lxkbcommon -lxkbcommon-x11 -lEGL -lGL -lpthread -lm -ldl -lX11 -lXi -lXcursor
+} $else {
+	#flag linux -lX11 -lXi -lXcursor -lGL -lpthread -lm -ldl
+}
+#flag freebsd -DSOKOL_GLCORE
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
+#flag openbsd -DSOKOL_GLCORE
 #flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
+#flag windows -DSOKOL_GLCORE
 #flag windows -lgdi32
 
 $if windows {
@@ -54,14 +67,10 @@ $if emscripten ? {
 	//	#flag -s MODULARIZE
 }
 
-// OPENGL
-#flag linux -DSOKOL_GLCORE
-#flag freebsd -DSOKOL_GLCORE
-#flag openbsd -DSOKOL_GLCORE
-//#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 // D3D
-#flag windows -DSOKOL_GLCORE
 //#flag windows -DSOKOL_D3D11
+#flag windows -DSOKOL_GLCORE
+
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 
@@ -83,6 +92,16 @@ $if emscripten ? {
 // To allow for thirdparty initializing window / acceleration contexts
 // but still be able to use sokol.gfx e.g. SDL+sokol_gfx
 $if !no_sokol_app ? {
+	$if linux && sokol_wayland ? {
+		// Enable Wayland on Linux (when explicitly enabled with -d sokol_wayland)
+		#define SOKOL_WAYLAND
+		#flag -I@VEXEROOT/thirdparty/sokol
+	} $else $if linux {
+		// Explicitly disable Wayland on Linux when not using sokol_wayland
+		#define SOKOL_DISABLE_WAYLAND
+	}
+
+	@[use_once]
 	#include "sokol_app.h"
 }
 
@@ -91,7 +110,4 @@ $if !no_sokol_app ? {
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
-@[use_once]
-#define SOKOL_GL_IMPL
-#include "util/sokol_gl.h"
 #include "sokol_v.post.h"
