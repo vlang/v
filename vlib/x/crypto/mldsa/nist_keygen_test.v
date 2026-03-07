@@ -1,19 +1,18 @@
 module mldsa
 
 // NIST ACVP keygen test vectors (FIPS 204).
-
 import encoding.hex
 import json
 import os
 
 struct KeyGenTest {
-	tc_id int    @[json: 'tcId']
+	tc_id int @[json: 'tcId']
 	seed  string
 }
 
 struct KeyGenGroup {
-	tg_id         int         @[json: 'tgId']
-	parameter_set string      @[json: 'parameterSet']
+	tg_id         int    @[json: 'tgId']
+	parameter_set string @[json: 'parameterSet']
 	tests         []KeyGenTest
 }
 
@@ -22,13 +21,13 @@ struct KeyGenPrompt {
 }
 
 struct KeyGenResult {
-	tc_id int    @[json: 'tcId']
+	tc_id int @[json: 'tcId']
 	pk    string
 	sk    string
 }
 
 struct KeyGenResultGroup {
-	tg_id int            @[json: 'tgId']
+	tg_id int @[json: 'tgId']
 	tests []KeyGenResult
 }
 

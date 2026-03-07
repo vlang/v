@@ -138,7 +138,8 @@ fn ct_select_leq(a i32, b i32, yes i32, no i32) i32 {
 }
 
 fn ct_select_eq(a u32, b u32, yes u32, no u32) u32 {
-	return u32(subtle.constant_time_select(subtle.constant_time_eq(int(a), int(b)), int(yes), int(no)))
+	return u32(subtle.constant_time_select(subtle.constant_time_eq(int(a), int(b)), int(yes),
+		int(no)))
 }
 
 fn ct_abs(x i32) u32 {
