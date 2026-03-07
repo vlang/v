@@ -605,7 +605,11 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 	fields []ast.StructField, table_name string, pos token.Pos) ?ast.StructField {
 	field := fields.filter(it.name == field_name)
 	if field.len == 0 {
-		c.orm_error(util.new_suggestion(field_name, fields.map(it.name)).say('`${table_name}` structure has no field with name `${field_name}`'),
+		mut field_names := []string{cap: fields.len}
+		for item in fields {
+			field_names << item.name
+		}
+		c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_name}` structure has no field with name `${field_name}`'),
 			pos)
 		return none
 	}
@@ -625,14 +629,23 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 	match kind {
 		.sum, .avg {
 			if !is_numeric {
-				c.orm_error('`${kind}` aggregate requires a numeric field', pos)
+				msg := match kind {
+					.sum { '`sum` aggregate requires a numeric field' }
+					.avg { '`avg` aggregate requires a numeric field' }
+					else { 'aggregate requires a numeric field' }
+				}
+				c.orm_error(msg, pos)
 				return none
 			}
 		}
 		.min, .max {
 			if !(is_numeric || is_string || is_time) {
-				c.orm_error('`${kind}` aggregate requires a numeric, string, or time.Time field',
-					pos)
+				msg := match kind {
+					.min { '`min` aggregate requires a numeric, string, or time.Time field' }
+					.max { '`max` aggregate requires a numeric, string, or time.Time field' }
+					else { 'aggregate requires a numeric, string, or time.Time field' }
+				}
+				c.orm_error(msg, pos)
 				return none
 			}
 		}

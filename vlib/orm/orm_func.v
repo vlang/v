@@ -720,12 +720,22 @@ fn (qb &QueryBuilder[T]) validate_aggregate_field(kind AggregateKind, field stri
 	match kind {
 		.sum, .avg {
 			if !is_numeric_type_idx(meta_field.typ) {
-				return error('${@FN}(): `${kind}` requires a numeric field')
+				msg := match kind {
+					.sum { '${@FN}(): `sum` requires a numeric field' }
+					.avg { '${@FN}(): `avg` requires a numeric field' }
+					else { '${@FN}(): aggregate requires a numeric field' }
+				}
+				return error(msg)
 			}
 		}
 		.min, .max {
 			if !is_min_max_supported_type_idx(meta_field.typ) {
-				return error('${@FN}(): `${kind}` requires a numeric, string, or time.Time field')
+				msg := match kind {
+					.min { '${@FN}(): `min` requires a numeric, string, or time.Time field' }
+					.max { '${@FN}(): `max` requires a numeric, string, or time.Time field' }
+					else { '${@FN}(): aggregate requires a numeric, string, or time.Time field' }
+				}
+				return error(msg)
 			}
 		}
 		else {}
