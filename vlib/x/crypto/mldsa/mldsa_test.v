@@ -241,6 +241,36 @@ fn test_private_key_seed_roundtrip() {
 	assert sk.equal(&sk2)
 }
 
+fn test_private_key_bytes_roundtrip() {
+	for c in sign_verify_cases {
+		seed := []u8{len: 32, init: u8(index + 50)}
+		sk := PrivateKey.from_seed(seed, c.kind) or { panic('${c.label}: ${err}') }
+		pk := sk.public_key()
+
+		sk_bytes := sk.bytes()
+		assert sk_bytes.len == c.kind.private_key_size(), '${c.label}: sk size mismatch'
+
+		sk2 := PrivateKey.from_bytes(sk_bytes, c.kind) or { panic('${c.label}: ${err}') }
+		pk2 := sk2.public_key()
+
+		// public keys must match
+		assert pk.equal(pk2), '${c.label}: pk mismatch after sk roundtrip'
+
+		// sign with deserialized key, verify with original pk
+		msg := 'roundtrip ${c.label}'.bytes()
+		sig := sk2.sign(msg, deterministic: true) or { panic('${c.label}: ${err}') }
+		valid := pk.verify(msg, sig) or { panic('${c.label}: ${err}') }
+		assert valid, '${c.label}: sig from deserialized sk failed verification'
+	}
+}
+
+fn test_error_invalid_private_key() {
+	bad := []u8{len: 10}
+	if _ := PrivateKey.from_bytes(bad, .ml_dsa_44) {
+		assert false, 'should reject invalid sk'
+	}
+}
+
 fn test_error_invalid_seed_length() {
 	short := []u8{len: 16}
 	if _ := PrivateKey.from_seed(short, .ml_dsa_44) {
