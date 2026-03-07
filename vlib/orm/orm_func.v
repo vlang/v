@@ -6,6 +6,12 @@ import strings.textscanner
 const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL',
 	'IN', 'NOT IN']!
 
+pub struct AggregateValue {
+pub:
+	has_value bool
+	value     Primitive = Null{}
+}
+
 @[heap]
 pub struct QueryBuilder[T] {
 pub mut:
@@ -690,6 +696,144 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 	}
 }
 
+fn (qb &QueryBuilder[T]) get_meta_field_by_sql_name(field string) ?TableField {
+	for meta_field in qb.meta {
+		if sql_field_name(meta_field) == field {
+			return meta_field
+		}
+	}
+	return none
+}
+
+fn is_numeric_type_idx(typ int) bool {
+	return typ in nums || typ in num64 || typ in float
+}
+
+fn is_min_max_supported_type_idx(typ int) bool {
+	return is_numeric_type_idx(typ) || typ == type_string || typ == time_
+}
+
+fn (qb &QueryBuilder[T]) validate_aggregate_field(kind AggregateKind, field string) !TableField {
+	meta_field := qb.get_meta_field_by_sql_name(field) or {
+		return error("${@FN}(): table `${qb.config.table}` has no field's name: `${field}`")
+	}
+	match kind {
+		.sum, .avg {
+			if !is_numeric_type_idx(meta_field.typ) {
+				msg := match kind {
+					.sum { '${@FN}(): `sum` requires a numeric field' }
+					.avg { '${@FN}(): `avg` requires a numeric field' }
+					else { '${@FN}(): aggregate requires a numeric field' }
+				}
+				return error(msg)
+			}
+		}
+		.min, .max {
+			if !is_min_max_supported_type_idx(meta_field.typ) {
+				msg := match kind {
+					.min { '${@FN}(): `min` requires a numeric, string, or time.Time field' }
+					.max { '${@FN}(): `max` requires a numeric, string, or time.Time field' }
+					else { '${@FN}(): aggregate requires a numeric, string, or time.Time field' }
+				}
+				return error(msg)
+			}
+		}
+		else {}
+	}
+	return meta_field
+}
+
+fn (qb &QueryBuilder[T]) build_aggregate_config(kind AggregateKind, field string) !SelectConfig {
+	mut cfg := qb.config
+	cfg.aggregate_kind = kind
+	cfg.aggregate_field = ''
+	cfg.fields = []
+	cfg.types = []
+	if kind == .count {
+		cfg.types = [type_idx['int']]
+		return cfg
+	}
+
+	meta_field := qb.validate_aggregate_field(kind, field)!
+	cfg.aggregate_field = field
+	cfg.fields = [field]
+	cfg.types = [if kind == .avg { type_idx['f64'] } else { meta_field.typ }]
+	return cfg
+}
+
+fn primitive_to_aggregate_value(value Primitive) AggregateValue {
+	return if value == Primitive(Null{}) {
+		AggregateValue{}
+	} else {
+		AggregateValue{
+			has_value: true
+			value:     value
+		}
+	}
+}
+
+// as_int returns the aggregate value as `int`, or `none` when it is null or not numeric.
+pub fn (value AggregateValue) as_int() ?int {
+	if !value.has_value {
+		return none
+	}
+	return match value.value {
+		i8 { int(value.value) }
+		i16 { int(value.value) }
+		int { value.value }
+		i64 { int(value.value) }
+		u8 { int(value.value) }
+		u16 { int(value.value) }
+		u32 { int(value.value) }
+		u64 { int(value.value) }
+		f32 { int(value.value) }
+		f64 { int(value.value) }
+		else { return none }
+	}
+}
+
+// as_f64 returns the aggregate value as `f64`, or `none` when it is null or not numeric.
+pub fn (value AggregateValue) as_f64() ?f64 {
+	if !value.has_value {
+		return none
+	}
+	return match value.value {
+		i8 { f64(value.value) }
+		i16 { f64(value.value) }
+		int { f64(value.value) }
+		i64 { f64(value.value) }
+		u8 { f64(value.value) }
+		u16 { f64(value.value) }
+		u32 { f64(value.value) }
+		u64 { f64(value.value) }
+		f32 { f64(value.value) }
+		f64 { value.value }
+		else { return none }
+	}
+}
+
+// as_string returns the aggregate value as `string`, or `none` when it is null or not a string.
+pub fn (value AggregateValue) as_string() ?string {
+	if !value.has_value {
+		return none
+	}
+	return match value.value {
+		string { value.value }
+		else { return none }
+	}
+}
+
+// as_time returns the aggregate value as `time.Time`, or `none` when it is null or not a time.
+pub fn (value AggregateValue) as_time() ?time.Time {
+	if !value.has_value {
+		return none
+	}
+	return match value.value {
+		time.Time { value.value }
+		else { return none }
+	}
+}
+
 // query start a query and return result in struct `T`
 pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	mut qb := unsafe { qb_ }
@@ -711,10 +855,8 @@ pub fn (qb_ &QueryBuilder[T]) count() !int {
 	defer {
 		qb.reset()
 	}
-	mut count_config := qb.config
-	count_config.is_count = true
-	count_config.fields = []
 	qb.prepare()!
+	count_config := qb.build_aggregate_config(.count, '')!
 	result := qb.conn.select(count_config, qb.data, qb.where)!
 
 	if result.len == 0 || result[0].len == 0 {
@@ -727,6 +869,70 @@ pub fn (qb_ &QueryBuilder[T]) count() !int {
 		u64 { int(count_val) }
 		else { return error('${@FN}(): invalid count result type') }
 	}
+}
+
+// sum returns the sum of the field values as an `AggregateValue`.
+pub fn (qb_ &QueryBuilder[T]) sum(field string) !AggregateValue {
+	mut qb := unsafe { qb_ }
+	defer {
+		qb.reset()
+	}
+	qb.prepare()!
+	qb.validate_aggregate_field(.sum, field)!
+	cfg := qb.build_aggregate_config(.sum, field)!
+	result := qb.conn.select(cfg, qb.data, qb.where)!
+	if result.len == 0 || result[0].len == 0 {
+		return AggregateValue{}
+	}
+	return primitive_to_aggregate_value(result[0][0])
+}
+
+// min returns the smallest field value as an `AggregateValue`.
+pub fn (qb_ &QueryBuilder[T]) min(field string) !AggregateValue {
+	mut qb := unsafe { qb_ }
+	defer {
+		qb.reset()
+	}
+	qb.prepare()!
+	qb.validate_aggregate_field(.min, field)!
+	cfg := qb.build_aggregate_config(.min, field)!
+	result := qb.conn.select(cfg, qb.data, qb.where)!
+	if result.len == 0 || result[0].len == 0 {
+		return AggregateValue{}
+	}
+	return primitive_to_aggregate_value(result[0][0])
+}
+
+// max returns the largest field value as an `AggregateValue`.
+pub fn (qb_ &QueryBuilder[T]) max(field string) !AggregateValue {
+	mut qb := unsafe { qb_ }
+	defer {
+		qb.reset()
+	}
+	qb.prepare()!
+	qb.validate_aggregate_field(.max, field)!
+	cfg := qb.build_aggregate_config(.max, field)!
+	result := qb.conn.select(cfg, qb.data, qb.where)!
+	if result.len == 0 || result[0].len == 0 {
+		return AggregateValue{}
+	}
+	return primitive_to_aggregate_value(result[0][0])
+}
+
+// avg returns the average field value as an `AggregateValue`.
+pub fn (qb_ &QueryBuilder[T]) avg(field string) !AggregateValue {
+	mut qb := unsafe { qb_ }
+	defer {
+		qb.reset()
+	}
+	qb.prepare()!
+	qb.validate_aggregate_field(.avg, field)!
+	cfg := qb.build_aggregate_config(.avg, field)!
+	result := qb.conn.select(cfg, qb.data, qb.where)!
+	if result.len == 0 || result[0].len == 0 {
+		return AggregateValue{}
+	}
+	return primitive_to_aggregate_value(result[0][0])
 }
 
 // insert insert a record into the database

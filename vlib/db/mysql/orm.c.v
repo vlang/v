@@ -1,6 +1,7 @@
 module mysql
 
 import orm
+import strconv
 import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
@@ -42,8 +43,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2, .type_timestamp {
 				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
 				// Memory will be allocated later dynamically depending on the length of the value.
 				data_pointers << &u8(unsafe { nil })
 			}
@@ -59,7 +60,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
-	if config.is_count {
+	if config.aggregate_kind == .count {
 		types = [orm.type_idx['u64']]
 	}
 
@@ -73,8 +74,11 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		field_types << field_type
 
 		match field_type {
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
+				if field_type in [.type_decimal, .type_newdecimal] {
+					mysql_bind.buffer_type = C.MYSQL_TYPE_STRING
+				}
 				string_binds_map[i] = mysql_bind
 			}
 			.type_long {
@@ -113,7 +117,17 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			stmt.fetch_column(bind, index)!
 		}
 
-		result << data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		mut row := data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		if config.aggregate_kind == .count && row.len > 0 {
+			count_value := row[0]
+			row[0] = match count_value {
+				u64 { orm.Primitive(int(count_value)) }
+				i64 { orm.Primitive(int(count_value)) }
+				int { count_value }
+				else { count_value }
+			}
+		}
+		result << row
 	}
 
 	stmt.close()!
@@ -262,6 +276,12 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
 		if !is_null[i] {
+			if field_types[i] in [.type_decimal, .type_newdecimal] {
+				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
+				primitive = decimal_string_to_primitive(decimal_value, types[i])!
+				result << primitive
+				continue
+			}
 			match types[i] {
 				orm.type_idx['i8'] {
 					primitive = *(unsafe { &i8(data) })
@@ -325,6 +345,44 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 	}
 
 	return result
+}
+
+fn decimal_string_to_primitive(value string, typ int) !orm.Primitive {
+	return match typ {
+		orm.type_idx['i8'] {
+			orm.Primitive(strconv.atoi8(value)!)
+		}
+		orm.type_idx['i16'] {
+			orm.Primitive(strconv.atoi16(value)!)
+		}
+		orm.type_idx['int'], orm.serial {
+			orm.Primitive(strconv.atoi(value)!)
+		}
+		orm.type_idx['i64'], orm.enum_ {
+			orm.Primitive(strconv.atoi64(value)!)
+		}
+		orm.type_idx['u8'] {
+			orm.Primitive(strconv.atou8(value)!)
+		}
+		orm.type_idx['u16'] {
+			orm.Primitive(strconv.atou16(value)!)
+		}
+		orm.type_idx['u32'] {
+			orm.Primitive(strconv.atou32(value)!)
+		}
+		orm.type_idx['u64'] {
+			orm.Primitive(strconv.atou64(value)!)
+		}
+		orm.type_idx['f32'] {
+			orm.Primitive(f32(strconv.atof64(value)!))
+		}
+		orm.type_idx['f64'] {
+			orm.Primitive(strconv.atof64(value)!)
+		}
+		else {
+			return error('Unknown decimal target type ${typ}')
+		}
+	}
 }
 
 // mysql_type_from_v converts the V type to the corresponding MySQL type.

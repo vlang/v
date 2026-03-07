@@ -2315,11 +2315,21 @@ pub mut:
 	on_expr    Expr     // The ON condition (e.g., `User.dept_id == Department.id`)
 }
 
+pub enum SqlAggregateKind {
+	none
+	count
+	sum
+	avg
+	min
+	max
+}
+
 pub struct SqlExpr {
 pub:
-	is_count     bool
-	is_insert    bool // for insert expressions
-	inserted_var string
+	aggregate_kind  SqlAggregateKind
+	aggregate_field string
+	is_insert       bool // for insert expressions
+	inserted_var    string
 
 	has_where    bool
 	has_order    bool
@@ -2332,17 +2342,18 @@ pub:
 	is_generated bool
 	pos          token.Pos
 pub mut:
-	typ         Type
-	db_expr     Expr // `db` in `sql db {`
-	where_expr  Expr
-	order_expr  Expr
-	limit_expr  Expr
-	offset_expr Expr
-	table_expr  TypeNode
-	fields      []StructField
-	sub_structs map[int]SqlExpr
-	or_expr     OrExpr
-	joins       []JoinClause // JOIN clauses for this query
+	typ                  Type
+	db_expr              Expr // `db` in `sql db {`
+	where_expr           Expr
+	order_expr           Expr
+	limit_expr           Expr
+	offset_expr          Expr
+	table_expr           TypeNode
+	fields               []StructField
+	sub_structs          map[int]SqlExpr
+	or_expr              OrExpr
+	joins                []JoinClause // JOIN clauses for this query
+	aggregate_field_type Type
 }
 
 pub struct NodeError {

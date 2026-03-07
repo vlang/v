@@ -89,6 +89,15 @@ pub enum OrderType {
 	desc
 }
 
+pub enum AggregateKind {
+	none
+	count
+	sum
+	avg
+	min
+	max
+}
+
 // JoinType represents the type of SQL JOIN operation
 pub enum JoinType {
 	inner      // INNER JOIN - returns only matching rows
@@ -157,6 +166,17 @@ fn (kind OrderType) to_str() string {
 	}
 }
 
+fn (kind AggregateKind) to_str() string {
+	return match kind {
+		.none { '' }
+		.count { 'COUNT(*)' }
+		.sum { 'SUM' }
+		.avg { 'AVG' }
+		.min { 'MIN' }
+		.max { 'MAX' }
+	}
+}
+
 // Examples for QueryData in SQL: abc == 3 && b == 'test'
 // => fields[abc, b]; data[3, 'test']; types[index of int, index of string]; kinds[.eq, .eq]; is_and[true];
 // Every field, data, type & kind of operation in the expr share the same index in the arrays
@@ -198,7 +218,7 @@ pub mut:
 }
 
 // table - Table struct
-// is_count - Either the data will be returned or an integer with the count
+// aggregate_kind - Select rows or return a single aggregate value
 // has_where - Select all or use a where expr
 // has_order - Order the results
 // order - Name of the column which will be ordered
@@ -211,19 +231,20 @@ pub mut:
 // joins - JOIN clauses for this query
 pub struct SelectConfig {
 pub mut:
-	table        Table
-	is_count     bool
-	has_where    bool
-	has_order    bool
-	order        string
-	order_type   OrderType
-	has_limit    bool
-	primary      string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
-	has_offset   bool
-	has_distinct bool
-	fields       []string
-	types        []int
-	joins        []JoinConfig // JOIN clauses for this query
+	table           Table
+	aggregate_kind  AggregateKind
+	aggregate_field string
+	has_where       bool
+	has_order       bool
+	order           string
+	order_type      OrderType
+	has_limit       bool
+	primary         string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
+	has_offset      bool
+	has_distinct    bool
+	fields          []string
+	types           []int
+	joins           []JoinConfig // JOIN clauses for this query
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -382,8 +403,12 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		str += 'DISTINCT '
 	}
 
-	if cfg.is_count {
-		str += 'COUNT(*)'
+	if cfg.aggregate_kind != .none {
+		if cfg.aggregate_kind == .count {
+			str += cfg.aggregate_kind.to_str()
+		} else {
+			str += '${cfg.aggregate_kind.to_str()}(${q}${cfg.aggregate_field}${q})'
+		}
 	} else {
 		for i, field in cfg.fields {
 			str += '${q}${field}${q}'

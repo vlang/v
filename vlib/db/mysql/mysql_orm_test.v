@@ -128,6 +128,34 @@ fn test_mysql_orm() {
 		assert age == 101
 	}
 
+	sum_res := db.select(orm.SelectConfig{
+		table:           table
+		aggregate_kind:  .sum
+		aggregate_field: 'age'
+		fields:          ['age']
+		types:           [typeof[int]().idx]
+	}, orm.QueryData{}, orm.QueryData{}) or { panic(err) }
+	assert sum_res.len == 1
+	assert sum_res[0].len == 1
+	assert sum_res[0][0] is int
+	if sum_res[0][0] is int {
+		assert sum_res[0][0] == 101
+	}
+
+	avg_res := db.select(orm.SelectConfig{
+		table:           table
+		aggregate_kind:  .avg
+		aggregate_field: 'age'
+		fields:          ['age']
+		types:           [typeof[f64]().idx]
+	}, orm.QueryData{}, orm.QueryData{}) or { panic(err) }
+	assert avg_res.len == 1
+	assert avg_res[0].len == 1
+	assert avg_res[0][0] is f64
+	if avg_res[0][0] is f64 {
+		assert avg_res[0][0] == 101.0
+	}
+
 	/** test orm sql type
 	* - verify if all type create by attribute sql_type has created
 	*/

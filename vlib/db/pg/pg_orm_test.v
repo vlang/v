@@ -110,17 +110,17 @@ fn test_pg_orm() {
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:      table
-		is_count:   false
-		has_where:  true
-		has_order:  false
-		order:      ''
-		order_type: .asc
-		has_limit:  false
-		primary:    'id'
-		has_offset: false
-		fields:     ['id', 'name', 'age']
-		types:      [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		table:          table
+		aggregate_kind: .none
+		has_where:      true
+		has_order:      false
+		order:          ''
+		order_type:     .asc
+		has_limit:      false
+		primary:        'id'
+		has_offset:     false
+		fields:         ['id', 'name', 'age']
+		types:          [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.Primitive('Louis'), orm.Primitive(101)]
