@@ -5,6 +5,35 @@
 // Ported to V from Go's crypto/internal/fips140/mldsa.
 module mldsa
 
+pub enum Kind {
+	ml_dsa_44
+	ml_dsa_65
+	ml_dsa_87
+}
+
+fn (k Kind) params() Params {
+	return match k {
+		.ml_dsa_44 { params_44 }
+		.ml_dsa_65 { params_65 }
+		.ml_dsa_87 { params_87 }
+	}
+}
+
+pub fn (k Kind) public_key_size() int {
+	return pub_key_size(k.params())
+}
+
+pub fn (k Kind) signature_size() int {
+	return sig_size(k.params())
+}
+
+@[params]
+pub struct SignerOpts {
+pub:
+	context       string
+	deterministic bool
+}
+
 struct Params {
 	k      int
 	l      int

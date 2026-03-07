@@ -42,11 +42,26 @@ pub struct PublicKey {
 	tr  [64]u8
 }
 
+pub fn PrivateKey.generate(kind Kind) !PrivateKey {
+	return new_private_key(slice_to_32(rand.read(32)!), kind.params())
+}
+
+pub fn PrivateKey.from_seed(seed []u8, kind Kind) !PrivateKey {
+	if seed.len != 32 {
+		return error('invalid seed length')
+	}
+	return new_private_key(slice_to_32(seed), kind.params())
+}
+
+pub fn PublicKey.from_bytes(raw []u8, kind Kind) !PublicKey {
+	return new_public_key(raw, kind.params())
+}
+
 pub fn (sk &PrivateKey) public_key() &PublicKey {
 	return &sk.pk
 }
 
-pub fn (sk &PrivateKey) bytes() []u8 {
+pub fn (sk &PrivateKey) seed() []u8 {
 	mut s := []u8{len: 32}
 	for i in 0 .. 32 {
 		s[i] = sk.seed[i]
@@ -54,7 +69,7 @@ pub fn (sk &PrivateKey) bytes() []u8 {
 	return s
 }
 
-pub fn (sk &PrivateKey) sk_bytes() []u8 {
+pub fn (sk &PrivateKey) bytes() []u8 {
 	return sk_encode(sk.pk.raw[..32], sk.k, sk.pk.tr, sk.s1, sk.s2, sk.t0, sk.pk.p)
 }
 
@@ -68,6 +83,17 @@ pub fn (sk &PrivateKey) equal(other &PrivateKey) bool {
 	return sk.pk.p == other.pk.p && subtle.constant_time_compare(a, b) == 1
 }
 
+pub fn (sk &PrivateKey) sign(msg []u8, opts SignerOpts) ![]u8 {
+	if opts.context.len > 255 {
+		return error('context too long')
+	}
+	mu := compute_mu(sk.pk.tr[..], msg, opts.context)
+	if opts.deterministic {
+		return sign_internal(sk, mu, [32]u8{})
+	}
+	return sign_internal(sk, mu, slice_to_32(rand.read(32)!))
+}
+
 pub fn (pk &PublicKey) bytes() []u8 {
 	return pk.raw.clone()
 }
@@ -76,51 +102,19 @@ pub fn (pk &PublicKey) equal(other &PublicKey) bool {
 	return pk.p == other.p && subtle.constant_time_compare(pk.raw, other.raw) == 1
 }
 
-pub fn generate_key_44() !PrivateKey {
-	return generate_key(params_44)
-}
-
-pub fn generate_key_65() !PrivateKey {
-	return generate_key(params_65)
-}
-
-pub fn generate_key_87() !PrivateKey {
-	return generate_key(params_87)
-}
-
-fn generate_key(p Params) !PrivateKey {
-	return new_private_key(slice_to_32(rand.read(32)!), p)
-}
-
-pub fn new_private_key_44(seed []u8) !PrivateKey {
-	return new_private_key_from_seed(seed, params_44)
-}
-
-pub fn new_private_key_65(seed []u8) !PrivateKey {
-	return new_private_key_from_seed(seed, params_65)
-}
-
-pub fn new_private_key_87(seed []u8) !PrivateKey {
-	return new_private_key_from_seed(seed, params_87)
-}
-
-fn new_private_key_from_seed(seed []u8, p Params) !PrivateKey {
-	if seed.len != 32 {
-		return error('invalid seed length')
+pub fn (pk &PublicKey) verify(msg []u8, sig []u8, opts SignerOpts) !bool {
+	if opts.context.len > 255 {
+		return error('context too long')
 	}
-	return new_private_key(slice_to_32(seed), p)
+	mu := compute_mu(pk.tr[..], msg, opts.context)
+	return verify_internal(pk, mu, sig)
 }
 
-pub fn new_public_key_44(pk []u8) !PublicKey {
-	return new_public_key(pk, params_44)
-}
-
-pub fn new_public_key_65(pk []u8) !PublicKey {
-	return new_public_key(pk, params_65)
-}
-
-pub fn new_public_key_87(pk []u8) !PublicKey {
-	return new_public_key(pk, params_87)
+pub fn (pk &PublicKey) verify_mu(mu []u8, sig []u8) !bool {
+	if mu.len != 64 {
+		return error('mu must be exactly 64 bytes')
+	}
+	return verify_internal(pk, slice_to_64(mu), sig)
 }
 
 fn new_private_key(seed [32]u8, p Params) PrivateKey {
@@ -202,22 +196,6 @@ fn new_public_key(raw []u8, p Params) !PublicKey {
 		t1:  t1_hat[..k].clone()
 		tr:  tr
 	}
-}
-
-pub fn sign(sk &PrivateKey, msg []u8, context string) ![]u8 {
-	if context.len > 255 {
-		return error('context too long')
-	}
-	mu := compute_mu(sk.pk.tr[..], msg, context)
-	return sign_internal(sk, mu, slice_to_32(rand.read(32)!))
-}
-
-pub fn sign_deterministic(sk &PrivateKey, msg []u8, context string) ![]u8 {
-	if context.len > 255 {
-		return error('context too long')
-	}
-	mu := compute_mu(sk.pk.tr[..], msg, context)
-	return sign_internal(sk, mu, [32]u8{})
 }
 
 fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
@@ -351,21 +329,6 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		return sig_encode(ch, z, h, p)
 	}
 	return []u8{}
-}
-
-pub fn verify(pk &PublicKey, msg []u8, sig []u8, context string) !bool {
-	if context.len > 255 {
-		return error('context too long')
-	}
-	mu := compute_mu(pk.tr[..], msg, context)
-	return verify_internal(pk, mu, sig)
-}
-
-pub fn verify_with_mu(pk &PublicKey, mu []u8, sig []u8) !bool {
-	if mu.len != 64 {
-		return error('mu must be exactly 64 bytes')
-	}
-	return verify_internal(pk, slice_to_64(mu), sig)
 }
 
 fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
