@@ -3,6 +3,10 @@
 // license that can be found in the LICENSE file.
 //
 // Ported to V from Go's crypto/internal/fips140/mldsa.
+
+// ML-DSA (Module-Lattice-Based Digital Signature Algorithm) per FIPS 204
+// https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf
+
 module mldsa
 
 import crypto.rand
@@ -42,6 +46,7 @@ pub struct PublicKey {
 	tr  [64]u8
 }
 
+// algo. 1: ML-DSA.KeyGen (s. 5.1)
 pub fn PrivateKey.generate(kind Kind) !PrivateKey {
 	return new_private_key(slice_to_32(rand.read(32)!), kind.params())
 }
@@ -83,6 +88,7 @@ pub fn (sk &PrivateKey) equal(other &PrivateKey) bool {
 	return sk.pk.p == other.pk.p && subtle.constant_time_compare(a, b) == 1
 }
 
+// algo. 2: ML-DSA.Sign (s. 5.2)
 pub fn (sk &PrivateKey) sign(msg []u8, opts SignerOpts) ![]u8 {
 	if opts.context.len > 255 {
 		return error('context too long')
@@ -102,6 +108,7 @@ pub fn (pk &PublicKey) equal(other &PublicKey) bool {
 	return pk.p == other.p && subtle.constant_time_compare(pk.raw, other.raw) == 1
 }
 
+// algo. 3: ML-DSA.Verify (s. 5.3)
 pub fn (pk &PublicKey) verify(msg []u8, sig []u8, opts SignerOpts) !bool {
 	if opts.context.len > 255 {
 		return error('context too long')
@@ -117,6 +124,7 @@ pub fn (pk &PublicKey) verify_mu(mu []u8, sig []u8) !bool {
 	return verify_internal(pk, slice_to_64(mu), sig)
 }
 
+// algo. 6: ML-DSA.KeyGen_internal (s. 6.1)
 fn new_private_key(seed [32]u8, p Params) PrivateKey {
 	k, l := p.k, p.l
 
@@ -174,10 +182,10 @@ fn new_private_key(seed [32]u8, p Params) PrivateKey {
 			t1:  t1_hat
 			tr:  tr
 		}
-		s1: s1
-		s2: s2
-		t0: t0
-		k:  k_arr
+		s1:   s1
+		s2:   s2
+		t0:   t0
+		k:    k_arr
 	}
 }
 
@@ -198,6 +206,7 @@ fn new_public_key(raw []u8, p Params) !PublicKey {
 	}
 }
 
+// algo. 2, lines 10-11: M' = 0x00 || |ctx| || ctx || M; mu = H(tr || M', 64)
 fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
 	mut h := sha3.new_shake256()
 	h.write(tr)
@@ -208,6 +217,7 @@ fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
 	return slice_to_64(h.read(64))
 }
 
+// algo. 7: ML-DSA.Sign_internal (s. 6.2)
 fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 	p := sk.pk.p
 	k, l := p.k, p.l
@@ -222,6 +232,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 	gamma2 := (q - 1) / u32(p.gamma2)
 	gamma2_beta := gamma2 - beta
 
+	// line 7: rho'' = H(K || rnd || mu, 64)
 	mut h_nonce := sha3.new_shake256()
 	h_nonce.write(sk.k[..])
 	h_nonce.write(random[..])
@@ -230,8 +241,9 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 
 	mut kappa := 0
 
-	// rejection sampling loop
+	// lines 10-32: rejection sampling loop
 	for {
+		// line 11: y = ExpandMask(rho'', kappa) (algo. 34)
 		mut y := []RingElement{len: l}
 		for r in 0 .. l {
 			counter := [u8(kappa & 0xff), u8(kappa >> 8)]
@@ -244,7 +256,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			y[r] = bit_unpack(v_bytes, p)
 		}
 
-		// w = INTT(A_hat * NTT(y))
+		// line 12: w = NTT^-1(A_hat * NTT(y))
 		mut y_hat := []NttElement{len: l}
 		for i in 0 .. l {
 			y_hat[i] = ntt(y[i])
@@ -258,6 +270,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			w[i] = inverse_ntt(w_hat)
 		}
 
+		// line 13-14: w1 = HighBits(w); c_tilde = H(mu || w1Encode(w1), lambda/4)
 		mut h_ch := sha3.new_shake256()
 		h_ch.write(mu[..])
 		for i in 0 .. k {
@@ -265,9 +278,10 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		}
 		ch := h_ch.read(p.lambda / 4)
 
+		// line 15-16: c = SampleInBall(c_tilde); c_hat = NTT(c)
 		c := ntt(sample_in_ball(ch, p))
 
-		// z = y + c*s1
+		// lines 17-20: cs1 = NTT^-1(c_hat * s1_hat); z = y + cs1
 		mut cs1 := []RingElement{len: l}
 		for i in 0 .. l {
 			cs1[i] = inverse_ntt(ntt_mul(c, s1[i]))
@@ -277,6 +291,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			cs2[i] = inverse_ntt(ntt_mul(c, s2[i]))
 		}
 
+		// line 23: ||z||_inf >= gamma1 - beta
 		mut z := []RingElement{len: l}
 		mut reject := false
 		for i in 0 .. l {
@@ -290,6 +305,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			continue
 		}
 
+		// line 23: ||r0||_inf >= gamma2 - beta
 		reject = false
 		for i in 0 .. k {
 			r0 := poly_sub_ring(w[i], cs2[i])
@@ -302,6 +318,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			continue
 		}
 
+		// line 25, 28: ct0 = NTT^-1(c_hat * t0_hat); ||ct0||_inf >= gamma2
 		mut ct0 := []RingElement{len: k}
 		reject = false
 		for i in 0 .. k {
@@ -315,6 +332,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			continue
 		}
 
+		// line 26, 28: h = MakeHint(-ct0, w - cs2 + ct0); count(h) > omega
 		mut count1s := 0
 		mut h := [][256]u8{len: k, init: [256]u8{}}
 		for i in 0 .. k {
@@ -326,11 +344,12 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 			continue
 		}
 
-		return sig_encode(ch, z, h, p)
+		return sig_encode(ch, z, h, p) // line 33: sigEncode(c_tilde, z, h)
 	}
 	return []u8{}
 }
 
+// algo. 8: ML-DSA.Verify_internal (s. 6.3)
 fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 	p := pk.p
 	k, l := p.k, p.l
@@ -345,7 +364,7 @@ fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 
 	c := ntt(sample_in_ball(ch, p))
 
-	// w = A_hat * NTT(z) - NTT(c) * NTT(t1 * 2^d)
+	// line 9: w'_approx = NTT^-1(A_hat * NTT(z) - NTT(c) * NTT(t1 * 2^d))
 	mut z_hat := []NttElement{len: l}
 	for i in 0 .. l {
 		z_hat[i] = ntt(z[i])
@@ -360,11 +379,13 @@ fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 		w[i] = inverse_ntt(w_hat)
 	}
 
+	// line 10: w'1 = UseHint(h, w'_approx)
 	mut w1 := [][256]u8{len: k, init: [256]u8{}}
 	for i in 0 .. k {
 		w1[i] = use_hint(w[i], h[i], p)
 	}
 
+	// line 12: c_tilde' = H(mu || w1Encode(w'1), lambda/4)
 	mut h_ch := sha3.new_shake256()
 	h_ch.write(mu[..])
 	for i in 0 .. k {
@@ -372,6 +393,7 @@ fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 	}
 	computed_ch := h_ch.read(p.lambda / 4)
 
+	// line 13: ||z||_inf < gamma1 - beta and c_tilde == c_tilde'
 	for i in 0 .. l {
 		if coefficients_exceed_bound(z[i], gamma1_beta) {
 			return false

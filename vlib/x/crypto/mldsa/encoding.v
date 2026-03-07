@@ -8,6 +8,7 @@ module mldsa
 import crypto.internal.subtle
 import crypto.sha3
 
+// algo. 22: pkEncode (s. 7.2)
 @[direct_array_access]
 fn pk_encode(rho []u8, t1 [][]u16, p Params) []u8 {
 	mut pk := rho.clone()
@@ -30,6 +31,7 @@ fn pk_encode(rho []u8, t1 [][]u16, p Params) []u8 {
 	return pk
 }
 
+// algo. 23: pkDecode (s. 7.2)
 @[direct_array_access]
 fn pk_decode(pk []u8, p Params) !([]u8, [][]u16) {
 	expected := pub_key_size(p)
@@ -37,6 +39,7 @@ fn pk_decode(pk []u8, p Params) !([]u8, [][]u16) {
 		return error('invalid public key length')
 	}
 	rho := pk[..32].clone()
+	// avoid cloning on each iteration
 	mut data := unsafe { pk[32..] }
 	mut t1 := [][]u16{len: p.k, init: []u16{len: n}}
 	for r in 0 .. p.k {
@@ -76,6 +79,7 @@ fn compute_t1_hat(t1 [][]u16) []NttElement {
 	return result
 }
 
+// algo. 35: Power2Round (s. 7.4)
 fn power2_round(r FieldElement) (u16, FieldElement) {
 	rr_ := field_from_montgomery(r)
 	r1 := (rr_ + (1 << 12) - 1) >> d
@@ -83,6 +87,7 @@ fn power2_round(r FieldElement) (u16, FieldElement) {
 	return u16(r1), r0
 }
 
+// algo. 37: HighBits (s. 7.4)
 @[direct_array_access]
 fn high_bits(r RingElement, p Params) [256]u8 {
 	mut w := [256]u8{}
@@ -118,6 +123,7 @@ fn high_bits_88(x u32) u8 {
 	return u8(r1)
 }
 
+// algo. 36: Decompose, gamma2 = (q-1)/32 (s. 7.4)
 fn decompose_32(r FieldElement) (u8, i32) {
 	x := field_from_montgomery(r)
 	r1 := high_bits_32(x)
@@ -126,6 +132,7 @@ fn decompose_32(r FieldElement) (u8, i32) {
 	return r1, r0_adj
 }
 
+// algo. 36: Decompose, gamma2 = (q-1)/88 (s. 7.4)
 fn decompose_88(r FieldElement) (u8, i32) {
 	x := field_from_montgomery(r)
 	r1 := high_bits_88(x)
@@ -159,6 +166,7 @@ fn low_bits_exceed_bound(w RingElement, bound u32, p Params) bool {
 	return false
 }
 
+// algo. 40: UseHint (s. 7.4)
 @[direct_array_access]
 fn use_hint(r RingElement, h [256]u8, p Params) [256]u8 {
 	mut w := [256]u8{}
@@ -212,6 +220,7 @@ fn use_hint_88(r FieldElement, hint u8) u8 {
 	return r1
 }
 
+// algo. 39: MakeHint (s. 7.4)
 @[direct_array_access]
 fn make_hint(ct0 RingElement, w RingElement, cs2 RingElement, p Params) ([256]u8, int) {
 	mut h := [256]u8{}
@@ -250,6 +259,7 @@ fn make_hint_88(ct0 FieldElement, w FieldElement, cs2 FieldElement) u8 {
 	return u8(1 - subtle.constant_time_byte_eq(v1, r1))
 }
 
+// algo. 28: w1Encode (s. 7.2)
 @[direct_array_access]
 fn w1_encode(w [256]u8, p Params) []u8 {
 	match p.gamma2 {
@@ -275,6 +285,7 @@ fn w1_encode(w [256]u8, p Params) []u8 {
 	}
 }
 
+// algo. 26: sigEncode (s. 7.2)
 fn sig_encode(ch []u8, z []RingElement, h [][256]u8, p Params) []u8 {
 	mut sig := ch.clone()
 	for i in 0 .. z.len {
@@ -284,6 +295,7 @@ fn sig_encode(ch []u8, z []RingElement, h [][256]u8, p Params) []u8 {
 	return sig
 }
 
+// algo. 27: sigDecode (s. 7.2)
 @[direct_array_access]
 fn sig_decode(sig []u8, p Params) !([]u8, []RingElement, [][256]u8) {
 	expected := sig_size(p)
@@ -303,6 +315,7 @@ fn sig_decode(sig []u8, p Params) !([]u8, []RingElement, [][256]u8) {
 	return ch, z, h
 }
 
+// algo. 17: BitPack (s. 7.1)
 fn bit_pack(r RingElement, p Params) []u8 {
 	match p.gamma1 {
 		17 { return bit_pack_18(r) }
@@ -355,6 +368,7 @@ fn bit_pack_20(r RingElement) []u8 {
 	return v
 }
 
+// algo. 19: BitUnpack (s. 7.1)
 fn bit_unpack(v []u8, p Params) RingElement {
 	match p.gamma1 {
 		17 { return bit_unpack_18(v) }
@@ -395,6 +409,7 @@ fn bit_unpack_20(v []u8) RingElement {
 	return r
 }
 
+// algo. 20: HintBitPack (s. 7.2)
 @[direct_array_access]
 fn hint_encode(h [][256]u8, p Params) []u8 {
 	mut out := []u8{len: p.omega + p.k}
@@ -411,6 +426,7 @@ fn hint_encode(h [][256]u8, p Params) []u8 {
 	return out
 }
 
+// algo. 21: HintBitUnpack (s. 7.2)
 @[direct_array_access]
 fn hint_decode(y []u8, p Params) ![][256]u8 {
 	if y.len != p.omega + p.k {
@@ -477,7 +493,7 @@ fn bits_len(x u32) int {
 	return n_
 }
 
-// rho (32) || K (32) || tr (64) || s1 || s2 || t0
+// algo. 24: skEncode (s. 7.2)
 fn sk_encode(rho []u8, capital_k [32]u8, tr [64]u8, s1 []NttElement, s2 []NttElement, t0 []NttElement, p Params) []u8 {
 	mut out := []u8{}
 	out << rho[..32]

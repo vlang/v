@@ -5,6 +5,7 @@
 // Ported to V from Go's crypto/internal/fips140/mldsa.
 module mldsa
 
+// s. 4, table 1
 pub enum Kind {
 	ml_dsa_44
 	ml_dsa_65
@@ -45,6 +46,7 @@ struct Params {
 	omega  int
 }
 
+// s. 4, table 1
 const params_44 = Params{
 	k:      4
 	l:      4
@@ -80,10 +82,12 @@ const params_87 = Params{
 
 pub const seed_size = 32
 
+// s. 4, table 2
 pub const public_key_size_44 = 32 + 4 * n * 10 / 8
 pub const public_key_size_65 = 32 + 6 * n * 10 / 8
 pub const public_key_size_87 = 32 + 8 * n * 10 / 8
 
+// s. 4, table 2
 pub const signature_size_44 = 128 / 4 + 4 * n * (17 + 1) / 8 + 80 + 4
 pub const signature_size_65 = 192 / 4 + 5 * n * (19 + 1) / 8 + 55 + 6
 pub const signature_size_87 = 256 / 4 + 7 * n * (19 + 1) / 8 + 75 + 8

@@ -7,9 +7,10 @@ module mldsa
 
 import crypto.internal.subtle
 
+// s. 2.3, appendix a
 const q = u32(8380417) // 2^23 - 2^13 + 1
 const rr = u32(2365951) // R^2 mod q (R = 2^32)
-const q_neg_inv = u32(4236238847) // -q^-1 mod R
+const q_neg_inv = u32(4236238847) // -q^-1 mod R (appendix a: QINV = 58728449)
 const mont_one = u32(4193792) // R mod q
 const mont_minus_one = u32(4186625) // (q-1)*R mod q
 const n = 256
@@ -65,6 +66,7 @@ fn field_montgomery_mul(a FieldElement, b FieldElement) FieldElement {
 	return field_montgomery_reduce(x)
 }
 
+// algo. 49: MontgomeryReduce
 fn field_montgomery_reduce(x u64) FieldElement {
 	t := u32(x) * q_neg_inv
 	u_ := (x + u64(t) * u64(q)) >> 32
@@ -113,6 +115,7 @@ fn poly_sub_ntt(a NttElement, b NttElement) NttElement {
 	return s
 }
 
+// algo. 45: MultiplyNTT
 fn ntt_mul(a NttElement, b NttElement) NttElement {
 	mut p := NttElement{}
 	for i in 0 .. n {
