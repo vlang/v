@@ -43,6 +43,15 @@ struct SigVerExpected {
 	test_groups []SigVerResultGroup @[json: 'testGroups']
 }
 
+fn sigver_kind_for_param_set(param_set string) !Kind {
+	return match param_set {
+		'ML-DSA-44' { .ml_dsa_44 }
+		'ML-DSA-65' { .ml_dsa_65 }
+		'ML-DSA-87' { .ml_dsa_87 }
+		else { error('mldsa: unknown parameter set: ${param_set}') }
+	}
+}
+
 fn load_sigver_vectors() !(SigVerPrompt, map[int]bool) {
 	dir := os.dir(@FILE)
 	prompt_raw := os.read_file(os.join_path(dir, 'testdata', 'sigver_prompt.json'))!
@@ -59,15 +68,6 @@ fn load_sigver_vectors() !(SigVerPrompt, map[int]bool) {
 	return prompt, results
 }
 
-fn new_public_key_for_param_set(param_set string, pk_bytes []u8) !PublicKey {
-	return match param_set {
-		'ML-DSA-44' { new_public_key_44(pk_bytes)! }
-		'ML-DSA-65' { new_public_key_65(pk_bytes)! }
-		'ML-DSA-87' { new_public_key_87(pk_bytes)! }
-		else { error('mldsa: unknown parameter set: ${param_set}') }
-	}
-}
-
 // run_sigver_groups runs signature verification tests for groups matching the filter.
 // The verify_fn callback receives (pub_key, test, group) and returns the verification result.
 fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVerGroup) bool, verify_fn fn (&PublicKey, SigVerTest, SigVerGroup) !bool, label string) {
@@ -77,13 +77,16 @@ fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVe
 		if !filter(g) {
 			continue
 		}
+		kind := sigver_kind_for_param_set(g.parameter_set) or {
+			panic('unknown parameter set: ${g.parameter_set}')
+		}
 		for t in g.tests {
 			pk_bytes := hex.decode(t.pk) or { panic('tcId ${t.tc_id}: bad pk hex: ${err}') }
 			sig_bytes := hex.decode(t.signature) or {
 				panic('tcId ${t.tc_id}: bad signature hex: ${err}')
 			}
-			pub_key := new_public_key_for_param_set(g.parameter_set, pk_bytes) or {
-				panic('tcId ${t.tc_id}: new_public_key failed: ${err}')
+			pub_key := PublicKey.from_bytes(pk_bytes, kind) or {
+				panic('tcId ${t.tc_id}: PublicKey.from_bytes failed: ${err}')
 			}
 
 			got := verify_fn(&pub_key, t, g) or { false }
@@ -107,7 +110,7 @@ fn test_nist_acvp_sigver_external_pure() {
 			msg_bytes := hex.decode(t.msg)!
 			ctx_bytes := hex.decode(t.context)!
 			sig_bytes := hex.decode(t.signature)!
-			return verify(pub_key, msg_bytes, sig_bytes, ctx_bytes.bytestr())
+			return pub_key.verify(msg_bytes, sig_bytes, context: ctx_bytes.bytestr())
 		},
 		'external-pure')
 }
@@ -123,7 +126,7 @@ fn test_nist_acvp_sigver_internal_mu() {
 		fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
 			mu_bytes := hex.decode(t.mu)!
 			sig_bytes := hex.decode(t.signature)!
-			return verify_with_mu(pub_key, mu_bytes, sig_bytes)
+			return pub_key.verify_mu(mu_bytes, sig_bytes)
 		},
 		'internal-mu')
 }
@@ -143,7 +146,7 @@ fn test_nist_acvp_sigver_internal_msg() {
 			h_mu.write(pub_key.tr[..])
 			h_mu.write(msg_bytes)
 			mu_bytes := h_mu.read(64)
-			return verify_with_mu(pub_key, mu_bytes, sig_bytes)
+			return pub_key.verify_mu(mu_bytes, sig_bytes)
 		},
 		'internal-msg')
 }
