@@ -37,6 +37,7 @@ pub fn (mut s Shake) write(data []u8) {
 		return
 	}
 
+	// avoid cloning on each iteration
 	mut remaining := unsafe { data[..] }
 
 	if s.input_buffer.len != 0 {
