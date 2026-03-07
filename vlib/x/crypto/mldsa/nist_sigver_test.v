@@ -2,14 +2,13 @@ module mldsa
 
 // NIST ACVP sigver test vectors (FIPS 204).
 // groups: 1,3,5 external pure; 2,4,6 preHash (skipped); 7,9,11 internal mu; 8,10,12 internal msg.
-
 import encoding.hex
 import json
 import os
 import crypto.sha3
 
 struct SigVerTest {
-	tc_id     int    @[json: 'tcId']
+	tc_id     int @[json: 'tcId']
 	pk        string
 	msg       string @[json: 'message']
 	mu        string
@@ -18,10 +17,10 @@ struct SigVerTest {
 }
 
 struct SigVerGroup {
-	tg_id               int           @[json: 'tgId']
-	parameter_set       string        @[json: 'parameterSet']
-	signature_interface string        @[json: 'signatureInterface']
-	pre_hash            string        @[json: 'preHash']
+	tg_id               int    @[json: 'tgId']
+	parameter_set       string @[json: 'parameterSet']
+	signature_interface string @[json: 'signatureInterface']
+	pre_hash            string @[json: 'preHash']
 	tests               []SigVerTest
 }
 
@@ -35,7 +34,7 @@ struct SigVerResult {
 }
 
 struct SigVerResultGroup {
-	tg_id int              @[json: 'tgId']
+	tg_id int @[json: 'tgId']
 	tests []SigVerResult
 }
 
@@ -102,51 +101,40 @@ fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVe
 fn test_nist_acvp_sigver_external_pure() {
 	prompt, results := load_sigver_vectors() or { panic(err) }
 
-	run_sigver_groups(prompt, results,
-		fn (g SigVerGroup) bool {
-			return g.signature_interface == 'external' && g.pre_hash == 'pure'
-		},
-		fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
-			msg_bytes := hex.decode(t.msg)!
-			ctx_bytes := hex.decode(t.context)!
-			sig_bytes := hex.decode(t.signature)!
-			return pub_key.verify(msg_bytes, sig_bytes, context: ctx_bytes.bytestr())
-		},
-		'external-pure')
+	run_sigver_groups(prompt, results, fn (g SigVerGroup) bool {
+		return g.signature_interface == 'external' && g.pre_hash == 'pure'
+	}, fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
+		msg_bytes := hex.decode(t.msg)!
+		ctx_bytes := hex.decode(t.context)!
+		sig_bytes := hex.decode(t.signature)!
+		return pub_key.verify(msg_bytes, sig_bytes, context: ctx_bytes.bytestr())
+	}, 'external-pure')
 }
 
 fn test_nist_acvp_sigver_internal_mu() {
 	prompt, results := load_sigver_vectors() or { panic(err) }
 
-	run_sigver_groups(prompt, results,
-		fn (g SigVerGroup) bool {
-			return g.signature_interface == 'internal' && g.tests.len > 0
-				&& g.tests[0].mu != ''
-		},
-		fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
-			mu_bytes := hex.decode(t.mu)!
-			sig_bytes := hex.decode(t.signature)!
-			return pub_key.verify_mu(mu_bytes, sig_bytes)
-		},
-		'internal-mu')
+	run_sigver_groups(prompt, results, fn (g SigVerGroup) bool {
+		return g.signature_interface == 'internal' && g.tests.len > 0 && g.tests[0].mu != ''
+	}, fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
+		mu_bytes := hex.decode(t.mu)!
+		sig_bytes := hex.decode(t.signature)!
+		return pub_key.verify_mu(mu_bytes, sig_bytes)
+	}, 'internal-mu')
 }
 
 fn test_nist_acvp_sigver_internal_msg() {
 	prompt, results := load_sigver_vectors() or { panic(err) }
 
-	run_sigver_groups(prompt, results,
-		fn (g SigVerGroup) bool {
-			return g.signature_interface == 'internal' && g.tests.len > 0
-				&& g.tests[0].mu == ''
-		},
-		fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
-			msg_bytes := hex.decode(t.msg)!
-			sig_bytes := hex.decode(t.signature)!
-			mut h_mu := sha3.new_shake256()
-			h_mu.write(pub_key.tr[..])
-			h_mu.write(msg_bytes)
-			mu_bytes := h_mu.read(64)
-			return pub_key.verify_mu(mu_bytes, sig_bytes)
-		},
-		'internal-msg')
+	run_sigver_groups(prompt, results, fn (g SigVerGroup) bool {
+		return g.signature_interface == 'internal' && g.tests.len > 0 && g.tests[0].mu == ''
+	}, fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
+		msg_bytes := hex.decode(t.msg)!
+		sig_bytes := hex.decode(t.signature)!
+		mut h_mu := sha3.new_shake256()
+		h_mu.write(pub_key.tr[..])
+		h_mu.write(msg_bytes)
+		mu_bytes := h_mu.read(64)
+		return pub_key.verify_mu(mu_bytes, sig_bytes)
+	}, 'internal-msg')
 }
