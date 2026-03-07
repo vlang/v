@@ -5,7 +5,7 @@
 // Ported to V from Go's crypto/internal/fips140/mldsa.
 module mldsa
 
-// zeta^BitRev8(k) mod q in montgomery domain
+// appendix b: zeta^BitRev8(k) mod q in montgomery domain
 const zetas = [u32(4193792), 25847, 5771523, 7861508, 237124, 7602457, 7504169, 466468, 1826347,
 	2353451, 8021166, 6288512, 3119733, 5495562, 3111497, 2680103, 2725464, 1024112, 7300517,
 	3585928, 7830929, 7260833, 2619752, 6271868, 6262231, 4520680, 6980856, 5102745, 1757237,
@@ -33,6 +33,7 @@ const zetas = [u32(4193792), 25847, 5771523, 7861508, 237124, 7602457, 7504169, 
 	4546524, 5441381, 6144432, 7959518, 6094090, 183443, 7403526, 1612842, 4834730, 7826001,
 	3919660, 8332111, 7018208, 3937738, 1400424, 7534263, 1976782]!
 
+// algo. 41: NTT (s. 7.5)
 @[direct_array_access]
 fn ntt(f_ RingElement) NttElement {
 	mut f := f_
@@ -108,6 +109,7 @@ fn ntt(f_ RingElement) NttElement {
 	return NttElement(f)
 }
 
+// algo. 42: NTT^-1 (s. 7.5)
 @[direct_array_access]
 fn inverse_ntt(f_ NttElement) RingElement {
 	mut f := f_
@@ -181,7 +183,7 @@ fn inverse_ntt(f_ NttElement) RingElement {
 		len2 *= 2
 	}
 
-	// multiply by 256^-1 * R mod q = 16382
+	// algo. 42, line 21: f = 8347681 = 256^-1 mod q; in montgomery: 16382
 	for i in 0 .. 256 {
 		f[i] = field_montgomery_mul(f[i], 16382)
 	}

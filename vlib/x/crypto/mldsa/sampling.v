@@ -7,6 +7,7 @@ module mldsa
 
 import crypto.sha3
 
+// algo. 30: RejNTTPoly (s. 7.3)
 @[direct_array_access]
 fn sample_ntt(rho []u8, s u8, r u8) NttElement {
 	mut g := sha3.new_shake128()
@@ -33,6 +34,7 @@ fn sample_ntt(rho []u8, s u8, r u8) NttElement {
 	return a
 }
 
+// algo. 31: RejBoundedPoly (s. 7.3)
 @[direct_array_access]
 fn sample_bounded_poly(rho []u8, r u8, p Params) RingElement {
 	mut h := sha3.new_shake256()
@@ -73,6 +75,7 @@ fn sample_bounded_poly(rho []u8, r u8, p Params) RingElement {
 	return a
 }
 
+// algo. 29: SampleInBall (s. 7.3)
 @[direct_array_access]
 fn sample_in_ball(rho []u8, p Params) RingElement {
 	mut h := sha3.new_shake256()
@@ -98,6 +101,7 @@ fn sample_in_ball(rho []u8, p Params) RingElement {
 	return c
 }
 
+// algo. 15: CoeffFromHalfByte (s. 7.1)
 fn coeff_from_half_byte(b u8, p Params) (FieldElement, bool) {
 	match p.eta {
 		2 {
@@ -120,6 +124,7 @@ fn coeff_from_half_byte(b u8, p Params) (FieldElement, bool) {
 	}
 }
 
+// algo. 32: ExpandA (s. 7.3)
 fn compute_matrix_a(rho []u8, p Params) []NttElement {
 	mut a := []NttElement{len: p.k * p.l}
 	for r in 0 .. p.k {
