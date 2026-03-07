@@ -10,6 +10,8 @@ pub enum Arch {
 	i386
 	s390x
 	ppc64le
+	ppc64be
+	ppc32
 	loongarch64
 	js_node
 	js_browser
@@ -59,6 +61,12 @@ pub fn arch_from_string(arch_str string) !Arch {
 		}
 		'ppc64le' {
 			return .ppc64le
+		}
+		'ppc64be' {
+			return .ppc64be
+		}
+		'ppc32' {
+			return .ppc32
 		}
 		'js', 'js_node' {
 			return .js_node

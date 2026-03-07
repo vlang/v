@@ -53,6 +53,8 @@ pub enum Language {
 	rv32  // 32-bit risc-v
 	s390x
 	ppc64le
+	ppc64be
+	ppc32
 	loongarch64
 	wasm32
 }
@@ -83,6 +85,12 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		}
 		.ppc64le {
 			.ppc64le
+		}
+		.ppc64be {
+			.ppc64be
+		}
+		.ppc32 {
+			.ppc32
 		}
 		.loongarch64 {
 			.loongarch64
