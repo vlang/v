@@ -13,7 +13,7 @@ It currently implements:
 - Context strings (up to 255 bytes)
 - Three parameter sets: ML-DSA-44, ML-DSA-65, ML-DSA-87 (NIST security levels 2, 3, 5)
 
-Even though this is completely experimental and **non-production ready**, the implmentation is verified against NIST ACVP test vectors for both keygen and signature verification. See [`mldsa_keygen_test.v`](./mldsa_keygen_test.v) and [`mldsa_sigver_test.v`](./mldsa_sigver_test.v)
+Even though this is completely experimental and **non-production ready**, the implmentation is verified against NIST ACVP test vectors for both keygen and signature verification. See [`nist_keygen_test.v`](./nist_keygen_test.v) and [`nist_sigver_test.v`](./nist_sigver_test.v)
 
 ## Example
 
