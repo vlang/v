@@ -58,6 +58,12 @@ pub fn PrivateKey.from_seed(seed []u8, kind Kind) !PrivateKey {
 	return new_private_key(slice_to_32(seed), kind.params())
 }
 
+// from FIPS 204 semi-expanded encoding. seed() and equal() are
+// meaningless on the result — use from_seed when possible.
+pub fn PrivateKey.from_bytes(raw []u8, kind Kind) !PrivateKey {
+	return new_private_key_from_bytes(raw, kind.params())
+}
+
 pub fn PublicKey.from_bytes(raw []u8, kind Kind) !PublicKey {
 	return new_public_key(raw, kind.params())
 }
@@ -78,6 +84,7 @@ pub fn (sk &PrivateKey) bytes() []u8 {
 	return sk_encode(sk.pk.raw[..32], sk.k, sk.pk.tr, sk.s1, sk.s2, sk.t0, sk.pk.p)
 }
 
+// seed-based constant-time comparison. not meaningful for from_bytes keys.
 pub fn (sk &PrivateKey) equal(other &PrivateKey) bool {
 	mut a := []u8{len: 32}
 	mut b := []u8{len: 32}
@@ -86,6 +93,11 @@ pub fn (sk &PrivateKey) equal(other &PrivateKey) bool {
 		b[i] = other.seed[i]
 	}
 	return sk.pk.p == other.pk.p && subtle.constant_time_compare(a, b) == 1
+}
+
+// constant-time comparison of the serialized key material. slower but works for from_bytes keys.
+pub fn (sk &PrivateKey) equal_bytes(other &PrivateKey) bool {
+	return sk.pk.p == other.pk.p && subtle.constant_time_compare(sk.bytes(), other.bytes()) == 1
 }
 
 // algo. 2: ML-DSA.Sign (s. 5.2)
@@ -186,6 +198,69 @@ fn new_private_key(seed [32]u8, p Params) PrivateKey {
 		s2:   s2
 		t0:   t0
 		k:    k_arr
+	}
+}
+
+fn new_private_key_from_bytes(sk []u8, p Params) !PrivateKey {
+	k, l := p.k, p.l
+
+	rho, capital_k, tr, s1_ring, s2_ring, t0_ring := sk_decode(sk, p)!
+
+	a := compute_matrix_a(rho, p)
+
+	mut s1 := []NttElement{len: l}
+	for r in 0 .. l {
+		s1[r] = ntt(s1_ring[r])
+	}
+	mut s2 := []NttElement{len: k}
+	for r in 0 .. k {
+		s2[r] = ntt(s2_ring[r])
+	}
+	mut t0 := []NttElement{len: k}
+	for r in 0 .. k {
+		t0[r] = ntt(t0_ring[r])
+	}
+
+	// recompute t1 from rho, s1, s2 to verify consistency
+	mut t1 := [][]u16{len: k, init: []u16{len: n}}
+	for i in 0 .. k {
+		mut t_hat := s2[i]
+		for j in 0 .. l {
+			t_hat = poly_add_ntt(t_hat, ntt_mul(a[i * l + j], s1[j]))
+		}
+		t_i := inverse_ntt(t_hat)
+		for j in 0 .. n {
+			r1, r0 := power2_round(t_i[j])
+			t1[i][j] = r1
+			if r0 != t0_ring[i][j] {
+				return error('mldsa: private key inconsistent with t0')
+			}
+		}
+	}
+
+	pk_bytes := pk_encode(rho, t1, p)
+	computed_tr := compute_pk_hash(pk_bytes)
+	if computed_tr != tr {
+		return error('mldsa: private key inconsistent with public key hash')
+	}
+	t1_hat := compute_t1_hat(t1)
+
+	// use random bytes for seed since the semi-expanded format doesn't contain it
+	seed := slice_to_32(rand.read(32)!)
+
+	return PrivateKey{
+		seed: seed
+		pk:   PublicKey{
+			raw: pk_bytes
+			p:   p
+			a:   a
+			t1:  t1_hat
+			tr:  tr
+		}
+		s1:   s1
+		s2:   s2
+		t0:   t0
+		k:    capital_k
 	}
 }
 

@@ -24,6 +24,10 @@ pub fn (k Kind) public_key_size() int {
 	return pub_key_size(k.params())
 }
 
+pub fn (k Kind) private_key_size() int {
+	return priv_key_size(k.params())
+}
+
 pub fn (k Kind) signature_size() int {
 	return sig_size(k.params())
 }
@@ -94,6 +98,12 @@ pub const signature_size_87 = 256 / 4 + 7 * n * (19 + 1) / 8 + 75 + 8
 
 fn pub_key_size(p Params) int {
 	return 32 + p.k * n * 10 / 8
+}
+
+fn priv_key_size(p Params) int {
+	eta_bitlen := bits_len(u32(p.eta * 2))
+	// rho + K + tr + l*n*eta-bit s1 + k*n*eta-bit s2 + k*n*13-bit t0
+	return 32 + 32 + 64 + p.l * n * eta_bitlen / 8 + p.k * n * eta_bitlen / 8 + p.k * n * 13 / 8
 }
 
 fn sig_size(p Params) int {

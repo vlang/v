@@ -480,6 +480,41 @@ fn bit_pack_slow(r RingElement, a int, b int) []u8 {
 	return out
 }
 
+@[direct_array_access]
+fn bit_unpack_slow(v []u8, a int, b int) !RingElement {
+	bitlen := bits_len(u32(a + b))
+	if v.len != n * bitlen / 8 {
+		return error('mldsa: invalid input length for bit_unpack_slow')
+	}
+
+	mask := u32((1 << bitlen) - 1)
+	max_value := u32(a + b)
+
+	mut r := RingElement{}
+	mut acc := u32(0)
+	mut acc_bits := u32(0)
+	mut vi := 0
+
+	for i in 0 .. n {
+		for acc_bits < u32(bitlen) {
+			if vi < v.len {
+				acc |= u32(v[vi]) << acc_bits
+				vi++
+				acc_bits += 8
+			}
+		}
+		w := acc & mask
+		if w > max_value {
+			return error('mldsa: coefficient out of range')
+		}
+		r[i] = field_sub_to_montgomery(u32(b), w)
+		acc >>= u32(bitlen)
+		acc_bits -= u32(bitlen)
+	}
+
+	return r
+}
+
 fn bits_len(x u32) int {
 	if x == 0 {
 		return 0
@@ -510,4 +545,38 @@ fn sk_encode(rho []u8, capital_k [32]u8, tr [64]u8, s1 []NttElement, s2 []NttEle
 		out << bit_pack_slow(inverse_ntt(t0[i]), 4095, 4096)
 	}
 	return out
+}
+
+// algo. 25: skDecode (s. 7.2)
+fn sk_decode(sk []u8, p Params) !([]u8, [32]u8, [64]u8, []RingElement, []RingElement, []RingElement) {
+	k, l, eta := p.k, p.l, p.eta
+	if sk.len != priv_key_size(p) {
+		return error('mldsa: invalid private key size')
+	}
+	rho := sk[..32].clone()
+	capital_k := slice_to_32(sk[32..64])
+	tr := slice_to_64(sk[64..128])
+	mut offset := 128
+
+	eta_len := n * bits_len(u32(eta * 2)) / 8
+	mut s1 := []RingElement{len: l}
+	for i in 0 .. l {
+		s1[i] = bit_unpack_slow(sk[offset..offset + eta_len], eta, eta)!
+		offset += eta_len
+	}
+
+	mut s2 := []RingElement{len: k}
+	for i in 0 .. k {
+		s2[i] = bit_unpack_slow(sk[offset..offset + eta_len], eta, eta)!
+		offset += eta_len
+	}
+
+	t0_len := n * 13 / 8
+	mut t0 := []RingElement{len: k}
+	for i in 0 .. k {
+		t0[i] = bit_unpack_slow(sk[offset..offset + t0_len], 4095, 4096)!
+		offset += t0_len
+	}
+
+	return rho, capital_k, tr, s1, s2, t0
 }
