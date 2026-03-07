@@ -199,6 +199,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if os.uname().machine == 'Power Macintosh' {
 			user_darwin_ppc = true
 		}
+
+		// Mac OS 10.4 and older requires Macports legacy software to build programs
+		if user_darwin_version <= 8 {
+			ccoptions.args << '-I./thirdparty/legacy/include/LegacySupport/'
+			ccoptions.args << './thirdparty/legacy/lib/libMacportsLegacySupport.a'
+		}
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
