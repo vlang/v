@@ -282,9 +282,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else {
-				g.write('${styp} ')
+				// For function types, generate the function pointer declaration inline
+				// to avoid issues with closure-specific type names that lack typedefs
+				resolved_sym := g.table.sym(resolved_typ)
+				if resolved_sym.kind == .function && resolved_sym.info is ast.FnType
+					&& !resolved_typ.has_option_or_result() {
+					g.write_fn_ptr_decl(&resolved_sym.info, tmp)
+					g.writeln('; /* if prepend */')
+				} else {
+					g.write('${styp} ')
+					g.writeln('${tmp}; /* if prepend */')
+				}
 			}
-			g.writeln('${tmp}; /* if prepend */')
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		if g.infix_left_var_name.len > 0 {
