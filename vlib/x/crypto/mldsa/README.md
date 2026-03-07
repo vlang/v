@@ -22,20 +22,20 @@ import x.crypto.mldsa
 
 fn main() {
 	// generate a new ML-DSA-65 key pair
-	sk := mldsa.generate_key_65()!
+	sk := mldsa.PrivateKey.generate(.ml_dsa_65)!
 	pk := sk.public_key()
 
-	// sign a message (last param is an optional context string)
+	// sign a message (with an optional context string)
 	msg := 'Hello ML-DSA'.bytes()
-	sig := mldsa.sign(&sk, msg, 'my-app')!
+	sig := sk.sign(msg, context: 'my-app')!
 
 	// verify the signature with the same context
-	verified := mldsa.verify(pk, msg, sig, 'my-app')!
+	verified := pk.verify(msg, sig, context: 'my-app')!
 	assert verified // true
 
 	// deterministic signing is also available
-	sig2 := mldsa.sign_deterministic(&sk, msg, 'my-app')!
-	verified2 := mldsa.verify(pk, msg, sig2, 'my-app')!
+	sig2 := sk.sign(msg, context: 'my-app', deterministic: true)!
+	verified2 := pk.verify(msg, sig2, context: 'my-app')!
 	assert verified2 // true
 }
 ```
