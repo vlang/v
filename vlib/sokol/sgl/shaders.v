@@ -68,6 +68,52 @@ void main() {
 }
 '
 
+// Metal vertex shader source.
+const vs_source_metal = '#include <metal_stdlib>
+using namespace metal;
+
+struct VSIn {
+    float4 position [[attribute(0)]];
+    float2 texcoord0 [[attribute(1)]];
+    float4 color0 [[attribute(2)]];
+    float psize [[attribute(3)]];
+};
+
+struct VSOut {
+    float4 position [[position]];
+    float2 uv;
+    float4 color;
+    float psize [[point_size]];
+};
+
+vertex VSOut main0(VSIn in [[stage_in]], constant float4* vs_params [[buffer(0)]]) {
+    VSOut out;
+    float4x4 mvp = float4x4(vs_params[0], vs_params[1], vs_params[2], vs_params[3]);
+    float4x4 tm = float4x4(vs_params[4], vs_params[5], vs_params[6], vs_params[7]);
+    out.position = mvp * in.position;
+    out.psize = in.psize;
+    out.uv = (tm * float4(in.texcoord0, 0.0, 1.0)).xy;
+    out.color = in.color0;
+    return out;
+}
+'
+
+// Metal fragment shader source.
+const fs_source_metal = '#include <metal_stdlib>
+using namespace metal;
+
+struct FSIn {
+    float2 uv;
+    float4 color;
+    float psize [[point_size]];
+};
+
+fragment float4 main0(FSIn in [[stage_in]], texture2d<float> tex_smp [[texture(0)]],
+    sampler smp [[sampler(0)]]) {
+    return tex_smp.sample(smp, in.uv) * in.color;
+}
+'
+
 // Builds and returns the shader descriptor for the sgl shader.
 // Selects the correct shader source/bytecode based on the active graphics backend.
 fn make_shader_desc() gfx.ShaderDesc {
@@ -102,27 +148,28 @@ fn make_shader_desc() gfx.ShaderDesc {
 	backend := gfx.query_backend()
 	match backend {
 		.glcore33 {
-			desc.vs.source = vs_source_glsl410.str
-			desc.fs.source = fs_source_glsl410.str
+			desc.vs.source = &char(vs_source_glsl410.str)
+			desc.fs.source = &char(fs_source_glsl410.str)
 		}
 		.gles3 {
-			desc.vs.source = vs_source_glsl300es.str
-			desc.fs.source = fs_source_glsl300es.str
+			desc.vs.source = &char(vs_source_glsl300es.str)
+			desc.fs.source = &char(fs_source_glsl300es.str)
 		}
 		.metal_macos, .metal_ios, .metal_simulator {
-			// Metal backends - TODO: embed Metal shader bytecode
-			desc.vs.source = vs_source_glsl410.str
-			desc.fs.source = fs_source_glsl410.str
+			desc.vs.entry = c'main0'
+			desc.fs.entry = c'main0'
+			desc.vs.source = &char(vs_source_metal.str)
+			desc.fs.source = &char(fs_source_metal.str)
 		}
 		.d3d11 {
 			// D3D11 backend - TODO: embed HLSL shader bytecode
-			desc.vs.source = vs_source_glsl410.str
-			desc.fs.source = fs_source_glsl410.str
+			desc.vs.source = &char(vs_source_glsl410.str)
+			desc.fs.source = &char(fs_source_glsl410.str)
 		}
 		.wgpu {
 			// WebGPU - TODO: embed WGSL shader source
-			desc.vs.source = vs_source_glsl410.str
-			desc.fs.source = fs_source_glsl410.str
+			desc.vs.source = &char(vs_source_glsl410.str)
+			desc.fs.source = &char(fs_source_glsl410.str)
 		}
 		.dummy {
 			desc.vs.source = c''
