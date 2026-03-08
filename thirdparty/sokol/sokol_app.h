@@ -15138,8 +15138,30 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
       XNextEvent(_sapp.x11.display, &event);
       _sapp_x11_process_event(&event);
     }
+    /* Record the time before swap so we can measure how long the frame took.
+       If eglSwapBuffers / glXSwapBuffers blocks for vsync (native X11 with a
+       real GPU driver) the elapsed time will be close to a full frame period
+       and the poll below will time out immediately, adding no extra delay.
+       If swap returns without blocking (XWayland / wlroots where vblank
+       forwarding for X11 clients is unreliable) the elapsed time will be near
+       zero and poll will sleep for the remainder of the frame budget, keeping
+       CPU use low without busy-spinning. */
+    struct timespec frame_start_ts;
+    clock_gettime(_SAPP_CLOCK_MONOTONIC, &frame_start_ts);
     _sapp_linux_frame();
     XFlush(_sapp.x11.display);
+    if (XPending(_sapp.x11.display) == 0) {
+      struct timespec frame_end_ts;
+      clock_gettime(_SAPP_CLOCK_MONOTONIC, &frame_end_ts);
+      const long elapsed_ms = (frame_end_ts.tv_sec - frame_start_ts.tv_sec) * 1000L
+                              + (frame_end_ts.tv_nsec - frame_start_ts.tv_nsec) / 1000000L;
+      const long frame_ms = (long)((1000.0 / 60.0) * _sapp.swap_interval);
+      const long remaining_ms = frame_ms - elapsed_ms;
+      if (remaining_ms > 0) {
+        struct pollfd x11_fd = { ConnectionNumber(_sapp.x11.display), POLLIN, 0 };
+        poll(&x11_fd, 1, (int)remaining_ms);
+      }
+    }
     // handle quit-requested, either from window or from sapp_request_quit()
     if (_sapp.quit_requested && !_sapp.quit_ordered) {
       // give user code a chance to intervene
