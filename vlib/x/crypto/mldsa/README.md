@@ -1,19 +1,8 @@
 # mldsa
 
-`mldsa` is an implementation of NIST FIPS 204 Module-Lattice-Based Digital Signature
-Standard (ML-DSA) in pure V. ML-DSA is a post-quantum digital signature scheme based
-on module lattices. See the [NIST FIPS 204 Standard](https://csrc.nist.gov/pubs/fips/204/final)
-for more detail.
+Pure V implementation of [ML-DSA](https://csrc.nist.gov/pubs/fips/204/final) (FIPS 204), the post-quantum digital signature standard. Supports all three parameter sets (ML-DSA-44, ML-DSA-65, ML-DSA-87) with no external dependencies.
 
-It currently implements:
-- Key generation from random seed or OS randomness
-- Deterministic and randomized signing
-- Signature verification
-- Public key and private key serialization
-- Context strings (up to 255 bytes)
-- Three parameter sets: ML-DSA-44, ML-DSA-65, ML-DSA-87 (NIST security levels 2, 3, 5)
-
-Even though this is completely experimental and **non-production ready**, the implmentation is verified against NIST ACVP test vectors for both keygen and signature verification. See [`nist_keygen_test.v`](./nist_keygen_test.v) and [`nist_sigver_test.v`](./nist_sigver_test.v)
+> **Experimental**, verified against [NIST ACVP test vectors](./nist_keygen_test.v) for keygen and [signature verification](./nist_sigver_test.v), but not yet production-ready.
 
 ## Example
 
