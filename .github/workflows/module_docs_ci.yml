@@ -43,7 +43,7 @@ jobs:
           libsodium-dev libasound2-dev libssl-dev \
           sqlite3 libsqlite3-dev libfreetype6-dev \
           libx11-dev libxi-dev freeglut3-dev \
-          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev
+          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
       - name: Install markdown from vpm
         run: v retry -- v install markdown
       - name: Test v doc

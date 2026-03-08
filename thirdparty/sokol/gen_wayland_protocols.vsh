@@ -1,4 +1,5 @@
 #!/usr/bin/env -S v
+
 import log
 
 fn sh(cmd string) {

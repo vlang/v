@@ -14,7 +14,11 @@ import sokol.memory as _
 $if sokol_wayland ? {
 	#flag linux -lwayland-client -lwayland-egl -lxkbcommon -lxkbcommon-x11 -lEGL -lGL -lpthread -lm -ldl -lX11 -lXi -lXcursor
 } $else {
-	#flag linux -lX11 -lXi -lXcursor -lGL -lpthread -lm -ldl
+	// EGL is used instead of GLX on X11 to get consistent vsync under XWayland.
+	// GLX vsync is often ignored by XWayland compositors, causing frame pacing
+	// jitter. EGL honours the swap interval reliably on both native X11 and
+	// XWayland sessions.
+	#flag linux -lX11 -lXi -lXcursor -lEGL -lGL -lpthread -lm -ldl
 }
 #flag freebsd -DSOKOL_GLCORE
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
@@ -99,6 +103,9 @@ $if !no_sokol_app ? {
 	} $else $if linux {
 		// Explicitly disable Wayland on Linux when not using sokol_wayland
 		#define SOKOL_DISABLE_WAYLAND
+		// Force EGL instead of GLX so that eglSwapBuffers provides consistent
+		// vsync pacing on both native X11 and XWayland sessions.
+		#define SOKOL_FORCE_EGL
 	}
 
 	@[use_once]
