@@ -34,7 +34,7 @@ const zetas = [u32(4193792), 25847, 5771523, 7861508, 237124, 7602457, 7504169, 
 // algo. 41: NTT (s. 7.5)
 @[direct_array_access]
 fn ntt(f_ RingElement) NttElement {
-	mut f := f_
+	mut f := unsafe { f_ } // workaround for false mutability notice
 	mut m := u8(0)
 
 	mut len := 128
@@ -110,7 +110,7 @@ fn ntt(f_ RingElement) NttElement {
 // algo. 42: NTT^-1 (s. 7.5)
 @[direct_array_access]
 fn inverse_ntt(f_ NttElement) RingElement {
-	mut f := f_
+	mut f := unsafe { f_ } // workaround for false mutability notice
 	mut m := u8(255)
 
 	for start := 0; start < 256; start += 2 {
