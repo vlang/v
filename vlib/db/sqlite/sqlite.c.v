@@ -233,7 +233,6 @@ pub fn (db &DB) q_string(query string) !string {
 }
 
 // exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
-@[manualfree]
 pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	$if trace_sqlite ? {
 		eprintln('> exec_map query: "${query}"')
@@ -251,14 +250,14 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	mut rows := []map[string]string{}
 	for {
 		res = C.sqlite3_step(stmt)
-		if res != 100 {
+		if res != sqlite_row {
 			break
 		}
 		mut row := map[string]string{}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 			col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
-			col := unsafe { col_char.vstring() }
+			col := unsafe { tos_clone(col_char) }
 			if val == &u8(unsafe { nil }) {
 				row[col] = ''
 			} else {
@@ -273,7 +272,6 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 fn C.sqlite3_memory_used() i64
 
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
-@[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
 	$if trace_sqlite ? {
 		eprintln('> exec query: "${query}"')
@@ -291,9 +289,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 	mut rows := []Row{}
 	for {
 		res = C.sqlite3_step(stmt)
-		// Result Code SQLITE_ROW; Another row is available
-		if res != 100 {
-			// C.puts(C.sqlite3_errstr(res))
+		if res != sqlite_row {
 			break
 		}
 		mut row := Row{}
@@ -302,7 +298,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 			if val == &u8(unsafe { nil }) {
 				row.vals << ''
 			} else {
-				row.vals << unsafe { val.vstring() }
+				row.vals << unsafe { tos_clone(val) }
 			}
 		}
 		rows << row
@@ -398,7 +394,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 				if val == &u8(unsafe { nil }) {
 					row.vals << ''
 				} else {
-					row.vals << unsafe { val.vstring() }
+					row.vals << unsafe { tos_clone(val) }
 				}
 			}
 			rows << row
@@ -428,7 +424,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 					if val == &u8(unsafe { nil }) {
 						row.vals << ''
 					} else {
-						row.vals << unsafe { val.vstring() }
+						row.vals << unsafe { tos_clone(val) }
 					}
 				}
 				rows << row
