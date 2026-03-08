@@ -664,6 +664,19 @@ pub fn (db &DB) savepoint(savepoint string) ! {
 	}
 }
 
+// release_savepoint releases a specified savepoint.
+pub fn (db &DB) release_savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	sql_stmt := 'RELEASE SAVEPOINT ${savepoint};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
 // validate checks if the connection is still usable
 pub fn (db &DB) validate() !bool {
 	db.exec_one('SELECT 1')!

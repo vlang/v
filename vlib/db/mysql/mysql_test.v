@@ -1,5 +1,6 @@
 // vtest build: started_mysqld?
 import db.mysql
+import orm
 
 fn test_mysql() {
 	$if !network ? {
@@ -21,6 +22,13 @@ fn test_mysql() {
 	}
 
 	assert db.validate()!
+
+	mut conn := orm.TransactionalConnection(db)
+	mut tx := orm.begin(mut conn)!
+	tx.transaction[int](fn (mut tx orm.Tx) !int {
+		return 1
+	})!
+	tx.commit()!
 
 	mut response := db.exec('drop table if exists users')!
 	assert response == []mysql.Row{}

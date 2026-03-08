@@ -199,6 +199,55 @@ highest_created_at := sql db {
 `sum`, `avg`, `min`, and `max` return options so empty result sets can surface
 SQL `NULL` as `none`. `count` continues to return `int`.
 
+### Transactions
+
+ORM transactions work with both `sql tx {}` and the function-call API.
+
+```v ignore
+import orm
+
+orm.transaction[int](mut db, fn (mut tx orm.Tx) !int {
+    user := User{
+        name: 'Alice'
+    }
+    sql tx {
+        insert user into User
+    }!
+    return tx.last_id()
+})!
+```
+
+For manual control, start a transaction explicitly and commit or roll it back yourself.
+
+```v ignore
+import orm
+
+mut tx := orm.begin(mut db)!
+sql tx {
+    update User set name = 'Bob' where id == 1
+}!
+tx.commit()!
+```
+
+Nested transactions use savepoints instead of a second `BEGIN`.
+
+```v ignore
+import orm
+
+orm.transaction[int](mut db, fn (mut tx orm.Tx) !int {
+    tx.transaction[int](fn (mut nested orm.Tx) !int {
+        sql nested {
+            delete from User where id == 2
+        }!
+        return 0
+    })!
+    return 0
+})!
+```
+
+Transaction helpers use each driver's default transaction mode. v1 does not expose isolation
+levels or SQLite begin-mode configuration yet.
+
 ### Update
 
 You can update fields in a row using V syntax and functions. Again, pass the struct

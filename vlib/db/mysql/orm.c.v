@@ -186,6 +186,36 @@ pub fn (db DB) drop(table orm.Table) ! {
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
+// orm_begin starts a transaction for ORM helpers.
+pub fn (mut db DB) orm_begin() ! {
+	db.begin()!
+}
+
+// orm_commit commits a transaction for ORM helpers.
+pub fn (mut db DB) orm_commit() ! {
+	db.commit()!
+}
+
+// orm_rollback rolls back a transaction for ORM helpers.
+pub fn (mut db DB) orm_rollback() ! {
+	db.rollback()!
+}
+
+// orm_savepoint creates a savepoint for ORM helpers.
+pub fn (mut db DB) orm_savepoint(name string) ! {
+	db.savepoint(name)!
+}
+
+// orm_rollback_to rolls back to a savepoint for ORM helpers.
+pub fn (mut db DB) orm_rollback_to(name string) ! {
+	db.rollback_to(name)!
+}
+
+// orm_release_savepoint releases a savepoint for ORM helpers.
+pub fn (mut db DB) orm_release_savepoint(name string) ! {
+	db.release_savepoint(name)!
+}
+
 // mysql_stmt_worker executes the `query` with the provided `data` and `where` parameters
 // without returning the result.
 // This is commonly used for `INSERT`, `UPDATE`, `CREATE`, `DROP`, and `DELETE` queries.

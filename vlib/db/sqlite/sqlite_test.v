@@ -1,5 +1,6 @@
 // vtest build: present_sqlite3?
 import db.sqlite
+import orm
 
 type Connection = sqlite.DB
 
@@ -145,4 +146,18 @@ fn test_exec_param_many2() {
 	assert count == 3
 
 	db.close()!
+}
+
+fn test_orm_transaction_interface() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	mut conn := orm.TransactionalConnection(db)
+	mut tx := orm.begin(mut conn)!
+	tx.transaction[int](fn (mut tx orm.Tx) !int {
+		return 1
+	})!
+	tx.commit()!
 }

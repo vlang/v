@@ -269,6 +269,18 @@ pub fn (mut db DB) savepoint(savepoint string) ! {
 	}
 }
 
+// release_savepoint releases a specified savepoint.
+pub fn (mut db DB) release_savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.check_connection_is_established()!
+	result := db.exec_none('RELEASE SAVEPOINT ${savepoint}')
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
 // tables returns a list of the names of the tables in the current database,
 // that match the simple regular expression specified by the `wildcard` parameter.
 // The `wildcard` parameter may contain the wildcard characters `%` or `_`.
