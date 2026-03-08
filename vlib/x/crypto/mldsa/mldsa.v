@@ -13,6 +13,7 @@ import crypto.rand
 import crypto.sha3
 import crypto.internal.subtle
 
+@[direct_array_access]
 fn slice_to_32(s []u8) [32]u8 {
 	mut a := [32]u8{}
 	for i in 0 .. 32 {
@@ -21,6 +22,7 @@ fn slice_to_32(s []u8) [32]u8 {
 	return a
 }
 
+@[direct_array_access]
 fn slice_to_64(s []u8) [64]u8 {
 	mut a := [64]u8{}
 	for i in 0 .. 64 {
@@ -293,6 +295,7 @@ fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
 }
 
 // algo. 7: ML-DSA.Sign_internal (s. 6.2)
+@[direct_array_access]
 fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 	p := sk.pk.p
 	k, l := p.k, p.l
@@ -316,10 +319,19 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 
 	mut kappa := 0
 
+	mut y := []RingElement{len: l}
+	mut y_hat := []NttElement{len: l}
+	mut w := []RingElement{len: k}
+	mut cs1 := []RingElement{len: l}
+	mut cs2 := []RingElement{len: k}
+	mut z := []RingElement{len: l}
+	mut ct0 := []RingElement{len: k}
+	mut h := [][256]u8{len: k, init: [256]u8{}}
+	mut w1_buf := []u8{len: w1_encode_len(p)}
+
 	// lines 10-32: rejection sampling loop
 	for {
 		// line 11: y = ExpandMask(rho'', kappa) (algo. 34)
-		mut y := []RingElement{len: l}
 		for r in 0 .. l {
 			counter := [u8(kappa & 0xff), u8(kappa >> 8)]
 			kappa++
@@ -332,11 +344,9 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		}
 
 		// line 12: w = NTT^-1(A_hat * NTT(y))
-		mut y_hat := []NttElement{len: l}
 		for i in 0 .. l {
 			y_hat[i] = ntt(y[i])
 		}
-		mut w := []RingElement{len: k}
 		for i in 0 .. k {
 			mut w_hat := NttElement{}
 			for j in 0 .. l {
@@ -349,7 +359,8 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		mut h_ch := sha3.new_shake256()
 		h_ch.write(mu[..])
 		for i in 0 .. k {
-			h_ch.write(w1_encode(high_bits(w[i], p), p))
+			w1_encode(high_bits(w[i], p), p, mut w1_buf)
+			h_ch.write(w1_buf)
 		}
 		ch := h_ch.read(p.lambda / 4)
 
@@ -357,17 +368,14 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		c := ntt(sample_in_ball(ch, p))
 
 		// lines 17-20: cs1 = NTT^-1(c_hat * s1_hat); z = y + cs1
-		mut cs1 := []RingElement{len: l}
 		for i in 0 .. l {
 			cs1[i] = inverse_ntt(ntt_mul(c, s1[i]))
 		}
-		mut cs2 := []RingElement{len: k}
 		for i in 0 .. k {
 			cs2[i] = inverse_ntt(ntt_mul(c, s2[i]))
 		}
 
 		// line 23: ||z||_inf >= gamma1 - beta
-		mut z := []RingElement{len: l}
 		mut reject := false
 		for i in 0 .. l {
 			z[i] = poly_add_ring(y[i], cs1[i])
@@ -394,7 +402,6 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 		}
 
 		// line 25, 28: ct0 = NTT^-1(c_hat * t0_hat); ||ct0||_inf >= gamma2
-		mut ct0 := []RingElement{len: k}
 		reject = false
 		for i in 0 .. k {
 			ct0[i] = inverse_ntt(ntt_mul(c, t0[i]))
@@ -409,7 +416,6 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 
 		// line 26, 28: h = MakeHint(-ct0, w - cs2 + ct0); count(h) > omega
 		mut count1s := 0
-		mut h := [][256]u8{len: k, init: [256]u8{}}
 		for i in 0 .. k {
 			hint_result, count := make_hint(ct0[i], w[i], cs2[i], p)
 			h[i] = hint_result
@@ -425,6 +431,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 }
 
 // algo. 8: ML-DSA.Verify_internal (s. 6.3)
+@[direct_array_access]
 fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 	p := pk.p
 	k, l := p.k, p.l
@@ -463,8 +470,10 @@ fn verify_internal(pk &PublicKey, mu [64]u8, sig []u8) !bool {
 	// line 12: c_tilde' = H(mu || w1Encode(w'1), lambda/4)
 	mut h_ch := sha3.new_shake256()
 	h_ch.write(mu[..])
+	mut w1_buf := []u8{len: w1_encode_len(p)}
 	for i in 0 .. k {
-		h_ch.write(w1_encode(w1[i], p))
+		w1_encode(w1[i], p, mut w1_buf)
+		h_ch.write(w1_buf)
 	}
 	computed_ch := h_ch.read(p.lambda / 4)
 

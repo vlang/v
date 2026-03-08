@@ -19,7 +19,7 @@ fn sample_ntt(rho []u8, s u8, r u8) NttElement {
 	mut buf := g.read(168)
 	mut off := 0
 	for j < n {
-		if off >= buf.len {
+		if off + 2 >= buf.len {
 			buf = g.read(168)
 			off = 0
 		}
@@ -82,20 +82,30 @@ fn sample_in_ball(rho []u8, p Params) RingElement {
 	h.write(rho)
 	s := h.read(8)
 
+	// pre-read ~2x expected bytes to avoid per-byte allocations
+	mut buf := h.read(p.tau * 2)
+	mut off := 0
+
 	mut c := RingElement{}
 	for i := 256 - p.tau; i < 256; i++ {
-		mut j_buf := h.read(1)
-		for j_buf[0] > u8(i) {
-			j_buf = h.read(1)
-		}
-		j := j_buf[0]
-		c[i] = c[j]
-		bit_idx := i + p.tau - 256
-		bit := (s[bit_idx / 8] >> (bit_idx % 8)) & 1
-		if bit == 0 {
-			c[j] = mont_one
-		} else {
-			c[j] = mont_minus_one
+		for {
+			if off >= buf.len {
+				buf = h.read(256)
+				off = 0
+			}
+			j := buf[off]
+			off++
+			if j <= u8(i) {
+				c[i] = c[j]
+				bit_idx := i + p.tau - 256
+				bit := (s[bit_idx / 8] >> (bit_idx % 8)) & 1
+				if bit == 0 {
+					c[j] = mont_one
+				} else {
+					c[j] = mont_minus_one
+				}
+				break
+			}
 		}
 	}
 	return c

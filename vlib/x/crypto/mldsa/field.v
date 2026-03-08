@@ -83,6 +83,7 @@ fn field_montgomery_add_mul(a FieldElement, b FieldElement, c FieldElement, d_ F
 	return field_montgomery_reduce(x)
 }
 
+@[direct_array_access]
 fn poly_add_ring(a RingElement, b RingElement) RingElement {
 	mut s := RingElement{}
 	for i in 0 .. n {
@@ -91,6 +92,7 @@ fn poly_add_ring(a RingElement, b RingElement) RingElement {
 	return s
 }
 
+@[direct_array_access]
 fn poly_add_ntt(a NttElement, b NttElement) NttElement {
 	mut s := NttElement{}
 	for i in 0 .. n {
@@ -99,6 +101,7 @@ fn poly_add_ntt(a NttElement, b NttElement) NttElement {
 	return s
 }
 
+@[direct_array_access]
 fn poly_sub_ring(a RingElement, b RingElement) RingElement {
 	mut s := RingElement{}
 	for i in 0 .. n {
@@ -107,6 +110,7 @@ fn poly_sub_ring(a RingElement, b RingElement) RingElement {
 	return s
 }
 
+@[direct_array_access]
 fn poly_sub_ntt(a NttElement, b NttElement) NttElement {
 	mut s := NttElement{}
 	for i in 0 .. n {
@@ -116,6 +120,7 @@ fn poly_sub_ntt(a NttElement, b NttElement) NttElement {
 }
 
 // algo. 45: MultiplyNTT
+@[direct_array_access]
 fn ntt_mul(a NttElement, b NttElement) NttElement {
 	mut p := NttElement{}
 	for i in 0 .. n {
@@ -124,6 +129,7 @@ fn ntt_mul(a NttElement, b NttElement) NttElement {
 	return p
 }
 
+@[direct_array_access]
 fn coefficients_exceed_bound(w RingElement, bound u32) bool {
 	for i in 0 .. n {
 		if field_infinity_norm(w[i]) >= bound {

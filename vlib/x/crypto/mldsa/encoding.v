@@ -141,6 +141,7 @@ fn decompose_88(r FieldElement) (u8, i32) {
 	return r1, r0_adj
 }
 
+@[direct_array_access]
 fn low_bits_exceed_bound(w RingElement, bound u32, p Params) bool {
 	match p.gamma2 {
 		32 {
@@ -259,25 +260,29 @@ fn make_hint_88(ct0 FieldElement, w FieldElement, cs2 FieldElement) u8 {
 	return u8(1 - subtle.constant_time_byte_eq(v1, r1))
 }
 
+fn w1_encode_len(p Params) int {
+	return match p.gamma2 {
+		32 { 4 * n / 8 }
+		88 { 6 * n / 8 }
+		else { panic('mldsa: unsupported gamma2') }
+	}
+}
+
 // algo. 28: w1Encode (s. 7.2)
 @[direct_array_access]
-fn w1_encode(w [256]u8, p Params) []u8 {
+fn w1_encode(w [256]u8, p Params, mut buf []u8) {
 	match p.gamma2 {
 		32 {
-			mut buf := []u8{len: 4 * n / 8}
 			for i := 0; i < n; i += 2 {
 				buf[i / 2] = w[i] | (w[i + 1] << 4)
 			}
-			return buf
 		}
 		88 {
-			mut buf := []u8{len: 6 * n / 8}
 			for i := 0; i < n; i += 4 {
 				buf[3 * i / 4] = w[i] | (w[i + 1] << 6)
 				buf[3 * i / 4 + 1] = (w[i + 1] >> 2) | (w[i + 2] << 4)
 				buf[3 * i / 4 + 2] = (w[i + 2] >> 4) | (w[i + 3] << 2)
 			}
-			return buf
 		}
 		else {
 			panic('mldsa: unsupported gamma2')
