@@ -44,12 +44,12 @@ fn load_keygen_vectors() !(KeyGenPrompt, KeyGenExpected) {
 	return prompt, expected
 }
 
-fn kind_for_param_set(param_set string) !Kind {
+fn nist_kind(param_set string) !Kind {
 	return match param_set {
 		'ML-DSA-44' { .ml_dsa_44 }
 		'ML-DSA-65' { .ml_dsa_65 }
 		'ML-DSA-87' { .ml_dsa_87 }
-		else { error('mldsa: unknown parameter set: ${param_set}') }
+		else { error('unknown parameter set: ${param_set}') }
 	}
 }
 
@@ -67,7 +67,7 @@ fn test_nist_acvp_keygen() {
 	mut total := 0
 
 	for g_prompt in prompt.test_groups {
-		kind := kind_for_param_set(g_prompt.parameter_set) or {
+		kind := nist_kind(g_prompt.parameter_set) or {
 			panic('unknown parameter set: ${g_prompt.parameter_set}')
 		}
 		for t in g_prompt.tests {

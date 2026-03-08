@@ -1,18 +1,19 @@
 module mldsa
 
 // NIST ACVP sigver test vectors (FIPS 204).
-// groups: 1,3,5 external pure; 2,4,6 preHash (skipped); 7,9,11 internal mu; 8,10,12 internal msg.
+// groups: 1,3,5 external pure; 2,4,6 preHash; 7,9,11 internal mu; 8,10,12 internal msg.
 import encoding.hex
 import json
 import os
 import crypto.sha3
 
 struct SigVerTest {
-	tc_id     int @[json: 'tcId']
-	pk        string
-	msg       string @[json: 'message']
-	mu        string
-	context   string
+	tc_id    int    @[json: 'tcId']
+	pk       string
+	msg      string @[json: 'message']
+	mu       string
+	context  string
+	hash_alg string @[json: 'hashAlg']
 	signature string
 }
 
@@ -42,14 +43,6 @@ struct SigVerExpected {
 	test_groups []SigVerResultGroup @[json: 'testGroups']
 }
 
-fn sigver_kind_for_param_set(param_set string) !Kind {
-	return match param_set {
-		'ML-DSA-44' { .ml_dsa_44 }
-		'ML-DSA-65' { .ml_dsa_65 }
-		'ML-DSA-87' { .ml_dsa_87 }
-		else { error('mldsa: unknown parameter set: ${param_set}') }
-	}
-}
 
 fn load_sigver_vectors() !(SigVerPrompt, map[int]bool) {
 	dir := os.dir(@FILE)
@@ -67,6 +60,33 @@ fn load_sigver_vectors() !(SigVerPrompt, map[int]bool) {
 	return prompt, results
 }
 
+fn nist_kind(param_set string) !Kind {
+	return match param_set {
+		'ML-DSA-44' { .ml_dsa_44 }
+		'ML-DSA-65' { .ml_dsa_65 }
+		'ML-DSA-87' { .ml_dsa_87 }
+		else { error('unknown parameter set: ${param_set}') }
+	}
+}
+
+fn nist_prehash(hash_alg string) PreHash {
+	return match hash_alg {
+		'SHA2-224' { .sha2_224 }
+		'SHA2-256' { .sha2_256 }
+		'SHA2-384' { .sha2_384 }
+		'SHA2-512' { .sha2_512 }
+		'SHA2-512/224' { .sha2_512_224 }
+		'SHA2-512/256' { .sha2_512_256 }
+		'SHA3-224' { .sha3_224 }
+		'SHA3-256' { .sha3_256 }
+		'SHA3-384' { .sha3_384 }
+		'SHA3-512' { .sha3_512 }
+		'SHAKE-128' { .shake_128 }
+		'SHAKE-256' { .shake_256 }
+		else { panic('unknown hash algorithm: ${hash_alg}') }
+	}
+}
+
 // run_sigver_groups runs signature verification tests for groups matching the filter.
 // The verify_fn callback receives (pub_key, test, group) and returns the verification result.
 fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVerGroup) bool, verify_fn fn (&PublicKey, SigVerTest, SigVerGroup) !bool, label string) {
@@ -76,7 +96,7 @@ fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVe
 		if !filter(g) {
 			continue
 		}
-		kind := sigver_kind_for_param_set(g.parameter_set) or {
+		kind := nist_kind(g.parameter_set) or {
 			panic('unknown parameter set: ${g.parameter_set}')
 		}
 		for t in g.tests {
@@ -137,4 +157,18 @@ fn test_nist_acvp_sigver_internal_msg() {
 		mu_bytes := h_mu.read(64)
 		return pub_key.verify_mu(mu_bytes, sig_bytes)
 	}, 'internal-msg')
+}
+
+fn test_nist_acvp_sigver_prehash() {
+	prompt, results := load_sigver_vectors() or { panic(err) }
+
+	run_sigver_groups(prompt, results, fn (g SigVerGroup) bool {
+		return g.pre_hash == 'preHash'
+	}, fn (pub_key &PublicKey, t SigVerTest, g SigVerGroup) !bool {
+		msg_bytes := hex.decode(t.msg)!
+		ctx_bytes := hex.decode(t.context)!
+		sig_bytes := hex.decode(t.signature)!
+		ph := nist_prehash(t.hash_alg)
+		return pub_key.verify(msg_bytes, sig_bytes, context: ctx_bytes.bytestr(), prehash: ph)
+	}, 'prehash')
 }
