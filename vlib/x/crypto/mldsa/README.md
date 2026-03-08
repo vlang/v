@@ -17,15 +17,15 @@ fn main() {
 
 	// sign a message (with an optional context string)
 	msg := 'Hello ML-DSA'.bytes()
-	sig := sk.sign(msg, context: '')!
+	sig := sk.sign(msg, context: 'not-a-drill')!
 
 	// verify the signature with the same context
-	verified := pk.verify(msg, sig, context: 'my-app')!
+	verified := pk.verify(msg, sig, context: 'not-a-drill')!
 	assert verified // true
 
 	// deterministic signing is also available
-	sig2 := sk.sign(msg, context: 'my-app', deterministic: true)!
-	verified2 := pk.verify(msg, sig2, context: 'my-app')!
+	sig2 := sk.sign(msg, context: 'not-a-drill', deterministic: true)!
+	verified2 := pk.verify(msg, sig2, context: 'not-a-drill')!
 	assert verified2 // true
 }
 ```
