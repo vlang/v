@@ -32,11 +32,29 @@ pub fn (k Kind) signature_size() int {
 	return sig_size(k.params())
 }
 
+// FIPS 204 s. 5.4: approved pre-hash functions for HashML-DSA.
+pub enum PreHash {
+	none // pure ML-DSA (default)
+	sha2_224
+	sha2_256
+	sha2_384
+	sha2_512
+	sha2_512_224
+	sha2_512_256
+	sha3_224
+	sha3_256
+	sha3_384
+	sha3_512
+	shake_128
+	shake_256
+}
+
 @[params]
 pub struct SignerOpts {
 pub:
 	context       string
 	deterministic bool
+	prehash       PreHash
 }
 
 struct Params {

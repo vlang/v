@@ -102,12 +102,16 @@ pub fn (sk &PrivateKey) equal_bytes(other &PrivateKey) bool {
 	return sk.pk.p == other.pk.p && subtle.constant_time_compare(sk.bytes(), other.bytes()) == 1
 }
 
-// algo. 2: ML-DSA.Sign (s. 5.2)
+// algo. 2/4: ML-DSA.Sign / HashML-DSA.Sign (s. 5.2, 5.4.1)
 pub fn (sk &PrivateKey) sign(msg []u8, opts SignerOpts) ![]u8 {
 	if opts.context.len > 255 {
 		return error('context too long')
 	}
-	mu := compute_mu(sk.pk.tr[..], msg, opts.context)
+	mu := if opts.prehash != .none {
+		compute_mu_prehash(sk.pk.tr[..], msg, opts.context, opts.prehash)
+	} else {
+		compute_mu(sk.pk.tr[..], msg, opts.context)
+	}
 	if opts.deterministic {
 		return sign_internal(sk, mu, [32]u8{})
 	}
@@ -122,12 +126,16 @@ pub fn (pk &PublicKey) equal(other &PublicKey) bool {
 	return pk.p == other.p && subtle.constant_time_compare(pk.raw, other.raw) == 1
 }
 
-// algo. 3: ML-DSA.Verify (s. 5.3)
+// algo. 3/5: ML-DSA.Verify / HashML-DSA.Verify (s. 5.3, 5.4.1)
 pub fn (pk &PublicKey) verify(msg []u8, sig []u8, opts SignerOpts) !bool {
 	if opts.context.len > 255 {
 		return error('context too long')
 	}
-	mu := compute_mu(pk.tr[..], msg, opts.context)
+	mu := if opts.prehash != .none {
+		compute_mu_prehash(pk.tr[..], msg, opts.context, opts.prehash)
+	} else {
+		compute_mu(pk.tr[..], msg, opts.context)
+	}
 	return verify_internal(pk, mu, sig)
 }
 
