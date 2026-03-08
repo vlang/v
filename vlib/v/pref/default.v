@@ -284,7 +284,7 @@ pub fn default_tcc_compiler() string {
 pub fn (mut p Preferences) default_c_compiler() {
 	// TODO: fix $if after 'string'
 	$if windows {
-		p.ccompiler = 'gcc'
+		p.ccompiler = $d('use_c_compiler', 'gcc')
 		return
 	}
 	if p.os == .ios {
@@ -299,12 +299,12 @@ pub fn (mut p Preferences) default_c_compiler() {
 			}
 			// On macOS, /usr/bin/cc is a hardlink/wrapper for xcrun. clang on darwin hosts
 			// will automatically change the build target based off of the selected sdk, making xcrun -sdk iphoneos pointless
-			p.ccompiler = '/usr/bin/cc'
+			p.ccompiler = $d('use_c_compiler', '/usr/bin/cc')
 			p.cflags = '-isysroot ${isysroot} ${arch}' + p.cflags
 			return
 		}
 	}
-	p.ccompiler = 'cc'
+	p.ccompiler = $d('use_c_compiler', 'cc')
 	return
 }
 
