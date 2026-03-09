@@ -71,6 +71,9 @@ fn compute_t1_hat(t1 [][]u16) []NttElement {
 	for i in 0 .. t1.len {
 		mut w := RingElement{}
 		for j in 0 .. n {
+			// panics if (t1[i][j] << d) >= q, c.f field.v
+			// only called from pk_decode, which produces 10bit vals (<= 1023)
+			// so 1023 << 13 = 8_380_416 = q - 1
 			z := field_to_montgomery(u32(t1[i][j]) << d) or { panic(err) }
 			w[j] = z
 		}
@@ -103,7 +106,7 @@ fn high_bits(r RingElement, p Params) [256]u8 {
 			}
 		}
 		else {
-			panic('mldsa: unsupported gamma2')
+			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
 	return w
@@ -161,7 +164,7 @@ fn low_bits_exceed_bound(w RingElement, bound u32, p Params) bool {
 			}
 		}
 		else {
-			panic('mldsa: unsupported gamma2')
+			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
 	return false
@@ -183,7 +186,7 @@ fn use_hint(r RingElement, h [256]u8, p Params) [256]u8 {
 			}
 		}
 		else {
-			panic('mldsa: unsupported gamma2')
+			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
 	return w
@@ -240,7 +243,7 @@ fn make_hint(ct0 RingElement, w RingElement, cs2 RingElement, p Params) ([256]u8
 			}
 		}
 		else {
-			panic('mldsa: unsupported gamma2')
+			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
 	return h, count
@@ -264,7 +267,7 @@ fn w1_encode_len(p Params) int {
 	return match p.gamma2 {
 		32 { 4 * n / 8 }
 		88 { 6 * n / 8 }
-		else { panic('mldsa: unsupported gamma2') }
+		else { panic('mldsa: unsupported gamma2') } // unreachable
 	}
 }
 
@@ -285,7 +288,7 @@ fn w1_encode(w [256]u8, p Params, mut buf []u8) {
 			}
 		}
 		else {
-			panic('mldsa: unsupported gamma2')
+			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
 }
@@ -325,7 +328,7 @@ fn bit_pack(r RingElement, p Params) []u8 {
 	match p.gamma1 {
 		17 { return bit_pack_18(r) }
 		19 { return bit_pack_20(r) }
-		else { panic('mldsa: unsupported gamma1') }
+		else { panic('mldsa: unsupported gamma1') } // unreachable
 	}
 }
 
@@ -378,7 +381,7 @@ fn bit_unpack(v []u8, p Params) RingElement {
 	match p.gamma1 {
 		17 { return bit_unpack_18(v) }
 		19 { return bit_unpack_20(v) }
-		else { panic('mldsa: unsupported gamma1') }
+		else { panic('mldsa: unsupported gamma1') } // unreachable
 	}
 }
 

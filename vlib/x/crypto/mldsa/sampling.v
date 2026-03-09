@@ -129,7 +129,7 @@ fn coeff_from_half_byte(b u8, p Params) (FieldElement, bool) {
 			return field_sub_to_montgomery(4, u32(b)), true
 		}
 		else {
-			panic('mldsa: unsupported eta')
+			panic('mldsa: unsupported eta') // unreachable
 		}
 	}
 }
