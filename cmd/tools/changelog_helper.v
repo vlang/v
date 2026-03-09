@@ -356,7 +356,9 @@ const db_strings = [
 	'db.sqlite',
 	'db.mysql',
 	'db.pg',
+	'db.redis',
 	'pg:',
+	'mysql:',
 ]
 
 const parser_strings = [
@@ -378,6 +380,7 @@ const stdlib_strings = [
 	'sokol',
 	'os:',
 	'rand:',
+	'rand.',
 	'math:',
 	'toml:',
 	'vlib:',
@@ -387,6 +390,7 @@ const stdlib_strings = [
 	'sync.',
 	'builtin:',
 	'builtin,',
+	'builtin.',
 	'strconv',
 	'readline',
 	'cli:',
@@ -398,9 +402,13 @@ const stdlib_strings = [
 	'log:',
 	'flag:',
 	'regex:',
+	'regex.',
 	'tmpl:',
 	'hash:',
 	'stbi:',
+	'atomic:',
+	'context:',
+	'thirdparty',
 ]
 
 fn is_stdlib(text string) bool {
@@ -446,6 +454,9 @@ const internal_strings = [
 	'builder:',
 	'pref:',
 	'v.util',
+	'v.generic',
+	'v.comptime',
+	'table:',
 ]
 
 fn is_internal(text string) bool {
@@ -474,6 +485,8 @@ const skip_strings = [
 	' typo',
 	'cleanup',
 	'clean up',
+	'build(deps)',
+	'FUNDING',
 ]
 
 fn is_examples(text string) bool {
@@ -497,6 +510,11 @@ const tools_strings = [
 	'REPL',
 	'vet',
 	'tools.',
+	'GNUmakefile',
+	'Dockerfile',
+	'vcomplete',
+	'vwatch',
+	'changelog',
 ]
 
 fn is_tools(text string) bool {
@@ -554,6 +572,7 @@ const os_support_strings = [
 	'windows',
 	'Linux',
 	'linux',
+	'msvc:',
 ]
 
 fn is_os_support(text string) bool {
