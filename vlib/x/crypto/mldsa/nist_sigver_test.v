@@ -8,12 +8,12 @@ import os
 import crypto.sha3
 
 struct SigVerTest {
-	tc_id    int    @[json: 'tcId']
-	pk       string
-	msg      string @[json: 'message']
-	mu       string
-	context  string
-	hash_alg string @[json: 'hashAlg']
+	tc_id     int @[json: 'tcId']
+	pk        string
+	msg       string @[json: 'message']
+	mu        string
+	context   string
+	hash_alg  string @[json: 'hashAlg']
 	signature string
 }
 
@@ -42,7 +42,6 @@ struct SigVerResultGroup {
 struct SigVerExpected {
 	test_groups []SigVerResultGroup @[json: 'testGroups']
 }
-
 
 fn load_sigver_vectors() !(SigVerPrompt, map[int]bool) {
 	dir := os.dir(@FILE)
@@ -96,9 +95,7 @@ fn run_sigver_groups(prompt SigVerPrompt, results map[int]bool, filter fn (SigVe
 		if !filter(g) {
 			continue
 		}
-		kind := nist_kind(g.parameter_set) or {
-			panic('unknown parameter set: ${g.parameter_set}')
-		}
+		kind := nist_kind(g.parameter_set) or { panic('unknown parameter set: ${g.parameter_set}') }
 		for t in g.tests {
 			pk_bytes := hex.decode(t.pk) or { panic('tcId ${t.tc_id}: bad pk hex: ${err}') }
 			sig_bytes := hex.decode(t.signature) or {
