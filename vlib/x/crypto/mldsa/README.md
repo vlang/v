@@ -3,7 +3,9 @@
 Pure V implementation of [ML-DSA](https://csrc.nist.gov/pubs/fips/204/final) (FIPS 204), a post-quantum digital signature algorithm. Supports all three parameter sets (ML-DSA-44, ML-DSA-65, ML-DSA-87).
 
 > **This is still experimental**
-> It is verified against NIST ACVP test vectors for [keygen](./nist_keygen_test.v), [signing](./nist_siggen_test.v), and [verification](./nist_sigver_test.v), but not yet production-ready.
+> It is verified against NIST ACVP test vectors for [keygen](./nist_keygen_test.v),
+> [signing](./nist_siggen_test.v), and [verification](./nist_sigver_test.v),
+> but not yet production-ready.
 
 ## Example
 
