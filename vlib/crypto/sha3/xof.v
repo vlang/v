@@ -16,18 +16,22 @@ mut:
 	squeeze_buf  []u8
 }
 
+// new_shake128 returns a new Shake instance for SHAKE-128 extended output function.
 pub fn new_shake128() &Shake {
 	return &Shake{
 		rate: xof_rate_128
 	}
 }
 
+// new_shake256 returns a new Shake instance for SHAKE-256 extended output function.
 pub fn new_shake256() &Shake {
 	return &Shake{
 		rate: xof_rate_256
 	}
 }
 
+// write absorbs more data into the sponge state.
+// Panics if called after `read`.
 @[direct_array_access]
 pub fn (mut s Shake) write(data []u8) {
 	if s.finalized {
@@ -94,6 +98,8 @@ fn (mut s Shake) finalize() {
 	s.input_buffer = []u8{}
 }
 
+// read squeezes `out_len` bytes from the sponge state.
+// Finalizes the sponge on first call; further calls to `write` will panic.
 @[direct_array_access]
 pub fn (mut s Shake) read(out_len int) []u8 {
 	if !s.finalized {
@@ -119,6 +125,7 @@ pub fn (mut s Shake) read(out_len int) []u8 {
 	return result
 }
 
+// reset clears the sponge state, allowing the Shake instance to be reused.
 pub fn (mut s Shake) reset() {
 	s.s = State{}
 	s.input_buffer = []u8{}
