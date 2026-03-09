@@ -16,9 +16,9 @@ const mont_minus_one = u32(4186625) // (q-1)*R mod q
 const n = 256
 const d = 13
 
-type FieldElement = u32
-type RingElement = [256]FieldElement
-type NttElement = [256]FieldElement
+pub type FieldElement = u32
+pub type RingElement = [256]FieldElement
+pub type NttElement = [256]FieldElement
 
 fn field_to_montgomery(a u32) !FieldElement {
 	if a >= q {
