@@ -266,6 +266,18 @@ mut:
 	last_id() int
 }
 
+// TransactionalConnection extends Connection with transaction primitives.
+pub interface TransactionalConnection {
+	Connection
+mut:
+	orm_begin() !
+	orm_commit() !
+	orm_rollback() !
+	orm_savepoint(name string) !
+	orm_rollback_to(name string) !
+	orm_release_savepoint(name string) !
+}
+
 // Generates an sql stmt, from universal parameter
 // q - The quotes character, which can be different in every type, so it's variable
 // num - Stmt uses nums at prepared statements (? or ?1)

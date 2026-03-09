@@ -573,6 +573,14 @@ pub fn (mut db DB) rollback_to(savepoint string) ! {
 	db.exec('ROLLBACK TO ${savepoint};')!
 }
 
+// release_savepoint releases a specified savepoint.
+pub fn (mut db DB) release_savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.exec('RELEASE SAVEPOINT ${savepoint};')!
+}
+
 // reset returns the connection to initial state for reuse
 pub fn (mut db DB) reset() ! {
 }
