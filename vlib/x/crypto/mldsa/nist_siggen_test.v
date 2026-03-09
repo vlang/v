@@ -34,7 +34,7 @@ struct SigGenPrompt {
 }
 
 struct SigGenResult {
-	tc_id     int    @[json: 'tcId']
+	tc_id     int @[json: 'tcId']
 	signature string
 }
 
@@ -97,18 +97,14 @@ fn run_siggen_groups(prompt SigGenPrompt, results map[int]string, filter fn (Sig
 		if !filter(g) {
 			continue
 		}
-		kind := nist_kind(g.parameter_set) or {
-			panic('unknown parameter set: ${g.parameter_set}')
-		}
+		kind := nist_kind(g.parameter_set) or { panic('unknown parameter set: ${g.parameter_set}') }
 		for t in g.tests {
 			sk_bytes := hex.decode(t.sk) or { panic('tcId ${t.tc_id}: bad sk hex: ${err}') }
 			sk := PrivateKey.from_bytes(sk_bytes, kind) or {
 				panic('tcId ${t.tc_id}: PrivateKey.from_bytes failed: ${err}')
 			}
 
-			sig := sign_fn(&sk, t, g) or {
-				panic('tcId ${t.tc_id}: sign failed: ${err}')
-			}
+			sig := sign_fn(&sk, t, g) or { panic('tcId ${t.tc_id}: sign failed: ${err}') }
 			got := hex.encode(sig)
 			want := results[t.tc_id]
 			total++
@@ -136,8 +132,8 @@ fn test_nist_acvp_siggen_deterministic_internal_mu() {
 	prompt, results := load_siggen_vectors() or { panic(err) }
 
 	run_siggen_groups(prompt, results, fn (g SigGenGroup) bool {
-		return g.deterministic && g.signature_interface == 'internal'
-			&& g.tests.len > 0 && g.tests[0].mu != ''
+		return g.deterministic && g.signature_interface == 'internal' && g.tests.len > 0
+			&& g.tests[0].mu != ''
 	}, fn (sk &PrivateKey, t SigGenTest, g SigGenGroup) ![]u8 {
 		mu := slice_to_64(hex.decode(t.mu)!)
 		return sign_internal(sk, mu, [32]u8{})
@@ -148,8 +144,8 @@ fn test_nist_acvp_siggen_deterministic_internal_msg() {
 	prompt, results := load_siggen_vectors() or { panic(err) }
 
 	run_siggen_groups(prompt, results, fn (g SigGenGroup) bool {
-		return g.deterministic && g.signature_interface == 'internal'
-			&& g.tests.len > 0 && g.tests[0].mu == ''
+		return g.deterministic && g.signature_interface == 'internal' && g.tests.len > 0
+			&& g.tests[0].mu == ''
 	}, fn (sk &PrivateKey, t SigGenTest, g SigGenGroup) ![]u8 {
 		msg_bytes := hex.decode(t.msg)!
 		mut h_mu := sha3.new_shake256()
@@ -178,8 +174,8 @@ fn test_nist_acvp_siggen_nondeterministic_internal_mu() {
 	prompt, results := load_siggen_vectors() or { panic(err) }
 
 	run_siggen_groups(prompt, results, fn (g SigGenGroup) bool {
-		return !g.deterministic && g.signature_interface == 'internal'
-			&& g.tests.len > 0 && g.tests[0].mu != ''
+		return !g.deterministic && g.signature_interface == 'internal' && g.tests.len > 0
+			&& g.tests[0].mu != ''
 	}, fn (sk &PrivateKey, t SigGenTest, g SigGenGroup) ![]u8 {
 		mu := slice_to_64(hex.decode(t.mu)!)
 		rnd := slice_to_32(hex.decode(t.rnd)!)
@@ -191,8 +187,8 @@ fn test_nist_acvp_siggen_nondeterministic_internal_msg() {
 	prompt, results := load_siggen_vectors() or { panic(err) }
 
 	run_siggen_groups(prompt, results, fn (g SigGenGroup) bool {
-		return !g.deterministic && g.signature_interface == 'internal'
-			&& g.tests.len > 0 && g.tests[0].mu == ''
+		return !g.deterministic && g.signature_interface == 'internal' && g.tests.len > 0
+			&& g.tests[0].mu == ''
 	}, fn (sk &PrivateKey, t SigGenTest, g SigGenGroup) ![]u8 {
 		msg_bytes := hex.decode(t.msg)!
 		rnd := slice_to_32(hex.decode(t.rnd)!)

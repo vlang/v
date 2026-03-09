@@ -71,7 +71,9 @@ fn test_benchmark_verify_with_pk_parsing() {
 	bench_header('Verify (with public key parsing)')
 	seed := []u8{len: 32, init: u8(index)}
 	msg := []u8{len: 128}
-	opts := SignerOpts{ context: 'context' }
+	opts := SignerOpts{
+		context: 'context'
+	}
 	for kind in [Kind.ml_dsa_44, .ml_dsa_65, .ml_dsa_87] {
 		sk := PrivateKey.from_seed(seed, kind) or { panic(err) }
 		pk_bytes := sk.public_key().bytes()
