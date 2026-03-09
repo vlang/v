@@ -10,7 +10,8 @@ enum TxKind {
 @[heap]
 struct TxRootState {
 mut:
-	next_savepoint_id int = 1
+	next_savepoint_id int  = 1
+	active            bool = true
 }
 
 @[heap]
@@ -33,6 +34,7 @@ mut:
 struct SavepointInner {
 mut:
 	conn   TransactionalConnection
+	owner  &TxInner = unsafe { nil }
 	name   string
 	active bool = true
 }
@@ -81,6 +83,7 @@ pub fn (mut tx Tx) commit() ! {
 	match tx.inner.kind {
 		.root {
 			tx.inner.conn.orm_commit()!
+			tx.inner.root_state.active = false
 		}
 		.savepoint {
 			tx.inner.conn.orm_release_savepoint(tx.inner.savepoint_name)!
@@ -95,6 +98,7 @@ pub fn (mut tx Tx) rollback() ! {
 	match tx.inner.kind {
 		.root {
 			tx.inner.conn.orm_rollback()!
+			tx.inner.root_state.active = false
 		}
 		.savepoint {
 			tx.inner.conn.orm_rollback_to(tx.inner.savepoint_name)!
@@ -111,8 +115,9 @@ pub fn (mut tx Tx) savepoint() !Savepoint {
 	tx.inner.conn.orm_savepoint(name)!
 	return Savepoint{
 		inner: &SavepointInner{
-			conn: tx.inner.conn
-			name: name
+			conn:  tx.inner.conn
+			owner: tx.inner
+			name:  name
 		}
 	}
 }
@@ -163,7 +168,8 @@ pub fn (mut sp Savepoint) release() ! {
 }
 
 fn (tx Tx) is_active() bool {
-	return !isnil(tx.inner) && tx.inner.active
+	return !isnil(tx.inner) && !isnil(tx.inner.root_state) && tx.inner.active
+		&& tx.inner.root_state.active
 }
 
 fn (tx Tx) ensure_active(action string) ! {
@@ -188,7 +194,9 @@ fn (sp Savepoint) ensure_active(action string) ! {
 	if isnil(sp.inner) {
 		return error('savepoint is not initialized')
 	}
-	if !sp.inner.active {
+	if !sp.inner.active || isnil(sp.inner.owner) || !Tx{
+		inner: sp.inner.owner
+	}.is_active() {
 		return error('savepoint is inactive; cannot ${action}')
 	}
 }

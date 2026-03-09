@@ -282,3 +282,20 @@ fn test_inactive_savepoint_errors() {
 	}
 	assert false
 }
+
+fn test_savepoint_becomes_inactive_when_parent_transaction_closes() {
+	mut db := setup_tx_db()!
+	defer {
+		db.close() or {}
+	}
+
+	mut tx := orm.begin(mut db)!
+	mut sp := tx.savepoint()!
+	tx.commit()!
+
+	sp.release() or {
+		assert err.msg().contains('inactive')
+		return
+	}
+	assert false
+}
