@@ -118,8 +118,25 @@ pub fn (sk &PrivateKey) sign(msg []u8, opts SignerOpts) ![]u8 {
 	return sign_internal(sk, mu, slice_to_32(rand.read(32)!))
 }
 
+// sign_mu signs a precomputed mu value with explicit randomness.
+// mu must be 64 bytes. rnd must be 32 bytes (use all zeros for deterministic signing).
+pub fn (sk &PrivateKey) sign_mu(mu []u8, rnd []u8) ![]u8 {
+	if mu.len != 64 {
+		return error('mu must be 64 bytes')
+	}
+	if rnd.len != 32 {
+		return error('rnd must be 32 bytes')
+	}
+	return sign_internal(sk, slice_to_64(mu), slice_to_32(rnd))
+}
+
 pub fn (pk &PublicKey) bytes() []u8 {
 	return pk.raw.clone()
+}
+
+// tr returns the 64-byte transcript hash (H(pk)) used in mu computation.
+pub fn (pk &PublicKey) tr() []u8 {
+	return pk.tr[..]
 }
 
 pub fn (pk &PublicKey) equal(other &PublicKey) bool {
@@ -292,7 +309,8 @@ fn new_public_key(raw []u8, p Params) !PublicKey {
 }
 
 // algo. 2, lines 10-11: M' = 0x00 || |ctx| || ctx || M; mu = H(tr || M', 64)
-fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
+// compute_mu computes mu = H(tr || M', 64) where M' = 0x00 || |ctx| || ctx || msg.
+pub fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
 	mut h := sha3.new_shake256()
 	h.write(tr)
 	h.write([u8(0)]) // pure mode domain sep

@@ -145,6 +145,72 @@ fn test_prehash_sign_verify() {
 	}
 }
 
+fn test_field_to_montgomery_roundtrip() {
+	for val in [u32(0), 1, 2, 100, 1000, q - 1] {
+		m := field_to_montgomery(val) or { panic(err) }
+		back := field_from_montgomery(m)
+		assert back == val, 'roundtrip failed for ${val}: got ${back}'
+	}
+}
+
+fn test_field_add_sub() {
+	a := field_to_montgomery(100) or { panic(err) }
+	b := field_to_montgomery(200) or { panic(err) }
+	sum := field_add(a, b)
+	assert field_from_montgomery(sum) == 300
+
+	diff := field_sub(sum, b)
+	assert field_from_montgomery(diff) == 100
+}
+
+fn test_field_mul() {
+	a := field_to_montgomery(1000) or { panic(err) }
+	b := field_to_montgomery(2000) or { panic(err) }
+	prod := field_montgomery_mul(a, b)
+	assert field_from_montgomery(prod) == (1000 * 2000) % q
+}
+
+fn test_ntt_inverse_ntt_roundtrip() {
+	mut f := RingElement{}
+	for i in 0 .. n {
+		f[i] = field_to_montgomery(u32(i % 100)) or { panic(err) }
+	}
+	ntt_f := ntt(f)
+	back := inverse_ntt(ntt_f)
+	for i in 0 .. n {
+		assert field_from_montgomery(back[i]) == field_from_montgomery(f[i]), 'NTT roundtrip failed at index ${i}'
+	}
+}
+
+fn test_ntt_mul_is_polynomial_product() {
+	// (1 + x)^2 ?= x^2 + 2x + 1
+	mut a := RingElement{}
+	a[0] = field_to_montgomery(1) or { panic(err) }
+	a[1] = field_to_montgomery(1) or { panic(err) }
+
+	a_ntt := ntt(a)
+	prod_ntt := ntt_mul(a_ntt, a_ntt)
+	prod := inverse_ntt(prod_ntt)
+
+	assert field_from_montgomery(prod[0]) == 1, 'expected x^2'
+	assert field_from_montgomery(prod[1]) == 2, 'expected 2x'
+	assert field_from_montgomery(prod[2]) == 1, 'expected 1'
+
+	for i in 3 .. n {
+		assert field_from_montgomery(prod[i]) == 0, 'expected 0 at index ${i}, got ${field_from_montgomery(prod[i])}'
+	}
+}
+
+fn test_power2_round() {
+	for val in [u32(0), 1, 100, 1000, q / 2, q - 1] {
+		r := field_to_montgomery(val) or { panic(err) }
+		hi, lo := power2_round(r)
+		reconstructed := field_add(field_to_montgomery(u32(hi) << d) or { panic(err) },
+			lo)
+		assert field_from_montgomery(reconstructed) == val, 'power2_round failed for ${val}'
+	}
+}
+
 fn test_private_key_roundtrip() {
 	for kind in [Kind.ml_dsa_44, .ml_dsa_65, .ml_dsa_87] {
 		seed := []u8{len: 32, init: 0x04}

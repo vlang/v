@@ -52,7 +52,8 @@ fn prehash_message(msg []u8, ph PreHash) []u8 {
 
 // algo. 4, line 23: M' = 0x01 || |ctx| || ctx || OID || PH(M)
 // algo. 7, line 6: mu = H(tr || M')
-fn compute_mu_prehash(tr []u8, msg []u8, context string, ph PreHash) [64]u8 {
+// compute_mu_prehash computes mu for prehash mode: H(tr || 0x01 || |ctx| || ctx || OID || PH(msg), 64).
+pub fn compute_mu_prehash(tr []u8, msg []u8, context string, ph PreHash) [64]u8 {
 	mut h := sha3.new_shake256()
 	h.write(tr)
 	h.write([u8(0x01)]) // domain sep
