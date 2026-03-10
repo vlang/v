@@ -3494,6 +3494,9 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
+	if stmt.templates.len == 0 {
+		g.writeln('""')
+	}
 	for template_tmp in stmt.templates {
 		mut template := template_tmp
 		g.write('"')
