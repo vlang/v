@@ -128,7 +128,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if should_compile {
 		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
+			// Refresh external tool modules during recompilation, so tools pick up upstream
+			// compatibility fixes even when an older checkout already exists locally.
+			check_module_is_installed(emodule, is_verbose, true) or { panic(err) }
 		}
 		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
