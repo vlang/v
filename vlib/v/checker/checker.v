@@ -3155,6 +3155,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 
 fn (mut c Checker) resolve_pseudo_variables(oflag string, pos token.Pos) ?string {
 	mut flag := oflag
+	if flag.contains('@VROOT') {
+		flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
 	if flag.contains('@VEXEROOT') {
 		// expand `@VEXEROOT` to its absolute path
 		flag = flag.replace('@VEXEROOT', c.pref.vroot)
