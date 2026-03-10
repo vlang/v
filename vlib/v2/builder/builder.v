@@ -1335,8 +1335,10 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	if arch == .arm64 && os.user_os() == 'macos' {
 		// Use built-in linker for ARM64 macOS
+		stage_start = native_sw.elapsed()
 		mut gen := arm64.Gen.new(&mir_mod)
 		gen.gen()
+		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
 			// Hot code reloading: extract raw machine code for a single function

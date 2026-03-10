@@ -73,6 +73,9 @@ mut:
 	// Current file and function name (for assert messages)
 	cur_file_name   string
 	cur_fn_name_str string
+	// @[live] hot code reloading: function names and source file
+	live_fns         []string
+	live_source_file string
 }
 
 // SmartcastContext holds info about a single smartcast
@@ -609,6 +612,9 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	t.inject_test_main(mut result)
 	if !t.is_eval_backend() {
 		t.inject_main_runtime_const_init_calls(mut result)
+	}
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		t.inject_live_reload(mut result)
 	}
 	t.propagate_types(result)
 	return result

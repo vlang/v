@@ -12,14 +12,14 @@ pub fn build_cfg(mut m ssa.Module) {
 	mut seen_succs := map[int]bool{}
 	mut seen_preds := map[int]bool{}
 
-	for func in m.funcs {
+	for fi in 0 .. m.funcs.len {
 		// Clear existing preds/succs
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			m.blocks[blk_id].preds = []
 			m.blocks[blk_id].succs = []
 		}
 
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			blk := m.blocks[blk_id]
 			if blk.instrs.len == 0 {
 				continue

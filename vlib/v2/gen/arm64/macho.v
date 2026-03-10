@@ -27,9 +27,10 @@ pub mut:
 	str_data  []u8
 	data_data []u8
 
-	relocs    []RelocationInfo
-	symbols   []Symbol
-	str_table []u8
+	relocs      []RelocationInfo
+	symbols     []Symbol
+	str_table   []u8
+	sym_by_name map[string]int // symbol name → index in symbols
 }
 
 struct RelocationInfo {
@@ -62,14 +63,12 @@ pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u
 	typ := if is_ext { u8(0x0f) } else { u8(0x0e) } // N_SECT | N_EXT : N_SECT
 
 	// Check if symbol already exists (e.g., was added as undefined earlier)
-	for i, mut s in m.symbols {
-		if s.name == name {
-			// Update the existing symbol to be defined
-			s.type_ = typ
-			s.sect = sect
-			s.value = addr
-			return i
-		}
+	if i := m.sym_by_name[name] {
+		mut s := &m.symbols[i]
+		s.type_ = typ
+		s.sect = sect
+		s.value = addr
+		return i
 	}
 
 	// Add new symbol
@@ -86,15 +85,14 @@ pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u
 		value:    addr
 		name_off: name_off
 	}
+	m.sym_by_name[name] = idx
 	return idx
 }
 
 pub fn (mut m MachOObject) add_undefined(name string) int {
 	// Check for any existing symbol with this name (defined or undefined)
-	for i, s in m.symbols {
-		if s.name == name {
-			return i
-		}
+	if i := m.sym_by_name[name] {
+		return i
 	}
 
 	idx := m.symbols.len
@@ -110,6 +108,7 @@ pub fn (mut m MachOObject) add_undefined(name string) int {
 		value:    0
 		name_off: name_off
 	}
+	m.sym_by_name[name] = idx
 	return idx
 }
 

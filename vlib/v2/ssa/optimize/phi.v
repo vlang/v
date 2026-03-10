@@ -15,8 +15,8 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 	mut changed := true
 	for changed {
 		changed = false
-		for func in m.funcs {
-			for blk_id in func.blocks {
+		for fi in 0 .. m.funcs.len {
+			for blk_id in m.funcs[fi].blocks {
 				for val_id in m.blocks[blk_id].instrs {
 					if m.values[val_id].kind != .instruction {
 						continue
@@ -108,14 +108,14 @@ fn remove_phi_use(mut m ssa.Module, val_id int, user_id int) {
 fn split_critical_edges(mut m ssa.Module) {
 	build_cfg(mut m)
 
-	for mut func in m.funcs {
+	for fi in 0 .. m.funcs.len {
 		mut new_blocks := []ssa.BlockID{}
 
 		// Collect edges to split (can't modify while iterating)
 		mut edges_to_split := [][]ssa.BlockID{} // [pred_id, succ_id]
 
 		// Find all critical edges
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			blk := m.blocks[blk_id]
 			if blk.succs.len > 1 {
 				for succ_id in blk.succs {
@@ -132,7 +132,7 @@ fn split_critical_edges(mut m ssa.Module) {
 			succ_id := edge[1]
 
 			// Create new intermediate block
-			split_blk := m.add_block(func.id, 'split_${pred_id}_${succ_id}')
+			split_blk := m.add_block(m.funcs[fi].id, 'split_${pred_id}_${succ_id}')
 			new_blocks << split_blk
 
 			// Add unconditional jump from split block to original successor
@@ -174,7 +174,7 @@ fn split_critical_edges(mut m ssa.Module) {
 				}
 			}
 		}
-		// Note: new blocks are already added to func.blocks by add_block()
+		// Note: new blocks are already added to m.funcs[fi].blocks by add_block()
 	}
 
 	// Rebuild CFG after splitting
@@ -208,12 +208,12 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 	// First split critical edges to ensure correct copy placement
 	split_critical_edges(mut m)
 
-	for func in m.funcs {
+	for fi in 0 .. m.funcs.len {
 		// Collect all phi copies grouped by predecessor block
 		// Map: pred_block -> list of (dest, src) pairs
 		mut pred_copies := map[int][]ParallelCopy{}
 
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			for val_id in m.blocks[blk_id].instrs {
 				if m.values[val_id].kind != .instruction {
 					continue
@@ -241,7 +241,7 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 		}
 
 		// Remove phi instructions (mark as nop/bitcast with no operands)
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			for val_id in m.blocks[blk_id].instrs {
 				if m.values[val_id].kind != .instruction {
 					continue

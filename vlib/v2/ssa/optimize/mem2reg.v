@@ -16,7 +16,7 @@ mut:
 }
 
 fn promote_memory_to_register(mut m ssa.Module) {
-	for func in m.funcs {
+	for fi in 0 .. m.funcs.len {
 		mut ctx := Mem2RegCtx{
 			defs:           map[int][]int{}
 			uses:           map[int][]int{}
@@ -26,7 +26,7 @@ fn promote_memory_to_register(mut m ssa.Module) {
 
 		// 1. Analyze Allocas
 		mut promotable := []int{}
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			blk := m.blocks[blk_id]
 			for val_id in blk.instrs {
 				instr := m.instrs[m.values[val_id].index]
@@ -54,7 +54,7 @@ fn promote_memory_to_register(mut m ssa.Module) {
 		}
 
 		// 2. Insert Phis (Dominance Frontier)
-		df := compute_dominance_frontier(m, func)
+		df := compute_dominance_frontier(m, fi)
 
 		for alloc_id in promotable {
 			mut worklist := ctx.defs[alloc_id].clone()
@@ -86,14 +86,14 @@ fn promote_memory_to_register(mut m ssa.Module) {
 		}
 
 		// 3. Rename Variables
-		if func.blocks.len > 0 {
-			entry := func.blocks[0]
+		if m.funcs[fi].blocks.len > 0 {
+			entry := m.funcs[fi].blocks[0]
 			rename_recursive(mut m, entry, mut ctx)
 		}
 	}
 }
 
-fn is_promotable(m ssa.Module, alloc_id int) bool {
+fn is_promotable(m &ssa.Module, alloc_id int) bool {
 	// Keep array-backed slots in memory. Promoting pointer-to-array allocas can
 	// lose correct addressing semantics for fixed-array literals/indexing.
 	if alloc_id > 0 && alloc_id < m.values.len {
@@ -146,17 +146,25 @@ fn is_promotable(m ssa.Module, alloc_id int) bool {
 	return true
 }
 
-fn compute_dominance_frontier(m ssa.Module, func ssa.Function) map[int][]int {
+fn compute_dominance_frontier(m &ssa.Module, func_idx int) map[int][]int {
 	mut df := map[int][]int{}
 
-	for blk_id in func.blocks {
-		preds := m.blocks[blk_id].preds
-		if preds.len >= 2 {
-			for p in preds {
-				mut runner := p
+	func_blocks := m.funcs[func_idx].blocks
+	for bi in 0 .. func_blocks.len {
+		blk_id := func_blocks[bi]
+		if blk_id < 0 || blk_id >= m.blocks.len {
+			continue
+		}
+		num_preds := m.blocks[blk_id].preds.len
+		if num_preds >= 2 {
+			for pi in 0 .. num_preds {
+				mut runner := m.blocks[blk_id].preds[pi]
 				idom := m.blocks[blk_id].idom
 				// Safety check: idom != -1
 				for runner != -1 && runner != idom {
+					if runner < 0 || runner >= m.blocks.len {
+						break
+					}
 					// Avoid duplicate entries in dominance frontier
 					if blk_id !in df[runner] {
 						df[runner] << blk_id

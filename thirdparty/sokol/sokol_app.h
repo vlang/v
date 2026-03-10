@@ -3941,6 +3941,10 @@ _SOKOL_PRIVATE void _sapp_call_frame_native(void) {
 }
 // __v_ end
 
+// __v_ start
+#include "sokol_app2.h" // __v_
+// __v_ end
+
 _SOKOL_PRIVATE void _sapp_call_cleanup(void) {
   if (!_sapp.cleanup_called) {
     if (_sapp.desc.cleanup_cb) {

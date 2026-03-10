@@ -559,6 +559,18 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		}
 	}
 
+	// Detect @[live] functions for hot code reloading (native backends only)
+	mut live_fn_detected := false
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if decl.attributes.has('live') && !decl.is_method {
+			t.live_fns << decl.name
+			if t.cur_file_name.len > 0 {
+				t.live_source_file = t.cur_file_name
+			}
+			live_fn_detected = true
+		}
+	}
+
 	// Save current scope and fn_root_scope
 	old_scope := t.scope
 	old_fn_root_scope := t.fn_root_scope
@@ -644,6 +656,32 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	// Restore previous scope and fn_root_scope
 	t.scope = old_scope
 	t.fn_root_scope = old_fn_root_scope
+
+	// For @[live] functions, force @[noinline] so the function gets its own
+	// symbol in the binary (required for -hot-fn extraction).
+	if live_fn_detected && !decl.attributes.has('noinline') {
+		mut new_attrs := []ast.Attribute{cap: decl.attributes.len + 1}
+		new_attrs << ast.Attribute{
+			value: ast.Expr(ast.Ident{
+				name: 'noinline'
+			})
+		}
+		for a in decl.attributes {
+			new_attrs << a
+		}
+		return ast.FnDecl{
+			attributes: new_attrs
+			is_public:  decl.is_public
+			is_method:  decl.is_method
+			is_static:  decl.is_static
+			receiver:   decl.receiver
+			language:   decl.language
+			name:       decl.name
+			typ:        decl.typ
+			stmts:      final_stmts
+			pos:        decl.pos
+		}
+	}
 
 	return ast.FnDecl{
 		attributes: decl.attributes

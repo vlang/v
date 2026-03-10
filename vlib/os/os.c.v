@@ -59,7 +59,7 @@ fn write_file_direct(path string, text string) ! {
 			return error('0 bytes written')
 		}
 		remaining -= written
-		sp = unsafe { &char(voidptr(usize(sp) + usize(written))) }
+		sp = unsafe { &u8(voidptr(usize(sp) + usize(written))) }
 	}
 }
 

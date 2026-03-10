@@ -36,15 +36,15 @@ fn compute_dominators(mut m ssa.Module) {
 		n:        0
 	}
 
-	for func in m.funcs {
-		if func.blocks.len == 0 {
+	for fi in 0 .. m.funcs.len {
+		if m.funcs[fi].blocks.len == 0 {
 			continue
 		}
 
 		// Validate that all block IDs and their successor/predecessor
 		// references are within bounds.
 		mut valid := true
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			if blk_id < 0 || blk_id >= max_id {
 				valid = false
 				break
@@ -74,7 +74,7 @@ fn compute_dominators(mut m ssa.Module) {
 
 		// Reset context for this function (only reset what's needed)
 		ctx.n = 0
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			ctx.parent[blk_id] = -1
 			ctx.semi[blk_id] = blk_id
 			ctx.vertex[blk_id] = -1
@@ -86,7 +86,7 @@ fn compute_dominators(mut m ssa.Module) {
 			m.blocks[blk_id].idom = -1
 		}
 
-		entry := func.blocks[0]
+		entry := m.funcs[fi].blocks[0]
 		lt_dfs(mut m, entry, mut ctx)
 
 		// Process in reverse DFS order (skip root)
@@ -189,10 +189,10 @@ fn compute_dominators(mut m ssa.Module) {
 		m.blocks[entry].idom = entry
 
 		// Build Dom Tree Children
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			m.blocks[blk_id].dom_tree = []
 		}
-		for blk_id in func.blocks {
+		for blk_id in m.funcs[fi].blocks {
 			idom := m.blocks[blk_id].idom
 			if idom != -1 && idom != blk_id {
 				m.blocks[idom].dom_tree << blk_id

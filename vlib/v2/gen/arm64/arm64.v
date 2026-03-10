@@ -50,16 +50,68 @@ pub mut:
 	type_align_cache map[int]int
 	type_size_stack  map[int]bool
 	type_align_stack map[int]bool
+	// Lookup caches for O(1) name resolution
+	func_by_name     map[string]int // function name → index in g.mod.funcs
+	global_by_name   map[string]int // global name → index in g.mod.globals
+	// Per-function cache for alloca pointer analysis (cleared per function)
+	alloca_ptr_cache map[int]u8 // alloca_id → 1=has_ptrs, 2=no_ptrs
+	// Cached environment variables for debug tracing (read once at init)
+	env_dump_funcrefs    string
+	env_trace_skip_dead  string
+	env_dump_stackmap    string
+	env_dump_blocks      string
+	env_trace_paramspill string
+	env_trace_val        string
+	env_trace_instr      string
+	env_trace_cmp        string
+	env_trace_store      string
+	env_trace_load       string
+	env_trace_call       string
+	env_trace_ret        string
+	env_trace_bitcast    string
+	env_trace_assign     string
+	env_trace_extract    string
+	env_trace_struct_init string
+	env_trace_agg_copy   string
+	env_trace_insert     string
+	env_trace_callcount  string
+	env_trace_callarg    string
+	env_trace_struct_addr string
+	env_trace_strlit     string
+	env_trace_storeval   string
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
-		mod:              mod
-		macho:            MachOObject.new()
-		type_size_cache:  map[int]int{}
-		type_align_cache: map[int]int{}
-		type_size_stack:  map[int]bool{}
-		type_align_stack: map[int]bool{}
+		mod:                  mod
+		macho:                MachOObject.new()
+		type_size_cache:      map[int]int{}
+		type_align_cache:     map[int]int{}
+		type_size_stack:      map[int]bool{}
+		type_align_stack:     map[int]bool{}
+		env_dump_funcrefs:    os.getenv('V2_ARM64_DUMP_FUNCREFS')
+		env_trace_skip_dead:  os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
+		env_dump_stackmap:    os.getenv('V2_ARM64_DUMP_STACKMAP')
+		env_dump_blocks:      os.getenv('V2_ARM64_DUMP_BLOCKS')
+		env_trace_paramspill: os.getenv('V2_ARM64_TRACE_PARAMSPILL')
+		env_trace_val:        os.getenv('V2_ARM64_TRACE_VAL')
+		env_trace_instr:      os.getenv('V2_ARM64_TRACE_INSTR')
+		env_trace_cmp:        os.getenv('V2_ARM64_TRACE_CMP')
+		env_trace_store:      os.getenv('V2_ARM64_TRACE_STORE')
+		env_trace_load:       os.getenv('V2_ARM64_TRACE_LOAD')
+		env_trace_call:       os.getenv('V2_ARM64_TRACE_CALL')
+		env_trace_ret:        os.getenv('V2_ARM64_TRACE_RET')
+		env_trace_bitcast:    os.getenv('V2_ARM64_TRACE_BITCAST')
+		env_trace_assign:     os.getenv('V2_ARM64_TRACE_ASSIGN')
+		env_trace_extract:    os.getenv('V2_ARM64_TRACE_EXTRACT')
+		env_trace_struct_init: os.getenv('V2_ARM64_TRACE_STRUCT_INIT')
+		env_trace_agg_copy:   os.getenv('V2_ARM64_TRACE_AGG_COPY')
+		env_trace_insert:     os.getenv('V2_ARM64_TRACE_INSERT')
+		env_trace_callcount:  os.getenv('V2_ARM64_TRACE_CALLCOUNT')
+		env_trace_callarg:    os.getenv('V2_ARM64_TRACE_CALLARG')
+		env_trace_struct_addr: os.getenv('V2_ARM64_TRACE_STRUCT_ADDR')
+		env_trace_strlit:     os.getenv('V2_ARM64_TRACE_STRLIT')
+		env_trace_storeval:   os.getenv('V2_ARM64_TRACE_STOREVAL')
 	}
 }
 
@@ -83,9 +135,18 @@ pub fn (mut g Gen) gen() {
 		data_offset += u64(size)
 	}
 
+	// Build lookup caches for O(1) name resolution
+	for fi, func in g.mod.funcs {
+		g.func_by_name[func.name] = fi
+	}
+	for gi, gvar in g.mod.globals {
+		g.global_by_name[gvar.name] = gi
+	}
+
 	for func in g.mod.funcs {
 		g.gen_func(func)
 	}
+
 
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
@@ -188,6 +249,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.curr_offset = g.macho.text_data.len
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
+	g.alloca_ptr_cache = map[int]u8{}
 	g.block_offsets = map[int]int{}
 	g.pending_labels = map[int][]int{}
 	g.reg_map = map[int]int{}
@@ -200,8 +262,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.x8_save_offset = 0
 	g.mark_sumtype_data_heap_allocas(func)
 	g.allocate_registers(func)
-	dump_funcrefs_fn := os.getenv('V2_ARM64_DUMP_FUNCREFS')
-	if dump_funcrefs_fn != '' && (dump_funcrefs_fn == '*' || func.name == dump_funcrefs_fn) {
+	if g.env_dump_funcrefs.len > 0 && (g.env_dump_funcrefs == '*' || func.name == g.env_dump_funcrefs) {
 		eprintln('ARM64 FUNCREFS fn=${func.name} begin')
 		for i, vv in g.mod.values {
 			if vv.kind != .func_ref {
@@ -314,6 +375,9 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		slot_offset += 8
 	}
 
+	trace_skip_dead := g.env_trace_skip_dead.len > 0
+		&& (g.env_trace_skip_dead == '*' || func.name == g.env_trace_skip_dead)
+
 	for i, blk_id in func.blocks {
 		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
 		blk := g.mod.blocks[blk_id]
@@ -324,9 +388,6 @@ fn (mut g Gen) gen_func(func mir.Function) {
 			}
 			instr := g.mod.instrs[val.index]
 			opcode := g.selected_opcode(instr)
-			trace_skip_dead_fn := os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
-			trace_skip_dead := trace_skip_dead_fn != ''
-				&& (trace_skip_dead_fn == '*' || func.name == trace_skip_dead_fn)
 			// Phi lowering can leave placeholder bitcasts/copies that are fully dead.
 			// Do not reserve stack slots for these values; in large recursive
 			// functions this can cause pathological frame growth and stack overflow.
@@ -435,16 +496,13 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				if !is_multi_reg_call && instr.operands.len > 0 {
 					callee_val := g.mod.values[instr.operands[0]]
 					if callee_val.kind == .func_ref {
-						for f in g.mod.funcs {
-							if f.name == callee_val.name {
-								callee_ret_typ := g.mod.type_store.types[f.typ]
-								callee_ret_size := g.type_size(f.typ)
-								if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
-									&& callee_ret_size <= 16 {
-									is_multi_reg_call = true
-									call_tuple_size = callee_ret_size
-								}
-								break
+						if f := g.get_function_by_name(callee_val.name) {
+							callee_ret_typ := g.mod.type_store.types[f.typ]
+							callee_ret_size := g.type_size(f.typ)
+							if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
+								&& callee_ret_size <= 16 {
+								is_multi_reg_call = true
+								call_tuple_size = callee_ret_size
 							}
 						}
 					}
@@ -485,8 +543,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	g.stack_size = (slot_offset + 16) & ~0xF
 
-	dump_stackmap_fn := os.getenv('V2_ARM64_DUMP_STACKMAP')
-	if dump_stackmap_fn != '' && (dump_stackmap_fn == '*' || func.name == dump_stackmap_fn) {
+	if g.env_dump_stackmap.len > 0 && (g.env_dump_stackmap == '*' || func.name == g.env_dump_stackmap) {
 		eprintln('ARM64 FRAME ${func.name} stack_size=${g.stack_size} x8_save_offset=${g.x8_save_offset}')
 		eprintln('ARM64 STACKMAP ${func.name} begin')
 		for vid, off in g.stack_map {
@@ -551,8 +608,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		}
 		eprintln('ARM64 STACKMAP ${func.name} end')
 	}
-	dump_blocks_fn := os.getenv('V2_ARM64_DUMP_BLOCKS')
-	if dump_blocks_fn != '' && (dump_blocks_fn == '*' || func.name == dump_blocks_fn) {
+	if g.env_dump_blocks.len > 0 && (g.env_dump_blocks == '*' || func.name == g.env_dump_blocks) {
 		eprintln('ARM64 BLOCKS ${func.name} begin')
 		for bi, blk_id in func.blocks {
 			blk := g.mod.blocks[blk_id]
@@ -629,9 +685,8 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	// ARM64 ABI: integer params in x0-x7, float params in d0-d7 (independent allocation)
 	mut reg_idx := 0
 	mut float_reg_idx := 0
-	trace_paramspill_fn := os.getenv('V2_ARM64_TRACE_PARAMSPILL')
-	trace_paramspill := trace_paramspill_fn != ''
-		&& (trace_paramspill_fn == '*' || func.name == trace_paramspill_fn)
+	trace_paramspill := g.env_trace_paramspill.len > 0
+		&& (g.env_trace_paramspill == '*' || func.name == g.env_trace_paramspill)
 	for i, pid in func.params {
 		param_typ := g.mod.values[pid].typ
 		param_type_info := g.mod.type_store.types[param_typ]
@@ -772,14 +827,13 @@ fn (mut g Gen) gen_func(func mir.Function) {
 fn (mut g Gen) gen_instr(val_id int) {
 	instr := g.mod.instrs[g.mod.values[val_id].index]
 	op := g.selected_opcode(instr)
-	trace_val_fn := os.getenv('V2_ARM64_TRACE_VAL')
-	trace_val := trace_val_fn != '' && (trace_val_fn == '*' || g.cur_func_name == trace_val_fn)
+	trace_val := g.env_trace_val.len > 0
+		&& (g.env_trace_val == '*' || g.cur_func_name == g.env_trace_val)
 	if trace_val {
 		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} sel=`${instr.selected_op}` ops=${instr.operands}')
 	}
-	trace_instr_fn := os.getenv('V2_ARM64_TRACE_INSTR')
-	trace_instr := trace_instr_fn != ''
-		&& (trace_instr_fn == '*' || g.cur_func_name == trace_instr_fn)
+	trace_instr := g.env_trace_instr.len > 0
+		&& (g.env_trace_instr == '*' || g.cur_func_name == g.env_trace_instr)
 	if trace_instr {
 		typ_id := g.mod.values[val_id].typ
 		mut kind := ssa.TypeKind.void_t
@@ -1025,9 +1079,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit(asm_lsrv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
-					trace_cmp_fn := os.getenv('V2_ARM64_TRACE_CMP')
-					trace_cmp := trace_cmp_fn != ''
-						&& (trace_cmp_fn == '*' || g.cur_func_name == trace_cmp_fn)
+					trace_cmp := g.env_trace_cmp.len > 0
+						&& (g.env_trace_cmp == '*' || g.cur_func_name == g.env_trace_cmp)
 					lhs_typ := g.mod.values[instr.operands[0]].typ
 					is_float := lhs_typ > 0 && lhs_typ < g.mod.type_store.types.len
 						&& g.mod.type_store.types[lhs_typ].kind == .float_t
@@ -1109,9 +1162,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.store {
 			src_id := instr.operands[0]
 			ptr_id := instr.operands[1]
-			trace_store_fn := os.getenv('V2_ARM64_TRACE_STORE')
-			trace_store := trace_store_fn != ''
-				&& (trace_store_fn == '*' || g.cur_func_name == trace_store_fn)
+			trace_store := g.env_trace_store.len > 0
+				&& (g.env_trace_store == '*' || g.cur_func_name == g.env_trace_store)
 			// ValueID 0 is the SSA null/invalid sentinel.
 			if src_id <= 0 || src_id >= g.mod.values.len {
 				return
@@ -1490,9 +1542,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.load {
 			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
 			ptr_id := instr.operands[0]
-			trace_load_fn := os.getenv('V2_ARM64_TRACE_LOAD')
-			trace_load := trace_load_fn != ''
-				&& (trace_load_fn == '*' || g.cur_func_name == trace_load_fn)
+			trace_load := g.env_trace_load.len > 0
+				&& (g.env_trace_load == '*' || g.cur_func_name == g.env_trace_load)
 			mut loaded_into_aggregate_slot := false
 			mut force_spill_small_struct := false
 			mut handled_sumtype_data_word_load := false
@@ -1818,6 +1869,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 				// Ensure index load doesn't clobber base if base is 8
 				idx_scratch := if base_ptr_reg == 8 { 9 } else { 8 }
 				idx_reg := g.get_operand_reg(idx_id, idx_scratch)
+				// Sign-extend index from 32-bit to 64-bit. GEP indices may have
+				// been stored as 32-bit values (e.g. from map lookups or
+				// extractvalue of int fields) with undefined upper 32 bits.
+				// The ARM64 ABI does not guarantee upper bits are zeroed for
+				// sub-64-bit values, so always extend before scaling.
+				g.emit(asm_sxtw(Reg(idx_reg), Reg(idx_reg)))
 				if scale == 8 {
 					g.emit(asm_add_reg_lsl3(Reg(8), Reg(base_ptr_reg), Reg(idx_reg)))
 				} else if scale == 1 {
@@ -1840,9 +1897,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.call {
 			fn_val := g.mod.values[instr.operands[0]]
 			fn_name := fn_val.name
-			trace_call_fn := os.getenv('V2_ARM64_TRACE_CALL')
-			trace_call := trace_call_fn != ''
-				&& (trace_call_fn == '*' || g.cur_func_name == trace_call_fn)
+			trace_call := g.env_trace_call.len > 0
+				&& (g.env_trace_call == '*' || g.cur_func_name == g.env_trace_call)
 			if trace_call {
 				eprintln('ARM64 CALL fn=${g.cur_func_name} val=${val_id} callee_id=${instr.operands[0]} callee=`${fn_name}` args=${instr.operands.len - 1}')
 			}
@@ -2052,13 +2108,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 						// Also check the callee's registered return type
 						callee_fn_val := g.mod.values[instr.operands[0]]
 						if callee_fn_val.kind == .func_ref {
-							for f in g.mod.funcs {
-								if f.name == callee_fn_val.name {
-									callee_ret := g.mod.type_store.types[f.typ]
-									if callee_ret.kind == .float_t {
-										is_float_return = true
-									}
-									break
+							if f := g.get_function_by_name(callee_fn_val.name) {
+								callee_ret := g.mod.type_store.types[f.typ]
+								if callee_ret.kind == .float_t {
+									is_float_return = true
 								}
 							}
 						}
@@ -2076,16 +2129,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 							&& result_typ.kind == .int_t {
 							callee_val2 := g.mod.values[instr.operands[0]]
 							if callee_val2.kind == .func_ref {
-								for f in g.mod.funcs {
-									if f.name == callee_val2.name {
-										callee_ret_typ := g.mod.type_store.types[f.typ]
-										callee_ret_size := g.type_size(f.typ)
-										if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
-											&& callee_ret_size <= 16 {
-											call_ret_is_multi_reg = true
-											actual_call_ret_size = callee_ret_size
-										}
-										break
+								if f := g.get_function_by_name(callee_val2.name) {
+									callee_ret_typ := g.mod.type_store.types[f.typ]
+									callee_ret_size := g.type_size(f.typ)
+									if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
+										&& callee_ret_size <= 16 {
+										call_ret_is_multi_reg = true
+										actual_call_ret_size = callee_ret_size
 									}
 								}
 							}
@@ -2220,9 +2270,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Call with struct return lowered by ABI pass.
 			// operands: [fn, arg1, arg2, ...], destination is val_id's stack slot.
 			num_args := instr.operands.len - 1
-			trace_call_fn := os.getenv('V2_ARM64_TRACE_CALL')
-			trace_call := trace_call_fn != ''
-				&& (trace_call_fn == '*' || g.cur_func_name == trace_call_fn)
+			trace_call := g.env_trace_call.len > 0
+				&& (g.env_trace_call == '*' || g.cur_func_name == g.env_trace_call)
 			if trace_call {
 				callee_id := instr.operands[0]
 				mut callee_name := ''
@@ -2323,9 +2372,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 				mut ret_val_id := instr.operands[0]
 				mut ret_val := g.mod.values[ret_val_id]
 				mut ret_typ := g.mod.type_store.types[ret_val.typ]
-				trace_ret_fn := os.getenv('V2_ARM64_TRACE_RET')
-				trace_ret := trace_ret_fn != ''
-					&& (trace_ret_fn == '*' || g.cur_func_name == trace_ret_fn)
+				trace_ret := g.env_trace_ret.len > 0
+					&& (g.env_trace_ret == '*' || g.cur_func_name == g.env_trace_ret)
 
 				// Get the function's declared return type
 				fn_ret_type := g.cur_func_ret_type
@@ -2741,9 +2789,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 				}
-				trace_bitcast_fn := os.getenv('V2_ARM64_TRACE_BITCAST')
-				trace_bitcast := trace_bitcast_fn != ''
-					&& (trace_bitcast_fn == '*' || g.cur_func_name == trace_bitcast_fn)
+				trace_bitcast := g.env_trace_bitcast.len > 0
+					&& (g.env_trace_bitcast == '*' || g.cur_func_name == g.env_trace_bitcast)
 				if trace_bitcast {
 					mut src_kind := ssa.TypeKind.void_t
 					mut src_size := 0
@@ -2903,9 +2950,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Used for Phi elimination: store src into dest's slot
 			dest_id := instr.operands[0]
 			mut src_id := instr.operands[1]
-			trace_assign_fn := os.getenv('V2_ARM64_TRACE_ASSIGN')
-			trace_assign := trace_assign_fn != ''
-				&& (trace_assign_fn == '*' || g.cur_func_name == trace_assign_fn)
+			trace_assign := g.env_trace_assign.len > 0
+				&& (g.env_trace_assign == '*' || g.cur_func_name == g.env_trace_assign)
 			mut handled_aggregate_copy := false
 			if dest_id > 0 && dest_id < g.mod.values.len {
 				dest_typ_id := g.mod.values[dest_id].typ
@@ -3140,9 +3186,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			tuple_id := instr.operands[0]
 			idx_val := g.mod.values[instr.operands[1]]
 			idx := idx_val.name.int()
-			trace_extract_fn := os.getenv('V2_ARM64_TRACE_EXTRACT')
-			trace_extract := trace_extract_fn != ''
-				&& (trace_extract_fn == '*' || g.cur_func_name == trace_extract_fn)
+			trace_extract := g.env_trace_extract.len > 0
+				&& (g.env_trace_extract == '*' || g.cur_func_name == g.env_trace_extract)
 			tuple_val := g.mod.values[tuple_id]
 			mut tuple_is_agg_typ := false
 			mut tuple_is_large_agg := false
@@ -3698,9 +3743,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			result_offset := g.stack_map[val_id]
 			struct_typ := g.mod.type_store.types[instr.typ]
 			struct_size := g.type_size(instr.typ)
-			trace_struct_init_fn := os.getenv('V2_ARM64_TRACE_STRUCT_INIT')
-			trace_struct_init := trace_struct_init_fn != ''
-				&& (trace_struct_init_fn == '*' || g.cur_func_name == trace_struct_init_fn)
+			trace_struct_init := g.env_trace_struct_init.len > 0
+				&& (g.env_trace_struct_init == '*' || g.cur_func_name == g.env_trace_struct_init)
 			if trace_struct_init {
 				mut op_dbg := []string{}
 				for field_id in instr.operands {
@@ -3814,9 +3858,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 					src_chunks := if src_size > 0 { (src_size + 7) / 8 } else { 0 }
 					src_is_ptr_carried := g.large_aggregate_stack_value_is_pointer(field_id)
-					trace_agg_copy_fn := os.getenv('V2_ARM64_TRACE_AGG_COPY')
-					trace_agg_copy := trace_agg_copy_fn != ''
-						&& (trace_agg_copy_fn == '*' || g.cur_func_name == trace_agg_copy_fn)
+					trace_agg_copy := g.env_trace_agg_copy.len > 0
+						&& (g.env_trace_agg_copy == '*' || g.cur_func_name == g.env_trace_agg_copy)
 					if trace_agg_copy && src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
 						src_typ := g.mod.type_store.types[src_typ_id]
 						if src_typ.kind == .ptr_t {
@@ -3901,9 +3944,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			elem_id := instr.operands[1]
 			idx_val := g.mod.values[instr.operands[2]]
 			idx := idx_val.name.int()
-			trace_insert_fn := os.getenv('V2_ARM64_TRACE_INSERT')
-			trace_insert := trace_insert_fn != ''
-				&& (trace_insert_fn == '*' || g.cur_func_name == trace_insert_fn)
+			trace_insert := g.env_trace_insert.len > 0
+				&& (g.env_trace_insert == '*' || g.cur_func_name == g.env_trace_insert)
 
 			// Get result's stack location
 			result_offset := g.stack_map[val_id]
@@ -4015,9 +4057,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				src_chunks := if src_size > 0 { (src_size + 7) / 8 } else { 0 }
 				src_is_ptr_carried := g.large_aggregate_stack_value_is_pointer(elem_id)
-				trace_agg_copy_fn := os.getenv('V2_ARM64_TRACE_AGG_COPY')
-				trace_agg_copy := trace_agg_copy_fn != ''
-					&& (trace_agg_copy_fn == '*' || g.cur_func_name == trace_agg_copy_fn)
+				trace_agg_copy := g.env_trace_agg_copy.len > 0
+					&& (g.env_trace_agg_copy == '*' || g.cur_func_name == g.env_trace_agg_copy)
 				if trace_agg_copy && src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
 					src_typ := g.mod.type_store.types[src_typ_id]
 					if src_typ.kind == .ptr_t {
@@ -4131,12 +4172,14 @@ fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
 }
 
 fn (g &Gen) has_function_named(name string) bool {
-	for f in g.mod.funcs {
-		if f.name == name {
-			return true
-		}
+	return name in g.func_by_name
+}
+
+fn (g &Gen) get_function_by_name(name string) ?&mir.Function {
+	if fi := g.func_by_name[name] {
+		return &g.mod.funcs[fi]
 	}
-	return false
+	return none
 }
 
 fn (g &Gen) call_param_type(instr mir.Instruction, arg_idx int) ?ssa.TypeID {
@@ -4153,10 +4196,7 @@ fn (g &Gen) call_param_type(instr mir.Instruction, arg_idx int) ?ssa.TypeID {
 	// MIR transformations can leave a drifted `fn_val.typ` on direct call targets,
 	// which would otherwise misclassify aggregate arguments.
 	if op in [.call, .call_sret] && fn_val.name != '' {
-		for f in g.mod.funcs {
-			if f.name != fn_val.name {
-				continue
-			}
+		if f := g.get_function_by_name(fn_val.name) {
 			if arg_idx < f.params.len {
 				param_id := f.params[arg_idx]
 				if param_id > 0 && param_id < g.mod.values.len {
@@ -4184,24 +4224,15 @@ fn (g &Gen) call_result_type(instr mir.Instruction) ?ssa.TypeID {
 		if fn_id > 0 && fn_id < g.mod.values.len {
 			fn_val := g.mod.values[fn_id]
 			// Keep direct calls aligned with declared function signatures first.
-			if op == .call && fn_val.name != '' {
-				for f in g.mod.funcs {
-					if f.name == fn_val.name {
-						return f.typ
-					}
+			if fn_val.name != '' {
+				if f := g.get_function_by_name(fn_val.name) {
+					return f.typ
 				}
 			}
 			if fn_val.typ > 0 && fn_val.typ < g.mod.type_store.types.len {
 				fn_typ := g.mod.type_store.types[fn_val.typ]
 				if fn_typ.kind == .func_t && fn_typ.ret_type > 0 {
 					return fn_typ.ret_type
-				}
-			}
-			if fn_val.name != '' {
-				for f in g.mod.funcs {
-					if f.name == fn_val.name {
-						return f.typ
-					}
 				}
 			}
 		}
@@ -4330,10 +4361,15 @@ fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id i
 	return false
 }
 
-fn (g &Gen) alloca_slot_stores_pointer_like_values(alloca_id int, param_elem_typ_id ssa.TypeID) bool {
+fn (mut g Gen) alloca_slot_stores_pointer_like_values(alloca_id int, param_elem_typ_id ssa.TypeID) bool {
+	if cached := g.alloca_ptr_cache[alloca_id] {
+		return cached == 1
+	}
 	mut seen_allocas := map[int]bool{}
-	return g.alloca_slot_stores_pointer_like_values_inner(alloca_id, param_elem_typ_id,
+	result := g.alloca_slot_stores_pointer_like_values_inner(alloca_id, param_elem_typ_id,
 		0, mut seen_allocas)
+	g.alloca_ptr_cache[alloca_id] = if result { u8(1) } else { u8(2) }
+	return result
 }
 
 fn (g &Gen) alloca_slot_stores_pointer_like_values_inner(alloca_id int, param_elem_typ_id ssa.TypeID, depth int, mut seen_allocas map[int]bool) bool {
@@ -4518,9 +4554,8 @@ fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 fn (mut g Gen) call_arg_reg_count(val_id int, arg_idx int, instr mir.Instruction) int {
 	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
 		&& instr.abi_arg_class[arg_idx] == .indirect
-	trace_callcount_fn := os.getenv('V2_ARM64_TRACE_CALLCOUNT')
-	trace_callcount := trace_callcount_fn != ''
-		&& (trace_callcount_fn == '*' || g.cur_func_name == trace_callcount_fn)
+	trace_callcount := g.env_trace_callcount.len > 0
+		&& (g.env_trace_callcount == '*' || g.cur_func_name == g.env_trace_callcount)
 	if is_indirect {
 		if trace_callcount {
 			eprintln('ARM64 CALLCOUNT fn=${g.cur_func_name} arg_idx=${arg_idx} val=${val_id} indirect=1 count=1')
@@ -4608,9 +4643,8 @@ fn (mut g Gen) load_struct_arg_to_regs(start_reg int, val_id int, expected_struc
 fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.Instruction) {
 	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
 		&& instr.abi_arg_class[arg_idx] == .indirect
-	trace_callarg_fn := os.getenv('V2_ARM64_TRACE_CALLARG')
-	trace_callarg := trace_callarg_fn != ''
-		&& (trace_callarg_fn == '*' || g.cur_func_name == trace_callarg_fn)
+	trace_callarg := g.env_trace_callarg.len > 0
+		&& (g.env_trace_callarg == '*' || g.cur_func_name == g.env_trace_callarg)
 	if !is_indirect {
 		if param_typ_id := g.call_param_type(instr, arg_idx) {
 			if param_typ_id > 0 && param_typ_id < g.mod.type_store.types.len && val_id > 0
@@ -4915,9 +4949,8 @@ fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_stru
 		// callee expects the full wrapper struct. Re-associate such values back to
 		// their wrapper so argument passing uses stable `{_tag, _data}` storage.
 		if expected_typ.kind == .struct_t && g.is_sumtype_wrapper_struct_type(expected_struct_typ) {
-			trace_struct_addr_fn := os.getenv('V2_ARM64_TRACE_STRUCT_ADDR')
-			trace_struct_addr := trace_struct_addr_fn != ''
-				&& (trace_struct_addr_fn == '*' || g.cur_func_name == trace_struct_addr_fn)
+			trace_struct_addr := g.env_trace_struct_addr.len > 0
+				&& (g.env_trace_struct_addr == '*' || g.cur_func_name == g.env_trace_struct_addr)
 			// A raw `_data` word extracted from a wrapper can represent an address to
 			// bytes whose prefix is the desired wrapper argument (for example, when
 			// selecting a nested `ast.Expr` field). In that case pass the payload
@@ -5158,11 +5191,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 	} else if val.kind == .global {
 		// Check if this is an external global (needs GOT access)
 		mut is_external := false
-		for gvar in g.mod.globals {
-			if gvar.name == val.name && gvar.linkage == .external {
-				is_external = true
-				break
-			}
+		if gi := g.global_by_name[val.name] {
+			is_external = g.mod.globals[gi].linkage == .external
 		}
 
 		if is_external {
@@ -5188,7 +5218,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 
 		// Get stack slot for this string struct
 		base_offset := g.stack_map[val_id]
-		trace_strlit := os.getenv('V2_ARM64_TRACE_STRLIT') != ''
+		trace_strlit := g.env_trace_strlit != ''
 
 		// Check if we've already materialized this string literal in this function.
 		if _ := g.string_literal_offsets[val_id] {
@@ -5349,9 +5379,8 @@ fn (mut g Gen) load_fnptr_to_reg(reg int, val_id int) {
 
 fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	mut stored_reg := reg
-	trace_storeval_fn := os.getenv('V2_ARM64_TRACE_STOREVAL')
-	trace_storeval := trace_storeval_fn != ''
-		&& (trace_storeval_fn == '*' || g.cur_func_name == trace_storeval_fn)
+	trace_storeval := g.env_trace_storeval.len > 0
+		&& (g.env_trace_storeval == '*' || g.cur_func_name == g.env_trace_storeval)
 	if reg_idx := g.reg_map[val_id] {
 		if reg_idx != reg {
 			g.emit_mov_reg(reg_idx, reg)

@@ -39,8 +39,8 @@ pub fn verify(m &ssa.Module) []VerifyError {
 	mut errors := []VerifyError{}
 
 	// 1. Verify each function
-	for func in m.funcs {
-		errors << verify_function(m, func)
+	for fi in 0 .. m.funcs.len {
+		errors << verify_function(m, &m.funcs[fi])
 	}
 
 	// 2. Verify global use-def chains
@@ -82,7 +82,7 @@ pub fn verify_and_panic(m &ssa.Module, pass_name string) {
 	}
 }
 
-fn verify_function(m &ssa.Module, func ssa.Function) []VerifyError {
+fn verify_function(m &ssa.Module, func &ssa.Function) []VerifyError {
 	mut errors := []VerifyError{}
 
 	// Function must have at least one block (entry)
@@ -113,7 +113,7 @@ fn verify_function(m &ssa.Module, func ssa.Function) []VerifyError {
 	return errors
 }
 
-fn verify_block(m &ssa.Module, func ssa.Function, blk_id int) []VerifyError {
+fn verify_block(m &ssa.Module, func &ssa.Function, blk_id int) []VerifyError {
 	mut errors := []VerifyError{}
 	blk := m.blocks[blk_id]
 
@@ -821,7 +821,7 @@ fn verify_cfg_consistency(m &ssa.Module, func_id int, blk_id int) []VerifyError 
 	return errors
 }
 
-fn verify_dominance(m &ssa.Module, func ssa.Function) []VerifyError {
+fn verify_dominance(m &ssa.Module, func &ssa.Function) []VerifyError {
 	mut errors := []VerifyError{}
 
 	// Build map of value -> defining block
@@ -906,7 +906,7 @@ fn verify_dominance(m &ssa.Module, func ssa.Function) []VerifyError {
 }
 
 // dominates returns true if block a dominates block b
-fn dominates(m &ssa.Module, func ssa.Function, a int, b int) bool {
+fn dominates(m &ssa.Module, func &ssa.Function, a int, b int) bool {
 	if a == b {
 		return true
 	}
@@ -944,8 +944,8 @@ fn verify_use_def_chains(m &ssa.Module) []VerifyError {
 	// Build expected uses from instruction operands
 	mut expected_uses := map[int]map[int]bool{} // value -> set of users
 
-	for func in m.funcs {
-		for blk_id in func.blocks {
+	for fi in 0 .. m.funcs.len {
+		for blk_id in m.funcs[fi].blocks {
 			if blk_id >= m.blocks.len {
 				continue
 			}

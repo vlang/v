@@ -157,6 +157,11 @@ fn asm_ubfx_lower(rd Reg, rn Reg, width u32) u32 {
 	return 0xD3400000 | (imms << 10) | (u32(rn) << 5) | u32(rd)
 }
 
+// sxtw rd, rn — sign-extend 32-bit value to 64-bit (SBFM Xd, Xn, #0, #31)
+fn asm_sxtw(rd Reg, rn Reg) u32 {
+	return 0x93407C00 | (u32(rn) << 5) | u32(rd)
+}
+
 // === Compare ===
 
 // cmp rn, rm (subs xzr, rn, rm) — 64-bit

@@ -9,14 +9,14 @@ import v2.ssa
 fn remove_unreachable_blocks(mut m ssa.Module) {
 	// Re-build CFG first
 	build_cfg(mut m)
-	for mut func in m.funcs {
-		if func.blocks.len == 0 {
+	for fi in 0 .. m.funcs.len {
+		if m.funcs[fi].blocks.len == 0 {
 			continue
 		}
 		// BFS/DFS from entry
 		mut reachable := map[int]bool{}
-		mut q := [func.blocks[0]]
-		reachable[func.blocks[0]] = true
+		mut q := [m.funcs[fi].blocks[0]]
+		reachable[m.funcs[fi].blocks[0]] = true
 
 		for q.len > 0 {
 			curr := q.pop()
@@ -29,12 +29,12 @@ fn remove_unreachable_blocks(mut m ssa.Module) {
 		}
 
 		mut new_blocks := []int{}
-		for blk in func.blocks {
+		for blk in m.funcs[fi].blocks {
 			if reachable[blk] {
 				new_blocks << blk
 			}
 		}
-		func.blocks = new_blocks
+		m.funcs[fi].blocks = new_blocks
 	}
 }
 
@@ -56,12 +56,12 @@ fn merge_blocks(mut m ssa.Module) {
 			first_iter = false
 		}
 
-		for mut func in m.funcs {
+		for fi in 0 .. m.funcs.len {
 			// We iterate through blocks.
 			// If we merge A->B, we can't merge B->C in same pass easily.
 			mut merged := map[int]bool{}
 
-			for blk_id in func.blocks {
+			for blk_id in m.funcs[fi].blocks {
 				if merged[blk_id] {
 					continue
 				}
@@ -132,12 +132,12 @@ fn merge_blocks(mut m ssa.Module) {
 			// Filter out merged blocks
 			if merged.len > 0 {
 				mut new_blks := []int{}
-				for b in func.blocks {
+				for b in m.funcs[fi].blocks {
 					if !merged[b] {
 						new_blks << b
 					}
 				}
-				func.blocks = new_blks
+				m.funcs[fi].blocks = new_blks
 			}
 		}
 		// Rebuild CFG for next iteration if we made changes

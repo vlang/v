@@ -759,7 +759,9 @@ fn (mut b Builder) register_types_pass1(file ast.File) {
 // so cross-module struct references (e.g., &scanner.Scanner in Parser)
 // resolve correctly to the struct type instead of falling back to i64.
 fn (mut b Builder) register_types_pass2(file ast.File) {
-	for stmt in file.stmts {
+	nstmts := file.stmts.len
+	for si in 0 .. nstmts {
+		stmt := file.stmts[si]
 		if stmt is ast.StructDecl {
 			b.register_struct_fields(stmt)
 		}
@@ -807,11 +809,16 @@ fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 
 	mut field_types := []TypeID{}
 	mut field_names := []string{}
+	n_embedded := decl.embedded.len
+	n_fields := decl.fields.len
 
 	// Flatten embedded struct fields first (e.g., ObjectCommon in Const)
-	b.collect_embedded_fields(decl.embedded, mut field_names, mut field_types)
+	if n_embedded > 0 {
+		b.collect_embedded_fields(decl.embedded, mut field_names, mut field_types)
+	}
 
-	for field in decl.fields {
+	for fi in 0 .. n_fields {
+		field := decl.fields[fi]
 		ft := b.ast_type_to_ssa(field.typ)
 		field_types << ft
 		field_names << field.name
@@ -2028,6 +2035,11 @@ fn (mut b Builder) mangle_fn_name(decl ast.FnDecl) string {
 		return 'main'
 	}
 	if b.cur_module != '' && b.cur_module != 'main' {
+		// Don't add module prefix if name already starts with it (e.g., generated
+		// enum str functions placed back in their source module).
+		if decl.name.starts_with('${b.cur_module}__') {
+			return decl.name
+		}
 		return '${b.cur_module}__${decl.name}'
 	}
 	return decl.name
@@ -4442,11 +4454,12 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 					])
 				}
 				// Scalar arg but voidptr param: auto-ref for builtin methods
-				// (array insert/prepend, map delete/set/get, etc. take voidptr = "pointer to element")
+				// (array insert/prepend, map delete/set/get, new_array_with_default, etc. take voidptr = "pointer to element")
 				i8_t := b.mod.type_store.get_int(8)
 				voidptr_t := b.mod.type_store.get_ptr(i8_t)
 				if param_type == voidptr_t && arg_kind in [.int_t, .float_t]
-					&& (fn_name.contains('array__') || fn_name.contains('map__')) {
+					&& (fn_name.contains('array__') || fn_name.contains('map__')
+					|| fn_name.contains('new_array')) {
 					ptr_type := b.mod.type_store.get_ptr(arg_type)
 					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
 					b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
@@ -5755,6 +5768,19 @@ fn (mut b Builder) collect_init_expr_values(expr ast.InitExpr) (TypeID, []ValueI
 					field_val = b.coerce_wrapper_value(expr.fields[idx].value, field_val,
 						field_type)
 				}
+				// When a struct field init calls a function that returns a pointer
+				// (e.g., TypeStore.new() returns &TypeStore), but the field expects
+				// a value type, we need to load (dereference) the pointer.
+				val_typ_id := b.mod.values[field_val].typ
+				if val_typ_id > 0 && val_typ_id < b.mod.type_store.types.len
+					&& field_type > 0 && field_type < b.mod.type_store.types.len {
+					val_typ := b.mod.type_store.types[val_typ_id]
+					fld_typ := b.mod.type_store.types[field_type]
+					if val_typ.kind == .ptr_t && fld_typ.kind == .struct_t {
+						field_val = b.mod.add_instr(.load, b.cur_block, field_type,
+							[field_val])
+					}
+				}
 				field_vals << field_val
 			} else {
 				field_vals << b.mod.get_or_add_const(field_type, '0')
@@ -6216,6 +6242,38 @@ fn (b &Builder) sizeof_value(expr ast.Expr) int {
 							return b.type_byte_size(tid)
 						}
 					}
+					// Resolve type aliases (e.g. ValueID = int → sizeof = 4)
+					if b.env != unsafe { nil } {
+						// Scope keys use short module names (e.g. 'ssa', not 'v2_ssa' or 'v2.ssa')
+						// cur_module uses underscores (e.g. 'v2_ssa'), extract last part
+						short_mod := if b.cur_module.contains('_') {
+							b.cur_module.all_after_last('_')
+						} else {
+							b.cur_module
+						}
+						scopes_to_try := [short_mod, b.cur_module, 'builtin', 'main']
+						lookup_name := expr.name
+						for scope_name in scopes_to_try {
+							if scope := b.env.get_scope(scope_name) {
+								if obj := scope.lookup(lookup_name) {
+									resolved := obj.typ()
+									return b.sizeof_from_checked_type(resolved)
+								}
+							}
+						}
+						// Try stripping module prefix from name (e.g. ssa__ValueID → ValueID)
+						if lookup_name.contains('__') {
+							stripped := lookup_name.all_after_last('__')
+							for scope_name in scopes_to_try {
+								if scope := b.env.get_scope(scope_name) {
+									if obj := scope.lookup(stripped) {
+										resolved := obj.typ()
+										return b.sizeof_from_checked_type(resolved)
+									}
+								}
+							}
+						}
+					}
 					8 // pointer size fallback
 				}
 			}
@@ -6247,8 +6305,73 @@ fn (b &Builder) sizeof_value(expr ast.Expr) int {
 				if tid := b.struct_types[qualified] {
 					return b.type_byte_size(tid)
 				}
+				// Resolve type aliases via the type environment (e.g. ssa.ValueID = int)
+				if b.env != unsafe { nil } {
+					// Scope keys use dots (e.g. 'v2.ssa'), lhs_name may already be dot-separated
+					if scope := b.env.get_scope(lhs_name) {
+						if obj := scope.lookup(rhs_name) {
+							resolved := obj.typ()
+							return b.sizeof_from_checked_type(resolved)
+						}
+					}
+				}
 			}
 			return 8
+		}
+		else {
+			return 8
+		}
+	}
+}
+
+// sizeof_from_checked_type returns the byte size of a type-checker Type.
+// Recursively unwraps aliases to get the base type size.
+fn (b &Builder) sizeof_from_checked_type(t types.Type) int {
+	match t {
+		types.Alias {
+			return b.sizeof_from_checked_type(t.base_type)
+		}
+		types.Primitive {
+			if t.size > 0 {
+				return int(t.size + 7) / 8 // convert bits to bytes
+			}
+			// size=0 means platform-dependent int (always 4 bytes on arm64/x64)
+			return 4
+		}
+		types.Pointer {
+			return 8
+		}
+		types.Array {
+			if tid := b.struct_types['array'] {
+				return b.type_byte_size(tid)
+			}
+			return 32
+		}
+		types.Map {
+			if tid := b.struct_types['map'] {
+				return b.type_byte_size(tid)
+			}
+			return 120
+		}
+		types.Struct {
+			// Look up the struct in the SSA type registry
+			if tid := b.struct_types[t.name] {
+				return b.type_byte_size(tid)
+			}
+			// Try module-qualified
+			if b.cur_module != '' {
+				qualified := '${b.cur_module}__${t.name}'
+				if tid := b.struct_types[qualified] {
+					return b.type_byte_size(tid)
+				}
+			}
+			return 8
+		}
+		types.String {
+			return 16
+		}
+		types.Enum {
+			return 4
 		}
 		else {
 			return 8
