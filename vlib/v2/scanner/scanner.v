@@ -57,6 +57,11 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.src = src
 }
 
+// current_file returns the scanner's current source file handle.
+pub fn (s &Scanner) current_file() &token.File {
+	return unsafe { s.file }
+}
+
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
 	// integrity check: detect source buffer corruption
@@ -281,6 +286,12 @@ pub fn (mut s Scanner) scan() token.Token {
 		`&` {
 			c2 := s.src[s.offset]
 			if c2 == `&` {
+				// Parse logical and assignment as bitwise-and assignment token for now.
+				// It is later lowered by transformer/type-aware stages as needed.
+				if s.offset + 1 < s.src.len && s.src[s.offset + 1] == `=` {
+					s.offset += 2
+					return .and_assign
+				}
 				// so that we parse &&Type as two .amp instead of .and
 				// but this requires there is a space. we could check
 				// for capital or some other way, this is simplest for now.
@@ -297,6 +308,11 @@ pub fn (mut s Scanner) scan() token.Token {
 		`|` {
 			c2 := s.src[s.offset]
 			if c2 == `|` {
+				// Parse logical or assignment as bitwise-or assignment token for now.
+				if s.offset + 1 < s.src.len && s.src[s.offset + 1] == `=` {
+					s.offset += 2
+					return .or_assign
+				}
 				s.offset++
 				return .logical_or
 			} else if c2 == `=` {

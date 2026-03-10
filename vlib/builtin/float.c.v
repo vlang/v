@@ -135,42 +135,60 @@ pub fn (x f32) strlong() string {
 // Example: assert f32_abs(-2.0) == 2.0
 @[inline]
 pub fn f32_abs(a f32) f32 {
-	return if a < 0 { -a } else { a }
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 // f64_abs returns the absolute value of `a` as a `f64` value.
 // Example: assert f64_abs(-2.0) == f64(2.0)
 @[inline]
 pub fn f64_abs(a f64) f64 {
-	return if a < 0 { -a } else { a }
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 // f32_min returns the smaller `f32` of input `a` and `b`.
 // Example: assert f32_min(2.0,3.0) == 2.0
 @[inline]
 pub fn f32_min(a f32, b f32) f32 {
-	return if a < b { a } else { b }
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // f32_max returns the larger `f32` of input `a` and `b`.
 // Example: assert f32_max(2.0,3.0) == 3.0
 @[inline]
 pub fn f32_max(a f32, b f32) f32 {
-	return if a > b { a } else { b }
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // f64_min returns the smaller `f64` of input `a` and `b`.
 // Example: assert f64_min(2.0,3.0) == 2.0
 @[inline]
 pub fn f64_min(a f64, b f64) f64 {
-	return if a < b { a } else { b }
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // f64_max returns the larger `f64` of input `a` and `b`.
 // Example: assert f64_max(2.0,3.0) == 3.0
 @[inline]
 pub fn f64_max(a f64, b f64) f64 {
-	return if a > b { a } else { b }
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // eq_epsilon returns true if the `f32` is equal to input `b`.

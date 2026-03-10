@@ -24,7 +24,62 @@ fn is_builtin_array_file(path string) bool {
 }
 
 fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
-	return decl.name in ['sort', 'grow_len', 'delete', 'clear', 'prepend', 'insert']
+	return decl.name in [
+		'__new_array',
+		'__new_array_with_default',
+		'__new_array_with_multi_default',
+		'__new_array_with_array_default',
+		'__new_array_with_map_default',
+		'new_array_from_c_array',
+		'new_array_from_c_array_no_alloc',
+		'ensure_cap',
+		'repeat',
+		'repeat_to_depth',
+		'insert',
+		'insert_many',
+		'prepend',
+		'prepend_many',
+		'delete',
+		'delete_many',
+		'clear',
+		'reset',
+		'trim',
+		'drop',
+		'get_unsafe',
+		'get',
+		'get_with_check',
+		'first',
+		'last',
+		'pop_left',
+		'pop',
+		'delete_last',
+		'slice',
+		'slice_ni',
+		'contains',
+		'clone_static_to_depth',
+		'clone',
+		'clone_to_depth',
+		'set_unsafe',
+		'set',
+		'push',
+		'push_many',
+		'reverse_in_place',
+		'reverse',
+		'free',
+		'sort',
+		'sort_with_compare',
+		'sorted_with_compare',
+		'copy',
+		'write_u8',
+		'write_rune',
+		'write_string',
+		'write_ptr',
+		'grow_cap',
+		'grow_len',
+		'pointers',
+		'panic_on_negative_len',
+		'panic_on_negative_cap',
+	]
 }
 
 fn (mut g Gen) emit_missing_array_contains_fallbacks() {
@@ -291,15 +346,24 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 // array_elem_type_from_raw extracts the element type from a raw types.Type
 // that represents an array, unwrapping Pointer and Alias layers as needed.
 fn array_elem_type_from_raw(t types.Type) ?types.Type {
+	if !type_has_valid_data(t) {
+		return none
+	}
 	match t {
 		types.Array {
 			return t.elem_type
 		}
 		types.Pointer {
-			return array_elem_type_from_raw(t.base_type)
+			if elem := array_elem_type_from_raw(t.base_type) {
+				return elem
+			}
+			return none
 		}
 		types.Alias {
-			return array_elem_type_from_raw(t.base_type)
+			if elem := array_elem_type_from_raw(t.base_type) {
+				return elem
+			}
+			return none
 		}
 		else {
 			return none
@@ -424,7 +488,8 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 		if final_elem != '' && is_dyn {
 			// Dynamic array compound literal: (elem_type[N]){e1, e2, ...}
 			g.sb.write_string('(${final_elem}[${node.exprs.len}]){')
-			for i, e in node.exprs {
+			for i in 0 .. node.exprs.len {
+				e := node.exprs[i]
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
@@ -435,7 +500,8 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 		}
 		// Fixed-size array or untyped: {e1, e2, ...}
 		g.sb.write_string('{')
-		for i, e in node.exprs {
+		for i in 0 .. node.exprs.len {
+			e := node.exprs[i]
 			if i > 0 {
 				g.sb.write_string(', ')
 			}
@@ -553,7 +619,8 @@ fn (mut g Gen) try_emit_const_dynamic_array_call(name string, value ast.Expr) bo
 		return false
 	}
 	// Check that no element contains a function call (not valid in C static initializers)
-	for elem in array_data.exprs {
+	for i in 0 .. array_data.exprs.len {
+		elem := array_data.exprs[i]
 		if g.contains_call_expr(elem) {
 			return false
 		}
@@ -569,7 +636,8 @@ fn (mut g Gen) try_emit_const_dynamic_array_call(name string, value ast.Expr) bo
 	data_name := '__const_array_data_${name}'
 	if array_data.exprs.len > 0 {
 		g.sb.write_string('static ${elem_type} ${data_name}[${array_data.exprs.len}] = {')
-		for i, e in array_data.exprs {
+		for i in 0 .. array_data.exprs.len {
+			e := array_data.exprs[i]
 			if i > 0 {
 				g.sb.write_string(', ')
 			}

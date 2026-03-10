@@ -84,7 +84,7 @@ fn (mut p Parser) try_type() ast.Expr {
 		.key_struct {
 			p.next()
 			generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
-			embedded, fields := p.struct_decl_fields(.v)
+			embedded, fields := p.struct_decl_fields(.v, false)
 			// TODO: should we use this or just StructDecl
 			// even though it technically is not one? hrmm
 			return ast.Type(ast.AnonStructType{

@@ -126,7 +126,7 @@ pub fn (t Time) strftime(fmt string) string {
 	mut buf := [1024]char{}
 	fmt_c := unsafe { &char(fmt.str) }
 	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
-	return unsafe { cstring_to_vstring(&char(&buf[0])) }
+	return unsafe { cstring_to_vstring(&buf[0]) }
 }
 
 // some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`

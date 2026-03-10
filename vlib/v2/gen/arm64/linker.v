@@ -89,6 +89,24 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs',
 	'_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue',
 	'_abs',
+	// Terminal I/O
+	'_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
+	// File I/O
+	'_fdopen', '_feof', '_ferror',
+	// Process
+	'_setpgid', '_ptrace', '_wait',
+	// Time
+	'_timegm', '_clock_gettime',
+	// Memory
+	'_aligned_alloc',
+	// System
+	'_utime', '_getlogin', '_environ',
+	// macOS errno: __error() returns int*
+	'___error',
+	// macOS stdin
+	'___stdinp',
+	// macOS dyld
+	'__dyld_get_image_name',
 	// Math
 	'_cos', '_sin', '_tan', '_acos', '_asin', '_atan', '_atan2',
 	'_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh',
@@ -97,7 +115,9 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_fabs', '_copysign', '_fmax', '_fmin', '_hypot',
 	'_ldexp', '_frexp', '_modf', '_scalbn', '_ilogb', '_logb',
 	'_erf', '_erfc', '_lgamma', '_tgamma',
-	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn']
+	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn',
+	// Memory protection and cache (hot code reloading)
+	'_mprotect', '_sys_icache_invalidate']
 
 // vfmt on
 

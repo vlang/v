@@ -14,7 +14,21 @@ fn (p &Preferences) effective_vroot() string {
 
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 	mod_path := mod.replace('.', os.path_separator)
-	return os.join_path(p.effective_vroot(), 'vlib', mod_path)
+	return module_path_join(module_path_join(p.effective_vroot(), 'vlib'), mod_path)
+}
+
+fn module_path_join(base string, name string) string {
+	if base.len == 0 {
+		return name
+	}
+	if name.len == 0 {
+		return base
+	}
+	last := base[base.len - 1]
+	if last == `/` || last == `\\` {
+		return base + name
+	}
+	return base + os.path_separator + name
 }
 
 // check for relative and then vlib
@@ -23,17 +37,17 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	vroot := p.effective_vroot()
 	// TODO: is this the best order?
 	// vlib
-	vlib_path := os.join_path(vroot, 'vlib', mod_path)
-	if os.is_dir(vlib_path) {
+	vlib_path := module_path_join(module_path_join(vroot, 'vlib'), mod_path)
+	if dir_exists(vlib_path) {
 		return vlib_path
 	}
 	// ~/.vmodules
-	vmodules_path := os.join_path(p.vmodules_path, mod_path)
+	vmodules_path := module_path_join(p.vmodules_path, mod_path)
 	if dir_exists(vmodules_path) {
 		return vmodules_path
 	}
 	// relative to file importing it
-	relative_path := os.join_path(os.dir(importing_file_path), mod_path)
+	relative_path := module_path_join(os.dir(importing_file_path), mod_path)
 	if dir_exists(relative_path) {
 		return relative_path
 	}

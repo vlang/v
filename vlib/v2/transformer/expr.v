@@ -57,9 +57,6 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			})
 		}
 		ast.PostfixExpr {
-			// `expr!`/`expr?` should be lowered earlier.
-			// Keep codegen valid by converting them to a cast of the underlying
-			// result/option expression to the checker-inferred value type.
 			if expr.op in [.not, .question] {
 				mut inner := t.transform_expr(expr.expr)
 				// For string range with `!` propagation, use checked version
@@ -67,6 +64,18 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					&& t.is_string_expr(expr.expr.lhs) {
 					inner = t.rename_substr_to_checked(inner)
 				}
+				is_native_backend := t.pref != unsafe { nil }
+					&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+				if is_native_backend {
+					return ast.Expr(ast.PostfixExpr{
+						op:   expr.op
+						expr: inner
+						pos:  expr.pos
+					})
+				}
+				// Non-SSA backends still lower `expr!`/`expr?` in the transformer.
+				// Keep codegen valid by converting them to a cast of the underlying
+				// result/option expression to the checker-inferred value type.
 				mut type_name := ''
 				if inner_type := t.get_expr_type(expr.expr) {
 					match inner_type {
@@ -348,6 +357,14 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 	}
 	if map_expr_typ := map_expr_type_opt {
 		if map_type := t.unwrap_map_type(map_expr_typ) {
+			if t.is_eval_backend() {
+				return ast.IndexExpr{
+					lhs:      t.transform_expr(expr.lhs)
+					expr:     t.transform_expr(expr.expr)
+					is_gated: expr.is_gated
+					pos:      expr.pos
+				}
+			}
 			synth_pos := t.next_synth_pos()
 
 			mut stmts := []ast.Stmt{}
@@ -630,6 +647,15 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			return t.apply_smartcast_field_access_ctx(expr.lhs, expr.rhs.name, ctx)
 		}
 	}
+	if expr.lhs is ast.Ident && expr.lhs.name == 'os' && expr.rhs.name == 'args' {
+		return ast.CallExpr{
+			lhs: ast.Ident{
+				name: 'arguments'
+				pos:  expr.pos
+			}
+			pos: expr.pos
+		}
+	}
 	// Handle module-qualified enum value access: module.EnumType.value -> module__EnumType__value
 	// Also handle nested module references: rand.seed.time_seed_array -> seed__time_seed_array
 	if expr.lhs is ast.SelectorExpr {
@@ -698,9 +724,6 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		}
 	}
 
-	if t.cur_fn_name_str == 'base_type' {
-		eprintln('TRACE match_expr in base_type: sumtype_name="${sumtype_name}" smartcast_expr="${smartcast_expr}" branches=${expr.branches.len}')
-	}
 	if sumtype_name != '' {
 		// Sum type match - set up smartcast context for each branch
 		variants := t.get_sum_type_variants(sumtype_name)
@@ -721,7 +744,8 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 					if c is ast.Ident {
 						c_variant_name = c.name
 						c_variant_name_full = if t.cur_module != '' && t.cur_module != 'main'
-							&& t.cur_module != 'builtin' {
+							&& t.cur_module != 'builtin'
+							&& c.name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte', 'rune', 'f32', 'f64', 'usize', 'isize', 'bool', 'string', 'voidptr', 'charptr', 'byteptr'] {
 							'${t.cur_module}__${c.name}'
 						} else {
 							c.name
@@ -1456,65 +1480,6 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
 			}
-			// Native backends (arm64/x64) don't use Option/Result structs -
-			// functions return raw values (0 for none). Use temp variable +
-			// truthiness check to avoid double-calling the function.
-			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
-				if is_option || is_result {
-					temp_name := t.gen_temp_name()
-					temp_ident := ast.Ident{
-						name: temp_name
-						pos:  synth_pos
-					}
-					// 1. _tmp := call()
-					temp_assign := ast.AssignStmt{
-						op:  .decl_assign
-						lhs: [ast.Expr(temp_ident)]
-						rhs: [t.transform_expr(rhs)]
-						pos: synth_pos
-					}
-					// 2. Body: guard_var := _tmp; original_body
-					mut body_stmts := []ast.Stmt{}
-					mut is_blank := false
-					if guard.stmt.lhs.len == 1 {
-						lhs0 := guard.stmt.lhs[0]
-						if lhs0 is ast.Ident {
-							if lhs0.name == '_' {
-								is_blank = true
-							}
-						}
-					}
-					if !is_blank {
-						body_stmts << ast.AssignStmt{
-							op:  .decl_assign
-							lhs: guard.stmt.lhs
-							rhs: [ast.Expr(temp_ident)]
-							pos: guard.stmt.pos
-						}
-					}
-					for s in expr.stmts {
-						body_stmts << s
-					}
-					// 3. Condition: truthiness of _tmp (0 = none for native backends)
-					modified_if := ast.IfExpr{
-						cond:      temp_ident
-						stmts:     t.transform_stmts(body_stmts)
-						else_expr: t.transform_expr(expr.else_expr)
-						pos:       synth_pos
-					}
-					if orig_type := t.get_expr_type(ast.Expr(expr)) {
-						t.register_synth_type(synth_pos, orig_type)
-					}
-					return ast.UnsafeExpr{
-						stmts: [ast.Stmt(temp_assign), ast.ExprStmt{
-							expr: modified_if
-						}]
-					}
-				}
-				is_result = false
-				is_option = false
-			}
-
 			if is_result {
 				// Handle Result if-guard using temp variable pattern
 				// Transform: if var := result_call() { body } else { else_body }
@@ -1831,15 +1796,12 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					} else {
 						token.Token.ne
 					}
-					return ast.InfixExpr{
-						op:  cmp_op
-						lhs: t.synth_selector(transformed_lhs, '_tag', types.Type(types.int_))
-						rhs: ast.BasicLiteral{
-							kind:  token.Token.number
-							value: '${tag_value}'
-						}
-						pos: expr.pos
-					}
+					return t.make_infix_expr_at(cmp_op, t.synth_selector(transformed_lhs,
+						'_tag', types.Type(types.int_)), ast.Expr(ast.BasicLiteral{
+						kind:  token.Token.number
+						value: '${tag_value}'
+						pos:   expr.pos
+					}), expr.pos)
 				}
 			}
 		}
@@ -1930,6 +1892,14 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// Map membership: key in map -> map__exists(&map, &key)
 		if rhs_type := t.get_expr_type(expr.rhs) {
 			if map_typ := t.unwrap_map_type(rhs_type) {
+				if t.is_eval_backend() {
+					return ast.InfixExpr{
+						op:  expr.op
+						lhs: t.transform_expr(expr.lhs)
+						rhs: t.transform_expr(expr.rhs)
+						pos: expr.pos
+					}
+				}
 				mut map_ptr := ast.Expr(ast.empty_expr)
 				rhs_trans := t.transform_expr(expr.rhs)
 				if rhs_type is types.Pointer {
@@ -1969,33 +1939,20 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				// Get enum type from LHS for resolving shorthand in array elements
 				enum_type := t.get_enum_type_name(expr.lhs)
 				// Build: lhs == arr[0] || lhs == arr[1] || ...
-				mut chain := ast.Expr(ast.InfixExpr{
-					op:  .eq
-					lhs: lhs_trans
-					rhs: if enum_type != '' {
-						t.resolve_enum_shorthand(t.transform_expr(arr.exprs[0]), enum_type)
-					} else {
-						t.transform_expr(arr.exprs[0])
-					}
-					pos: expr.pos
-				})
+				first_elem := if enum_type != '' {
+					t.resolve_enum_shorthand(t.transform_expr(arr.exprs[0]), enum_type)
+				} else {
+					t.transform_expr(arr.exprs[0])
+				}
+				mut chain := t.make_infix_expr_at(.eq, lhs_trans, first_elem, expr.pos)
 				for i := 1; i < arr.exprs.len; i++ {
 					elem := if enum_type != '' {
 						t.resolve_enum_shorthand(t.transform_expr(arr.exprs[i]), enum_type)
 					} else {
 						t.transform_expr(arr.exprs[i])
 					}
-					chain = ast.Expr(ast.InfixExpr{
-						op:  .logical_or
-						lhs: chain
-						rhs: ast.Expr(ast.InfixExpr{
-							op:  .eq
-							lhs: lhs_trans
-							rhs: elem
-							pos: expr.pos
-						})
-						pos: expr.pos
-					})
+					elem_cmp := t.make_infix_expr_at(.eq, lhs_trans, elem, expr.pos)
+					chain = t.make_infix_expr_at(.logical_or, chain, elem_cmp, expr.pos)
 				}
 				if expr.op == .not_in {
 					return ast.PrefixExpr{
@@ -2069,12 +2026,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			// and return the original expression (cleanc will handle tag checks)
 			if is_sumtype_variant_check {
 				// Return unchanged - cleanc will generate the tag check
-				return ast.InfixExpr{
-					op:  expr.op
-					lhs: t.transform_expr(expr.lhs)
-					rhs: expr.rhs // Don't transform RHS (keep as ArrayInitExpr)
-					pos: expr.pos
-				}
+				return t.make_infix_expr_at(expr.op, t.transform_expr(expr.lhs), expr.rhs,
+					expr.pos)
 			}
 			if !has_unresolved_shorthand {
 				mut method_info := arr_info
@@ -2114,12 +2067,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				return contains_call
 			} else {
 				// Unresolved shorthand - return as-is for cleanc to handle expansion
-				return ast.InfixExpr{
-					op:  expr.op
-					lhs: t.transform_expr(expr.lhs)
-					rhs: expr.rhs // Keep RHS as-is (ArrayInitExpr with shorthand)
-					pos: expr.pos
-				}
+				return t.make_infix_expr_at(expr.op, t.transform_expr(expr.lhs), expr.rhs,
+					expr.pos)
 			}
 		}
 	}
@@ -2129,6 +2078,14 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// by try_transform_map_index_push in transform_stmts.
 	if expr.op == .left_shift {
 		if elem_type_name := t.get_array_elem_type_str(expr.lhs) {
+			if t.is_eval_backend() {
+				return ast.InfixExpr{
+					op:  expr.op
+					lhs: t.transform_expr(expr.lhs)
+					rhs: t.transform_expr(expr.rhs)
+					pos: expr.pos
+				}
+			}
 			// Use push_many only when RHS element type matches the LHS element type.
 			// This avoids mis-lowering [][]T << []T, which must stay a single push.
 			mut rhs_is_array := false
@@ -2270,12 +2227,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				enum_type := t.get_enum_type_name(expr.lhs)
 				if enum_type != '' {
 					resolved_rhs := t.resolve_enum_shorthand(expr.rhs, enum_type)
-					return ast.InfixExpr{
-						op:  expr.op
-						lhs: t.transform_expr(expr.lhs)
-						rhs: t.transform_expr(resolved_rhs)
-						pos: expr.pos
-					}
+					return t.make_infix_expr_at(expr.op, t.transform_expr(expr.lhs), t.transform_expr(resolved_rhs),
+						expr.pos)
 				}
 			}
 		}
@@ -2287,12 +2240,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				enum_type := t.get_enum_type_name(expr.rhs)
 				if enum_type != '' {
 					resolved_lhs := t.resolve_enum_shorthand(expr.lhs, enum_type)
-					return ast.InfixExpr{
-						op:  expr.op
-						lhs: t.transform_expr(resolved_lhs)
-						rhs: t.transform_expr(expr.rhs)
-						pos: expr.pos
-					}
+					return t.make_infix_expr_at(expr.op, t.transform_expr(resolved_lhs),
+						t.transform_expr(expr.rhs), expr.pos)
 				}
 			}
 		}
@@ -2497,12 +2446,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 							kind:  .number
 							value: '0'
 						}
-						return ast.InfixExpr{
-							op:  expr.op
-							lhs: memcmp_call
-							rhs: zero_lit
-							pos: expr.pos
-						}
+						return t.make_infix_expr_at(expr.op, memcmp_call, ast.Expr(zero_lit),
+							expr.pos)
 					}
 					// Non-memcmp-safe elements (dynamic arrays, strings, maps):
 					// Generate element-by-element comparison using the appropriate
@@ -2565,12 +2510,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 								]
 								pos:  expr.pos
 							}
-							chain = ast.Expr(ast.InfixExpr{
-								op:  .and
-								lhs: chain
-								rhs: elem_cmp
-								pos: expr.pos
-							})
+							chain = t.make_infix_expr_at(.and, chain, elem_cmp, expr.pos)
 						}
 						if expr.op == .ne {
 							return ast.PrefixExpr{
@@ -2603,6 +2543,14 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				lhs_map_type := t.get_map_type_for_expr(expr.lhs)
 				rhs_map_type := t.get_map_type_for_expr(expr.rhs)
 				if lhs_map_type != none || rhs_map_type != none {
+					if t.is_eval_backend() {
+						return ast.InfixExpr{
+							op:  expr.op
+							lhs: t.transform_expr(expr.lhs)
+							rhs: t.transform_expr(expr.rhs)
+							pos: expr.pos
+						}
+					}
 					map_type_name := lhs_map_type or { rhs_map_type or { 'map' } }
 					// For native backends, use generic map_map_eq (no type-specific wrappers)
 					eq_fn := if t.pref.backend == .arm64 || t.pref.backend == .x64 {
@@ -2668,12 +2616,9 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		}
 	}
 	// Default: just transform children
-	return ast.InfixExpr{
-		op:  expr.op
-		lhs: t.transform_expr(expr.lhs)
-		rhs: t.transform_expr(expr.rhs)
-		pos: expr.pos
-	}
+	lhs_trans := t.transform_expr(expr.lhs)
+	rhs_trans := t.transform_expr(expr.rhs)
+	return t.make_infix_expr_at(expr.op, lhs_trans, rhs_trans, expr.pos)
 }
 
 // resolve_field_type looks up the type of a field on a variable

@@ -152,3 +152,61 @@ fn test_arm64_callsite_marks_large_struct_arg_indirect() {
 	assert call_instr.abi_arg_class.len == 1
 	assert call_instr.abi_arg_class[0] == .indirect
 }
+
+fn test_arm64_callsite_marks_large_array_arg_indirect() {
+	mut ssa_mod := ssa.Module.new('abi_test_array_arg_class')
+	i64_t := ssa_mod.type_store.get_int(64)
+	large_array_t := ssa_mod.type_store.register(ssa.Type{
+		kind:      .array_t
+		elem_type: i64_t
+		len:       3
+	})
+
+	callee_id := ssa_mod.new_function('callee', i64_t, [])
+	callee_param := ssa_mod.add_value_node(.argument, large_array_t, 'arg', 0)
+	ssa_mod.funcs[callee_id].params << callee_param
+	callee_entry := ssa_mod.add_block(callee_id, 'entry')
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, callee_entry, 0, [zero])
+
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	caller_param := ssa_mod.add_value_node(.argument, large_array_t, 'in', 0)
+	ssa_mod.funcs[caller_id].params << caller_param
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	fn_val := ssa_mod.add_value_node(.unknown, 0, 'callee', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, i64_t, [fn_val, caller_param])
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower(mut mir_mod, .arm64)
+
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+	assert call_instr.abi_arg_class.len == 1
+	assert call_instr.abi_arg_class[0] == .indirect
+}
+
+fn test_arm64_unresolved_callsite_marks_large_array_alloca_arg_indirect() {
+	mut ssa_mod := ssa.Module.new('abi_test_array_alloca_arg_class')
+	i64_t := ssa_mod.type_store.get_int(64)
+	large_array_t := ssa_mod.type_store.register(ssa.Type{
+		kind:      .array_t
+		elem_type: i64_t
+		len:       3
+	})
+	large_array_ptr_t := ssa_mod.type_store.get_ptr(large_array_t)
+
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	tmp := ssa_mod.add_instr(.alloca, caller_entry, large_array_ptr_t, []ssa.ValueID{})
+	external_fn := ssa_mod.add_value_node(.unknown, 0, 'external_append_like', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, i64_t, [external_fn, tmp])
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower(mut mir_mod, .arm64)
+
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+	assert call_instr.abi_arg_class.len == 1
+	assert call_instr.abi_arg_class[0] == .indirect
+}

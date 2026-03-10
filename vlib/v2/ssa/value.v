@@ -6,6 +6,10 @@ module ssa
 
 pub type ValueID = int
 
+pub fn (id ValueID) str() string {
+	return int(id).str()
+}
+
 pub enum ValueKind {
 	unknown
 	constant

@@ -10,9 +10,15 @@ fn list_dir_entries(path string) []string {
 }
 
 pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
+	if dir == '' {
+		return []string{}
+	}
 	mod_files := list_dir_entries(dir)
 	mut v_files := []string{}
 	for file in mod_files {
+		if file == '' {
+			continue
+		}
 		// Include .v files (including .c.v), exclude .js.v and test files
 		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
 			continue
@@ -56,7 +62,11 @@ pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 				}
 			}
 		}
-		v_files << os.join_path(dir, file)
+		path := os.join_path(dir, file)
+		if path == '' {
+			continue
+		}
+		v_files << path
 	}
 	return v_files
 }

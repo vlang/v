@@ -36,6 +36,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.ExprStmt {
+			if !expr_has_valid_data(node.expr) {
+				return
+			}
 			if node.expr is ast.UnsafeExpr {
 				unsafe_expr := node.expr as ast.UnsafeExpr
 				if unsafe_expr.stmts.len > 1 {
@@ -55,7 +58,8 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			}
 			if node.expr is ast.IfExpr {
 				g.write_indent()
-				g.gen_if_expr_stmt(node.expr)
+				if_expr := node.expr as ast.IfExpr
+				g.gen_if_expr_stmt(&if_expr)
 				return
 			}
 			g.write_indent()
@@ -98,6 +102,34 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			if node.exprs.len == 1 && node.exprs[0] is ast.IfExpr {
 				if_expr := node.exprs[0] as ast.IfExpr
 				g.gen_return_if_expr(if_expr, false)
+				return
+			}
+			if g.cur_fn_ret_type.starts_with('Array_fixed_') {
+				if node.exprs.len == 0 {
+					g.sb.writeln('return (${g.cur_fn_c_ret_type}){0};')
+					return
+				}
+				expr := node.exprs[0]
+				g.sb.write_string('return ({ ${g.cur_fn_c_ret_type} _ret = (${g.cur_fn_c_ret_type}){0}; ')
+				if expr is ast.CallExpr {
+					if call_ret := g.get_call_return_type(expr.lhs, expr.args.len) {
+						if call_ret == g.cur_fn_ret_type {
+							g.sb.write_string('${g.cur_fn_c_ret_type} _tmp = ')
+							g.expr(expr)
+							g.sb.writeln('; memcpy(_ret.ret_arr, _tmp.ret_arr, sizeof(${g.cur_fn_ret_type})); _ret; });')
+							return
+						}
+					}
+				}
+				if expr is ast.Ident || expr is ast.SelectorExpr || expr is ast.IndexExpr {
+					g.sb.write_string('memcpy(_ret.ret_arr, ')
+					g.expr(expr)
+					g.sb.writeln(', sizeof(${g.cur_fn_ret_type})); _ret; });')
+					return
+				}
+				g.sb.write_string('${g.cur_fn_ret_type} _arr = ')
+				g.expr(expr)
+				g.sb.writeln('; memcpy(_ret.ret_arr, _arr, sizeof(${g.cur_fn_ret_type})); _ret; });')
 				return
 			}
 			if g.cur_fn_ret_type.starts_with('_option_') {
@@ -241,6 +273,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				expr := node.exprs[0]
 				if g.cur_fn_ret_type in g.sum_type_variants {
 					g.gen_type_cast_expr(g.cur_fn_ret_type, expr)
+				} else if g.is_interface_type(g.cur_fn_ret_type) {
+					if g.get_expr_type(expr) == g.cur_fn_ret_type {
+						g.expr(expr)
+					} else {
+						g.gen_type_cast_expr(g.cur_fn_ret_type, expr)
+					}
 				} else {
 					g.expr(expr)
 				}
@@ -289,15 +327,14 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.gen_global_decl(node)
 		}
 		ast.Directive {
-			g.write_indent()
-			ct_cond_str := if node.ct_cond.len > 0 { ' ct_cond=${node.ct_cond}' } else { '' }
-			g.sb.writeln('/* [TODO] Directive: #${node.name} ${node.value}${ct_cond_str} */')
+			// C directives are collected and emitted in the preamble.
+			_ = node
 		}
 		ast.ForInStmt {
 			panic('bug in v2 compiler: ForInStmt should have been lowered in v2.transformer')
 		}
 		ast.DeferStmt {
-			panic('bug in v2 compiler: DeferStmt should have been lowered in v2.transformer')
+			panic('bug in v2 compiler: DeferStmt should have been lowered in v2.transformer (${g.cur_file_name}:${g.cur_fn_name})')
 		}
 		ast.AssertStmt {
 			panic('bug in v2 compiler: AssertStmt should have been lowered in v2.transformer')

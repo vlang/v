@@ -23,6 +23,12 @@ fn (t &Transformer) is_interface_receiver(expr ast.Expr) bool {
 		// Use scope lookup to check if variable's type is an interface
 		return t.is_interface_var(expr.name)
 	}
+	if expr is ast.SelectorExpr {
+		if typ := t.resolve_expr_type(expr) {
+			base := t.unwrap_alias_and_pointer_type(typ)
+			return base is types.Interface
+		}
+	}
 	return false
 }
 

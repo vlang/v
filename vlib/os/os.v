@@ -566,9 +566,13 @@ pub fn expand_tilde_to_home(path string) string {
 // write_file writes `text` data to a file with the given `path`.
 // If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
-	mut f := create(path)!
-	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
-	f.close()
+	$if windows {
+		mut f := create(path)!
+		unsafe { f.write_full_buffer(text.str, usize(text.len))! }
+		f.close()
+	} $else {
+		write_file_direct(path, text)!
+	}
 }
 
 pub struct ExecutableNotFoundError {

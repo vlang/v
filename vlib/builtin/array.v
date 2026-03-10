@@ -263,9 +263,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 				for _ in 0 .. count {
 					if depth > 0 {
 						ary_clone := a.clone_to_depth(depth)
-						vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
+						vmemcpy(eptr, ary_clone.data, a_total_size)
 					} else {
-						vmemcpy(eptr, &u8(a.data), a_total_size)
+						vmemcpy(eptr, a.data, a_total_size)
 					}
 					eptr += arr_step_size
 				}
@@ -733,7 +733,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		return arr
 	} else {
 		if a.data != 0 && source_capacity_in_bytes > 0 {
-			unsafe { vmemcpy(&u8(arr.data), a.data, source_capacity_in_bytes) }
+			unsafe { vmemcpy(arr.data, a.data, source_capacity_in_bytes) }
 		}
 		return arr
 	}
@@ -976,14 +976,9 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 // It uses the results of the given function to determine sort order.
 // See also .sort_with_compare()
 pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
-	$if freestanding {
-		panic('sorted_with_compare does not work with -freestanding')
-	} $else {
-		mut r := a.clone()
-		unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
-		return r
-	}
-	return array{}
+	mut r := a.clone()
+	unsafe { C.qsort(r.data, usize(r.len), usize(r.element_size), voidptr(callback)) }
+	return r
 }
 
 // contains determines whether an array includes a certain value among its elements.
@@ -1046,7 +1041,7 @@ pub fn (b []u8) hex() string {
 	if b.len == 0 {
 		return ''
 	}
-	return unsafe { data_to_hex_string(&u8(b.data), b.len) }
+	return unsafe { data_to_hex_string(b.data, b.len) }
 }
 
 // copy copies the `src` byte array elements to the `dst` byte array.
@@ -1057,7 +1052,7 @@ pub fn (b []u8) hex() string {
 pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemmove(&u8(dst.data), src.data, min) }
+		unsafe { vmemmove(dst.data, src.data, min) }
 	}
 	return min
 }

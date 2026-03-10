@@ -8,6 +8,7 @@ import os.cmdline
 
 pub enum Backend {
 	v      // V source output (default)
+	eval   // AST interpreter
 	cleanc // Clean C backend (AST -> C)
 	c      // SSA -> C backend
 	x64    // Native x64/AMD64 backend
@@ -41,6 +42,7 @@ pub mut:
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // User-defined comptime flags via -d <name>
+	hot_fn                string   // Extract raw machine code for this function only (hot reload)
 pub:
 	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
@@ -167,6 +169,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 	mut backend := Backend.cleanc
 	match backend_str {
+		'eval' {
+			backend = .eval
+		}
 		'cleanc' {
 			backend = .cleanc
 		}
@@ -183,7 +188,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			backend = .x64
 		}
 		else {
-			eprintln('error: unknown backend `${backend_str}`. Valid backends: cleanc, c, v, arm64, x64')
+			eprintln('error: unknown backend `${backend_str}`. Valid backends: eval, cleanc, c, v, arm64, x64')
 			exit(1)
 		}
 	}
@@ -221,15 +226,22 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	// Parse -d <name> comptime defines (can be specified multiple times)
 	user_defines := cmdline.options(args, '-d')
 
+	// Parse -hot-fn <name> for hot code reloading
+	mut hot_fn_str := cmdline.option(args, '-hot-fn', '')
+	if hot_fn_str.len == 0 {
+		hot_fn_str = ''
+	}
+
 	options := cmdline.only_options(args)
 
 	// Validate flags: error on unknown options
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
-		'-d']
+		'-d', '-hot-fn']
 	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
 		'--skip-imports', '--skip-type-check', '--parallel', '-nocache', '--nocache', '-nomarkused',
 		'--nomarkused', '-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files',
-		'--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc']
+		'--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals',
+		'--enable-globals']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -238,13 +250,14 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('')
 			eprintln('Options:')
 			eprintln('  -o <file>              Output file name')
-			eprintln('  -backend <name>        Backend: cleanc, c, v, arm64, x64 (default: cleanc)')
+			eprintln('  -backend <name>        Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc)')
 			eprintln('  -b <name>              Short for -backend')
 			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
 			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
 			eprintln('  -stats, --stats        Print compilation statistics')
 			eprintln('  -nocache, --nocache    Disable build cache')
 			eprintln('  -d <name>              Define a comptime flag')
+			eprintln('  -enable-globals        Accepted for v1 compatibility')
 			eprintln('  --debug                Enable debug mode')
 			eprintln('  -v, --verbose          Enable verbose output')
 			eprintln('  -showcc, --showcc      Print C compiler command')
@@ -276,6 +289,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		output_file:           output_file
 		printfn_list:          printfn_list
 		user_defines:          user_defines
+		hot_fn:                hot_fn_str
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()
 	}
@@ -284,7 +298,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 pub fn new_preferences_using_options(options []string) Preferences {
 	// Default backend based on OS: macOS defaults to arm64, others to x64
 	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
-	if '--cleanc' in options || 'cleanc' in options {
+	if '--eval' in options || 'eval' in options {
+		backend = .eval
+	} else if '--cleanc' in options || 'cleanc' in options {
 		backend = .cleanc
 	} else if '--c' in options || 'c' in options {
 		backend = .c

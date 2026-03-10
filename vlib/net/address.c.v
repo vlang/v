@@ -95,7 +95,7 @@ pub fn (a Ip) str() string {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(res) }
 	port := conv.ntoh16(a.port)
 	return '${saddr}:${port}'
 }
@@ -110,7 +110,7 @@ pub fn (a Ip6) str() string {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(res) }
 	port := conv.ntoh16(a.port)
 	return '[${saddr}]:${port}'
 }

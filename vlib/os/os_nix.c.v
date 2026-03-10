@@ -410,7 +410,10 @@ pub fn readlink(path string) !string {
 			return last_error()
 		}
 		if res2 < size {
-			return unsafe { tos(&u8(&buf2[0]), res2) }
+			unsafe {
+				buf2[res2] = 0
+				return cstring_to_vstring(buf2)
+			}
 		}
 		unsafe { free(buf2) } // and then loop around to try again with a larger one.
 	}

@@ -5,6 +5,7 @@
 module cleanc
 
 import v2.ast
+import v2.types
 
 struct InterfaceMethodInfo {
 	name           string // method name (e.g., "draw")
@@ -19,12 +20,103 @@ struct InterfaceWrapperSpec {
 	method        InterfaceMethodInfo
 }
 
+fn (mut g Gen) interface_method_info_from_ast(name string, fn_type ast.FnType) InterfaceMethodInfo {
+	mut ret := 'void'
+	if fn_type.return_type !is ast.EmptyExpr {
+		ret = g.expr_type_to_c(fn_type.return_type)
+	}
+	mut param_types := []string{}
+	mut cast_sig := '${ret} (*)(void*'
+	for param in fn_type.params {
+		t := g.expr_type_to_c(param.typ)
+		cast_sig += ', ${t}'
+		param_types << t
+	}
+	cast_sig += ')'
+	return InterfaceMethodInfo{
+		name:           name
+		cast_signature: cast_sig
+		ret_type:       ret
+		param_types:    param_types
+	}
+}
+
+fn (mut g Gen) interface_method_info_from_raw(name string, raw types.Type) ?InterfaceMethodInfo {
+	if !type_has_valid_data(raw) {
+		return none
+	}
+	match raw {
+		types.FnType {
+			mut ret := 'void'
+			if ret_type := raw.get_return_type() {
+				ret = g.types_type_to_c(ret_type)
+			}
+			mut param_types := []string{}
+			for param_type in raw.get_param_types() {
+				param_types << g.types_type_to_c(param_type)
+			}
+			mut cast_sig := '${ret} (*)(void*'
+			for param_type in param_types {
+				cast_sig += ', ${param_type}'
+			}
+			cast_sig += ')'
+			return InterfaceMethodInfo{
+				name:           name
+				cast_signature: cast_sig
+				ret_type:       ret
+				param_types:    param_types
+			}
+		}
+		types.Alias {
+			if raw.base_type is types.FnType {
+				return g.interface_method_info_from_raw(name, raw.base_type)
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut g Gen) interface_method_info(field ast.FieldDecl) ?InterfaceMethodInfo {
+	if fn_type := g.get_fn_type_from_expr(field.typ) {
+		return g.interface_method_info_from_ast(field.name, fn_type)
+	}
+	if raw := g.get_raw_type(field.typ) {
+		return g.interface_method_info_from_raw(field.name, raw)
+	}
+	return none
+}
+
 fn interface_type_id_for_name(name string) int {
 	match name {
-		'None__' { return 1 }
-		'Error' { return 2 }
-		'MessageError' { return 3 }
-		else { return 0 }
+		'None__' {
+			return 1
+		}
+		'Error' {
+			return 2
+		}
+		'MessageError' {
+			return 3
+		}
+		else {
+			// Derive a deterministic non-zero id for all other concrete/interface types.
+			// This keeps `if iface is ConcreteType` checks working beyond IError variants.
+			if name.len == 0 {
+				return 0
+			}
+			mut hash := u32(2166136261)
+			for b in name.bytes() {
+				hash ^= u32(b)
+				hash *= 16777619
+			}
+			mut type_id := int(hash & 0x7fffffff)
+			if type_id <= 3 {
+				type_id += 4
+			}
+			return type_id
+		}
 	}
 }
 
@@ -253,29 +345,13 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	// Generate function pointers for each method
 	mut methods := []InterfaceMethodInfo{}
 	for field in node.fields {
-		if fn_type := g.get_fn_type_from_expr(field.typ) {
-			mut ret := 'void'
-			if fn_type.return_type !is ast.EmptyExpr {
-				ret = g.expr_type_to_c(fn_type.return_type)
-			}
-			mut param_types := []string{}
-			g.sb.write_string('\t${ret} (*${field.name})(void*')
-			mut cast_sig := '${ret} (*)(void*'
-			for param in fn_type.params {
-				g.sb.write_string(', ')
-				t := g.expr_type_to_c(param.typ)
-				g.sb.write_string(t)
-				cast_sig += ', ${t}'
-				param_types << t
+		if method := g.interface_method_info(field) {
+			g.sb.write_string('\t${method.ret_type} (*${method.name})(void*')
+			for param_type in method.param_types {
+				g.sb.write_string(', ${param_type}')
 			}
 			g.sb.writeln(');')
-			cast_sig += ')'
-			methods << InterfaceMethodInfo{
-				name:           field.name
-				cast_signature: cast_sig
-				ret_type:       ret
-				param_types:    param_types
-			}
+			methods << method
 		} else {
 			// Regular field
 			t := g.expr_type_to_c(field.typ)

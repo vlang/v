@@ -370,6 +370,14 @@ pub fn (mut m map) clear() {
 
 @[inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
+	if voidptr(m.hash_fn) == unsafe { nil } {
+		unsafe {
+			p := &u64(m)
+			prev2 := (&u64(usize(m) - usize(16)))[0]
+			prev1 := (&u64(usize(m) - usize(8)))[0]
+			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+		}
+	}
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
@@ -424,10 +432,9 @@ fn (mut m map) ensure_extra_metas_grow() {
 	m.extra_metas += extra_metas_inc
 	mem_size := (m.even_index + 2 + m.extra_metas)
 	unsafe {
-		x := realloc_data(&u8(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 		m.metas = &u32(x)
-		// Use explicit byte arithmetic: cast to &u8 to avoid pointer scaling issues
-		vmemset(&u8(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
 	}
 }
 
@@ -439,10 +446,10 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := realloc_data(&u8(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
-			// Use explicit byte arithmetic: cast to &u8 to avoid pointer scaling issues
-			vmemset(&u8(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0,
+				int(sizeof(u32) * extra_metas_inc))
 		}
 		// Should almost never happen
 		if probe_count == 252 {
@@ -481,7 +488,7 @@ fn (mut m map) set(key voidptr, value voidptr) {
 		pkey := m.key_values.key(kv_index)
 		pvalue := m.key_values.value(kv_index)
 		m.clone_fn(pkey, key)
-		vmemcpy(&u8(pvalue), value, m.value_bytes)
+		vmemcpy(pvalue, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
@@ -516,7 +523,7 @@ fn (mut m map) rehash() {
 pub fn (mut m map) reserve(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
-		x := v_realloc(&u8(m.metas), int(meta_bytes))
+		x := v_realloc(byteptr(m.metas), int(meta_bytes))
 		m.metas = &u32(x)
 		vmemset(m.metas, 0, int(meta_bytes))
 	}

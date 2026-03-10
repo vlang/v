@@ -33,6 +33,15 @@
   ./v2 -nomarkused -backend cleanc file.v
 ```
 
+# Eval backend
+```
+  # Execute a small V program directly from the v2 AST:
+  ./v2 -backend eval file.v
+
+  # Current scope: literals, locals/consts, plain fn calls, if/for/range,
+  # arrays, indexing, len, println/print, and basic string interpolation.
+```
+
 # SSA C backend (restored)
 ```
   # Run the SSA -> C backend directly:

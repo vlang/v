@@ -6,6 +6,10 @@ module ssa
 
 pub type BlockID = int
 
+pub fn (id BlockID) str() string {
+	return int(id).str()
+}
+
 pub struct BasicBlock {
 pub:
 	id     BlockID

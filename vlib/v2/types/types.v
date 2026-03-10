@@ -274,11 +274,17 @@ pub fn (t Type) base_type() Type {
 	match t {
 		// TODO: add base_type method
 		Alias {
+			if type_data_ptr_is_nil(t) {
+				return Type(void_)
+			}
 			return t.base_type
 			// should we fully resolve all aliases, or just one level here?
 			// return t.base_type.base_type()
 		}
 		OptionType, ResultType, Pointer {
+			if type_data_ptr_is_nil(t) {
+				return Type(void_)
+			}
 			return t.base_type
 		}
 		// TODO: why as I doing this instead of else? to make it easy to find unhandled cases?
@@ -290,6 +296,11 @@ pub fn (t Type) base_type() Type {
 		// 	return t
 		// }
 	}
+}
+
+fn type_data_ptr_is_nil(t Type) bool {
+	p := unsafe { &u8(&t) + 8 }
+	return unsafe { *(&voidptr(p)) } == unsafe { nil }
 }
 
 // return the key type used with for in loops
@@ -309,9 +320,16 @@ pub fn (t Type) key_type() Type {
 
 // return the value type used with for in loops
 pub fn (t Type) value_type() Type {
+	return value_type_with_depth(t, 0)
+}
+
+fn value_type_with_depth(t Type, depth int) Type {
+	if depth > 64 {
+		return t.base_type()
+	}
 	match t {
 		Alias {
-			return t.base_type.value_type()
+			return value_type_with_depth(t.base_type, depth + 1)
 		}
 		Array, ArrayFixed {
 			return t.elem_type
@@ -331,7 +349,7 @@ pub fn (t Type) value_type() Type {
 				// Indexing it should yield `string`, not `u8`.
 				return string_
 			}
-			return t.base_type.value_type()
+			return value_type_with_depth(t.base_type, depth + 1)
 		}
 		String {
 			return u8_
@@ -343,7 +361,7 @@ pub fn (t Type) value_type() Type {
 			return Type(t)
 		} // TODO: ?
 		OptionType, ResultType {
-			return t.base_type.value_type()
+			return value_type_with_depth(t.base_type, depth + 1)
 		}
 		else {
 			return t.base_type()
@@ -481,7 +499,7 @@ fn (t Primitive) is_int_literal() bool {
 	return t.props.has(.untyped) && t.props.has(.integer)
 }
 
-pub fn (t Type) name() string {
+pub fn type_name(t Type) string {
 	match t {
 		Primitive, Alias, Array, ArrayFixed, Channel, Char, Enum, FnType, Interface, ISize, Map,
 		OptionType, Pointer, ResultType, Rune, String, Struct, SumType, Thread, Tuple, USize, Void,
@@ -489,6 +507,21 @@ pub fn (t Type) name() string {
 			return t.name()
 		}
 	}
+}
+
+pub fn alias_base_type_name(t Type) ?string {
+	return match t {
+		Alias {
+			type_name(t.base_type)
+		}
+		else {
+			none
+		}
+	}
+}
+
+pub fn (t Type) name() string {
+	return type_name(t)
 }
 
 // TODO: clean up :0
@@ -514,7 +547,7 @@ fn (t Primitive) name() string {
 	} else if t.props.has(.float) {
 		return 'f${t.size}'
 	}
-	panic(t.props.str())
+	panic('malformed primitive')
 	return 'malformed primitive' // lol
 	// TODO: match seems broke when multuple flags are set
 	// actually it was not broken, it matches the bits for flags

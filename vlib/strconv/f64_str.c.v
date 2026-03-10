@@ -132,7 +132,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i] = 0
 
 	return unsafe {
-		tos(&u8(&buf[0]), i)
+		tos(memdup(&buf[0], i + 1), i)
 	}
 }
 

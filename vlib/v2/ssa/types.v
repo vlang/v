@@ -6,6 +6,10 @@ module ssa
 
 pub type TypeID = int
 
+pub fn (id TypeID) str() string {
+	return int(id).str()
+}
+
 pub enum TypeKind {
 	void_t
 	int_t

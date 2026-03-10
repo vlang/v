@@ -6,6 +6,68 @@ module cleanc
 
 import v2.ast
 
+fn const_bool_value(expr ast.Expr) ?bool {
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .key_true {
+				return true
+			}
+			if expr.kind == .key_false {
+				return false
+			}
+			if expr.value == 'true' {
+				return true
+			}
+			if expr.value == 'false' {
+				return false
+			}
+		}
+		ast.Ident {
+			if expr.name == 'true' {
+				return true
+			}
+			if expr.name == 'false' {
+				return false
+			}
+		}
+		ast.Keyword {
+			if expr.tok == .key_true {
+				return true
+			}
+			if expr.tok == .key_false {
+				return false
+			}
+		}
+		ast.ParenExpr {
+			return const_bool_value(expr.expr)
+		}
+		ast.ModifierExpr {
+			return const_bool_value(expr.expr)
+		}
+		ast.CastExpr {
+			return const_bool_value(expr.expr)
+		}
+		ast.ComptimeExpr {
+			return const_bool_value(expr.expr)
+		}
+		ast.UnsafeExpr {
+			if expr.stmts.len == 1 && expr.stmts[0] is ast.ExprStmt {
+				stmt := expr.stmts[0] as ast.ExprStmt
+				return const_bool_value(stmt.expr)
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .not {
+				if v := const_bool_value(expr.expr) {
+					return !v
+				}
+			}
+		}
+		else {}
+	}
+	return none
+}
+
 fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		return
@@ -14,8 +76,8 @@ fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 		if i == stmts.len - 1 && stmt is ast.ExprStmt {
 			if stmt.expr is ast.IfExpr {
 				nested_if := stmt.expr as ast.IfExpr
-				if !g.if_expr_can_be_ternary(nested_if) && nested_if.else_expr !is ast.EmptyExpr {
-					g.gen_decl_if_expr(name, nested_if)
+				if !g.if_expr_can_be_ternary(&nested_if) && nested_if.else_expr !is ast.EmptyExpr {
+					g.gen_decl_if_expr(name, &nested_if)
 					continue
 				}
 			}
@@ -29,7 +91,7 @@ fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 	}
 }
 
-fn (mut g Gen) gen_decl_if_expr(name string, if_expr ast.IfExpr) {
+fn (mut g Gen) gen_decl_if_expr(name string, if_expr &ast.IfExpr) {
 	if if_expr.cond is ast.EmptyExpr {
 		g.gen_decl_if_expr_branch(name, if_expr.stmts)
 		return
@@ -55,7 +117,7 @@ fn (mut g Gen) gen_decl_if_expr(name string, if_expr ast.IfExpr) {
 		} else {
 			g.sb.writeln(' else {')
 			g.indent++
-			g.gen_decl_if_expr(name, else_if)
+			g.gen_decl_if_expr(name, &else_if)
 			g.indent--
 			g.write_indent()
 			g.sb.writeln('}')
@@ -83,7 +145,7 @@ fn (mut g Gen) gen_return_if_branch(stmts []ast.Stmt) {
 		if i == stmts.len - 1 && stmt is ast.ExprStmt {
 			if stmt.expr is ast.IfExpr {
 				nested_if := stmt.expr as ast.IfExpr
-				if !g.if_expr_can_be_ternary(nested_if) && nested_if.else_expr !is ast.EmptyExpr {
+				if !g.if_expr_can_be_ternary(&nested_if) && nested_if.else_expr !is ast.EmptyExpr {
 					g.gen_return_if_expr(nested_if, true)
 					continue
 				}
@@ -150,7 +212,7 @@ fn (mut g Gen) gen_return_if_expr(if_expr ast.IfExpr, emit_indent bool) {
 	}
 }
 
-fn (g &Gen) if_expr_can_be_ternary(node ast.IfExpr) bool {
+fn (g &Gen) if_expr_can_be_ternary(node &ast.IfExpr) bool {
 	if node.cond !is ast.EmptyExpr {
 		if node.stmts.len != 1 || node.stmts[0] !is ast.ExprStmt {
 			return false
@@ -163,7 +225,8 @@ fn (g &Gen) if_expr_can_be_ternary(node ast.IfExpr) bool {
 		return node.stmts.len == 1 && node.stmts[0] is ast.ExprStmt
 	}
 	if node.else_expr is ast.IfExpr {
-		return g.if_expr_can_be_ternary(node.else_expr)
+		else_if := node.else_expr as ast.IfExpr
+		return g.if_expr_can_be_ternary(&else_if)
 	}
 	return true
 }
@@ -195,9 +258,26 @@ fn (g &Gen) extract_if_expr(expr ast.Expr) ?ast.IfExpr {
 	}
 }
 
-fn (mut g Gen) gen_if_expr_stmt(node ast.IfExpr) {
+fn (mut g Gen) gen_if_expr_stmt(node &ast.IfExpr) {
 	// Skip empty conditions (pure else blocks shouldn't appear at top level)
 	if node.cond is ast.EmptyExpr {
+		return
+	}
+	if cond_value := const_bool_value(node.cond) {
+		if cond_value {
+			g.gen_stmts(node.stmts)
+			return
+		}
+		if node.else_expr is ast.IfExpr {
+			else_if := node.else_expr as ast.IfExpr
+			if else_if.cond is ast.EmptyExpr {
+				g.gen_stmts(else_if.stmts)
+			} else {
+				g.gen_if_expr_stmt(&else_if)
+			}
+		} else if node.else_expr !is ast.EmptyExpr {
+			g.gen_stmts_from_expr(node.else_expr)
+		}
 		return
 	}
 	g.sb.write_string('if (')
@@ -221,7 +301,7 @@ fn (mut g Gen) gen_if_expr_stmt(node ast.IfExpr) {
 				g.sb.write_string('}')
 			} else {
 				g.sb.write_string(' else ')
-				g.gen_if_expr_stmt(else_if)
+				g.gen_if_expr_stmt(&else_if)
 			}
 		} else {
 			g.sb.writeln(' else {')
@@ -235,7 +315,7 @@ fn (mut g Gen) gen_if_expr_stmt(node ast.IfExpr) {
 	g.sb.writeln('')
 }
 
-fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
+fn (mut g Gen) gen_if_expr_ternary(node &ast.IfExpr) {
 	if node.cond is ast.EmptyExpr {
 		if node.stmts.len == 1 && node.stmts[0] is ast.ExprStmt {
 			stmt := node.stmts[0] as ast.ExprStmt
@@ -251,7 +331,7 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 	if node.stmts.len == 1 && node.stmts[0] is ast.ExprStmt {
 		stmt := node.stmts[0] as ast.ExprStmt
 		if nested := g.extract_if_expr(stmt.expr) {
-			g.gen_if_expr_value(nested)
+			g.gen_if_expr_value(&nested)
 		} else {
 			g.expr(stmt.expr)
 		}
@@ -261,12 +341,12 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 	g.sb.write_string(' : ')
 	if node.else_expr is ast.IfExpr {
 		else_if := node.else_expr as ast.IfExpr
-		g.gen_if_expr_value(else_if)
+		g.gen_if_expr_value(&else_if)
 	} else if node.else_expr is ast.EmptyExpr {
 		g.sb.write_string('0')
 	} else {
 		if nested := g.extract_if_expr(node.else_expr) {
-			g.gen_if_expr_value(nested)
+			g.gen_if_expr_value(&nested)
 		} else {
 			g.expr(node.else_expr)
 		}
@@ -274,12 +354,8 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 	g.sb.write_string(')')
 }
 
-fn (mut g Gen) gen_if_expr_value(node ast.IfExpr) {
+fn (mut g Gen) gen_if_expr_value(node &ast.IfExpr) {
 	mut value_type := g.get_if_expr_type(node)
-	if g.if_expr_can_be_ternary(node) && value_type != '' && value_type != 'void' {
-		g.gen_if_expr_ternary(node)
-		return
-	}
 	if value_type == '' || value_type == 'void' {
 		g.sb.write_string('({ ')
 		g.gen_if_expr_stmt(node)
@@ -296,8 +372,8 @@ fn (mut g Gen) gen_if_expr_value(node ast.IfExpr) {
 	g.sb.write_string(' ${tmp_name}; })')
 }
 
-fn (mut g Gen) get_if_expr_type(node ast.IfExpr) string {
-	if t := g.get_expr_type_from_env(node) {
+fn (mut g Gen) get_if_expr_type(node &ast.IfExpr) string {
+	if t := g.get_expr_type_from_env(ast.Expr(*node)) {
 		if t != '' {
 			return t
 		}
@@ -310,7 +386,8 @@ fn (mut g Gen) get_if_expr_type(node ast.IfExpr) string {
 		}
 	}
 	if node.else_expr is ast.IfExpr {
-		t := g.get_if_expr_type(node.else_expr)
+		else_if := node.else_expr as ast.IfExpr
+		t := g.get_if_expr_type(&else_if)
 		if t != '' {
 			return t
 		}

@@ -307,6 +307,12 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 
 // has_prop_type checks if the environment has a type set for the given expression ID.
 fn (t &Transformer) has_prop_type(id int) bool {
+	if usize(t.env.expr_type_values.data) > 0 && usize(t.env.expr_type_values.data) < 4096 {
+		eprintln('HAS_PROP_TYPE bad env expr_type_values data=${usize(t.env.expr_type_values.data)} len=${t.env.expr_type_values.len} cap=${t.env.expr_type_values.cap} off=${t.env.expr_type_values.offset} flags=${t.env.expr_type_values.flags} esz=${t.env.expr_type_values.element_size} id=${id}')
+	}
+	if usize(t.env.expr_type_neg_values.data) > 0 && usize(t.env.expr_type_neg_values.data) < 4096 {
+		eprintln('HAS_PROP_TYPE bad env expr_type_neg_values data=${usize(t.env.expr_type_neg_values.data)} len=${t.env.expr_type_neg_values.len} cap=${t.env.expr_type_neg_values.cap} off=${t.env.expr_type_neg_values.offset} flags=${t.env.expr_type_neg_values.flags} esz=${t.env.expr_type_neg_values.element_size} id=${id}')
+	}
 	if id > 0 && id < t.env.expr_type_values.len {
 		typ := t.env.expr_type_values[id]
 		if typ is types.Void {
@@ -396,19 +402,34 @@ fn (mut t Transformer) infer_prop_type(expr ast.Expr) ?types.Type {
 					})
 				}
 			}
-			return t.get_expr_type(expr.expr)
+			if inner_type := t.get_expr_type(expr.expr) {
+				return inner_type
+			}
+			return none
 		}
 		ast.PostfixExpr {
-			return t.get_expr_type(expr.expr)
+			if inner_type := t.get_expr_type(expr.expr) {
+				return inner_type
+			}
+			return none
 		}
 		ast.ParenExpr {
-			return t.get_expr_type(expr.expr)
+			if inner_type := t.get_expr_type(expr.expr) {
+				return inner_type
+			}
+			return none
 		}
 		ast.ModifierExpr {
-			return t.get_expr_type(expr.expr)
+			if inner_type := t.get_expr_type(expr.expr) {
+				return inner_type
+			}
+			return none
 		}
 		ast.CastExpr {
-			return t.get_expr_type(expr.typ)
+			if inner_type := t.get_expr_type(expr.typ) {
+				return inner_type
+			}
+			return none
 		}
 		ast.SelectorExpr {
 			// Try to look up the field type using the LHS type
@@ -532,7 +553,9 @@ fn (mut t Transformer) infer_prop_type(expr ast.Expr) ?types.Type {
 			if expr.stmts.len > 0 {
 				last_stmt := expr.stmts.last()
 				if last_stmt is ast.ExprStmt {
-					return t.get_expr_type(last_stmt.expr)
+					if inner_type := t.get_expr_type(last_stmt.expr) {
+						return inner_type
+					}
 				}
 			}
 			return none

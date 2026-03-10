@@ -120,11 +120,14 @@ pub enum Token {
 
 pub enum BindingPower {
 	lowest
-	one
-	two
-	shift
-	three
-	four
+	logical_or  // ||
+	logical_and // &&
+	compare     // ==, !=, <, <=, >, >=, in, !in, is, !is
+	bit_or      // |
+	bit_xor     // ^
+	shift       // <<, >>, >>>
+	add         // +, -
+	product     // *, /, %, &
 	highest
 }
 
@@ -132,19 +135,40 @@ pub enum BindingPower {
 pub fn (t Token) left_binding_power() BindingPower {
 	return match t {
 		// `||`
-		.logical_or { .lowest }
+		.logical_or {
+			BindingPower.logical_or
+		}
 		// `&&`
-		.and { .one }
-		// `<<` | `>>` | `>>>` - between comparison and additive so arr << a + b parses as arr << (a + b)
-		// and a == b << c parses as a == (b << c)
-		.left_shift, .right_shift, .right_shift_unsigned { .shift }
+		.and {
+			BindingPower.logical_and
+		}
 		// `==` | `!=` | `<` | `<=` | `>` | `>=` | `in` | `!in` | `is` | `!is`
-		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .two }
-		// `+` |  `-` |  `|` | `^`
-		.plus, .minus, .pipe, .xor { .three }
-		// `*` |  `/` | `%` | `&`
-		.mul, .div, .mod, .amp { .four }
-		else { .lowest }
+		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is {
+			BindingPower.compare
+		}
+		// `|`
+		.pipe {
+			BindingPower.bit_or
+		}
+		// `^`
+		.xor {
+			BindingPower.bit_xor
+		}
+		// `<<` | `>>` | `>>>`
+		.left_shift, .right_shift, .right_shift_unsigned {
+			BindingPower.shift
+		}
+		// `+` | `-`
+		.plus, .minus {
+			BindingPower.add
+		}
+		// `*` | `/` | `%` | `&`
+		.mul, .div, .mod, .amp {
+			BindingPower.product
+		}
+		else {
+			BindingPower.lowest
+		}
 	}
 }
 

@@ -32,14 +32,36 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			}
 		}
 	}
+	// Expand user input paths: allow compiling module directories (e.g. `v2 .`).
+	mut expanded_user_files := []string{}
+	mut seen_user_files := map[string]bool{}
+	for input in files {
+		if input == '' {
+			continue
+		}
+		if os.is_dir(input) {
+			dir_files := get_v_files_from_dir(input, b.pref.user_defines)
+			for dir_file in dir_files {
+				if dir_file != '' && dir_file !in seen_user_files {
+					expanded_user_files << dir_file
+					seen_user_files[dir_file] = true
+				}
+			}
+			continue
+		}
+		if input !in seen_user_files {
+			expanded_user_files << input
+			seen_user_files[input] = true
+		}
+	}
 	// For test files, include all non-test sibling module files from the same directory
-	mut all_user_files := files.clone()
-	for file in files {
+	mut all_user_files := expanded_user_files.clone()
+	for file in expanded_user_files {
 		if file.contains('_test.') && file.ends_with('.v') {
 			dir := os.dir(file)
 			sibling_files := get_v_files_from_dir(dir, b.pref.user_defines)
 			for sf in sibling_files {
-				if sf !in all_user_files {
+				if sf != '' && sf !in all_user_files {
 					all_user_files << sf
 				}
 			}
@@ -65,6 +87,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
 			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines)
+			if module_files.len == 0 {
+				continue
+			}
 			parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
 			ast_files << parsed_module_files
 			parsed_imports << mod.name

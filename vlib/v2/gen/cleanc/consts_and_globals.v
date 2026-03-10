@@ -76,6 +76,13 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if value_expr.len == 0 {
 			continue
 		}
+		// Array consts with static backing data cannot be #defined across
+		// translation units. Emit extern declarations instead.
+		if value_expr.contains('__const_array_data_') {
+			g.emitted_types[macro_key] = true
+			g.sb.writeln('extern array ${name};')
+			continue
+		}
 		mut macro_expr := value_expr
 		if macro_expr.contains('\n') {
 			// Keep macro definitions valid when value expressions are rendered
@@ -272,7 +279,8 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			if elem_type != '' && elem_type != 'array' {
 				// Check that no element contains a function call (not valid in C static initializers)
 				mut has_call := false
-				for elem in array_value.exprs {
+				for i in 0 .. array_value.exprs.len {
+					elem := array_value.exprs[i]
 					if g.contains_call_expr(elem) {
 						has_call = true
 						break

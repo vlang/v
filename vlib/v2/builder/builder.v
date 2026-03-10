@@ -6,6 +6,7 @@ module builder
 import os
 import v2.ast
 import v2.abi
+import v2.eval
 import v2.gen.arm64
 import v2.gen.c
 import v2.gen.cleanc
@@ -13,14 +14,18 @@ import v2.gen.v as gen_v
 import v2.gen.x64
 import v2.insel
 import v2.markused
+import v2.parser
 import v2.mir
 import v2.pref
 import v2.ssa
-import v2.ssa.optimize
+import v2.ssa.optimize as ssa_optimize
 import v2.token
 import v2.transformer
 import v2.types
 import time
+
+const staged_c_file = '/tmp/v2_codegen.tmp.c'
+const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
 
 struct Builder {
 	pref &pref.Preferences
@@ -45,6 +50,310 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			used_fn_keys: map[string]bool{}
 		}
 	}
+}
+
+// exec_build_c_file returns the staging C file path for executable builds.
+// A stable temp path avoids output-name-derived string construction in
+// self-hosted arm64 binaries, where that path is currently unstable.
+fn (b &Builder) exec_build_c_file(output_name string) string {
+	if b.pref.keep_c {
+		return output_name + '.c'
+	}
+	return staged_c_file
+}
+
+fn sanitize_staged_c_source(c_source string) string {
+	mut source := c_source
+	source = source.replace('struct IError {\n\tvoid* _object;\n\tint _type_id;\n\tstring (*type_name)(void*);\n\tvoid* msg;\n\tvoid* code;\n};',
+		'struct IError {\n\tvoid* _object;\n\tint _type_id;\n\tstring (*type_name)(void*);\n\tstring (*msg)(void*);\n\tint (*code)(void*);\n};')
+	source = source.replace('((u8)(ary_clone.data))', '((u8*)(ary_clone.data))')
+	source = source.replace('((u8)(a.data))', '((u8*)(a.data))')
+	source = source.replace('((u8)(arr.data))', '((u8*)(arr.data))')
+	source = source.replace('((u8)(dst->data))', '((u8*)(dst->data))')
+	source = source.replace('((u8)(const_s))', '((u8*)(const_s))')
+	source = source.replace('((u8)(m->metas))', '((u8*)(m->metas))')
+	source = source.replace('((u8)(pvalue))', '((u8*)(pvalue))')
+	source = source.replace('(_idx_s < ((a)).len)', '(_idx_s < (*(a)).len)')
+	source = source.replace('&((string*)((a)).data)', '&((string*)(*(a)).data)')
+	source = source.replace('return err.msg(err._object);', 'return ((string (*)(void*))err.msg)(err._object);')
+	source = ensure_result_struct_decl(source, '_result_int', 'int')
+	source = ensure_result_struct_decl(source, '_result_rune', 'rune')
+	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)', sanitized_u64_to_hex_fn())
+	source = replace_generated_c_fn(source, 'string u64_to_hex_no_leading_zeros(u64 nn, u8 len)',
+		sanitized_u64_to_hex_no_leading_zeros_fn())
+	source = replace_generated_c_fn(source, 'string u8__str_escaped(u8 b)', sanitized_u8_str_escaped_fn())
+	source = replace_generated_c_fn(source, 'int int_min(int a, int b)', sanitized_int_min_fn())
+	source = replace_generated_c_fn(source, 'int int_max(int a, int b)', sanitized_int_max_fn())
+	source = replace_generated_c_fn(source, 'int string__utf32_code(string _rune)', sanitized_string_utf32_code_fn())
+	source = replace_generated_c_fn(source, '_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes)',
+		sanitized_array_u8_utf8_to_utf32_fn())
+	source = replace_generated_c_fn(source, 'rune impl_utf8_to_utf32(u8* _bytes, int _bytes_len)',
+		sanitized_impl_utf8_to_utf32_fn())
+	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)', sanitized_utf8_str_visible_length_fn())
+	source = source.replace('array__write_rune(', 'strings__Builder__write_rune(')
+	source = source.replace('array__write_u8(', 'strings__Builder__write_u8(')
+	source = source.replace('array__write_string(', 'strings__Builder__write_string(')
+	source = source.replace('array__write_ptr(', 'strings__Builder__write_ptr(')
+	source = source.replace('array__write_repeated_rune(', 'strings__Builder__write_repeated_rune(')
+	source = source.replace('array__spart(', 'strings__Builder__spart(')
+	source = source.replace('array__cut_last(', 'strings__Builder__cut_last(')
+	source = source.replace('array__str(sb)', 'strings__Builder__str(&sb)')
+	source = source.replace('strings__Builder__write_rune(sb,', 'strings__Builder__write_rune(&sb,')
+	source = source.replace("Array_u8_contains(res, '.')", "array__contains(res, &(u8[1]){'.'})")
+	source = source.replace('(state ? strings__IndentState__normal)', '(state == strings__IndentState__normal)')
+	source = source.replace('(state ? strings__IndentState__in_string)', '(state == strings__IndentState__in_string)')
+	source = source.replace('(c ? \'"\')', '(c == \'"\')')
+	source = source.replace("(c ? '\\'')", "(c == '\\'')")
+	source = source.replace('(c ? param.block_start)', '(c == param.block_start)')
+	source = source.replace('(c ? param.block_end)', '(c == param.block_end)')
+	source = source.replace("(c ? ' ')", "(c == ' ')")
+	source = source.replace("(c ? '\\t')", "(c == '\\t')")
+	source = source.replace("(c ? '\\r')", "(c == '\\r')")
+	source = source.replace("(c ? '\\n')", "(c == '\\n')")
+	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);', 'return tos(&((u8*)buf.data)[((int)(0))], i);')
+	source = ensure_string_eq_impl(source)
+	return source
+}
+
+fn ensure_result_struct_decl(source string, struct_name string, elem_c_type string) string {
+	if source.contains('struct ${struct_name} {') {
+		return source
+	}
+	anchor := 'struct _result_string { bool is_error; IError err; u8 data[sizeof(string) > 1 ? sizeof(string) : 1]; };'
+	replacement := anchor +
+		'\nstruct ${struct_name} { bool is_error; IError err; u8 data[sizeof(${elem_c_type}) > 1 ? sizeof(${elem_c_type}) : 1]; };'
+	return source.replace(anchor, replacement)
+}
+
+fn ensure_string_eq_impl(source string) string {
+	if source.contains('bool string__eq(string a, string b) {') {
+		return source
+	}
+	return source + '\n' +
+		['bool string__eq(string a, string b) {', '\tif ((a.str == 0)) {', '\t\treturn ((b.str == 0) || (b.len == 0));', '\t}', '\tif ((a.len != b.len)) {', '\t\treturn false;', '\t}', '\treturn (vmemcmp(a.str, b.str, b.len) == 0);', '}'].join('\n') +
+		'\n'
+}
+
+fn replace_generated_c_fn(source string, signature string, replacement string) string {
+	needle := signature + ' {'
+	start := source.index(needle) or { return source }
+	body_start := start + needle.len - 1
+	if body_start < 0 || body_start >= source.len || source[body_start] != `{` {
+		return source
+	}
+	mut depth := 0
+	mut body_end := -1
+	for i := body_start; i < source.len; i++ {
+		if source[i] == `{` {
+			depth++
+		} else if source[i] == `}` {
+			depth--
+			if depth == 0 {
+				body_end = i
+				break
+			}
+		}
+	}
+	if body_end == -1 {
+		return source
+	}
+	return source[..start] + replacement + '\n' + source[body_end + 1..]
+}
+
+fn sanitized_u64_to_hex_fn() string {
+	return [
+		'string u64_to_hex(u64 nn, u8 len) {',
+		'\tu64 n = nn;',
+		'\tu8 buf[17] = {0};',
+		'\tbuf[((int)(len))] = 0;',
+		'\tfor (int i = (((int)(len)) - 1); (i >= 0); i--) {',
+		'\t\tu8 d = ((u8)((n & 0xF)));',
+		"\t\tbuf[i] = (d < 10) ? ((u8)(d + '0')) : ((u8)(d + 87));",
+		'\t\tn = (n >> 4);',
+		'\t}',
+		'\treturn tos(memdup(&buf[0], (((int)(len)) + 1)), len);',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_u64_to_hex_no_leading_zeros_fn() string {
+	return [
+		'string u64_to_hex_no_leading_zeros(u64 nn, u8 len) {',
+		'\tu64 n = nn;',
+		'\tu8 buf[17] = {0};',
+		'\tbuf[((int)(len))] = 0;',
+		'\tint i = 0;',
+		'\tfor (i = (((int)(len)) - 1); (i >= 0); i--) {',
+		'\t\tu8 d = ((u8)((n & 0xF)));',
+		"\t\tbuf[i] = (d < 10) ? ((u8)(d + '0')) : ((u8)(d + 87));",
+		'\t\tn = (n >> 4);',
+		'\t\tif ((n == 0)) {',
+		'\t\t\tbreak;',
+		'\t\t}',
+		'\t}',
+		'\tint res_len = (((int)(len)) - i);',
+		'\treturn tos(memdup(&buf[i], (res_len + 1)), res_len);',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_u8_str_escaped_fn() string {
+	return [
+		'string u8__str_escaped(u8 b) {',
+		'\tif ((b == 0)) {',
+		'\t\treturn (string){.str = "`\\0`", .len = sizeof("`\\0`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 7)) {',
+		'\t\treturn (string){.str = "`\\a`", .len = sizeof("`\\a`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 8)) {',
+		'\t\treturn (string){.str = "`\\b`", .len = sizeof("`\\b`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 9)) {',
+		'\t\treturn (string){.str = "`\\t`", .len = sizeof("`\\t`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 10)) {',
+		'\t\treturn (string){.str = "`\\n`", .len = sizeof("`\\n`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 11)) {',
+		'\t\treturn (string){.str = "`\\v`", .len = sizeof("`\\v`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 12)) {',
+		'\t\treturn (string){.str = "`\\f`", .len = sizeof("`\\f`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 13)) {',
+		'\t\treturn (string){.str = "`\\r`", .len = sizeof("`\\r`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif ((b == 27)) {',
+		'\t\treturn (string){.str = "`\\e`", .len = sizeof("`\\e`") - 1, .is_lit = 1};',
+		'\t}',
+		'\tif (((b >= 32) && (b <= 126))) {',
+		'\t\treturn u8__ascii_str(b);',
+		'\t}',
+		'\tstring xx = u8__hex(b);',
+		'\tstring yy = string__plus((string){.str = "0x", .len = sizeof("0x") - 1, .is_lit = 1}, xx);',
+		'\tstring__free(&xx);',
+		'\treturn yy;',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_int_min_fn() string {
+	return [
+		'int int_min(int a, int b) {',
+		'\treturn (a < b) ? a : b;',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_int_max_fn() string {
+	return [
+		'int int_max(int a, int b) {',
+		'\treturn (a > b) ? a : b;',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_string_utf32_code_fn() string {
+	return [
+		'int string__utf32_code(string _rune) {',
+		'\tif ((_rune.len > 4)) {',
+		'\t\treturn 0;',
+		'\t}',
+		'\treturn ((int)(impl_utf8_to_utf32((u8*)(_rune.str), _rune.len)));',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_array_u8_utf8_to_utf32_fn() string {
+	return [
+		'_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes) {',
+		'\tif ((_bytes.len > 4)) {',
+		'\t\treturn (_result_rune){ .is_error=true, .err=error((string){.str = "attempted to decode too many bytes, utf-8 is limited to four bytes maximum", .len = sizeof("attempted to decode too many bytes, utf-8 is limited to four bytes maximum") - 1, .is_lit = 1}) };',
+		'\t}',
+		'\treturn ({ _result_rune _res = (_result_rune){0}; rune _val = impl_utf8_to_utf32((u8*)(_bytes.data), _bytes.len); _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_impl_utf8_to_utf32_fn() string {
+	return [
+		'rune impl_utf8_to_utf32(u8* _bytes, int _bytes_len) {',
+		'\tif (((_bytes_len == 0) || (_bytes_len > 4))) {',
+		'\t\treturn 0;',
+		'\t}',
+		'\tif ((_bytes_len == 1)) {',
+		'\t\treturn ((rune)(_bytes[0]));',
+		'\t}',
+		'\tif ((_bytes_len == 2)) {',
+		'\t\trune b0 = ((rune)(_bytes[0]));',
+		'\t\trune b1 = ((rune)(_bytes[1]));',
+		'\t\treturn ((((b0 & 0x1F)) << 6) | ((b1 & 0x3F)));',
+		'\t}',
+		'\tif ((_bytes_len == 3)) {',
+		'\t\trune b0 = ((rune)(_bytes[0]));',
+		'\t\trune b1 = ((rune)(_bytes[1]));',
+		'\t\trune b2 = ((rune)(_bytes[2]));',
+		'\t\treturn (((((b0 & 0x0F)) << 12) | (((b1 & 0x3F)) << 6)) | ((b2 & 0x3F)));',
+		'\t}',
+		'\tif ((_bytes_len == 4)) {',
+		'\t\trune b0 = ((rune)(_bytes[0]));',
+		'\t\trune b1 = ((rune)(_bytes[1]));',
+		'\t\trune b2 = ((rune)(_bytes[2]));',
+		'\t\trune b3 = ((rune)(_bytes[3]));',
+		'\t\treturn ((((((b0 & 0x07)) << 18) | (((b1 & 0x3F)) << 12)) | (((b2 & 0x3F)) << 6)) | ((b3 & 0x3F)));',
+		'\t}',
+		'\treturn 0;',
+		'}',
+	].join('\n')
+}
+
+fn sanitized_utf8_str_visible_length_fn() string {
+	return [
+		'int utf8_str_visible_length(string s) {',
+		'\tint l = 0;',
+		'\tint ul = 1;',
+		'\tfor (int i = 0; (i < s.len); i += ul) {',
+		'\t\tu8 c = s.str[i];',
+		'\t\tul = (((0xe5000000 >> (((s.str[i] >> 3) & 0x1e))) & 3) + 1);',
+		'\t\tif (((i + ul) > s.len)) {',
+		'\t\t\treturn l;',
+		'\t\t}',
+		'\t\tl++;',
+		'\t\tif ((ul == 1)) {',
+		'\t\t\tcontinue;',
+		'\t\t}',
+		'\t\tif ((ul == 2)) {',
+		'\t\t\tu64 r = ((u64)((((u16)(c)) << 8) | s.str[(i + 1)]));',
+		'\t\t\tif (((r >= 0xcc80) && (r < 0xcdb0))) {',
+		'\t\t\t\tl--;',
+		'\t\t\t}',
+		'\t\t} else if ((ul == 3)) {',
+		'\t\t\tu64 r = ((u64)((((u32)(c)) << 16) | ((((u32)(s.str[(i + 1)])) << 8) | s.str[(i + 2)])));',
+		'\t\t\tif (((((((r >= 0xe1aab0) && (r <= 0xe1ac7f))) || (((r >= 0xe1b780) && (r <= 0xe1b87f)))) || (((r >= 0xe28390) && (r <= 0xe2847f)))) || (((r >= 0xefb8a0) && (r <= 0xefb8af))))) {',
+		'\t\t\t\tl--;',
+		'\t\t\t} else if (((((((((((r >= 0xe18480) && (r <= 0xe1859f))) || (((r >= 0xe2ba80) && (r <= 0xe2bf95)))) || (((r >= 0xe38080) && (r <= 0xe4b77f)))) || (((r >= 0xe4b880) && (r <= 0xea807f)))) || (((r >= 0xeaa5a0) && (r <= 0xeaa79f)))) || (((r >= 0xeab080) && (r <= 0xed9eaf)))) || (((r >= 0xefa480) && (r <= 0xefac7f)))) || (((r >= 0xefb8b8) && (r <= 0xefb9af))))) {',
+		'\t\t\t\tl++;',
+		'\t\t\t}',
+		'\t\t} else if ((ul == 4)) {',
+		'\t\t\tu64 r = ((u64)((((u32)(c)) << 24) | (((((u32)(s.str[(i + 1)])) << 16) | (((u32)(s.str[(i + 2)])) << 8)) | s.str[(i + 3)])));',
+		'\t\t\tif (((((((r >= 0xf09f8880) && (r <= 0xf09f8a8f))) || (((r >= 0xf09f8c80) && (r <= 0xf09f9c90)))) || (((r >= 0xf09fa490) && (r <= 0xf09fa7af)))) || (((r >= 0xf0a08080) && (r <= 0xf180807f))))) {',
+		'\t\t\t\tl++;',
+		'\t\t\t}',
+		'\t\t}',
+		'\t}',
+		'\treturn l;',
+		'}',
+	].join('\n')
+}
+
+fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, error_limit_flag string, mut sw time.StopWatch) {
+	cc_start := sw.elapsed()
+	cc_cmd := '${cc} ${cc_flags} -w "${staged_c_file}" -o "${output_name}"${error_limit_flag}'
+	run_cc_cmd_or_exit(cc_cmd, 'C compilation', b.pref.show_cc)
+	print_time('CC', time.Duration(sw.elapsed() - cc_start))
+
+	println('[*] Compiled ${output_name}')
 }
 
 pub fn (mut b Builder) build(files []string) {
@@ -122,6 +431,13 @@ pub fn (mut b Builder) build(files []string) {
 		.arm64 {
 			b.gen_native(.arm64)
 		}
+		.eval {
+			mut runner := eval.new(b.pref)
+			runner.run_files(b.files) or {
+				eprintln('error: ${err.msg()}')
+				exit(1)
+			}
+		}
 	}
 
 	print_time('Total', sw.elapsed())
@@ -141,22 +457,39 @@ fn (mut b Builder) gen_cleanc() {
 	// Clean C Backend (AST -> C)
 	mut sw := time.new_stopwatch()
 
-	// The cached-core split is currently unstable during cmd/v2 self-host
-	// bootstrapping (v2 -> v3 -> v4). Force single-unit cleanc generation there.
-	force_no_cache := b.is_cmd_v2_self_build()
+	// The cached-core split is currently unstable in some module builds
+	// (including cmd/v2 self-host and directory-style user module builds).
+	// Force single-unit cleanc generation there.
+	force_no_cache := b.should_disable_cleanc_cache()
 	use_cache := !b.pref.no_cache && !force_no_cache
+	if os.getenv('V2_TRACE_CACHE') != '' {
+		eprintln('TRACE_CACHE use_cache=${use_cache} no_cache=${b.pref.no_cache} force_no_cache=${force_no_cache} self_build=${b.is_cmd_v2_self_build()} files=${b.user_files}')
+	}
 
 	// Determine output name
 	output_name := if b.pref.output_file != '' {
 		b.pref.output_file
 	} else if b.user_files.len > 0 {
-		os.file_name(b.user_files.last()).all_before_last('.v')
+		b.default_output_name()
 	} else {
 		'out'
 	}
 
-	cc := os.getenv_opt('V2CC') or { default_cc(b.pref.vroot) }
-	cc_flags := (os.getenv_opt('V2CFLAGS') or { '' }) + ' ' + tcc_flags(cc, b.pref.vroot)
+	cc := configured_cc(b.pref.vroot)
+	directive_flags := b.collect_cflags_from_sources()
+	mut cc_flag_parts := []string{}
+	env_flags := configured_cflags()
+	if env_flags.trim_space() != '' {
+		cc_flag_parts << env_flags.trim_space()
+	}
+	if directive_flags.trim_space() != '' {
+		cc_flag_parts << directive_flags.trim_space()
+	}
+	tcc_extra := tcc_flags(cc, b.pref.vroot)
+	if tcc_extra.trim_space() != '' {
+		cc_flag_parts << tcc_extra.trim_space()
+	}
+	cc_flags := cc_flag_parts.join(' ')
 	mut error_limit_flag := ''
 	if !cc.contains('tcc') {
 		version_res := os.execute('${cc} --version')
@@ -209,17 +542,9 @@ fn (mut b Builder) gen_cleanc() {
 		eprintln('hint: use v2 compiled with v1 for proper C code generation')
 		return
 	}
-
-	c_file := output_name + '.c'
-	os.write_file(c_file, c_source) or { panic(err) }
-	println('[*] Wrote ${c_file}')
-
-	cc_start := sw.elapsed()
-	cc_cmd := '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}"${error_limit_flag}'
-	run_cc_cmd_or_exit(cc_cmd, 'C compilation', b.pref.show_cc)
-	print_time('CC', time.Duration(sw.elapsed() - cc_start))
-
-	println('[*] Compiled ${output_name}')
+	os.write_file(staged_c_file, c_source) or { panic(err) }
+	println('[*] Wrote ${staged_c_file}')
+	b.compile_cleanc_executable(output_name, cc, cc_flags, error_limit_flag, mut sw)
 }
 
 fn (b &Builder) is_cmd_v2_self_build() bool {
@@ -233,6 +558,50 @@ fn (b &Builder) is_cmd_v2_self_build() bool {
 		return true
 	}
 	return path.ends_with('/cmd/v2/v2.v') || path.ends_with('cmd/v2/v2.v')
+}
+
+fn (b &Builder) should_disable_cleanc_cache() bool {
+	$if @BACKEND == 'arm64' {
+		// The arm64 self-hosted compiler still mis-generates cached-core
+		// boundaries for cleanc builds, which drops required runtime helpers.
+		// Force a single translation unit until the cache path is stable there.
+		return true
+	}
+	if b.is_cmd_v2_self_build() {
+		return true
+	}
+	for raw_input in b.user_files {
+		input := raw_input.trim_right('/\\')
+		if input.len == 0 {
+			continue
+		}
+		if input.ends_with('.v') || input.ends_with('.vv') || input.ends_with('.vsh')
+			|| input.ends_with('.vh') {
+			continue
+		}
+		if os.is_dir(input) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (b &Builder) default_output_name() string {
+	if b.user_files.len == 0 {
+		return 'out'
+	}
+	last_input := b.user_files.last().trim_right('/\\')
+	if last_input.len == 0 || last_input == '.' {
+		cwd := os.getwd()
+		base := os.file_name(cwd)
+		return if base.len > 0 { base } else { 'out' }
+	}
+	if os.is_dir(last_input) {
+		base := os.file_name(last_input)
+		return if base.len > 0 { base } else { 'out' }
+	}
+	base := os.file_name(last_input).all_before_last('.v')
+	return if base.len > 0 { base } else { os.file_name(last_input) }
 }
 
 fn (mut b Builder) gen_ssa_c() {
@@ -256,8 +625,21 @@ fn (mut b Builder) gen_ssa_c() {
 	// optimize.optimize(mut mod)
 	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
-	cc := os.getenv_opt('V2CC') or { default_cc(b.pref.vroot) }
-	cc_flags := (os.getenv_opt('V2CFLAGS') or { '' }) + ' ' + tcc_flags(cc, b.pref.vroot)
+	cc := configured_cc(b.pref.vroot)
+	directive_flags := b.collect_cflags_from_sources()
+	mut cc_flag_parts := []string{}
+	env_flags := configured_cflags()
+	if env_flags.trim_space() != '' {
+		cc_flag_parts << env_flags.trim_space()
+	}
+	if directive_flags.trim_space() != '' {
+		cc_flag_parts << directive_flags.trim_space()
+	}
+	tcc_extra := tcc_flags(cc, b.pref.vroot)
+	if tcc_extra.trim_space() != '' {
+		cc_flag_parts << tcc_extra.trim_space()
+	}
+	cc_flags := cc_flag_parts.join(' ')
 	mut error_limit_flag := ''
 	if !cc.contains('tcc') {
 		version_res := os.execute('${cc} --version')
@@ -269,9 +651,9 @@ fn (mut b Builder) gen_ssa_c() {
 	// Try to get pre-compiled builtin.o and vlib.o from the cleanc cache
 	mut builtin_obj := ''
 	mut vlib_obj := ''
-	if !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv') {
+	if !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
+		&& b.ensure_core_cache_dir() {
 		cache_dir := b.core_cache_dir()
-		os.mkdir_all(cache_dir) or {}
 		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
 			builtin_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
 		if builtin_obj.len > 0 && vlib_cached_module_paths.len > 0 {
@@ -293,7 +675,7 @@ fn (mut b Builder) gen_ssa_c() {
 	output_name := if b.pref.output_file != '' {
 		b.pref.output_file
 	} else if b.user_files.len > 0 {
-		os.file_name(b.user_files.last()).all_before_last('.v')
+		b.default_output_name()
 	} else {
 		'out'
 	}
@@ -304,7 +686,7 @@ fn (mut b Builder) gen_ssa_c() {
 		return
 	}
 
-	c_file := output_name + '.c'
+	c_file := b.exec_build_c_file(output_name)
 	os.write_file(c_file, c_source) or { panic(err) }
 	println('[*] Wrote ${c_file}')
 
@@ -312,7 +694,7 @@ fn (mut b Builder) gen_ssa_c() {
 	mut cc_cmd := ''
 	if builtin_obj.len > 0 {
 		// Compile SSA main.c and link against pre-compiled builtin.o
-		main_obj := output_name + '.main.o'
+		main_obj := staged_main_obj_file
 		compile_cmd := '${cc} ${cc_flags} -w -c "${c_file}" -o "${main_obj}"${error_limit_flag}'
 		if b.pref.show_cc {
 			println(compile_cmd)
@@ -387,7 +769,13 @@ fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cac
 }
 
 fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool) string {
-	mut gen := cleanc.Gen.new_with_env_and_pref(b.files, b.env, b.pref)
+	mut gen_files := b.files.clone()
+	if cached_init_calls.len > 0 && b.can_use_cached_core_headers() {
+		mut p := parser.Parser.new(b.pref)
+		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
+		gen_files << header_files
+	}
+	mut gen := cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
 	if modules.len > 0 {
 		gen.set_emit_modules(modules)
 	}
@@ -401,27 +789,47 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 	if cached_init_calls.len > 0 {
 		gen.set_cached_init_calls(cached_init_calls)
 	}
-	return gen.gen()
+	source := gen.gen()
+	if os.getenv('V2TRACE_CLEANC') != '' {
+		eprintln('TRACE_CLEANC builder_files=${b.files.len} gen_files=${gen_files.len} source_len=${source.len}')
+	}
+	return source
 }
 
 fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc_flags string, error_limit_flag string, mut sw time.StopWatch) bool {
 	main_modules := b.collect_modules_excluding(core_cached_module_names)
 	if main_modules.len == 0 {
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=no_main_modules')
+		}
 		return false
 	}
 
 	cache_dir := b.core_cache_dir()
-	os.mkdir_all(cache_dir) or {
-		// If we cannot create cache dir, fall back to full compilation.
+	if !b.ensure_core_cache_dir() {
+		// If we cannot create a readable/writable cache dir, fall back to full compilation.
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=cache_dir_unusable')
+		}
 		return false
 	}
 
 	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
-		builtin_cached_module_names, cc, cc_flags, error_limit_flag) or { return false }
+		builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=builtin_obj_failed')
+		}
+		return false
+	}
 	mut vlib_obj := ''
 	if vlib_cached_module_paths.len > 0 {
 		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
-			vlib_cached_module_names, cc, cc_flags, error_limit_flag) or { return false }
+			vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+			if os.getenv('V2_TRACE_CACHE') != '' {
+				eprintln('TRACE_CACHE cached_core=false reason=vlib_obj_failed')
+			}
+			return false
+		}
 	}
 	b.ensure_core_module_headers()
 
@@ -439,7 +847,7 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 			// Cached .o was compiled by cc (via TCC fallback), not TCC.
 			// Use cc for main compilation and linking to match formats.
 			main_cc = 'cc'
-			main_cc_flags = (os.getenv_opt('V2CFLAGS') or { '' })
+			main_cc_flags = configured_cflags()
 		}
 	}
 
@@ -448,18 +856,22 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	if vlib_obj.len > 0 {
 		cached_init_calls << '__v2_cached_init_${vlib_cache_name}'
 	}
-	main_source := b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
+	mut main_source := b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
+	main_source = b.inject_cached_core_forward_decls(main_source)
 	print_time('C Gen', sw.elapsed())
 	if main_source == '' {
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=empty_main_source')
+		}
 		return false
 	}
 
-	main_c_file := output_name + '.c'
+	main_c_file := b.exec_build_c_file(output_name)
 	os.write_file(main_c_file, main_source) or { return false }
 	println('[*] Wrote ${main_c_file}')
 
 	cc_start := sw.elapsed()
-	main_obj := output_name + '.main.o'
+	main_obj := staged_main_obj_file
 	compile_main_cmd := '${main_cc} ${main_cc_flags} -w -c "${main_c_file}" -o "${main_obj}"${error_limit_flag}'
 	main_fell_back := run_cc_cmd_or_exit(compile_main_cmd, 'C compilation', b.pref.show_cc)
 	if main_fell_back && main_cc.contains('tcc') {
@@ -467,6 +879,9 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		// Fallback produced Mach-O main.o — can't link with ELF cache.
 		// Fall back to non-cached full compilation.
 		os.rm(main_obj) or {}
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=main_compile_fell_back')
+		}
 		return false
 	}
 	mut link_cmd := '${main_cc} ${main_cc_flags} -w "${main_obj}" "${builtin_obj}"'
@@ -478,14 +893,110 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
 	os.rm(main_obj) or {}
+	if !b.pref.keep_c {
+		os.rm(main_c_file) or {}
+	}
+	if os.getenv('V2_TRACE_CACHE') != '' {
+		eprintln('TRACE_CACHE cached_core=true')
+	}
 	println('[*] Compiled ${output_name}')
 	return true
 }
 
+fn (b &Builder) inject_cached_core_forward_decls(source string) string {
+	decls := b.cached_core_forward_decls()
+	if decls == '' {
+		return source
+	}
+	mut lines := source.split_into_lines()
+	mut out := []string{cap: lines.len + decls.count('\n') + 2}
+	mut saw_cached_decl := false
+	mut inserted := false
+	for line in lines {
+		out << line
+		if line.starts_with('void __v2_cached_init_') {
+			saw_cached_decl = true
+			continue
+		}
+		if saw_cached_decl && line == '' && !inserted {
+			for decl_line in decls.split_into_lines() {
+				if decl_line != '' {
+					out << decl_line
+				}
+			}
+			out << ''
+			inserted = true
+		}
+	}
+	if !inserted {
+		return decls + '\n' + source
+	}
+	return out.join('\n')
+}
+
+fn (b &Builder) cached_core_forward_decls() string {
+	cache_dir := b.core_cache_dir()
+	mut seen := map[string]bool{}
+	mut decls := []string{}
+	for cache_name in [builtin_cache_name, vlib_cache_name] {
+		c_path := os.join_path(cache_dir, '${cache_name}.c')
+		if !os.exists(c_path) {
+			continue
+		}
+		for decl in top_level_c_forward_decls(c_path) {
+			if decl in seen {
+				continue
+			}
+			seen[decl] = true
+			decls << decl
+		}
+	}
+	return decls.join('\n')
+}
+
+fn top_level_c_forward_decls(c_path string) []string {
+	lines := os.read_lines(c_path) or { return []string{} }
+	mut decls := []string{}
+	for raw_line in lines {
+		if raw_line.len == 0 || raw_line[0].is_space() {
+			continue
+		}
+		line := raw_line.trim_space()
+		if !line.ends_with(');') || !line.contains('(') {
+			continue
+		}
+		if line.starts_with('#') || line.starts_with('typedef ') || line.starts_with('struct ')
+			|| line.starts_with('union ') || line.starts_with('enum ')
+			|| line.starts_with('return ') || line.starts_with('if ') || line.starts_with('for ')
+			|| line.starts_with('while ') || line.starts_with('switch ') {
+			continue
+		}
+		// Skip expression fragments that start with '(' or '*'
+		if line[0] == `(` || line[0] == `*` {
+			continue
+		}
+		// Skip global variable definitions (contain '=') - only extract function declarations.
+		if line.contains('=') {
+			continue
+		}
+		// A forward declaration has at least a return type and function name before '('.
+		// Reject bare function calls like 'memset(...)' or 'tos(...)'.
+		paren_idx := line.index_u8(`(`)
+		if paren_idx > 0 {
+			before_paren := line[..paren_idx].trim_space()
+			if !before_paren.contains(' ') && !before_paren.contains('*') {
+				continue
+			}
+		}
+		decls << line
+	}
+	return decls
+}
+
 fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name string, module_paths []string, emit_modules []string, cc string, cc_flags string, error_limit_flag string) !string {
-	obj_path := os.join_path(cache_dir, '${cache_name}.o')
-	stamp_path := os.join_path(cache_dir, '${cache_name}.stamp')
-	c_path := os.join_path(cache_dir, '${cache_name}.c')
+	obj_path := cache_path_join(cache_dir, '${cache_name}.o')
+	stamp_path := cache_path_join(cache_dir, '${cache_name}.stamp')
+	c_path := cache_path_join(cache_dir, '${cache_name}.c')
 	expected_stamp := b.cache_stamp_for_modules(cache_name, module_paths, cc, cc_flags)
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
@@ -546,6 +1057,161 @@ fn file_module_name(file ast.File) string {
 	return 'main'
 }
 
+fn flag_os_matches(cond string) bool {
+	current := os.user_os().to_lower()
+	return match cond.to_lower() {
+		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
+		'linux' { current == 'linux' }
+		'windows' { current == 'windows' }
+		'freebsd' { current == 'freebsd' }
+		'openbsd' { current == 'openbsd' }
+		'netbsd' { current == 'netbsd' }
+		'dragonfly' { current == 'dragonfly' }
+		'android' { current == 'android' }
+		else { false }
+	}
+}
+
+fn find_vmod_root_for_file(file_path string) string {
+	mut dir := os.dir(file_path)
+	for _ in 0 .. 12 {
+		if os.exists(os.join_path(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent == '' {
+			break
+		}
+		dir = parent
+	}
+	return os.dir(file_path)
+}
+
+fn resolve_flag_path(path string, file_dir string, vmod_root string) string {
+	mut resolved := path.replace('@VMODROOT', vmod_root)
+	if os.is_abs_path(resolved) {
+		return resolved
+	}
+	if resolved.starts_with('./') || resolved.starts_with('../') {
+		return os.norm_path(os.join_path(file_dir, resolved))
+	}
+	return resolved
+}
+
+fn normalize_flag_value_for_file(flag_value string, file_path string) string {
+	file_dir := os.dir(file_path)
+	vmod_root := find_vmod_root_for_file(file_path)
+	mut tokens := flag_value.fields()
+	mut out := []string{}
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok in ['-I', '-L', '-F'] && i + 1 < tokens.len {
+			out << tok
+			out << resolve_flag_path(tokens[i + 1], file_dir, vmod_root)
+			i += 2
+			continue
+		}
+		if tok.starts_with('-I') && tok.len > 2 {
+			out << '-I' + resolve_flag_path(tok[2..], file_dir, vmod_root)
+			i++
+			continue
+		}
+		if tok.starts_with('-L') && tok.len > 2 {
+			out << '-L' + resolve_flag_path(tok[2..], file_dir, vmod_root)
+			i++
+			continue
+		}
+		if tok.starts_with('-F') && tok.len > 2 {
+			out << '-F' + resolve_flag_path(tok[2..], file_dir, vmod_root)
+			i++
+			continue
+		}
+		if tok.contains('@VMODROOT') || tok.starts_with('./') || tok.starts_with('../')
+			|| tok.ends_with('.c') || tok.ends_with('.m') || tok.ends_with('.o') {
+			out << resolve_flag_path(tok, file_dir, vmod_root)
+			i++
+			continue
+		}
+		out << tok
+		i++
+	}
+	return out.join(' ')
+}
+
+fn parse_flag_directive_line(line string, file_path string) ?string {
+	trimmed := line.trim_space()
+	if !trimmed.starts_with('#flag') {
+		return none
+	}
+	mut rest := trimmed['#flag'.len..].trim_space()
+	if rest == '' {
+		return none
+	}
+	if comment_idx := rest.index('//') {
+		rest = rest[..comment_idx].trim_space()
+		if rest == '' {
+			return none
+		}
+	}
+	parts := rest.fields()
+	if parts.len == 0 {
+		return none
+	}
+	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
+		if !flag_os_matches(parts[0]) {
+			return none
+		}
+		rest = rest[parts[0].len..].trim_space()
+	}
+	if rest == '' {
+		return none
+	}
+	return normalize_flag_value_for_file(rest, file_path)
+}
+
+fn flag_references_missing_file(flag string) bool {
+	for tok in flag.fields() {
+		clean := tok.trim('"').trim("'")
+		if clean.len == 0 {
+			continue
+		}
+		if clean.ends_with('.o') || clean.ends_with('.a') || clean.ends_with('.so')
+			|| clean.ends_with('.dylib') || clean.ends_with('.m') || clean.ends_with('.c') {
+			if os.is_abs_path(clean) || clean.starts_with('./') || clean.starts_with('../') {
+				if !os.exists(clean) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (b &Builder) collect_cflags_from_sources() string {
+	mut flags := []string{}
+	mut seen := map[string]bool{}
+	for file in b.files {
+		if file.name == '' {
+			continue
+		}
+		lines := os.read_lines(file.name) or { continue }
+		for line in lines {
+			mut flag := parse_flag_directive_line(line, file.name) or { continue }
+			flag = flag.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT', b.pref.vroot)
+			if flag_references_missing_file(flag) {
+				continue
+			}
+			if flag == '' || flag in seen {
+				continue
+			}
+			seen[flag] = true
+			flags << flag
+		}
+	}
+	return flags.join(' ')
+}
+
 fn default_cc(vroot string) string {
 	// Try to use tcc by default, like v1 does.
 	tcc_path := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
@@ -553,6 +1219,18 @@ fn default_cc(vroot string) string {
 		return tcc_path
 	}
 	return 'cc'
+}
+
+fn configured_cc(vroot string) string {
+	cc := (os.getenv_opt('V2CC') or { '' }).trim_space()
+	if cc != '' {
+		return cc
+	}
+	return default_cc(vroot)
+}
+
+fn configured_cflags() string {
+	return (os.getenv_opt('V2CFLAGS') or { '' }).trim_space()
 }
 
 fn tcc_flags(cc string, vroot string) string {
@@ -628,10 +1306,10 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
-	optimize.optimize(mut mod)
+	ssa_optimize.optimize(mut mod)
 	print_time('SSA Optimize', time.Duration(native_sw.elapsed() - stage_start))
 	$if debug {
-		optimize.verify_and_panic(mod, 'full optimization')
+		ssa_optimize.verify_and_panic(mod, 'full optimization')
 	}
 
 	stage_start = native_sw.elapsed()
@@ -650,7 +1328,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	output_binary := if b.pref.output_file != '' {
 		b.pref.output_file
 	} else if b.user_files.len > 0 {
-		os.file_name(b.user_files.last()).all_before_last('.v')
+		b.default_output_name()
 	} else {
 		'out'
 	}
@@ -659,6 +1337,17 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Use built-in linker for ARM64 macOS
 		mut gen := arm64.Gen.new(&mir_mod)
 		gen.gen()
+
+		if b.pref.hot_fn.len > 0 {
+			// Hot code reloading: extract raw machine code for a single function
+			code := gen.extract_function(b.pref.hot_fn)
+			if code.len > 0 {
+				os.write_file_array(output_binary, code) or { panic(err) }
+				println('hot-fn: wrote ${code.len} bytes for "${b.pref.hot_fn}" to ${output_binary}')
+			}
+			return
+		}
+
 		gen.link_executable(output_binary)
 
 		if b.pref.verbose {

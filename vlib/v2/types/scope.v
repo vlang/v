@@ -95,32 +95,16 @@ pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Objec
 }
 
 pub fn (mut s Scope) insert(name string, obj Object) {
-	// println(' - register: ${name}: ${obj.type_name()}')
-	// TODO/FIXME:
-	// if name in s.objects {
-	// 	println(' #### EXISTS: ${name}')
-	// 	mut existing := s.objects[name] or { panic('should exist') }
-	// 	if mut existing is Type {
-	// 		if mut existing is Struct {
-	// 			// if existing.name == 'mapnode' {
-	// 				if obj is Type {
-	// 					if obj is Struct {
-	// 						existing.fields = obj.fields
-	// 						// existing.fields << obj.fields
-	// 					}
-	// 				}
-	// 			// }
-	// 		}
-	// 	}
-	// 	// if name == 'mapnode' {
-	// 	// 	println(obj)
-	// 	// 	println(s.objects[name])
-	// 	// 	panic('...')
-	// 	// }
-	// }
-	if name !in s.objects {
-		s.objects[name] = obj
+	if existing := s.objects[name] {
+		// Module scopes pre-register a self-module placeholder so code can
+		// reference `mod_name.CONST` from inside the same module. A real symbol
+		// with the same name should override that placeholder.
+		if existing is Module && obj !is Module {
+			s.objects[name] = obj
+		}
+		return
 	}
+	s.objects[name] = obj
 }
 
 pub fn (s &Scope) print(recurse_parents bool) {

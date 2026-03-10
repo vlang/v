@@ -63,6 +63,7 @@ mut:
 	lookup map[string][]int
 
 	cur_fn_scope &types.Scope = unsafe { nil }
+	cur_fn_decl  ast.FnDecl
 }
 
 // mark_used walks reachable function/method bodies and returns declaration keys
@@ -113,6 +114,7 @@ fn (mut w Walker) walk() map[string]bool {
 		w.queue.delete(0)
 		info := w.fns[idx]
 		w.cur_fn_scope = w.lookup_fn_scope(info)
+		w.cur_fn_decl = info.decl
 		w.walk_stmts(info.decl.stmts, info.mod)
 		w.cur_fn_scope = unsafe { nil }
 	}
@@ -175,10 +177,16 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
+		// Also seed module init() functions (called from synthesized main)
+		for i, info in w.fns {
+			if is_module_init(info) {
+				w.mark_fn(i)
+			}
+		}
 		return true
 	}
 	for i, info in w.fns {
-		if is_test_root(info) {
+		if is_test_root(info) || is_module_init(info) {
 			w.mark_fn(i)
 			has_root = true
 		}
@@ -197,6 +205,10 @@ fn is_test_root(info FnInfo) bool {
 
 fn is_method_decl(decl ast.FnDecl) bool {
 	return decl.is_method || decl.is_static
+}
+
+fn is_module_init(info FnInfo) bool {
+	return !is_method_decl(info.decl) && (info.decl.name == 'init' || info.decl.name == 'deinit')
 }
 
 fn normalize_module_name(module_name string) string {
@@ -758,6 +770,12 @@ fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []st
 				add_unique_string(mut out, name)
 			}
 		}
+		ast.InitExpr {
+			// InitExpr has a .typ that names the struct being constructed.
+			for name in w.receiver_candidates_for_expr(expr.typ, mod_name) {
+				add_unique_string(mut out, name)
+			}
+		}
 		else {}
 	}
 	return out
@@ -894,6 +912,11 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 		ast.ReturnStmt {
 			for expr in stmt.exprs {
 				w.walk_expr(expr, mod_name)
+				// If the function returns an interface type and the return expr
+				// is a concrete struct InitExpr, mark the concrete type's
+				// interface methods so the vtable wrapper can call them.
+				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr,
+					mod_name)
 			}
 		}
 		ast.StructDecl {
@@ -984,7 +1007,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		}
 		ast.Ident {
 			w.mark_ierror_wrapper_dependencies(expr.name, mod_name)
-			if !w.is_cast_type_name(expr.name) && should_mark_ident_as_fn(expr.name) {
+			if !w.is_cast_type_name(expr.name) {
 				w.mark_indices(w.resolve_fn_name(expr.name, mod_name))
 			}
 		}

@@ -38,6 +38,31 @@ fn C.feof(stream &C.FILE) i32
 
 fn C.CopyFile(&u16, &u16, bool) i32
 
+fn write_file_direct(path string, text string) ! {
+	mut f := create(path)!
+	defer {
+		f.close()
+	}
+	mut sp := text.str
+	mut remaining := text.len
+	for remaining > 0 {
+		C.errno = 0
+		written := int(C.write(f.fd, sp, remaining))
+		if written < 0 {
+			cerror := int(C.errno)
+			if cerror == C.EINTR {
+				continue
+			}
+			return error(posix_get_error_msg(cerror))
+		}
+		if written == 0 {
+			return error('0 bytes written')
+		}
+		remaining -= written
+		sp = unsafe { &char(voidptr(usize(sp) + usize(written))) }
+	}
+}
+
 // fn C.lstat(charptr, voidptr) u64
 
 fn C._wstat64(&u16, voidptr) u64
@@ -309,17 +334,15 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	mut fp := unsafe { nil }
-	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
+	fp := $if windows {
+		C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		fp = C.fopen(&char(path.str), &char(mode.str))
+		C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(voidptr(fp)) {
 		return error_posix(msg: 'failed to open file "${path}"')
-	} else {
-		return fp
 	}
+	return fp
 }
 
 // fileno returns the file descriptor of an opened C file.
@@ -327,11 +350,9 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		mut cfile_casted := &C.FILE(unsafe { nil }) // FILE* cfile_casted = 0;
-		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
-		return C.fileno(cfile_casted)
+		return C.fileno(unsafe { &C.FILE(cfile) })
 	}
 }
 
@@ -348,18 +369,34 @@ fn vpopen(path string) voidptr {
 	}
 }
 
+fn posix_wait_status_exited(status int) bool {
+	return (status & 0x7f) == 0
+}
+
+fn posix_wait_status_exit_code(status int) int {
+	return (status >> 8) & 0xff
+}
+
+fn posix_wait_status_signaled(status int) bool {
+	signal := status & 0x7f
+	return signal != 0 && signal != 0x7f
+}
+
+fn posix_wait_status_signal(status int) int {
+	return status & 0x7f
+}
+
 fn posix_wait4_to_exit_status(waitret int) (int, bool) {
 	$if windows {
 		return waitret, false
 	} $else {
 		mut ret := 0
 		mut is_signaled := true
-		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
-		if C.WIFEXITED(waitret) {
-			ret = C.WEXITSTATUS(waitret)
+		if posix_wait_status_exited(waitret) {
+			ret = posix_wait_status_exit_code(waitret)
 			is_signaled = false
-		} else if C.WIFSIGNALED(waitret) {
-			ret = C.WTERMSIG(waitret)
+		} else if posix_wait_status_signaled(waitret) {
+			ret = posix_wait_status_signal(waitret)
 			is_signaled = true
 		}
 		return ret, is_signaled
@@ -408,8 +445,8 @@ pub fn system(cmd string) int {
 				ret = C.posix_spawn(&pid, c'/bin/sh', 0, 0, arg.data, 0)
 				status := 0
 				ret = C.waitpid(pid, &status, 0)
-				if C.WIFEXITED(status) {
-					ret = C.WEXITSTATUS(status)
+				if posix_wait_status_exited(status) {
+					ret = posix_wait_status_exit_code(status)
 				}
 			}
 		} $else {
@@ -550,7 +587,7 @@ pub fn rmdir(path string) ! {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := unsafe { tos_clone(&u8(C.strerror(e))) }
+	se := unsafe { cstring_to_vstring(C.strerror(e)) }
 	eprintln('errno=${e} err=${se}')
 }
 

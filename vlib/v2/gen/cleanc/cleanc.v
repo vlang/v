@@ -7,6 +7,7 @@ module cleanc
 import v2.ast
 import v2.pref
 import v2.types
+import os
 import strings
 import time
 
@@ -15,17 +16,19 @@ pub struct Gen {
 	env   &types.Environment = unsafe { nil }
 	pref  &pref.Preferences  = unsafe { nil }
 mut:
-	sb                  strings.Builder
-	indent              int
-	cur_fn_scope        &types.Scope = unsafe { nil }
-	cur_fn_name         string
-	cur_fn_ret_type     string
-	cur_module          string
-	emitted_types       map[string]bool
-	fn_param_is_ptr     map[string][]bool
-	fn_param_types      map[string][]string
-	fn_return_types     map[string]string
-	runtime_local_types map[string]string
+	sb                     strings.Builder
+	indent                 int
+	cur_fn_scope           &types.Scope = unsafe { nil }
+	cur_fn_name            string
+	cur_fn_ret_type        string
+	cur_fn_c_ret_type      string
+	cur_module             string
+	emitted_types          map[string]bool
+	fn_param_is_ptr        map[string][]bool
+	fn_param_types         map[string][]string
+	fn_return_types        map[string]string
+	runtime_local_types    map[string]string
+	cur_fn_returned_idents map[string]bool
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -43,6 +46,7 @@ mut:
 	embedded_field_owner        map[string]string
 	collected_fixed_array_types map[string]FixedArrayInfo
 	collected_map_types         map[string]MapTypeInfo
+	fixed_array_ret_wrappers    map[string]string
 	sum_type_variants           map[string][]string
 	// Interface method signatures: interface_name -> [(method_name, cast_signature), ...]
 	interface_methods           map[string][]InterfaceMethodInfo
@@ -110,6 +114,10 @@ fn expr_has_valid_data(expr ast.Expr) bool {
 	return unsafe { (&u64(&expr))[1] } != 0
 }
 
+fn type_has_valid_data(typ types.Type) bool {
+	return unsafe { (&u64(&typ))[1] } != 0
+}
+
 pub fn Gen.new(files []ast.File) &Gen {
 	return Gen.new_with_env_and_pref(files, unsafe { nil }, unsafe { nil })
 }
@@ -120,14 +128,15 @@ pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
-		files:               files
-		env:                 unsafe { env }
-		pref:                unsafe { p }
-		sb:                  strings.new_builder(10_000)
-		fn_param_is_ptr:     map[string][]bool{}
-		fn_param_types:      map[string][]string{}
-		fn_return_types:     map[string]string{}
-		runtime_local_types: map[string]string{}
+		files:                  files
+		env:                    unsafe { env }
+		pref:                   unsafe { p }
+		sb:                     strings.new_builder(10_000)
+		fn_param_is_ptr:        map[string][]bool{}
+		fn_param_types:         map[string][]string{}
+		fn_return_types:        map[string]string{}
+		runtime_local_types:    map[string]string{}
+		cur_fn_returned_idents: map[string]bool{}
 
 		fixed_array_fields:          map[string]bool{}
 		fixed_array_field_elem:      map[string]string{}
@@ -143,6 +152,7 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		emitted_result_structs:      map[string]bool{}
 		emitted_option_structs:      map[string]bool{}
 		embedded_field_owner:        map[string]string{}
+		fixed_array_ret_wrappers:    map[string]string{}
 		emit_modules:                map[string]bool{}
 		exported_const_seen:         map[string]bool{}
 		exported_const_symbols:      []ExportedConstSymbol{}
@@ -190,13 +200,24 @@ fn is_builtin_map_file(path string) bool {
 	return normalized.ends_with('vlib/builtin/map.v')
 }
 
+fn is_builtin_string_file(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.ends_with('vlib/builtin/string.v')
+}
+
 fn should_keep_builtin_map_decl(decl ast.FnDecl) bool {
 	base_keep := decl.name in ['new_map', 'move', 'clear', 'key_to_index', 'meta_less',
-		'meta_greater', 'ensure_extra_metas', 'set', 'expand', 'rehash', 'reserve', 'cached_rehash',
-		'get_and_set', 'get', 'get_check', 'exists', 'delete', 'keys', 'values', 'clone', 'free',
-		'key', 'value', 'has_index', 'zeros_to_end', 'str']
+		'meta_greater', 'ensure_extra_metas', 'ensure_extra_metas_grow', 'set', 'expand', 'rehash',
+		'reserve', 'cached_rehash', 'get_and_set', 'get', 'get_check', 'exists', 'delete', 'keys',
+		'values', 'clone', 'free', 'key', 'value', 'has_index', 'zeros_to_end', 'new_dense_array']
 	return base_keep || decl.name.starts_with('map_eq_') || decl.name.starts_with('map_clone_')
 		|| decl.name.starts_with('map_free_')
+}
+
+fn should_keep_builtin_string_decl(decl ast.FnDecl) bool {
+	return decl.name in ['eq', 'plus', 'plus_two', 'substr', 'substr_unsafe', 'repeat', 'free',
+		'vstring', 'vstring_with_len', 'vstring_literal', 'vstring_literal_with_len', 'runes',
+		'join']
 }
 
 fn should_always_emit_for_markused(path string) bool {
@@ -209,7 +230,22 @@ fn should_always_emit_for_markused(path string) bool {
 fn is_builtin_runtime_keep_file(path string) bool {
 	normalized := path.replace('\\', '/')
 	return normalized.ends_with('vlib/builtin/map.c.v')
+		|| normalized.ends_with('vlib/builtin/builtin.v')
+		|| normalized.ends_with('vlib/builtin/cfns_wrapper.c.v')
+		|| normalized.ends_with('vlib/builtin/allocation.c.v')
+		|| normalized.ends_with('vlib/builtin/panicing.c.v')
 		|| normalized.ends_with('vlib/builtin/chan_option_result.v')
+		|| normalized.ends_with('vlib/builtin/int.v') || normalized.ends_with('vlib/builtin/rune.v')
+		|| normalized.ends_with('vlib/builtin/float.c.v')
+		|| normalized.ends_with('vlib/builtin/utf8.v')
+		|| normalized.ends_with('vlib/builtin/utf8.c.v')
+		|| normalized.ends_with('vlib/strings/builder.c.v')
+		|| normalized.ends_with('vlib/strconv/utilities.v')
+		|| normalized.ends_with('vlib/strconv/utilities.c.v')
+		|| normalized.ends_with('vlib/strconv/ftoa.c.v')
+		|| normalized.ends_with('vlib/strconv/f32_str.c.v')
+		|| normalized.ends_with('vlib/strconv/f64_str.c.v')
+		|| normalized.ends_with('vlib/math/bits/bits.v')
 }
 
 fn (g &Gen) should_emit_module(module_name string) bool {
@@ -327,8 +363,10 @@ pub fn (mut g Gen) gen() string {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 1 forward decls')
 
-	// Pass 2: Enum declarations, type aliases, interface structs, and sum type structs
-	// (before struct definitions that may reference them)
+	// Pass 2: Emit type declarations in dependency-safe buckets.
+	// Emit enums first, then type aliases/sum types, then interfaces.
+	// This avoids source-order issues where an interface field references an enum
+	// declared later in the same module.
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -337,13 +375,31 @@ pub fn (mut g Gen) gen() string {
 			}
 			if stmt is ast.EnumDecl {
 				g.gen_enum_decl(stmt)
-			} else if stmt is ast.TypeDecl {
+			}
+		}
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.TypeDecl {
 				if stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr {
 					g.gen_type_alias(stmt)
 				} else if stmt.variants.len > 0 {
 					g.gen_sum_type_decl(stmt)
 				}
-			} else if stmt is ast.InterfaceDecl {
+			}
+		}
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.InterfaceDecl {
 				g.gen_interface_decl(stmt)
 			}
 		}
@@ -374,6 +430,12 @@ pub fn (mut g Gen) gen() string {
 	// Emit structs with only primitive/resolved fields first, then the rest.
 	// Interleave option/result wrapper emission as soon as their payload types are complete.
 	// Repeat until no more progress (simple topo sort with wrapper side-effects).
+	for info in all_structs {
+		g.cur_module = info.mod
+		if g.struct_is_leaf(info.decl) {
+			g.gen_struct_decl(info.decl)
+		}
+	}
 	for _ in 0 .. (all_structs.len * 2) {
 		mut progressed := false
 		for info in all_structs {
@@ -422,6 +484,11 @@ pub fn (mut g Gen) gen() string {
 	g.emit_option_result_structs()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 3.3 option/result structs')
+
+	// Pass 3.4: Wrapper structs for functions returning fixed arrays.
+	g.emit_fixed_array_return_wrappers()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 3.4 fixed-array return wrappers')
 
 	// Pass 3.5: Emit constants before function declarations/bodies, so macros are available.
 	for file in g.files {
@@ -619,6 +686,9 @@ pub fn (mut g Gen) gen() string {
 	} else {
 		out = g.sb.str()
 	}
+	if os.getenv('V2TRACE_CLEANC') != '' {
+		eprintln('TRACE_CLEANC sb_len=${g.sb.len} out_len=${out.len} files=${g.files.len}')
+	}
 	if stats_enabled {
 		g.print_cgen_step_time(true, stats_scope, 'string materialization', time.Duration(stats_sw.elapsed() - stage_start))
 		g.print_cgen_step_time(true, stats_scope, 'total', stats_sw.elapsed())
@@ -647,8 +717,8 @@ fn is_c_runtime_function(name string) bool {
 
 fn shallow_copy_exprs(exprs []ast.Expr) []ast.Expr {
 	mut out := []ast.Expr{cap: exprs.len}
-	for expr in exprs {
-		out << expr
+	for i in 0 .. exprs.len {
+		out << exprs[i]
 	}
 	return out
 }

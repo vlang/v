@@ -55,12 +55,8 @@ fn (mut t Transformer) try_expand_if_guard_assign_stmts(stmt ast.AssignStmt) ?[]
 		if _ := t.get_map_type_for_expr(guard_rhs.lhs) {
 			// This is a map access - transform using "key in map" check
 			// x := if key in map { map[key] } else { default }
-			key_in_map := ast.InfixExpr{
-				op:  .key_in
-				lhs: guard_rhs.expr // the key expression
-				rhs: guard_rhs.lhs  // the map expression
-				pos: guard_rhs.pos
-			}
+			key_in_map := t.make_infix_expr_at(.key_in, guard_rhs.expr, guard_rhs.lhs,
+				guard_rhs.pos)
 
 			// Build new stmts for the then-branch: guard_var := map[key]; <original stmts>
 			mut new_then_stmts := []ast.Stmt{cap: if_expr.stmts.len + 1}
@@ -169,112 +165,6 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		is_option = fn_name != '' && t.fn_returns_option(fn_name)
 	}
 
-	// Native backends (arm64/x64) don't use Option/Result structs -
-	// functions return raw values (0 for none). Skip struct-based
-	// expansion and fall through to simple truthiness check.
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
-		// For ?SumType returns: use _data field check instead of raw truthiness.
-		// Sumtypes are {_tag, _data} structs - the first variant has _tag=0,
-		// which would be indistinguishable from none (all zeros) when checking
-		// the first word. Check _data (the pointer field) instead.
-		if is_option || is_result {
-			mut base_type := t.get_expr_base_type(rhs)
-			if base_type == '' {
-				fn_name := t.get_call_fn_name(rhs)
-				if fn_name != '' {
-					base_type = t.get_fn_return_base_type(fn_name)
-				}
-			}
-			if base_type != '' && t.is_sum_type(base_type) {
-				temp_name := t.gen_temp_name()
-				temp_ident := ast.Ident{
-					name: temp_name
-					pos:  synth_pos
-				}
-				mut stmts := []ast.Stmt{}
-				// 1. _tmp := call()
-				stmts << ast.AssignStmt{
-					op:  .decl_assign
-					lhs: [ast.Expr(temp_ident)]
-					rhs: [t.transform_expr(rhs)]
-					pos: synth_pos
-				}
-				// 2. Condition: _tmp._data (second field of sumtype struct)
-				data_check := t.synth_selector(temp_ident, '_data', types.Type(types.voidptr_))
-				// 3. Build if body: guard_var := _tmp; original_body
-				mut if_stmts := []ast.Stmt{}
-				if_stmts << ast.AssignStmt{
-					op:  .decl_assign
-					lhs: guard.stmt.lhs
-					rhs: [ast.Expr(temp_ident)]
-					pos: guard.stmt.pos
-				}
-				for s in if_expr.stmts {
-					if_stmts << s
-				}
-				modified_if := ast.IfExpr{
-					cond:      data_check
-					stmts:     t.transform_stmts(if_stmts)
-					else_expr: t.transform_expr(if_expr.else_expr)
-					pos:       synth_pos
-				}
-				if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
-					t.register_synth_type(synth_pos, orig_type)
-				}
-				stmts << ast.ExprStmt{
-					expr: modified_if
-				}
-				return stmts
-			} else {
-				// Non-sum-type option/result return (e.g., ?StructType).
-				// Use temp variable + simple truthiness check.
-				// Without this, the function call would be used as the condition
-				// AND called again inside the if-body, causing double evaluation
-				// and incorrect behavior for struct return types.
-				temp_name := t.gen_temp_name()
-				temp_ident := ast.Ident{
-					name: temp_name
-					pos:  synth_pos
-				}
-				mut stmts := []ast.Stmt{}
-				// 1. _tmp := call()
-				stmts << ast.AssignStmt{
-					op:  .decl_assign
-					lhs: [ast.Expr(temp_ident)]
-					rhs: [t.transform_expr(rhs)]
-					pos: synth_pos
-				}
-				// 2. Build if body: guard_var := _tmp; original_body
-				mut if_stmts := []ast.Stmt{}
-				if_stmts << ast.AssignStmt{
-					op:  .decl_assign
-					lhs: guard.stmt.lhs
-					rhs: [ast.Expr(temp_ident)]
-					pos: guard.stmt.pos
-				}
-				for s in if_expr.stmts {
-					if_stmts << s
-				}
-				// 3. Condition: truthiness of _tmp (0 = none for native backends)
-				modified_if := ast.IfExpr{
-					cond:      temp_ident
-					stmts:     t.transform_stmts(if_stmts)
-					else_expr: t.transform_expr(if_expr.else_expr)
-					pos:       synth_pos
-				}
-				if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
-					t.register_synth_type(synth_pos, orig_type)
-				}
-				stmts << ast.ExprStmt{
-					expr: modified_if
-				}
-				return stmts
-			}
-		}
-		is_result = false
-		is_option = false
-	}
-
 	if is_result || is_option {
 		// Handle Result/Option if-guard
 		// Generate: { _tmp := call(); if (!_tmp.is_error) { attr := extractValue(_tmp); body } else { else } }
@@ -306,14 +196,8 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				expr: t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
 			})
 		} else {
-			ast.Expr(ast.InfixExpr{
-				op:  .eq
-				lhs: t.synth_selector(temp_ident, 'state', types.Type(types.int_))
-				rhs: ast.BasicLiteral{
-					kind:  .number
-					value: '0'
-				}
-			})
+			t.make_infix_expr(.eq, t.synth_selector(temp_ident, 'state', types.Type(types.int_)),
+				t.make_number_expr('0'))
 		}
 
 		// 3. Build if-body: attr := _tmp.data; original_body
@@ -407,13 +291,9 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				}
 
 				// Build condition: _tmp != nil
-				null_check := ast.InfixExpr{
-					op:  .ne
-					lhs: temp_ident
-					rhs: ast.Ident{
-						name: 'nil'
-					}
-				}
+				null_check := t.make_infix_expr(.ne, ast.Expr(temp_ident), ast.Expr(ast.Ident{
+					name: 'nil'
+				}))
 
 				// Build the if expression
 				modified_if := ast.IfExpr{
@@ -437,12 +317,8 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		}
 
 		// This is an array lookup - generate bounds check: index < array.len
-		bounds_check := ast.InfixExpr{
-			op:  .lt
-			lhs: t.transform_expr(rhs.expr) // the index
-			rhs: t.synth_selector(t.transform_expr(rhs.lhs), 'len', types.Type(types.int_))
-			pos: rhs.pos
-		}
+		bounds_check := t.make_infix_expr_at(.lt, t.transform_expr(rhs.expr), t.synth_selector(t.transform_expr(rhs.lhs),
+			'len', types.Type(types.int_)), rhs.pos)
 
 		// Build if body: guard_var := arr[i]; original_body
 		mut if_stmts := []ast.Stmt{}

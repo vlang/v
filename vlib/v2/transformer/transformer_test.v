@@ -287,6 +287,103 @@ fn test_transform_call_expr_array_contains_fixed_array() {
 	assert 'Array_fixed_int_3_contains' in t.needed_array_contains_fns
 }
 
+fn test_generate_array_method_elem_expr_registers_elem_type() {
+	mut t := create_test_transformer()
+	elem_expr := t.generate_array_method_elem_expr(ArrayMethodInfo{
+		array_type: 'Array_string'
+		elem_type:  'string'
+	}, ast.Expr(ast.Ident{
+		name: 'i'
+	}))
+	assert elem_expr is ast.IndexExpr
+	assert elem_expr.pos().id < 0
+	elem_type := t.env.get_expr_type(elem_expr.pos().id) or {
+		assert false, 'expected synthesized element type for array helper index expr'
+		return
+	}
+	assert t.type_to_c_name(elem_type) == 'string'
+}
+
+fn test_resolve_expr_with_expected_type_resolves_enum_shorthand() {
+	mut t := create_test_transformer()
+	resolved := t.resolve_expr_with_expected_type(ast.Expr(ast.SelectorExpr{
+		lhs: ast.empty_expr
+		rhs: ast.Ident{
+			name: 'v'
+		}
+	}), types.Type(types.Enum{
+		name: 'ast__StringLiteralKind'
+	}))
+	assert resolved is ast.Ident
+	assert (resolved as ast.Ident).name == 'ast__StringLiteralKind__v'
+}
+
+fn test_transform_init_expr_resolves_imported_enum_shorthand() {
+	env := &types.Environment{}
+	mut ast_scope := types.new_scope(unsafe { nil })
+	enum_typ := types.Type(types.Enum{
+		name: 'ast__StringLiteralKind'
+	})
+	ast_scope.insert('StringLiteralKind', enum_typ)
+	ast_scope.insert('StringLiteral', types.Type(types.Struct{
+		name:   'ast__StringLiteral'
+		fields: [
+			types.Field{
+				name: 'kind'
+				typ:  enum_typ
+			},
+			types.Field{
+				name: 'value'
+				typ:  types.string_
+			},
+		]
+	}))
+	lock env.scopes {
+		env.scopes['ast'] = ast_scope
+	}
+	mut t := &Transformer{
+		pref:                        &vpref.Preferences{}
+		env:                         unsafe { env }
+		cur_module:                  'main'
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+	}
+	result := t.transform_init_expr(ast.InitExpr{
+		typ:    ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'ast'
+			})
+			rhs: ast.Ident{
+				name: 'StringLiteral'
+			}
+		})
+		fields: [
+			ast.FieldInit{
+				name:  'kind'
+				value: ast.Expr(ast.SelectorExpr{
+					lhs: ast.empty_expr
+					rhs: ast.Ident{
+						name: 'v'
+					}
+				})
+			},
+		]
+	})
+	assert result is ast.InitExpr
+	init := result as ast.InitExpr
+	mut found_kind := false
+	for field in init.fields {
+		if field.name == 'kind' {
+			found_kind = true
+			assert field.value is ast.Ident
+			assert (field.value as ast.Ident).name == 'ast__StringLiteralKind__v'
+			break
+		}
+	}
+	assert found_kind
+}
+
 fn test_transform_map_init_expr_non_empty_lowers_to_runtime_ctor() {
 	mut t := create_test_transformer()
 

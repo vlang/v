@@ -237,11 +237,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					} else {
 						// Non-literal sizes are VLAs in C99 and cannot use = {0}
 						g.sb.writeln('];')
+						g.write_indent()
 						g.sb.writeln('memset(${name}, 0, sizeof(${name}));')
 					}
 				} else {
 					g.sb.write_string('] = {')
-					for i, expr in array_init.exprs {
+					for i in 0 .. array_init.exprs.len {
+						expr := array_init.exprs[i]
 						if i > 0 {
 							g.sb.write_string(', ')
 						}
@@ -416,6 +418,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			&& !rhs_type.starts_with('_result_') && !rhs_type.starts_with('_option_') {
 			typ = rhs_type
 		}
+		if (typ == '' || typ == 'int' || typ == 'int_literal') && rhs is ast.InfixExpr {
+			inferred := g.infer_numeric_expr_type(rhs)
+			if inferred != '' && inferred !in ['int', 'int_literal'] {
+				typ = inferred
+			}
+		}
+		typ = unmangle_c_ptr_type(typ)
 		if name != '' && rhs_type.starts_with('_result_') && !typ.starts_with('_result_') {
 			g.sb.write_string('${typ} ${name} = ({ ${rhs_type} _tmp = ')
 			g.expr(rhs)
@@ -431,7 +440,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			return
 		}
 		if rhs is ast.IfExpr {
-			if !g.if_expr_can_be_ternary(rhs) && rhs.else_expr !is ast.EmptyExpr {
+			if !g.if_expr_can_be_ternary(&rhs) && rhs.else_expr !is ast.EmptyExpr {
 				// If type is void/empty, infer from the branch's last expression
 				if typ == 'void' || typ == '' {
 					if rhs.stmts.len > 0 {
@@ -445,39 +454,57 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					}
 				}
 				g.sb.writeln('${typ} ${name};')
-				g.gen_decl_if_expr(name, rhs)
+				g.gen_decl_if_expr(name, &rhs)
+				return
+			}
+		}
+		// `ptr := &local` where `ptr` is returned from this function must not
+		// keep a stack address. Heap-clone the local value for that binding.
+		if name != '' && name in g.cur_fn_returned_idents && typ.ends_with('*')
+			&& rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.Ident {
+			prefix_rhs := rhs as ast.PrefixExpr
+			base_type := typ.trim_right('*')
+			if base_type != '' && base_type != 'void' {
+				heap_name := '_heap_t${g.tmp_counter}'
+				g.tmp_counter++
+				g.sb.write_string('${typ} ${name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				g.expr(prefix_rhs.expr)
+				g.sb.writeln('; ${heap_name}; });')
+				g.remember_runtime_local_type(name, typ)
 				return
 			}
 		}
 		if typ.ends_with('**') && rhs is ast.PrefixExpr && rhs.op == .amp {
+			prefix_rhs := rhs as ast.PrefixExpr
 			g.sb.write_string('${typ} ${name} = ((${typ})(')
-			g.expr(rhs.expr)
+			g.expr(prefix_rhs.expr)
 			g.sb.writeln('));')
 			return
 		}
 		if typ.ends_with('*') && rhs is ast.PrefixExpr && rhs.op == .amp {
-			if rhs.expr is ast.CallExpr && rhs.expr.args.len == 1 {
+			prefix_rhs := rhs as ast.PrefixExpr
+			if prefix_rhs.expr is ast.CallExpr && prefix_rhs.expr.args.len == 1 {
 				g.sb.write_string('${typ} ${name} = ((${typ})(')
-				g.expr(rhs.expr.args[0])
+				g.expr(prefix_rhs.expr.args[0])
 				g.sb.writeln('));')
 				return
 			}
-			if rhs.expr is ast.CastExpr {
+			if prefix_rhs.expr is ast.CastExpr {
 				g.sb.write_string('${typ} ${name} = ((${typ})(')
-				g.expr(rhs.expr.expr)
+				g.expr(prefix_rhs.expr.expr)
 				g.sb.writeln('));')
 				return
 			}
-			if rhs.expr is ast.ParenExpr {
-				if rhs.expr.expr is ast.CallExpr && rhs.expr.expr.args.len == 1 {
+			if prefix_rhs.expr is ast.ParenExpr {
+				if prefix_rhs.expr.expr is ast.CallExpr && prefix_rhs.expr.expr.args.len == 1 {
 					g.sb.write_string('${typ} ${name} = ((${typ})(')
-					g.expr(rhs.expr.expr.args[0])
+					g.expr(prefix_rhs.expr.expr.args[0])
 					g.sb.writeln('));')
 					return
 				}
-				if rhs.expr.expr is ast.CastExpr {
+				if prefix_rhs.expr.expr is ast.CastExpr {
 					g.sb.write_string('${typ} ${name} = ((${typ})(')
-					g.expr(rhs.expr.expr.expr)
+					g.expr(prefix_rhs.expr.expr.expr)
 					g.sb.writeln('));')
 					return
 				}
@@ -508,6 +535,41 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			g.remember_runtime_local_type(name, 'fn_ptr')
 			return
 		}
+		if typ.starts_with('Array_fixed_') && rhs is ast.CallExpr {
+			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+				if call_ret == typ {
+					wrapper_type := g.c_fn_return_type_from_v(typ)
+					g.sb.writeln('${typ} ${name};')
+					g.write_indent()
+					g.sb.write_string('{ ${wrapper_type} _tmp = ')
+					g.expr(rhs)
+					g.sb.writeln('; memcpy(${name}, _tmp.ret_arr, sizeof(${typ})); }')
+					g.remember_runtime_local_type(name, typ)
+					return
+				}
+			}
+		}
+		if typ.starts_with('Array_fixed_') && !typ.ends_with('*') && rhs !is ast.ArrayInitExpr
+			&& rhs !is ast.CallExpr {
+			g.sb.writeln('${typ} ${name};')
+			g.write_indent()
+			g.sb.write_string('memcpy(${name}, ')
+			g.expr(rhs)
+			g.sb.writeln(', sizeof(${typ}));')
+			g.remember_runtime_local_type(name, typ)
+			return
+		}
+		if rhs is ast.CallExpr {
+			call_name := g.resolve_call_name(rhs.lhs, rhs.args.len)
+			if call_name in ['math__min', 'math__max'] && rhs.args.len == 2 {
+				arg0_type := g.get_expr_type(rhs.args[0])
+				arg1_type := g.get_expr_type(rhs.args[1])
+				if !arg0_type.starts_with('f') && arg0_type != 'float_literal'
+					&& !arg1_type.starts_with('f') && arg1_type != 'float_literal' {
+					typ = 'int'
+				}
+			}
+		}
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
@@ -517,6 +579,54 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		g.remember_runtime_local_type(name, typ)
 	} else {
 		// Assignment
+		mut lhs_fixed_type := g.get_expr_type(lhs)
+		if lhs_fixed_type == '' && lhs is ast.Ident {
+			if local_type := g.get_local_var_c_type(lhs.name) {
+				lhs_fixed_type = local_type
+			}
+		}
+		if node.op == .assign && lhs is ast.Ident && lhs.name in g.cur_fn_returned_idents
+			&& rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.Ident {
+			prefix_rhs := rhs as ast.PrefixExpr
+			base_type := lhs_fixed_type.trim_right('*')
+			if lhs_fixed_type.ends_with('*') && base_type != '' && base_type != 'void' {
+				heap_name := '_heap_t${g.tmp_counter}'
+				g.tmp_counter++
+				g.sb.write_string('${lhs.name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				g.expr(prefix_rhs.expr)
+				g.sb.writeln('; ${heap_name}; });')
+				return
+			}
+		}
+		if lhs_fixed_type.starts_with('Array_fixed_') && rhs is ast.CallExpr {
+			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+				if call_ret == lhs_fixed_type {
+					wrapper_type := g.c_fn_return_type_from_v(lhs_fixed_type)
+					g.write_indent()
+					g.sb.write_string('{ ${wrapper_type} _tmp = ')
+					g.expr(rhs)
+					g.sb.write_string('; memcpy(')
+					g.expr(lhs)
+					g.sb.writeln(', _tmp.ret_arr, sizeof(${lhs_fixed_type})); }')
+					return
+				}
+			}
+		}
+		if lhs_fixed_type.starts_with('Array_fixed_') && node.op == .assign && rhs !is ast.CallExpr {
+			g.write_indent()
+			g.sb.write_string('memcpy(')
+			g.expr(lhs)
+			g.sb.write_string(', ')
+			if rhs is ast.ArrayInitExpr {
+				g.sb.write_string('((${lhs_fixed_type})')
+				g.expr(rhs)
+				g.sb.write_string(')')
+			} else {
+				g.expr(rhs)
+			}
+			g.sb.writeln(', sizeof(${lhs_fixed_type}));')
+			return
+		}
 		if node.op == .left_shift_assign {
 			is_array_append, elem_type := g.array_append_elem_type(lhs, rhs)
 			if is_array_append {
@@ -567,6 +677,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if decl_type in ['void', 'void*', 'voidptr'] {
 				decl_type = 'int'
 			}
+			decl_type = unmangle_c_ptr_type(decl_type)
 			g.write_indent()
 			g.sb.write_string('${decl_type} ${lhs.name} = ')
 			if rhs_array_elem_type != '' && decl_type !in ['void*', 'voidptr']
@@ -649,12 +760,34 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if local_type := g.get_local_var_c_type(lhs.name) {
 				assign_lhs_type = local_type
 			}
+		} else if lhs is ast.SelectorExpr {
+			if assign_lhs_type == '' || assign_lhs_type == 'int' {
+				field_type := g.selector_field_type(lhs)
+				if field_type != '' {
+					assign_lhs_type = field_type
+				}
+			}
 		}
 		if rhs_array_elem_type != '' && assign_lhs_type !in ['', 'void*', 'voidptr']
 			&& !assign_lhs_type.ends_with('*') {
 			g.sb.write_string('(*(${assign_lhs_type}*)')
 			g.expr(rhs)
 			g.sb.write_string(')')
+		} else if node.op == .assign && assign_lhs_type != '' && !assign_lhs_type.ends_with('*') {
+			rhs_type := g.get_expr_type(rhs)
+			if rhs_type.ends_with('*') {
+				rhs_base := rhs_type.trim_right('*')
+				if rhs_base == assign_lhs_type
+					|| short_type_name(rhs_base) == short_type_name(assign_lhs_type) {
+					g.sb.write_string('(*')
+					g.expr(rhs)
+					g.sb.write_string(')')
+				} else {
+					g.expr(rhs)
+				}
+			} else {
+				g.expr(rhs)
+			}
 		} else {
 			g.expr(rhs)
 		}

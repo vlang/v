@@ -5,19 +5,15 @@
 module ssa
 
 fn map_get_type_id(m map[string]TypeID, key string) ?TypeID {
-	for k, v in m {
-		if k == key {
-			return v
-		}
+	if key in m {
+		return m[key]
 	}
 	return none
 }
 
 fn map_get_value_id(m map[string]ValueID, key string) ?ValueID {
-	for k, v in m {
-		if k == key {
-			return v
-		}
+	if key in m {
+		return m[key]
 	}
 	return none
 }

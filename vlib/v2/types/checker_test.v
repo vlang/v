@@ -250,6 +250,36 @@ fn main() { p := Point{x: 1, y: 2} }
 	}), 'init expr should produce struct type'
 }
 
+fn test_generic_struct_alias_fields_are_instantiated() {
+	code := '
+struct Vec4[T] {
+	x T
+	y T
+	z T
+	w T
+}
+
+type SimdFloat4 = Vec4[f32]
+
+fn main() {
+	v := SimdFloat4{ x: 1.5, y: 2.5, z: 3.5, w: 4.5 }
+	_ = v.x
+}
+'
+	env := check_code(code)
+	scope := env.get_scope('main') or { panic('missing main scope') }
+	obj := scope.lookup_parent('SimdFloat4', 0) or { panic('missing SimdFloat4') }
+	assert obj is Type
+	typ_obj := obj as Type
+	assert typ_obj is Alias
+	base := (typ_obj as Alias).base_type
+	assert base is Struct
+	fields := (base as Struct).fields
+	assert fields.len == 4
+	assert fields[0].name == 'x'
+	assert fields[0].typ.name() == 'f32'
+}
+
 // === Index Expression Tests ===
 
 fn test_index_expr_array() {
@@ -481,4 +511,18 @@ fn main() {
 		}
 		return false
 	}), 'lookup_parent should return OptionType with Object base type'
+}
+
+fn test_scope_insert_replaces_module_placeholder_with_function() {
+	mut scope := new_scope(unsafe { nil })
+	scope.insert('optimize', Module{
+		name:  'optimize'
+		scope: new_scope(unsafe { nil })
+	})
+	scope.insert('optimize', Fn{
+		name: 'optimize'
+		typ:  Type(FnType{})
+	})
+	obj := scope.lookup_parent('optimize', 0) or { panic('missing optimize') }
+	assert obj is Fn
 }

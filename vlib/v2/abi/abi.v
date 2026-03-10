@@ -37,7 +37,7 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch) bool {
 		return false
 	}
 	typ := ssa_mod.type_store.types[typ_id]
-	if typ.kind != .struct_t {
+	if typ.kind !in [.struct_t, .array_t] {
 		return false
 	}
 	size := m.type_size(typ_id)
@@ -46,6 +46,54 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch) bool {
 		.x64 { size > 16 }
 		else { size > 16 }
 	}
+}
+
+fn fallback_arg_type(m mir.Module, arg_id int) int {
+	if arg_id < 0 || arg_id >= m.values.len {
+		return 0
+	}
+	if logical_typ := logical_arg_type_from_value(m, arg_id, 0) {
+		return logical_typ
+	}
+	return m.values[arg_id].typ
+}
+
+fn logical_arg_type_from_value(m mir.Module, val_id int, depth int) ?int {
+	if depth > 8 || val_id < 0 || val_id >= m.values.len {
+		return none
+	}
+	val := m.values[val_id]
+	if val.kind != .instruction {
+		return none
+	}
+	instr := m.instrs[val.index]
+	match instr.op {
+		.alloca {
+			if val.typ <= 0 || val.typ >= m.type_store.types.len {
+				return none
+			}
+			typ := m.type_store.types[val.typ]
+			if typ.kind != .ptr_t || typ.elem_type <= 0 || typ.elem_type >= m.type_store.types.len {
+				return none
+			}
+			elem_typ := m.type_store.types[typ.elem_type]
+			if elem_typ.kind in [.struct_t, .array_t] {
+				return typ.elem_type
+			}
+		}
+		.bitcast {
+			if instr.operands.len > 0 {
+				return logical_arg_type_from_value(m, instr.operands[0], depth + 1)
+			}
+		}
+		.assign {
+			if instr.operands.len > 1 {
+				return logical_arg_type_from_value(m, instr.operands[1], depth + 1)
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn lower_calls(mut m mir.Module, arch pref.Arch, fn_by_name map[string]int) {
@@ -67,9 +115,7 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, fn_by_name map[string]int) {
 				arg_typ = sig_param_types[arg_idx]
 			} else {
 				arg_id := instr.operands[arg_idx + 1]
-				if arg_id >= 0 && arg_id < m.values.len {
-					arg_typ = m.values[arg_id].typ
-				}
+				arg_typ = fallback_arg_type(m, arg_id)
 			}
 			if needs_indirect(m, arg_typ, arch) {
 				instr.abi_arg_class[arg_idx] = .indirect
@@ -133,9 +179,7 @@ fn call_signature(m mir.Module, instr &mir.Instruction, fn_by_name map[string]in
 		param_types = []int{len: num_args}
 		for i := 0; i < num_args; i++ {
 			arg_id := instr.operands[i + 1]
-			if arg_id >= 0 && arg_id < m.values.len {
-				param_types[i] = m.values[arg_id].typ
-			}
+			param_types[i] = fallback_arg_type(m, arg_id)
 		}
 	}
 	return ret_typ, param_types

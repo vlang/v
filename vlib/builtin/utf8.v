@@ -81,7 +81,7 @@ pub fn (_rune string) utf32_code() int {
 	if _rune.len > 4 {
 		return 0
 	}
-	return int(impl_utf8_to_utf32(&u8(_rune.str), _rune.len))
+	return int(impl_utf8_to_utf32(_rune.str, _rune.len))
 }
 
 // convert array of utf8 bytes to single utf32 value
@@ -90,7 +90,7 @@ pub fn (_bytes []u8) utf8_to_utf32() !rune {
 	if _bytes.len > 4 {
 		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
 	}
-	return impl_utf8_to_utf32(&u8(_bytes.data), _bytes.len)
+	return impl_utf8_to_utf32(_bytes.data, _bytes.len)
 }
 
 @[direct_array_access]

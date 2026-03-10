@@ -30,12 +30,7 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 		fmt_str.write_string(escaped)
 		if i < node.inters.len {
 			inter := node.inters[i]
-			if inter.resolved_fmt != '' {
-				// Transformer already resolved the format specifier
-				fmt_str.write_string(inter.resolved_fmt)
-			} else {
-				fmt_str.write_string(g.get_sprintf_format(inter))
-			}
+			fmt_str.write_string(g.get_sprintf_format(inter))
 		}
 	}
 	fmt_lit := c_string_literal_content_to_c(fmt_str.str())
@@ -43,12 +38,7 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 	// Write arguments
 	for inter in node.inters {
 		g.sb.write_string(', ')
-		if inter.resolved_fmt != '' {
-			// Transformer already transformed the arg, emit directly
-			g.expr(inter.expr)
-		} else {
-			g.write_sprintf_arg(inter)
-		}
+		g.write_sprintf_arg(inter)
 	}
 	g.sb.write_string('); ${c_v_string_expr_from_ptr_len('_sip', '_sil', false)}; })')
 }
@@ -56,6 +46,17 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
 	expr_type := g.get_expr_type(inter.expr)
 	expr_src := g.expr_to_string(inter.expr)
+	fmt := g.get_sprintf_format(inter)
+	// Keep vararg C types aligned with the emitted format string.
+	// If formatter expects a non-string argument, pass expression as-is.
+	if !fmt.ends_with('s') {
+		if expr_src == '' {
+			g.sb.write_string('0')
+		} else {
+			g.sb.write_string(expr_src)
+		}
+		return
+	}
 	str_fn := g.get_str_fn_for_type(expr_type) or { '' }
 	// Float types: use V's str() for default formatting ('0.0' not '0.000000')
 	if expr_type in ['f64', 'f32', 'float_literal'] && inter.format == .unformatted {
@@ -102,6 +103,9 @@ fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
 }
 
 fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
+	if inter.resolved_fmt != '' {
+		return inter.resolved_fmt
+	}
 	mut fmt := '%'
 	mut width := inter.width
 	mut precision := inter.precision

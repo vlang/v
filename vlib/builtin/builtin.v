@@ -35,3 +35,13 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	}
 	return obj
 }
+
+@[inline]
+fn __v2_flag_has_int(receiver int, flag int) bool {
+	return (receiver & flag) != 0
+}
+
+@[inline]
+fn __v2_flag_all_int(receiver int, flags int) bool {
+	return (receiver & flags) == flags
+}

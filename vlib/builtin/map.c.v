@@ -134,7 +134,11 @@ fn (mut d DenseArray) zeros_to_end() {
 	}
 	d.len = count
 	old_cap := d.cap
-	d.cap = if count < 8 { 8 } else { count }
+	if count < 8 {
+		d.cap = 8
+	} else {
+		d.cap = count
+	}
 	unsafe {
 		d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
 		d.keys = realloc_data(d.keys, d.key_bytes * old_cap, d.key_bytes * d.cap)

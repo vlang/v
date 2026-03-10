@@ -84,7 +84,7 @@ pub fn (s string) runes() []rune {
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn cstring_to_vstring(const_s &char) string {
-	return unsafe { tos2(&u8(const_s)) }.clone()
+	return unsafe { tos2(byteptr(const_s)) }.clone()
 }
 
 // tos_clone creates a new V string copy of the C style string, pointed by `s`.
@@ -93,7 +93,7 @@ pub fn cstring_to_vstring(const_s &char) string {
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn tos_clone(const_s &u8) string {
-	return unsafe { tos2(&u8(const_s)) }.clone()
+	return unsafe { tos2(const_s) }.clone()
 }
 
 // tos creates a V string, given a C style pointer to a 0 terminated block.
@@ -339,7 +339,7 @@ fn (a string) option_clone_static() ?string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a.len <= 0 || u64(a.str) <= 0xFFFF {
+	if a.len <= 0 {
 		return ''
 	}
 	mut b := string{
@@ -833,8 +833,8 @@ fn (s string) < (a string) bool {
 
 @[direct_array_access]
 fn (s string) + (a string) string {
-	slen := if s.len > 0 && u64(s.str) > 0xFFFF { s.len } else { 0 }
-	alen := if a.len > 0 && u64(a.str) > 0xFFFF { a.len } else { 0 }
+	slen := if s.len > 0 { s.len } else { 0 }
+	alen := if a.len > 0 { a.len } else { 0 }
 	new_len := alen + slen
 	mut res := string{
 		str: unsafe { malloc_noscan(new_len + 1) }
@@ -855,9 +855,9 @@ fn (s string) + (a string) string {
 // for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
 @[direct_array_access]
 fn (s string) plus_two(a string, b string) string {
-	slen := if s.len > 0 && u64(s.str) > 0xFFFF { s.len } else { 0 }
-	alen := if a.len > 0 && u64(a.str) > 0xFFFF { a.len } else { 0 }
-	blen := if b.len > 0 && u64(b.str) > 0xFFFF { b.len } else { 0 }
+	slen := if s.len > 0 { s.len } else { 0 }
+	alen := if a.len > 0 { a.len } else { 0 }
+	blen := if b.len > 0 { b.len } else { 0 }
 	new_len := alen + blen + slen
 	mut res := string{
 		str: unsafe { malloc_noscan(new_len + 1) }
@@ -3039,7 +3039,7 @@ pub fn (s string) hex() string {
 	if s == '' {
 		return ''
 	}
-	return unsafe { data_to_hex_string(&u8(s.str), s.len) }
+	return unsafe { data_to_hex_string(s.str, s.len) }
 }
 
 @[unsafe]

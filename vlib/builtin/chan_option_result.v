@@ -55,20 +55,10 @@ fn _result_ok(data voidptr, mut res _result, size int) {
 
 // str returns the message of IError.
 pub fn (err IError) str() string {
-	return match err {
-		None__ {
-			'none'
-		}
-		Error {
-			err.msg()
-		}
-		MessageError {
-			(*err).str()
-		}
-		else {
-			'${err.type_name()}: ${err.msg()}'
-		}
+	if err is None__ {
+		return 'none'
 	}
+	return err.msg()
 }
 
 // Error is the empty default implementation of `IError`.
