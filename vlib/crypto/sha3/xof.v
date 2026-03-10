@@ -7,6 +7,7 @@
 
 module sha3
 
+@[noinit]
 pub struct Shake {
 	rate int // bytes per permutation (168 for shake-128, 136 for shake-256)
 mut:
