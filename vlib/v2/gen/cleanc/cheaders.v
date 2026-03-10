@@ -95,13 +95,16 @@ fn find_vmod_root_for_file(file_path string) string {
 	return os.dir(file_path)
 }
 
-fn normalize_c_directive_value(name string, raw string, file_name string) string {
+fn normalize_c_directive_value(name string, raw string, file_name string, vroot string) string {
 	mut value := raw.trim_space()
 	if value.ends_with(';') {
 		value = value[..value.len - 1].trim_space()
 	}
 	if value.contains('@VMODROOT') {
 		value = value.replace('@VMODROOT', find_vmod_root_for_file(file_name))
+	}
+	if value.contains('@VEXEROOT') {
+		value = value.replace('@VEXEROOT', vroot)
 	}
 	if name == 'include' {
 		if value == '' {
@@ -134,36 +137,72 @@ fn normalize_c_directive_value(name string, raw string, file_name string) string
 fn (mut g Gen) emit_collected_c_directives() {
 	mut seen := map[string]bool{}
 	for file in g.files {
-		for stmt in file.stmts {
-			if stmt is ast.Directive {
-				name := stmt.name.trim_space()
-				if name == '' || name == 'flag' {
-					continue
-				}
-				if !directive_ct_cond_matches(stmt.ct_cond) {
-					continue
-				}
-				if name !in ['include', 'define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else',
-					'endif', 'pragma'] {
-					continue
-				}
-				// Skip includes with corrupt paths (ARM64 backend may corrupt string data)
-				if name == 'include' {
-					v := stmt.value.trim_space()
-					if v.len > 0 && !v.contains('/') && !v.contains('.') && !v.starts_with('"')
-						&& !v.starts_with('<') {
-						continue
-					}
-				}
-				value := normalize_c_directive_value(name, stmt.value, file.name)
-				line := if value == '' { '#${name}' } else { '#${name} ${value}' }
-				if line in seen {
-					continue
-				}
-				seen[line] = true
-				g.sb.writeln(line)
-			}
+		g.collect_directives_from_stmts(file.stmts, file.name, mut seen)
+	}
+}
+
+fn (mut g Gen) collect_directives_from_stmts(stmts []ast.Stmt, file_name string, mut seen map[string]bool) {
+	for stmt in stmts {
+		if stmt is ast.Directive {
+			g.emit_directive(stmt, file_name, mut seen)
+		} else if stmt is ast.ExprStmt {
+			g.collect_directives_from_expr(stmt.expr, file_name, mut seen)
 		}
+	}
+}
+
+fn (mut g Gen) collect_directives_from_expr(expr ast.Expr, file_name string, mut seen map[string]bool) {
+	if expr is ast.ComptimeExpr {
+		eprintln('[directives-debug] ComptimeExpr in ${file_name}')
+		g.collect_directives_from_expr(expr.expr, file_name, mut seen)
+	} else if expr is ast.IfExpr {
+		eprintln('[directives-debug] IfExpr in ${file_name}, stmts.len=${expr.stmts.len}')
+		g.collect_directives_from_stmts(expr.stmts, file_name, mut seen)
+		if expr.else_expr !is ast.EmptyExpr {
+			g.collect_directives_from_expr(expr.else_expr, file_name, mut seen)
+		}
+	}
+}
+
+fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, mut seen map[string]bool) {
+	name := stmt.name.trim_space()
+	if name == '' || name == 'flag' {
+		return
+	}
+	if !directive_ct_cond_matches(stmt.ct_cond) {
+		return
+	}
+	if name !in ['include', 'define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
+		'pragma'] {
+		return
+	}
+	// Skip includes with corrupt paths (ARM64 backend may corrupt string data)
+	if name == 'include' {
+		v := stmt.value.trim_space()
+		if v.len > 0 && !v.contains('/') && !v.contains('.') && !v.starts_with('"')
+			&& !v.starts_with('<') {
+			return
+		}
+	}
+	vroot := if g.pref != unsafe { nil } { g.pref.vroot } else { '' }
+	value := normalize_c_directive_value(name, stmt.value, file_name, vroot)
+	line := if value == '' { '#${name}' } else { '#${name} ${value}' }
+	if line in seen {
+		return
+	}
+	seen[line] = true
+	// Defer .m (Objective-C) includes until after type definitions,
+	// because they reference V-generated C types like gg__Color, string, etc.
+	if name == 'include' && (value.contains('.m"') || value.contains(".m'")) {
+		g.deferred_m_includes << line
+		return
+	}
+	g.sb.writeln(line)
+}
+
+fn (mut g Gen) emit_deferred_m_includes() {
+	for line in g.deferred_m_includes {
+		g.sb.writeln(line)
 	}
 }
 

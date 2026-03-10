@@ -783,6 +783,12 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 			return true
 		}
 	}
+	// voidptr: any pointer type is assignable to voidptr (Pointer{void_})
+	if exp_type is Pointer && exp_type.base_type is Void {
+		if got_type is Pointer {
+			return true
+		}
+	}
 
 	return false
 }
@@ -1019,12 +1025,18 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 	// 	typ_expr = expr.typ.lhs
 	// }
 	typ := c.expr(expr.typ)
+	// Unwrap aliases to get the base struct type for field lookups.
+	mut resolved := typ
+	for resolved is Alias {
+		resolved = (resolved as Alias).base_type
+	}
 	// Visit field value expressions to store their types in the environment
-	if typ is Struct {
+	resolved_imm := resolved
+	if resolved_imm is Struct {
 		for field in expr.fields {
 			if field.value !is ast.EmptyExpr {
 				expected_type_prev := c.expected_type
-				for sf in typ.fields {
+				for sf in resolved_imm.fields {
 					if sf.name == field.name {
 						c.expected_type = to_optional_type(sf.typ)
 						break
@@ -1365,12 +1377,18 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					expr.pos)
 			}
 
-			if typ is Struct {
+			// Unwrap aliases to get the base struct type for field lookups.
+			mut resolved := typ
+			for resolved is Alias {
+				resolved = (resolved as Alias).base_type
+			}
+			resolved_imm := resolved
+			if resolved_imm is Struct {
 				for field in expr.fields {
 					expected_type_prev2 := c.expected_type
 					mut field_type := Type(void_)
 					mut found := false
-					for sf in typ.fields {
+					for sf in resolved_imm.fields {
 						if sf.name == field.name {
 							field_type = sf.typ
 							found = true
@@ -1378,7 +1396,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 						}
 					}
 					if !found {
-						c.error_with_pos('unknown field `${field.name}` for type `${typ.name()}`',
+						c.error_with_pos('unknown field `${field.name}` for type `${resolved_imm.name()}`',
 							expr.pos)
 					}
 					c.expected_type = to_optional_type(field_type)
@@ -1439,6 +1457,10 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				return Type(void_)
 			}
 			if cexpr is ast.CallExpr {
+				// Handle $d(name, default_value) — returns default value's type
+				if cexpr.lhs is ast.Ident && cexpr.lhs.name == 'd' && cexpr.args.len == 2 {
+					return c.expr(cexpr.args[1])
+				}
 				return c.expr(cexpr)
 			}
 			c.log('ComptimeExpr: ' + cexpr.name())
@@ -3728,7 +3750,9 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	}
 }
 
-fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
+fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
+	// Strip @ prefix used to escape V keywords in field/method names (e.g., @type → type)
+	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
 	// TODO: is this the best way to do this?
 	// this whole field/method search needs to be cleaned up
 	// fields and method with same name should not be allowed to begin with!

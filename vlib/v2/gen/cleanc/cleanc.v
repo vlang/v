@@ -70,11 +70,12 @@ mut:
 	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
 	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
 
-	const_exprs     map[string]string // const name → C expression string (for inlining)
-	used_fn_keys    map[string]bool
-	called_fn_names map[string]bool
-	anon_fn_defs    []string // lifted anonymous function definitions
-	pass5_start_pos int      // position in sb where pass 5 starts
+	const_exprs         map[string]string // const name → C expression string (for inlining)
+	used_fn_keys        map[string]bool
+	called_fn_names     map[string]bool
+	anon_fn_defs        []string // lifted anonymous function definitions
+	pass5_start_pos     int      // position in sb where pass 5 starts
+	deferred_m_includes []string // Objective-C .m file #include lines deferred until after type definitions
 }
 
 struct ExportedConstSymbol {
@@ -429,6 +430,7 @@ pub fn (mut g Gen) gen() string {
 	}
 	// Emit structs with only primitive/resolved fields first, then the rest.
 	// Interleave option/result wrapper emission as soon as their payload types are complete.
+	// Also emit fixed array typedefs as soon as their element types are defined.
 	// Repeat until no more progress (simple topo sort with wrapper side-effects).
 	for info in all_structs {
 		g.cur_module = info.mod
@@ -436,6 +438,8 @@ pub fn (mut g Gen) gen() string {
 			g.gen_struct_decl(info.decl)
 		}
 	}
+	// Emit fixed array typedefs whose element types are now defined (leaf structs).
+	g.emit_deferred_fixed_array_aliases()
 	for _ in 0 .. (all_structs.len * 2) {
 		mut progressed := false
 		for info in all_structs {
@@ -454,6 +458,8 @@ pub fn (mut g Gen) gen() string {
 		if g.emit_ready_option_result_structs() {
 			progressed = true
 		}
+		// Emit fixed array typedefs whose element types are now resolved.
+		g.emit_deferred_fixed_array_aliases()
 		if !progressed {
 			break
 		}
@@ -587,6 +593,9 @@ pub fn (mut g Gen) gen() string {
 	g.emit_interface_method_wrapper_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
+
+	// Emit deferred Objective-C .m includes now that all types are defined.
+	g.emit_deferred_m_includes()
 
 	// Pass 5: Everything else (function bodies, consts, globals, etc.)
 	g.pass5_start_pos = g.sb.len

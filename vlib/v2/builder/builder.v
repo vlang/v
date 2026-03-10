@@ -347,9 +347,14 @@ fn sanitized_utf8_str_visible_length_fn() string {
 	].join('\n')
 }
 
-fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, error_limit_flag string, mut sw time.StopWatch) {
+fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) {
 	cc_start := sw.elapsed()
-	cc_cmd := '${cc} ${cc_flags} -w "${staged_c_file}" -o "${output_name}"${error_limit_flag}'
+	// Non-cached path: compile and link in one step, so include both compile and link flags.
+	mut all_flags := cc_flags
+	if cc_link_flags.len > 0 {
+		all_flags += ' ${cc_link_flags}'
+	}
+	cc_cmd := '${cc} ${all_flags} -w "${staged_c_file}" -o "${output_name}"${error_limit_flag}'
 	run_cc_cmd_or_exit(cc_cmd, 'C compilation', b.pref.show_cc)
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
@@ -477,19 +482,38 @@ fn (mut b Builder) gen_cleanc() {
 
 	cc := configured_cc(b.pref.vroot)
 	directive_flags := b.collect_cflags_from_sources()
+	// Separate directive flags into compile-only and link-only flags.
+	// -framework, -l, -L, .o/.a/.so/.dylib are linker flags and must NOT
+	// be passed during -c compilation (they can trigger unwanted header
+	// processing, e.g. MetalKit SIMD errors on macOS).
+	directive_compile_flags, directive_link_flags := split_compile_and_link_flags(directive_flags)
 	mut cc_flag_parts := []string{}
+	mut cc_link_parts := []string{}
 	env_flags := configured_cflags()
 	if env_flags.trim_space() != '' {
 		cc_flag_parts << env_flags.trim_space()
 	}
-	if directive_flags.trim_space() != '' {
-		cc_flag_parts << directive_flags.trim_space()
+	if directive_compile_flags.trim_space() != '' {
+		cc_flag_parts << directive_compile_flags.trim_space()
+	}
+	if directive_link_flags.trim_space() != '' {
+		cc_link_parts << directive_link_flags.trim_space()
 	}
 	tcc_extra := tcc_flags(cc, b.pref.vroot)
 	if tcc_extra.trim_space() != '' {
 		cc_flag_parts << tcc_extra.trim_space()
 	}
+	// macOS code can include Objective-C (.m) files via #include directives.
+	// Tell the C compiler to treat the source as Objective-C.
+	// Added unconditionally: if tcc is the compiler it will fail on other flags
+	// anyway and the fallback to cc/clang will use this flag properly.
+	$if macos {
+		cc_flag_parts << '-x objective-c'
+	}
+	cc_flag_parts << '-std=gnu11'
+	cc_flag_parts << '-fwrapv'
 	cc_flags := cc_flag_parts.join(' ')
+	cc_link_flags := cc_link_parts.join(' ')
 	mut error_limit_flag := ''
 	if !cc.contains('tcc') {
 		version_res := os.execute('${cc} --version')
@@ -527,7 +551,7 @@ fn (mut b Builder) gen_cleanc() {
 
 	// Fast path: cache one core object (builtin+strconv), compile/link only the rest.
 	if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv') {
-		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, error_limit_flag, mut
+		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
 			sw)
 		{
 			return
@@ -544,7 +568,8 @@ fn (mut b Builder) gen_cleanc() {
 	}
 	os.write_file(staged_c_file, c_source) or { panic(err) }
 	println('[*] Wrote ${staged_c_file}')
-	b.compile_cleanc_executable(output_name, cc, cc_flags, error_limit_flag, mut sw)
+	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
+		sw)
 }
 
 fn (b &Builder) is_cmd_v2_self_build() bool {
@@ -796,7 +821,7 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 	return source
 }
 
-fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc_flags string, error_limit_flag string, mut sw time.StopWatch) bool {
+fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) bool {
 	main_modules := b.collect_modules_excluding(core_cached_module_names)
 	if main_modules.len == 0 {
 		if os.getenv('V2_TRACE_CACHE') != '' {
@@ -846,8 +871,35 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		if !is_elf {
 			// Cached .o was compiled by cc (via TCC fallback), not TCC.
 			// Use cc for main compilation and linking to match formats.
+			// Keep all flags (including directive -I paths) but strip
+			// TCC-specific -I/-L paths that would conflict with system headers.
 			main_cc = 'cc'
-			main_cc_flags = configured_cflags()
+			tcc_dir2 := cc.all_before_last('/tcc')
+			if tcc_dir2.len > 0 {
+				mut parts := cc_flags.fields()
+				mut filtered := []string{cap: parts.len}
+				mut j := 0
+				for j < parts.len {
+					p := parts[j]
+					if (p == '-I' || p == '-L') && j + 1 < parts.len && parts[j + 1].contains('tcc') {
+						j += 2
+						continue
+					}
+					if (p.starts_with('-I') || p.starts_with('-L')) && p.contains('tcc') {
+						j++
+						continue
+					}
+					// Strip quoted -I/-L containing tcc
+					if (p.starts_with('-I"') || p.starts_with('-L"')
+						|| p.starts_with("-I'") || p.starts_with("-L'")) && p.contains('tcc') {
+						j++
+						continue
+					}
+					filtered << p
+					j++
+				}
+				main_cc_flags = filtered.join(' ')
+			}
 		}
 	}
 
@@ -889,6 +941,9 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		link_cmd += ' "${vlib_obj}"'
 	}
 	link_cmd += ' -o "${output_name}"'
+	if cc_link_flags.len > 0 {
+		link_cmd += ' ${cc_link_flags}'
+	}
 	run_cc_cmd_or_exit(link_cmd, 'Linking', b.pref.show_cc)
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
@@ -1196,7 +1251,36 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			continue
 		}
 		lines := os.read_lines(file.name) or { continue }
+		// Track $if nesting to skip flags inside non-matching comptime blocks.
+		// skip_depth > 0 means we are inside a non-matching $if block.
+		mut skip_depth := 0
 		for line in lines {
+			trimmed := line.trim_space()
+			// Handle $if / $else / closing braces for comptime blocks
+			if trimmed.starts_with(r'$if ') {
+				cond := trimmed[4..].trim_right('?{ ').trim_space()
+				if skip_depth > 0 {
+					skip_depth++
+				} else if !comptime_cond_matches(cond) {
+					skip_depth = 1
+				}
+				continue
+			}
+			if trimmed.starts_with(r'$else') || trimmed == r'} $else {' {
+				if skip_depth == 1 {
+					skip_depth = 0
+				} else if skip_depth == 0 {
+					skip_depth = 1
+				}
+				continue
+			}
+			if trimmed == '}' && skip_depth > 0 {
+				skip_depth--
+				continue
+			}
+			if skip_depth > 0 {
+				continue
+			}
 			mut flag := parse_flag_directive_line(line, file.name) or { continue }
 			flag = flag.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT', b.pref.vroot)
 			if flag_references_missing_file(flag) {
@@ -1210,6 +1294,64 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	return flags.join(' ')
+}
+
+// split_compile_and_link_flags separates a flags string into compiler-only
+// flags (for -c compilation) and linker-only flags (for the link step).
+// Linker flags include: -l*, -L*, -framework, .o, .a, .so, .dylib files.
+fn split_compile_and_link_flags(flags string) (string, string) {
+	tokens := flags.fields()
+	mut compile := []string{}
+	mut link := []string{}
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok == '-framework' {
+			// -framework Name: two tokens, linker only
+			link << tok
+			if i + 1 < tokens.len {
+				i++
+				link << tokens[i]
+			}
+		} else if tok.starts_with('-l') || tok.starts_with('-L') {
+			link << tok
+		} else if tok.ends_with('.o') || tok.ends_with('.obj') || tok.ends_with('.a')
+			|| tok.ends_with('.so') || tok.ends_with('.dylib') {
+			link << tok
+		} else {
+			compile << tok
+		}
+		i++
+	}
+	return compile.join(' '), link.join(' ')
+}
+
+fn comptime_cond_matches(cond string) bool {
+	// Handle negation: $if !platform
+	if cond.starts_with('!') {
+		return !comptime_cond_matches(cond[1..])
+	}
+	// Handle && conjunction
+	if and_idx := cond.index('&&') {
+		left := cond[..and_idx].trim_space()
+		right := cond[and_idx + 2..].trim_space()
+		return comptime_cond_matches(left) && comptime_cond_matches(right)
+	}
+	current := os.user_os().to_lower()
+	return match cond.to_lower() {
+		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
+		'linux' { current == 'linux' }
+		'windows' { current == 'windows' }
+		'freebsd' { current == 'freebsd' }
+		'openbsd' { current == 'openbsd' }
+		'netbsd' { current == 'netbsd' }
+		'dragonfly' { current == 'dragonfly' }
+		'android' { current == 'android' }
+		'native' { false }
+		'emscripten' { false }
+		'ios' { false }
+		else { false } // unknown user-defined flags default to false
+	}
 }
 
 fn default_cc(vroot string) string {
@@ -1260,7 +1402,33 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 			eprintln('Failed to compile with tcc, falling back to cc')
 			eprintln('tcc cmd: ${cmd}')
 			eprintln(result.output)
-			fallback_cmd := cmd.replace_once(cc_binary, 'cc')
+			// Replace TCC binary with cc and strip TCC-specific include/lib
+			// paths. TCC's tgmath.h conflicts with macOS system headers,
+			// causing SIMD ambiguity errors in MetalKit when compiling as
+			// Objective-C.
+			mut fallback_cmd := cmd.replace_once(cc_binary, 'cc')
+			tcc_dir := cc_binary.all_before_last('/tcc')
+			if tcc_dir.len > 0 {
+				// Remove -I and -L flags pointing into the TCC directory.
+				mut parts := fallback_cmd.fields()
+				mut filtered := []string{cap: parts.len}
+				mut i2 := 0
+				for i2 < parts.len {
+					p := parts[i2]
+					if (p == '-I' || p == '-L') && i2 + 1 < parts.len
+						&& parts[i2 + 1].contains('tcc') {
+						i2 += 2
+						continue
+					}
+					if (p.starts_with('-I') || p.starts_with('-L')) && p.contains('tcc') {
+						i2++
+						continue
+					}
+					filtered << p
+					i2++
+				}
+				fallback_cmd = filtered.join(' ')
+			}
 			run_cc_cmd_or_exit(fallback_cmd, stage, show_cc)
 			return true
 		}

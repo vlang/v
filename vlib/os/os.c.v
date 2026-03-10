@@ -928,14 +928,16 @@ pub fn real_path(fpath string) string {
 	mut res := ''
 	$if windows {
 		pu16_fullpath := unsafe { &u16(&fullpath[0]) }
-		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
-		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
+		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+		// FILE_FLAG_BACKUP_SEMANTICS, 0
+		// FILE_FLAG_BACKUP_SEMANTICS (0x02000000) is needed to open directories
+		// and resolve directory symlinks properly.
 		// try to open the file to get symbolic link path
 		fpath_wide := fpath.to_wide()
 		defer {
 			unsafe { free(voidptr(fpath_wide)) }
 		}
-		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
+		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x02000000, 0)
 		if file != voidptr(-1) {
 			defer { C.CloseHandle(file) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew

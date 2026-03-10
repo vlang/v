@@ -1099,10 +1099,7 @@ fn (mut t Transformer) transform_file(file ast.File) ast.File {
 		t.scope = unsafe { nil }
 	}
 
-	mut stmts := []ast.Stmt{cap: file.stmts.len}
-	for stmt in file.stmts {
-		stmts << t.transform_stmt(stmt)
-	}
+	stmts := t.transform_stmts(file.stmts)
 	return ast.File{
 		attributes: file.attributes
 		mod:        file.mod

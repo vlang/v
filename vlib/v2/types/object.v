@@ -18,6 +18,7 @@ mut:
 
 struct Const {
 	ObjectCommon
+pub:
 	int_val int
 }
 

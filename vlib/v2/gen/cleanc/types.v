@@ -1664,8 +1664,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				mut fixed_size := node.exprs.len
 				if node.typ is ast.Type && node.typ is ast.ArrayFixedType {
 					fixed_typ := node.typ as ast.ArrayFixedType
-					if fixed_typ.len is ast.BasicLiteral && fixed_typ.len.kind == .number {
-						fixed_size = fixed_typ.len.value.int()
+					resolved_size := g.expr_to_int_str_with_env(fixed_typ.len)
+					if resolved_size != '0' {
+						fixed_size = resolved_size.int()
 					}
 				}
 				if fixed_size == 0 && node.exprs.len > 0 {
@@ -1674,8 +1675,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				// For zero-size fixed arrays with init (e.g. [3][3]int{init:...}),
 				// use ArrayFixedType-based size from the parent type annotation
 				if fixed_size == 0 && node.len !is ast.EmptyExpr {
-					if node.len is ast.BasicLiteral && node.len.kind == .number {
-						fixed_size = node.len.value.int()
+					resolved_size2 := g.expr_to_int_str_with_env(node.len)
+					if resolved_size2 != '0' {
+						fixed_size = resolved_size2.int()
 					}
 				}
 				fixed_name := 'Array_fixed_' + mangle_alias_component(elem) + '_' + fixed_size.str()
@@ -1911,7 +1913,7 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			}
 			if e is ast.ArrayFixedType {
 				elem_type := mangle_alias_component(g.expr_type_to_c(e.elem_type))
-				size_str := expr_to_int_str(e.len)
+				size_str := g.expr_to_int_str_with_env(e.len)
 				fixed_type := 'Array_fixed_' + elem_type + '_' + size_str
 				g.register_alias_type(fixed_type)
 				g.collected_fixed_array_types[fixed_type] = FixedArrayInfo{

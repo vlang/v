@@ -149,13 +149,25 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 		if !name.starts_with('Array_fixed_') {
 			continue
 		}
+		// Skip if already emitted (safe to call this function multiple times).
+		alias_key := 'alias_${name}'
+		if alias_key in g.emitted_types {
+			continue
+		}
 		if info := g.collected_fixed_array_types[name] {
 			if info.elem_type in primitive_types
 				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
 				continue // already emitted in emit_runtime_aliases
 			}
+			// Only emit if the element type is already defined (struct body emitted).
+			// For struct element types, check if the struct body has been emitted.
+			elem_body_key := 'body_${info.elem_type}'
+			elem_alias_key := 'alias_${info.elem_type}'
+			if info.elem_type.contains('__') && elem_body_key !in g.emitted_types
+				&& elem_alias_key !in g.emitted_types && !info.elem_type.starts_with('Array_fixed_') {
+				continue // element struct not yet defined, defer
+			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
-			alias_key := 'alias_${name}'
 			body_key := 'body_${name}'
 			g.emitted_types[alias_key] = true
 			g.emitted_types[body_key] = true

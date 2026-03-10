@@ -156,8 +156,9 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 	// On Windows, absolute paths like `C:\...` are misinterpreted by urllib.parse
 	// (the drive letter `C:` is treated as a URL scheme). Handle local paths first.
 	if os.is_abs_path(raw_url) || raw_url.starts_with('./') || raw_url.starts_with('../')
-		|| raw_url.starts_with('~/') || raw_url.starts_with('.\\') || raw_url.starts_with('..\\') {
-		normalized := raw_url.replace('\\', '/')
+		|| raw_url.starts_with('~/') || raw_url.starts_with('.\\') || raw_url.starts_with('..\\')
+		|| raw_url.starts_with('file://') {
+		normalized := raw_url.trim_string_left('file://').replace('\\', '/').trim_left('/')
 		_, name := normalized.rsplit_once('/') or {
 			return '', normalized.trim_string_right('.git')
 		}

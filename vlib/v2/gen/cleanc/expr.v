@@ -391,6 +391,29 @@ fn expr_to_int_str(e ast.Expr) string {
 	return '0'
 }
 
+// expr_to_int_str_with_env resolves fixed-array size expressions, handling
+// both literal numbers and named constants (looked up via type environment).
+fn (g &Gen) expr_to_int_str_with_env(e ast.Expr) string {
+	if e is ast.BasicLiteral {
+		return e.value
+	}
+	if e is ast.Ident {
+		// Try to resolve the constant from the module scope.
+		if g.env != unsafe { nil } {
+			if scope := g.env_scope(g.cur_module) {
+				if obj := scope.lookup_parent(e.name, 0) {
+					if obj is types.Const {
+						if obj.int_val != 0 {
+							return obj.int_val.str()
+						}
+					}
+				}
+			}
+		}
+	}
+	return '0'
+}
+
 fn (mut g Gen) local_var_c_type_for_expr(expr ast.Expr) ?string {
 	if expr !is ast.Ident {
 		return none
@@ -2702,7 +2725,7 @@ fn (mut g Gen) expr_to_string(expr ast.Expr) string {
 
 fn is_header_type_only_const_expr(expr ast.Expr) bool {
 	return match expr {
-		ast.Type, ast.SelectorExpr {
+		ast.Type {
 			true
 		}
 		ast.Ident {

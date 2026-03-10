@@ -739,11 +739,16 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 			return node.receiver.typ.name + '__' + name
 		}
 		receiver_type := g.expr_type_to_c(node.receiver.typ)
-		// Strip pointer suffix for method naming
-		base_type := if receiver_type.ends_with('*') {
+		// Strip pointer suffix and 'struct ' prefix for method naming.
+		// C struct types like 'struct sg_pipeline' must become 'sg_pipeline'
+		// in function names to produce valid C identifiers.
+		mut base_type := if receiver_type.ends_with('*') {
 			receiver_type[..receiver_type.len - 1]
 		} else {
 			receiver_type
+		}
+		if base_type.starts_with('struct ') {
+			base_type = base_type[7..]
 		}
 		if g.cur_module != 'builtin' && base_type in primitive_types {
 			// Non-builtin primitive receiver methods are typically accidental generic
@@ -755,10 +760,13 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 	// Static methods: Type.method() -> Type__method
 	if node.is_static {
 		receiver_type := g.expr_type_to_c(node.receiver.typ)
-		base_type := if receiver_type.ends_with('*') {
+		mut base_type := if receiver_type.ends_with('*') {
 			receiver_type[..receiver_type.len - 1]
 		} else {
 			receiver_type
+		}
+		if base_type.starts_with('struct ') {
+			base_type = base_type[7..]
 		}
 		return base_type + '__' + name
 	}
@@ -769,6 +777,11 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 			return name
 		}
 		return g.cur_module + '__' + name
+	}
+	// Rename builtin `panic` to avoid conflict with macOS mach/mach.h's
+	// `extern void panic(const char *, ...)`.
+	if name == 'panic' {
+		return 'v_panic'
 	}
 	return name
 }
@@ -815,7 +828,9 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 			return g.expr_is_pointer(arg.expr)
 		}
 		ast.CastExpr {
-			return g.expr_is_pointer(arg.expr) || g.expr_type_to_c(arg.typ).ends_with('*')
+			// The result type of a cast is determined by the target type, not the source.
+			// e.g. u8(ptr) produces u8, not a pointer, even though ptr is a pointer.
+			return g.expr_type_to_c(arg.typ).ends_with('*')
 		}
 		ast.Ident {
 			if arg.name == 'nil' {
@@ -1967,7 +1982,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		arg := call_args[0]
 		arg_type := g.get_expr_type(arg)
 		if arg_type == 'IError' || (arg is ast.Ident && arg.name == 'err') {
-			g.sb.write_string('panic(IError__str(')
+			g.sb.write_string('v_panic(IError__str(')
 			g.expr(arg)
 			g.sb.write_string('))')
 			return
@@ -2255,6 +2270,12 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	if c_name in ['os__exit', 'builder__exit'] {
 		c_name = 'exit'
+	}
+	// Rename builtin `panic` to `v_panic` to avoid macOS mach.h conflict.
+	// Also catch module-qualified variants (e.g. bits__panic) which occur
+	// when the call originates from a non-builtin module.
+	if c_name == 'panic' || c_name.ends_with('__panic') {
+		c_name = 'v_panic'
 	}
 	g.sb.write_string('${c_name}(')
 	mut total_args := call_args.len

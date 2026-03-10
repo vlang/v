@@ -50,6 +50,11 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		} else {
 			field.name
 		}
+		// Skip consts that shadow a function with the same name — the
+		// function declaration takes precedence and a #define would break it.
+		if name in g.fn_return_types {
+			continue
+		}
 		is_type_only := is_header_type_only_const_expr(field.value)
 		if is_type_only {
 			key := 'extern_const_${name}'
@@ -251,6 +256,10 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			'${g.cur_module}__${field.name}'
 		} else {
 			field.name
+		}
+		// Skip consts that shadow a function with the same name.
+		if name in g.fn_return_types {
+			continue
 		}
 		const_key := 'const_${name}'
 		if const_key in g.emitted_types {
