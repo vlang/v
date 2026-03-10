@@ -1,8 +1,5 @@
 #include <Cocoa/Cocoa.h>
 
-// Global view variable
-static NSView *g_view = nil;
-
 NSColor* nscolor(gg__Color c) {
 	float red = (float)c.r / 255.0f;
 	float green = (float)c.g / 255.0f;

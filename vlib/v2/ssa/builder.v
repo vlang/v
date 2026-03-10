@@ -5772,13 +5772,14 @@ fn (mut b Builder) collect_init_expr_values(expr ast.InitExpr) (TypeID, []ValueI
 				// (e.g., TypeStore.new() returns &TypeStore), but the field expects
 				// a value type, we need to load (dereference) the pointer.
 				val_typ_id := b.mod.values[field_val].typ
-				if val_typ_id > 0 && val_typ_id < b.mod.type_store.types.len
-					&& field_type > 0 && field_type < b.mod.type_store.types.len {
+				if val_typ_id > 0 && val_typ_id < b.mod.type_store.types.len && field_type > 0
+					&& field_type < b.mod.type_store.types.len {
 					val_typ := b.mod.type_store.types[val_typ_id]
 					fld_typ := b.mod.type_store.types[field_type]
 					if val_typ.kind == .ptr_t && fld_typ.kind == .struct_t {
-						field_val = b.mod.add_instr(.load, b.cur_block, field_type,
-							[field_val])
+						field_val = b.mod.add_instr(.load, b.cur_block, field_type, [
+							field_val,
+						])
 					}
 				}
 				field_vals << field_val

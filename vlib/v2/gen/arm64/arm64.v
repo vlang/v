@@ -51,67 +51,67 @@ pub mut:
 	type_size_stack  map[int]bool
 	type_align_stack map[int]bool
 	// Lookup caches for O(1) name resolution
-	func_by_name     map[string]int // function name → index in g.mod.funcs
-	global_by_name   map[string]int // global name → index in g.mod.globals
+	func_by_name   map[string]int // function name → index in g.mod.funcs
+	global_by_name map[string]int // global name → index in g.mod.globals
 	// Per-function cache for alloca pointer analysis (cleared per function)
 	alloca_ptr_cache map[int]u8 // alloca_id → 1=has_ptrs, 2=no_ptrs
 	// Cached environment variables for debug tracing (read once at init)
-	env_dump_funcrefs    string
-	env_trace_skip_dead  string
-	env_dump_stackmap    string
-	env_dump_blocks      string
-	env_trace_paramspill string
-	env_trace_val        string
-	env_trace_instr      string
-	env_trace_cmp        string
-	env_trace_store      string
-	env_trace_load       string
-	env_trace_call       string
-	env_trace_ret        string
-	env_trace_bitcast    string
-	env_trace_assign     string
-	env_trace_extract    string
+	env_dump_funcrefs     string
+	env_trace_skip_dead   string
+	env_dump_stackmap     string
+	env_dump_blocks       string
+	env_trace_paramspill  string
+	env_trace_val         string
+	env_trace_instr       string
+	env_trace_cmp         string
+	env_trace_store       string
+	env_trace_load        string
+	env_trace_call        string
+	env_trace_ret         string
+	env_trace_bitcast     string
+	env_trace_assign      string
+	env_trace_extract     string
 	env_trace_struct_init string
-	env_trace_agg_copy   string
-	env_trace_insert     string
-	env_trace_callcount  string
-	env_trace_callarg    string
+	env_trace_agg_copy    string
+	env_trace_insert      string
+	env_trace_callcount   string
+	env_trace_callarg     string
 	env_trace_struct_addr string
-	env_trace_strlit     string
-	env_trace_storeval   string
+	env_trace_strlit      string
+	env_trace_storeval    string
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
-		mod:                  mod
-		macho:                MachOObject.new()
-		type_size_cache:      map[int]int{}
-		type_align_cache:     map[int]int{}
-		type_size_stack:      map[int]bool{}
-		type_align_stack:     map[int]bool{}
-		env_dump_funcrefs:    os.getenv('V2_ARM64_DUMP_FUNCREFS')
-		env_trace_skip_dead:  os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
-		env_dump_stackmap:    os.getenv('V2_ARM64_DUMP_STACKMAP')
-		env_dump_blocks:      os.getenv('V2_ARM64_DUMP_BLOCKS')
-		env_trace_paramspill: os.getenv('V2_ARM64_TRACE_PARAMSPILL')
-		env_trace_val:        os.getenv('V2_ARM64_TRACE_VAL')
-		env_trace_instr:      os.getenv('V2_ARM64_TRACE_INSTR')
-		env_trace_cmp:        os.getenv('V2_ARM64_TRACE_CMP')
-		env_trace_store:      os.getenv('V2_ARM64_TRACE_STORE')
-		env_trace_load:       os.getenv('V2_ARM64_TRACE_LOAD')
-		env_trace_call:       os.getenv('V2_ARM64_TRACE_CALL')
-		env_trace_ret:        os.getenv('V2_ARM64_TRACE_RET')
-		env_trace_bitcast:    os.getenv('V2_ARM64_TRACE_BITCAST')
-		env_trace_assign:     os.getenv('V2_ARM64_TRACE_ASSIGN')
-		env_trace_extract:    os.getenv('V2_ARM64_TRACE_EXTRACT')
+		mod:                   mod
+		macho:                 MachOObject.new()
+		type_size_cache:       map[int]int{}
+		type_align_cache:      map[int]int{}
+		type_size_stack:       map[int]bool{}
+		type_align_stack:      map[int]bool{}
+		env_dump_funcrefs:     os.getenv('V2_ARM64_DUMP_FUNCREFS')
+		env_trace_skip_dead:   os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
+		env_dump_stackmap:     os.getenv('V2_ARM64_DUMP_STACKMAP')
+		env_dump_blocks:       os.getenv('V2_ARM64_DUMP_BLOCKS')
+		env_trace_paramspill:  os.getenv('V2_ARM64_TRACE_PARAMSPILL')
+		env_trace_val:         os.getenv('V2_ARM64_TRACE_VAL')
+		env_trace_instr:       os.getenv('V2_ARM64_TRACE_INSTR')
+		env_trace_cmp:         os.getenv('V2_ARM64_TRACE_CMP')
+		env_trace_store:       os.getenv('V2_ARM64_TRACE_STORE')
+		env_trace_load:        os.getenv('V2_ARM64_TRACE_LOAD')
+		env_trace_call:        os.getenv('V2_ARM64_TRACE_CALL')
+		env_trace_ret:         os.getenv('V2_ARM64_TRACE_RET')
+		env_trace_bitcast:     os.getenv('V2_ARM64_TRACE_BITCAST')
+		env_trace_assign:      os.getenv('V2_ARM64_TRACE_ASSIGN')
+		env_trace_extract:     os.getenv('V2_ARM64_TRACE_EXTRACT')
 		env_trace_struct_init: os.getenv('V2_ARM64_TRACE_STRUCT_INIT')
-		env_trace_agg_copy:   os.getenv('V2_ARM64_TRACE_AGG_COPY')
-		env_trace_insert:     os.getenv('V2_ARM64_TRACE_INSERT')
-		env_trace_callcount:  os.getenv('V2_ARM64_TRACE_CALLCOUNT')
-		env_trace_callarg:    os.getenv('V2_ARM64_TRACE_CALLARG')
+		env_trace_agg_copy:    os.getenv('V2_ARM64_TRACE_AGG_COPY')
+		env_trace_insert:      os.getenv('V2_ARM64_TRACE_INSERT')
+		env_trace_callcount:   os.getenv('V2_ARM64_TRACE_CALLCOUNT')
+		env_trace_callarg:     os.getenv('V2_ARM64_TRACE_CALLARG')
 		env_trace_struct_addr: os.getenv('V2_ARM64_TRACE_STRUCT_ADDR')
-		env_trace_strlit:     os.getenv('V2_ARM64_TRACE_STRLIT')
-		env_trace_storeval:   os.getenv('V2_ARM64_TRACE_STOREVAL')
+		env_trace_strlit:      os.getenv('V2_ARM64_TRACE_STRLIT')
+		env_trace_storeval:    os.getenv('V2_ARM64_TRACE_STOREVAL')
 	}
 }
 
@@ -146,7 +146,6 @@ pub fn (mut g Gen) gen() {
 	for func in g.mod.funcs {
 		g.gen_func(func)
 	}
-
 
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
@@ -262,7 +261,8 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.x8_save_offset = 0
 	g.mark_sumtype_data_heap_allocas(func)
 	g.allocate_registers(func)
-	if g.env_dump_funcrefs.len > 0 && (g.env_dump_funcrefs == '*' || func.name == g.env_dump_funcrefs) {
+	if g.env_dump_funcrefs.len > 0
+		&& (g.env_dump_funcrefs == '*' || func.name == g.env_dump_funcrefs) {
 		eprintln('ARM64 FUNCREFS fn=${func.name} begin')
 		for i, vv in g.mod.values {
 			if vv.kind != .func_ref {
@@ -543,7 +543,8 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	g.stack_size = (slot_offset + 16) & ~0xF
 
-	if g.env_dump_stackmap.len > 0 && (g.env_dump_stackmap == '*' || func.name == g.env_dump_stackmap) {
+	if g.env_dump_stackmap.len > 0
+		&& (g.env_dump_stackmap == '*' || func.name == g.env_dump_stackmap) {
 		eprintln('ARM64 FRAME ${func.name} stack_size=${g.stack_size} x8_save_offset=${g.x8_save_offset}')
 		eprintln('ARM64 STACKMAP ${func.name} begin')
 		for vid, off in g.stack_map {
