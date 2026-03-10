@@ -16422,6 +16422,15 @@ static const struct wp_fractional_scale_v1_listener
         .preferred_scale = _sapp_wl_fractional_scale_preferred_scale,
 };
 
+static void _sapp_wl_wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial) {
+    (void)data;
+    xdg_wm_base_pong(wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener _sapp_wl_wm_base_listener = {
+    .ping = _sapp_wl_wm_base_ping,
+};
+
 _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
   pthread_attr_t pthread_attr;
   pthread_attr_init(&pthread_attr);
@@ -16488,6 +16497,7 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
   // Create XDG surface and toplevel
   _sapp.wl.xdg_surface =
       xdg_wm_base_get_xdg_surface(_sapp.wl.xdg_wm_base, _sapp.wl.surface);
+  xdg_wm_base_add_listener(_sapp.wl.xdg_wm_base, &_sapp_wl_wm_base_listener, NULL);
   xdg_surface_add_listener(_sapp.wl.xdg_surface, &_sapp_wl_xdg_surface_listener,
                            NULL);
 
