@@ -304,7 +304,7 @@ fn compute_mu(tr []u8, msg []u8, context string) [64]u8 {
 
 // algo. 7: ML-DSA.Sign_internal (s. 6.2)
 @[direct_array_access]
-fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
+fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) ![]u8 {
 	p := sk.pk.p
 	k, l := p.k, p.l
 	a := sk.pk.a
@@ -337,8 +337,8 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 	mut h := [][256]u8{len: k, init: [256]u8{}}
 	mut w1_buf := []u8{len: w1_encode_len(p)}
 
-	// lines 10-32: rejection sampling loop
-	for {
+	// lines 10-32: rejection sampling loop (bounded by max_sign_attempts)
+	for _ in 0 .. max_sign_attempts {
 		// line 11: y = ExpandMask(rho'', kappa) (algo. 34)
 		for r in 0 .. l {
 			counter := [u8(kappa & 0xff), u8(kappa >> 8)]
@@ -435,7 +435,7 @@ fn sign_internal(sk &PrivateKey, mu [64]u8, random [32]u8) []u8 {
 
 		return sig_encode(ch, z, h, p) // line 33: sigEncode(c_tilde, z, h)
 	}
-	return []u8{}
+	return error('signing failed: rejection sampling did not converge after ${max_sign_attempts} attempts')
 }
 
 // algo. 8: ML-DSA.Verify_internal (s. 6.3)

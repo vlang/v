@@ -16,6 +16,12 @@ const mont_minus_one = u32(4186625) // (q-1)*R mod q
 const n = 256
 const d = 13
 
+// signing uses rejection sampling that succeeds with p =~ 1/5.22
+// per attempt (worst case: ML-DSA-65, over 10k sigs)
+// P(no converg. after 512 iters) = (1 - 1/5.22)^512 =~ 2^-157
+// for ref. ML-DSA-44 security is 2^-128
+const max_sign_attempts = 512
+
 type FieldElement = u32
 type RingElement = [256]u32
 type NttElement = [256]u32
