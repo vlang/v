@@ -1171,11 +1171,19 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				// Selector/index expressions can be smartcast-narrowed in the checker env,
 				// while still evaluating to the original sum value representation.
 				// If the raw (declared) type already matches the sum param type, pass it through.
+				// But verify with get_expr_type: if it returns a known variant, the raw type
+				// lookup hit the wrong scope entry (e.g. struct field vs. local variable).
 				if raw := g.get_raw_type(base_arg) {
 					raw_c := g.types_type_to_c(raw)
 					if raw_c == param_type {
-						g.expr(base_arg)
-						return
+						expr_type := g.get_expr_type(base_arg)
+						if expr_type == param_type || expr_type == '' || expr_type == 'int'
+							|| expr_type !in variants {
+							g.expr(base_arg)
+							return
+						}
+						// expr_type is a known variant but raw_type says sum type:
+						// raw_type lookup was wrong, fall through to wrapping
 					}
 				}
 				mut arg_type := g.get_expr_type(base_arg)

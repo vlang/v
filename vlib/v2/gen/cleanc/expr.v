@@ -1492,6 +1492,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			lhs_expr := sel.lhs
 			rhs_name := sel.rhs.name
 			lhs_name := if lhs_expr is ast.Ident { sel.lhs.name() } else { '' }
+			if lhs_name == 'c' && rhs_name in ['a', 'r', 'g', 'b'] && g.cur_module == 'gg' {
+				eprintln('[debug-sel] c.${rhs_name} in ${g.cur_module}::${g.cur_fn_name}, is_known_var=${g.local_var_c_type_for_expr(lhs_expr) != none}, local_type=${g.get_local_var_c_type('c') or {
+					'NONE'
+				}}')
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if lhs_expr is ast.Ident {
 				if lhs_name == 'C' {
