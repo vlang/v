@@ -74,8 +74,15 @@ mut:
 	cur_file_name   string
 	cur_fn_name_str string
 	// @[live] hot code reloading: function names and source file
-	live_fns         []string
+	live_fns         []LiveFn
 	live_source_file string
+}
+
+struct LiveFn {
+	decl_name    string // e.g., 'frame' or 'update_model'
+	mangled_name string // e.g., 'frame' or 'Game__update_model'
+	is_method    bool
+	recv_type    string // e.g., 'Game' (empty for non-methods)
 }
 
 // SmartcastContext holds info about a single smartcast
@@ -5304,6 +5311,9 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 		data_access
 	} else {
 		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	}
+	if t.is_eval_backend() {
+		return variant_access
 	}
 	// Primitive variants are boxed directly in pointer-sized storage.
 	// Unbox to the value type before dispatching method calls (e.g. int.str()).

@@ -41,30 +41,32 @@ pub fn new_scope(parent &Scope) &Scope {
 // TODO: try implement the alternate method I was experimenting with (SmartCastSelector)
 // i'm not sure if it is actually possible though. need to explore it.
 pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if field_smartcast := scope.field_smartcasts[name] {
-			return field_smartcast
-		}
+	if name in s.field_smartcasts {
+		return s.field_smartcasts[name] or { return none }
+	}
+	if s.parent != unsafe { nil } {
+		return s.parent.lookup_field_smartcast(name)
 	}
 	return none
 }
 
 pub fn (s &Scope) lookup(name string) ?Object {
-	if obj := s.objects[name] {
-		return obj
+	if name in s.objects {
+		return s.objects[name] or { return none }
 	}
 	return none
 }
 
 pub fn (s &Scope) lookup_parent(name string, pos int) ?Object {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if obj := scope.lookup(name) {
-			return obj
-			// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
-			// 	return s, obj
-			// }
+	if obj := s.lookup(name) {
+		return obj
+		// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
+		// 	return s, obj
+		// }
+	}
+	if s.parent != unsafe { nil } {
+		if parent_obj := s.parent.lookup_parent(name, pos) {
+			return parent_obj
 		}
 	}
 	// println('lookup_parent: NOT FOUND: ${name}')
@@ -81,13 +83,15 @@ pub fn (s &Scope) lookup_var_type(name string) ?Type {
 }
 
 pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Object) {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if obj := scope.lookup(name) {
-			return scope, obj
-			// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
-			// 	return s, obj
-			// }
+	if obj := s.lookup(name) {
+		return s, obj
+		// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
+		// 	return s, obj
+		// }
+	}
+	if s.parent != unsafe { nil } {
+		if parent_scope, parent_obj := s.parent.lookup_parent_with_scope(name, pos) {
+			return parent_scope, parent_obj
 		}
 	}
 	// println('lookup_parent: NOT FOUND: ${name}')
@@ -95,7 +99,8 @@ pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Objec
 }
 
 pub fn (mut s Scope) insert(name string, obj Object) {
-	if existing := s.objects[name] {
+	if name in s.objects {
+		existing := s.objects[name] or { return }
 		// Module scopes pre-register a self-module placeholder so code can
 		// reference `mod_name.CONST` from inside the same module. A real symbol
 		// with the same name should override that placeholder.

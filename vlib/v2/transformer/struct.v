@@ -171,6 +171,9 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	} else {
 		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
 	}
+	if t.is_eval_backend() {
+		return t.synth_selector_from_struct(variant_access, field_name, mangled_variant)
+	}
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{
@@ -1003,6 +1006,8 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		mut field_type_name := t.get_struct_field_type_name(struct_type_name, field.name)
 		mut expected_field_type := types.Type(types.int_)
 		mut has_expected_field_type := false
+		mut pretransformed_value := ast.empty_expr
+		mut has_pretransformed_value := false
 		if direct_type := t.lookup_struct_field_type(struct_type_name, field.name) {
 			expected_field_type = direct_type
 			has_expected_field_type = true
@@ -1032,6 +1037,18 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			field_value = t.resolve_expr_with_expected_type(field_value, expected_field_type)
 			if !is_sumtype_field && field_value.pos().id != 0 {
 				t.env.set_expr_type(field_value.pos().id, expected_field_type)
+			}
+			if t.is_eval_backend() {
+				if expected_field_type is types.OptionType
+					|| expected_field_type is types.ResultType {
+					base_type_name := t.type_to_c_name(expected_field_type.base_type())
+					if t.is_sum_type(base_type_name) {
+						if wrapped := t.wrap_sumtype_value(field_value, base_type_name) {
+							pretransformed_value = wrapped
+							has_pretransformed_value = true
+						}
+					}
+				}
 			}
 		}
 		if is_sumtype_field {
@@ -1078,7 +1095,9 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			}
 		}
 
-		transformed_value := if field_value is ast.ArrayInitExpr {
+		transformed_value := if has_pretransformed_value {
+			pretransformed_value
+		} else if field_value is ast.ArrayInitExpr {
 			arr_value := field_value as ast.ArrayInitExpr
 			// If the array has len/cap but no literal elements (e.g., []int{len: 4}),
 			// use the normal transform_expr path which handles __new_array_with_default_noscan

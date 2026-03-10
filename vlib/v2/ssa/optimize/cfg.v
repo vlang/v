@@ -20,11 +20,10 @@ pub fn build_cfg(mut m ssa.Module) {
 		}
 
 		for blk_id in m.funcs[fi].blocks {
-			blk := m.blocks[blk_id]
-			if blk.instrs.len == 0 {
+			if m.blocks[blk_id].instrs.len == 0 {
 				continue
 			}
-			term_val_id := blk.instrs.last()
+			term_val_id := m.blocks[blk_id].instrs.last()
 			term := m.instrs[m.values[term_val_id].index]
 
 			// Clear the set for reuse

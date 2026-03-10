@@ -45,6 +45,14 @@ pub fn Module.new(name string) &Module {
 		name:       name
 		type_store: TypeStore.new()
 	}
+	// Pre-allocate arenas to avoid repeated reallocation during SSA building.
+	// A typical hello.v compilation needs ~158K values, ~134K instrs, ~10K blocks, ~1.8K funcs.
+	// Pre-allocating avoids ARM64 backend issues with array growth reallocation.
+	m.values = []Value{cap: 262144}
+	m.instrs = []Instruction{cap: 262144}
+	m.blocks = []BasicBlock{cap: 16384}
+	m.funcs = []Function{cap: 4096}
+	m.globals = []GlobalVar{cap: 2048}
 	// Reserve ID 0 to represent "null" or "invalid", avoiding collisions
 	// with map lookups returning 0.
 	m.values << Value{

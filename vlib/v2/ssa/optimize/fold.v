@@ -187,12 +187,11 @@ fn branch_fold(mut m ssa.Module) bool {
 	mut changed := false
 	for fi in 0 .. m.funcs.len {
 		for blk_id in m.funcs[fi].blocks {
-			blk := m.blocks[blk_id]
-			if blk.instrs.len == 0 {
+			if m.blocks[blk_id].instrs.len == 0 {
 				continue
 			}
 
-			term_val_id := blk.instrs.last()
+			term_val_id := m.blocks[blk_id].instrs[m.blocks[blk_id].instrs.len - 1]
 			term := m.instrs[m.values[term_val_id].index]
 
 			if term.op == .br {

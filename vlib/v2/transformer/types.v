@@ -1244,38 +1244,44 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 		return none
 	}
 
-	// Create: SumType{_tag: N, _data._variant: (void*)...}
-	// For primitives: (void*)(intptr_t)value - stores value in pointer space
-	// For structs/strings: (void*)&value - stores pointer to value
-	// Only direct scalar variants are boxed inline in pointer space.
-	// Metadata carriers like `types.Type.Primitive` are regular structs whose payload
-	// is read through `_data` as a pointer, so they must not be treated as scalars.
-	mut is_primitive_variant := variant_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'bool', 'rune', 'byte', 'usize', 'isize']
-	boxed_value := if is_primitive_variant {
-		// Primitive - use (void*)(intptr_t) cast to store value in pointer space
-		ast.Expr(ast.CastExpr{
-			typ:  ast.Ident{
-				name: 'voidptr'
-			}
-			expr: ast.CastExpr{
-				typ:  ast.Ident{
-					name: 'intptr_t'
-				}
-				expr: transformed_value
-			}
-		})
+	// Eval executes the transformed AST directly, so it needs the real payload value.
+	// Native/C backends still need the C-style pointer boxing layout.
+	boxed_value := if t.is_eval_backend() {
+		transformed_value
 	} else {
-		// Struct or string - take address and cast to void*
-		ast.Expr(ast.CastExpr{
-			typ:  ast.Ident{
-				name: 'voidptr'
-			}
-			expr: ast.PrefixExpr{
-				op:   token.Token.amp
-				expr: transformed_value
-			}
-		})
+		// Create: SumType{_tag: N, _data._variant: (void*)...}
+		// For primitives: (void*)(intptr_t)value - stores value in pointer space
+		// For structs/strings: (void*)&value - stores pointer to value
+		// Only direct scalar variants are boxed inline in pointer space.
+		// Metadata carriers like `types.Type.Primitive` are regular structs whose payload
+		// is read through `_data` as a pointer, so they must not be treated as scalars.
+		mut is_primitive_variant := variant_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
+			'u32', 'u64', 'f32', 'f64', 'bool', 'rune', 'byte', 'usize', 'isize']
+		if is_primitive_variant {
+			// Primitive - use (void*)(intptr_t) cast to store value in pointer space
+			ast.Expr(ast.CastExpr{
+				typ:  ast.Ident{
+					name: 'voidptr'
+				}
+				expr: ast.CastExpr{
+					typ:  ast.Ident{
+						name: 'intptr_t'
+					}
+					expr: transformed_value
+				}
+			})
+		} else {
+			// Struct or string - take address and cast to void*
+			ast.Expr(ast.CastExpr{
+				typ:  ast.Ident{
+					name: 'voidptr'
+				}
+				expr: ast.PrefixExpr{
+					op:   token.Token.amp
+					expr: transformed_value
+				}
+			})
+		}
 	}
 
 	// Create the sum type initialization with _data._variant field name

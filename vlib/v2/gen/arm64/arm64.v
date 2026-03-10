@@ -20,8 +20,12 @@ pub mut:
 	stack_size     int
 	curr_offset    int
 
-	block_offsets  map[int]int
-	pending_labels map[int][]int
+	block_offsets      []int // indexed by block_id, -1 = not yet visited
+	pending_label_blks []int
+	pending_label_offs []int
+	func_count         int
+	total_pending      int
+	total_resolved     int
 
 	// Register allocation
 	reg_map   map[int]int
@@ -143,8 +147,8 @@ pub fn (mut g Gen) gen() {
 		g.global_by_name[gvar.name] = gi
 	}
 
-	for func in g.mod.funcs {
-		g.gen_func(func)
+	for fi := 0; fi < g.mod.funcs.len; fi++ {
+		g.gen_func(g.mod.funcs[fi])
 	}
 
 	// Add return-zero stub for unresolved symbols.
@@ -249,8 +253,16 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
 	g.alloca_ptr_cache = map[int]u8{}
-	g.block_offsets = map[int]int{}
-	g.pending_labels = map[int][]int{}
+	g.block_offsets = []int{len: g.mod.blocks.len}
+	// Initialize to -1 manually (init: -1 may not work on all backends)
+	for bo_idx := 0; bo_idx < g.block_offsets.len; bo_idx++ {
+		g.block_offsets[bo_idx] = -1
+	}
+	g.pending_label_blks = []int{}
+	g.pending_label_offs = []int{}
+	g.func_count++
+	g.total_pending = 0
+	g.total_resolved = 0
 	g.reg_map = map[int]int{}
 	g.used_regs = []int{}
 	g.string_literal_offsets = map[int]int{}
@@ -377,6 +389,48 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	trace_skip_dead := g.env_trace_skip_dead.len > 0
 		&& (g.env_trace_skip_dead == '*' || func.name == g.env_trace_skip_dead)
+
+	// Diagnostic: dump SSA instructions for const init functions
+	if func.name.contains('__v_init_consts_builtin') {
+		mut n_stores := 0
+		mut n_bitcast_nop := 0
+		mut n_total := 0
+		eprintln('=== MIR DUMP: ${func.name} (${func.blocks.len} blocks) ===')
+		for dblk_id in func.blocks {
+			dblk := g.mod.blocks[dblk_id]
+			eprintln('  block ${dblk_id} (${dblk.name}): ${dblk.instrs.len} instrs')
+			for dval_id in dblk.instrs {
+				dval := g.mod.values[dval_id]
+				n_total += 1
+				if dval.kind != .instruction {
+					eprintln('    v${dval_id}: [non-instr kind=${dval.kind} name=${dval.name}]')
+					continue
+				}
+				dinstr := g.mod.instrs[dval.index]
+				if dinstr.op == .store {
+					n_stores += 1
+				}
+				if dinstr.op == .bitcast && dinstr.operands.len == 0 {
+					n_bitcast_nop += 1
+				}
+				mut ops_str := ''
+				for oi, op_id in dinstr.operands {
+					if op_id < g.mod.values.len {
+						op_v := g.mod.values[op_id]
+						ops_str += '${op_id}(${op_v.kind}:${op_v.name})'
+					} else {
+						ops_str += '${op_id}(OUT_OF_BOUNDS)'
+					}
+					if oi < dinstr.operands.len - 1 {
+						ops_str += ', '
+					}
+				}
+				eprintln('    v${dval_id}: ${dinstr.op} [${ops_str}] typ=${dval.typ}')
+			}
+		}
+		eprintln('=== SUMMARY: total=${n_total} stores=${n_stores} nop_bitcasts=${n_bitcast_nop} ===')
+		eprintln('=== END MIR DUMP ===')
+	}
 
 	for i, blk_id in func.blocks {
 		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
@@ -791,36 +845,65 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		g.load_val_to_reg(8, lit_id)
 	}
 
-	for i, blk_id in func.blocks {
-		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
+	for i := 0; i < func.blocks.len; i++ {
+		blk_id := int(func.blocks[i])
+		if func.name == 'builtin__fast_string_eq' && i == 0 {
+			// Dump raw struct bytes to find actual offset of blocks field
+			struct_ptr := u64(&func)
+			eprintln('  &func=0x${struct_ptr.hex()} sizeof=${sizeof(mir.Function)}')
+			// Dump first 120 bytes of struct in 8-byte chunks
+			for off := 0; off < 120; off += 8 {
+				val := unsafe { *(&u64(u64(&func) + u64(off))) }
+				eprintln('  struct[${off}..${off + 8}] = 0x${val.hex()}')
+			}
+			// Print blocks field access info
+			eprintln('  func.blocks.data=0x${u64(func.blocks.data).hex()} .len=${func.blocks.len} .str=${func.blocks}')
+		}
+		g.next_blk = if i + 1 < func.blocks.len { int(func.blocks[i + 1]) } else { -1 }
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
 
-		if offsets := g.pending_labels[blk_id] {
-			for off in offsets {
-				target := g.block_offsets[blk_id]
-				rel := (target - off) / 4
-				abs_off := g.curr_offset + off
-				instr := g.read_u32(abs_off)
-
-				mut new_instr := u32(0)
-				// Check for CBNZ (0xB5...) vs B (0x14...) vs B.cond (0x54...)
-				if (instr & 0xFF000000) == 0xB5000000 {
-					// CBNZ
-					new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
-				} else if (instr & 0xFC000000) == 0x14000000 {
-					// B imm26
-					new_instr = (instr & 0xFC000000) | (u32(rel) & 0x3FFFFFF)
-				} else {
-					// B.cond
-					new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
-				}
-				g.write_u32(abs_off, new_instr)
+		for pi := 0; pi < g.pending_label_blks.len; pi++ {
+			if g.pending_label_blks[pi] != blk_id {
+				continue
 			}
+			off := g.pending_label_offs[pi]
+			target := g.block_offsets[blk_id]
+			rel := (target - off) / 4
+			abs_off := g.curr_offset + off
+			instr := g.read_u32(abs_off)
+
+			mut new_instr := u32(0)
+			// Check for CBNZ (0xB5...) vs B (0x14...) vs B.cond (0x54...)
+			if (instr & 0xFF000000) == 0xB5000000 {
+				// CBNZ
+				new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
+			} else if (instr & 0xFC000000) == 0x14000000 {
+				// B imm26
+				new_instr = (instr & 0xFC000000) | (u32(rel) & 0x3FFFFFF)
+			} else {
+				// B.cond
+				new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
+			}
+			g.write_u32(abs_off, new_instr)
+			g.total_resolved++
 		}
 
 		for val_id in blk.instrs {
 			g.gen_instr(val_id)
+		}
+	}
+	unresolved := g.total_pending - g.total_resolved
+	if unresolved > 0 {
+		eprintln('BRANCH: fn=${func.name} pending=${g.total_pending} resolved=${g.total_resolved} unresolved=${unresolved} pending_blks_len=${g.pending_label_blks.len}')
+		if func.name == 'builtin__fast_string_eq' {
+			eprintln('  func.blocks: ${func.blocks}')
+			for pi := 0; pi < g.pending_label_blks.len; pi++ {
+				eprintln('  pending[${pi}]: blk=${g.pending_label_blks[pi]} off=${g.pending_label_offs[pi]}')
+			}
+			for bi, bid in func.blocks {
+				eprintln('  block_offsets[${bid}] = ${g.block_offsets[bid]}')
+			}
 		}
 	}
 }
@@ -2635,7 +2718,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Fallthrough optimization: Don't jump if target is next block
 			if target_idx != g.next_blk {
-				if off := g.block_offsets[target_idx] {
+				if target_idx >= 0 && target_idx < g.block_offsets.len
+					&& g.block_offsets[target_idx] != -1 {
+					off := g.block_offsets[target_idx]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					g.emit(asm_b(rel))
 				} else {
@@ -2671,7 +2756,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Fallthrough optimization for False block
 			// If false block is next, we only need CBNZ to true block
 
-			if off := g.block_offsets[true_blk] {
+			if true_blk >= 0 && true_blk < g.block_offsets.len && g.block_offsets[true_blk] != -1 {
+				off := g.block_offsets[true_blk]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 				if rel >= -262144 && rel < 262144 {
 					g.emit(asm_cbnz(Reg(8), rel))
@@ -2690,7 +2776,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if false_blk != g.next_blk {
-				if off := g.block_offsets[false_blk] {
+				if false_blk >= 0 && false_blk < g.block_offsets.len
+					&& g.block_offsets[false_blk] != -1 {
+					off := g.block_offsets[false_blk]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					g.emit(asm_b(rel))
 				} else {
@@ -2712,7 +2800,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 				target_blk_val := instr.operands[i + 1]
 				target_blk_idx := g.mod.values[target_blk_val].index
 
-				if off := g.block_offsets[target_blk_idx] {
+				if target_blk_idx >= 0 && target_blk_idx < g.block_offsets.len
+					&& g.block_offsets[target_blk_idx] != -1 {
+					off := g.block_offsets[target_blk_idx]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					if rel >= -262144 && rel < 262144 {
 						g.emit(asm_b_cond(cond_eq, rel))
@@ -2732,7 +2822,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Default (Unconditional Branch)
 			def_blk_val := instr.operands[1]
 			def_idx := g.mod.values[def_blk_val].index
-			if off := g.block_offsets[def_idx] {
+			if def_idx >= 0 && def_idx < g.block_offsets.len && g.block_offsets[def_idx] != -1 {
+				off := g.block_offsets[def_idx]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 				g.emit(asm_b(rel))
 			} else {
@@ -5101,10 +5192,13 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 	if cached := g.const_cache[val_id] {
 		return cached
 	}
-	// Parse as u64 first to handle hex values with bit 63 set (e.g., 0x800fffffffffffff)
-	// that would overflow i64 parsing. Then reinterpret as i64 to preserve the bit pattern.
+	// Parse as u64 first to handle values with bit 63 set that would overflow i64 parsing.
+	// Then reinterpret as i64 to preserve the bit pattern.
 	name := g.mod.values[val_id].name
 	int_val := if name.len > 2 && name[0] == `0` && (name[1] == `x` || name[1] == `X`) {
+		i64(name.u64())
+	} else if name.len > 0 && name[0] != `-` {
+		// Parse unsigned to handle values > i64.max (e.g., 14695981039346656037)
 		i64(name.u64())
 	} else {
 		name.i64()
@@ -5803,15 +5897,21 @@ fn (mut g Gen) emit(code u32) {
 
 fn (mut g Gen) record_pending_label(blk int) {
 	off := g.macho.text_data.len - g.curr_offset
-	g.pending_labels[blk] << off
+	g.pending_label_blks << blk
+	g.pending_label_offs << off
+	g.total_pending++
 }
 
 fn (g Gen) read_u32(off int) u32 {
-	return binary.little_endian_u32(g.macho.text_data[off..off + 4])
+	return u32(g.macho.text_data[off]) | (u32(g.macho.text_data[off + 1]) << 8) | (u32(g.macho.text_data[
+		off + 2]) << 16) | (u32(g.macho.text_data[off + 3]) << 24)
 }
 
 fn (mut g Gen) write_u32(off int, v u32) {
-	binary.little_endian_put_u32(mut g.macho.text_data[off..off + 4], v)
+	g.macho.text_data[off] = u8(v)
+	g.macho.text_data[off + 1] = u8(v >> 8)
+	g.macho.text_data[off + 2] = u8(v >> 16)
+	g.macho.text_data[off + 3] = u8(v >> 24)
 }
 
 pub fn (mut g Gen) write_file(path string) {

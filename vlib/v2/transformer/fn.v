@@ -562,8 +562,24 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	// Detect @[live] functions for hot code reloading (native backends only)
 	mut live_fn_detected := false
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
-		if decl.attributes.has('live') && !decl.is_method {
-			t.live_fns << decl.name
+		if decl.attributes.has('live') {
+			mangled := if decl.is_method {
+				recv_name := t.get_receiver_type_name(decl.receiver.typ)
+				'${recv_name}__${decl.name}'
+			} else {
+				decl.name
+			}
+			recv_type := if decl.is_method {
+				t.get_receiver_type_name(decl.receiver.typ)
+			} else {
+				''
+			}
+			t.live_fns << LiveFn{
+				decl_name:    decl.name
+				mangled_name: mangled
+				is_method:    decl.is_method
+				recv_type:    recv_type
+			}
 			if t.cur_file_name.len > 0 {
 				t.live_source_file = t.cur_file_name
 			}

@@ -181,6 +181,16 @@ fn wrap_option_none() Value {
 	}
 }
 
+fn is_option_value(value Value) bool {
+	return value is StructValue && 'state' in value.fields && 'err' in value.fields
+		&& 'data' in value.fields
+}
+
+fn is_result_value(value Value) bool {
+	return value is StructValue && 'is_error' in value.fields && 'err' in value.fields
+		&& 'data' in value.fields
+}
+
 // Eval interprets the v2 AST directly for a limited subset of V.
 pub struct Eval {
 pub mut:
@@ -193,6 +203,8 @@ mut:
 	consts             map[string]map[string]ConstEntry
 	sum_types          map[string]SumTypeInfo
 	struct_field_types map[string]map[string]map[string]ast.Expr
+	struct_embeds      map[string]map[string][]string
+	type_kinds         map[string]map[string]string
 	type_names         map[string]map[string]bool
 	file_import_alias  map[string]map[string]string
 	modules            map[string]bool
@@ -254,6 +266,8 @@ fn (mut e Eval) reset() {
 	e.consts = map[string]map[string]ConstEntry{}
 	e.sum_types = map[string]SumTypeInfo{}
 	e.struct_field_types = map[string]map[string]map[string]ast.Expr{}
+	e.struct_embeds = map[string]map[string][]string{}
+	e.type_kinds = map[string]map[string]string{}
 	e.type_names = map[string]map[string]bool{}
 	e.file_import_alias = map[string]map[string]string{}
 	e.modules = map[string]bool{}
@@ -282,6 +296,12 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 		if file.mod !in e.struct_field_types {
 			e.struct_field_types[file.mod] = map[string]map[string]ast.Expr{}
 		}
+		if file.mod !in e.struct_embeds {
+			e.struct_embeds[file.mod] = map[string][]string{}
+		}
+		if file.mod !in e.type_kinds {
+			e.type_kinds[file.mod] = map[string]string{}
+		}
 		for stmt in file.stmts {
 			match stmt {
 				ast.ConstDecl {
@@ -300,7 +320,9 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 				}
 				ast.EnumDecl {
 					e.type_names[file.mod][stmt.name] = true
-					mut next_value := i64(0)
+					e.type_kinds[file.mod][stmt.name] = 'Enum'
+					is_flag := stmt.attributes.has('flag')
+					mut next_value := if is_flag { i64(1) } else { i64(0) }
 					for field in stmt.fields {
 						key := field.name
 						value := if field.value is ast.EmptyExpr {
@@ -317,11 +339,16 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 							cached:    true
 							value:     int_value
 						}
-						next_value = int_value + 1
+						next_value = if is_flag {
+							if int_value <= 0 { i64(1) } else { int_value * 2 }
+						} else {
+							int_value + 1
+						}
 					}
 				}
 				ast.InterfaceDecl {
 					e.type_names[file.mod][stmt.name] = true
+					e.type_kinds[file.mod][stmt.name] = 'Interface'
 				}
 				ast.FnDecl {
 					e.functions[file.mod][stmt.name] = FunctionDef{
@@ -362,16 +389,21 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 				}
 				ast.StructDecl {
 					e.type_names[file.mod][stmt.name] = true
+					e.type_kinds[file.mod][stmt.name] = 'Struct'
 					mut field_types := map[string]ast.Expr{}
 					for field in stmt.fields {
 						field_types[field.name] = field.typ
 					}
 					e.struct_field_types[file.mod][stmt.name] = field_types.clone()
+					e.struct_embeds[file.mod][stmt.name] = stmt.embedded.map(e.type_expr_name(it))
 				}
 				ast.TypeDecl {
 					e.type_names[file.mod][stmt.name] = true
 					if stmt.variants.len > 0 {
+						e.type_kinds[file.mod][stmt.name] = 'SumType'
 						e.register_sum_type(file.mod, stmt)
+					} else {
+						e.type_kinds[file.mod][stmt.name] = 'Alias'
 					}
 				}
 				else {}
@@ -481,10 +513,20 @@ fn (mut e Eval) register_sum_type(module_name string, decl ast.TypeDecl) {
 	}
 }
 
+fn is_composite_sumtype_lookup_name(name string) bool {
+	return name.starts_with('[]') || name.starts_with('map[')
+		|| (name.starts_with('[') && name.contains(']')) || name.starts_with('?')
+		|| name.starts_with('!') || name.starts_with('chan ')
+		|| name.starts_with('thread ')
+}
+
 fn (e &Eval) sum_type_info(type_name string) ?SumTypeInfo {
 	trimmed := type_name.trim_left('&').trim_right('*')
 	if trimmed in e.sum_types {
 		return e.sum_types[trimmed]
+	}
+	if is_composite_sumtype_lookup_name(trimmed) {
+		return none
 	}
 	if trimmed.contains('.') {
 		short_name := trimmed.all_after_last('.')
@@ -517,6 +559,89 @@ fn (e &Eval) lookup_sumtype_variant_tag(info SumTypeInfo, variant_name string) ?
 		}
 	}
 	return none
+}
+
+fn builtin_type_kind_alias(name string) ?string {
+	trimmed := name.all_after_last('.')
+	return match trimmed {
+		'bool', 'f32', 'f64', 'float_literal', 'i8', 'i16', 'i32', 'int', 'i64', 'int_literal',
+		'u8', 'byte', 'u16', 'u32', 'u64' {
+			'Primitive'
+		}
+		'byteptr', 'charptr', 'voidptr' {
+			'Alias'
+		}
+		'char' {
+			'Char'
+		}
+		'isize' {
+			'ISize'
+		}
+		'nil' {
+			'Nil'
+		}
+		'none' {
+			'None'
+		}
+		'rune' {
+			'Rune'
+		}
+		'string' {
+			'String'
+		}
+		'usize' {
+			'USize'
+		}
+		'void' {
+			'Void'
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn (e &Eval) registered_type_kind(type_name string) ?string {
+	for alias in struct_field_lookup_candidates(type_name) {
+		mut module_name := ''
+		mut short_type_name := alias
+		if alias.contains('.') {
+			module_name = alias.all_before_last('.')
+			short_type_name = alias.all_after_last('.')
+		}
+		if module_name != '' {
+			if module_kinds := e.type_kinds[module_name] {
+				if short_type_name in module_kinds {
+					return module_kinds[short_type_name] or { return none }
+				}
+			}
+			continue
+		}
+		current_module := e.current_module_name()
+		if module_kinds := e.type_kinds[current_module] {
+			if short_type_name in module_kinds {
+				return module_kinds[short_type_name] or { return none }
+			}
+		}
+		for module_kinds in e.type_kinds.values() {
+			if short_type_name in module_kinds {
+				return module_kinds[short_type_name] or { return none }
+			}
+		}
+	}
+	return none
+}
+
+fn (e &Eval) type_value_variant_aliases(info SumTypeInfo, value TypeValue) []string {
+	mut aliases := e.type_name_aliases(info.module_name, value.name)
+	if type_kind := e.registered_type_kind(value.name) {
+		add_type_name_alias(mut aliases, type_kind)
+	}
+	if builtin_kind := builtin_type_kind_alias(value.name) {
+		add_type_name_alias(mut aliases, builtin_kind)
+	}
+	add_type_name_alias(mut aliases, 'Type')
+	return aliases
 }
 
 fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
@@ -572,7 +697,11 @@ fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
 			}
 		}
 		TypeValue {
-			return e.lookup_sumtype_variant_tag(info, 'Type')
+			for alias in e.type_value_variant_aliases(info, value) {
+				if alias in info.variant_tags {
+					return info.variant_tags[alias]
+				}
+			}
 		}
 		else {}
 	}
@@ -873,16 +1002,24 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 	} else if signal.kind != .normal {
 		return error('v2.eval: unexpected `${signal.kind}` escaped `${module_name}.${fn_name}`')
 	}
-	if returned_values.len == 1 && def.decl.typ.return_type !is ast.EmptyExpr {
-		returned_values[0] = e.adapt_value_to_type(returned_values[0], def.decl.typ.return_type)
-	}
 	if def.decl.typ.return_type is ast.Type {
 		match def.decl.typ.return_type {
 			ast.OptionType {
-				payload := if returned_values.len == 0 {
-					void_value()
-				} else if returned_values.len == 1 {
-					returned_values[0]
+				if returned_values.len == 1 && is_option_value(returned_values[0]) {
+					return CallResult{
+						values:   [returned_values[0]]
+						mut_args: map[int]Value{}
+					}
+				}
+				if returned_values.len == 0
+					|| (returned_values.len == 1 && returned_values[0] is VoidValue) {
+					return CallResult{
+						values:   [wrap_option_none()]
+						mut_args: map[int]Value{}
+					}
+				}
+				payload := if returned_values.len == 1 {
+					e.adapt_value_to_type(returned_values[0], def.decl.typ.return_type.base_type)
 				} else {
 					Value(TupleValue{
 						values: returned_values
@@ -894,10 +1031,16 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 				}
 			}
 			ast.ResultType {
+				if returned_values.len == 1 && is_result_value(returned_values[0]) {
+					return CallResult{
+						values:   [returned_values[0]]
+						mut_args: map[int]Value{}
+					}
+				}
 				payload := if returned_values.len == 0 {
 					void_value()
 				} else if returned_values.len == 1 {
-					returned_values[0]
+					e.adapt_value_to_type(returned_values[0], def.decl.typ.return_type.base_type)
 				} else {
 					Value(TupleValue{
 						values: returned_values
@@ -910,6 +1053,9 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 			}
 			else {}
 		}
+	}
+	if returned_values.len == 1 && def.decl.typ.return_type !is ast.EmptyExpr {
+		returned_values[0] = e.adapt_value_to_type(returned_values[0], def.decl.typ.return_type)
 	}
 	mut result := CallResult{
 		values:   returned_values
@@ -1021,8 +1167,80 @@ fn (e &Eval) annotate_value_for_type(value Value, typ ast.Expr) Value {
 	}
 }
 
+fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
+	if type_name == '' {
+		return value
+	}
+	if type_name.starts_with('?') {
+		if is_option_value(value) {
+			return value
+		}
+		if value is VoidValue {
+			return wrap_option_none()
+		}
+		return wrap_option_ok(e.adapt_value_to_type_name(value, type_name[1..]))
+	}
+	if type_name.starts_with('!') {
+		if is_result_value(value) {
+			return value
+		}
+		return wrap_result_ok(e.adapt_value_to_type_name(value, type_name[1..]))
+	}
+	if type_name.starts_with('[]') && value is ArrayValue {
+		array_value := value as ArrayValue
+		return ArrayValue{
+			elem_type_name: e.qualify_type_name(e.current_module_name(), type_name[2..])
+			values:         array_value.values
+		}
+	}
+	if e.is_sum_type_name(type_name) {
+		return e.cast_value(value, type_name) or { value }
+	}
+	match type_name {
+		'bool' {
+			return e.value_as_bool(value) or { return value }
+		}
+		'byte', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'u8', 'u16', 'u32',
+		'u64', 'usize' {
+			return e.value_as_int(value) or { return value }
+		}
+		'f32', 'f64' {
+			return e.value_as_f64(value) or { return value }
+		}
+		'string' {
+			return e.value_string(value)
+		}
+		else {
+			if value is StructValue {
+				return e.cast_value(value, type_name) or { Value(value) }
+			}
+			return value
+		}
+	}
+}
+
 fn (e &Eval) adapt_value_to_type(value Value, typ ast.Expr) Value {
 	adapted := e.annotate_value_for_type(value, typ)
+	if typ is ast.Type {
+		match typ {
+			ast.OptionType {
+				if is_option_value(adapted) {
+					return adapted
+				}
+				if adapted is VoidValue {
+					return wrap_option_none()
+				}
+				return wrap_option_ok(e.adapt_value_to_type(adapted, typ.base_type))
+			}
+			ast.ResultType {
+				if is_result_value(adapted) {
+					return adapted
+				}
+				return wrap_result_ok(e.adapt_value_to_type(adapted, typ.base_type))
+			}
+			else {}
+		}
+	}
 	target_name := e.type_expr_name(typ)
 	if target_name != '' && e.is_sum_type_name(target_name) {
 		return e.cast_value(adapted, target_name) or { adapted }
@@ -1056,6 +1274,43 @@ fn (e &Eval) inferred_sumtype_tag(value Value) ?int {
 	}
 	for _, tag in matches {
 		return tag
+	}
+	return none
+}
+
+fn (mut e Eval) contextual_sumtype_tag(target_expr ast.Expr, value Value) ?int {
+	match target_expr {
+		ast.SelectorExpr {
+			base := e.eval_expr(target_expr.lhs) or { return none }
+			if base is StructValue {
+				if field_type := e.lookup_struct_field_type(base.type_name, target_expr.rhs.name) {
+					target_name := e.type_expr_name(field_type)
+					if info := e.sum_type_info(target_name) {
+						return e.sumtype_tag_from_value(info, value)
+					}
+				}
+			}
+		}
+		ast.IndexExpr {
+			container := e.eval_expr(target_expr.lhs) or { return none }
+			match container {
+				ArrayValue {
+					if info := e.sum_type_info(container.elem_type_name) {
+						return e.sumtype_tag_from_value(info, value)
+					}
+				}
+				MapValue {
+					if container.default_value is StructValue {
+						default_value := container.default_value as StructValue
+						if info := e.sum_type_info(default_value.type_name) {
+							return e.sumtype_tag_from_value(info, value)
+						}
+					}
+				}
+				else {}
+			}
+		}
+		else {}
 	}
 	return none
 }
@@ -1176,11 +1431,275 @@ fn (e &Eval) maybe_call_byte_builtin(module_name string, fn_name string, args []
 	return MaybeValue{}
 }
 
+fn is_semantically_empty_value(value Value) bool {
+	return match value {
+		VoidValue {
+			true
+		}
+		StructValue {
+			for field_value in value.fields.values() {
+				if !is_semantically_empty_value(field_value) {
+					return false
+				}
+			}
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (e &Eval) type_sum_data_is_nil(value Value) bool {
+	match value {
+		StructValue {
+			if '_data' !in value.fields {
+				return false
+			}
+			data_value := value.fields['_data'] or { return false }
+			return is_semantically_empty_value(data_value)
+		}
+		TypeValue {
+			return false
+		}
+		else {
+			return is_semantically_empty_value(value)
+		}
+	}
+}
+
+fn has_flag_bit(bits i64, flag i64) bool {
+	return (bits & flag) != 0
+}
+
+fn (e &Eval) primitive_type_name(value StructValue) string {
+	props := e.value_as_int(value.fields['props'] or { Value(i64(0)) }) or { 0 }
+	size := e.value_as_int(value.fields['size'] or { Value(i64(0)) }) or { 0 }
+	if has_flag_bit(props, 1) {
+		return 'bool'
+	}
+	if has_flag_bit(props, 16) {
+		if has_flag_bit(props, 4) {
+			return 'int_literal'
+		}
+		if has_flag_bit(props, 2) {
+			return 'float_literal'
+		}
+	}
+	if has_flag_bit(props, 2) {
+		return if size == 32 { 'f32' } else { 'f64' }
+	}
+	if has_flag_bit(props, 4) {
+		if has_flag_bit(props, 8) {
+			return match size {
+				8 { 'u8' }
+				16 { 'u16' }
+				32 { 'u32' }
+				64 { 'u64' }
+				else { 'u64' }
+			}
+		}
+		return match size {
+			8 { 'i8' }
+			16 { 'i16' }
+			32 { 'i32' }
+			64 { 'i64' }
+			else { 'int' }
+		}
+	}
+	return 'int'
+}
+
+fn (e &Eval) option_payload_type_name(value Value) string {
+	if !is_option_value(value) || value !is StructValue {
+		return ''
+	}
+	option_value := value as StructValue
+	state := e.value_as_int(option_value.fields['state'] or { Value(i64(1)) }) or { 1 }
+	if state != 0 {
+		return ''
+	}
+	return e.types_value_name(option_value.fields['data'] or { return '' })
+}
+
+fn (e &Eval) tuple_type_name(value StructValue) string {
+	if types_value := value.fields['types'] {
+		if types_value is ArrayValue {
+			return '(' + types_value.values.map(e.types_value_name(it)).join(',') + ')'
+		}
+	}
+	return '()'
+}
+
+fn (e &Eval) sumtype_payload_name(value StructValue) string {
+	data_value := value.fields['_data'] or { return 'void' }
+	if data_value is StructValue {
+		data_struct := data_value as StructValue
+		if tag_value := value.fields['_tag'] {
+			tag := int(e.value_as_int(tag_value) or { -1 })
+			if info := e.sum_type_info(value.type_name) {
+				if field_aliases := info.tag_field_aliases[tag] {
+					for field_alias in field_aliases {
+						if payload := data_struct.fields[field_alias] {
+							return e.types_value_name(payload)
+						}
+					}
+				}
+			}
+		}
+		for payload in data_struct.fields.values() {
+			if !is_semantically_empty_value(payload) {
+				return e.types_value_name(payload)
+			}
+		}
+		for payload in data_struct.fields.values() {
+			return e.types_value_name(payload)
+		}
+	}
+	return 'void'
+}
+
+fn (e &Eval) types_value_name(value Value) string {
+	return match value {
+		StructValue {
+			mut short_name := value.type_name.all_after_last('.')
+			if short_name.contains('__') {
+				short_name = short_name.all_after_last('__')
+			}
+			match short_name {
+				'Type' {
+					e.sumtype_payload_name(value)
+				}
+				'Primitive' {
+					e.primitive_type_name(value)
+				}
+				'Alias' {
+					name_value := value.fields['name'] or { Value('') }
+					name := e.value_string(name_value)
+					if name != '' {
+						name
+					} else if base_type := value.fields['base_type'] {
+						e.types_value_name(base_type)
+					} else {
+						'alias'
+					}
+				}
+				'Array' {
+					elem_type := value.fields['elem_type'] or { return '[]void' }
+					'[]' + e.types_value_name(elem_type)
+				}
+				'ArrayFixed' {
+					len_value := value.fields['len'] or { return '[0]void' }
+					elem_type := value.fields['elem_type'] or { return '[0]void' }
+					'[${e.value_as_int(len_value) or { 0 }}]${e.types_value_name(elem_type)}'
+				}
+				'Channel' {
+					elem_type_name := e.option_payload_type_name(value.fields['elem_type'] or {
+						return 'chan'
+					})
+					if elem_type_name == '' {
+						'chan'
+					} else {
+						'chan ${elem_type_name}'
+					}
+				}
+				'Char' {
+					'char'
+				}
+				'Enum', 'Interface', 'Struct', 'SumType' {
+					e.value_string(value.fields['name'] or { Value(short_name.to_lower()) })
+				}
+				'FnType' {
+					'fn'
+				}
+				'ISize' {
+					'isize'
+				}
+				'Map' {
+					key_type := value.fields['key_type'] or { return 'map[void]void' }
+					value_type := value.fields['value_type'] or { return 'map[void]void' }
+					'map[${e.types_value_name(key_type)}]${e.types_value_name(value_type)}'
+				}
+				'None' {
+					'none'
+				}
+				'OptionType' {
+					base_type := value.fields['base_type'] or { return '?void' }
+					'?' + e.types_value_name(base_type)
+				}
+				'Pointer' {
+					base_type := value.fields['base_type'] or { return '&void' }
+					'&' + e.types_value_name(base_type)
+				}
+				'ResultType' {
+					base_type := value.fields['base_type'] or { return '!void' }
+					'!' + e.types_value_name(base_type)
+				}
+				'Rune' {
+					'rune'
+				}
+				'String' {
+					'string'
+				}
+				'Thread' {
+					elem_type_name := e.option_payload_type_name(value.fields['elem_type'] or {
+						return 'thread'
+					})
+					if elem_type_name == '' {
+						'thread'
+					} else {
+						'thread ${elem_type_name}'
+					}
+				}
+				'Tuple' {
+					e.tuple_type_name(value)
+				}
+				'USize' {
+					'usize'
+				}
+				'Void' {
+					'void'
+				}
+				'Nil' {
+					'nil'
+				}
+				else {
+					e.value_string(value.fields['name'] or { Value(short_name) })
+				}
+			}
+		}
+		TypeValue {
+			mut short_name := value.name.all_after_last('.')
+			if short_name.contains('__') {
+				short_name = short_name.all_after_last('__')
+			}
+			short_name
+		}
+		else {
+			e.runtime_type_name(value)
+		}
+	}
+}
+
 fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, args []Value) MaybeValue {
 	if fn_name == 'free' || fn_name.ends_with('__free') {
 		return MaybeValue{
 			found: true
 			value: void_value()
+		}
+	}
+	if fn_name == 'type_data_ptr_is_nil' || fn_name.ends_with('__type_data_ptr_is_nil')
+		|| fn_name == 'type_has_null_data' || fn_name.ends_with('__type_has_null_data') {
+		return MaybeValue{
+			found: true
+			value: e.type_sum_data_is_nil(safe_arg(args, 0))
+		}
+	}
+	if module_name == 'types'
+		&& (fn_name == 'type_name' || fn_name == 'Type__name' || fn_name.ends_with('Type__name')) {
+		return MaybeValue{
+			found: true
+			value: e.types_value_name(safe_arg(args, 0))
 		}
 	}
 	if fn_name == 'map__get_check' || fn_name.ends_with('map__get_check')
@@ -1655,6 +2174,18 @@ fn (e &Eval) clone_array_to_depth(array_value ArrayValue, depth int) ArrayValue 
 fn (mut e Eval) maybe_call_generated_array_helper(fn_name string, args []Value) ?MaybeValue {
 	if args.len > 0 && args[0] is ArrayValue {
 		array_value := args[0] as ArrayValue
+		if fn_name == 'array__first' || fn_name.ends_with('array__first') {
+			return MaybeValue{
+				found: true
+				value: e.array_first_value(array_value) or { return none }
+			}
+		}
+		if fn_name == 'array__last' || fn_name.ends_with('array__last') {
+			return MaybeValue{
+				found: true
+				value: e.array_last_value(array_value) or { return none }
+			}
+		}
 		if fn_name == 'array__clone' || fn_name.ends_with('array__clone') {
 			return MaybeValue{
 				found: true
@@ -1674,6 +2205,18 @@ fn (mut e Eval) maybe_call_generated_array_helper(fn_name string, args []Value) 
 		return none
 	}
 	array_value := args[0] as ArrayValue
+	if fn_name.ends_with('_first') {
+		return MaybeValue{
+			found: true
+			value: e.array_first_value(array_value) or { return none }
+		}
+	}
+	if fn_name.ends_with('_last') {
+		return MaybeValue{
+			found: true
+			value: e.array_last_value(array_value) or { return none }
+		}
+	}
 	if fn_name.ends_with('_contains') && args.len >= 2 {
 		return MaybeValue{
 			found: true
@@ -2069,12 +2612,19 @@ fn (mut e Eval) update_index_target(expr ast.IndexExpr, value Value) ! {
 				return error('v2.eval: array index out of bounds')
 			}
 			mut updated := container
-			updated.values[index] = value
+			assigned_value := e.adapt_value_to_type_name(value, updated.elem_type_name)
+			updated.values[index] = assigned_value
 			e.update_target(expr.lhs, updated)!
 			return
 		}
 		MapValue {
-			e.update_target(expr.lhs, e.map_set_value(container, index_value, value))!
+			expected_type_name := if container.default_value is VoidValue {
+				''
+			} else {
+				e.runtime_type_name(container.default_value)
+			}
+			assigned_value := e.adapt_value_to_type_name(value, expected_type_name)
+			e.update_target(expr.lhs, e.map_set_value(container, index_value, assigned_value))!
 			return
 		}
 		else {
@@ -2093,7 +2643,11 @@ fn (mut e Eval) update_selector_target(expr ast.SelectorExpr, value Value) ! {
 		}
 		StructValue {
 			mut updated := container
-			updated.fields[expr.rhs.name] = value
+			mut assigned_value := value
+			if field_type := e.lookup_struct_field_type(container.type_name, expr.rhs.name) {
+				assigned_value = e.adapt_value_to_type(value, field_type)
+			}
+			updated.fields[expr.rhs.name] = assigned_value
 			e.update_target(expr.lhs, updated)!
 			return
 		}
@@ -2110,9 +2664,15 @@ fn (mut e Eval) exec_array_append(expr ast.InfixExpr) ! {
 		ArrayValue {
 			mut updated := container
 			if value is ArrayValue && e.should_append_many(container, value) {
-				updated.values << value.values
+				if updated.elem_type_name == '' {
+					updated.values << value.values
+				} else {
+					for item in value.values {
+						updated.values << e.adapt_value_to_type_name(item, updated.elem_type_name)
+					}
+				}
 			} else {
-				updated.values << value
+				updated.values << e.adapt_value_to_type_name(value, updated.elem_type_name)
 			}
 			if updated.elem_type_name == '' {
 				updated.elem_type_name = e.infer_array_elem_type(updated.values)
@@ -2495,6 +3055,12 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 			}
 		}
 		ast.Type {
+			match expr {
+				ast.NilType, ast.NoneType {
+					return void_value()
+				}
+				else {}
+			}
 			return TypeValue{
 				name: e.type_node_name(expr)
 			}
@@ -2766,6 +3332,14 @@ fn (mut e Eval) eval_call_expr(expr ast.CallExpr) !Value {
 		for arg in expr.args {
 			args << e.eval_expr(arg)!
 		}
+		if target := e.resolve_method_target(receiver, selector.rhs.name) {
+			mut method_args := []Value{cap: args.len + 1}
+			method_args << receiver
+			method_args << args
+			result := e.call_function(target.module_name, target.fn_name, method_args)!
+			e.writeback_method_mut_args(selector.lhs, expr.args, result)!
+			return call_result_value(result)
+		}
 		return e.call_value_method(receiver, selector.rhs.name, args)
 	}
 	if expr.lhs is ast.Ident {
@@ -2792,6 +3366,21 @@ fn (mut e Eval) eval_call_expr(expr ast.CallExpr) !Value {
 		return call_result_value(result)
 	}
 	return error('v2.eval: unsupported call target `${expr.lhs.type_name()}`')
+}
+
+fn (mut e Eval) writeback_method_mut_args(receiver_expr ast.Expr, arg_exprs []ast.Expr, result CallResult) ! {
+	for idx, value in result.mut_args {
+		if idx == 0 {
+			if can_update_target(receiver_expr) {
+				e.update_target(receiver_expr, value)!
+			}
+			continue
+		}
+		arg_idx := idx - 1
+		if arg_idx >= 0 && arg_idx < arg_exprs.len && can_update_target(arg_exprs[arg_idx]) {
+			e.update_target(arg_exprs[arg_idx], value)!
+		}
+	}
 }
 
 fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value {
@@ -2992,6 +3581,40 @@ fn builder_target_name(expr ast.Expr) ?string {
 			}
 		}
 		else {}
+	}
+	return none
+}
+
+fn receiver_method_type_candidates(receiver Value) []string {
+	return match receiver {
+		StructValue {
+			struct_field_lookup_candidates(receiver.type_name)
+		}
+		TypeValue {
+			struct_field_lookup_candidates(receiver.name)
+		}
+		else {
+			[]string{}
+		}
+	}
+}
+
+fn (e &Eval) resolve_method_target(receiver Value, method_name string) ?MaybeFunctionTarget {
+	candidates := receiver_method_type_candidates(receiver)
+	if candidates.len == 0 {
+		return none
+	}
+	for module_name, functions in e.functions {
+		for candidate in candidates {
+			key := '${candidate}__${method_name}'
+			if key in functions {
+				return MaybeFunctionTarget{
+					found:       true
+					module_name: module_name
+					fn_name:     key
+				}
+			}
+		}
 	}
 	return none
 }
@@ -3479,6 +4102,9 @@ fn (mut e Eval) eval_prefix_expr(expr ast.PrefixExpr) !Value {
 		.amp, .mul {
 			return value
 		}
+		.bit_not {
+			return ~e.value_as_int(value)!
+		}
 		.minus {
 			if value is f64 {
 				f := -value
@@ -3504,6 +4130,16 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 		return error('v2.eval: enum shorthand `${expr.rhs.name}` is not supported yet')
 	}
 	left := e.eval_expr(expr.lhs)!
+	if expr.rhs.name == '_tag' {
+		if tag := e.contextual_sumtype_tag(expr.lhs, left) {
+			return i64(tag)
+		}
+	}
+	if expr.rhs.name == '_data' {
+		if _ := e.contextual_sumtype_tag(expr.lhs, left) {
+			return left
+		}
+	}
 	match left {
 		ModuleValue {
 			prop := e.module_property(left.name, expr.rhs.name)
@@ -3585,6 +4221,11 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 					return error('v2.eval: unknown struct field `${expr.rhs.name}` on `${left.type_name}` in `${e.current_function_label()}` stack `${e.call_stack_trace()}`')
 				}
 			}
+			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name,
+				0)
+			{
+				return embedded_value
+			}
 			if field_type := e.lookup_struct_field_type(left.type_name, expr.rhs.name) {
 				return e.zero_value_for_type_expr(field_type)
 			}
@@ -3642,7 +4283,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 		}
 		else {}
 	}
-	return error('v2.eval: unsupported selector `${expr.rhs.name}` on `${e.runtime_type_name(left)}` in `${e.current_function_label()}`')
+	return error('v2.eval: unsupported selector `${expr.rhs.name}` on `${e.runtime_type_name(left)}` from `${expr.lhs.type_name()}` `${expr.lhs.name()}` in `${e.current_function_label()}`')
 }
 
 fn (e &Eval) type_value_module_name(value TypeValue) string {
@@ -3669,7 +4310,186 @@ fn struct_field_lookup_candidates(type_name string) []string {
 	return candidates
 }
 
+fn (e &Eval) qualify_type_name(module_name string, type_name string) string {
+	if module_name == '' || type_name == '' {
+		return type_name
+	}
+	if type_name.starts_with('[]') {
+		return '[]' + e.qualify_type_name(module_name, type_name[2..])
+	}
+	if type_name.starts_with('?') || type_name.starts_with('!') {
+		return type_name[..1] + e.qualify_type_name(module_name, type_name[1..])
+	}
+	if type_name.starts_with('&') {
+		return '&' + e.qualify_type_name(module_name, type_name[1..])
+	}
+	if type_name.starts_with('chan ') {
+		return 'chan ' + e.qualify_type_name(module_name, type_name[5..])
+	}
+	if type_name.starts_with('thread ') {
+		return 'thread ' + e.qualify_type_name(module_name, type_name[7..])
+	}
+	if type_name.starts_with('map[') {
+		inner := type_name[4..]
+		if bracket_idx := inner.index(']') {
+			key_name := inner[..bracket_idx]
+			value_name := inner[bracket_idx + 1..]
+			return 'map[${e.qualify_type_name(module_name, key_name)}]${e.qualify_type_name(module_name,
+				value_name)}'
+		}
+	}
+	if (type_name.starts_with('[') && type_name.contains(']'))
+		|| type_name.contains('.') || type_name.contains('__')
+		|| e.is_builtin_type_name(type_name) || type_name in ['nil', 'none'] {
+		return type_name
+	}
+	if e.has_type_name(module_name, type_name) {
+		return '${module_name}.${type_name}'
+	}
+	return type_name
+}
+
+fn (e &Eval) qualify_type_expr(module_name string, expr ast.Expr) ast.Expr {
+	return match expr {
+		ast.GenericArgs {
+			ast.Expr(ast.GenericArgs{
+				lhs:  e.qualify_type_expr(module_name, expr.lhs)
+				args: expr.args.map(e.qualify_type_expr(module_name, it))
+				pos:  expr.pos
+			})
+		}
+		ast.Ident {
+			qualified_name := e.qualify_type_name(module_name, expr.name)
+			if qualified_name == expr.name {
+				ast.Expr(expr)
+			} else {
+				parts := qualified_name.split('.')
+				if parts.len == 2 {
+					ast.Expr(ast.SelectorExpr{
+						lhs: ast.Expr(ast.Ident{
+							name: parts[0]
+						})
+						rhs: ast.Ident{
+							name: parts[1]
+						}
+					})
+				} else {
+					ast.Expr(expr)
+				}
+			}
+		}
+		ast.ModifierExpr {
+			ast.Expr(ast.ModifierExpr{
+				kind: expr.kind
+				expr: e.qualify_type_expr(module_name, expr.expr)
+			})
+		}
+		ast.ParenExpr {
+			ast.Expr(ast.ParenExpr{
+				expr: e.qualify_type_expr(module_name, expr.expr)
+			})
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayFixedType {
+					ast.Expr(ast.Type(ast.ArrayFixedType{
+						len:       expr.len
+						elem_type: e.qualify_type_expr(module_name, expr.elem_type)
+					}))
+				}
+				ast.ArrayType {
+					ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: e.qualify_type_expr(module_name, expr.elem_type)
+					}))
+				}
+				ast.ChannelType {
+					ast.Expr(ast.Type(ast.ChannelType{
+						cap:       expr.cap
+						elem_type: e.qualify_type_expr(module_name, expr.elem_type)
+					}))
+				}
+				ast.GenericType {
+					ast.Expr(ast.Type(ast.GenericType{
+						name:   e.qualify_type_expr(module_name, expr.name)
+						params: expr.params.map(e.qualify_type_expr(module_name, it))
+					}))
+				}
+				ast.MapType {
+					ast.Expr(ast.Type(ast.MapType{
+						key_type:   e.qualify_type_expr(module_name, expr.key_type)
+						value_type: e.qualify_type_expr(module_name, expr.value_type)
+					}))
+				}
+				ast.OptionType {
+					ast.Expr(ast.Type(ast.OptionType{
+						base_type: e.qualify_type_expr(module_name, expr.base_type)
+					}))
+				}
+				ast.ResultType {
+					ast.Expr(ast.Type(ast.ResultType{
+						base_type: e.qualify_type_expr(module_name, expr.base_type)
+					}))
+				}
+				ast.ThreadType {
+					ast.Expr(ast.Type(ast.ThreadType{
+						elem_type: e.qualify_type_expr(module_name, expr.elem_type)
+					}))
+				}
+				ast.TupleType {
+					ast.Expr(ast.Type(ast.TupleType{
+						types: expr.types.map(e.qualify_type_expr(module_name, it))
+					}))
+				}
+				else {
+					expr
+				}
+			}
+		}
+		else {
+			expr
+		}
+	}
+}
+
+fn (e &Eval) lookup_struct_embed_types(type_name string) []string {
+	for candidate in struct_field_lookup_candidates(type_name) {
+		mut module_name := ''
+		mut short_type_name := candidate
+		if candidate.contains('.') {
+			module_name = candidate.all_before_last('.')
+			short_type_name = candidate.all_after_last('.')
+		}
+		if module_name != '' {
+			if module_embeds := e.struct_embeds[module_name] {
+				if embed_names := module_embeds[short_type_name] {
+					return embed_names.map(e.qualify_type_name(module_name, it))
+				}
+			}
+			continue
+		}
+		current_module := e.current_module_name()
+		if module_embeds := e.struct_embeds[current_module] {
+			if embed_names := module_embeds[short_type_name] {
+				return embed_names.map(e.qualify_type_name(current_module, it))
+			}
+		}
+		for mod_name, module_embeds in e.struct_embeds {
+			if embed_names := module_embeds[short_type_name] {
+				return embed_names.map(e.qualify_type_name(mod_name, it))
+			}
+		}
+	}
+	return []string{}
+}
+
 fn (e &Eval) lookup_struct_field_type(type_name string, field_name string) ?ast.Expr {
+	return e.lookup_struct_field_type_with_depth(type_name, field_name, 0)
+}
+
+fn (e &Eval) lookup_struct_field_type_with_depth(type_name string, field_name string, depth int) ?ast.Expr {
+	if depth > 16 {
+		return none
+	}
 	for candidate in struct_field_lookup_candidates(type_name) {
 		mut module_name := ''
 		mut short_type_name := candidate
@@ -3681,8 +4501,17 @@ fn (e &Eval) lookup_struct_field_type(type_name string, field_name string) ?ast.
 			if module_fields := e.struct_field_types[module_name] {
 				if type_fields := module_fields[short_type_name] {
 					if field_name in type_fields {
-						return type_fields[field_name] or { return none }
+						return e.qualify_type_expr(module_name, type_fields[field_name] or {
+							return none
+						})
 					}
+				}
+			}
+			for embedded_type in e.lookup_struct_embed_types(candidate) {
+				if embedded_field_type := e.lookup_struct_field_type_with_depth(embedded_type,
+					field_name, depth + 1)
+				{
+					return embedded_field_type
 				}
 			}
 			continue
@@ -3691,14 +4520,47 @@ fn (e &Eval) lookup_struct_field_type(type_name string, field_name string) ?ast.
 		if module_fields := e.struct_field_types[current_module] {
 			if type_fields := module_fields[short_type_name] {
 				if field_name in type_fields {
-					return type_fields[field_name] or { return none }
+					return e.qualify_type_expr(current_module, type_fields[field_name] or {
+						return none
+					})
 				}
 			}
 		}
-		for module_fields in e.struct_field_types.values() {
+		for mod_name, module_fields in e.struct_field_types {
 			if type_fields := module_fields[short_type_name] {
 				if field_name in type_fields {
-					return type_fields[field_name] or { return none }
+					return e.qualify_type_expr(mod_name, type_fields[field_name] or { return none })
+				}
+			}
+		}
+		for embedded_type in e.lookup_struct_embed_types(candidate) {
+			if embedded_field_type := e.lookup_struct_field_type_with_depth(embedded_type,
+				field_name, depth + 1)
+			{
+				return embedded_field_type
+			}
+		}
+	}
+	return none
+}
+
+fn (e &Eval) lookup_embedded_struct_field_value(value StructValue, field_name string, depth int) ?Value {
+	if depth > 16 {
+		return none
+	}
+	for embedded_type in e.lookup_struct_embed_types(value.type_name) {
+		for embedded_alias in struct_field_lookup_candidates(embedded_type) {
+			if embedded_value := value.fields[embedded_alias] {
+				if embedded_value is StructValue {
+					embedded_struct := embedded_value as StructValue
+					if field_name in embedded_struct.fields {
+						return embedded_struct.fields[field_name] or { return none }
+					}
+					if nested_value := e.lookup_embedded_struct_field_value(embedded_struct,
+						field_name, depth + 1)
+					{
+						return nested_value
+					}
 				}
 			}
 		}
@@ -3721,14 +4583,16 @@ fn (e &Eval) zero_struct_value(type_name string) StructValue {
 		if module_fields := e.struct_field_types[module_name] {
 			if type_fields := module_fields[short_type_name] {
 				for field_name, field_type in type_fields {
-					fields[field_name] = e.zero_value_for_type_expr(field_type)
+					fields[field_name] = e.zero_value_for_type_expr(e.qualify_type_expr(module_name,
+						field_type))
 				}
 			}
 		}
 	} else if module_fields := e.struct_field_types[e.current_module_name()] {
 		if type_fields := module_fields[short_type_name] {
 			for field_name, field_type in type_fields {
-				fields[field_name] = e.zero_value_for_type_expr(field_type)
+				fields[field_name] = e.zero_value_for_type_expr(e.qualify_type_expr(e.current_module_name(),
+					field_type))
 			}
 		}
 	}
@@ -3972,12 +4836,18 @@ fn (mut e Eval) call_array_method(receiver ArrayValue, method_name string, args 
 		'contains' {
 			return e.array_contains(receiver, safe_arg(args, 0))
 		}
+		'first' {
+			return e.array_first_value(receiver)
+		}
 		'index' {
 			return e.array_index(receiver, safe_arg(args, 0), false)
 		}
 		'join' {
 			sep := e.expect_string_arg(args, 0)!
 			return receiver.values.map(e.value_string(it)).join(sep)
+		}
+		'last' {
+			return e.array_last_value(receiver)
 		}
 		'last_index' {
 			return e.array_index(receiver, safe_arg(args, 0), true)
@@ -4185,6 +5055,20 @@ fn (e &Eval) array_index(receiver ArrayValue, needle Value, reverse bool) i64 {
 		}
 	}
 	return -1
+}
+
+fn (e &Eval) array_first_value(receiver ArrayValue) !Value {
+	if receiver.values.len == 0 {
+		return error('v2.eval: array.first on empty array')
+	}
+	return receiver.values[0]
+}
+
+fn (e &Eval) array_last_value(receiver ArrayValue) !Value {
+	if receiver.values.len == 0 {
+		return error('v2.eval: array.last on empty array')
+	}
+	return receiver.values[receiver.values.len - 1]
 }
 
 fn (e &Eval) module_property(module_name string, field_name string) MaybeValue {

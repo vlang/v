@@ -590,7 +590,7 @@ fn (b &Builder) default_output_name() string {
 	if b.user_files.len == 0 {
 		return 'out'
 	}
-	last_input := b.user_files.last().trim_right('/\\')
+	last_input := b.user_files[b.user_files.len - 1].trim_right('/\\')
 	if last_input.len == 0 || last_input == '.' {
 		cwd := os.getwd()
 		base := os.file_name(cwd)
@@ -1299,6 +1299,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
+
+	// In hot_fn mode, only build the target function body (skip all others)
+	if b.pref.hot_fn.len > 0 {
+		ssa_builder.hot_fn = b.pref.hot_fn
+	}
 
 	// Build all files together with proper multi-file ordering
 	mut stage_start := native_sw.elapsed()

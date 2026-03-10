@@ -223,6 +223,9 @@ fn (mut p Parser) stmt() ast.Stmt {
 	// not inside regular function bodies where they would be invalid.
 	if p.in_top_level {
 		match p.tok {
+			.attribute, .lsbr {
+				return p.attribute_stmt()
+			}
 			.key_const {
 				return p.const_decl(false)
 			}
@@ -1655,7 +1658,10 @@ fn (mut p Parser) comptime_stmt() ast.Stmt {
 		}
 		.key_if {
 			expr := p.comptime_expr()
-			p.expect_semi()
+			// semicolon may already be consumed by if_expr when checking for $else
+			if p.tok == .semicolon {
+				p.next()
+			}
 			return ast.ExprStmt{
 				expr: expr
 			}
@@ -1809,11 +1815,12 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	// this is because semis get inserted after branches (same in Go)
 	// only consume semicolon if there's a non-comptime else following
 	// (for comptime $else, there should be no semicolon between } and $)
-	if p.tok == .semicolon && p.peek() == .key_else {
+	if p.tok == .semicolon && (p.peek() == .key_else || (is_comptime && p.peek() == .dollar
+		&& p.peek_dollar_keyword() == 'else')) {
 		p.next()
 	}
 	// else
-	if p.tok == .key_else || (p.tok == .dollar && p.peek() == .key_else) {
+	if p.tok == .key_else || (p.tok == .dollar && is_comptime && p.peek_dollar_keyword() == 'else') {
 		// we are using expect instead of next to ensure we error when `is_comptime`
 		// and not all branches have `$`, or `!is_comptime` and any branches have `$`.
 		// the same applies for the `else if` condition directly below.
@@ -1830,6 +1837,24 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		stmts:     stmts
 		pos:       pos
 	}
+}
+
+fn (p &Parser) peek_dollar_keyword() string {
+	if p.scanner.offset >= p.scanner.src.len {
+		return ''
+	}
+	mut idx := p.scanner.offset
+	for idx < p.scanner.src.len && p.scanner.src[idx].is_space() {
+		idx++
+	}
+	start := idx
+	for idx < p.scanner.src.len && p.scanner.src[idx].is_letter() {
+		idx++
+	}
+	if start == idx {
+		return ''
+	}
+	return p.scanner.src[start..idx]
 }
 
 fn (mut p Parser) import_stmt() ast.ImportStmt {

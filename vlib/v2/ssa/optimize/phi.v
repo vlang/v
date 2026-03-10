@@ -116,9 +116,8 @@ fn split_critical_edges(mut m ssa.Module) {
 
 		// Find all critical edges
 		for blk_id in m.funcs[fi].blocks {
-			blk := m.blocks[blk_id]
-			if blk.succs.len > 1 {
-				for succ_id in blk.succs {
+			if m.blocks[blk_id].succs.len > 1 {
+				for succ_id in m.blocks[blk_id].succs {
 					if m.blocks[succ_id].preds.len > 1 {
 						edges_to_split << [blk_id, succ_id]
 					}
@@ -140,9 +139,8 @@ fn split_critical_edges(mut m ssa.Module) {
 			m.add_instr(.jmp, split_blk, 0, [succ_val])
 
 			// Update predecessor's terminator to jump to split block instead of successor
-			pred_blk := m.blocks[pred_id]
-			if pred_blk.instrs.len > 0 {
-				term_val_id := pred_blk.instrs.last()
+			if m.blocks[pred_id].instrs.len > 0 {
+				term_val_id := m.blocks[pred_id].instrs[m.blocks[pred_id].instrs.len - 1]
 				mut term := &m.instrs[m.values[term_val_id].index]
 
 				old_succ_val := m.blocks[succ_id].val_id
@@ -355,7 +353,7 @@ fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 	// Safe insertion: find terminator and insert before it
 	mut insert_idx := m.blocks[blk_id].instrs.len
 	if insert_idx > 0 {
-		last_val := m.blocks[blk_id].instrs.last()
+		last_val := m.blocks[blk_id].instrs[m.blocks[blk_id].instrs.len - 1]
 		last_instr := m.instrs[m.values[last_val].index]
 		if last_instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {
 			insert_idx = m.blocks[blk_id].instrs.len - 1
@@ -384,7 +382,7 @@ fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 	// Safe insertion: find terminator and insert before it
 	mut insert_idx := m.blocks[blk_id].instrs.len
 	if insert_idx > 0 {
-		last_val := m.blocks[blk_id].instrs.last()
+		last_val := m.blocks[blk_id].instrs[m.blocks[blk_id].instrs.len - 1]
 		last_instr := m.instrs[m.values[last_val].index]
 
 		if last_instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {

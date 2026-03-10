@@ -752,7 +752,7 @@ fn verify_cfg_consistency(m &ssa.Module, func_id int, blk_id int) []VerifyError 
 
 	// Verify terminator matches successors
 	if blk.instrs.len > 0 {
-		term_val_id := blk.instrs.last()
+		term_val_id := blk.instrs[blk.instrs.len - 1]
 		if term_val_id < m.values.len && m.values[term_val_id].kind == .instruction {
 			term := m.instrs[m.values[term_val_id].index]
 			mut expected_succs := []int{}

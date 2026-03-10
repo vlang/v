@@ -78,7 +78,7 @@ fn compute_dominators(mut m ssa.Module) {
 			ctx.parent[blk_id] = -1
 			ctx.semi[blk_id] = blk_id
 			ctx.vertex[blk_id] = -1
-			ctx.bucket[blk_id] = []
+			ctx.bucket[blk_id].clear()
 			ctx.dfnum[blk_id] = 0
 			ctx.ancestor[blk_id] = -1
 			ctx.label[blk_id] = blk_id
@@ -151,7 +151,7 @@ fn compute_dominators(mut m ssa.Module) {
 					m.blocks[v].idom = u // Deferred: idom[v] = idom[u]
 				}
 			}
-			ctx.bucket[parent_w] = []
+			ctx.bucket[parent_w].clear()
 		}
 
 		// 3. Explicitly compute IDom

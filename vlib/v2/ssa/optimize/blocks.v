@@ -19,7 +19,8 @@ fn remove_unreachable_blocks(mut m ssa.Module) {
 		reachable[m.funcs[fi].blocks[0]] = true
 
 		for q.len > 0 {
-			curr := q.pop()
+			curr := q[q.len - 1]
+			q.delete_last()
 			for succ in m.blocks[curr].succs {
 				if !reachable[succ] {
 					reachable[succ] = true
@@ -65,11 +66,10 @@ fn merge_blocks(mut m ssa.Module) {
 				if merged[blk_id] {
 					continue
 				}
-				blk := m.blocks[blk_id]
 
 				// Check if unconditional jump
-				if blk.instrs.len > 0 {
-					last_val := blk.instrs.last()
+				if m.blocks[blk_id].instrs.len > 0 {
+					last_val := m.blocks[blk_id].instrs[m.blocks[blk_id].instrs.len - 1]
 					last_instr := m.instrs[m.values[last_val].index]
 
 					if last_instr.op == .jmp {
@@ -102,8 +102,9 @@ fn merge_blocks(mut m ssa.Module) {
 							// If B has successors, their Phis might refer to B.
 							// Since B is gone, they now refer to A.
 							for succ_id in m.blocks[target_id].succs {
-								succ := m.blocks[succ_id]
-								for iv in succ.instrs {
+								n_succ_instrs := m.blocks[succ_id].instrs.len
+								for ivi in 0 .. n_succ_instrs {
+									iv := m.blocks[succ_id].instrs[ivi]
 									v := m.values[iv]
 									if v.kind != .instruction {
 										continue

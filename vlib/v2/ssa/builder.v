@@ -36,7 +36,8 @@ mut:
 	// Global variable name -> SSA global value
 	global_refs map[string]ValueID
 	// Constant name -> evaluated integer value (for inlining)
-	const_values map[string]i64
+	const_values      map[string]i64
+	const_value_types map[string]TypeID // SSA type for the constant (e.g., u64 vs i64)
 	// String constant name -> string literal value (for inlining)
 	string_const_values map[string]string
 	// Float constant name -> float literal string (for inlining as f64)
@@ -64,6 +65,9 @@ mut:
 	// Array element types by variable name (for transformer-generated functions
 	// where checker position info is unavailable). Maps param/var name to element SSA type.
 	array_elem_types map[string]TypeID
+pub mut:
+	// When set, build_fn_bodies only builds this function (hot code reload optimization)
+	hot_fn string
 }
 
 struct LoopInfo {
@@ -156,11 +160,13 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.register_fn_signatures(file)
 	}
 	// Phase 3.5: Generate synthetic stubs for transformer-generated functions
-	b.generate_array_eq_stub()
-	b.generate_wyhash64_stub()
-	b.generate_wyhash_stub()
-	b.generate_ierror_stubs()
-	b.generate_fd_macro_stubs()
+	if b.hot_fn.len == 0 {
+		b.generate_array_eq_stub()
+		b.generate_wyhash64_stub()
+		b.generate_wyhash_stub()
+		b.generate_ierror_stubs()
+		b.generate_fd_macro_stubs()
+	}
 
 	// Phase 4: Build function bodies
 	for file in files {
@@ -170,7 +176,9 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 
 	// Phase 5: Generate _vinit for dynamic array constant initialization
 	// Always generate _vinit (even if empty) so the symbol is always resolvable
-	b.generate_vinit()
+	if b.hot_fn.len == 0 {
+		b.generate_vinit()
+	}
 }
 
 fn file_module_name(file ast.File) string {
@@ -1129,8 +1137,10 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 					b.mod.add_global_with_value(const_name, const_type, true, actual_init)
 					if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal(field.value)) {
 						b.const_values[const_name] = initial_value
+						b.const_value_types[const_name] = const_type
 						// Also store without module prefix for transformer-generated references
 						b.const_values[field.name] = initial_value
+						b.const_value_types[field.name] = const_type
 					}
 				}
 			}
@@ -1193,6 +1203,9 @@ fn (mut b Builder) resolve_forward_const_refs(files []ast.File) {
 					if new_value != 0 {
 						b.const_values[const_name] = new_value
 						b.const_values[field.name] = new_value
+						ct := b.const_field_type(field.name, field.value)
+						b.const_value_types[const_name] = ct
+						b.const_value_types[field.name] = ct
 						// Update the global variable's initial value
 						for i, g in b.mod.globals {
 							if g.name == const_name {
@@ -1509,9 +1522,13 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 					|| expr.value.contains('.')) {
 					return i64(expr.value.f64())
 				}
-				// Parse hex values as u64 first to handle values with bit 63 set
-				// (e.g., 0x800fffffffffffff), then reinterpret as i64.
-				if expr.value.starts_with('0x') || expr.value.starts_with('0X') {
+				// Parse as u64 first for hex values and large unsigned decimals
+				// to handle values with bit 63 set (e.g., 0x800fffffffffffff, 14695981039346656037).
+				// i64() clamps to i64 max for large unsigned values, u64() preserves the bits.
+				// But u64() returns 0 for negative values, so use i64() for those.
+				if expr.value.starts_with('0x') || expr.value.starts_with('0X')
+					|| (expr.value.len > 0 && expr.value[0] != `-`
+					&& expr.value.u64() > u64(9223372036854775807)) {
 					return i64(expr.value.u64())
 				}
 				return expr.value.i64()
@@ -1941,13 +1958,33 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 					// Enum types are always int (i32) in V
 					b.mod.type_store.get_int(32)
 				} else if b.env != unsafe { nil } {
-					// Use the type checker environment to resolve aliases and other types
+					// Use the type checker environment to resolve aliases and other types.
+					// First try the current module scope, then try the module prefix in the name
+					// (e.g., 'ssa__BlockID' → look up 'BlockID' in 'ssa' module).
+					mut resolved := false
+					mut resolved_type := TypeID(0)
 					if scope := b.env.get_scope(b.cur_module) {
 						if obj := scope.lookup_parent(name, 0) {
-							b.type_to_ssa(obj.typ())
-						} else {
-							b.mod.type_store.get_int(64)
+							resolved_type = b.type_to_ssa(obj.typ())
+							resolved = true
 						}
+					}
+					if !resolved && name.contains('__') {
+						// Try module-prefixed name: 'ssa__BlockID' → module='ssa', type='BlockID'
+						parts := name.split('__')
+						if parts.len >= 2 {
+							mod_name := parts[0]
+							type_name := parts[1..].join('__')
+							if mod_scope := b.env.get_scope(mod_name) {
+								if obj := mod_scope.lookup_parent(type_name, 0) {
+									resolved_type = b.type_to_ssa(obj.typ())
+									resolved = true
+								}
+							}
+						}
+					}
+					if resolved && resolved_type != 0 {
+						resolved_type
 					} else {
 						b.mod.type_store.get_int(64)
 					}
@@ -2090,15 +2127,52 @@ fn (mut b Builder) receiver_type_name(typ ast.Expr) string {
 // --- Phase 3: Build function bodies ---
 
 fn (mut b Builder) build_fn_bodies(file ast.File) {
-	for stmt in file.stmts {
-		if stmt is ast.FnDecl {
-			if stmt.language == .c && stmt.stmts.len == 0 {
+	nstmts := file.stmts.len
+	for si in 0 .. nstmts {
+		if file.stmts[si] is ast.FnDecl {
+			decl := file.stmts[si] as ast.FnDecl
+			if decl.language == .c && decl.stmts.len == 0 {
 				continue
 			}
-			if stmt.typ.generic_params.len > 0 {
+			if decl.typ.generic_params.len > 0 {
 				continue
 			}
-			b.build_fn(stmt)
+			// In hot_fn mode, only build the target function
+			if b.hot_fn.len > 0 {
+				mangled := b.mangle_fn_name(decl)
+				if mangled != b.hot_fn {
+					continue
+				}
+			}
+			b.build_fn(decl)
+			// Debug dump for const init functions
+			if decl.name.contains('__v_init_consts_builtin') {
+				fn_name2 := b.mangle_fn_name(decl)
+				if fn_idx2 := b.fn_index[fn_name2] {
+					eprintln('=== SSA BUILD DUMP: ${fn_name2} ===')
+					for dblk_id in b.mod.funcs[fn_idx2].blocks {
+						dblk := b.mod.blocks[dblk_id]
+						eprintln('  block ${dblk_id} (${dblk.name}):')
+						for dval_id in dblk.instrs {
+							dval := b.mod.values[dval_id]
+							if dval.kind != .instruction {
+								continue
+							}
+							dinstr := b.mod.instrs[dval.index]
+							mut ops_str := ''
+							for oi, op_id in dinstr.operands {
+								op_v := b.mod.values[op_id]
+								ops_str += '${op_id}(${op_v.kind}:${op_v.name})'
+								if oi < dinstr.operands.len - 1 {
+									ops_str += ', '
+								}
+							}
+							eprintln('    v${dval_id}: ${dinstr.op} [${ops_str}] typ=${dval.typ} name=${dval.name}')
+						}
+					}
+					eprintln('=== END SSA BUILD DUMP ===')
+				}
+			}
 		}
 	}
 }
@@ -2110,9 +2184,17 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 		return
 	}
 	func_idx := b.fn_index[fn_name] or { return }
-	// Skip if already built (can happen with .c.v and .v files)
+	// Skip if already built (can happen with .c.v and .v files).
+	// Exception: user-defined methods always override auto-generated non-method functions
+	// (e.g., custom Token.str() overrides auto-generated token__Token__str enum str).
 	if b.mod.funcs[func_idx].blocks.len > 0 {
-		return
+		if decl.is_method && decl.stmts.len > 0 {
+			// Method with a body overrides previously-built auto-generated function.
+			// Clear blocks so we can rebuild with the real method body.
+			b.mod.funcs[func_idx].blocks.clear()
+		} else {
+			return
+		}
 	}
 
 	// Skip functions without a body (e.g., extern declarations).
@@ -2835,7 +2917,7 @@ fn (mut b Builder) build_for(stmt ast.ForStmt) {
 		exit_block: exit_block
 	}
 	b.build_stmts(stmt.stmts)
-	b.loop_stack.pop()
+	b.loop_stack.delete_last()
 
 	if !b.block_has_terminator(b.cur_block) {
 		// Jump to post (or back to cond)
@@ -3498,13 +3580,28 @@ fn (mut b Builder) build_ident(ident ast.Ident) ValueID {
 	}
 	// Try as compile-time constant (inline the value directly)
 	if ident.name in b.const_values {
-		return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[ident.name].str())
+		ct := if ident.name in b.const_value_types {
+			b.const_value_types[ident.name]
+		} else {
+			b.mod.type_store.get_int(64)
+		}
+		return b.mod.get_or_add_const(ct, b.const_values[ident.name].str())
 	}
 	if qualified_name in b.const_values {
-		return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[qualified_name].str())
+		ct := if qualified_name in b.const_value_types {
+			b.const_value_types[qualified_name]
+		} else {
+			b.mod.type_store.get_int(64)
+		}
+		return b.mod.get_or_add_const(ct, b.const_values[qualified_name].str())
 	}
 	if builtin_const in b.const_values {
-		return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[builtin_const].str())
+		ct := if builtin_const in b.const_value_types {
+			b.const_value_types[builtin_const]
+		} else {
+			b.mod.type_store.get_int(64)
+		}
+		return b.mod.get_or_add_const(ct, b.const_values[builtin_const].str())
 	}
 	// Try as string constant (inline the string literal directly)
 	if ident.name in b.string_const_values {
@@ -4496,6 +4593,18 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 		return b.mod.add_instr(.call_indirect, b.cur_block, call_ret, indirect_operands)
 	}
 
+	// Check if fn_name is a global variable holding a function pointer
+	// (e.g., `__live_hot_fn(args)` where __live_hot_fn is a global voidptr)
+	if glob_id := b.find_global(fn_name) {
+		glob_typ := b.mod.values[glob_id].typ
+		elem_typ := b.mod.type_store.types[glob_typ].elem_type
+		fn_ptr := b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
+		mut indirect_operands := []ValueID{cap: args.len + 1}
+		indirect_operands << fn_ptr
+		indirect_operands << args
+		return b.mod.add_instr(.call_indirect, b.cur_block, ret_type, indirect_operands)
+	}
+
 	fn_ref := b.get_or_create_fn_ref(fn_name, ret_type)
 	mut operands := []ValueID{cap: args.len + 1}
 	operands << fn_ref
@@ -4999,7 +5108,12 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		}
 		// Try as compile-time constant
 		if qualified in b.const_values {
-			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[qualified].str())
+			ct := if qualified in b.const_value_types {
+				b.const_value_types[qualified]
+			} else {
+				b.mod.type_store.get_int(64)
+			}
+			return b.mod.get_or_add_const(ct, b.const_values[qualified].str())
 		}
 		// Try as string constant
 		if qualified in b.string_const_values {
@@ -6716,6 +6830,26 @@ fn (mut b Builder) add_edge(from BlockID, to BlockID) {
 fn (mut b Builder) get_or_create_fn_ref(name string, typ TypeID) ValueID {
 	if name in b.fn_refs {
 		return b.fn_refs[name]
+	}
+	// If the function is not registered (no FnDecl found) and its name ends with __str,
+	// generate a minimal stub that returns an empty string. This handles cases where
+	// the transformer failed to generate an auto str function (e.g., enum str functions
+	// whose type couldn't be resolved during string interpolation processing).
+	if name !in b.fn_index && name.ends_with('__str') {
+		str_type := b.get_string_type()
+		if str_type != 0 {
+			fn_idx := b.mod.new_function(name, str_type, []TypeID{})
+			b.fn_index[name] = fn_idx
+			save_func := b.cur_func
+			save_block := b.cur_block
+			b.cur_func = fn_idx
+			entry := b.mod.add_block(fn_idx, 'entry')
+			b.cur_block = entry
+			empty_str := b.mod.add_value_node(.string_literal, str_type, '', 0)
+			b.mod.add_instr(.ret, b.cur_block, 0, [empty_str])
+			b.cur_func = save_func
+			b.cur_block = save_block
+		}
 	}
 	// Always use pointer type for function references so that when stored/loaded
 	// through alloca (e.g. function pointer parameters), the full 8-byte
