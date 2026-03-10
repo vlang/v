@@ -199,6 +199,53 @@ fn main() {
 	assert res.output.contains('ok\n')
 }
 
+fn test_eval_transformed_map_builtin_fast_paths() {
+	res := run_eval_backend("
+fn main() {
+	mut m := map[string]int{}
+	m['a'] = 1
+	m['b'] += 2
+	a_val := m['a']
+	b_val := m['b']
+	has_a := 'a' in m
+	println('\${a_val}:\${b_val}:\${m.keys().len}:\${m.values().len}:\${has_a}')
+	m.delete('a')
+	mut cloned := m.clone()
+	mut moved := cloned.move()
+	cloned.clear()
+	has_a_after_delete := 'a' in m
+	has_b_in_moved := 'b' in moved
+	moved_b := moved['b'] or { 0 }
+	println('\${has_a_after_delete}:\${has_b_in_moved}:\${cloned.len}:\${moved_b}')
+}
+	") or {
+		panic(err)
+	}
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+	assert res.output.contains('1:2:2:2:true\n')
+	assert res.output.contains('false:true:0:2\n')
+}
+
+fn test_eval_transformed_os_execute() {
+	res := run_eval_backend("
+import os
+
+fn main() {
+	cmd := if os.user_os() == 'windows' { 'cmd /c echo ok' } else { 'printf ok' }
+	result := os.execute(cmd)
+	println('\${result.exit_code}:\${result.output}')
+}
+	") or {
+		panic(err)
+	}
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+	assert res.output.contains('0:ok')
+}
+
 fn test_eval_transformed_smartcast_assignment() {
 	res := run_eval_backend('
 struct Foo {

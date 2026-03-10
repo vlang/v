@@ -107,6 +107,11 @@ struct MaybeValue {
 	value Value
 }
 
+struct MaybeCallResult {
+	found  bool
+	result CallResult
+}
+
 struct MaybeFunctionTarget {
 	found       bool
 	module_name string
@@ -177,6 +182,16 @@ fn wrap_option_none() Value {
 			'state': Value(i64(1))
 			'err':   Value('')
 			'data':  void_value()
+		}
+	}
+}
+
+fn os_result_value(result os.Result) Value {
+	return StructValue{
+		type_name: 'os.Result'
+		fields:    {
+			'exit_code': Value(i64(result.exit_code))
+			'output':    Value(result.output)
 		}
 	}
 }
@@ -940,6 +955,9 @@ fn (mut e Eval) writeback_mut_args(arg_exprs []ast.Expr, result CallResult) ! {
 }
 
 fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) !CallResult {
+	if builtin_call_result := e.maybe_call_builtin_call_result(module_name, fn_name, args) {
+		return builtin_call_result.result
+	}
 	builtin_result := e.maybe_call_builtin_function(module_name, fn_name, args)
 	if builtin_result.found {
 		return CallResult{
@@ -1078,6 +1096,127 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 		}
 	}
 	return result
+}
+
+fn (mut e Eval) maybe_call_builtin_call_result(module_name string, fn_name string, args []Value) ?MaybeCallResult {
+	if module_name !in ['', 'builtin'] && !fn_name.starts_with('__Map_') {
+		return none
+	}
+	if map_result := e.maybe_call_map_builtin_result(fn_name, args) {
+		return map_result
+	}
+	return none
+}
+
+fn builtin_map_helper_matches(fn_name string, suffix string) bool {
+	return fn_name == 'map__${suffix}' || fn_name.ends_with('map__${suffix}')
+		|| (fn_name.starts_with('__Map_') && fn_name.ends_with('_${suffix}'))
+}
+
+fn mut_call_result(value Value, index int, updated Value) CallResult {
+	mut mut_args := map[int]Value{}
+	mut_args[index] = updated
+	return CallResult{
+		values:   [value]
+		mut_args: mut_args
+	}
+}
+
+fn (mut e Eval) maybe_call_map_builtin_result(fn_name string, args []Value) ?MaybeCallResult {
+	if args.len == 0 || args[0] !is MapValue {
+		return none
+	}
+	receiver := args[0] as MapValue
+	if builtin_map_helper_matches(fn_name, 'set') && args.len >= 3 {
+		updated := e.map_set_value(receiver, args[1], args[2])
+		return MaybeCallResult{
+			found:  true
+			result: mut_call_result(void_value(), 0, updated)
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'get') && args.len >= 3 {
+		value, found := e.map_lookup(receiver, args[1])
+		return MaybeCallResult{
+			found:  true
+			result: CallResult{
+				values:   [if found { value } else { args[2] }]
+				mut_args: map[int]Value{}
+			}
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'get_and_set') && args.len >= 3 {
+		value, found := e.map_lookup(receiver, args[1])
+		if found {
+			return MaybeCallResult{
+				found:  true
+				result: CallResult{
+					values:   [value]
+					mut_args: map[int]Value{}
+				}
+			}
+		}
+		updated := e.map_set_value(receiver, args[1], args[2])
+		return MaybeCallResult{
+			found:  true
+			result: mut_call_result(args[2], 0, updated)
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'exists') && args.len >= 2 {
+		return MaybeCallResult{
+			found:  true
+			result: CallResult{
+				values:   [e.map_contains_key(receiver, args[1])]
+				mut_args: map[int]Value{}
+			}
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'delete') && args.len >= 2 {
+		updated := e.map_delete_value(receiver, args[1])
+		return MaybeCallResult{
+			found:  true
+			result: mut_call_result(void_value(), 0, updated)
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'keys') {
+		return MaybeCallResult{
+			found:  true
+			result: CallResult{
+				values:   [e.map_keys(receiver)]
+				mut_args: map[int]Value{}
+			}
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'values') {
+		return MaybeCallResult{
+			found:  true
+			result: CallResult{
+				values:   [e.map_values(receiver)]
+				mut_args: map[int]Value{}
+			}
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'clone') {
+		return MaybeCallResult{
+			found:  true
+			result: CallResult{
+				values:   [e.map_clone(receiver)]
+				mut_args: map[int]Value{}
+			}
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'clear') {
+		return MaybeCallResult{
+			found:  true
+			result: mut_call_result(void_value(), 0, e.map_clear(receiver))
+		}
+	}
+	if builtin_map_helper_matches(fn_name, 'move') {
+		return MaybeCallResult{
+			found:  true
+			result: mut_call_result(receiver, 0, e.map_clear(receiver))
+		}
+	}
+	return none
 }
 
 fn safe_arg(args []Value, idx int) Value {
@@ -1887,6 +2026,27 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 	}
 	if module_name == 'os' {
 		match fn_name {
+			'execute' {
+				cmd := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				return MaybeValue{
+					found: true
+					value: os_result_value(os.execute(cmd))
+				}
+			}
+			'execute_opt' {
+				cmd := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				res := os.execute(cmd)
+				if res.exit_code != 0 {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(res.output)
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(os_result_value(res))
+				}
+			}
 			'arguments' {
 				return MaybeValue{
 					found: true
@@ -1954,6 +2114,19 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 					value: os.getenv(e.expect_string_arg(args, 0) or { return MaybeValue{} })
 				}
 			}
+			'getenv_opt' {
+				key := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				if value := os.getenv_opt(key) {
+					return MaybeValue{
+						found: true
+						value: wrap_option_ok(value)
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_option_none()
+				}
+			}
 			'is_abs_path' {
 				return MaybeValue{
 					found: true
@@ -1964,6 +2137,30 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 				return MaybeValue{
 					found: true
 					value: os.norm_path(e.expect_string_arg(args, 0) or { return MaybeValue{} })
+				}
+			}
+			'real_path' {
+				return MaybeValue{
+					found: true
+					value: os.real_path(e.expect_string_arg(args, 0) or { return MaybeValue{} })
+				}
+			}
+			'quoted_path' {
+				return MaybeValue{
+					found: true
+					value: os.quoted_path(e.expect_string_arg(args, 0) or { return MaybeValue{} })
+				}
+			}
+			'base' {
+				return MaybeValue{
+					found: true
+					value: os.base(e.expect_string_arg(args, 0) or { return MaybeValue{} })
+				}
+			}
+			'user_os' {
+				return MaybeValue{
+					found: true
+					value: os.user_os()
 				}
 			}
 			'ls' {
@@ -2006,9 +2203,81 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 					value: wrap_result_ok(content)
 				}
 			}
+			'read_lines' {
+				path := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				lines := os.read_lines(path) or {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(err.msg())
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(ArrayValue{
+						elem_type_name: 'string'
+						values:         lines.map(Value(it))
+					})
+				}
+			}
+			'read_bytes' {
+				path := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				bytes := os.read_bytes(path) or {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(err.msg())
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(ArrayValue{
+						elem_type_name: 'u8'
+						values:         bytes.map(Value(i64(it)))
+					})
+				}
+			}
 			'write_file' {
 				os.write_file(e.expect_string_arg(args, 0) or { return MaybeValue{} },
 					e.expect_string_arg(args, 1) or { return MaybeValue{} }) or {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(err.msg())
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(void_value())
+				}
+			}
+			'write_file_array' {
+				path := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				bytes := e.value_to_byte_array(safe_arg(args, 1)) or { return MaybeValue{} }
+				os.write_file_array(path, bytes) or {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(err.msg())
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(void_value())
+				}
+			}
+			'mkdir_all' {
+				path := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				os.mkdir_all(path) or {
+					return MaybeValue{
+						found: true
+						value: wrap_result_err(err.msg())
+					}
+				}
+				return MaybeValue{
+					found: true
+					value: wrap_result_ok(void_value())
+				}
+			}
+			'rmdir_all' {
+				path := e.expect_string_arg(args, 0) or { return MaybeValue{} }
+				os.rmdir_all(path) or {
 					return MaybeValue{
 						found: true
 						value: wrap_result_err(err.msg())
@@ -3388,12 +3657,12 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 		return none
 	}
 	method_name := name.all_after('Builder__')
-	target_name := builder_target_name(args[0]) or { return none }
-	target_result := e.lookup_var(target_name)
-	if !target_result.found || target_result.value !is ArrayValue {
+	target_expr := builder_target_expr(args[0]) or { return none }
+	target_value := e.eval_expr(target_expr) or { return none }
+	if target_value !is ArrayValue {
 		return none
 	}
-	mut receiver := target_result.value as ArrayValue
+	mut receiver := target_value as ArrayValue
 	match method_name {
 		'cut_last' {
 			if args.len < 2 {
@@ -3407,7 +3676,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 			}
 			cut := items[items.len - n..].clone()
 			items = items[..items.len - n].clone()
-			e.set_var(target_name, ArrayValue{
+			e.update_target(target_expr, ArrayValue{
 				values: items
 			}) or { return none }
 			return e.builder_array_to_string(ArrayValue{
@@ -3424,7 +3693,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 				return void_value()
 			}
 			keep_len := if n > receiver.values.len { 0 } else { receiver.values.len - n }
-			e.set_var(target_name, ArrayValue{
+			e.update_target(target_expr, ArrayValue{
 				values: receiver.values[..keep_len].clone()
 			}) or { return none }
 			return void_value()
@@ -3442,7 +3711,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 			} else {
 				pos
 			}
-			e.set_var(target_name, ArrayValue{
+			e.update_target(target_expr, ArrayValue{
 				values: receiver.values[..keep_len].clone()
 			}) or { return none }
 			return void_value()
@@ -3475,7 +3744,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 		}
 		'str' {
 			result := e.builder_array_to_string(receiver)
-			e.set_var(target_name, ArrayValue{
+			e.update_target(target_expr, ArrayValue{
 				values: []Value{}
 			}) or { return none }
 			return result
@@ -3550,7 +3819,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 				}
 				else {}
 			}
-			e.set_var(target_name, ArrayValue{
+			e.update_target(target_expr, ArrayValue{
 				values: items
 			}) or { return none }
 			return void_value()
@@ -3561,23 +3830,26 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 	}
 }
 
-fn builder_target_name(expr ast.Expr) ?string {
+fn builder_target_expr(expr ast.Expr) ?ast.Expr {
 	match expr {
 		ast.CastExpr {
-			return builder_target_name(expr.expr)
+			return builder_target_expr(expr.expr)
 		}
 		ast.Ident {
-			return expr.name
+			return expr
 		}
 		ast.ModifierExpr {
-			return builder_target_name(expr.expr)
+			return builder_target_expr(expr.expr)
 		}
 		ast.ParenExpr {
-			return builder_target_name(expr.expr)
+			return builder_target_expr(expr.expr)
+		}
+		ast.SelectorExpr {
+			return expr
 		}
 		ast.PrefixExpr {
 			if expr.op == .amp {
-				return builder_target_name(expr.expr)
+				return builder_target_expr(expr.expr)
 			}
 		}
 		else {}
@@ -4884,6 +5156,11 @@ fn (e &Eval) map_contains_key(receiver MapValue, key Value) bool {
 }
 
 fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
+	default_value := if receiver.default_value is VoidValue {
+		e.zero_value_like(value)
+	} else {
+		receiver.default_value
+	}
 	mut entries := receiver.entries.clone()
 	for i, entry in entries {
 		if e.value_eq(entry.key, key) {
@@ -4892,7 +5169,7 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 				value: value
 			}
 			return MapValue{
-				default_value: receiver.default_value
+				default_value: default_value
 				entries:       entries
 			}
 		}
@@ -4902,8 +5179,63 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 		value: value
 	}
 	return MapValue{
+		default_value: default_value
+		entries:       entries
+	}
+}
+
+fn (e &Eval) map_delete_value(receiver MapValue, key Value) MapValue {
+	mut entries := []MapEntry{cap: receiver.entries.len}
+	for entry in receiver.entries {
+		if e.value_eq(entry.key, key) {
+			continue
+		}
+		entries << entry
+	}
+	return MapValue{
 		default_value: receiver.default_value
 		entries:       entries
+	}
+}
+
+fn (e &Eval) map_keys(receiver MapValue) ArrayValue {
+	mut keys := []Value{cap: receiver.entries.len}
+	for entry in receiver.entries {
+		keys << entry.key
+	}
+	return ArrayValue{
+		elem_type_name: e.infer_array_elem_type(keys)
+		values:         keys
+	}
+}
+
+fn (e &Eval) map_values(receiver MapValue) ArrayValue {
+	mut values := []Value{cap: receiver.entries.len}
+	for entry in receiver.entries {
+		values << entry.value
+	}
+	elem_type_name := if receiver.default_value is VoidValue {
+		e.infer_array_elem_type(values)
+	} else {
+		e.runtime_type_name(receiver.default_value)
+	}
+	return ArrayValue{
+		elem_type_name: elem_type_name
+		values:         values
+	}
+}
+
+fn (e &Eval) map_clone(receiver MapValue) MapValue {
+	return MapValue{
+		default_value: receiver.default_value
+		entries:       receiver.entries.clone()
+	}
+}
+
+fn (e &Eval) map_clear(receiver MapValue) MapValue {
+	return MapValue{
+		default_value: receiver.default_value
+		entries:       []MapEntry{}
 	}
 }
 
@@ -5387,6 +5719,18 @@ fn (e &Eval) value_to_string_array(value Value) ![]string {
 		return vals.map(e.value_string(it))
 	}
 	return error('v2.eval: expected []string-compatible value')
+}
+
+fn (e &Eval) value_to_byte_array(value Value) ![]u8 {
+	if value !is ArrayValue {
+		return error('v2.eval: expected []u8-compatible value')
+	}
+	array_value := value as ArrayValue
+	mut bytes := []u8{cap: array_value.values.len}
+	for item in array_value.values {
+		bytes << u8(e.value_as_int(item)!)
+	}
+	return bytes
 }
 
 fn (e &Eval) array_args_to_strings(args []Value) []string {
