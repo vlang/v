@@ -1,0 +1,5 @@
+vlib/v/checker/tests/hash_flag_backticks_err.vv:1:1: error: bad #flag `darwin `sdl2-config --cflags --libs` -lSDL2`: shell command substitution with backticks is not supported; use #pkgconfig or explicit flags instead
+    1 | #flag darwin `sdl2-config --cflags --libs` -lSDL2
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | 
+    3 | fn main() {}
