@@ -1028,7 +1028,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		full_fkey := if fn_name_has_dot { fkey } else { c.mod + '.' + fkey }
 		c.generic_call_positions[c.build_generic_call_key(full_fkey, concrete_types)] = node.pos
 	}
-	args_len := node.args.len
+	mut args_len := node.args.len
 	if node.kind == .jsawait {
 		if node.args.len > 1 {
 			c.error('JS.await expects 1 argument, a promise value (e.g `JS.await(fs.read())`',
@@ -1547,6 +1547,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.return_type = func.return_type
 			return func.return_type
 		}
+		args_len = node.args.len
 	}
 	// println / eprintln / panic can print anything
 	if args_len > 0 && fn_name in print_everything_fns {
@@ -3056,13 +3057,53 @@ fn (mut c Checker) post_process_generic_fns() ! {
 	}
 }
 
+fn min_required_call_params(f &ast.Fn, is_method_call bool) int {
+	start_idx := if is_method_call && f.params.len > 0 { 1 } else { 0 }
+	if start_idx >= f.params.len {
+		return 0
+	}
+	mut required := f.params.len - start_idx
+	mut idx := f.params.len - 1
+	for idx >= start_idx {
+		if f.params[idx].typ.has_flag(.option) {
+			required--
+			idx--
+			continue
+		}
+		break
+	}
+	return required
+}
+
+fn call_can_fill_optional_args(node ast.CallExpr) bool {
+	if node.args.any(it.expr is ast.ArrayDecompose) {
+		return false
+	}
+	return !node.args.any(it.expr is ast.CallExpr && it.expr.nr_ret_values > 1)
+}
+
+fn fill_trailing_optional_call_args(mut node ast.CallExpr, f &ast.Fn) {
+	start_idx := if node.is_method && f.params.len > 0 { 1 } else { 0 }
+	expected_args := f.params.len - start_idx
+	for i := node.args.len; i < expected_args; i++ {
+		if !f.params[start_idx + i].typ.has_flag(.option) {
+			break
+		}
+		node.args << ast.CallArg{
+			expr: ast.None{
+				pos: node.pos
+			}
+			pos:  node.pos
+		}
+	}
+}
+
 fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
 	mut nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
-	mut min_required_params := f.params.len
-	if node.is_method {
-		min_required_params--
-	}
+	optional_required_params := min_required_call_params(f, node.is_method)
+	mut min_required_params := optional_required_params
+	can_fill_optional_args := call_can_fill_optional_args(node)
 	if f.is_variadic {
 		node.is_variadic = f.is_variadic
 		node.is_c_variadic = f.is_c_variadic
@@ -3115,8 +3156,10 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if nr_args < min_required_params {
 		if min_required_params == nr_args + 1 {
+			start_idx := if node.is_method && f.params.len > 0 { 1 } else { 0 }
+			last_required_param := f.params[start_idx + min_required_params - 1]
 			// params struct?
-			last_typ := f.params.last().typ
+			last_typ := last_required_param.typ
 			last_sym := c.table.sym(last_typ)
 			if last_sym.info is ast.Struct {
 				is_params := last_sym.info.attrs.any(it.name == 'params' && !it.has_arg)
@@ -3136,7 +3179,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			first_sym := c.table.sym(first_typ)
 			*/
 			if last_sym.info is ast.Struct {
-				if last_sym.name == 'main.Context' && f.params.last().name == 'ctx' { // TODO use int comparison for perf
+				if last_sym.name == 'main.Context' && last_required_param.name == 'ctx' { // TODO use int comparison for perf
 					// c.error('got ctx ${first_sym.name}', node.pos)
 					return
 				}
@@ -3161,6 +3204,18 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			pos:       unexpected_args_pos
 		)
 		return error('')
+	} else if !f.is_variadic && nr_args < nr_params && optional_required_params < nr_params {
+		if !can_fill_optional_args {
+			c.fn_call_error_have_want(
+				nr_params: nr_params
+				nr_args:   nr_args
+				params:    f.params
+				args:      node.args
+				pos:       node.pos
+			)
+			return error('')
+		}
+		fill_trailing_optional_call_args(mut node, f)
 	}
 }
 
