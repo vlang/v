@@ -38,6 +38,29 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 }
 
 fn C.tcc_backtrace(fmt &char) i32
+
+fn backtrace_current_executable_name() string {
+	args := arguments()
+	if args.len == 0 {
+		return ''
+	}
+	return args[0]
+}
+
+fn backtrace_addr2line_executable(executable string, current_executable_name string) string {
+	if executable.len == 0 {
+		return '/proc/self/exe'
+	}
+	if executable.contains('/') {
+		return executable
+	}
+	if current_executable_name.len > 0
+		&& executable.all_after_last('/') == current_executable_name.all_after_last('/') {
+		return '/proc/self/exe'
+	}
+	return executable
+}
+
 @[direct_array_access]
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
@@ -60,6 +83,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					eprintln('Some libc implementations like musl simply do not provide it.')
 					return false
 				} $else {
+					current_executable_name := backtrace_current_executable_name()
 					buffer := [100]voidptr{}
 					nr_ptrs := C.backtrace(&buffer[0], 100)
 					if nr_ptrs < 2 {
@@ -72,9 +96,11 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					for i in 0 .. nr_actual_frames {
 						sframe := unsafe { tos2(&u8(csymbols[i])) }
 						executable := sframe.all_before('(')
+						addr2line_executable := backtrace_addr2line_executable(executable,
+							current_executable_name)
 						addr := sframe.all_after('[').all_before(']')
 						beforeaddr := sframe.all_before('[')
-						cmd := 'addr2line -e ' + executable + ' ' + addr
+						cmd := 'addr2line -e ' + addr2line_executable + ' ' + addr
 						// taken from os, to avoid depending on the os module inside builtin.v
 						f := C.popen(&char(cmd.str), c'r')
 						if f == unsafe { nil } {
