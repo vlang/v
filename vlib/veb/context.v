@@ -112,8 +112,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	} $else {
 		ctx.res.body = response.clone()
 	}
-	// set Content-Type and Content-Length headers
-	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
+	// Prefer explicit overrides from Context state or a pre-set response header.
+	mut custom_mimetype := ctx.content_type
+	if custom_mimetype.len == 0 {
+		custom_mimetype = ctx.res.header.get(.content_type) or { mimetype }
+	}
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
