@@ -6215,9 +6215,7 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 					} else {
 						sb.write_string('\n#elif ')
 					}
-					// directly use `checker` evaluate results
-					// for `cgen`, we can use `is_true.c_str` or `is_true.value` here
-					sb.writeln('${is_true.c_str}')
+					sb.writeln(g.comptime_if_condition_for_c(branch.cond, is_true))
 					$if debug_comptime_branch_context ? {
 						sb.writeln('/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
 					}
