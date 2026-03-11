@@ -3015,6 +3015,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if g.is_cc_msvc && !g.pref.output_cross_c {
 				g.error('msvc does not support inline assembly', node.pos)
 			}
+			if g.should_skip_linux_bare_startup_stub(node) {
+				return
+			}
 			g.write_v_source_line_info_stmt(node)
 			g.asm_stmt(node)
 		}
@@ -3551,6 +3554,39 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 	for attr in attrs {
 		g.writeln('// Attr: [${attr.name}]')
 	}
+}
+
+fn (g &Gen) should_skip_linux_bare_startup_stub(stmt ast.AsmStmt) bool {
+	if !g.pref.is_bare || g.file.path == '' {
+		return false
+	}
+	if !g.file.path.ends_with(os.join_path('vlib', 'builtin', 'linux_bare', 'linux_syscalls.v')) {
+		return false
+	}
+	mut exports_start := false
+	for template in stmt.templates {
+		if !template.is_directive || template.name !in ['globl', 'global'] {
+			continue
+		}
+		for arg in template.args {
+			if arg is ast.AsmAlias && arg.name == '_start' {
+				exports_start = true
+				break
+			}
+		}
+		if exports_start {
+			break
+		}
+	}
+	if !exports_start {
+		return false
+	}
+	for _, f in g.table.fns {
+		if f.attrs.any(it.name == 'export' && it.arg == '_start') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
