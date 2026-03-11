@@ -1938,7 +1938,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						push_arg := el_stype + if is_fixed_arr { '*' } else { '' }
 						g.channel_definitions.writeln('
 static inline ${el_stype} __${sym.cname}_popval(${sym.cname} ch) {
-	${el_stype} val;
+	${el_stype} val = {0};
 	sync__Channel_try_pop_priv(ch, ${val_arg_pop}, false);
 	return val;
 }')

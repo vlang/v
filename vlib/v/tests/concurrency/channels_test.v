@@ -1,3 +1,5 @@
+import time
+
 struct St1 {
 	val     int = 5
 	another chan f64
@@ -71,4 +73,12 @@ fn test_channel_with_or_block() {
 	}
 	println(ret)
 	assert false
+}
+
+fn test_closed_channel_returns_zero_value_struct() {
+	ch := chan time.Time{}
+	ch.close()
+	got := <-ch
+	assert got == time.Time{}
+	assert got.str() == '0000-00-00 00:00:00'
 }
