@@ -555,6 +555,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						exit(1)
 					}
 				}
+				effective_gc_mode := if gc_mode == '' { 'boehm' } else { gc_mode }
+				res.build_options << '${arg} ${effective_gc_mode}'
 				i++
 			}
 			'-g', '-debug' {
