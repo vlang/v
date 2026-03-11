@@ -201,7 +201,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 
 // utime changes the access and modification times of the inode specified by path.
 // It returns POSIX error message, if it can not do so.
-pub fn utime(path string, actime int, modtime int) ! {
+pub fn utime(path string, actime i64, modtime i64) ! {
 	u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), &u) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
