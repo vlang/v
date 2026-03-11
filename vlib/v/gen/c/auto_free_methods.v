@@ -195,10 +195,15 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, o
 		}
 		field_styp := g.gen_type_name_for_free_call(field.typ)
 		is_struct_option := typ.has_flag(.option)
+		free_method_typ := if field.typ.has_flag(.shared_f) {
+			field.typ.clear_flag(.shared_f).set_nr_muls(0)
+		} else {
+			field.typ
+		}
 		mut field_styp_fn_name := if sym.has_method('free') {
 			'${field_styp}_free'
 		} else {
-			g.gen_free_method(field.typ)
+			g.gen_free_method(free_method_typ)
 		}
 		if sym.is_builtin() {
 			field_styp_fn_name = 'builtin__${field_styp_fn_name}'
@@ -237,7 +242,8 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, o
 				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)&(it->${field_name}${suffix}));')
 				fn_builder.writeln('\t}')
 			} else {
-				fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+				prefix := if field.typ.is_ptr() { '' } else { '&' }
+				fn_builder.writeln('\t${field_styp_fn_name}(${prefix}(it->${field_name}));')
 			}
 		}
 	}
