@@ -494,6 +494,8 @@ re.flag = regex.f_bin
 
 - `f_bin`: parse a string as bytes, utf-8 management disabled.
 
+- `f_ci`: match ASCII letters without case sensitivity.
+
 - `f_efm`: exit on the first char matches in the query, used by the
   find function.
 
