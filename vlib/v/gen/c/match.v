@@ -127,6 +127,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
 	} else {
 		cond_fsym := g.table.final_sym(node.cond_type)
+		enum_is_multi_allowed := cond_fsym.info is ast.Enum && cond_fsym.info.is_multi_allowed
 		mut can_be_a_switch := true
 		all_branches: for branch in node.branches {
 			for expr in branch.exprs {
@@ -145,10 +146,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 		// eprintln('> can_be_a_switch: ${can_be_a_switch}')
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
-			&& cond_fsym.is_int() {
+			&& cond_fsym.is_int() && !enum_is_multi_allowed {
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
 		} else if cond_fsym.kind == .enum && g.loop_depth == 0 && node.branches.len > 5
-			&& g.fn_decl != unsafe { nil } {
+			&& g.fn_decl != unsafe { nil } && !enum_is_multi_allowed {
 			// do not optimize while in top-level
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
 		} else {
