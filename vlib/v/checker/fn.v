@@ -8,6 +8,26 @@ import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
+fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
+	if func.mod != 'os' || !func.is_method {
+		return
+	}
+	match func.name {
+		'write_struct', 'write_struct_at', 'write_raw', 'write_raw_at', 'read_struct',
+		'read_struct_at' {
+			if node.args.len > arg_offset {
+				c.ensure_os_raw_io_type(node.args[arg_offset].typ, func.name, node.args[arg_offset].pos)
+			}
+		}
+		'read_raw', 'read_raw_at' {
+			if concrete_types.len > 0 {
+				c.ensure_os_raw_io_type(concrete_types.last(), func.name, node.pos)
+			}
+		}
+		else {}
+	}
+}
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// handle vls go to definition for method receiver types
 	if c.pref.is_vls {
@@ -2074,6 +2094,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 	}
+	c.check_os_raw_io_call(node, func, concrete_types, if func.is_method { 1 } else { 0 })
 
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
@@ -2959,6 +2980,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if node.concrete_types.len > 0 && method_generic_names_len == 0 {
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
+	c.check_os_raw_io_call(node, method, concrete_types, 0)
 	// resolve return generics struct to concrete type
 	if method_generic_names_len > 0 && method.return_type.has_flag(.generic)
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {

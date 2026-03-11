@@ -1422,3 +1422,59 @@ fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_typ
 	}
 	return false
 }
+
+fn os_raw_io_unsupported_type_message(path string, type_name string) string {
+	if path == '' {
+		return 'contains non-plain-data values of type `${type_name}`'
+	}
+	return 'contains field `${path}` of type `${type_name}`'
+}
+
+fn (mut c Checker) os_raw_io_unsupported_type(typ ast.Type, path string, mut checked_types []ast.Type) ?string {
+	if typ.has_flag(.generic) {
+		return none
+	}
+	clean_typ := typ.clear_flag(.option).clear_flag(.result)
+	type_name := c.table.type_to_str(typ)
+	if clean_typ.is_any_kind_of_pointer()
+		|| clean_typ in [ast.voidptr_type, ast.byteptr_type, ast.charptr_type] {
+		return os_raw_io_unsupported_type_message(path, type_name)
+	}
+	base_typ := c.table.unaliased_type(clean_typ)
+	if base_typ in checked_types {
+		return none
+	}
+	checked_types << base_typ
+	sym := c.table.final_sym(base_typ)
+	match sym.kind {
+		.string, .array, .map, .chan, .function, .interface, .sum_type, .thread, .any,
+		.multi_return {
+			return os_raw_io_unsupported_type_message(path, type_name)
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			if c.os_raw_io_unsupported_type(info.elem_type, path, mut checked_types) != none {
+				return os_raw_io_unsupported_type_message(path, type_name)
+			}
+		}
+		.struct {
+			for field in c.table.struct_fields(sym) {
+				field_path := if path == '' { field.name } else { '${path}.${field.name}' }
+				if reason := c.os_raw_io_unsupported_type(field.typ, field_path, mut checked_types) {
+					return reason
+				}
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+fn (mut c Checker) ensure_os_raw_io_type(typ ast.Type, method_name string, pos token.Pos) {
+	mut checked_types := []ast.Type{}
+	if reason := c.os_raw_io_unsupported_type(typ, '', mut checked_types) {
+		type_name := c.table.type_to_str(typ)
+		c.error('`os.File.${method_name}` only supports plain data types; `${type_name}` ${reason}',
+			pos)
+	}
+}
