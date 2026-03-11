@@ -5820,6 +5820,38 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
+fn (mut c Checker) static_fn_value_from_enum_val(mut node ast.EnumVal, fn_name string, func ast.Fn) ast.Type {
+	if !func.is_pub && func.mod != c.mod {
+		c.error('function `${func.name}` is private', node.pos)
+		return ast.void_type
+	}
+	mut fn_type := c.table.find_or_register_fn_type(func, false, true)
+	if fn_type < 0 {
+		mut f := ast.Fn{
+			...func
+		}
+		f.name = ''
+		fn_type = c.table.find_or_register_fn_type(f, false, true)
+	}
+	node.typ = ast.new_type(fn_type)
+	c.table.used_features.anon_fn = true
+	return node.typ
+}
+
+fn (mut c Checker) enum_val_as_static_fn(mut node ast.EnumVal, typ_sym ast.TypeSymbol, fsym ast.TypeSymbol) ast.Type {
+	fn_name := '${typ_sym.name}__static__${node.val}'
+	if func := c.table.find_fn(fn_name) {
+		return c.static_fn_value_from_enum_val(mut node, fn_name, func)
+	}
+	if fsym.name != typ_sym.name {
+		alias_fn_name := '${fsym.name}__static__${node.val}'
+		if func := c.table.find_fn(alias_fn_name) {
+			return c.static_fn_value_from_enum_val(mut node, alias_fn_name, func)
+		}
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	mut typ_idx := if node.enum_name == '' {
 		// Get the type of the enum without enum name by looking at the expected type.
@@ -5867,6 +5899,10 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum && !c.pref.translated && !c.file.is_translated {
+		fn_type := c.enum_val_as_static_fn(mut node, typ_sym, fsym)
+		if fn_type != ast.void_type {
+			return fn_type
+		}
 		// TODO: in C int fields can be compared to enums, need to handle that in C2V
 		if typ_sym.kind == .placeholder {
 			// If it's a placeholder, the type doesn't exist, print
@@ -5886,6 +5922,10 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	info := typ_sym.enum_info()
 	if node.val !in info.vals {
+		fn_type := c.enum_val_as_static_fn(mut node, typ_sym, fsym)
+		if fn_type != ast.void_type {
+			return fn_type
+		}
 		suggestion := util.new_suggestion(node.val, info.vals)
 		c.error(suggestion.say('enum `${typ_sym.name}` does not have a value `${node.val}`'),
 			node.pos)
