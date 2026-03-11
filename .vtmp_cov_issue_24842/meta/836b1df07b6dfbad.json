@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch4/issue-26234/vlib/builtin/meta_assert.v", "fhash": "836b1df07b6dfbad",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d macos",
+  "npoints": 20,
+  "points": [  23,24,25,26,27,28,29,30,31,32,37,38,39,40,42,44,45,47,50,51  ]
+}

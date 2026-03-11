@@ -4221,6 +4221,21 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 				g.write(')')
 			} else if node.op == .question {
+				mut expr_type := ast.void_type
+				if mut node.expr is ast.ComptimeSelector {
+					if node.expr.field_expr is ast.SelectorExpr
+						&& g.comptime.is_comptime_selector_field_name(node.expr.field_expr, 'name') {
+						expr_type = g.unwrap_generic(g.comptime.comptime_for_field_type)
+					}
+				} else if mut node.expr is ast.Ident && node.expr.ct_expr {
+					expr_type = g.get_comptime_for_var_type(node.expr, g.type_resolver.get_type_or_default(node.expr,
+						ast.void_type))
+				}
+				if expr_type != ast.void_type {
+					if !expr_type.has_flag(.option) {
+						g.error('cannot use `?` on non-option expression', node.pos)
+					}
+				}
 				cur_line := g.go_before_last_stmt().trim_space()
 				mut expr_str := ''
 				mut is_unwrapped := true
