@@ -370,6 +370,46 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	if family !in [.ip, .ip6] {
 		return error('listen_tcp only supports ip and ip6')
 	}
+	return listen_tcp_with_family(family, saddr, options) or {
+		if should_fallback_to_ipv4_listener(family, saddr, options, err.code()) {
+			fallback_saddr := ipv4_fallback_listen_addr(saddr) or { return err }
+			return listen_tcp_with_family(.ip, fallback_saddr, options)
+		}
+		return err
+	}
+}
+
+fn should_fallback_to_ipv4_listener(family AddrFamily, saddr string, options ListenOptions, err_code int) bool {
+	// Treat an unspecified IPv6 listener as "dual stack if available, otherwise IPv4 only".
+	if family != .ip6 || !options.dualstack {
+		return false
+	}
+	if !is_unspecified_ip6_listen_addr(saddr) {
+		return false
+	}
+	return is_ipv6_unavailable_error(err_code)
+}
+
+fn is_unspecified_ip6_listen_addr(saddr string) bool {
+	address, _ := split_address(saddr) or { return false }
+	return address in ['', '::']
+}
+
+fn is_ipv6_unavailable_error(err_code int) bool {
+	$if windows {
+		return err_code in [int(WsaError.wsaeafnosupport), int(WsaError.wsaeprotonosupport),
+			int(WsaError.wsaeaddrnotavail)]
+	} $else {
+		return err_code in [C.EAFNOSUPPORT, C.EPROTONOSUPPORT, C.EADDRNOTAVAIL]
+	}
+}
+
+fn ipv4_fallback_listen_addr(saddr string) !string {
+	_, port := split_address(saddr)!
+	return ':${port}'
+}
+
+fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
 	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 	s.set_dualstack(options.dualstack) or {}
 
