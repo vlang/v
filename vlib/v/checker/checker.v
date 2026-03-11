@@ -6172,6 +6172,130 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		}
 		else {}
 	}
+	if !c.ensure_supported_map_key_types(typ, pos) {
+		return c.pref.is_vls
+	}
+	return true
+}
+
+fn (mut c Checker) ensure_supported_map_key_types(typ ast.Type, pos token.Pos) bool {
+	mut seen := map[int]bool{}
+	return c.ensure_supported_map_key_types_in_type(typ, pos, mut seen)
+}
+
+fn (mut c Checker) ensure_supported_map_key_types_in_type(typ ast.Type, pos token.Pos, mut seen map[int]bool) bool {
+	if typ == 0 || typ.has_flag(.generic) {
+		return true
+	}
+	type_idx := typ.idx()
+	if seen[type_idx] {
+		return true
+	}
+	seen[type_idx] = true
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array {
+			return c.ensure_supported_map_key_types_in_type(sym.info.elem_type, pos, mut
+				seen)
+		}
+		ast.ArrayFixed {
+			return c.ensure_supported_map_key_types_in_type(sym.info.elem_type, pos, mut
+				seen)
+		}
+		ast.Chan {
+			return c.ensure_supported_map_key_types_in_type(sym.info.elem_type, pos, mut
+				seen)
+		}
+		ast.Thread {
+			return c.ensure_supported_map_key_types_in_type(sym.info.return_type, pos, mut
+				seen)
+		}
+		ast.Map {
+			key_type := sym.info.key_type
+			key_sym := c.table.sym(key_type)
+			skip_map_key_support_check := key_type == ast.any_type || if key_sym.info is ast.Alias {
+				c.table.type_kind(key_sym.info.parent_type) in [.array, .array_fixed, .map]
+			} else {
+				false
+			}
+			if !skip_map_key_support_check && !c.table.supports_map_key_type(key_type) {
+				c.error('map key type `${c.table.sym(sym.info.key_type).name}` not supported',
+					pos)
+				return false
+			}
+			if !c.ensure_supported_map_key_types_in_type(sym.info.key_type, pos, mut seen) {
+				return false
+			}
+			return c.ensure_supported_map_key_types_in_type(sym.info.value_type, pos, mut
+				seen)
+		}
+		ast.MultiReturn {
+			for inner_type in sym.info.types {
+				if !c.ensure_supported_map_key_types_in_type(inner_type, pos, mut seen) {
+					return false
+				}
+			}
+		}
+		ast.FnType {
+			if !c.ensure_supported_map_key_types_in_type(sym.info.func.return_type, pos, mut
+				seen) {
+				return false
+			}
+			for param in sym.info.func.params {
+				if !c.ensure_supported_map_key_types_in_type(param.typ, pos, mut seen) {
+					return false
+				}
+			}
+		}
+		ast.Struct {
+			if sym.info.is_generic && sym.info.concrete_types.len == 0 {
+				return true
+			}
+			for field in sym.info.fields {
+				if !c.ensure_supported_map_key_types_in_type(field.typ, pos, mut seen) {
+					return false
+				}
+			}
+		}
+		ast.Interface {
+			if sym.info.is_generic && sym.info.concrete_types.len == 0 {
+				return true
+			}
+			for field in sym.info.fields {
+				if !c.ensure_supported_map_key_types_in_type(field.typ, pos, mut seen) {
+					return false
+				}
+			}
+			for method in sym.info.methods {
+				if !c.ensure_supported_map_key_types_in_type(method.return_type, pos, mut
+					seen) {
+					return false
+				}
+				for param in method.params {
+					if !c.ensure_supported_map_key_types_in_type(param.typ, pos, mut seen) {
+						return false
+					}
+				}
+			}
+		}
+		ast.SumType {
+			if sym.info.is_generic && sym.info.concrete_types.len == 0 {
+				return true
+			}
+			for field in sym.info.fields {
+				if !c.ensure_supported_map_key_types_in_type(field.typ, pos, mut seen) {
+					return false
+				}
+			}
+			for variant in sym.info.variants {
+				if !c.ensure_supported_map_key_types_in_type(variant, pos, mut seen) {
+					return false
+				}
+			}
+		}
+		ast.Alias {}
+		else {}
+	}
 	return true
 }
 

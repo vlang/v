@@ -1052,6 +1052,33 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 	return true
 }
 
+// supports_map_key_type returns true when C codegen can hash and compare the map key type.
+pub fn (t &Table) supports_map_key_type(typ Type) bool {
+	if typ == 0 || typ.has_flag(.generic) {
+		return true
+	}
+	mut current_typ := typ.clear_flags()
+	for {
+		if current_typ.nr_muls() > 0 {
+			return false
+		}
+		sym := t.sym(current_typ)
+		match sym.kind {
+			.alias {
+				current_typ = (sym.info as Alias).parent_type.clear_flags()
+			}
+			.u8, .i8, .char, .i16, .u16, .enum, .int, .i32, .u32, .rune, .f32, .voidptr, .u64,
+			.i64, .f64, .string {
+				return true
+			}
+			else {
+				return false
+			}
+		}
+	}
+	return false
+}
+
 // array_source_name generates the original name for the v source.
 // e. g. []int
 @[inline]
