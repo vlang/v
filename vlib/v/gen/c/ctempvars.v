@@ -17,6 +17,19 @@ fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTe
 	return x
 }
 
+fn (mut g Gen) expr_to_ctemp_before_stmt(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
+	stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
+	g.empty_line = true
+	mut x := g.new_ctemp_var(expr, expr_type)
+	g.gen_ctemp_var(mut x)
+	g.write(stmt_str)
+	return x
+}
+
 fn (mut g Gen) gen_ctemp_var(mut tvar ast.CTempVar) {
 	styp := g.styp(tvar.typ)
 	final_sym := g.table.final_sym(tvar.typ)

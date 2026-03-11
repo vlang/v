@@ -3276,12 +3276,15 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 		val_styp := g.styp(val_typ)
 		val_sym := g.table.final_sym(val_typ)
 		prefix := if val_sym.kind !in [.array, .array_fixed] { '&' } else { '' }
-		for i, item_expr in expr.exprs {
+		prepared_exprs := g.prepare_array_init_exprs(expr.exprs, expr.expr_types, val_typ)
+		for i, item_expr in prepared_exprs {
+			actual_item_expr := array_init_orig_expr(item_expr)
 			g.write('memcpy(${prefix}${tmp_var}[${i}], ')
-			needs_addr := (item_expr is ast.CallExpr && !item_expr.return_type.is_ptr()
-				&& g.table.final_sym(item_expr.return_type).kind !in [.array, .array_fixed])
-				|| (item_expr is ast.InfixExpr && !item_expr.promoted_type.is_ptr())
-				|| item_expr is ast.StructInit
+			needs_addr :=
+				(actual_item_expr is ast.CallExpr && !actual_item_expr.return_type.is_ptr()
+				&& g.table.final_sym(actual_item_expr.return_type).kind !in [.array, .array_fixed])
+				|| (actual_item_expr is ast.InfixExpr && !actual_item_expr.promoted_type.is_ptr())
+				|| actual_item_expr is ast.StructInit
 			if needs_addr {
 				g.write('ADDR(${val_styp}, ')
 			}
