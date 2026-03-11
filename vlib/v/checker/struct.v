@@ -135,11 +135,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							err_desc := if field.typ.is_ptr() { 'is' } else { 'is not' }
 							val_desc := if field.default_expr_typ.is_ptr() { 'is' } else { 'is not' }
 							c.error('field ${err_desc} reference but default value ${val_desc} reference',
-								field.default_expr.pos())
+								field.default_expr.pos)
 						}
 						ast.StructInit {
 							c.error('reference field must be initialized with reference',
-								field.default_expr.pos())
+								field.default_expr.pos)
 						}
 						else {}
 					}
