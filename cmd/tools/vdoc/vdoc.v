@@ -372,13 +372,15 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme := vd.get_readme(dirpath)
-			comment := doc.DocComment{
-				is_readme:   true
-				frontmatter: readme.frontmatter
-				text:        readme.content
+			if readme.path != '' {
+				comment := doc.DocComment{
+					is_readme:   true
+					frontmatter: readme.frontmatter
+					text:        readme.content
+				}
+				dcs.head.comments = [comment]
+				dcs.head.file_path = readme.path
 			}
-			dcs.head.comments = [comment]
-			dcs.head.file_path = readme.path
 		}
 		if cfg.pub_only {
 			for name, dc in dcs.contents {

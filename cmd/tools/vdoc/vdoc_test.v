@@ -199,6 +199,26 @@ fn test_gen_modules_toc_uses_prefix_module_page_when_available() {
 	assert toc.contains('<div class="menu-row"><a href="./db.html">db</a></div>')
 }
 
+fn test_module_overview_uses_post_module_comment_without_readme() {
+	mod_dir := 'module_overview'
+	os.mkdir(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'overview.v'), "module overview
+
+// `overview` uses the first comment after the module declaration as the module overview.
+
+pub fn greet() string {
+	return 'hello'
+}
+")!
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path(
+		'./' + mod_dir)}') or { panic(err) }
+	assert res.exit_code == 0
+	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
+    `overview` uses the first comment after the module declaration as the module overview.
+
+fn greet() string'
+}
+
 fn test_resolve_relative_markdown_link() {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	assert resolve_relative_markdown_link(base, 'parser_test.v') == 'https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v'
