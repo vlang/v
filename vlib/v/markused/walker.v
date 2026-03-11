@@ -465,7 +465,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			} else if !node.is_method && node.args.len == 1 && node.args[0].typ != ast.string_type
 				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
-				w.uses_str[node.args[0].typ] = true
+				if f := w.table.find_fn(node.name) {
+					if f.mod == 'builtin' {
+						w.uses_str[node.args[0].typ] = true
+					}
+				}
 			} else if node.is_method && node.name == 'str' {
 				w.uses_str[node.left_type] = true
 			} else if node.is_method && node.name == 'free' {

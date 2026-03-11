@@ -38,3 +38,23 @@ fn test_projects_should_run() {
 	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
 	assert res3.trim_space().ends_with('cache.a: 123')
 }
+
+fn test_custom_print_should_compile_with_no_builtin() {
+	source_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.c')
+	source := [
+		'@[markused]',
+		'pub fn error() {',
+		"\tprint(c'\\n')",
+		'}',
+		'',
+		'pub fn print(fmt voidptr, ...) {}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+	}
+	_ = vrun_ok('-o ${os.quoted_path(output_path)} -no-builtin', source_path)
+	assert os.exists(output_path)
+}
