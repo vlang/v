@@ -1882,7 +1882,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('${tmp}.state = new u8(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
-			g.expr(it.exprs[0])
+			g.expr_with_expected_type(it.exprs[0], node.types[0])
 		} else { // Multi return
 			g.gen_array_init_values(it.exprs)
 		}
@@ -1900,7 +1900,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('throw new ReturnException(')
 	}
 	if it.exprs.len == 1 {
-		g.expr(it.exprs[0])
+		g.expr_with_expected_type(it.exprs[0], node.types[0])
 	} else { // Multi return
 		g.gen_array_init_values(it.exprs)
 	}
@@ -3030,6 +3030,31 @@ fn (mut g JsGen) expr_string(expr ast.Expr) string {
 	pos := g.out.len
 	g.expr(expr)
 	return g.out.cut_to(pos).trim_space()
+}
+
+fn (mut g JsGen) should_wrap_js_selector_rvalue(expr ast.Expr, expected_type ast.Type) bool {
+	if expected_type == 0 || expected_type.is_ptr() {
+		return false
+	}
+	match expr {
+		ast.SelectorExpr {}
+		else { return false }
+	}
+	target_sym := g.table.final_sym(g.unwrap_generic(expected_type))
+	if target_sym.language == .js || target_sym.name.starts_with('JS.') {
+		return false
+	}
+	return target_sym.kind in shallow_equatables
+}
+
+fn (mut g JsGen) expr_with_expected_type(expr ast.Expr, expected_type ast.Type) {
+	if g.should_wrap_js_selector_rvalue(expr, expected_type) {
+		g.write('new ${g.styp(expected_type)}(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
+	g.expr(expr)
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
