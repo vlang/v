@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch4/issue-26234/vlib/math/bits/bits.v", "fhash": "9e76751b4e1fd14a",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d macos",
+  "npoints": 18,
+  "points": [  105,106,109,120,121,134,465,466,467,468,469,470,471,472,473,474,475,476  ]
+}

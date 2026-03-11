@@ -527,6 +527,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ComptimeSelector {
 			w.expr(node.left)
 			w.expr(node.field_expr)
+			w.or_block(node.or_block)
 		}
 		ast.ComptimeCall {
 			w.expr(node.left)
@@ -818,6 +819,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.PostfixExpr {
 			w.expr(node.expr)
+			if node.op == .question {
+				w.used_option++
+				w.used_panic++
+			}
 		}
 		ast.RangeExpr {
 			if node.has_low {

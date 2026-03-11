@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch4/issue-26234/vlib/builtin/chan_option_result.v", "fhash": "826971561acff881",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d macos",
+  "npoints": 28,
+  "points": [  50,51,53,59,60,62,69,73,85,86,88,93,98,103,115,116,125,126,151,152,156,161,162,164,169,170,175,189  ]
+}
