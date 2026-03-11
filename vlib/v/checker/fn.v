@@ -788,7 +788,8 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 				var.pos)
 		}
 		ptyp := if parent_var.smartcasts.len > 0 {
-			parent_var.smartcasts.last()
+			c.exposed_smartcast_type(parent_var.orig_type, parent_var.smartcasts.last(),
+				parent_var.is_mut)
 		} else {
 			parent_var.typ
 		}
@@ -1392,7 +1393,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 				ast.Var {
 					if obj.smartcasts.len != 0 {
-						typ = obj.smartcasts.last()
+						typ = c.exposed_smartcast_type(obj.orig_type, obj.smartcasts.last(),
+							obj.is_mut)
 					} else {
 						if obj.typ == 0 {
 							if mut obj.expr is ast.IfGuardExpr {
@@ -2475,7 +2477,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				scope_field := node.scope.find_struct_field(node.left.str(), node.left_type,
 					method_name)
 				if scope_field != unsafe { nil } {
-					field_typ = scope_field.smartcasts.last()
+					field_typ = c.exposed_smartcast_type(scope_field.orig_type, scope_field.smartcasts.last(),
+						scope_field.is_mut)
 					node.is_unwrapped_fn_selector = true
 				} else {
 					c.error('Option function field must be unwrapped first', node.pos)

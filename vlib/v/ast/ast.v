@@ -1024,6 +1024,7 @@ pub struct ScopeStructField {
 pub:
 	struct_type Type // type of struct
 	name        string
+	is_mut      bool
 	pos         token.Pos
 	typ         Type
 	orig_type   Type   // original sumtype type; 0 if it's not a sumtype
