@@ -514,6 +514,14 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			})
 		}
 	}
+	string_end_expr := if range.end is ast.EmptyExpr {
+		ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '2147483647'
+		})
+	} else {
+		end_expr
+	}
 
 	// Prefer semantic string detection over position-based type tags.
 	// Expression positions are often shared with parent index/slice nodes,
@@ -523,7 +531,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			lhs:  ast.Ident{
 				name: 'string__substr'
 			}
-			args: [lhs, start_expr, end_expr]
+			args: [lhs, start_expr, string_end_expr]
 		}
 	}
 
@@ -534,7 +542,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 					lhs:  ast.Ident{
 						name: 'string__substr'
 					}
-					args: [lhs, start_expr, end_expr]
+					args: [lhs, start_expr, string_end_expr]
 				}
 			}
 			types.Alias {
@@ -543,7 +551,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 						lhs:  ast.Ident{
 							name: 'string__substr'
 						}
-						args: [lhs, start_expr, end_expr]
+						args: [lhs, start_expr, string_end_expr]
 					}
 				}
 			}
@@ -602,7 +610,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			lhs:  ast.Ident{
 				name: 'string__substr'
 			}
-			args: [lhs, start_expr, end_expr]
+			args: [lhs, start_expr, string_end_expr]
 		}
 	}
 
