@@ -5,16 +5,15 @@ $if tinyc {
 	#flag -luser32
 }
 
-fn setup_symlink() {
-	// Create a symlink in a new local folder (.\.bin\.v.exe)
+fn setup_symlink(custom_link_dir string) {
+	// Create a symlink in a local folder (by default .\.bin\v.exe).
 	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
-	vdir := os.real_path(os.dir(vexe))
-	vsymlinkdir := os.join_path(vdir, '.bin')
-	mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
+	vsymlinkdir := normalized_link_dir(custom_link_dir)
+	mut vsymlink := symlink_path(vsymlinkdir)
 	// Remove old symlink first (v could have been moved, symlink rerun)
 	if !os.exists(vsymlinkdir) {
-		os.mkdir(vsymlinkdir) or { panic(err) }
+		os.mkdir_all(vsymlinkdir) or { panic(err) }
 	} else {
 		if os.exists(vsymlink) {
 			os.rm(vsymlink) or { panic(err) }
@@ -26,7 +25,7 @@ fn setup_symlink() {
 			vsymlink = os.join_path(vsymlinkdir, 'v.exe')
 		}
 	}
-	// First, try to create a native symlink at .\.bin\v.exe
+	// First, try to create a native symlink in the configured directory.
 	os.symlink(vexe, vsymlink) or {
 		// typically only fails if you're on a network drive (VirtualBox)
 		// do batch file creation instead
@@ -100,6 +99,15 @@ fn setup_symlink() {
 	println('Done.')
 	println('Note: Restart your shell/IDE to load the new %PATH%.')
 	println('After restarting your shell/IDE, give `v version` a try in another directory!')
+}
+
+fn default_link_dir() string {
+	vdir := os.real_path(os.dir(vexe))
+	return os.join_path(vdir, '.bin')
+}
+
+fn symlink_path(link_dir string) string {
+	return os.join_path(link_dir, 'v.exe')
 }
 
 fn warn_and_exit(err string) {
