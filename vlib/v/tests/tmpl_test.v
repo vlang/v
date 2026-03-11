@@ -95,6 +95,17 @@ fn test_tmpl_interpolation() {
 	assert s == 'result: foo\n'
 }
 
+fn html_comment_tmpl() string {
+	return $tmpl('html_comment_template.html')
+}
+
+fn test_tmpl_html_comments_do_not_interpolate() {
+	result := html_comment_tmpl()
+	assert result.contains('<!-- @numbers -->')
+	assert result.contains('<!--\n@numbers\n-->')
+	assert result.contains('<p>hello</p>')
+}
+
 fn map_index_tmpl() string {
 	lang := {
 		'test_entry': 'Test Text'
