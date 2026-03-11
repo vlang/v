@@ -762,6 +762,41 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 	sym.info = info
 }
 
+// find_single_field_variant returns a field that exists in exactly one aggregate or sumtype variant.
+pub fn (t &Table) find_single_field_variant(sym &TypeSymbol, field_name string) !(Type, StructField, []Type) {
+	variants := match sym.info {
+		Aggregate { sym.info.types }
+		SumType { sym.info.variants }
+		else { []Type{} }
+	}
+	if variants.len == 0 {
+		return error('')
+	}
+	mut found_variant := Type(0)
+	mut found_field := StructField{}
+	mut found_embed_types := []Type{}
+	for variant in variants {
+		variant_sym := t.final_sym(variant)
+		mut field := StructField{}
+		mut embed_types := []Type{}
+		if f := t.find_field(variant_sym, field_name) {
+			field = f
+		} else {
+			field, embed_types = t.find_field_from_embeds(variant_sym, field_name) or { continue }
+		}
+		if found_variant != 0 {
+			return error('')
+		}
+		found_variant = variant
+		found_field = field
+		found_embed_types = embed_types.clone()
+	}
+	if found_variant == 0 {
+		return error('')
+	}
+	return found_variant, found_field, found_embed_types
+}
+
 @[inline]
 pub fn (t &Table) find_type(name string) Type {
 	return idx_to_type(t.type_idxs[name])

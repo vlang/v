@@ -2085,8 +2085,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	field_name := node.field_name
-	sym := c.table.sym(typ)
-	final_sym := c.table.final_sym(typ)
+	mut sym := c.table.sym(typ)
+	mut final_sym := c.table.final_sym(typ)
 	if (typ.has_flag(.variadic) || final_sym.kind == .array_fixed) && field_name == 'len' {
 		node.typ = ast.int_type
 		return ast.int_type
@@ -2103,10 +2103,11 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	mut unknown_field_msg := ''
 	mut has_field := false
 	mut field := ast.StructField{}
-	if field_name.len > 0 && sym.info is ast.Struct && sym.language == .v
+	if field_name.len > 0 && final_sym.kind == .struct && sym.language == .v
 		&& field_name[0].is_capital() {
 		// x.Foo.y => access the embedded struct
-		for embed in sym.info.embeds {
+		struct_info := final_sym.info as ast.Struct
+		for embed in struct_info.embeds {
 			embed_sym := c.table.sym(embed)
 			if embed_sym.embed_name() == field_name {
 				node.typ = embed
@@ -2118,34 +2119,63 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			has_field = true
 			field = f
 		} else {
+			field_err := err
 			// look for embedded field
-			has_field = true
-			mut embed_types := []ast.Type{}
-			field, embed_types = c.table.find_field_from_embeds(sym, field_name) or {
-				if err.msg() != '' {
-					c.error(err.msg(), node.pos)
-				}
+			if field_, embed_types := c.table.find_field_from_embeds(sym, field_name) {
+				has_field = true
+				field = field_
+				node.from_embed_types = embed_types
+			} else {
+				first_err := err
 				has_field = false
-				ast.StructField{}, []ast.Type{}
-			}
-			node.from_embed_types = embed_types
-			if sym.kind in [.aggregate, .sum_type] {
-				unknown_field_msg = err.msg()
-				// TODO need a better way to check that we need to display sum type variants info
-				if unknown_field_msg.contains('does not exist or have the same type in all sumtype') {
-					info := sym.info as ast.SumType
-					missing_variants := c.table.find_missing_variants(info, field_name)
-					unknown_field_msg += missing_variants
+				if final_sym.kind in [.aggregate, .sum_type] {
+					if variant_typ, variant_field, variant_embed_types := c.table.find_single_field_variant(final_sym,
+						field_name)
+					{
+						old_expr := node.expr
+						node.expr = ast.ParExpr{
+							expr: ast.AsCast{
+								expr:      old_expr
+								typ:       variant_typ
+								expr_type: typ
+								pos:       old_expr.pos()
+							}
+						}
+						typ = variant_typ
+						sym = c.table.sym(typ)
+						final_sym = c.table.final_sym(typ)
+						node.expr_type = typ
+						field = variant_field
+						node.from_embed_types = variant_embed_types
+						has_field = true
+					}
+				}
+				if !has_field && final_sym.kind in [.aggregate, .sum_type] {
+					unknown_field_msg = if field_err.msg() != '' {
+						field_err.msg()
+					} else {
+						first_err.msg()
+					}
+					// TODO need a better way to check that we need to display sum type variants info
+					if final_sym.kind == .sum_type
+						&& unknown_field_msg.contains('does not exist or have the same type in all sumtype')
+						&& !unknown_field_msg.contains('variants: ') {
+						info := final_sym.info as ast.SumType
+						missing_variants := c.table.find_missing_variants(info, field_name)
+						unknown_field_msg += missing_variants
+					}
+				}
+				if !has_field && first_err.msg() != '' {
+					c.error(first_err.msg(), node.pos)
 				}
 			}
 		}
-		if !c.inside_unsafe {
-			if sym.info is ast.Struct {
-				if sym.info.is_union && node.next_token !in token.assign_tokens {
-					if !c.pref.translated && !c.file.is_translated {
-						c.warn('reading a union field (or its address) requires `unsafe`',
-							node.pos)
-					}
+		if !c.inside_unsafe && final_sym.kind == .struct {
+			struct_info := final_sym.info as ast.Struct
+			if struct_info.is_union && node.next_token !in token.assign_tokens {
+				if !c.pref.translated && !c.file.is_translated {
+					c.warn('reading a union field (or its address) requires `unsafe`',
+						node.pos)
 				}
 			}
 		}
@@ -2260,12 +2290,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 			unknown_field_msg = 'type `${sym.name}` has no field named `${field_name}`'
 		}
-		if sym.info is ast.Struct {
+		if final_sym.kind == .struct {
 			if c.smartcast_mut_pos != token.Pos{} {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
 			}
-			suggestion := util.new_suggestion(field_name, sym.info.fields.map(it.name))
+			struct_info := final_sym.info as ast.Struct
+			suggestion := util.new_suggestion(field_name, struct_info.fields.map(it.name))
 			c.error(suggestion.say(unknown_field_msg), node.pos)
 			return ast.void_type
 		}
