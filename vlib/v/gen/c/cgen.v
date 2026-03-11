@@ -5560,7 +5560,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	if has_timeout {
 		g.expr(timeout_expr)
 	} else if has_else {
-		g.write('0')
+		g.write('-1')
 	} else {
 		g.write('_const_time__infinite')
 	}
@@ -5576,7 +5576,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		}
 		g.write('if (${select_result} == ')
 		if j == exception_branch {
-			g.writeln('-1) {')
+			if branch.is_else && !is_expr {
+				g.writeln('-1 || ${select_result} == -2) {')
+			} else {
+				g.writeln('-1) {')
+			}
 		} else {
 			g.writeln('${i}) {')
 			if !is_push[i] && tmp_objs[i] != '' {

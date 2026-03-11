@@ -358,6 +358,15 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 	return ch.try_pop_priv(dest, true)
 }
 
+// try_pop_select_priv treats already closed channels as unavailable for non-blocking `select ... else`.
+@[inline]
+fn (mut ch Channel) try_pop_select_priv(dest voidptr) ChanState {
+	if C.atomic_load_u16(&ch.closed) != 0 {
+		return .closed
+	}
+	return ch.try_pop_priv(dest, true)
+}
+
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 	spinloops_sem_, spinloops_ := if no_block { u32(1), u32(1) } else { spinloops, spinloops_sem }
 	mut have_swapped := false
@@ -532,6 +541,12 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 //               -2 if all channels are closed
 
 pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration) int {
+	skip_closed_pop := timeout < 0
+	actual_timeout := if skip_closed_pop { time.Duration(0) } else { timeout }
+	return channel_select_priv(mut channels, dir, mut objrefs, actual_timeout, skip_closed_pop)
+}
+
+fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration, skip_closed_pop bool) int {
 	$if debug_channels ? {
 		assert channels.len == dir.len
 		assert dir.len == objrefs.len
@@ -574,6 +589,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			stat := if dir[i] == .push {
 				channels[i].try_push_priv(objrefs[i], true)
+			} else if skip_closed_pop {
+				channels[i].try_pop_select_priv(objrefs[i])
 			} else {
 				channels[i].try_pop_priv(objrefs[i], true)
 			}
