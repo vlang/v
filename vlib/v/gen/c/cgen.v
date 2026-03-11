@@ -8430,6 +8430,10 @@ fn (mut g Gen) gen_enum_prefix(typ ast.Type) string {
 }
 
 fn (mut g Gen) enum_val(node ast.EnumVal) {
+	if g.table.final_sym(node.typ).kind == .function {
+		g.write(c_fn_name('${node.enum_name}__static__${node.val}'))
+		return
+	}
 	g.write('${g.gen_enum_prefix(node.typ)}${node.val}')
 }
 
