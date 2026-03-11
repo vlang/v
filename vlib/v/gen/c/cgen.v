@@ -1289,6 +1289,44 @@ fn (mut g Gen) styp(t ast.Type) string {
 	}
 }
 
+fn (mut g Gen) fixed_array_elem_styp(typ ast.Type) string {
+	mut elem_type := g.unwrap_generic(typ)
+	if g.table.sym(elem_type).kind == .alias {
+		usage_nr_muls := elem_type.nr_muls()
+		usage_is_option := elem_type.has_flag(.option)
+		usage_is_result := elem_type.has_flag(.result)
+		usage_is_shared := elem_type.has_flag(.shared_f)
+		usage_is_atomic := elem_type.has_flag(.atomic_f)
+		for {
+			elem_sym := g.table.sym(elem_type)
+			if elem_sym.kind != .alias || elem_sym.info !is ast.Alias {
+				break
+			}
+			elem_type = (elem_sym.info as ast.Alias).parent_type
+		}
+		if usage_nr_muls > 0 {
+			elem_type = elem_type.set_nr_muls(elem_type.nr_muls() + usage_nr_muls)
+		}
+		if usage_is_option {
+			elem_type = elem_type.set_flag(.option)
+		}
+		if usage_is_result {
+			elem_type = elem_type.set_flag(.result)
+		}
+		if usage_is_shared {
+			elem_type = elem_type.set_flag(.shared_f)
+		}
+		if usage_is_atomic {
+			elem_type = elem_type.set_flag(.atomic_f)
+		}
+	}
+	mut elem_styp := g.styp(elem_type.set_nr_muls(0))
+	if elem_type.is_ptr() {
+		elem_styp += '*'.repeat(elem_type.nr_muls())
+	}
+	return elem_styp
+}
+
 fn (mut g Gen) base_type(_t ast.Type) string {
 	mut t := g.unwrap_generic(_t)
 	// Safeguard: if unwrap_generic didn't convert because the generic flag wasn't set,
@@ -2121,10 +2159,7 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			&& elem_sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
-		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
-		if info.elem_type.is_ptr() {
-			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())
-		}
+		fixed_elem_name := g.fixed_array_elem_styp(info.elem_type)
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
 		g.type_definitions.writeln('struct ${sym.cname} {')
 		g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
@@ -7229,10 +7264,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							continue
 						}
 						styp := field_sym.cname
-						mut fixed_elem_name := g.styp(arr.elem_type.set_nr_muls(0))
-						if arr.elem_type.is_ptr() {
-							fixed_elem_name += '*'.repeat(arr.elem_type.nr_muls())
-						}
+						fixed_elem_name := g.fixed_array_elem_styp(arr.elem_type)
 						len := arr.size
 						lock g.done_options {
 							if styp !in g.done_options {
@@ -7328,10 +7360,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					// array_fixed_char_300 => char x[300]
 					// [16]&&&EventListener{} => Array_fixed_main__EventListener_16_ptr3
 					// => typedef main__EventListener*** Array_fixed_main__EventListener_16_ptr3 [16]
-					mut fixed_elem_name := g.styp(sym.info.elem_type.set_nr_muls(0))
-					if sym.info.elem_type.is_ptr() {
-						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
-					}
+					mut fixed_elem_name := g.fixed_array_elem_styp(sym.info.elem_type)
 					len := sym.info.size
 					if len > 0 {
 						if elem_sym.info is ast.FnType {
