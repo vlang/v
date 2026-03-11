@@ -1729,9 +1729,8 @@ fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Pos) {
 	if sym.kind == .generic_inst {
 		sym = p.table.type_symbols[(sym.info as ast.GenericInst).parent_idx]
 	}
-	if sym.kind !in [.array, .struct, .map, .placeholder] && !typ.is_ptr() {
-		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
-			pos)
+	if sym.kind == .function {
+		p.error_with_pos('shared arguments are not allowed for function types', pos)
 	}
 }
 

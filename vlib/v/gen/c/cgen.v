@@ -4267,6 +4267,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				}
 			} else {
 				g.expr(node.expr)
+				if node.typ.has_flag(.shared_f) {
+					g.write('->val')
+				}
 			}
 			g.inside_map_postfix = false
 			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
@@ -4280,6 +4283,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				}
 				g.write('=${vsafe_fn_name}(')
 				g.expr(node.expr)
+				if node.typ.has_flag(.shared_f) {
+					g.write('->val')
+				}
 				g.write(',1)')
 			}
 			if node.auto_locked != '' {

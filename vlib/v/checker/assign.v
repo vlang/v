@@ -185,7 +185,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expected_type = c.unwrap_generic(left_type)
 			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
 				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
-				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
 
 		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
@@ -248,10 +247,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime.comptime_for_field_type
-		}
-		if is_decl && left is ast.Ident && left.info is ast.IdentVar
-			&& (left.info as ast.IdentVar).share == .shared_t && c.table.sym(right_type).kind !in [.array, .map, .struct] {
-			c.fatal('shared variables must be structs, arrays or maps', right.pos())
 		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
