@@ -994,7 +994,62 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
+fn (mut g Gen) is_string_type(typ ast.Type) bool {
+	return g.unwrap(typ).unaliased_sym.kind == .string
+}
+
+fn (mut g Gen) is_string_concat_infix(node ast.InfixExpr) bool {
+	if node.op != .plus {
+		return false
+	}
+	left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
+	right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
+	return g.is_string_type(left_type) && g.is_string_type(right_type)
+}
+
+fn (mut g Gen) collect_string_concat_parts(expr ast.Expr, mut parts []ast.Expr) {
+	match expr {
+		ast.InfixExpr {
+			if g.is_string_concat_infix(expr) {
+				g.collect_string_concat_parts(expr.left, mut parts)
+				g.collect_string_concat_parts(expr.right, mut parts)
+				return
+			}
+		}
+		ast.ParExpr {
+			g.collect_string_concat_parts(expr.expr, mut parts)
+			return
+		}
+		else {}
+	}
+	parts << expr
+}
+
+fn (mut g Gen) gen_string_concat_many(node ast.InfixExpr) bool {
+	if !g.is_string_concat_infix(node) {
+		return false
+	}
+	mut parts := []ast.Expr{}
+	g.collect_string_concat_parts(ast.Expr(node), mut parts)
+	if parts.len < 3 {
+		return false
+	}
+	g.write('builtin__string_plus_many(${parts.len}, _MOV((string[${parts.len}]){')
+	for i, part in parts {
+		part_type := g.type_resolver.get_type_or_default(part, part.type())
+		g.expr_with_cast(part, part_type, ast.string_type)
+		if i < parts.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write('}))')
+	return true
+}
+
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
+	if g.gen_string_concat_many(node) {
+		return
+	}
 	left := g.unwrap(g.type_resolver.get_type_or_default(node.left, node.left_type))
 	right := g.unwrap(g.type_resolver.get_type_or_default(node.right, node.right_type))
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
