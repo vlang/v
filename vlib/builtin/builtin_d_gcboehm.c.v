@@ -80,6 +80,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			// Prefer the bundled header: older FreeBSD libgc headers still use the
+			// unsupported `"X"` asm constraint in `GC_reachable_here` under tcc.
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -I/usr/local/include
 			#flag $first_existing("@VEXEROOT/thirdparty/tcc/lib/libgc.a", "/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
 			#flag -lgc-threaded
