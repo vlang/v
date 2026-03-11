@@ -525,6 +525,12 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		} else {
 			if node.elem_type.has_flag(.option) {
 				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+			} else if elem_type.unaliased_sym.kind == .struct {
+				// `T{}` stays expression-safe for struct field defaults that expand
+				// to statement-based array/map initialization.
+				g.struct_init(ast.StructInit{
+					typ: node.elem_type
+				})
 			} else {
 				g.write(g.type_default(node.elem_type))
 			}

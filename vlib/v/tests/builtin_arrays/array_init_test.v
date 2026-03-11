@@ -163,6 +163,10 @@ pub mut:
 	a []int
 }
 
+struct IndexedDefaultArrayField {
+	field []int = []int{len: 1, init: index}
+}
+
 fn test_array_init_cast_type_in_struct_field() {
 	size := u32(5)
 	st := &Aaa{
@@ -170,6 +174,12 @@ fn test_array_init_cast_type_in_struct_field() {
 	}
 	println(st)
 	assert st.a.str() == '[0, 0, 0, 0, 0]'
+}
+
+fn test_array_of_struct_with_indexed_array_field_default() {
+	st := []IndexedDefaultArrayField{len: 1}
+	assert st.len == 1
+	assert st[0].field == [0]
 }
 
 fn test_multi_dimensional_array_init() {
