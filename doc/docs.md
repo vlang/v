@@ -3624,6 +3624,14 @@ To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
 
+Numeric aliases can use empty literal syntax for zero/default initialization:
+
+```v
+type Decimal = f64
+
+amount := Decimal{}
+```
+
 ### Enums
 
 An enum is a group of constant integer values, each having its own name,

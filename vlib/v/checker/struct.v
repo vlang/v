@@ -614,12 +614,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if type_sym.kind == .interface && type_sym.language != .js {
 		c.error('cannot instantiate interface `${type_sym.name}`', node.pos)
 	}
-	if type_sym.info is ast.Alias {
-		if type_sym.info.parent_type.is_number() {
-			c.error('cannot instantiate number type alias `${type_sym.name}`', node.pos)
-			return ast.void_type
-		}
-	}
 	// allow init structs from generic if they're private except the type is from builtin module
 	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
 		&& type_sym.language != .c && (type_sym.mod != c.mod && !(node.typ.has_flag(.generic)
@@ -686,7 +680,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			mut info := ast.Struct{}
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as ast.Alias
-				sym := c.table.sym(info_t.parent_type)
+				sym := c.table.final_sym(info_t.parent_type)
 				if sym.kind == .placeholder { // pending import symbol did not resolve
 					c.error('unknown struct: ${type_sym.name}', node.pos)
 					return ast.void_type
@@ -699,7 +693,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						// we do allow []int{}, [10]int{}, map[string]int{}
 					}
 					else {
-						c.error('alias type name: ${sym.name} is not struct type', node.pos)
+						if !(sym.is_number() && node.init_fields.len == 0 && !node.has_update_expr) {
+							c.error('alias type name: ${sym.name} is not struct type',
+								node.pos)
+						}
 					}
 				}
 			} else {
