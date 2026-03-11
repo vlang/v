@@ -1829,6 +1829,20 @@ static inline ${option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.sym(g.unwrap_generic(typ))
+	if g.pref.no_preludes {
+		match sym.kind {
+			.voidptr {
+				return 'void*'
+			}
+			.charptr {
+				return 'char*'
+			}
+			.byteptr {
+				return 'unsigned char*'
+			}
+			else {}
+		}
+	}
 	mut styp := sym.scoped_cname()
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	match sym.info {
@@ -1878,7 +1892,8 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				info := sym.info as ast.Array
 				elem_sym := g.table.sym(info.elem_type)
-				if elem_sym.kind != .placeholder && !info.elem_type.has_flag(.generic) {
+				if !g.pref.no_preludes && elem_sym.kind != .placeholder
+					&& !info.elem_type.has_flag(.generic) {
 					g.type_definitions.writeln('typedef array ${sym.cname};')
 				}
 			}
