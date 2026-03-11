@@ -20,17 +20,6 @@ enum State {
 	// span // span.{
 }
 
-struct HtmlCommentSegment {
-	text       string
-	is_comment bool
-}
-
-struct HtmlCommentLineInfo {
-	segments        []HtmlCommentSegment
-	masked_line     string
-	ends_in_comment bool
-}
-
 fn (mut state State) update(line string) {
 	trimmed_line := line.trim_space()
 	if is_html_open_tag('style', line) {
@@ -45,65 +34,7 @@ fn (mut state State) update(line string) {
 }
 
 const tmpl_str_end = "')\n"
-
-fn parse_html_comment_line(line string, start_in_comment bool) HtmlCommentLineInfo {
-	mut segments := []HtmlCommentSegment{}
-	mut masked := strings.new_builder(line.len)
-	mut in_comment := start_in_comment
-	mut segment_start := 0
-	mut i := 0
-	for i < line.len {
-		if !in_comment && i + 3 < line.len && line[i..i + 4] == '<!--' {
-			if i > segment_start {
-				text := line[segment_start..i]
-				segments << HtmlCommentSegment{
-					text:       text
-					is_comment: false
-				}
-				masked.write_string(text)
-			}
-			in_comment = true
-			segment_start = i
-			i += 4
-			continue
-		}
-		if in_comment && i + 2 < line.len && line[i..i + 3] == '-->' {
-			i += 3
-			text := line[segment_start..i]
-			segments << HtmlCommentSegment{
-				text:       text
-				is_comment: true
-			}
-			masked.write_string(strings.repeat(` `, text.len))
-			segment_start = i
-			in_comment = false
-			continue
-		}
-		i++
-	}
-	if segment_start < line.len {
-		text := line[segment_start..]
-		segments << HtmlCommentSegment{
-			text:       text
-			is_comment: in_comment
-		}
-		if in_comment {
-			masked.write_string(strings.repeat(` `, text.len))
-		} else {
-			masked.write_string(text)
-		}
-	} else if line.len == 0 {
-		segments << HtmlCommentSegment{
-			text:       ''
-			is_comment: in_comment
-		}
-	}
-	return HtmlCommentLineInfo{
-		segments:        segments
-		masked_line:     masked.str()
-		ends_in_comment: in_comment
-	}
-}
+const tmpl_literal_dollar_marker = '__V_TMPL_LITERAL_DOLLAR__'
 
 // check HTML open tag `<name attr="x" >`
 fn is_html_open_tag(name string, s string) bool {
@@ -305,27 +236,36 @@ fn rewrite_complex_template_at_expressions(line string) string {
 	return b.str()
 }
 
-fn escape_template_literal(line string) string {
-	mut sb := strings.new_builder(line.len + 8)
-	for i := 0; i < line.len; i++ {
-		ch := line[i]
-		match ch {
-			`\\` {
-				sb.write_string('\\\\')
-			}
-			`'` {
-				sb.write_string("\\'")
-			}
-			else {
-				sb.write_u8(ch)
+fn escape_bare_tmpl_dollar_interpolations(line string) string {
+	mut sb := strings.new_builder(line.len)
+	mut i := 0
+	for i < line.len {
+		if i + 1 < line.len && ((line[i] == `@` && line[i + 1] == `{`)
+			|| (line[i] == `$` && line[i + 1] == `{`)) {
+			expr_end := find_tmpl_balanced_end(line, i + 1, `{`, `}`)
+			if expr_end != -1 {
+				sb.write_string(line[i..expr_end])
+				i = expr_end
+				continue
 			}
 		}
+		if line[i] == `$` && i + 1 < line.len && is_tmpl_ident_start(line[i + 1]) {
+			sb.write_string(tmpl_literal_dollar_marker)
+			i++
+			continue
+		}
+		sb.write_u8(line[i])
+		i++
 	}
 	return sb.str()
 }
 
-fn rewrite_template_code(line string) string {
-	rewritten_line := rewrite_complex_template_at_expressions(line)
+fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
+	// HTML, may include `@var`
+	// escaped by cgen, unless it's a `veb.RawHtml` string
+	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
+	literal_dollar := tmpl_str_end + 'sb_${fn_name}.write_u8(36)\n' + tmpl_str_start
+	rewritten_line := escape_bare_tmpl_dollar_interpolations(rewrite_complex_template_at_expressions(line))
 	mut sb := strings.new_builder(rewritten_line.len + 16)
 	mut i := 0
 	for i < rewritten_line.len {
@@ -375,34 +315,11 @@ fn rewrite_template_code(line string) string {
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
 	}
-	return rline
-}
-
-fn finalize_template_code(fn_name string, tmpl_str_start string, line string) string {
-	// HTML, may include `@var`
-	// escaped by cgen, unless it's a `veb.RawHtml` string
-	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	mut rline := line
+	rline = rline.replace(tmpl_literal_dollar_marker, literal_dollar)
 	if rline.ends_with('\\') {
 		rline = rline[0..rline.len - 2] + trailing_bs
 	}
 	return rline
-}
-
-fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
-	return finalize_template_code(fn_name, tmpl_str_start, rewrite_template_code(line))
-}
-
-fn insert_template_code_from_segments(fn_name string, tmpl_str_start string, segments []HtmlCommentSegment) string {
-	mut sb := strings.new_builder(64)
-	for segment in segments {
-		if segment.is_comment {
-			sb.write_string(escape_template_literal(segment.text))
-		} else {
-			sb.write_string(rewrite_template_code(segment.text))
-		}
-	}
-	return finalize_template_code(fn_name, tmpl_str_start, sb.str())
 }
 
 fn normalize_keyword_template_interpolations(line string) string {
@@ -410,6 +327,11 @@ fn normalize_keyword_template_interpolations(line string) string {
 	mut i := 0
 	for i < line.len {
 		ch := line[i]
+		if ch == `$` && i > 0 && line[i - 1] == `\\` {
+			sb.write_u8(ch)
+			i++
+			continue
+		}
 		if ch == `$` && i + 1 < line.len && (line[i + 1].is_letter() || line[i + 1] == `_`) {
 			mut j := i + 1
 			for j < line.len && (line[j].is_letter() || line[j].is_digit() || line[j] == `_`) {
@@ -427,60 +349,6 @@ fn normalize_keyword_template_interpolations(line string) string {
 		i++
 	}
 	return sb.str()
-}
-
-fn translate_template_keys(line string) string {
-	mut line_ := line
-	mut search_start := 0
-	for {
-		pos := line_.index_after('%', search_start) or { break }
-		is_raw := pos + 4 < line_.len && line_[pos..pos + 5] == '%raw '
-		if is_raw {
-			// Start reading the key after "raw " (pos + 5)
-			mut end := pos + 5
-			// valid variable characters
-			for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
-				end++
-			}
-			// Extract the key
-			key := line_[pos + 5..end]
-			if key.len > 0 {
-				// Replace '%raw key' with just '${key}'
-				line_ = line_.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
-			}
-			search_start = pos + 1
-		} else {
-			if pos + 1 < line_.len && line_[pos + 1].is_letter() {
-				mut end := pos + 1
-				for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
-					end++
-				}
-				key := line_[pos + 1..end]
-				// println('GOT tr key line="${line_}" key="${key}"')
-				line_ = line_.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
-				search_start = pos + 1
-			} else {
-				// Not a valid translation key, skip this %
-				search_start = pos + 1
-			}
-		}
-	}
-	return line_
-}
-
-fn translate_template_key_segments(segments []HtmlCommentSegment) []HtmlCommentSegment {
-	mut translated := []HtmlCommentSegment{cap: segments.len}
-	for segment in segments {
-		translated << HtmlCommentSegment{
-			text:       if segment.is_comment {
-				segment.text
-			} else {
-				translate_template_keys(segment.text)
-			}
-			is_comment: segment.is_comment
-		}
-	}
-	return translated
 }
 
 // struct to track dependecies and cache templates for reuse without io
@@ -646,37 +514,22 @@ fn veb_tmpl_${fn_name}() string {
 	}
 
 	mut in_span := false
-	mut in_html_comment := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
 		line := lines[i]
-		mut comment_info := HtmlCommentLineInfo{
-			segments:        [
-				HtmlCommentSegment{
-					text:       line
-					is_comment: false
-				},
-			]
-			masked_line:     line
-			ends_in_comment: false
-		}
 		tline_number++
 		start_of_line_pos = end_of_line_pos
 		end_of_line_pos += line.len + 1
-		if state == .html || in_html_comment {
-			comment_info = parse_html_comment_line(line, in_html_comment)
-			in_html_comment = comment_info.ends_in_comment
-		}
 		if state != .simple {
-			state.update(comment_info.masked_line)
+			state.update(line)
 		}
 		$if trace_tmpl ? {
 			eprintln('>>> tfile: ${template_file}, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: ${line}')
 		}
-		if comment_info.masked_line.contains('@header') {
-			position := comment_info.masked_line.index('@header') or { 0 }
+		if line.contains('@header') {
+			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
 				message:   "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
@@ -690,8 +543,8 @@ fn veb_tmpl_${fn_name}() string {
 			})
 			continue
 		}
-		if comment_info.masked_line.contains('@footer') {
-			position := comment_info.masked_line.index('@footer') or { 0 }
+		if line.contains('@footer') {
+			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
 				message:   "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
@@ -705,7 +558,7 @@ fn veb_tmpl_${fn_name}() string {
 			})
 			continue
 		}
-		if comment_info.masked_line.contains('@include ') {
+		if line.contains('@include ') {
 			lines.delete(i)
 			resolved := p.process_includes(template_file, tline_number, line, mut &dc) or {
 				if err is IncludeError {
@@ -745,7 +598,7 @@ fn veb_tmpl_${fn_name}() string {
 			i--
 			continue
 		}
-		if comment_info.masked_line.contains('@if ') {
+		if line.contains('@if ') {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
 			p.template_line_map << ast.TemplateLineInfo{
@@ -756,7 +609,7 @@ fn veb_tmpl_${fn_name}() string {
 				tmpl_path: template_file
 				tmpl_line: tline_number
 			}
-			pos := comment_info.masked_line.index('@if') or { continue }
+			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
 			p.template_line_map << ast.TemplateLineInfo{
 				tmpl_path: template_file
@@ -765,7 +618,7 @@ fn veb_tmpl_${fn_name}() string {
 			source.write_string(tmpl_str_start)
 			continue
 		}
-		if comment_info.masked_line.contains('@end') {
+		if line.contains('@end') {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
 			p.template_line_map << ast.TemplateLineInfo{
@@ -784,7 +637,7 @@ fn veb_tmpl_${fn_name}() string {
 			source.write_string(tmpl_str_start)
 			continue
 		}
-		if comment_info.masked_line.contains('@else') {
+		if line.contains('@else') {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
 			p.template_line_map << ast.TemplateLineInfo{
@@ -795,7 +648,7 @@ fn veb_tmpl_${fn_name}() string {
 				tmpl_path: template_file
 				tmpl_line: tline_number
 			}
-			pos := comment_info.masked_line.index('@else') or { continue }
+			pos := line.index('@else') or { continue }
 			source.writeln('}' + line[pos + 1..] + '{')
 			p.template_line_map << ast.TemplateLineInfo{
 				tmpl_path: template_file
@@ -805,7 +658,7 @@ fn veb_tmpl_${fn_name}() string {
 			source.write_string(tmpl_str_start)
 			continue
 		}
-		if comment_info.masked_line.contains('@for') {
+		if line.contains('@for') {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
 			p.template_line_map << ast.TemplateLineInfo{
@@ -816,7 +669,7 @@ fn veb_tmpl_${fn_name}() string {
 				tmpl_path: template_file
 				tmpl_line: tline_number
 			}
-			pos := comment_info.masked_line.index('@for') or { continue }
+			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			p.template_line_map << ast.TemplateLineInfo{
 				tmpl_path: template_file
@@ -827,8 +680,7 @@ fn veb_tmpl_${fn_name}() string {
 		}
 		if state == .simple {
 			// by default, just copy 1:1
-			source.writeln(insert_template_code_from_segments(fn_name, tmpl_str_start,
-				comment_info.segments))
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 			p.template_line_map << ast.TemplateLineInfo{
 				tmpl_path: template_file
 				tmpl_line: tline_number
@@ -839,8 +691,8 @@ fn veb_tmpl_${fn_name}() string {
 		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
 
 		if state != .simple {
-			if comment_info.masked_line.contains('@js ') {
-				pos := comment_info.masked_line.index('@js') or { continue }
+			if line.contains('@js ') {
+				pos := line.index('@js') or { continue }
 				source.write_string('<script src="')
 				source.write_string(line[pos + 5..line.len - 1])
 				source.writeln('"></script>')
@@ -850,8 +702,8 @@ fn veb_tmpl_${fn_name}() string {
 				}
 				continue
 			}
-			if comment_info.masked_line.contains('@css ') {
-				pos := comment_info.masked_line.index('@css') or { continue }
+			if line.contains('@css ') {
+				pos := line.index('@css') or { continue }
 				source.write_string('<link href="')
 				source.write_string(line[pos + 6..line.len - 1])
 				source.writeln('" rel="stylesheet" type="text/css">')
@@ -865,7 +717,7 @@ fn veb_tmpl_${fn_name}() string {
 
 		match state {
 			.html {
-				line_t := comment_info.masked_line.trim_space()
+				line_t := line.trim_space()
 				if line_t.starts_with('span.') && line.ends_with('{') {
 					// `span.header {` => `<span class='header'>`
 					class := line.find_between('span.', '{').trim_space()
@@ -913,8 +765,7 @@ fn veb_tmpl_${fn_name}() string {
 			}
 			.js {
 				// if line.contains('//V_TEMPLATE') {
-				source.writeln(insert_template_code_from_segments(fn_name, tmpl_str_start,
-					comment_info.segments))
+				source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 				p.template_line_map << ast.TemplateLineInfo{
 					tmpl_path: template_file
 					tmpl_line: tline_number
@@ -941,10 +792,54 @@ fn veb_tmpl_${fn_name}() string {
 
 		// %translation_key => ${tr('translation_key')}
 		// Process all %key patterns on this line
-		source.writeln(insert_template_code_from_segments(fn_name, tmpl_str_start, translate_template_key_segments(comment_info.segments)))
-		p.template_line_map << ast.TemplateLineInfo{
-			tmpl_path: template_file
-			tmpl_line: tline_number
+		mut line_ := line
+		mut search_start := 0
+		for {
+			pos := line_.index_after('%', search_start) or { break }
+			is_raw := pos + 4 < line_.len && line_[pos..pos + 5] == '%raw '
+			if is_raw {
+				// Start reading the key after "raw " (pos + 5)
+				mut end := pos + 5
+				// valid variable characters
+				for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
+					end++
+				}
+				// Extract the key
+				key := line_[pos + 5..end]
+				if key.len > 0 {
+					// Replace '%raw key' with just '${key}'
+					line_ = line_.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+				}
+				search_start = pos + 1
+			} else {
+				if pos + 1 < line_.len && line_[pos + 1].is_letter() {
+					mut end := pos + 1
+					for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
+						end++
+					}
+					key := line_[pos + 1..end]
+					// println('GOT tr key line="${line_}" key="${key}"')
+					line_ = line_.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
+					search_start = pos + 1
+				} else {
+					// Not a valid translation key, skip this %
+					search_start = pos + 1
+				}
+			}
+		}
+		if line_ != line {
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line_))
+			p.template_line_map << ast.TemplateLineInfo{
+				tmpl_path: template_file
+				tmpl_line: tline_number
+			}
+		} else {
+			// by default, just copy 1:1
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+			p.template_line_map << ast.TemplateLineInfo{
+				tmpl_path: template_file
+				tmpl_line: tline_number
+			}
 		}
 	}
 

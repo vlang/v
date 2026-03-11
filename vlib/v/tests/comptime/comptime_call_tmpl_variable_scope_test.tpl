@@ -1,2 +1,2 @@
-$a.name
-$b
+@a.name
+@b
