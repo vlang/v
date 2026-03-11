@@ -1692,7 +1692,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		match node.kind {
 			.type_name {
 				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('charptr__vstring_literal(v_typeof_${prefix_name}_${typ_sym.cname}',
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_${prefix_name}_${typ_sym.cname}',
 						')', node)
 					return
 				}

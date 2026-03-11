@@ -242,9 +242,9 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 		return
 	}
 	if p.ccompiler_set_by_flag {
-		// tcc cannot cross-compile for Windows (no Windows headers),
-		// so override it with the proper cross-compiler.
-		if p.os == .windows && p.ccompiler.contains('tcc') {
+		// Only mingw compilers can cross-compile for Windows (others lack Windows headers),
+		// so override any non-mingw compiler with the proper cross-compiler.
+		if p.os == .windows && !p.ccompiler.contains('mingw') {
 			p.ccompiler = p.vcross_compiler_name()
 			return
 		}

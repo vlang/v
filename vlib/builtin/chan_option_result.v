@@ -59,9 +59,6 @@ pub fn (err IError) str() string {
 	if err is None__ {
 		return 'none'
 	}
-	if err.code() > 0 {
-		return '${err.msg()}; code: ${err.code()}'
-	}
 	return err.msg()
 }
 
