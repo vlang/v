@@ -3146,6 +3146,33 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
+fn (g &Gen) interface_expr_needs_heap(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				return !expr.obj.typ.is_ptr() && !expr.is_auto_heap()
+			}
+			return false
+		}
+		ast.SelectorExpr {
+			root := expr.root_ident() or { return false }
+			if root.obj is ast.Var {
+				return !root.obj.typ.is_ptr() && !root.is_auto_heap()
+			}
+			return false
+		}
+		ast.ParExpr {
+			return g.interface_expr_needs_heap(expr.expr)
+		}
+		ast.UnsafeExpr {
+			return g.interface_expr_needs_heap(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
@@ -3153,6 +3180,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
+	is_interface_cast := !got_is_fn && fname.contains('_to_Interface_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
@@ -3171,20 +3199,17 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		is_cast_fixed_array_init := expr is ast.CastExpr
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
 
-		is_primitive_to_interface := fname.contains('_to_Interface_') && expr is ast.Ident
+		is_primitive_to_interface := is_interface_cast && expr is ast.Ident
 			&& g.table.sym(got).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .bool, .rune]
 
-		// Check if the expression is a function argument (local variable) that needs heap allocation
-		is_fn_arg := if expr is ast.Ident && expr.obj is ast.Var {
-			expr.obj.is_arg
-		} else {
-			false
-		}
+		// Interface casts must not store pointers into stack-rooted lvalues such as
+		// local variables or fields on by-value fn args (`p.email`).
+		is_stack_rooted_interface_expr := is_interface_cast && g.interface_expr_needs_heap(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface || is_fn_arg) {
+			|| is_primitive_to_interface || is_stack_rooted_interface_expr) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
