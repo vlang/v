@@ -1327,6 +1327,12 @@ fn (mut g Gen) get_array_index_method(typ ast.Type, is_last_index bool) string {
 	}
 }
 
+fn (mut g Gen) get_array_get_method(typ ast.Type) string {
+	t := g.unwrap_generic(typ).set_nr_muls(0)
+	g.array_get_types << t
+	return g.styp(t) + '_get'
+}
+
 fn (mut g Gen) gen_array_index_methods(is_last_index bool) {
 	mut done := []ast.Type{}
 	indxe_types := if is_last_index { g.array_last_index_types } else { g.array_index_types }
@@ -1447,6 +1453,78 @@ fn (mut g Gen) gen_array_index_methods(is_last_index bool) {
 		fn_builder.writeln('}')
 		g.auto_fn_definitions << fn_builder.str()
 	}
+}
+
+fn (mut g Gen) gen_array_get_methods() {
+	mut done := []ast.Type{}
+	for t in g.array_get_types {
+		if t in done {
+			continue
+		}
+		done << t
+		final_left_sym := g.table.final_sym(t)
+		if final_left_sym.kind != .array {
+			continue
+		}
+		info := final_left_sym.info as ast.Array
+		left_type_str := g.styp(t)
+		elem_type_str := g.styp(info.elem_type)
+		elem_sym := g.table.sym(info.elem_type)
+		option_type_str := g.styp(info.elem_type.set_flag(.option))
+		base_elem_type_str := g.base_type(info.elem_type)
+		default_value := if info.elem_type.has_flag(.option) {
+			g.type_default(info.elem_type.clear_flag(.option))
+		} else if elem_sym.kind == .function {
+			'0'
+		} else {
+			g.type_default(info.elem_type)
+		}
+		fn_name := '${left_type_str}_get'
+		g.type_definitions.writeln('${g.static_non_parallel}${option_type_str} ${fn_name}(${left_type_str} a, ${ast.int_type_name} i);')
+		mut fn_builder := strings.new_builder(512)
+		fn_builder.writeln('${g.static_non_parallel}${option_type_str} ${fn_name}(${left_type_str} a, ${ast.int_type_name} i) {')
+		fn_builder.writeln('\t${option_type_str} res = {0};')
+		fn_builder.writeln('\tif (i < 0 || i >= a.len) {')
+		fn_builder.writeln('\t\tbuiltin___option_none(&(${base_elem_type_str}[]){ ${default_value} }, (_option*)&res, sizeof(${base_elem_type_str}));')
+		fn_builder.writeln('\t\treturn res;')
+		fn_builder.writeln('\t}')
+		if info.elem_type.has_flag(.option) {
+			fn_builder.writeln('\t${elem_type_str}* opt_elem = (${elem_type_str}*)((byte*)a.data + i * a.element_size);')
+			fn_builder.writeln('\tif (opt_elem->state == 0) {')
+			fn_builder.writeln('\t\tbuiltin___option_ok(opt_elem->data, (_option*)&res, sizeof(${base_elem_type_str}));')
+			fn_builder.writeln('\t} else {')
+			fn_builder.writeln('\t\tres.state = opt_elem->state;')
+			fn_builder.writeln('\t\tres.err = opt_elem->err;')
+			fn_builder.writeln('\t}')
+		} else {
+			storage_type_str := if elem_sym.kind == .function { 'voidptr' } else { elem_type_str }
+			fn_builder.writeln('\tbuiltin___option_ok(((${storage_type_str}*)((byte*)a.data + i * a.element_size)), (_option*)&res, sizeof(${storage_type_str}));')
+		}
+		fn_builder.writeln('\treturn res;')
+		fn_builder.writeln('}')
+		g.auto_fn_definitions << fn_builder.str()
+	}
+}
+
+fn (mut g Gen) gen_array_get(node ast.CallExpr) {
+	fn_name := g.get_array_get_method(node.left_type)
+	left_is_ptr := node.left_type.is_ptr()
+	left_is_shared := node.left_type.has_flag(.shared_f)
+	g.write('${fn_name}(')
+	if left_is_ptr && !left_is_shared {
+		g.write('*')
+	}
+	g.expr(node.left)
+	if left_is_shared {
+		if left_is_ptr {
+			g.write('->val')
+		} else {
+			g.write('.val')
+		}
+	}
+	g.write(', ')
+	g.expr(node.args[0].expr)
+	g.write(')')
 }
 
 // `nums.index(2)`

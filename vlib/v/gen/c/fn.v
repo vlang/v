@@ -1222,6 +1222,10 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 }
 
 fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
+	if node.name == 'get' {
+		g.gen_array_get(node)
+		return true
+	}
 	match node.kind {
 		.filter {
 			g.gen_array_filter(node)
@@ -1695,7 +1699,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
-		if g.gen_array_method_call(node, left_type, final_left_sym) {
+		if !(node.name == 'get' && node.receiver_type != 0 && node.receiver_type != ast.array_type)
+			&& g.gen_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}

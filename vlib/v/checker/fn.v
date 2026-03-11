@@ -2194,8 +2194,14 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	unwrapped_left_type := c.unwrap_generic(left_type)
 	left_sym := c.table.sym(unwrapped_left_type)
 	final_left_sym := c.table.final_sym(unwrapped_left_type)
+	mut has_custom_array_get := false
 
 	method_name := node.name
+	if method_name == 'get' {
+		if method := c.table.find_method(left_sym, method_name) {
+			has_custom_array_get = method.receiver_type != ast.array_type
+		}
+	}
 	if left_type.has_flag(.option) {
 		c.error('Option type `${left_sym.name}` cannot be called directly, you should unwrap it first',
 			node.left.pos())
@@ -2220,7 +2226,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		return ast.void_type
 	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
-		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) && !has_custom_array_get {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
 		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
@@ -3698,6 +3704,20 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
+	} else if method_name == 'get' {
+		if node_args_len != 1 {
+			c.error('`.get()` expected 1 argument, but got ${node_args_len}', node.pos)
+		} else {
+			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
+			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg0) or {
+				c.error('${err.msg()} in argument 1 to `.get()`', arg0.pos)
+			}
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.receiver_type = ast.array_type
+		node.return_type = array_info.elem_type.set_flag(.option)
 	} else if node.kind in [.first, .last, .pop_left, .pop] {
 		c.markused_array_method(!c.is_builtin_mod, method_name)
 		if node_args_len != 0 {
