@@ -1795,6 +1795,36 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 	return ret_type
 }
 
+fn (mut c Checker) expr_unhandled_option_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.or_expr.kind == .absent && expr.info is ast.IdentVar {
+				return c.type_resolver.get_type_or_default(expr, expr.info.typ)
+			}
+		}
+		ast.CallExpr {
+			if expr.or_block.kind == .absent {
+				return expr.return_type
+			}
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind == .absent {
+				return expr.typ
+			}
+		}
+		ast.IndexExpr {
+			if expr.or_expr.kind == .absent {
+				return expr.typ
+			}
+		}
+		ast.ParExpr {
+			return c.expr_unhandled_option_type(expr.expr)
+		}
+		else {}
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
@@ -6034,10 +6064,18 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	} else { // [1]
 		if typ_sym.kind == .map {
 			info := typ_sym.info as ast.Map
+			old_expected_type := c.expected_type
 			c.expected_type = info.key_type
 			index_type := c.expr(mut node.index)
+			c.expected_type = old_expected_type
 			key_type := c.unwrap_generic(info.key_type)
-			if !c.check_types(index_type, key_type) {
+			actual_index_type := c.expr_unhandled_option_type(node.index)
+			if actual_index_type.has_flag(.option) && !key_type.has_flag(.option) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(actual_index_type,
+					key_type)
+				c.error('invalid key: cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first',
+					node.index.pos())
+			} else if !c.check_types(index_type, key_type) {
 				err := c.expected_msg(index_type, key_type)
 				c.error('invalid key: ${err}', node.pos)
 			}

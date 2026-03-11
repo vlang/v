@@ -1,0 +1,20 @@
+vlib/v/checker/tests/map_option_key_err.vv:7:10: error: invalid key: cannot use `?string` as `string`, it must be unwrapped first
+    5 |     mut c := cuid2.new()
+    6 |     key := c.next()
+    7 |     _ = m[c.next()]
+      |             ~~~~~~
+    8 |     m[c.next()] = 1
+    9 |     m[key]++
+vlib/v/checker/tests/map_option_key_err.vv:8:6: error: invalid key: cannot use `?string` as `string`, it must be unwrapped first
+    6 |     key := c.next()
+    7 |     _ = m[c.next()]
+    8 |     m[c.next()] = 1
+      |         ~~~~~~
+    9 |     m[key]++
+   10 | }
+vlib/v/checker/tests/map_option_key_err.vv:9:4: error: invalid key: cannot use `?string` as `string`, it must be unwrapped first
+    7 |     _ = m[c.next()]
+    8 |     m[c.next()] = 1
+    9 |     m[key]++
+      |       ~~~
+   10 | }
