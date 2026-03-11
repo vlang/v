@@ -604,6 +604,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
+	is_multi_allowed_enum_match := cond_type_sym.info is ast.Enum
+		&& cond_type_sym.info.is_multi_allowed
+	mut branch_enum_values := map[i64]bool{}
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
@@ -684,6 +687,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							c.error('match case `${key}` is handled more than once', branch.pos)
 						}
 						branch_exprs[key] = val + 1
+						if is_multi_allowed_enum_match {
+							branch_enum_values[i] = true
+						}
 					}
 				}
 				continue
@@ -696,6 +702,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				ast.EnumVal {
 					key = expr.val
+					if is_multi_allowed_enum_match {
+						if enum_val := c.table.find_enum_field_val(cond_type_sym.name,
+							expr.val)
+						{
+							branch_enum_values[enum_val] = true
+						}
+					}
 					if !enum_ref_checked {
 						enum_ref_checked = true
 						if node.cond_type.is_ptr() {
@@ -883,7 +896,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			//
 			ast.Enum {
 				for v in cond_type_sym.info.vals {
-					if v !in branch_exprs {
+					mut is_handled := v in branch_exprs
+					if !is_handled && is_multi_allowed_enum_match {
+						if enum_val := c.table.find_enum_field_val(cond_type_sym.name,
+							v)
+						{
+							is_handled = enum_val in branch_enum_values
+						}
+					}
+					if !is_handled {
 						is_exhaustive = false
 						unhandled << '`.${v}`'
 					}
