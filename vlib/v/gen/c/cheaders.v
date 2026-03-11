@@ -102,14 +102,19 @@ const c_common_macros = '
 	#define __V_architecture 9
 #endif
 #if defined(__sparc__)
-       #define __V_sparc64  1
-       #undef __V_architecture
-       #define __V_architecture 10
+	#define __V_sparc64  1
+	#undef __V_architecture
+	#define __V_architecture 10
 #endif
 #if defined(__powerpc64__) && defined(__BIG_ENDIAN__)
-       #define __V_ppc64  1
-       #undef __V_architecture
-       #define __V_architecture 11
+	#define __V_ppc64  1
+	#undef __V_architecture
+	#define __V_architecture 11
+#endif
+#if (defined(__powerpc__) || defined(__powerpc) || defined(__POWERPC__) || defined(__ppc__) || defined(__ppc) || defined(__PPC__)) && !defined(__powerpc64__) && !defined(__ppc64__) && !defined(__PPC64__)
+	#define __V_ppc  1
+	#undef __V_architecture
+	#define __V_architecture 12
 #endif
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
