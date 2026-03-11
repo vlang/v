@@ -1110,11 +1110,18 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		// arr << val
 		tmp_var := g.new_tmp_var()
 		array_info := left.unaliased_sym.info as ast.Array
+		elem_sym := g.table.final_sym(array_info.elem_type)
 		noscan := g.check_noscan(array_info.elem_type)
 		elem_is_option := array_info.elem_type.has_flag(.option)
+		right_implements_elem_interface := elem_sym.kind == .interface
+			&& g.table.does_type_implement_interface(g.unwrap_generic(node.right_type), array_info.elem_type)
 		mut prevent_push_many := g.table.sumtype_has_variant(array_info.elem_type, node.right_type,
 			false)
-		if prevent_push_many && node.right is ast.CallExpr {
+		if right_implements_elem_interface {
+			// `[]Any << []int` should append the array as one interface value.
+			prevent_push_many = true
+		}
+		if prevent_push_many && node.right is ast.CallExpr && !right_implements_elem_interface {
 			// Allow concatenation for array-returning calls; avoids nesting for common builder APIs.
 			prevent_push_many = false
 		}
@@ -1156,7 +1163,6 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		} else {
 			// push a single element
 			elem_type_str := g.styp(array_info.elem_type)
-			elem_sym := g.table.final_sym(array_info.elem_type)
 			elem_is_array_var := !elem_is_option && elem_sym.kind in [.array, .array_fixed]
 				&& node.right is ast.Ident
 			g.write('builtin__array_push${noscan}((array*)')
