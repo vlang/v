@@ -327,7 +327,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 		if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
 			if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
 				c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-					node.scope, false, false)
+					node.scope, false, false, false)
 			}
 		}
 	}

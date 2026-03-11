@@ -4919,7 +4919,7 @@ fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
-	is_comptime bool, is_option_unwrap bool) {
+	is_comptime bool, is_option_unwrap bool, allow_mut_selector_smartcast bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
 		to_type_.ref()
@@ -4929,6 +4929,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 	match mut expr {
 		ast.SelectorExpr {
 			mut is_mut := false
+			mut root_is_arg := false
 			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.sym(expr.expr_type)
 			mut orig_type := ast.no_type
@@ -4937,6 +4938,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					if root_ident := expr.root_ident() {
 						if v := scope.find_var(root_ident.name) {
 							is_mut = v.is_mut
+							root_is_arg = v.is_arg
 						}
 					}
 				}
@@ -4953,7 +4955,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) {
+			if !is_mut || expr.is_mut || is_option_unwrap
+				|| orig_type.has_flag(.option)
+				|| (allow_mut_selector_smartcast && root_is_arg) {
 				smartcasts << to_type
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
