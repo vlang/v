@@ -1075,6 +1075,8 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				} else {
 					ast.new_type(type_idx).set_flag(.generic)
 				}
+			} else if cond.name in c.type_resolver.type_map {
+				return c.type_resolver.get_ct_type_or_default(cond.name, ast.void_type)
 			} else if var := cond.scope.find_var(cond.name) {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
@@ -1163,6 +1165,9 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 	} else if expr is ast.TypeNode {
 		typ := c.get_expr_type(expr)
 		right_type := c.unwrap_generic(typ)
+		if c.type_resolver.bind_matching_generic_type(left_type, right_type) {
+			return true
+		}
 		right_sym := c.table.sym(right_type)
 		if right_sym.kind == .placeholder || right_type.has_flag(.generic) {
 			c.error('unknown type `${right_sym.name}`', expr.pos)
