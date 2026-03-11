@@ -81,6 +81,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 	// detect if we need type casting on msvc initialization
 	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
+	if is_amp && g.can_use_direct_heap_struct_init(node, sym, aligned, const_msvc_init) {
+		g.direct_heap_struct_init(node, styp, sym.info as ast.Struct, sym.language)
+		return
+	}
 
 	if !g.inside_cinit && !is_anon && !is_generic_default && !is_array && !const_msvc_init {
 		g.write('(')
@@ -443,6 +447,52 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 }
 
+fn (g &Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.TypeSymbol, aligned int, const_msvc_init bool) bool {
+	if g.is_shared || g.inside_cast_in_heap > 0 || g.inside_cinit || g.inside_const
+		|| g.inside_global_decl || aligned != 0 || const_msvc_init || node.typ.has_flag(.option)
+		|| node.has_update_expr || sym.kind != .struct {
+		return false
+	}
+	if sym.info !is ast.Struct {
+		return false
+	}
+	info := sym.info as ast.Struct
+	if info.is_anon || info.is_union || info.embeds.len > 0
+		|| node.init_fields.len != info.fields.len {
+		return false
+	}
+	if node.no_keys {
+		return true
+	}
+	field_names := info.fields.map(it.name)
+	return node.init_fields.all(it.name in field_names)
+}
+
+fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info ast.Struct, language ast.Language) {
+	stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
+	g.empty_line = true
+	tmp_var := g.new_tmp_var()
+	g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin___v_malloc(sizeof(${styp}));')
+	for i, init_field in node.init_fields {
+		mut resolved_field := init_field
+		if node.no_keys {
+			resolved_field.name = info.fields[i].name
+		}
+		if resolved_field.typ == 0 {
+			g.checker_bug('struct init, field.typ is 0', resolved_field.pos)
+		}
+		g.struct_init_ptr_field(tmp_var, resolved_field, language)
+		g.writeln(';')
+	}
+	g.set_current_pos_as_last_stmt_pos()
+	g.write2(stmt_str, ' ')
+	g.write(tmp_var)
+}
+
 fn (mut g Gen) get_embed_field_name(field_type ast.Type, field_name string) string {
 	update_sym := g.table.sym(field_type)
 	_, embeds := g.table.find_field_from_embeds(update_sym, field_name) or {
@@ -788,6 +838,16 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {
 	field_name := if language == .v { c_name(sfield.name) } else { sfield.name }
 	g.write('.${field_name} = ')
+	g.struct_init_field_value(sfield)
+}
+
+fn (mut g Gen) struct_init_ptr_field(target string, sfield ast.StructInitField, language ast.Language) {
+	field_name := if language == .v { c_name(sfield.name) } else { sfield.name }
+	g.write('${target}->${field_name} = ')
+	g.struct_init_field_value(sfield)
+}
+
+fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 	field_type_sym := g.table.sym(sfield.typ)
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
