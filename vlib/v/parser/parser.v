@@ -2484,6 +2484,8 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut has_fmts := []bool{}
 	mut fwidths := []int{}
 	mut precisions := []int{}
+	mut fwidth_exprs := []ast.Expr{}
+	mut precision_exprs := []ast.Expr{}
 	mut visible_pluss := []bool{}
 	mut fills := []bool{}
 	mut fmts := []u8{}
@@ -2501,8 +2503,10 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut has_fmt := false
 		mut fwidth := 0
 		mut fwidthneg := false
+		mut fwidth_expr := ast.empty_expr
 		// 987698 is a magic default value, unlikely to be present in user input. Note: 0 is valid precision
 		mut precision := 987698
+		mut precision_expr := ast.empty_expr
 		mut visible_plus := false
 		mut fill := false
 		mut fmt := `_` // placeholder
@@ -2518,18 +2522,44 @@ fn (mut p Parser) string_expr() ast.Expr {
 			}
 			// ${num:2d}
 			if p.tok.kind == .number {
-				fields := p.tok.lit.split('.')
-				if fields[0].len > 0 && fields[0][0] == `0` {
+				if p.peek_tok.kind == .lpar && p.tok.lit == '0' {
 					fill = true
+					p.next()
+					fwidth_expr = p.string_inter_format_expr()
+				} else {
+					fields := p.tok.lit.split('.')
+					if fields[0].len > 0 && fields[0][0] == `0` {
+						fill = true
+					}
+					fwidth = fields[0].int()
+					if fwidthneg {
+						fwidth = -fwidth
+					}
+					if fields.len > 1 {
+						precision = fields[1].int()
+					}
+					p.next()
 				}
-				fwidth = fields[0].int()
-				if fwidthneg {
-					fwidth = -fwidth
-				}
-				if fields.len > 1 {
-					precision = fields[1].int()
-				}
+			} else if p.tok.kind == .lpar {
+				fwidth_expr = p.string_inter_format_expr()
+			}
+			if fwidthneg && fwidth_expr !is ast.EmptyExpr {
+				fwidth_expr = ast.Expr(ast.PrefixExpr{
+					op:    .minus
+					pos:   fwidth_expr.pos()
+					right: fwidth_expr
+				})
+			}
+			if p.tok.kind == .dot {
 				p.next()
+				if p.tok.kind == .number {
+					precision = p.tok.lit.int()
+					p.next()
+				} else if p.tok.kind == .lpar {
+					precision_expr = p.string_inter_format_expr()
+				} else {
+					return p.error('precision specification should be a number or `(expression)`')
+				}
 			}
 			if p.tok.kind == .name {
 				if p.tok.lit.len == 1 {
@@ -2542,8 +2572,10 @@ fn (mut p Parser) string_expr() ast.Expr {
 			}
 		}
 		fwidths << fwidth
+		fwidth_exprs << fwidth_expr
 		has_fmts << has_fmt
 		precisions << precision
+		precision_exprs << precision_expr
 		visible_pluss << visible_plus
 		fmts << fmt
 		fills << fill
@@ -2551,20 +2583,29 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	pos = pos.extend(p.prev_tok.pos())
 	node = ast.StringInterLiteral{
-		vals:       vals
-		exprs:      exprs
-		need_fmts:  has_fmts
-		fwidths:    fwidths
-		precisions: precisions
-		pluss:      visible_pluss
-		fills:      fills
-		fmts:       fmts
-		fmt_poss:   fposs
-		pos:        pos
+		vals:            vals
+		exprs:           exprs
+		need_fmts:       has_fmts
+		fwidths:         fwidths
+		fwidth_exprs:    fwidth_exprs
+		precisions:      precisions
+		precision_exprs: precision_exprs
+		pluss:           visible_pluss
+		fills:           fills
+		fmts:            fmts
+		fmt_poss:        fposs
+		pos:             pos
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
 	return node
+}
+
+fn (mut p Parser) string_inter_format_expr() ast.Expr {
+	p.check(.lpar)
+	expr := p.expr(0)
+	p.check(.rpar)
+	return expr
 }
 
 fn (mut p Parser) parse_number_literal() ast.Expr {

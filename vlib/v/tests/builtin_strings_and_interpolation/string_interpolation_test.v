@@ -31,6 +31,27 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
+fn test_dynamic_format_widths() {
+	width := 10
+	left_width := -10
+	zero_width := 5
+	sign_width := 6
+	name := 'abc'
+	num := 42
+	assert '>${name:(width)}<' == '>       abc<'
+	assert '>${name:(left_width)}<' == '>abc       <'
+	assert '>${name:(-width)}<' == '>abc       <'
+	assert '${num:0(zero_width)d}' == '00042'
+	assert '${num:+(sign_width)d}' == '   +42'
+}
+
+fn test_dynamic_format_precision() {
+	width := 8
+	precision := 3
+	value := 12.34567
+	assert '>${value:(width).(precision)f}<' == '>  12.346<'
+}
+
 fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'

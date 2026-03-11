@@ -238,7 +238,17 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if node.fills[i] {
 		pad_ch = 1
 	}
-	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
+	static_width := if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+		0
+	} else {
+		node.fwidths[i]
+	}
+	static_precision := if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+		987698
+	} else {
+		node.precisions[i]
+	}
+	res := get_str_intp_u32_format(fmt_type, static_width, static_precision, remove_tail_zeros,
 		node.pluss[i], u8(pad_ch), base, upper_case)
 
 	return res, fmt_type.str()
@@ -499,7 +509,33 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.str_val(node, i, fmts)
 		}
 
-		g.write('}}')
+		g.write('}')
+		has_dynamic_width := i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr
+		has_dynamic_precision := i < node.precision_exprs.len
+			&& node.precision_exprs[i] !is ast.EmptyExpr
+		if has_dynamic_width || has_dynamic_precision {
+			g.write(', ')
+			if has_dynamic_width {
+				g.expr(node.fwidth_exprs[i])
+			} else {
+				g.write('0')
+			}
+			g.write(', ')
+			if has_dynamic_precision {
+				g.expr(node.precision_exprs[i])
+			} else {
+				g.write('0')
+			}
+			g.write(', ')
+			g.write(if has_dynamic_width && has_dynamic_precision {
+				'3'
+			} else if has_dynamic_width {
+				'1'
+			} else {
+				'2'
+			})
+		}
+		g.write('}')
 		if i < (node.vals.len - 1) {
 			g.write(', ')
 		}
