@@ -66,6 +66,12 @@ pub fn (mut app App) simple() vweb.Result {
 	return app.text('A simple result')
 }
 
+@['/aB']
+pub fn (mut app App) mixed_case() vweb.Result {
+	linfo('>>>>> ${@LOCATION}')
+	return app.text('mixed case route')
+}
+
 pub fn (mut app App) html_page() vweb.Result {
 	linfo('>>>>> ${@LOCATION}')
 	return app.html('<h1>ok</h1>')
