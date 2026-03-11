@@ -81,6 +81,13 @@ fn test_main() {
 	assert parent[0].children[0].id == 1
 	assert parent[0].children[1].id == 2
 	assert parent[0].children.len == 2
+	assert parent[0].children[0].babies.len == 2
+	assert parent[0].children[1].babies.len == 3
+	assert parent[0].children[0].babies[0].name == 'first baby'
+	assert parent[0].children[0].babies[1].name == 'second baby'
+	assert parent[0].children[1].babies[0].name == 'third baby'
+	assert parent[0].children[1].babies[1].name == 'fourth baby'
+	assert parent[0].children[1].babies[2].name == 'fifth baby'
 
 	db.close()!
 }
