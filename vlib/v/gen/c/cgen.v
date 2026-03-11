@@ -2152,6 +2152,9 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 	g.type_definitions.writeln('\n// BEGIN_array_fixed_return_structs')
 
 	for sym in fixed_arr_rets {
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		info := sym.info as ast.ArrayFixed
 		if info.size <= 0 {
 			// unresolved sizes e.g. [unknown_const]int
