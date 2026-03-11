@@ -63,6 +63,19 @@ fn test_install_from_git_url() {
 	assert res.output.contains('Installed `webview`'), res.output
 }
 
+fn test_install_from_git_url_uses_registered_package_name() {
+	mut res := cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
+	assert res.output.contains('Installing `nedpals.args`'), res.output
+	assert res.output.contains('Installed `nedpals.args`'), res.output
+	mut manifest := get_vmod(os.join_path('nedpals', 'args'))
+	assert manifest.name == 'args'
+
+	res = cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
+	assert res.output.contains('Updating module `nedpals.args`'), res.output
+	manifest = get_vmod(os.join_path('nedpals', 'args'))
+	assert manifest.name == 'args'
+}
+
 fn test_install_already_existent() {
 	mut res := cmd_ok(@LOCATION, '${vexe} install https://github.com/vlang/markdown')
 	assert res.output.contains('Updating module `markdown`'), res.output

@@ -23,6 +23,8 @@ struct Parser {
 mut:
 	modules              map[string]Module
 	checked_settings_vcs bool
+	search_modules       []string
+	search_loaded        bool
 	errors               int
 }
 
@@ -43,6 +45,36 @@ fn parse_query(query []string, mut selector VpmInstallServerSelector) []Module {
 		exit(1)
 	}
 	return p.modules.values()
+}
+
+fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident string, mut selector VpmInstallServerSelector) ?string {
+	if manifest_name == '' || manifest_name.contains('.') {
+		return none
+	}
+	expected_url := normalize_repo_lookup_url(ident) or { return none }
+	if !p.search_loaded {
+		p.search_modules = get_all_modules_for_search_with_selector(mut selector) or {
+			vpm_log(@FILE_LINE, @FN, 'failed to load the VPM search index for `${ident}`: ${err}')
+			p.search_loaded = true
+			return none
+		}
+		p.search_loaded = true
+	}
+	target_name := normalize_mod_path(manifest_name)
+	for registered_name in p.search_modules {
+		if normalize_mod_path(registered_name.all_after_last('.')) != target_name {
+			continue
+		}
+		info := get_mod_vpm_info_with_selector(registered_name, mut selector) or {
+			vpm_log(@FILE_LINE, @FN, 'failed to retrieve metadata for `${registered_name}`: ${err}')
+			continue
+		}
+		registered_url := normalize_repo_lookup_url(info.url) or { continue }
+		if registered_url == expected_url {
+			return info.name
+		}
+	}
+	return none
 }
 
 fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) {
@@ -113,10 +145,21 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			p.errors++
 			return
 		}
-		mod_path := normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
-			manifest.name))
+		// Reuse the registered VPM name when a direct VCS URL points to the same repository.
+		registered_name := if kind in [.https, .ssh] {
+			p.lookup_registered_name_for_url(manifest.name, ident, mut selector) or { '' }
+		} else {
+			''
+		}
+		final_name := if registered_name != '' { registered_name } else { manifest.name }
+		mod_path := if registered_name != '' {
+			normalize_mod_path(final_name.replace('.', os.path_separator))
+		} else {
+			normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
+				manifest.name))
+		}
 		Module{
-			name:         manifest.name
+			name:         final_name
 			url:          ident
 			version:      version
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
