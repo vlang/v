@@ -505,6 +505,9 @@ fn (mut ad AnchorData) add_links(line_number int, line string) {
 	for elem in res {
 		re.match_string(elem)
 		link := re.get_group_by_name(elem, 'link')
+		if link !in ad.links {
+			ad.links[link] = []AnchorLink{}
+		}
 		ad.links[link] << AnchorLink{
 			line:  line_number
 			label: re.get_group_by_name(elem, 'label')
@@ -517,6 +520,9 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 		if headline_start_pos := line.index(' ') {
 			headline := line.substr(headline_start_pos + 1, line.len)
 			link := create_ref_link(headline)
+			if link !in ad.anchors {
+				ad.anchors[link] = []AnchorTarget{}
+			}
 			ad.anchors[link] << Headline{
 				line:  line_number
 				label: headline
@@ -531,6 +537,9 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 		for elem in res {
 			re.match_string(elem)
 			link := re.get_group_by_name(elem, 'link')
+			if link !in ad.anchors {
+				ad.anchors[link] = []AnchorTarget{}
+			}
 			ad.anchors[link] << Anchor{
 				line: line_number
 			}

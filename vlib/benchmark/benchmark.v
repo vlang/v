@@ -146,6 +146,9 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
 	b.measured_steps << b.step_message_with_label(b_spent, 'in ${label}')
+	if label !in b.step_data {
+		b.step_data[label] = []f64{}
+	}
 	b.step_data[label] << f64(res)
 	b.step()
 	return res

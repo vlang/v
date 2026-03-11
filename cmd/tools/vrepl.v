@@ -332,6 +332,9 @@ fn (mut r Repl) parse_import(line string) {
 
 	// set value
 	if line.contains('{') && line.contains('}') {
+		if mod !in r.modules {
+			r.modules[mod] = []string{}
+		}
 		values := line.split('{')[1].split('}')[0]
 		for value in values.split(',') {
 			r.modules[mod] << value

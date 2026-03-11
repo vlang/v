@@ -1082,7 +1082,10 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if is_shared {
 				expected_push_many_atype = expected_push_many_atype.clear_flag(.shared_f)
 			}
+			old_inside_left_shift := g.inside_left_shift
+			g.inside_left_shift = true
 			g.expr(node.left)
+			g.inside_left_shift = old_inside_left_shift
 			if node.left_type.has_flag(.shared_f) {
 				g.write('->val')
 			}
@@ -1111,7 +1114,10 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					g.write('&')
 				}
 			}
+			old_inside_left_shift := g.inside_left_shift
+			g.inside_left_shift = true
 			g.expr(node.left)
+			g.inside_left_shift = old_inside_left_shift
 			if node.left_type.has_flag(.shared_f) {
 				g.write('->val')
 			}

@@ -18,6 +18,13 @@ import v.callgraph
 import v.dotgraph
 // import x.json2
 
+fn append_map_array(mut items map[string][]string, key string, value string) {
+	if key !in items {
+		items[key] = []string{}
+	}
+	items[key] << value
+}
+
 pub struct Builder {
 pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
@@ -219,15 +226,15 @@ pub fn (mut b Builder) parse_imports() {
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
-		b.path_invalidates_mods[ast_file.path] << ast_file.mod.name
+		append_map_array(mut b.path_invalidates_mods, ast_file.path, ast_file.mod.name)
 		if ast_file.mod.name != 'builtin' {
-			b.mod_invalidates_paths['builtin'] << ast_file.path
-			b.mod_invalidates_mods['builtin'] << ast_file.mod.name
+			append_map_array(mut b.mod_invalidates_paths, 'builtin', ast_file.path)
+			append_map_array(mut b.mod_invalidates_mods, 'builtin', ast_file.mod.name)
 		}
 		for imp in ast_file.imports {
 			mod := imp.mod
-			b.mod_invalidates_paths[mod] << ast_file.path
-			b.mod_invalidates_mods[mod] << ast_file.mod.name
+			append_map_array(mut b.mod_invalidates_paths, mod, ast_file.path)
+			append_map_array(mut b.mod_invalidates_mods, mod, ast_file.mod.name)
 			if mod == 'builtin' {
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
 					ast_file.path, imp.pos)

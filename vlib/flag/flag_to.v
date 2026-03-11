@@ -171,6 +171,13 @@ fn normalize_attr_value(value string) string {
 	return trimmed
 }
 
+fn (mut fm FlagMapper) add_array_flag(field_name string, flag_data FlagData) {
+	if field_name !in fm.array_field_map_flag {
+		fm.array_field_map_flag[field_name] = []FlagData{}
+	}
+	fm.array_field_map_flag[field_name] << flag_data
+}
+
 fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 	mut struct_fields := map[string]StructField{}
 	mut struct_attrs := map[string]string{}
@@ -596,12 +603,12 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					trace_println('${@FN}: (tail) flag `${arg}` last_handled_pos: ${last_handled_pos} pos: ${pos}')
 					if pos == last_handled_pos + 1 || pos == pos_last_flag + 1 {
 						if field.hints.has(.is_array) {
-							fm.array_field_map_flag[field.name] << FlagData{
+							fm.add_array_flag(field.name, FlagData{
 								raw:        arg
 								field_name: field.name
 								arg:        ?string(arg) // .arg is used when assigning at comptime to []XYZ
 								pos:        pos
-							}
+							})
 						} else {
 							fm.field_map_flag[field.name] = FlagData{
 								raw:        arg
@@ -1082,14 +1089,14 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (V style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (V style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1146,14 +1153,14 @@ fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field Struc
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1206,14 +1213,14 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (V `flag.FlagParser` (long) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (long) style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1266,14 +1273,14 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1331,14 +1338,14 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO `flag` style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(arg)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (GO `flag` style) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
@@ -1393,14 +1400,14 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GNU style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(arg)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (GNU style) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
@@ -1482,10 +1489,10 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 						}
 					}
 					if field.hints.has(.is_array) {
-						fm.array_field_map_flag[mf.field_name] << FlagData{
+						fm.add_array_flag(mf.field_name, FlagData{
 							...mf
 							arg: ?string(arg)
-						}
+						})
 						trace_println('${@FN}: found match for (array) ${fm.dbg_match(flag_ctx,
 							field, arg, '')}')
 					} else {
@@ -1617,14 +1624,14 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			trace_println('${@FN}: found match for (multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 			fm.handled_pos << pos
 			if next_is_handled {
 				fm.handled_pos << pos + 1 // next
@@ -1726,14 +1733,14 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1771,14 +1778,14 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 			if field.hints.has(.is_array) {
 				trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 					field, next, '')}')
-				fm.array_field_map_flag[field.name] << FlagData{
+				fm.add_array_flag(field.name, FlagData{
 					raw:        flag_raw
 					field_name: field.name
 					delimiter:  used_delimiter
 					name:       flag_name
 					arg:        ?string(next)
 					pos:        pos
-				}
+				})
 			} else {
 				trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx,
 					field, next, '')}')

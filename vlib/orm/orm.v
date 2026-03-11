@@ -916,6 +916,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'unique' {
 					if attr.arg != '' {
 						if attr.kind == .string {
+							if attr.arg !in unique {
+								unique[attr.arg] = []string{}
+							}
 							unique[attr.arg] << field_name
 							continue
 						} else if attr.kind == .number {

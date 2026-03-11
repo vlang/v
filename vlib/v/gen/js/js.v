@@ -54,6 +54,7 @@ mut:
 	inside_ternary         bool
 	inside_or              bool
 	inside_loop            bool
+	inside_left_shift      bool
 	inside_map_set         bool // map.set(key, value)
 	inside_builtin         bool
 	inside_if_option       bool
@@ -2967,7 +2968,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else if left_sym.kind == .map {
 		g.expr(expr.left)
 
-		if expr.is_setter {
+		if expr.is_setter && !g.inside_left_shift {
 			g.inside_map_set = true
 			g.write('.getOrSet(')
 		} else {
@@ -3133,7 +3134,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('array_push(')
+		old_inside_left_shift := g.inside_left_shift
+		g.inside_left_shift = true
 		g.expr(it.left)
+		g.inside_left_shift = old_inside_left_shift
 		mut ltyp := it.left_type
 		for ltyp.is_ptr() {
 			g.write('.val')
