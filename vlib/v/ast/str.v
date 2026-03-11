@@ -350,21 +350,28 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 // string if none is needed. For example, '${z:8.3f} ${a:-20} ${a>b+2}'
 pub fn (lit &StringInterLiteral) get_fspec(i int) string {
 	mut res := []string{}
+	has_dynamic_width := i < lit.fwidth_exprs.len && lit.fwidth_exprs[i] !is EmptyExpr
+	has_dynamic_precision := i < lit.precision_exprs.len && lit.precision_exprs[i] !is EmptyExpr
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
-		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
-		|| lit.precisions[i] != 987698
+		|| (lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width))
+		|| lit.fwidths[i] != 0 || lit.precisions[i] != 987698 || has_dynamic_width
+		|| has_dynamic_precision
 	if needs_fspec {
 		res << ':'
 		if lit.pluss[i] {
 			res << '+'
 		}
-		if lit.fills[i] && lit.fwidths[i] >= 0 {
+		if lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width) {
 			res << '0'
 		}
-		if lit.fwidths[i] != 0 {
+		if has_dynamic_width {
+			res << '(${lit.fwidth_exprs[i].str()})'
+		} else if lit.fwidths[i] != 0 {
 			res << '${lit.fwidths[i]}'
 		}
-		if lit.precisions[i] != 987698 {
+		if has_dynamic_precision {
+			res << '.(${lit.precision_exprs[i].str()})'
+		} else if lit.precisions[i] != 987698 {
 			res << '.${lit.precisions[i]}'
 		}
 		if lit.need_fmts[i] {

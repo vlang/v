@@ -1157,13 +1157,19 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		ast.StringInterLiteral {
 			if g.cur_concrete_types.len > 0 {
 				mut exprs := node.exprs.clone()
+				mut fwidth_exprs := node.fwidth_exprs.clone()
+				mut precision_exprs := node.precision_exprs.clone()
 				return ast.Expr(ast.StringInterLiteral{
 					...node
-					exprs:      g.exprs(mut exprs)
-					expr_types: node.expr_types.map(g.unwrap_generic(it))
+					exprs:           g.exprs(mut exprs)
+					expr_types:      node.expr_types.map(g.unwrap_generic(it))
+					fwidth_exprs:    g.exprs(mut fwidth_exprs)
+					precision_exprs: g.exprs(mut precision_exprs)
 				})
 			}
 			node.exprs = g.exprs(mut node.exprs)
+			node.fwidth_exprs = g.exprs(mut node.fwidth_exprs)
+			node.precision_exprs = g.exprs(mut node.precision_exprs)
 		}
 		ast.StructInit {
 			if g.cur_concrete_types.len > 0 {

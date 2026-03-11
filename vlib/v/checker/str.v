@@ -41,6 +41,22 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	}
 }
 
+fn (mut c Checker) check_string_inter_lit_format_expr(mut expr ast.Expr, what string) {
+	if expr is ast.EmptyExpr {
+		return
+	}
+	expected_type := c.expected_type
+	c.expected_type = ast.int_type
+	mut typ := c.expr(mut expr)
+	c.expected_type = expected_type
+	typ = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
+		typ))
+	typ = c.table.unalias_num_type(typ)
+	if typ != ast.int_type && !typ.is_int_literal() {
+		c.error('${what} expression should return `int`', expr.pos())
+	}
+}
+
 fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_interface_deref_save := c.inside_interface_deref
 	c.inside_interface_deref = true
@@ -63,6 +79,16 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
+		if i < node.fwidth_exprs.len {
+			mut width_expr := node.fwidth_exprs[i]
+			c.check_string_inter_lit_format_expr(mut width_expr, 'width')
+			node.fwidth_exprs[i] = width_expr
+		}
+		if i < node.precision_exprs.len {
+			mut precision_expr := node.precision_exprs[i]
+			c.check_string_inter_lit_format_expr(mut precision_expr, 'precision')
+			node.precision_exprs[i] = precision_expr
+		}
 		ftyp_sym := c.table.sym(ftyp)
 		typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 			c.table.unalias_num_type(ftyp)
@@ -91,7 +117,9 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 				node.need_fmts[i] = false
 			}
 		} else { // check if given format specifier is valid for type
-			if node.precisions[i] != 987698 && !typ.is_float() {
+			has_dynamic_precision := i < node.precision_exprs.len
+				&& node.precision_exprs[i] !is ast.EmptyExpr
+			if (node.precisions[i] != 987698 || has_dynamic_precision) && !typ.is_float() {
 				c.error('precision specification only valid for float types', node.fmt_poss[i])
 			}
 			if node.pluss[i] && !typ.is_number() {

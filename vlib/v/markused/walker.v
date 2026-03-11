@@ -828,6 +828,16 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.StringInterLiteral {
 			w.uses_interp = true
 			w.exprs(node.exprs)
+			for expr in node.fwidth_exprs {
+				if expr !is ast.EmptyExpr {
+					w.expr(expr)
+				}
+			}
+			for expr in node.precision_exprs {
+				if expr !is ast.EmptyExpr {
+					w.expr(expr)
+				}
+			}
 		}
 		ast.SelectorExpr {
 			w.expr(node.expr)

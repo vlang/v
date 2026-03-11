@@ -130,6 +130,9 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
+const str_intp_has_dynamic_width = u8(1)
+const str_intp_has_dynamic_precision = u8(1 << 1)
+
 // convert from data format to compact u32
 pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool,
 	in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
@@ -153,14 +156,16 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
 	typ := unsafe { StrIntpType(x & 0x1F) }
-	align := int((x >> 5) & 0x01)
+	mut align := int((x >> 5) & 0x01)
 	upper_case := ((x >> 7) & 0x01) > 0
 	sign := int((x >> 8) & 0x01)
-	precision := int((x >> 9) & 0x7F)
+	mut precision := int((x >> 9) & 0x7F)
 	tail_zeros := ((x >> 16) & 0x01) > 0
-	width := int(i16((x >> 17) & 0x3FF))
+	mut width := int(i16((x >> 17) & 0x3FF))
 	mut base := int(x >> 27) & 0xF
 	fmt_pad_ch := u8((x >> 31) & 0xFF)
+	has_dynamic_width := (data.dyn_flags & str_intp_has_dynamic_width) != 0
+	has_dynamic_precision := (data.dyn_flags & str_intp_has_dynamic_precision) != 0
 
 	// no string interpolation is needed, return empty string
 	if typ == .si_no_str {
@@ -173,6 +178,18 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	if base > 0 {
 		base += 2 // we start from 2, 0 == base 10
 	}
+	if has_dynamic_width {
+		width = data.dyn_width
+		if width < 0 {
+			width = -width
+			align = 0
+		} else if width > 0 {
+			align = 1
+		}
+	}
+	if has_dynamic_precision {
+		precision = data.dyn_precision
+	}
 
 	// mange pad char, for now only 0 allowed
 	mut pad_ch := u8(` `)
@@ -182,7 +199,13 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 
 	len0_set := if width > 0 { width } else { -1 }
-	len1_set := if precision == 0x7F { -1 } else { precision }
+	len1_set := if has_dynamic_precision {
+		if precision >= 0 { precision } else { -1 }
+	} else if precision == 0x7F {
+		-1
+	} else {
+		precision
+	}
 	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
@@ -672,8 +695,11 @@ pub struct StrIntpData {
 pub:
 	str string
 	// fmt     u64  // expanded version for future use, 64 bit
-	fmt u32
-	d   StrIntpMem
+	fmt           u32
+	d             StrIntpMem
+	dyn_width     int
+	dyn_precision int
+	dyn_flags     u8
 }
 
 // str_intp is the main entry point for string interpolation

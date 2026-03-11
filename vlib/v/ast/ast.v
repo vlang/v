@@ -270,10 +270,12 @@ pub:
 	fmt_poss   []token.Pos
 	pos        token.Pos
 pub mut:
-	exprs      []Expr
-	expr_types []Type
-	fmts       []u8
-	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
+	exprs           []Expr
+	expr_types      []Type
+	fwidth_exprs    []Expr
+	precision_exprs []Expr
+	fmts            []u8
+	need_fmts       []bool // an explicit non-default fmt required, e.g. `x`
 }
 
 pub struct CharLiteral {
@@ -2692,8 +2694,22 @@ pub fn (node Node) children() []Node {
 	mut children := []Node{}
 	if node is Expr {
 		match node {
-			StringInterLiteral, Assoc, ArrayInit {
+			Assoc, ArrayInit {
 				return node.exprs.map(Node(it))
+			}
+			StringInterLiteral {
+				children << node.exprs.map(Node(it))
+				for expr in node.fwidth_exprs {
+					if expr !is EmptyExpr {
+						children << expr
+					}
+				}
+				for expr in node.precision_exprs {
+					if expr !is EmptyExpr {
+						children << expr
+					}
+				}
+				return children
 			}
 			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely,
 			TypeOf, ArrayDecompose {

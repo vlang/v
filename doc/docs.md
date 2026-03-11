@@ -722,11 +722,13 @@ To use a format specifier, follow this pattern:
   >
   > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
-- width: may be an integer value describing the minimum width of total field to output.
+- width: may be an integer value describing the minimum width of total field to output. For
+  runtime widths, wrap an `int` expression in parentheses, for example `${name:(width)}`.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point without any insignificant trailing zeros. If displaying insignificant zero's is desired,
   append a `f` specifier to the precision value (see examples below). Applies only to float
-  variables and is ignored for integer variables.
+  variables and is ignored for integer variables. Runtime precisions use the same parenthesized
+  form, for example `${value:(width).(precision)f}`.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent
