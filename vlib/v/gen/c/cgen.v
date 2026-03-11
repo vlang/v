@@ -8025,6 +8025,10 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		}
 		.struct {
 			info := sym.info as ast.Struct
+			if sym.language == .c && info.is_empty_struct() {
+				// Imported C aggregate types can be opaque in V, but still need a valid C zero initializer.
+				return '{0}'
+			}
 			mut has_none_zero := info.fields.len == 0
 
 			mut init_str := if info.is_anon && !g.inside_global_decl {
