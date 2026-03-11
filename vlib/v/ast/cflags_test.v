@@ -52,6 +52,7 @@ fn test_parse_invalid_cflags() {
 	assert_parse_invalid_flag(mut t, 'windows -l')
 	assert_parse_invalid_flag(mut t, '-I')
 	assert_parse_invalid_flag(mut t, '-L')
+	assert_parse_invalid_flag(mut t, 'darwin `sdl2-config --cflags --libs` -lSDL2')
 	// OS/compiler name only is not allowed
 	assert_parse_invalid_flag(mut t, 'darwin')
 	assert_parse_invalid_flag(mut t, 'freebsd')

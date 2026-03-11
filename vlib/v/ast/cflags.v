@@ -24,6 +24,9 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 	if flag == '' {
 		return error('flag is empty')
 	}
+	if flag.contains('`') {
+		return error('bad #flag `${flag_orig}`: shell command substitution with backticks is not supported; use #pkgconfig or explicit flags instead')
+	}
 	mut fos := ''
 	mut allowed_os_overrides := []string{}
 	allowed_os_overrides << valid_comptime_not_user_defined
