@@ -463,9 +463,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if sym.info is ast.Map {
 					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
 				}
-			} else if !node.is_method && node.args.len == 1 && node.args[0].typ != ast.string_type
+			} else if !node.is_method && node.args.len == 1
 				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
-				w.uses_str[node.args[0].typ] = true
+				if node.args[0].typ != ast.string_type {
+					w.uses_str[node.args[0].typ] = true
+				}
+				if w.pref.gc_mode == .boehm_leak && (node.args[0].typ != ast.string_type
+					|| node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
+					w.uses_free[ast.string_type] = true
+				}
 			} else if node.is_method && node.name == 'str' {
 				w.uses_str[node.left_type] = true
 			} else if node.is_method && node.name == 'free' {
@@ -1428,6 +1434,11 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 fn (mut w Walker) mark_resource_dependencies() {
 	string_idx_str := ast.string_type_idx.str()
 	array_idx_str := ast.array_type_idx.str()
+
+	if w.pref.gc_mode == .boehm_leak {
+		// `-gc boehm_leak` emits scope-exit frees for used heap-backed values.
+		w.uses_free[ast.string_type] = true
+	}
 
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')

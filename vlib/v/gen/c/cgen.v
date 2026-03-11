@@ -2467,7 +2467,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	if g.inside_ternary > 0 {
 		g.write2('', ')')
 	}
-	if g.is_autofree && !g.inside_vweb_tmpl && stmts.len > 0 && !last_stmt_was_return {
+	if g.needs_scope_cleanup() && !g.inside_vweb_tmpl && stmts.len > 0 && !last_stmt_was_return {
 		// use the first stmt to get the scope
 		stmt := stmts[0]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
@@ -6635,7 +6635,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 		}
 		g.write_defer_stmts(node.scope, false, node.pos)
 		// continue or break
-		if g.is_autofree && !g.is_builtin_mod {
+		if g.needs_scope_cleanup() && !g.is_builtin_mod {
 			g.trace_autofree('// free before continue/break')
 			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, g.branch_parent_pos)
 		}
@@ -6689,13 +6689,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 		if fn_return_is_option || fn_return_is_result {
 			styp := g.styp(fn_ret_type)
-			if g.is_autofree {
+			if g.needs_scope_cleanup() {
 				g.trace_autofree('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos, node.pos.line_nr, false)
 			}
 			g.writeln('return (${styp}){0};')
 		} else {
-			if g.is_autofree {
+			if g.needs_scope_cleanup() {
 				g.trace_autofree('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
@@ -6958,7 +6958,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
 			g.writeln('')
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
-			if g.is_autofree {
+			if g.needs_scope_cleanup() {
 				g.detect_used_var_on_return(expr0)
 			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
@@ -6968,7 +6968,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		// autofree before `return`
 		// set free_parent_scopes to true, since all variables defined in parent
 		// scopes need to be freed before the return
-		if g.is_autofree {
+		if g.needs_scope_cleanup() {
 			g.detect_used_var_on_return(expr0)
 			if !use_tmp_var && !g.is_builtin_mod {
 				use_tmp_var = expr0 is ast.CallExpr
