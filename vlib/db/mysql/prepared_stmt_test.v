@@ -100,3 +100,70 @@ fn test_stmt_bind_result_buffer_without_bind_res() {
 	second_fetch := stmt.fetch_stmt()!
 	assert second_fetch == 100
 }
+
+fn test_stmt_prepare_returns_mysql_error_code() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	config := mysql.Config{
+		host:     '127.0.0.1'
+		port:     3306
+		username: 'root'
+		password: ''
+		dbname:   'mysql'
+	}
+
+	mut db := mysql.connect(config)!
+	defer {
+		db.close() or {}
+	}
+
+	mut stmt := db.init_stmt('insert into missing_stmt_errno_test (value) values (?)')
+	defer {
+		stmt.close() or {}
+	}
+	stmt.prepare() or {
+		assert err.code() == 1146
+		return
+	}
+	assert false
+}
+
+fn test_prepare_execute_returns_mysql_error_code() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	config := mysql.Config{
+		host:     '127.0.0.1'
+		port:     3306
+		username: 'root'
+		password: ''
+		dbname:   'mysql'
+	}
+
+	mut db := mysql.connect(config)!
+	defer {
+		db.close() or {}
+	}
+
+	db.exec('drop table if exists stmt_handle_errno_test')!
+	db.exec('create table if not exists stmt_handle_errno_test (
+		id INT PRIMARY KEY AUTO_INCREMENT,
+		value VARCHAR(255) NOT NULL UNIQUE
+	)')!
+	db.exec_param('insert into stmt_handle_errno_test (value) values (?)', 'duplicate')!
+
+	stmt := db.prepare('insert into stmt_handle_errno_test (value) values (?)')!
+	defer {
+		stmt.close()
+	}
+	stmt.execute(['duplicate']) or {
+		assert err.code() == 1062
+		return
+	}
+	assert false
+}
