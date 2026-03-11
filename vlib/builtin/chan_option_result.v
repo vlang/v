@@ -59,6 +59,10 @@ pub fn (err IError) str() string {
 	if err is None__ {
 		return 'none'
 	}
+	c := err.code()
+	if c > 0 {
+		return err.msg() + '; code: ' + c.str()
+	}
 	return err.msg()
 }
 
