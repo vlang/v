@@ -5,6 +5,61 @@ module c
 import strings
 import v.ast
 
+fn array_init_orig_expr(expr ast.Expr) ast.Expr {
+	return match expr {
+		ast.CTempVar { expr.orig }
+		else { expr }
+	}
+}
+
+fn (g &Gen) can_keep_array_init_expr_inline(expr ast.Expr) bool {
+	return match expr {
+		ast.BoolLiteral, ast.CharLiteral, ast.EnumVal, ast.FloatLiteral, ast.IntegerLiteral,
+		ast.None, ast.OffsetOf, ast.SizeOf, ast.StringLiteral, ast.TypeNode {
+			true
+		}
+		ast.Ident {
+			expr.or_expr.kind == .absent
+		}
+		ast.ParExpr {
+			g.can_keep_array_init_expr_inline(expr.expr)
+		}
+		ast.SelectorExpr {
+			expr.or_block.kind == .absent && g.can_keep_array_init_expr_inline(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type, default_type ast.Type) []ast.Expr {
+	mut needs_order_preserved := false
+	for expr in exprs {
+		if g.need_tmp_var_in_expr(expr) {
+			needs_order_preserved = true
+			break
+		}
+	}
+	if !needs_order_preserved {
+		return exprs
+	}
+	mut prepared := []ast.Expr{cap: exprs.len}
+	for i, expr in exprs {
+		if g.can_keep_array_init_expr_inline(expr) {
+			prepared << expr
+			continue
+		}
+		expr_type := if expr_types.len > i && expr_types[i] != 0 {
+			expr_types[i]
+		} else {
+			default_type
+		}
+		prepared << ast.Expr(g.expr_to_ctemp_before_stmt(expr, expr_type))
+	}
+	return prepared
+}
+
 fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	array_type := g.unwrap(node.typ)
 	mut array_styp := ''
@@ -49,6 +104,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		// `[1, 2, 3]`
 		elem_styp := g.styp(elem_type.typ)
 		noscan := g.check_noscan(elem_type.typ)
+		prepared_exprs := g.prepare_array_init_exprs(node.exprs, node.expr_types, node.elem_type)
 		if elem_type.unaliased_sym.kind == .function {
 			g.write('builtin__new_array_from_c_array(${len}, ${len}, sizeof(voidptr), _MOV((voidptr[${len}]){')
 		} else {
@@ -59,10 +115,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.write('\t\t')
 		}
 		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
-		for i, expr in node.exprs {
+		for i, expr in prepared_exprs {
+			actual_expr := array_init_orig_expr(expr)
 			expr_type := if node.expr_types.len > i { node.expr_types[i] } else { node.elem_type }
 			if expr_type == ast.string_type
-				&& expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
+				&& actual_expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
 				if is_iface_or_sumtype {
 					g.expr_with_cast(expr, expr_type, node.elem_type)
 				} else {
@@ -73,8 +130,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			} else {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(expr, expr_type, node.elem_type)
-				} else if elem_type.unaliased_sym.kind == .array_fixed
-					&& expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr] {
+				} else if elem_type.unaliased_sym.kind == .array_fixed && (expr is ast.CTempVar
+					|| actual_expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr]) {
 					info := elem_type.unaliased_sym.info as ast.ArrayFixed
 					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 						info.elem_type, info.size)
@@ -172,13 +229,16 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			g.inside_array_item = tmp_inside_array
 		}
 		nelen := node.exprs.len
-		for i, expr in node.exprs {
-			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
+		prepared_exprs := g.prepare_array_init_exprs(node.exprs, node.expr_types, node.elem_type)
+		for i, expr in prepared_exprs {
+			actual_expr := array_init_orig_expr(expr)
+			if elem_sym.kind == .array_fixed
+				&& (expr is ast.CTempVar || actual_expr in [ast.Ident, ast.SelectorExpr]) {
 				elem_info := elem_sym.array_fixed_info()
 				g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 					elem_info.elem_type, elem_info.size)
-			} else if elem_sym.kind == .array_fixed && expr is ast.CallExpr
-				&& g.table.final_sym(expr.return_type).kind == .array_fixed {
+			} else if elem_sym.kind == .array_fixed && actual_expr is ast.CallExpr
+				&& g.table.final_sym(actual_expr.return_type).kind == .array_fixed {
 				elem_info := elem_sym.array_fixed_info()
 				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)

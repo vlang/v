@@ -108,6 +108,11 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		ast.LockExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)
 		}
+		ast.ArrayInit {
+			if expr.has_callexpr || g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
 		else {}
 	}
 	return unsupported_ctemp_assert_transform
