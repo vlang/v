@@ -446,7 +446,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 
 	g.write('${name}(')
 	for i, arg in it.args {
-		expected_arg_type := if i < it.expected_arg_types.len { it.expected_arg_types[i] } else { arg.typ }
+		expected_arg_type := if i < it.expected_arg_types.len {
+			it.expected_arg_types[i]
+		} else {
+			arg.typ
+		}
 		g.expr_with_expected_type(arg.expr, expected_arg_type)
 		if i != it.args.len - 1 {
 			g.write(', ')

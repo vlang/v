@@ -6,6 +6,7 @@ module os
 // clang -Werror=incompatible-function-pointer-types between
 // void (*)(os__Signal) and void (*)(int).
 #define v_signal_with_handler_cast(sig, handler) signal((sig), (void (*)(int))(handler))
+
 fn C.v_signal_with_handler_cast(signal i32, handlercb SignalHandler) voidptr
 
 // signal will assign `handler` callback to be called when `signum` signal is received.

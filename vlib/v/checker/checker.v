@@ -5111,7 +5111,8 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) || allow_mut_selector_smartcast {
+			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option)
+				|| allow_mut_selector_smartcast {
 				smartcasts << to_type
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type

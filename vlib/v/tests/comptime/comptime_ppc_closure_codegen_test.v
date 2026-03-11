@@ -18,7 +18,9 @@ fn test_cross_arch_ppc_closure_codegen() {
 	}
 	println(f())
 }
-') or { panic(err) }
+') or {
+		panic(err)
+	}
 	res := os.execute('${os.quoted_path(vexe)} -gc none -arch ppc -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 	assert res.exit_code == 0, res.output
 	csrc := os.read_file(output) or { panic(err) }
