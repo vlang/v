@@ -1,0 +1,17 @@
+module main
+
+interface Handler {
+mut:
+	event()
+}
+
+struct Input {}
+
+fn (shared input Input) event() {}
+
+fn take_handler(mut _ Handler) {}
+
+fn main() {
+	mut input := Input{}
+	take_handler(mut input)
+}
