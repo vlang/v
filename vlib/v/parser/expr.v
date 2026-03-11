@@ -727,7 +727,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				is_stmt: true
 			}
 		} else if p.tok.kind.is_infix()
-			&& !(p.tok.kind in [.minus, .amp, .mul, .key_as, .key_in, .key_is]
+			&& !(p.tok.kind in [.minus, .amp, .mul, .arrow, .key_as, .key_in, .key_is]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
 			node = p.infix_expr(node)
