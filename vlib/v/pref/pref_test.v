@@ -38,7 +38,7 @@ fn test_version_flag() {
 }
 
 fn test_cross_compile_keeps_explicit_cc() {
-	target_os := if pref.get_host_os() == .windows { 'linux' } else { 'windows' }
+	target_os := if pref.get_host_os() == .linux { 'macos' } else { 'linux' }
 	custom_cc := 'cosmocc'
 
 	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os],
