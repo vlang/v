@@ -645,7 +645,8 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	mut sym := g.table.sym(info.elem_type)
 	is_option := typ.has_flag(.option)
 	if !is_option && mut sym.info is ast.Alias {
-		typ = sym.info.parent_type
+		// Keep pointer depth/flags when unwrapping aliases (e.g. []&AliasStruct).
+		typ = sym.info.parent_type.derive(typ)
 		sym = g.table.sym(typ)
 	}
 	field_styp := g.styp(typ)
@@ -752,7 +753,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	mut typ := info.elem_type
 	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
-		typ = sym.info.parent_type
+		typ = sym.info.parent_type.derive(typ)
 		sym = g.table.sym(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
