@@ -3498,11 +3498,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if (exp_sym.kind == .function && !expected_type.has_option_or_result())
-		|| (g.inside_struct_init && expected_type == ast.voidptr_type
-		&& expected_type != got_type_raw && expr !is ast.StructInit)
-		|| (g.inside_call && expected_type == ast.voidptr_type && expr is ast.ArrayInit
-		&& (expr as ast.ArrayInit).is_fixed) {
+	if (g.inside_struct_init && expected_type == ast.voidptr_type && expected_type != got_type_raw
+		&& expr !is ast.StructInit) || (g.inside_call && expected_type == ast.voidptr_type
+		&& expr is ast.ArrayInit && (expr as ast.ArrayInit).is_fixed) {
 		g.write('(voidptr)')
 	}
 	// no cast
