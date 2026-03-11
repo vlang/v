@@ -1354,6 +1354,13 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	if typ_sym.name == 'JS.Any' {
 		return true
 	}
+	if inter_sym.kind == .interface && c.table.get_attrs(inter_sym).any(it.name == 'single_impl') {
+		if pos.file_idx != -1 {
+			c.error('cannot use `${styp}` as `${inter_sym.name}` without an explicit cast (e.g. `${inter_sym.name}(value)`)',
+				pos)
+		}
+		return false
+	}
 	if typ_sym.kind == .function && inter_sym.name != 'JS.Any' {
 		c.error('cannot implement interface `${inter_sym.name}` using function', pos)
 		return false
