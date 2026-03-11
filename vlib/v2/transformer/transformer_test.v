@@ -6,6 +6,7 @@ module transformer
 import os
 import v2.ast
 import v2.pref as vpref
+import v2.token
 import v2.types
 
 // Helper to create a minimal transformer for testing
@@ -318,6 +319,49 @@ fn test_transform_index_expr_string_slice_lowered() {
 	assert call.lhs is ast.Ident
 	assert (call.lhs as ast.Ident).name == 'string__substr'
 	assert call.args.len == 3
+}
+
+fn test_transform_index_expr_string_call_slice_open_ended_uses_max_int() {
+	mut env := &types.Environment{}
+	env.set_expr_type(1, types.string_)
+	mut t := &Transformer{
+		pref:                        &vpref.Preferences{}
+		env:                         unsafe { env }
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+	}
+
+	expr := ast.IndexExpr{
+		lhs:  ast.CallExpr{
+			lhs: ast.Ident{
+				name: 'get_type'
+			}
+			pos: token.Pos{
+				id: 1
+			}
+		}
+		expr: ast.RangeExpr{
+			op:    .dotdot
+			start: ast.BasicLiteral{
+				kind:  .number
+				value: '2'
+			}
+			end:   ast.empty_expr
+		}
+	}
+
+	result := t.transform_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'string__substr'
+	assert call.args.len == 3
+	assert call.args[0] is ast.CallExpr
+	assert call.args[2] is ast.BasicLiteral
+	end := call.args[2] as ast.BasicLiteral
+	assert end.kind == .number
+	assert end.value == '2147483647'
 }
 
 fn test_transform_index_expr_array_slice_lowered() {
