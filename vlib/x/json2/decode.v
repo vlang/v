@@ -1104,23 +1104,170 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	decoder.decode_error('Expected number or string value for enum, got: ${enum_info.value_kind}')!
 }
 
+const max_integer_number_digits = 20
+
+fn has_exponent_number_syntax(str string) bool {
+	for c in str {
+		if c == `e` || c == `E` {
+			return true
+		}
+	}
+	return false
+}
+
+fn scientific_number_to_integer_string(str string) !string {
+	if !has_exponent_number_syntax(str) {
+		return str
+	}
+	if str.len == 0 {
+		return error('invalid scientific notation number')
+	}
+	mut i := 0
+	mut is_negative := false
+	if str[i] == `+` || str[i] == `-` {
+		is_negative = str[i] == `-`
+		i++
+	}
+	if i >= str.len {
+		return error('invalid scientific notation number')
+	}
+	mut digits := []u8{cap: str.len}
+	mut fractional_digits := 0
+	mut seen_digit := false
+	mut seen_dot := false
+	for i < str.len {
+		c := str[i]
+		if c >= `0` && c <= `9` {
+			digits << c
+			seen_digit = true
+			if seen_dot {
+				fractional_digits++
+			}
+			i++
+			continue
+		}
+		if c == `.` && !seen_dot {
+			seen_dot = true
+			i++
+			continue
+		}
+		break
+	}
+	if !seen_digit || i >= str.len || (str[i] != `e` && str[i] != `E`) {
+		return error('invalid scientific notation number')
+	}
+	i++
+	mut exponent_sign := 1
+	if i < str.len && (str[i] == `+` || str[i] == `-`) {
+		if str[i] == `-` {
+			exponent_sign = -1
+		}
+		i++
+	}
+	if i >= str.len || str[i] < `0` || str[i] > `9` {
+		return error('invalid scientific notation number')
+	}
+	mut exponent := 0
+	exponent_cap := max_integer_number_digits + fractional_digits + 1
+	for i < str.len && str[i] >= `0` && str[i] <= `9` {
+		if exponent < exponent_cap {
+			exponent = (exponent * 10) + int(str[i] - `0`)
+		}
+		i++
+	}
+	if i != str.len {
+		return error('invalid scientific notation number')
+	}
+	if exponent_sign == -1 {
+		exponent = -exponent
+	}
+	mut first_non_zero := 0
+	for first_non_zero < digits.len && digits[first_non_zero] == `0` {
+		first_non_zero++
+	}
+	if first_non_zero == digits.len {
+		return '0'
+	}
+	digits = digits[first_non_zero..].clone()
+	scale := exponent - fractional_digits
+	if scale < 0 {
+		truncated_digits := -scale
+		if truncated_digits >= digits.len {
+			return '0'
+		}
+		digits = digits[..digits.len - truncated_digits].clone()
+	} else if scale > 0 {
+		final_len := digits.len + scale
+		if final_len > max_integer_number_digits {
+			return error('number `${str}` exceeds 64-bit integer range')
+		}
+		mut out := []u8{cap: final_len + if is_negative { 1 } else { 0 }}
+		if is_negative {
+			out << `-`
+		}
+		out << digits
+		for _ in 0 .. scale {
+			out << `0`
+		}
+		return out.bytestr()
+	}
+	if digits.len == 0 {
+		return '0'
+	}
+	mut out := []u8{cap: digits.len + if is_negative { 1 } else { 0 }}
+	if is_negative {
+		out << `-`
+	}
+	out << digits
+	return out.bytestr()
+}
+
+fn parse_integer_number[T](str string) !T {
+	int_str := scientific_number_to_integer_string(str)!
+	$if T.unaliased_typ is i8 {
+		return T(strconv.atoi8(int_str)!)
+	} $else $if T.unaliased_typ is i16 {
+		return T(strconv.atoi16(int_str)!)
+	} $else $if T.unaliased_typ is i32 {
+		return T(strconv.atoi32(int_str)!)
+	} $else $if T.unaliased_typ is i64 {
+		return T(strconv.atoi64(int_str)!)
+	} $else $if T.unaliased_typ is u8 {
+		return T(strconv.atou8(int_str)!)
+	} $else $if T.unaliased_typ is u16 {
+		return T(strconv.atou16(int_str)!)
+	} $else $if T.unaliased_typ is u32 {
+		return T(strconv.atou32(int_str)!)
+	} $else $if T.unaliased_typ is u64 {
+		return T(strconv.atou64(int_str)!)
+	} $else $if T.unaliased_typ is int {
+		return T(strconv.atoi(int_str)!)
+	} $else $if T.unaliased_typ is isize {
+		return T(isize(strconv.atoi64(int_str)!))
+	} $else $if T.unaliased_typ is usize {
+		return T(usize(strconv.atou64(int_str)!))
+	} $else {
+		return error('`parse_integer_number` cannot decode ${T.name} type')
+	}
+}
+
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {
-		i8 { *val = strconv.atoi8(str)! }
-		i16 { *val = strconv.atoi16(str)! }
-		i32 { *val = strconv.atoi32(str)! }
-		i64 { *val = strconv.atoi64(str)! }
-		u8 { *val = strconv.atou8(str)! }
-		u16 { *val = strconv.atou16(str)! }
-		u32 { *val = strconv.atou32(str)! }
-		u64 { *val = strconv.atou64(str)! }
-		int { *val = strconv.atoi(str)! }
-		isize { *val = isize(strconv.atoi64(str)!) }
-		usize { *val = usize(strconv.atou64(str)!) }
+		i8 { *val = parse_integer_number[T](str)! }
+		i16 { *val = parse_integer_number[T](str)! }
+		i32 { *val = parse_integer_number[T](str)! }
+		i64 { *val = parse_integer_number[T](str)! }
+		u8 { *val = parse_integer_number[T](str)! }
+		u16 { *val = parse_integer_number[T](str)! }
+		u32 { *val = parse_integer_number[T](str)! }
+		u64 { *val = parse_integer_number[T](str)! }
+		int { *val = parse_integer_number[T](str)! }
+		isize { *val = parse_integer_number[T](str)! }
+		usize { *val = parse_integer_number[T](str)! }
 		f32 { *val = f32(strconv.atof_quick(str)) }
 		f64 { *val = strconv.atof_quick(str) }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
@@ -1137,27 +1284,27 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	}
 	str := decoder.json[string_info.position + 1..string_info.position + string_info.length - 1]
 	$if T.unaliased_typ is i8 {
-		return T(strconv.atoi8(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is i16 {
-		return T(strconv.atoi16(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is i32 {
-		return T(strconv.atoi32(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is i64 {
-		return T(strconv.atoi64(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is u8 {
-		return T(strconv.atou8(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is u16 {
-		return T(strconv.atou16(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is u32 {
-		return T(strconv.atou32(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is u64 {
-		return T(strconv.atou64(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is int {
-		return T(strconv.atoi(str)!)
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is isize {
-		return T(isize(strconv.atoi64(str)!))
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is usize {
-		return T(usize(strconv.atou64(str)!))
+		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is f32 {
 		return T(f32(strconv.atof_quick(str)))
 	} $else $if T.unaliased_typ is f64 {
