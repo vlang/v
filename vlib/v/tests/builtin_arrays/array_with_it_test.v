@@ -24,3 +24,8 @@ fn test_array_init_with_option() {
 	assert arr[1] == 1.1
 	assert arr[2] == 0.0
 }
+
+fn test_array_init_with_inline_array_literal_and_option() {
+	arr := []int{len: 2, init: [4][index] or { 0 }}
+	assert arr == [4, 0]
+}

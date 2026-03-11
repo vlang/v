@@ -64,16 +64,23 @@ fn (p &Parser) is_array_type() bool {
 	mut i := 1
 	mut tok := p.tok
 	line_nr := p.tok.line_nr
+	mut sbr_level := if p.tok.kind == .lsbr { 1 } else { 0 }
 
 	for {
 		tok = p.peek_token(i)
 		if tok.line_nr != line_nr {
 			return false
 		}
-		if tok.kind in [.name, .amp] {
+		if sbr_level == 0
+			&& tok.kind in [.name, .amp, .lpar, .question, .key_atomic, .key_fn, .key_shared, .key_struct] {
 			return true
 		}
-		if tok.kind in [.eof, .colon, .dot] {
+		if tok.kind == .lsbr {
+			sbr_level++
+		} else if tok.kind == .rsbr {
+			sbr_level--
+		}
+		if sbr_level == 0 && tok.kind in [.eof, .colon, .dot] {
 			break
 		}
 		i++

@@ -1,0 +1,4 @@
+fn main() {
+	arr := []int{len: 2, init: [4][it] or { 0 }}
+	println(arr)
+}
