@@ -2032,8 +2032,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !prevent_sum_type_unwrapping_once {
 				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
 				if scope_field != unsafe { nil } {
-					sf_smartcast_type := c.exposed_smartcast_type(scope_field.orig_type,
-						scope_field.smartcasts.last(), scope_field.is_mut)
+					sf_smartcast_type := scope_field.smartcasts.last()
 					if c.inside_sql {
 						node.typ = sf_smartcast_type
 					}
@@ -3297,52 +3296,8 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	c.scope_returns = false
 }
 
-fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
-	if typ == 0 {
-		return false
-	}
-	if typ.has_flag(.generic) {
-		return true
-	}
-	sym := c.table.sym(typ)
-	match sym.info {
-		ast.Array {
-			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
-		}
-		ast.ArrayFixed {
-			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
-		}
-		ast.Chan {
-			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
-		}
-		ast.Thread {
-			return c.type_has_unresolved_generic_parts(sym.info.return_type)
-		}
-		ast.Map {
-			return c.type_has_unresolved_generic_parts(sym.info.key_type)
-				|| c.type_has_unresolved_generic_parts(sym.info.value_type)
-		}
-		ast.FnType {
-			return c.type_has_unresolved_generic_parts(sym.info.func.return_type)
-				|| sym.info.func.params.any(c.type_has_unresolved_generic_parts(it.typ))
-		}
-		ast.MultiReturn {
-			return sym.info.types.any(c.type_has_unresolved_generic_parts(it))
-		}
-		ast.Struct, ast.Interface, ast.SumType {
-			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
-		}
-		ast.GenericInst {
-			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
-		}
-		else {
-			return false
-		}
-	}
-}
-
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
-	if c.type_has_unresolved_generic_parts(typ) {
+	if typ.has_flag(.generic) {
 		if c.inside_generic_struct_init {
 			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
 			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
@@ -3429,8 +3384,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if mut node.expr is ast.Ident {
 				if mut node.expr.obj is ast.Var {
 					ident_typ := if node.expr.obj.smartcasts.len > 0 {
-						c.exposed_smartcast_type(node.expr.obj.orig_type, node.expr.obj.smartcasts.last(),
-							node.expr.obj.is_mut)
+						node.expr.obj.smartcasts.last()
 					} else {
 						node.expr.obj.typ
 					}
@@ -3534,16 +3488,14 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				} else if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
-							var_obj.smartcasts.last(), var_obj.is_mut))
+						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
 					}
 				}
 			} else if mut node.expr is ast.Ident {
 				if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
-							var_obj.smartcasts.last(), var_obj.is_mut))
+						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
 					}
 				}
 			}
@@ -3827,6 +3779,56 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 // 	return ast.void_type
 // }
 
+fn (mut c Checker) rewrite_smartcast_generic_wrapper_cast(mut node ast.CastExpr, to_type ast.Type) bool {
+	if mut node.expr is ast.Ident {
+		if mut node.expr.obj is ast.Var {
+			if node.expr.obj.smartcasts.len == 0
+				|| c.table.sym(c.unwrap_generic(node.expr.obj.typ)).kind != .sum_type {
+				return false
+			}
+			field_name := c.smartcast_wrapper_field_name(node.expr.obj.smartcasts.last(),
+				to_type) or { return false }
+			old_expr := ast.Expr(node.expr)
+			node.expr = ast.SelectorExpr{
+				expr:       old_expr
+				field_name: field_name
+				pos:        node.pos
+			}
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) smartcast_wrapper_field_name(wrapper_type ast.Type, to_type ast.Type) ?string {
+	wrapper_sym := c.table.sym(c.unwrap_generic(wrapper_type))
+	if wrapper_sym.kind != .struct {
+		return none
+	}
+	wrapper_info := wrapper_sym.info as ast.Struct
+	if wrapper_info.embeds.len > 0 || wrapper_info.fields.len != 1 {
+		return none
+	}
+	field := wrapper_info.fields[0]
+	field_type := c.unwrap_generic(field.typ)
+	target_type := c.unwrap_generic(to_type)
+	target_sym := c.table.sym(target_type)
+	final_target_type := if target_sym.info is ast.Alias {
+		target_sym.info.parent_type
+	} else {
+		target_type
+	}
+	if c.table.final_sym(field_type) == c.table.final_sym(target_type)
+		&& final_target_type.flags() == field_type.flags()
+		&& target_type.flags() == field_type.flags() {
+		return field.name
+	}
+	if c.check_types(field_type, target_type) {
+		return field.name
+	}
+	return none
+}
+
 fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
@@ -3847,17 +3849,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
-	old_expected_type := c.expected_type
-	if mut node.expr is ast.ArrayInit && node.expr.typ == ast.void_type
-		&& c.table.final_sym(to_type).kind == .sum_type
-		&& c.table.final_sym(c.expected_type).kind == .array
-		&& c.table.value_type(c.expected_type) == to_type {
-		// `arr << SumType([Alias(1), 2])` should infer the inner array variant,
-		// not force the literal to become `[]SumType` from the surrounding append.
-		c.expected_type = ast.void_type
-	}
 	node.expr_type = c.expr(mut node.expr) // type to be casted
-	c.expected_type = old_expected_type
+	if c.rewrite_smartcast_generic_wrapper_cast(mut node, to_type) {
+		node.expr_type = c.expr(mut node.expr)
+	}
 	c.inside_integer_literal_cast = old_inside_integer_literal_cast
 
 	if mut node.expr is ast.ComptimeSelector {
@@ -4676,12 +4671,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					is_sum_type_cast := obj.smartcasts.len != 0
 						&& !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
-					mut typ := if is_sum_type_cast {
-						c.exposed_smartcast_type(obj.orig_type, obj.smartcasts.last(),
-							obj.is_mut)
-					} else {
-						obj.typ
-					}
+					mut typ := if is_sum_type_cast { obj.smartcasts.last() } else { obj.typ }
 					if typ == 0 {
 						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
@@ -4712,8 +4702,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					if c.inside_interface_deref && c.table.is_interface_var(obj)
-						&& !is_sum_type_cast {
+					if c.inside_interface_deref && c.table.is_interface_var(obj) {
 						typ = typ.deref()
 					}
 					is_option := typ.has_option_or_result() || node.or_expr.kind != .absent
@@ -5022,7 +5011,6 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
-					is_mut:      expr.is_mut || is_mut
 					typ:         cur_type
 					smartcasts:  smartcasts
 					pos:         expr.pos
@@ -5123,19 +5111,6 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			c.smartcast_cond_pos = expr.pos()
 		}
 	}
-}
-
-@[inline]
-fn (c &Checker) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
-	if is_mut || orig_type == 0 || smartcast_type == 0 || !smartcast_type.is_ptr()
-		|| orig_type.is_ptr() {
-		return smartcast_type
-	}
-	if c.table.final_sym(orig_type).kind == .interface
-		&& c.table.final_sym(smartcast_type).kind != .interface {
-		return smartcast_type.deref()
-	}
-	return smartcast_type
 }
 
 fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
