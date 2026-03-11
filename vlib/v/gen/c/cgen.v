@@ -6079,14 +6079,24 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
 		} else {
 			g.write('(${cast_label}')
-			expr_typ := ast.mktyp(node.expr_type)
+			is_comptime_variant_expr := node.expr is ast.Ident
+				&& g.comptime.is_comptime_variant_var(node.expr)
+			mut expr_typ := ast.mktyp(expr_type)
+			if is_comptime_variant_expr {
+				expr_typ = g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+					ast.void_type)
+			}
 			alias_to_sumtype := sym.info is ast.Alias
 				&& g.table.sumtype_has_variant(sym.info.parent_type, expr_typ, false)
 			if alias_to_sumtype {
 				expr_styp := g.styp(expr_typ)
-				g.write('{._${g.table.sym(expr_typ).cname}=builtin__memdup(ADDR(${expr_styp}, ')
-				g.expr(node.expr)
-				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
+				g.write('{._${g.table.sym(expr_typ).cname}=builtin__memdup(ADDR(${expr_styp}, (')
+				if is_comptime_variant_expr {
+					g.write(g.type_default(expr_typ))
+				} else {
+					g.expr(node.expr)
+				}
+				g.write(')), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
 				g.inside_assign_fn_var = final_expr_sym.kind == .function
