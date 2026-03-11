@@ -8356,8 +8356,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		}
 	} else {
 		mut is_optional_ident_var := false
+		mut wrap_in_addr := false
 		if g.inside_smartcast {
-			g.write('&')
+			if node.expr.is_lvalue() {
+				g.write('&')
+			} else {
+				wrap_in_addr = true
+				g.write('ADDR(${styp}, ')
+			}
 		}
 		if node.expr is ast.Ident {
 			if node.expr.info is ast.IdentVar && node.expr.info.is_option
@@ -8381,6 +8387,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		}
 		if !is_optional_ident_var {
 			g.expr(node.expr)
+		}
+		if wrap_in_addr {
+			g.write(')')
 		}
 	}
 }
