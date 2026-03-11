@@ -367,6 +367,21 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 }
 
 @[inline]
+fn (mut g Gen) gen_sumtype_variant_decode(variant_typ string, sumtype_cname string, ret_styp string,
+	prefix string, is_option bool, indent string, mut dec strings.Builder) {
+	tmp := g.new_tmp_var()
+	dec.writeln('${indent}${result_name}_${variant_typ} ${tmp} = ${js_dec_name(variant_typ)}(root);')
+	dec.writeln('${indent}if (${tmp}.is_error) {')
+	dec.writeln('${indent}\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
+	dec.writeln('${indent}}')
+	if is_option {
+		dec.writeln('${indent}builtin___option_ok(&(${sumtype_cname}[]){ ${variant_typ}_to_sumtype_${sumtype_cname}((${variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sumtype_cname}));')
+	} else {
+		dec.writeln('${indent}${prefix}res = ${variant_typ}_to_sumtype_${sumtype_cname}((${variant_typ}*)${tmp}.data, false);')
+	}
+}
+
+@[inline]
 fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder,
 	ret_styp string) {
 	info := sym.info as ast.SumType
@@ -408,13 +423,30 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	mut variant_types := []string{}
 	mut variant_symbols := []ast.TypeSymbol{}
 	mut at_least_one_prim := false
+	mut object_like_variant_count := 0
+	mut object_like_variant_typ := ''
+	mut array_like_variant_count := 0
+	mut array_like_variant_typ := ''
 	for variant in info.variants {
 		variant_typ := g.styp(variant)
 		variant_types << variant_typ
 		variant_sym := g.table.sym(variant)
 		variant_symbols << variant_sym
+		unaliased_variant := g.table.unaliased_type(variant)
+		unaliased_variant_sym := g.table.sym(unaliased_variant)
+		unaliased_variant_typ := g.styp(unaliased_variant)
 		at_least_one_prim = at_least_one_prim || is_js_prim(variant_typ)
 			|| variant_sym.kind == .enum || variant_sym.name == 'time.Time'
+		if !is_js_prim(unaliased_variant_typ) && unaliased_variant_sym.kind != .enum
+			&& unaliased_variant_sym.name != 'time.Time' {
+			if unaliased_variant_sym.kind == .array {
+				array_like_variant_count++
+				array_like_variant_typ = variant_typ
+			} else {
+				object_like_variant_count++
+				object_like_variant_typ = variant_typ
+			}
+		}
 		unmangled_variant_name := variant_sym.name.split('.').last()
 
 		// TODO: Do not generate dec/enc for 'time.Time', because we handle it by saving it as u64
@@ -519,16 +551,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\t}')
 			} else if !is_js_prim(variant_typ) && variant_sym.kind != .enum {
 				dec.writeln('\t\t\tif (strcmp("${unmangled_variant_name}", ${type_var}) == 0 && ${variant_sym.kind == .array} == cJSON_IsArray(root)) {')
-				dec.writeln('\t\t\t\t${result_name}_${variant_typ} ${tmp} = ${js_dec_name(variant_typ)}(root);')
-				dec.writeln('\t\t\t\tif (${tmp}.is_error) {')
-
-				dec.writeln('\t\t\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
-				dec.writeln('\t\t\t\t}')
-				if is_option {
-					dec.writeln('\t\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}((${variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
-				} else {
-					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}((${variant_typ}*)${tmp}.data, false);')
-				}
+				g.gen_sumtype_variant_decode(variant_typ, sym.cname, ret_styp, prefix,
+					is_option, '\t\t\t\t', mut dec)
 				dec.writeln('\t\t\t}')
 			}
 		}
@@ -537,6 +561,22 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
 		dec.writeln('\t\t}')
+		if object_like_variant_count == 1 || array_like_variant_count == 1 {
+			dec.writeln('\t\telse {')
+			if object_like_variant_count == 1 {
+				dec.writeln('\t\t\tif (cJSON_IsObject(root)) {')
+				g.gen_sumtype_variant_decode(object_like_variant_typ, sym.cname, ret_styp,
+					prefix, is_option, '\t\t\t\t', mut dec)
+				dec.writeln('\t\t\t}')
+			}
+			if array_like_variant_count == 1 {
+				dec.writeln('\t\t\tif (cJSON_IsArray(root)) {')
+				g.gen_sumtype_variant_decode(array_like_variant_typ, sym.cname, ret_styp,
+					prefix, is_option, '\t\t\t\t', mut dec)
+				dec.writeln('\t\t\t}')
+			}
+			dec.writeln('\t\t}')
+		}
 
 		mut number_is_met := false
 		mut string_is_met := false
