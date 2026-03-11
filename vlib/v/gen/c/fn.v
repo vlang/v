@@ -2163,19 +2163,31 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ != ast.string_type || g.comptime.comptime_for_method != unsafe { nil } {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
+			needs_tmp_string := !typ.has_option_or_result()
+				&& (g.is_autofree || g.pref.gc_mode == .boehm_leak)
 			if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
-				g.write('builtin__${c_fn_name(print_method)}(')
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
-				g.write('${c_name(rec_type_name)}_name_table[')
-				g.expr(expr)
 				dot := if typ.is_ptr() { '->' } else { '.' }
-				g.write('${dot}_typ]._method_str(')
-				g.expr(expr)
-				g.write('${dot}_object')
-				g.writeln('));')
+				if needs_tmp_string {
+					tmp := g.new_tmp_var()
+					g.write('string ${tmp} = ${c_name(rec_type_name)}_name_table[')
+					g.expr(expr)
+					g.write('${dot}_typ]._method_str(')
+					g.expr(expr)
+					g.write('${dot}_object')
+					g.writeln('); builtin__${c_fn_name(print_method)}(${tmp}); builtin__string_free(&${tmp});')
+				} else {
+					g.write('builtin__${c_fn_name(print_method)}(')
+					g.write('${c_name(rec_type_name)}_name_table[')
+					g.expr(expr)
+					g.write('${dot}_typ]._method_str(')
+					g.expr(expr)
+					g.write('${dot}_object')
+					g.writeln('));')
+				}
 				return
 			}
-			if g.is_autofree && !typ.has_option_or_result() {
+			if needs_tmp_string {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()
 				g.write('string ${tmp} = ')
@@ -2217,6 +2229,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
+		if is_print && g.pref.gc_mode == .boehm_leak && node.args[0].typ == ast.string_type
+			&& node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+			tmp := g.new_tmp_var()
+			tmp_init := g.autofree_tmp_arg_init_stmt('string ${tmp} = ', node.args[0].expr)
+			g.writeln(tmp_init)
+			g.writeln('builtin__${c_fn_name(print_method)}(${tmp});')
+			g.writeln('builtin__string_free(&${tmp});')
+			return
+		}
 		if is_print && node.args[0].expr !is ast.CallExpr {
 			// only need for `println(err)`
 			// not need for `println(err.msg())`
