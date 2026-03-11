@@ -1574,6 +1574,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
+		param.typ = c.resolve_short_syntax_call_arg_type(call_arg, param.typ, func.generic_names,
+			concrete_types)
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
@@ -2620,6 +2622,24 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			param_is_mut = false
 			no_type_promotion = false
 		}
+		resolved_method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
+			rec_concrete_types
+		} else {
+			concrete_types
+		}
+		mut resolved_method_generic_names := method.generic_names.clone()
+		if resolved_method_generic_names.len == 0 {
+			match rec_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					if rec_sym.info.generic_types.len == resolved_method_concrete_types.len {
+						resolved_method_generic_names = rec_sym.info.generic_types.map(c.table.sym(it).name)
+					}
+				}
+				else {}
+			}
+		}
+		exp_arg_typ = c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ, resolved_method_generic_names,
+			resolved_method_concrete_types)
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
@@ -2900,6 +2920,22 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, mut lambda ast.
 			lambda.func.decl.ninstances++
 		}
 	}
+}
+
+fn (mut c Checker) resolve_short_syntax_call_arg_type(arg ast.CallArg, param_typ ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
+	if !param_typ.has_flag(.generic) || generic_names.len == 0
+		|| generic_names.len != concrete_types.len {
+		return param_typ
+	}
+	if arg.expr is ast.StructInit {
+		expr := arg.expr as ast.StructInit
+		if expr.is_short_syntax && expr.typ == ast.void_type {
+			return c.table.convert_generic_type(param_typ, generic_names, concrete_types) or {
+				param_typ
+			}
+		}
+	}
+	return param_typ
 }
 
 fn (mut c Checker) check_unresolved_generic_param(node &ast.CallExpr, arg ast.CallArg) bool {
