@@ -1079,7 +1079,8 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
 				if var.smartcasts.len > 0 {
-					checked_type = c.unwrap_generic(var.smartcasts.last())
+					checked_type = c.unwrap_generic(c.exposed_smartcast_type(var.orig_type,
+						var.smartcasts.last(), var.is_mut))
 				}
 			}
 			return checked_type

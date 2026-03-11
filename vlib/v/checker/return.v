@@ -112,7 +112,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		} else {
 			if mut expr is ast.Ident && expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
-					typ = c.unwrap_generic(expr.obj.smartcasts.last())
+					typ = c.unwrap_generic(c.exposed_smartcast_type(expr.obj.orig_type,
+						expr.obj.smartcasts.last(), expr.obj.is_mut))
 				}
 				if expr.obj.ct_type_var != .no_comptime {
 					typ = c.type_resolver.get_type_or_default(expr, typ)

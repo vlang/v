@@ -1028,7 +1028,8 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 		expr_key := smartcast_index_expr_scope_key(index_expr)
 		if var := scope.find_var(expr_key) {
 			if var.smartcasts.len > 0 {
-				cast_type := var.smartcasts.last()
+				cast_type := c.exposed_smartcast_type(var.orig_type, var.smartcasts.last(),
+					var.is_mut)
 				if cast_type != expr_type {
 					expr = ast.AsCast{
 						expr:      ast.Expr(index_expr)

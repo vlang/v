@@ -5790,6 +5790,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 			// Skip smartcasts for comptime_for variables to avoid using stale types
 			skip_smartcasts := g.is_comptime_for_var(node)
 			if node.obj.smartcasts.len > 0 && !skip_smartcasts {
+				needs_interface_smartcast_deref := g.table.is_interface_smartcast(node.obj)
+					&& node.info.typ != 0
+					&& node.obj.smartcasts.last().nr_muls() == node.info.typ.nr_muls() + 1
 				obj_sym := g.table.final_sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := node.obj.smartcasts.len > 1
@@ -5818,6 +5821,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('*')
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
+							|| needs_interface_smartcast_deref
 							|| node.obj.ct_type_var == .smartcast
 							|| (obj_sym.kind == .interface
 							&& g.table.type_kind(node.obj.typ) == .any) {

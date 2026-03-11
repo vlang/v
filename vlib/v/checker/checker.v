@@ -2032,7 +2032,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !prevent_sum_type_unwrapping_once {
 				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
 				if scope_field != unsafe { nil } {
-					sf_smartcast_type := scope_field.smartcasts.last()
+					sf_smartcast_type := c.exposed_smartcast_type(scope_field.orig_type,
+						scope_field.smartcasts.last(), scope_field.is_mut)
 					if c.inside_sql {
 						node.typ = sf_smartcast_type
 					}
@@ -3428,7 +3429,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if mut node.expr is ast.Ident {
 				if mut node.expr.obj is ast.Var {
 					ident_typ := if node.expr.obj.smartcasts.len > 0 {
-						node.expr.obj.smartcasts.last()
+						c.exposed_smartcast_type(node.expr.obj.orig_type, node.expr.obj.smartcasts.last(),
+							node.expr.obj.is_mut)
 					} else {
 						node.expr.obj.typ
 					}
@@ -3532,14 +3534,16 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				} else if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
+						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
+							var_obj.smartcasts.last(), var_obj.is_mut))
 					}
 				}
 			} else if mut node.expr is ast.Ident {
 				if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
+						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
+							var_obj.smartcasts.last(), var_obj.is_mut))
 					}
 				}
 			}
@@ -4672,7 +4676,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					is_sum_type_cast := obj.smartcasts.len != 0
 						&& !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
-					mut typ := if is_sum_type_cast { obj.smartcasts.last() } else { obj.typ }
+					mut typ := if is_sum_type_cast {
+						c.exposed_smartcast_type(obj.orig_type, obj.smartcasts.last(),
+							obj.is_mut)
+					} else {
+						obj.typ
+					}
 					if typ == 0 {
 						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
@@ -4703,7 +4712,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					if c.inside_interface_deref && c.table.is_interface_var(obj) {
+					if c.inside_interface_deref && c.table.is_interface_var(obj)
+						&& !is_sum_type_cast {
 						typ = typ.deref()
 					}
 					is_option := typ.has_option_or_result() || node.or_expr.kind != .absent
@@ -5012,6 +5022,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
+					is_mut:      expr.is_mut || is_mut
 					typ:         cur_type
 					smartcasts:  smartcasts
 					pos:         expr.pos
@@ -5112,6 +5123,19 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			c.smartcast_cond_pos = expr.pos()
 		}
 	}
+}
+
+@[inline]
+fn (c &Checker) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
+	if is_mut || orig_type == 0 || smartcast_type == 0 || !smartcast_type.is_ptr()
+		|| orig_type.is_ptr() {
+		return smartcast_type
+	}
+	if c.table.final_sym(orig_type).kind == .interface
+		&& c.table.final_sym(smartcast_type).kind != .interface {
+		return smartcast_type.deref()
+	}
+	return smartcast_type
 }
 
 fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
