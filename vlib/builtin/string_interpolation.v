@@ -369,7 +369,10 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 
 		// pointers
 		if typ == .si_p {
-			mut d := data.d.d_u64
+			// Read the pointer through its pointer union member first.
+			// On 32-bit C compilers, initializing `.d_p` does not guarantee that
+			// the upper half of `.d_u64` is zeroed.
+			mut d := u64(data.d.d_p)
 			base = 16 // TODO: **** decide the behaviour of this flag! ****
 			if base == 0 {
 				if width == 0 {
