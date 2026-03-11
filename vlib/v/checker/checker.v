@@ -1407,8 +1407,35 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
 			pos)
 	}
-	imethods := if inter_sym.kind == .interface {
-		(inter_sym.info as ast.Interface).methods
+	interface_sym := c.table.sym(interface_type)
+	imethods := if interface_sym.kind == .interface {
+		mut methods := []ast.Fn{}
+		interface_info := interface_sym.info as ast.Interface
+		generic_names := interface_info.generic_types.map(c.table.sym(it).name)
+		mut concrete_types := interface_info.concrete_types.clone()
+		if concrete_types.len == 0 && interface_sym.generic_types.len == generic_names.len {
+			concrete_types = interface_sym.generic_types.clone()
+		}
+		for imethod in interface_info.methods {
+			mut resolved_method := imethod
+			if generic_names.len == concrete_types.len {
+				if resolved_return_type := c.table.convert_generic_type(imethod.return_type,
+					generic_names, concrete_types)
+				{
+					resolved_method.return_type = resolved_return_type
+				}
+				resolved_method.params = resolved_method.params.clone()
+				for i, param in resolved_method.params {
+					if resolved_param_type := c.table.convert_generic_type(param.typ,
+						generic_names, concrete_types)
+					{
+						resolved_method.params[i].typ = resolved_param_type
+					}
+				}
+			}
+			methods << resolved_method
+		}
+		methods
 	} else {
 		inter_sym.methods
 	}

@@ -2294,7 +2294,18 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.check_must_use_call_result(node, method, 'method')
 		}
 	}
-	if m := c.table.find_method(left_sym, method_name) {
+	if left_sym.kind == .interface
+		&& ((left_sym.info is ast.Interface && left_sym.info.parent_type.has_flag(.generic))
+		|| left_sym.generic_types.len > 0) {
+		if m := left_sym.find_method_with_generic_parent(method_name) {
+			method = m
+			has_method = true
+			if left_sym.kind == .interface && m.from_embedded_type != 0 {
+				is_method_from_embed = true
+				node.from_embed_types = [m.from_embedded_type]
+			}
+		}
+	} else if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
 		if left_sym.kind == .interface && m.from_embedded_type != 0 {
@@ -4184,8 +4195,16 @@ fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr, concr
 		if func.generic_names.len > 0 {
 			has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
 			has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+			needs_resolved_concrete_types := node.raw_concrete_types.any(c.needs_unwrap_generic_type(it))
 			// fn call with any generic type to be resolved on call (e.g. foo[T]())
 			if has_generic || has_any_generic {
+				if needs_resolved_concrete_types {
+					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+						concrete_types)
+					{
+						return typ
+					}
+				}
 				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					node.concrete_types)
 				{

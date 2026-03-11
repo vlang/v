@@ -235,6 +235,17 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 
 fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Pos) ast.Type {
 	utyp := c.unwrap_generic(typ)
+	resolved_interface_type := c.unwrap_generic(interface_type)
+	if resolved_interface_type != interface_type && !resolved_interface_type.has_flag(.generic) {
+		mut resolved_sym := c.table.sym(resolved_interface_type)
+		if mut resolved_sym.info is ast.Interface {
+			if resolved_sym.info.concrete_types.len == 0
+				&& resolved_sym.generic_types.len == resolved_sym.info.generic_types.len {
+				resolved_sym.info.concrete_types = resolved_sym.generic_types.clone()
+			}
+		}
+		return resolved_interface_type
+	}
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
 
@@ -242,6 +253,11 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 		if inter_sym.info.is_generic {
 			mut inferred_types := []ast.Type{}
 			generic_names := inter_sym.info.generic_types.map(c.table.get_type_name(it))
+			mut interface_concrete_types := inter_sym.generic_types.clone()
+			if interface_concrete_types.len == 0
+				&& inter_sym.info.generic_types.len == inter_sym.info.concrete_types.len {
+				interface_concrete_types = inter_sym.info.concrete_types.clone()
+			}
 			// inferring interface generic types
 			for gt_name in generic_names {
 				mut inferred_type := ast.void_type
@@ -258,17 +274,25 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							pos)
 						return 0
 					}
-					if imethod.return_type.has_flag(.generic) {
-						imret_sym := c.table.sym(imethod.return_type)
+					mut imethod_return_type := imethod.return_type
+					if interface_concrete_types.len == generic_names.len {
+						if resolved_return_type := c.table.convert_generic_type(imethod.return_type,
+							generic_names, interface_concrete_types)
+						{
+							imethod_return_type = resolved_return_type
+						}
+					}
+					if imethod_return_type.has_flag(.generic) {
+						imret_sym := c.table.sym(imethod_return_type)
 						mret_sym := c.table.sym(method.return_type)
 						if method.return_type == ast.void_type
-							&& imethod.return_type != method.return_type {
+							&& imethod_return_type != method.return_type {
 							c.error('interface method `${imethod.name}` returns `${imret_sym.name}`, but implementation method `${method.name}` returns no value',
 								pos)
 							return 0
 						}
-						if imethod.return_type == ast.void_type
-							&& imethod.return_type != method.return_type {
+						if imethod_return_type == ast.void_type
+							&& imethod_return_type != method.return_type {
 							c.error('interface method `${imethod.name}` returns no value, but implementation method `${method.name}` returns `${mret_sym.name}`',
 								pos)
 							return 0
@@ -280,11 +304,11 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 									inferred_type = mret_sym.info.types[i]
 								}
 							}
-						} else if c.table.get_type_name(imethod.return_type) == gt_name {
+						} else if c.table.get_type_name(imethod_return_type) == gt_name {
 							mut ret_typ := method.return_type
-							if imethod.return_type.has_flag(.option) {
+							if imethod_return_type.has_flag(.option) {
 								ret_typ = ret_typ.clear_flag(.option)
-							} else if imethod.return_type.has_flag(.result) {
+							} else if imethod_return_type.has_flag(.result) {
 								ret_typ = ret_typ.clear_flag(.result)
 							}
 							inferred_type = ret_typ
@@ -312,7 +336,18 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 						}
 					}
 					for i, iparam in imethod.params {
+						if i == 0 {
+							continue
+						}
 						param := method.params[i] or { ast.Param{} }
+						mut iparam_typ := iparam.typ
+						if interface_concrete_types.len == generic_names.len {
+							if resolved_param_type := c.table.convert_generic_type(iparam.typ,
+								generic_names, interface_concrete_types)
+							{
+								iparam_typ = resolved_param_type
+							}
+						}
 						mut need_inferred_type := false
 						if !iparam.typ.has_flag(.generic) && iparam.typ == param.typ
 							&& imethod.return_type == method.return_type
@@ -320,9 +355,10 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							need_inferred_type = true
 						}
 						if iparam.typ.has_flag(.generic) || need_inferred_type {
-							param_sym := c.table.sym(iparam.typ)
+							param_sym := c.table.sym(iparam_typ)
 							arg_sym := c.table.sym(param.typ)
-							if c.table.get_type_name(iparam.typ) == gt_name || need_inferred_type {
+							if c.table.get_type_name(iparam_typ) == gt_name
+								|| (need_inferred_type && inferred_type == ast.void_type) {
 								inferred_type = param.typ
 							} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
