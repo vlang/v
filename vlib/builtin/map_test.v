@@ -175,6 +175,18 @@ fn test_string_map() {
 	// m := map[string]Fn
 }
 
+fn test_free_clears_map_header() {
+	m := {
+		'name': 'Joe'
+	}
+	assert m.str() == "{'name': 'Joe'}"
+	unsafe { m.free() }
+	assert m.len == 0
+	assert m.str() == '{}'
+	unsafe { m.free() }
+	assert m.str() == '{}'
+}
+
 fn test_large_map() {
 	// ticks := time.ticks()
 	mut nums := map[string]int{}
