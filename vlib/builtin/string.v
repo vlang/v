@@ -75,6 +75,11 @@ pub fn (s string) runes() []rune {
 	return runes
 }
 
+// graphemes returns the string split into Unicode grapheme clusters.
+pub fn (s string) graphemes() []string {
+	return string_graphemes_impl(s)
+}
+
 // cstring_to_vstring creates a new V string copy of the C style string,
 // pointed by `s`. This function is most likely what you want to use when
 // working with C style pointers to 0 terminated strings (i.e. `char*`).

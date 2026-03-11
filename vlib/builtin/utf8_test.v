@@ -100,6 +100,11 @@ fn test_string_to_ansi_not_null_terminated() {
 
 fn test_utf8_str_visible_length() {
 	assert utf8_str_visible_length('𝐀𝐁𝐂') == 3
+	assert utf8_str_visible_length('\u006E\u0303') == 1
+	assert utf8_str_visible_length('\U0001F3F3\uFE0F\u200D\U0001F308') == 2
+	assert utf8_str_visible_length('ห์') == 1
+	assert utf8_str_visible_length('ปีเตอร์') == 5
+	assert utf8_str_visible_length('👩🏽‍💻') == 2
 }
 
 fn test_utf8_to_utf32_cases() {
