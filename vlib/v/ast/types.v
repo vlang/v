@@ -1918,10 +1918,43 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 }
 
 pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
+	mut table := global_table
+	mut generic_names := []string{}
+	mut concrete_types := []Type{}
+	match t.info {
+		Struct, Interface, SumType {
+			generic_names = t.info.generic_types.map(table.sym(it).name)
+			if t.info.concrete_types.len == generic_names.len {
+				concrete_types = t.info.concrete_types.clone()
+			} else if t.generic_types.len == generic_names.len
+				&& t.generic_types != t.info.generic_types {
+				concrete_types = t.generic_types.clone()
+			}
+		}
+		else {}
+	}
 	if m := t.find_method(name) {
+		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
+			mut method := m
+			return_sym := table.sym(method.return_type)
+			if return_sym.kind in [.struct, .interface, .sum_type] {
+				method.return_type = table.unwrap_generic_type(method.return_type, generic_names,
+					concrete_types)
+			} else if rt := table.convert_generic_type(method.return_type, generic_names,
+				concrete_types)
+			{
+				method.return_type = rt
+			}
+			method.params = method.params.clone()
+			for mut param in method.params {
+				if pt := table.convert_generic_type(param.typ, generic_names, concrete_types) {
+					param.typ = pt
+				}
+			}
+			return method
+		}
 		return m
 	}
-	mut table := global_table
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
@@ -1930,14 +1963,13 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 					match parent_sym.info {
 						Struct, Interface, SumType {
 							mut method := x
-							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
 							return_sym := table.sym(method.return_type)
 							if return_sym.kind in [.struct, .interface, .sum_type] {
 								method.return_type = table.unwrap_generic_type(method.return_type,
-									generic_names, t.info.concrete_types)
+									generic_names, concrete_types)
 							} else {
 								if rt := table.convert_generic_type(method.return_type,
-									generic_names, t.info.concrete_types)
+									generic_names, concrete_types)
 								{
 									method.return_type = rt
 								}
@@ -1945,7 +1977,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 							method.params = method.params.clone()
 							for mut param in method.params {
 								if pt := table.convert_generic_type(param.typ, generic_names,
-									t.info.concrete_types)
+									concrete_types)
 								{
 									param.typ = pt
 								}
