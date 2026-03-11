@@ -149,6 +149,24 @@ fn test_inttypes_string_interpolation() {
 	}
 }
 
+fn int_ref_mut_string(mut n &int) string {
+	return '${n}'
+}
+
+fn int_ref_string(n &int) string {
+	return '${n}'
+}
+
+fn test_int_ref_string_interpolation() {
+	mut count := 10
+	count_ref := &count
+	assert int_ref_mut_string(mut &count) == '10'
+	assert int_ref_string(&count) == '10'
+	assert '${count_ref}' == '10'
+	assert '${&count}' == '10'
+	assert '${count_ref:x}' == 'a'
+}
+
 fn test_utf8_string_interpolation() {
 	a := 'à-côté'
 	st := 'Sträßle'

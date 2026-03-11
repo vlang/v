@@ -39,6 +39,30 @@ fn (mut g Gen) is_type_name_string_expr(expr ast.Expr) bool {
 	}
 }
 
+fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
+	if fmt == `p` || !typ.is_int_valptr() {
+		return false
+	}
+	if expr.is_auto_deref_var() {
+		return true
+	}
+	return match expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				expr.obj.is_arg || (expr.obj.expr is ast.PrefixExpr && expr.obj.expr.op == .amp)
+			} else {
+				false
+			}
+		}
+		ast.PrefixExpr {
+			expr.op == .amp
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
@@ -106,6 +130,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		}
 	}
 	if node.exprs[i].is_auto_deref_var() {
+		typ = typ.deref()
+	}
+	if int_ref_interpolates_as_value(node.exprs[i], typ, fmts[i]) {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
@@ -257,11 +284,13 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
-	typ := if i < node.expr_types.len {
+	orig_typ := if i < node.expr_types.len {
 		g.unwrap_generic(node.expr_types[i])
 	} else {
 		ast.string_type
 	}
+	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
+	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
 	typ_sym := g.table.sym(typ)
 	if g.is_type_name_string_expr(expr) {
 		g.expr(expr)
@@ -364,7 +393,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else {
 				g.write('(u64)(')
 			}
-			if expr.is_auto_deref_var() {
+			if expr.is_auto_deref_var() || is_int_valptr {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -373,7 +402,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() && fmt != `p` {
+			if (expr.is_auto_deref_var() || is_int_valptr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
