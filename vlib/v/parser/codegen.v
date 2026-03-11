@@ -15,7 +15,9 @@ pub fn (mut p Parser) codegen(code string) {
 }
 
 fn (mut p Parser) handle_codegen_for_file() {
-	if p.pref.is_fmt || p.codegen_text == '' {
+	// vdoc parses in fmt mode for looser syntax handling, but it still needs
+	// parser-generated enum helpers to appear in the documented AST.
+	if (p.pref.is_fmt && !p.pref.is_vdoc) || p.codegen_text == '' {
 		return
 	}
 	ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
@@ -29,4 +31,9 @@ fn handle_codegen_for_multiple_files(mut files []&ast.File) {
 	}
 	files << codegen_files
 	codegen_files.clear()
+}
+
+// append_codegen_files appends parser-generated files to a parsed file list.
+pub fn append_codegen_files(mut files []&ast.File) {
+	handle_codegen_for_multiple_files(mut files)
 }

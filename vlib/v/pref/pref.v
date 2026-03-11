@@ -119,6 +119,7 @@ pub mut:
 	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
 	show_timings       bool // show how much time each compiler stage took
 	is_fmt             bool
+	is_vdoc            bool
 	is_vet             bool
 	is_vweb            bool // skip _ var warning in templates
 	is_ios_simulator   bool
