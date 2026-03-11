@@ -54,7 +54,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	args := p.call_args()
 	if p.tok.kind != .rpar && !p.pref.is_vls {
 		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
-		if args.len < params.len && p.prev_tok.kind != .comma {
+		min_required_params := min_required_call_args(params)
+		if args.len < min_required_params && p.prev_tok.kind != .comma {
 			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
 			p.unexpected_with_pos(pos, expecting: '`,`')
 		} else if args.len > params.len {
@@ -123,6 +124,23 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
 	}
+}
+
+fn min_required_call_args(params []ast.Param) int {
+	if params.len == 0 {
+		return 0
+	}
+	mut required := params.len
+	mut idx := params.len - 1
+	for idx >= 0 {
+		if params[idx].typ.has_flag(.option) {
+			required--
+			idx--
+			continue
+		}
+		break
+	}
+	return required
 }
 
 fn (mut p Parser) call_kind(fn_name string) ast.CallKind {

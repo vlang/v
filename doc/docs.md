@@ -4317,6 +4317,21 @@ fn main() {
 }
 ```
 
+Trailing option-typed parameters can also be omitted in function calls.
+When they are not passed, V supplies `none`:
+
+```v
+fn connect(url string, timeout ?int) {
+	actual_timeout := timeout or { 1000 }
+	println('${url} -> ${actual_timeout}')
+}
+
+fn main() {
+	connect('https://vlang.io')
+	connect('https://vlang.io', 5000)
+}
+```
+
 V used to combine `Option` and `Result` into one type, now they are separate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
