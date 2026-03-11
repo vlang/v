@@ -1183,6 +1183,12 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 		return true
 	}
 	match right {
+		ast.CastExpr {
+			if c.cast_expr_aliases_value(right) {
+				mut expr := right.expr
+				c.fail_if_immutable(mut expr)
+			}
+		}
 		ast.Ident {
 			if right.obj is ast.Var {
 				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr() {
@@ -1243,6 +1249,10 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 	return true
 }
 
+fn (mut c Checker) cast_expr_aliases_value(node ast.CastExpr) bool {
+	return c.table.final_sym(c.unwrap_generic(node.typ)).kind == .interface
+}
+
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
@@ -1251,7 +1261,10 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	mut explicit_lock_needed := false
 	match mut expr {
 		ast.CastExpr {
-			// TODO
+			if c.cast_expr_aliases_value(expr) {
+				mut inner_expr := expr.expr
+				return c.fail_if_immutable(mut inner_expr)
+			}
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
