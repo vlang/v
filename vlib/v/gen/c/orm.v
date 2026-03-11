@@ -1324,6 +1324,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 						limit_expr:           sub.limit_expr
 						table_expr:           sub.table_expr
 						fields:               sub.fields
+						sub_structs:          sub.sub_structs
 						where_expr:           where_expr
 						aggregate_field_type: sub.aggregate_field_type
 					}
