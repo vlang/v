@@ -1,0 +1,25 @@
+// vtest vflags: -no-builtin -no-preludes -enable-globals -gc none
+module main
+
+fn C.klog(...charptr)
+fn C.proc_create(charptr, int, int, &C.proc_ops)
+
+struct C.proc_ops {
+	proc_read fn (voidptr, &char, u32, &u64)
+}
+
+fn proc_read(file voidptr, buff &char, size u32, offset &u64) {}
+
+__global fops = C.proc_ops{
+	proc_read: proc_read
+}
+
+fn custom_init() int {
+	C.klog(c'Hello module %s!\n', c'proc')
+	C.proc_create(c'proc_proc', 0, 0, &fops)
+	return 0
+}
+
+fn main() {
+	custom_init()
+}
