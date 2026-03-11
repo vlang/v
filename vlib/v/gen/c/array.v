@@ -100,6 +100,98 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 }
 
+fn (mut g Gen) can_convert_array_to_interface_array(got_type ast.Type, expected_type ast.Type) bool {
+	if got_type.is_ptr() || expected_type.is_ptr() || got_type.has_option_or_result()
+		|| expected_type.has_option_or_result() {
+		return false
+	}
+	got := g.table.unaliased_type(g.unwrap_generic(got_type))
+	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	if got == expected {
+		return false
+	}
+	if g.table.final_sym(got).kind != .array || g.table.final_sym(expected).kind != .array {
+		return false
+	}
+	return g.can_convert_array_elem_to_interface_array(got, expected)
+}
+
+fn (mut g Gen) can_convert_array_elem_to_interface_array(got ast.Type, expected ast.Type) bool {
+	got_type := g.table.unaliased_type(g.unwrap_generic(got))
+	expected_type := g.table.unaliased_type(g.unwrap_generic(expected))
+	got_sym := g.table.final_sym(got_type)
+	expected_sym := g.table.final_sym(expected_type)
+	if got_sym.kind == .array && expected_sym.kind == .array {
+		return g.can_convert_array_elem_to_interface_array(got_sym.array_info().elem_type,
+			expected_sym.array_info().elem_type)
+	}
+	return !expected_type.is_ptr() && expected_sym.kind == .interface
+		&& g.table.does_type_implement_interface(got_type, expected_type)
+}
+
+fn (mut g Gen) register_array_interface_cast_fn(got_type ast.Type, expected_type ast.Type) string {
+	got := g.table.unaliased_type(g.unwrap_generic(got_type))
+	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	fn_name := '__v_array_to_interface_array__${g.styp(got)}__to__${g.styp(expected)}'
+	mut already_generated := false
+	lock g.generated_array_interface_cast_fns {
+		already_generated = fn_name in g.generated_array_interface_cast_fns
+		if !already_generated {
+			g.generated_array_interface_cast_fns[fn_name] = true
+		}
+	}
+	if already_generated {
+		return fn_name
+	}
+	got_info := g.table.final_sym(got).array_info()
+	expected_info := g.table.final_sym(expected).array_info()
+	expected_styp := g.styp(expected)
+	expected_elem_styp := g.styp(expected_info.elem_type)
+	noscan := g.check_noscan(expected_info.elem_type)
+	g.definitions.writeln('${g.static_non_parallel}${expected_styp} ${fn_name}(${g.styp(got)} a);')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('${g.static_non_parallel}inline ${expected_styp} ${fn_name}(${g.styp(got)} a) {')
+	fn_builder.writeln('\t${expected_styp} res = builtin____new_array_with_default${noscan}(a.len, a.cap, sizeof(${expected_elem_styp}), 0);')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i) {')
+	src_elem_expr := '((${g.styp(got_info.elem_type)}*)a.data)[i]'
+	converted_expr := g.array_interface_cast_expr(src_elem_expr, got_info.elem_type, expected_info.elem_type)
+	fn_builder.writeln('\t\t((${expected_elem_styp}*)res.data)[i] = ${converted_expr};')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn res;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
+	return fn_name
+}
+
+fn (mut g Gen) array_interface_cast_expr(src_elem_expr string, got_type ast.Type, expected_type ast.Type) string {
+	got := g.table.unaliased_type(g.unwrap_generic(got_type))
+	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	if got == expected {
+		return src_elem_expr
+	}
+	got_sym := g.table.final_sym(got)
+	expected_sym := g.table.final_sym(expected)
+	if got_sym.kind == .array && expected_sym.kind == .array {
+		inner_fn := g.register_array_interface_cast_fn(got, expected)
+		return '${inner_fn}(${src_elem_expr})'
+	}
+	if expected_sym.kind == .interface && !expected.is_ptr() {
+		got_styp := g.cc_type(got, true)
+		mut cast_fn := 'I_${got_styp}_to_Interface_${expected_sym.cname}'
+		if expected_sym.info is ast.Interface && expected_sym.info.is_generic {
+			cast_fn = g.generic_fn_name(expected_sym.info.concrete_types, cast_fn)
+		}
+		lock g.referenced_fns {
+			g.referenced_fns[cast_fn] = true
+		}
+		if got.is_ptr() {
+			return '${cast_fn}(${src_elem_expr})'
+		}
+		return '${cast_fn}(HEAP(${got_styp}, ${src_elem_expr}))'
+	}
+	return src_elem_expr
+}
+
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string, is_amp bool) {
 	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
