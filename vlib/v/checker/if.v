@@ -548,6 +548,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.returns = false
 		}
 	}
+	if !node.is_comptime && node.branches.len > 0 && has_top_return(node.branches[0].stmts)
+		&& node.branches[0].scope != unsafe { nil }
+		&& node.branches[0].scope.parent != unsafe { nil } {
+		mut continuation_scope := node.branches[0].scope.parent
+		c.smartcast_none_guard_fallthrough(node.branches[0].cond, mut continuation_scope)
+	}
 	if node.typ == ast.none_type {
 		c.error('invalid if expression, must supply at least one value other than `none`',
 			node.pos)
@@ -690,19 +696,55 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 		if control_expr.branches.len != 2 {
 			return
 		}
-		mut first_cond := control_expr.branches[0].cond
-		// handles unwrapping on if var == none { /**/ } else { /*unwrapped var*/ }
-		if mut first_cond is ast.InfixExpr {
-			if first_cond.left in [ast.Ident, ast.SelectorExpr] && first_cond.op == .eq
-				&& first_cond.right is ast.None {
-				if c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
-					first_cond.left_type = c.type_resolver.get_type(first_cond.left)
-					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, true, true)
-				} else {
-					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, false, true)
+		c.smartcast_none_guard_unwrap(control_expr.branches[0].cond, mut scope)
+	}
+}
+
+fn (mut c Checker) smartcast_none_guard_unwrap(cond ast.Expr, mut scope ast.Scope) {
+	mut cond_expr := cond
+	cond_expr = cond_expr.remove_par()
+	// Handles unwrapping on `if var == none { return }` fallthroughs and on
+	// `if var == none { ... } else { /* unwrapped var */ }` branches.
+	if mut cond_expr is ast.InfixExpr {
+		if cond_expr.left !in [ast.Ident, ast.SelectorExpr] || cond_expr.op != .eq
+			|| cond_expr.right !is ast.None {
+			return
+		}
+		to_type := cond_expr.left_type.clear_flag(.option)
+		if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
+			cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
+			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true,
+				true)
+		} else {
+			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false,
+				true)
+		}
+	}
+}
+
+fn (mut c Checker) smartcast_none_guard_fallthrough(cond ast.Expr, mut scope ast.Scope) {
+	mut cond_expr := cond
+	cond_expr = cond_expr.remove_par()
+	if mut cond_expr is ast.InfixExpr {
+		if mut cond_expr.left is ast.Ident && cond_expr.op == .eq && cond_expr.right is ast.None {
+			to_type := cond_expr.left_type.clear_flag(.option)
+			if mut cond_expr.left.obj is ast.Var && cond_expr.left.name in scope.objects {
+				if scope_var := scope.find_var(cond_expr.left.name) {
+					if scope_var.pos.pos == cond_expr.left.obj.pos.pos {
+						cond_expr.left.obj.smartcasts = [to_type]
+						cond_expr.left.obj.is_unwrapped = true
+						scope.update_smartcasts(cond_expr.left.name, to_type, true)
+						return
+					}
 				}
+			}
+			if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
+				cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
+				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope,
+					true, true)
+			} else {
+				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope,
+					false, true)
 			}
 		}
 	}
