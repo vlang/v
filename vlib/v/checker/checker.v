@@ -1333,6 +1333,27 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
+fn (mut c Checker) interface_embeds_interface(typ ast.Type, interface_type ast.Type, mut visited map[int]bool) bool {
+	utyp := c.unwrap_generic(typ)
+	uinter := c.unwrap_generic(interface_type)
+	if utyp.idx() == uinter.idx() {
+		return true
+	}
+	if utyp.idx() in visited {
+		return false
+	}
+	visited[utyp.idx()] = true
+	typ_sym := c.table.sym(utyp)
+	if typ_sym.info is ast.Interface {
+		for embed in typ_sym.info.embeds {
+			if c.interface_embeds_interface(embed, uinter, mut visited) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	if typ == interface_type {
 		return true
@@ -1404,8 +1425,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
-		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-			pos)
+		mut visited := map[int]bool{}
+		if !c.interface_embeds_interface(utyp, interface_type, mut visited) {
+			c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+				pos)
+		}
 	}
 	imethods := if inter_sym.kind == .interface {
 		(inter_sym.info as ast.Interface).methods
@@ -1466,8 +1490,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 			}
 		}
-		if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type
-			&& !inter_sym.info.types.contains(utyp) {
+		if typ_sym.kind != .interface && utyp != ast.voidptr_type && utyp != ast.nil_type
+			&& utyp != ast.none_type && !inter_sym.info.types.contains(utyp) {
 			inter_sym.info.types << utyp
 		}
 		if !inter_sym.info.types.contains(ast.voidptr_type) {
