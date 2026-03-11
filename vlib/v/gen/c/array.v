@@ -2018,7 +2018,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 }
 
 fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_type ast.Type, size int) {
-	elem_sym := g.table.sym(elem_type)
+	elem_sym := g.table.final_sym(elem_type)
 	if !g.inside_array_fixed_struct {
 		g.write('{')
 		defer(fn) {
