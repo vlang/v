@@ -220,11 +220,17 @@ Otherwise, follow these instructions:
 > you the effort to type in the full path to your v executable every time.
 > V provides a convenience `v symlink` command to do that more easily.
 
-On Unix systems, it creates a `/usr/local/bin/v` symlink to your
-executable. To do that, run:
+On Unix systems, it creates a `v` symlink in `/usr/local/bin` by
+default. To do that, run:
 
 ```bash
 sudo ./v symlink
+```
+
+You can also pass a different directory, for example:
+
+```bash
+./v symlink ~/.local/bin
 ```
 
 On Windows, start a new shell with administrative privileges, for example by pressing the
@@ -237,6 +243,9 @@ v symlink
 ```
 
 (or `.\v symlink` in PowerShell)
+
+You can pass a different directory there too, for example
+`v symlink C:\Users\you\bin`.
 
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
