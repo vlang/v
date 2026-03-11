@@ -475,11 +475,18 @@ fn ai_transpose(board AiBoard) AiBoard {
 	return res
 }
 
+@[inline]
+fn ai_pack_exponent(exponent int) AiBoard {
+	// AiBoard stores 4-bit exponents, so clamp larger freeplay tiles to avoid corrupting
+	// adjacent cells in the packed representation.
+	return AiBoard(u64(math.min(exponent, 15)))
+}
+
 fn board_to_ai(board Board) AiBoard {
 	mut res := AiBoard(0)
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
-			res |= AiBoard(u64(board.field[y][x])) << ((y << 2 + x) << 2)
+			res |= ai_pack_exponent(board.field[y][x]) << ((y << 2 + x) << 2)
 		}
 	}
 	return res
@@ -818,7 +825,18 @@ fn (mut ai AiEngine) best_move(board AiBoard) AiMoveResult {
 
 @[inline]
 fn (b Board) has_moves() bool {
-	return ai_has_moves(board_to_ai(b))
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			value := b.field[y][x]
+			if value == 0 {
+				return true
+			}
+			if (x < 3 && value == b.field[y][x + 1]) || (y < 3 && value == b.field[y + 1][x]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut b Board) move(d Direction) (Board, bool) {
