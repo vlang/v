@@ -122,7 +122,14 @@ const c_common_macros = '
 	#define E_STRUCT 0
 #endif
 #ifndef _WIN32
-	#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+	#if defined(__has_include) && !defined(__TINYC__)
+		#if __has_include(<execinfo.h>)
+			#include <execinfo.h>
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif
+	#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
 		#include <execinfo.h>
 	#else
 		// On linux: int backtrace(void **__array, int __size);
