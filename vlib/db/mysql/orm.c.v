@@ -484,8 +484,6 @@ fn (db DB) get_table_column_type_map(table string) !map[string]string {
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
 
-	db.use_result()
-
 	for row in results.rows() {
 		column_type_map[row.vals[0]] = row.vals[1]
 	}
