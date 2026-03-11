@@ -95,8 +95,10 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
+	js_checker_tests := ['js_number_requires_explicit_cast.vv']
 
-	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
+	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
+		&& it !in js_checker_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -171,6 +173,7 @@ fn test_all() {
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
+	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
