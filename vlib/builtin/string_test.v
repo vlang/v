@@ -113,6 +113,15 @@ fn test_eq_with_freed_string() {
 	assert ('abc' == s) == false
 }
 
+fn test_eq_empty_with_freed_string() {
+	mut s := 'abc'.clone()
+	unsafe {
+		s.free()
+	}
+	assert (s == '') == true
+	assert ('' == s) == true
+}
+
 fn test_sort() {
 	mut vals := [
 		'arr',
