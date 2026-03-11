@@ -1076,6 +1076,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								g.array_init(array_init, cvar_name)
 							}
+						} else if var_type.has_flag(.shared_f) && !val_type.has_flag(.shared_f)
+							&& !val_type.is_ptr() {
+							g.expr_with_cast(val, val_type, var_type)
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else if val in [ast.MatchExpr, ast.IfExpr]

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/shared_variables_type_err.vv:7:16: error: shared variables must be structs, arrays or maps
-    5 | 
-    6 | fn main() {
-    7 |     shared foo := Foo.one
-      |                   ~~~~~~~
-    8 |     rlock foo {
-    9 |         match foo {

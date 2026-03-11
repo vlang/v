@@ -5,7 +5,8 @@ import v.ast
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ := c.unwrap_generic(c.type_resolver.get_type_or_default(node, c.expr(mut node.expr)))
 	typ_sym := c.table.sym(typ)
-	is_non_void_pointer := typ.is_any_kind_of_pointer() && typ_sym.kind != .voidptr
+	is_non_void_pointer := typ.is_any_kind_of_pointer() && !typ.has_flag(.shared_f)
+		&& typ_sym.kind != .voidptr
 
 	if node.op in [.inc, .dec] && !node.expr.is_lvalue() {
 		op_kind, bin_op_alt := if node.op == .inc {
