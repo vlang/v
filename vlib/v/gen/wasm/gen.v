@@ -966,7 +966,10 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			size, _ := g.pool.type_size(typ)
 
+			old_needs_address := g.needs_address
+			g.needs_address = false
 			g.expr(node.index, ast.int_type)
+			g.needs_address = old_needs_address
 
 			if !direct_array_access {
 				g.is_leaf_function = false // calls panic()

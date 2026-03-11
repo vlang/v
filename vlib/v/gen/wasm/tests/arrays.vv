@@ -37,6 +37,12 @@ struct AA {
 	a [10]&int
 }
 
+struct IndexedWrite {
+mut:
+	idx   u8
+	frame [4]u8
+}
+
 fn test_stuff() &int {
 	a := AA{}
 
@@ -44,6 +50,16 @@ fn test_stuff() &int {
 	b = a.a[2]
 
 	return b
+}
+
+fn selector_index_assign() {
+	mut app := IndexedWrite{}
+	app.idx = 1
+	app.frame[app.idx] = 123
+
+	println(app.frame[0])
+	println(app.frame[1])
+	println(app.frame[app.idx])
 }
 
 fn main() {
@@ -64,4 +80,7 @@ fn main() {
 	println('--- test_stuff()')
 	v := test_stuff()
 	println(v)
+
+	println('--- selector_index_assign()')
+	selector_index_assign()
 }
