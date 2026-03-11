@@ -2199,8 +2199,9 @@ fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind 
 		parent_type := (sym.info as ast.Alias).parent_type
 		sym = c.table.sym(parent_type)
 	}
-	if sym.kind != expected_kind {
-		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
+	expected_kind_value := *expected_kind
+	if sym.kind != expected_kind_value {
+		c.error('expected ${expected_kind_value}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
 	return true
@@ -2213,8 +2214,9 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 		parent_type := (sym.info as ast.Alias).parent_type
 		sym = c.table.sym(parent_type)
 	}
-	if sym.kind != expected_kind {
-		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
+	expected_kind_value := *expected_kind
+	if sym.kind != expected_kind_value {
+		c.error('expected ${expected_kind_value}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
 	if !sym.is_pub {

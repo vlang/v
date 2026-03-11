@@ -3,6 +3,18 @@ module checker
 import v.ast
 import v.token
 
+fn infix_expr_allows_auto_deref(expr ast.Expr) bool {
+	return expr is ast.Ident && expr.is_auto_deref_var()
+}
+
+fn infix_expr_is_zero_integer_literal(expr ast.Expr) bool {
+	return expr is ast.IntegerLiteral && expr.val == '0'
+}
+
+fn infix_expr_is_nil_like(expr ast.Expr) bool {
+	return expr.is_nil() || (expr is ast.UnsafeExpr && expr.expr.is_nil())
+}
+
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -900,22 +912,50 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		types_match := c.symmetric_check(left_type, right_type)
 			&& c.symmetric_check(right_type, left_type)
+		left_allows_auto_deref := infix_expr_allows_auto_deref(node.left)
+		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
+		pointer_value_mismatch := left_type.is_any_kind_of_pointer() != right_type.is_any_kind_of_pointer()
 		mut types_match_after_deref := false
 		mut deref_left_type := left_type
 		mut deref_right_type := right_type
-		if !types_match && (node.left.is_auto_deref_var() || node.right.is_auto_deref_var()) {
-			deref_left_type = if node.left.is_auto_deref_var() {
+		if (!types_match || pointer_value_mismatch)
+			&& (left_allows_auto_deref || right_allows_auto_deref) {
+			deref_left_type = if left_allows_auto_deref {
 				left_type.deref()
 			} else {
 				left_type
 			}
-			deref_right_type = if node.right.is_auto_deref_var() {
+			deref_right_type = if right_allows_auto_deref {
 				right_type.deref()
 			} else {
 				right_type
 			}
 			types_match_after_deref = c.symmetric_check(deref_left_type, deref_right_type)
 				&& c.symmetric_check(deref_right_type, deref_left_type)
+		}
+		if node.op in [.eq, .ne] && right_type.is_any_kind_of_pointer()
+			&& !left_type.is_any_kind_of_pointer() && !infix_expr_is_zero_integer_literal(node.left)
+			&& !infix_expr_is_nil_like(node.left) && !infix_expr_is_nil_like(node.right)
+			&& !c.file.path.ends_with('.c.v') && left_sym.language == .v && right_sym.language == .v
+			&& !types_match_after_deref && !c.pref.translated && !c.file.is_translated
+			&& !c.inside_unsafe {
+			error_left_name := if left_allows_auto_deref {
+				c.table.type_to_str(deref_left_type)
+			} else {
+				c.table.type_to_str(left_type)
+			}
+			error_right_name := if right_allows_auto_deref {
+				c.table.type_to_str(deref_right_type)
+			} else {
+				c.table.type_to_str(right_type)
+			}
+			sugg := if left_type in ast.integer_type_idxs || right_type in ast.integer_type_idxs {
+				' (you can use it inside an `unsafe` block)'
+			} else {
+				''
+			}
+			c.error('infix expr: cannot use `${error_right_name}` (right expression) as `${error_left_name}`${sugg}',
+				left_right_pos)
 		}
 		if !types_match && !types_match_after_deref && !c.pref.translated && !c.file.is_translated {
 			// for type-unresolved consts
