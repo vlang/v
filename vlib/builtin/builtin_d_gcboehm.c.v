@@ -245,7 +245,7 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 
 // FnGC_WarnCB is the type of the callback, that you have to define, if you want to redirect GC warnings and handle them.
 // Note: GC warnings are silenced by default. Use gc_set_warn_proc/1 to set your own handler for them.
-pub type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
@@ -261,7 +261,7 @@ pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
 }
 
 // used by builtin_init:
-fn internal_gc_warn_proc_none(msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(const_msg &char, arg usize) {}
 
 @[markused]
 fn gc_prepare_for_debugger_init() bool {

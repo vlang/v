@@ -205,6 +205,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-missing-braces', // see stackoverflow.com/q/13746033
 		'-Wno-enum-conversion', // silences `.dst_factor_rgb = sokol__gfx__BlendFactor__one_minus_src_alpha`
 		'-Wno-enum-compare', // silences `if (ev->mouse_button == sokol__sapp__MouseButton__left) {`
+		'-Wno-incompatible-function-pointer-types', // V uses enum types (e.g. os.Signal) and specific return types (e.g. struct*) in callbacks where C expects int and void* respectively
 		// enable additional warnings:
 		'-Wno-unknown-warning', // if a C compiler does not understand a certain flag, it should just ignore it
 		'-Wno-unknown-warning-option', // clang equivalent of the above
@@ -305,6 +306,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			'-Wno-sometimes-uninitialized', // produced after exhaustive matches
 			'-Wno-int-to-void-pointer-cast',
 		]
+		// Apple clang >= 17 treats -Wincompatible-function-pointer-types as an error by default.
+		// V generates code with enum types (e.g. os.Signal) in callbacks where C expects int,
+		// and specific struct* returns where C expects void* (e.g. sync.pool.ThreadCB).
+		ccoptions.args << '-Wno-incompatible-function-pointer-types'
+		ccoptions.args << '-Wno-typedef-redefinition' // V re-typedefs bool after includes to undo stdbool.h
 	}
 	if ccoptions.cc == .gcc {
 		if ccoptions.debug_mode {

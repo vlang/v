@@ -38,7 +38,7 @@ fn vpm_update(query []string) {
 	}
 }
 
-fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
+fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ident := pp.get_item[string](idx)
 	// Usually, the module `ident`ifier. `get_name_from_url` is only relevant for `v update <module_url>`.
 	name := get_name_from_url(ident) or { ident }

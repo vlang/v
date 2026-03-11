@@ -634,6 +634,19 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		b.write_string2('\n// V profile counters:\n', g.pcs_declarations.str())
 	}
 	b.write_string2('\n// V includes:\n', g.includes.str())
+	// Restore V's bool definition: system headers (e.g. macOS mach/vm_statistics.h)
+	// may include <stdbool.h> which redefines bool to _Bool via a macro,
+	// overriding V's `typedef u8 bool;` and causing type mismatches in clang.
+	b.writeln('#if !defined(__cplusplus) && !defined(CUSTOM_DEFINE_no_bool)')
+	b.writeln('#ifdef bool')
+	b.writeln('#undef bool')
+	b.writeln('#endif')
+	b.writeln('#ifdef CUSTOM_DEFINE_4bytebool')
+	b.writeln('typedef int bool;')
+	b.writeln('#else')
+	b.writeln('typedef u8 bool;')
+	b.writeln('#endif')
+	b.writeln('#endif')
 	b.writeln('\n// V global/const #define ... :')
 	for var_name in g.sorted_global_const_names {
 		if var := g.global_const_defs[var_name] {
@@ -2151,7 +2164,13 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 			g.styp(func.return_type)
 		g.type_definitions.write_string('typedef ${ret_typ} (${msvc_call_conv}*${fn_name})(')
 		for i, param in func.params {
-			g.type_definitions.write_string(g.styp(param.typ))
+			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
+				&& param.name.starts_with('const_') {
+				'const '
+			} else {
+				''
+			}
+			g.type_definitions.write_string('${const_prefix}${g.styp(param.typ)}')
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
 			}
