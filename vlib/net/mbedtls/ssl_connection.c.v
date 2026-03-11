@@ -4,28 +4,28 @@ import io
 import net
 import time
 
-const ctr_drbg = C.mbedtls_ctr_drbg_context{}
-
-const entropy = C.mbedtls_entropy_context{}
-
 const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
 const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
 
-fn init() {
+fn init_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	unsafe { // Unsafe is needed for taking an address of const
-		C.mbedtls_ctr_drbg_init(&ctr_drbg)
-		C.mbedtls_entropy_init(&entropy)
-		ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0,
-			0)
-		if ret != 0 {
-			C.mbedtls_ctr_drbg_free(&ctr_drbg)
-			panic('Failed to seed ssl context: ${ret}')
-		}
-		// C.mbedtls_debug_set_threshold(5)
+	C.mbedtls_ctr_drbg_init(&ctr_drbg)
+	C.mbedtls_entropy_init(&entropy)
+	ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0, 0)
+	if ret != 0 {
+		C.mbedtls_ctr_drbg_free(&ctr_drbg)
+		C.mbedtls_entropy_free(&entropy)
+		return error_with_code('net.mbedtls init_rng, failed to seed ssl context: ${ret}',
+			ret)
 	}
+	// C.mbedtls_debug_set_threshold(5)
+}
+
+fn free_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) {
+	C.mbedtls_ctr_drbg_free(&ctr_drbg)
+	C.mbedtls_entropy_free(&entropy)
 }
 
 // SSLCerts represents a pair of CA and client certificates + key
@@ -47,6 +47,16 @@ pub fn new_sslcerts() &SSLCerts {
 
 // new_sslcerts_in_memory creates a pair of SSL certificates, given their contents (not paths).
 pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSLCerts {
+	mut ctr_drbg := C.mbedtls_ctr_drbg_context{}
+	mut entropy := C.mbedtls_entropy_context{}
+	init_rng(mut ctr_drbg, mut entropy)!
+	defer {
+		free_rng(mut ctr_drbg, mut entropy)
+	}
+	return new_sslcerts_in_memory_with_rng(verify, cert, cert_key, &ctr_drbg)
+}
+
+fn new_sslcerts_in_memory_with_rng(verify string, cert string, cert_key string, rng &C.mbedtls_ctr_drbg_context) !&SSLCerts {
 	mut certs := new_sslcerts()
 	if verify != '' {
 		ret := C.mbedtls_x509_crt_parse(&certs.cacert, verify.str, verify.len + 1)
@@ -65,7 +75,7 @@ pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSL
 	if cert_key != '' {
 		unsafe {
 			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1,
-				0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+				0, 0, C.mbedtls_ctr_drbg_random, rng)
 			if ret != 0 {
 				return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_pk_parse_key error ret: ${ret}',
 					ret)
@@ -77,6 +87,16 @@ pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSL
 
 // new_sslcerts_from_file creates a new pair of SSL certificates, given their paths on the filesystem.
 pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSLCerts {
+	mut ctr_drbg := C.mbedtls_ctr_drbg_context{}
+	mut entropy := C.mbedtls_entropy_context{}
+	init_rng(mut ctr_drbg, mut entropy)!
+	defer {
+		free_rng(mut ctr_drbg, mut entropy)
+	}
+	return new_sslcerts_from_file_with_rng(verify, cert, cert_key, &ctr_drbg)
+}
+
+fn new_sslcerts_from_file_with_rng(verify string, cert string, cert_key string, rng &C.mbedtls_ctr_drbg_context) !&SSLCerts {
 	mut certs := new_sslcerts()
 	if verify != '' {
 		ret := C.mbedtls_x509_crt_parse_file(&certs.cacert, &char(verify.str))
@@ -95,7 +115,7 @@ pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSL
 	if cert_key != '' {
 		unsafe {
 			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str),
-				0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+				0, C.mbedtls_ctr_drbg_random, rng)
 			if ret != 0 {
 				return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_pk_parse_keyfile error ret: ${ret}',
 					ret)
@@ -121,6 +141,8 @@ pub mut:
 	ssl       C.mbedtls_ssl_context
 	conf      C.mbedtls_ssl_config
 	certs     &SSLCerts = unsafe { nil }
+	ctr_drbg  C.mbedtls_ctr_drbg_context
+	entropy   C.mbedtls_entropy_context
 	handle    int
 	duration  time.Duration
 	opened    bool
@@ -138,6 +160,8 @@ mut:
 	ssl       C.mbedtls_ssl_context
 	conf      C.mbedtls_ssl_config
 	certs     &SSLCerts = unsafe { nil }
+	ctr_drbg  C.mbedtls_ctr_drbg_context
+	entropy   C.mbedtls_entropy_context
 	opened    bool
 	// handle		int
 	// duration	time.Duration
@@ -164,6 +188,7 @@ pub fn (mut l SSLListener) shutdown() ! {
 	}
 	C.mbedtls_ssl_free(&l.ssl)
 	C.mbedtls_ssl_config_free(&l.conf)
+	free_rng(mut l.ctr_drbg, mut l.entropy)
 	if l.opened {
 		C.mbedtls_net_free(&l.server_fd)
 	}
@@ -185,6 +210,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_net_init(&l.server_fd)
 	C.mbedtls_ssl_init(&l.ssl)
 	C.mbedtls_ssl_config_init(&l.conf)
+	init_rng(mut l.ctr_drbg, mut l.entropy)!
 	$if trace_mbedtls_timeouts ? {
 		dump(mbedtls_server_read_timeout_ms)
 	}
@@ -194,17 +220,19 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_pk_init(&l.certs.client_key)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &l.ctr_drbg)
 	}
 
 	mut ret := 0
 
 	if l.config.in_memory_verification {
-		l.certs = new_sslcerts_in_memory(l.config.verify, l.config.cert, l.config.cert_key) or {
+		l.certs = new_sslcerts_in_memory_with_rng(l.config.verify, l.config.cert, l.config.cert_key,
+			&l.ctr_drbg) or {
 			return error('net.mbedtls SSLListener.init, cert failure 1, err: ${err}')
 		}
 	} else {
-		l.certs = new_sslcerts_from_file(l.config.verify, l.config.cert, l.config.cert_key) or {
+		l.certs = new_sslcerts_from_file_with_rng(l.config.verify, l.config.cert, l.config.cert_key,
+			&l.ctr_drbg) or {
 			return error('net.mbedtls SSLListener.init, cert failure 2, err: ${err}')
 		}
 	}
@@ -367,6 +395,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
+	free_rng(mut s.ctr_drbg, mut s.entropy)
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
@@ -381,6 +410,7 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
+	init_rng(mut s.ctr_drbg, mut s.entropy)!
 	mut ret := 0
 	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT, C.MBEDTLS_SSL_TRANSPORT_STREAM,
 		C.MBEDTLS_SSL_PRESET_DEFAULT)
@@ -394,7 +424,7 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_ssl_conf_read_timeout(&s.conf, mbedtls_client_read_timeout_ms)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 
 		// Enable ALPN for HTTP/1.1 (Required by strict servers like Rustls/Pijul)
 		// We allocate a small C array of strings: ["http/1.1", NULL]
@@ -428,7 +458,7 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
-					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
 		}
 	} else {
@@ -441,7 +471,7 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
-					0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+					0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
 		}
 	}
