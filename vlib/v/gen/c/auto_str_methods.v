@@ -204,6 +204,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 	sym := g.table.sym(parent_type)
 	sym_has_str_method, expects_ptr, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
+	parent_cast_type := g.auto_str_storage_cast_type(parent_type)
 
 	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
 	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
@@ -217,17 +218,17 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 		} else {
 			'*'.repeat(typ.nr_muls() + 1)
 		}
-		'${dot}(${sym.cname}**)&'
+		'${dot}(${parent_cast_type}**)&'
 	} else if typ.has_flag(.option_mut_param_t) {
-		'*(${sym.cname}*)'
+		'*(${parent_cast_type}*)'
 	} else if expects_ptr {
-		'(${sym.cname}*)'
+		'(${parent_cast_type}*)'
 	} else {
-		'*(${sym.cname}*)'
+		'*(${parent_cast_type}*)'
 	}
 	if sym.kind == .string {
 		if typ.nr_muls() > 1 {
-			g.auto_str_funcs.writeln('\t\tres = builtin__ptr_str(*(${sym.cname}**)&it.data);')
+			g.auto_str_funcs.writeln('\t\tres = builtin__ptr_str(*(${parent_cast_type}**)&it.data);')
 		} else {
 			tmp_res := '${parent_str_fn_name}(${deref}it.data)'
 			g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
@@ -238,7 +239,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}();')
 	} else {
 		if typ.nr_muls() > 1 {
-			g.auto_str_funcs.writeln('\t\tres = builtin__ptr_str(*(${sym.cname}**)&it.data);')
+			g.auto_str_funcs.writeln('\t\tres = builtin__ptr_str(*(${parent_cast_type}**)&it.data);')
 		} else {
 			g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(${deref}it.data);')
 		}
@@ -257,6 +258,7 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	sym := g.table.sym(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
+	parent_cast_type := g.auto_str_storage_cast_type(parent_type)
 
 	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
 	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
@@ -265,12 +267,12 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (!it.is_error) {')
 	if sym.kind == .string {
-		tmp_res := '${parent_str_fn_name}(*(${sym.cname}*)it.data)'
+		tmp_res := '${parent_str_fn_name}(*(${parent_cast_type}*)it.data)'
 		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*(${sym.cname}*)it.data, indent_count);')
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*(${parent_cast_type}*)it.data, indent_count);')
 	} else {
-		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*(${sym.cname}*)it.data);')
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*(${parent_cast_type}*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
 
@@ -280,6 +282,11 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Result(%%)', 'res')};')
 	g.auto_str_funcs.writeln('}')
+}
+
+@[inline]
+fn (mut g Gen) auto_str_storage_cast_type(typ ast.Type) string {
+	return g.base_type(typ).trim('*')
 }
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
