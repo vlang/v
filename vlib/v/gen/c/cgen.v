@@ -2458,6 +2458,30 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // expr_with_tmp_var is used in assign expr to `option` or `result` type.
 // applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
+fn (mut g Gen) gen_option_payload_ref(expr ast.PrefixExpr, ret_typ ast.Type, tmp_var string) bool {
+	if expr.op != .amp || !expr.right_type.has_flag(.option) {
+		return false
+	}
+	mut right_expr := expr.right
+	right_expr = right_expr.remove_par()
+	match right_expr {
+		ast.Ident, ast.IndexExpr, ast.SelectorExpr {}
+		else { return false }
+	}
+	opt_ptr_var := g.new_tmp_var()
+	opt_styp := g.styp(expr.right_type).replace('*', '')
+	ret_styp := g.styp(ret_typ).replace('*', '')
+	styp := g.base_type(ret_typ)
+	opt_expr := g.expr_string(expr.right)
+	g.writeln('${opt_styp}* ${opt_ptr_var} = &(${opt_expr});')
+	g.writeln('if (${opt_ptr_var}->state != 0) {')
+	g.writeln('\t${tmp_var} = (${ret_styp}){ .state = ${opt_ptr_var}->state, .err = ${opt_ptr_var}->err, .data = {E_STRUCT} };')
+	g.writeln('} else {')
+	g.writeln('\tbuiltin___option_ok(&(${styp}[]) { (${styp})${opt_ptr_var}->data }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
+	g.writeln('}')
+	return true
+}
+
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string, use_at_once bool) {
 	if !ret_typ.has_option_or_result() {
 		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
@@ -2513,6 +2537,15 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			} else {
 				g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var};')
 			}
+		}
+		if ret_typ_is_option && expr is ast.PrefixExpr
+			&& g.gen_option_payload_ref(expr, unwrapped_ret_typ, tmp_var) {
+			g.set_current_pos_as_last_stmt_pos()
+			g.write2(stmt_str, ' ')
+			if use_at_once {
+				g.write(tmp_var)
+			}
+			return
 		}
 		mut expr_is_fixed_array_var := false
 		mut fn_option_clone := false
