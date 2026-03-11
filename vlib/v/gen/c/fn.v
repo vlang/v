@@ -652,6 +652,19 @@ fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 	return 'struct _V_${fn_name}_Ctx'
 }
 
+fn (g &Gen) is_mut_closure_fixed_array(var ast.Param) bool {
+	return var.is_mut && g.table.final_sym(var.typ).kind == .array_fixed
+}
+
+fn (mut g Gen) mut_closure_fixed_array_field_styp(var ast.Param) string {
+	info := g.table.final_sym(var.typ).info as ast.ArrayFixed
+	mut elem_styp := g.styp(info.elem_type.set_nr_muls(0))
+	if info.elem_type.is_ptr() {
+		elem_styp += '*'.repeat(info.elem_type.nr_muls())
+	}
+	return '${elem_styp}*'
+}
+
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	is_amp := g.is_amp
 	g.is_amp = false
@@ -673,6 +686,18 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		mut has_inherited := false
 		mut is_ptr := false
 		var_name := c_name(var.name)
+		if g.is_mut_closure_fixed_array(var) {
+			if obj := node.decl.scope.find_var(var.name) {
+				if obj.has_inherited {
+					has_inherited = true
+					g.writeln('.${var_name} = ${closure_ctx}->${var_name},')
+				}
+			}
+			if !has_inherited {
+				g.writeln('.${var_name} = ${var_name},')
+			}
+			continue
+		}
 		if obj := node.decl.scope.find_var(var.name) {
 			is_ptr = obj.typ.is_ptr()
 			if obj.has_inherited {
@@ -744,7 +769,9 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			g.definitions.writeln('${ctx_struct} {')
 			for var in node.inherited_vars {
 				var_sym := g.table.sym(var.typ)
-				if var_sym.info is ast.FnType {
+				if g.is_mut_closure_fixed_array(var) {
+					g.definitions.writeln('\t${g.mut_closure_fixed_array_field_styp(var)} ${c_name(var.name)};')
+				} else if var_sym.info is ast.FnType {
 					mut sig := g.fn_var_signature(var.typ, var_sym.info.func.return_type,
 						var_sym.info.func.params.map(it.typ), c_name(var.name))
 					g.definitions.writeln('\t' + sig + ';')
