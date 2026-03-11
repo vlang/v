@@ -436,6 +436,22 @@ void _vcleanup(void);
 void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #endif
 #endif
+#ifdef __APPLE__
+	// macOS only exports aligned_alloc starting with 10.15.
+	#if !defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) || __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 101500
+static void *v__aligned_alloc_fallback(size_t alignment, size_t size) {
+	void *res = 0;
+	if (alignment < sizeof(void *)) {
+		alignment = sizeof(void *);
+	}
+	if (posix_memalign(&res, alignment, size) != 0) {
+		return 0;
+	}
+	return res;
+}
+		#define aligned_alloc v__aligned_alloc_fallback
+	#endif
+#endif
 #ifdef _WIN32
 	#ifdef WINVER
 		#undef WINVER
