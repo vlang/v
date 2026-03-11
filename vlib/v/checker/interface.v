@@ -378,9 +378,7 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 			// add concrete types to method
 			for imethod in inter_sym.info.methods {
 				im_fkey := imethod.fkey()
-				if inferred_types !in c.table.fn_generic_types[im_fkey] {
-					c.table.fn_generic_types[im_fkey] << inferred_types
-				}
+				c.table.register_fn_concrete_types(im_fkey, inferred_types)
 			}
 			result_type := c.table.unwrap_generic_type(interface_type, generic_names,
 				inferred_types)

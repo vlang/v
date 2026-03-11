@@ -806,6 +806,9 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
+			if name !in files {
+				files[name] = []FileData{}
+			}
 			files[name] << FileData{
 				filename:     filename
 				content_type: content_type

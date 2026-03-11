@@ -423,6 +423,9 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 	}
 
 	// If file hasnt been called before then add to dependency tree
+	if file_path !in dc.dependencies {
+		dc.dependencies[file_path] = []string{}
+	}
 	if !dc.dependencies[file_path].contains(calling_file) {
 		dc.dependencies[file_path] << calling_file
 	}

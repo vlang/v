@@ -129,6 +129,7 @@ mut:
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
+	inside_left_shift         bool // generating the left operand of `<<`
 	inside_assign             bool
 	inside_map_index          bool
 	inside_array_index        bool

@@ -83,6 +83,9 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 			}
 		}
 
+		if key !in headers {
+			headers[key] = []string{}
+		}
 		headers[key] << val
 	}
 

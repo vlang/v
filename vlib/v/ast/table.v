@@ -1777,6 +1777,9 @@ pub fn (mut t Table) complete_interface_check() {
 				$if trace_types_implementing_each_interface ? {
 					eprintln('>>> tsym.mod: ${tsym.mod} | tsym.name: ${tsym.name} | tk: ${tk} | idecl.name: ${idecl.name} | idecl.typ: ${idecl.typ}')
 				}
+				if idecl.name !in t.iface_types {
+					t.iface_types[idecl.name] = []Type{}
+				}
 				t.iface_types[idecl.name] << tk_typ
 			}
 		}
