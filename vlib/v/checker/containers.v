@@ -532,6 +532,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
+		start_errors := c.nr_errors
 		if node.typ.has_flag(.generic) {
 			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
 		}
@@ -570,11 +571,17 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				node.pos)
 			c.error('cannot use type `any` here', node.pos)
 		}
+		if c.nr_errors == start_errors && info.key_type != ast.void_type
+			&& !c.table.supports_map_key_type(info.key_type) {
+			c.error('map key type `${c.table.sym(info.key_type).name}` not supported',
+				node.pos)
+		}
 		return node.typ
 	}
 
 	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
 		mut map_type := ast.void_type
+		start_errors := c.nr_errors
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
 			&& c.expected_type.has_flag(.generic))
@@ -623,6 +630,11 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		}
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
+		if c.nr_errors == start_errors && map_key_type != ast.void_type
+			&& !c.table.supports_map_key_type(map_key_type) {
+			c.error('map key type `${c.table.sym(map_key_type).name}` not supported',
+				node.pos)
+		}
 
 		node.typ = ast.new_type(c.table.find_or_register_map(map_key_type, map_val_type))
 		node.key_type = map_key_type

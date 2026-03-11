@@ -1,0 +1,10 @@
+import datatypes
+import time
+
+fn direct() {
+	_ := map[time.Time]int{}
+}
+
+fn wrapped() {
+	_ := datatypes.Set[time.Time]{}
+}
