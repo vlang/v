@@ -2393,10 +2393,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	f.inside_comptime_if = node.is_comptime
+	allow_multiline_branches := node.is_expr || f.inside_const || f.is_struct_init
+		|| f.single_line_fields
 	mut is_ternary := node.branches.len == 2 && node.has_else
-		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
-		|| f.single_line_fields)
+		&& branch_is_single_line(node.branches[0], allow_multiline_branches)
+		&& branch_is_single_line(node.branches[1], allow_multiline_branches)
+		&& (allow_multiline_branches || f.is_assign)
 	f.single_line_if = is_ternary
 	start_pos := f.out.len
 	start_len := f.line_len
@@ -2477,10 +2479,9 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	}
 }
 
-fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0])
-		&& b.pos.line_nr == b.stmts[0].pos.line_nr {
-		return true
+fn branch_is_single_line(b ast.IfBranch, allow_multiline bool) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return allow_multiline || b.pos.line_nr == b.stmts[0].pos.line_nr
 	}
 	return false
 }
