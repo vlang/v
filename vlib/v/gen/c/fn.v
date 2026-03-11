@@ -644,6 +644,51 @@ fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	return fn_name
 }
 
+fn (mut g Gen) c_call_alias_signature(node ast.CallExpr, name string) string {
+	ret_styp := g.styp(node.return_type)
+	mut sig := '${ret_styp} (*${name})('
+	if node.args.len == 0 && !node.is_c_variadic {
+		sig += 'void'
+	} else {
+		for i, arg in node.args {
+			arg_typ := if arg.typ != 0 {
+				arg.typ
+			} else if i < node.expected_arg_types.len {
+				node.expected_arg_types[i]
+			} else {
+				ast.voidptr_type
+			}
+			sig += g.styp(arg_typ)
+			if i < node.args.len - 1 || node.is_c_variadic {
+				sig += ', '
+			}
+		}
+		if node.is_c_variadic {
+			sig += '...'
+		}
+	}
+	sig += ')'
+	return sig
+}
+
+fn (mut g Gen) c_call_name(node ast.CallExpr, cname string) string {
+	if node.scope == unsafe { nil } {
+		return cname
+	}
+	if node.scope.find_var(cname) == none && node.scope.find_global(cname) == none {
+		return cname
+	}
+	g.global_tmp_count++
+	alias_name := '__v_c_fn_${g.global_tmp_count}_${cname}'
+	alias_sig := g.c_call_alias_signature(node, alias_name)
+	cast_sig := g.c_call_alias_signature(node, '')
+	g.definitions.writeln('${g.static_non_parallel}${alias_sig} = (${cast_sig})${cname};')
+	if g.pref.parallel_cc {
+		g.extern_out.writeln('extern ${alias_sig};')
+	}
+	return alias_name
+}
+
 fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 	mut fn_name := node.name
 	if node.generic_names.len > 0 {
@@ -2075,7 +2120,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if node.language == .c {
 		// Skip "C."
-		name = util.no_dots(name[2..])
+		name = g.c_call_name(node, util.no_dots(name[2..]))
 	} else {
 		name = if is_selector_call { c_name(name) } else { c_fn_name(name) }
 	}
