@@ -1908,23 +1908,29 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		FnType {
 			mut func := sym.info.func
 			mut has_generic := false
-			if func.return_type.has_flag(.generic) {
-				if typ := t.convert_generic_type(func.return_type, generic_names, to_types) {
-					func.return_type = typ
-					if typ.has_flag(.generic) {
-						has_generic = true
-					}
-				}
+			orig_return_type := func.return_type
+			if typ := t.convert_generic_type(func.return_type, generic_names, to_types) {
+				func.return_type = typ
+			}
+			if t.sym(func.return_type).kind == .placeholder {
+				func.return_type = t.unwrap_generic_type_ex(orig_return_type, generic_names,
+					to_types, true)
+			}
+			if func.return_type.has_flag(.generic) || t.generic_type_names(func.return_type).len > 0 {
+				has_generic = true
 			}
 			func.params = func.params.clone()
 			for mut param in func.params {
-				if param.typ.has_flag(.generic) {
-					if typ := t.convert_generic_type(param.typ, generic_names, to_types) {
-						param.typ = typ
-						if typ.has_flag(.generic) {
-							has_generic = true
-						}
-					}
+				orig_param_type := param.typ
+				if typ := t.convert_generic_type(param.typ, generic_names, to_types) {
+					param.typ = typ
+				}
+				if t.sym(param.typ).kind == .placeholder {
+					param.typ = t.unwrap_generic_type_ex(orig_param_type, generic_names,
+						to_types, true)
+				}
+				if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
+					has_generic = true
 				}
 			}
 			func.name = ''
