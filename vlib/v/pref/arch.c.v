@@ -11,6 +11,7 @@ pub enum Arch {
 	s390x
 	ppc64le
 	loongarch64
+	ppc
 	js_node
 	js_browser
 	js_freestanding
@@ -59,6 +60,9 @@ pub fn arch_from_string(arch_str string) !Arch {
 		}
 		'ppc64le' {
 			return .ppc64le
+		}
+		'ppc', 'ppc32', 'powerpc' {
+			return .ppc
 		}
 		'js', 'js_node' {
 			return .js_node
