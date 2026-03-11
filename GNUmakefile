@@ -41,7 +41,7 @@ endif
 ifeq ($(_SYS),Darwin)
 MAC := 1
 TCCOS := macos
-ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 15), 1)
+ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
 CFLAGS += -I$(LEGACYLIBS)/include/LegacySupport
 LDFLAGS += -L$(LEGACYLIBS)/lib
