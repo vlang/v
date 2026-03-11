@@ -52,7 +52,7 @@ fn (mut c Checker) markused_used_maps(check bool) {
 	}
 }
 
-fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mut final_to_sym ast.TypeSymbol) {
+fn (mut c Checker) markused_castexpr(mut _ ast.CastExpr, _ ast.Type, mut final_to_sym ast.TypeSymbol) {
 	if c.is_builtin_mod {
 		return
 	}
@@ -90,7 +90,7 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 	}
 }
 
-fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr_type ast.Type) {
+fn (mut c Checker) markused_comptimefor(mut _ ast.ComptimeFor, unwrapped_expr_type ast.Type) {
 	if c.table.used_features.used_maps == 0 {
 		final_sym := c.table.final_sym(unwrapped_expr_type)
 		if final_sym.info is ast.Map {
@@ -174,7 +174,7 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 	}
 }
 
-fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ftyp ast.Type) {
+fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp ast.Type) {
 	if c.is_builtin_mod {
 		return
 	}

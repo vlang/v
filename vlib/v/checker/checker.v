@@ -5922,7 +5922,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
-fn (mut c Checker) static_fn_value_from_enum_val(mut node ast.EnumVal, fn_name string, func ast.Fn) ast.Type {
+fn (mut c Checker) static_fn_value_from_enum_val(mut node ast.EnumVal, _ string, func ast.Fn) ast.Type {
 	if !func.is_pub && func.mod != c.mod {
 		c.error('function `${func.name}` is private', node.pos)
 		return ast.void_type
