@@ -516,11 +516,10 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
-	m.reserve(meta_bytes)
+	m.reserve_metas(meta_bytes)
 }
 
-// reserve memory for the map meta data.
-pub fn (mut m map) reserve(meta_bytes u32) {
+fn (mut m map) reserve_metas(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
 		x := v_realloc(byteptr(m.metas), int(meta_bytes))
@@ -535,6 +534,13 @@ pub fn (mut m map) reserve(meta_bytes u32) {
 		mut index, mut meta := m.key_to_index(pkey)
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, u32(i))
+	}
+}
+
+// reserve ensures that the map can store at least `n` entries without rehashing.
+pub fn (mut m map) reserve(n u32) {
+	for u64(n) * 5 > u64(m.even_index) * 2 {
+		m.expand()
 	}
 }
 
