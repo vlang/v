@@ -3311,6 +3311,26 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		return
 	}
+	if got_sym.info is ast.Interface && exp_sym.info is ast.Interface
+		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
+		g.write('I_${got_sym.cname}_as_I_${exp_sym.cname}(')
+		if got_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(expr)
+		g.write(')')
+		mut info := got_sym.info as ast.Interface
+		lock info.conversions {
+			if expected_type !in info.conversions {
+				left_variants := g.table.iface_types[got_sym.name]
+				right_variants := g.table.iface_types[exp_sym.name]
+				info.conversions[expected_type] = left_variants.filter(it in right_variants)
+			}
+		}
+		mut got_interface_sym := g.table.sym(got_type)
+		got_interface_sym.info = info
+		return
+	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
 		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
@@ -8898,7 +8918,7 @@ return ${cast_shared_struct_str};
 			pmessage := 'builtin__string__plus(builtin__string__plus(_S("`as_cast`: cannot convert "), v_typeof_interface_${interface_name}(x._typ)), _S(" to ${util.strip_main_name(vsym.name)}"))'
 			if g.pref.is_debug {
 				// TODO: actually return a valid position here
-				conversion_functions.write_string2('\tbuiltin__panic_debug(1, builtin__tos3("builtin.v"), builtin__tos3("builtin"), builtin__tos3("__as_cast"), ',
+				conversion_functions.write_string2('\tbuiltin__panic_debug(1, _S("builtin.v"), _S("builtin"), _S("__as_cast"), ',
 					pmessage)
 				conversion_functions.writeln(');')
 			} else {
