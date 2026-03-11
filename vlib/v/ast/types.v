@@ -1312,11 +1312,56 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		.alias {
 			size, align = t.type_size((sym.info as Alias).parent_type)
 		}
-		.struct, .string, .multi_return {
+		.struct {
+			info := sym.info as Struct
+			is_packed := info.attrs.contains('packed')
+			if info.is_union {
+				mut max_alignment := if is_packed { 1 } else { 0 }
+				mut max_size := 0
+				for field in info.fields {
+					field_size, alignment := t.type_size(field.typ)
+					if field_size > max_size {
+						max_size = field_size
+					}
+					if !is_packed && alignment > max_alignment {
+						max_alignment = alignment
+					}
+				}
+				if is_packed {
+					size = max_size
+					align = 1
+				} else {
+					size = round_up(max_size, max_alignment)
+					align = max_alignment
+				}
+			} else {
+				mut max_alignment := if is_packed { 1 } else { 0 }
+				mut total_size := 0
+				for field in info.fields {
+					field_size, alignment := t.type_size(field.typ)
+					if is_packed {
+						total_size += field_size
+					} else {
+						if alignment > max_alignment {
+							max_alignment = alignment
+						}
+						total_size = round_up(total_size, alignment) + field_size
+					}
+				}
+				if is_packed {
+					size = total_size
+					align = 1
+				} else {
+					size = round_up(total_size, max_alignment)
+					align = max_alignment
+				}
+			}
+		}
+		.string, .multi_return {
 			mut max_alignment := 0
 			mut total_size := 0
-			types := if mut sym.info is Struct {
-				sym.info.fields.map(it.typ)
+			types := if sym.kind == .string {
+				(sym.info as Struct).fields.map(it.typ)
 			} else {
 				(sym.info as MultiReturn).types
 			}
