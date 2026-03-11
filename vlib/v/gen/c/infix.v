@@ -1137,7 +1137,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				if needs_clone {
 					g.write('builtin__string_clone(')
 				}
-				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit {
+				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit
+					&& elem_sym.kind != .sum_type {
 					g.expr(node.right.expr)
 				} else if elem_sym.info is ast.ArrayFixed
 					&& node.right in [ast.CallExpr, ast.DumpExpr] {

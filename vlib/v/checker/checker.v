@@ -4004,7 +4004,17 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
+	old_expected_type := c.expected_type
+	if mut node.expr is ast.ArrayInit && node.expr.typ == ast.void_type
+		&& c.table.final_sym(to_type).kind == .sum_type
+		&& c.table.final_sym(c.expected_type).kind == .array
+		&& c.table.value_type(c.expected_type) == to_type {
+		// `arr << SumType([Alias(1), 2])` should infer the inner array variant,
+		// not force the literal to become `[]SumType` from the surrounding append.
+		c.expected_type = ast.void_type
+	}
 	node.expr_type = c.expr(mut node.expr) // type to be casted
+	c.expected_type = old_expected_type
 	c.inside_integer_literal_cast = old_inside_integer_literal_cast
 
 	if mut node.expr is ast.ComptimeSelector {

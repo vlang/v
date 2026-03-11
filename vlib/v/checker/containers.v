@@ -850,18 +850,17 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		}
 		return ast.void_type
 	} else if left_value_sym.kind == .sum_type {
-		if right_sym.kind != .array {
-			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(c.unwrap_generic(right_type))) {
-				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
-			}
-		} else {
-			right_value_type := c.table.value_type(c.unwrap_generic(right_type))
-			left_sumtype := c.table.unaliased_type(c.unwrap_generic(left_value_type))
-			right_sumtype := c.table.unaliased_type(c.unwrap_generic(right_value_type))
-			if left_sumtype != right_sumtype {
-				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+		base_right_type := c.unwrap_generic(right_type)
+		if c.check_types(base_right_type, left_value_type) {
+			return ast.void_type
+		}
+		if right_sym.kind == .array {
+			right_value_type := c.table.value_type(base_right_type)
+			if c.check_types(right_value_type, left_value_type) {
+				return ast.void_type
 			}
 		}
+		c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 		return ast.void_type
 	}
 	// []T << T or []T << []T
