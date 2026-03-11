@@ -252,19 +252,43 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 		if lsym.language == .js && rsym.language == .js {
 			return ''
 		}
+		has_unexpected_sharetype := f.params[i].is_shared != func.params[i].is_shared
+			|| f.params[i].is_atomic != func.params[i].is_atomic
 		has_unexpected_mutability := !f.params[i].is_mut && func.params[i].is_mut
 
-		if has_unexpected_type || has_unexpected_mutability {
+		if has_unexpected_type || has_unexpected_sharetype || has_unexpected_mutability {
 			exps := t.type_to_str(f.params[i].typ)
 			gots := t.type_to_str(func.params[i].typ)
 			if has_unexpected_type {
 				return 'expected `${exps}`, not `${gots}` for parameter ${i}'
+			} else if has_unexpected_sharetype {
+				return 'expected `${t.param_type_with_specifier(f.params[i], i == 0)}`, not `${t.param_type_with_specifier(func.params[i],
+					i == 0)}` for parameter ${i}'
 			} else {
 				return 'expected `${exps}` which is immutable, not `mut ${gots}`'
 			}
 		}
 	}
 	return ''
+}
+
+fn (t &Table) param_type_with_specifier(p Param, is_receiver bool) string {
+	mut parts := []string{}
+	if p.is_mut {
+		parts << 'mut'
+	}
+	if p.is_shared {
+		parts << 'shared'
+	}
+	if p.is_atomic {
+		parts << 'atomic'
+	}
+	mut ptyp := p.typ.clear_flags(.shared_f, .atomic_f)
+	if is_receiver && ptyp.is_ptr() {
+		ptyp = ptyp.deref()
+	}
+	parts << t.type_to_str(ptyp)
+	return parts.join(' ')
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
