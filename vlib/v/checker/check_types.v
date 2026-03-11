@@ -906,6 +906,40 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
+fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
+	param_sym := c.table.sym(generic_typ)
+	if param_sym.kind !in [.struct, .interface, .sum_type] {
+		return ast.void_type
+	}
+	arg_sym := c.table.sym(concrete_typ)
+	mut generic_types := []ast.Type{}
+	mut concrete_types := []ast.Type{}
+	match param_sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if param_sym.generic_types.len > 0 {
+				generic_types = param_sym.generic_types.clone()
+			} else {
+				generic_types = param_sym.info.generic_types.clone()
+			}
+		}
+		else {}
+	}
+	match arg_sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			concrete_types = arg_sym.info.concrete_types.clone()
+		}
+		else {}
+	}
+	if generic_types.len == 0 || generic_types.len != concrete_types.len {
+		return ast.void_type
+	}
+	generic_names := generic_types.map(c.table.sym(it).name)
+	if gt_name !in generic_names {
+		return ast.void_type
+	}
+	return concrete_types[generic_names.index(gt_name)]
+}
+
 fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	sym := c.table.sym(typ)
@@ -1042,28 +1076,40 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 							}
 						}
 					}
-				} else if field_sym.info is ast.SumType {
+				} else {
 					for t in node.init_fields {
 						if ft.name == t.name && t.typ != 0 {
-							init_sym := c.table.sym(t.typ)
-							for variant in field_sym.info.variants {
-								variant_sym := c.table.sym(variant)
-								if variant_sym.name == init_sym.name {
-									if variant_sym.info is ast.Struct
-										&& variant_sym.info.generic_types.len > 0 {
-										if init_sym.info is ast.Struct
-											&& init_sym.info.concrete_types.len > 0 {
-											concrete_types << ast.mktyp(init_sym.info.concrete_types[0])
-											continue gname
-										}
-									} else {
-										for init_field in node.init_fields {
-											if init_field.name != t.name && init_field.typ != 0 {
-												field := sym.info.fields.filter(it.name == init_field.name)
-												if field.len > 0 {
-													if c.table.sym(field[0].typ).name == gt_name {
-														concrete_types << ast.mktyp(init_field.typ)
-														continue gname
+							inferred_typ := c.infer_composite_generic_type(gt_name, ft.typ,
+								t.typ)
+							if inferred_typ != ast.void_type {
+								concrete_types << ast.mktyp(inferred_typ)
+								continue gname
+							}
+						}
+					}
+					if field_sym.info is ast.SumType {
+						for t in node.init_fields {
+							if ft.name == t.name && t.typ != 0 {
+								init_sym := c.table.sym(t.typ)
+								for variant in field_sym.info.variants {
+									variant_sym := c.table.sym(variant)
+									if variant_sym.name == init_sym.name {
+										if variant_sym.info is ast.Struct
+											&& variant_sym.info.generic_types.len > 0 {
+											if init_sym.info is ast.Struct
+												&& init_sym.info.concrete_types.len > 0 {
+												concrete_types << ast.mktyp(init_sym.info.concrete_types[0])
+												continue gname
+											}
+										} else {
+											for init_field in node.init_fields {
+												if init_field.name != t.name && init_field.typ != 0 {
+													field := sym.info.fields.filter(it.name == init_field.name)
+													if field.len > 0 {
+														if c.table.sym(field[0].typ).name == gt_name {
+															concrete_types << ast.mktyp(init_field.typ)
+															continue gname
+														}
 													}
 												}
 											}
