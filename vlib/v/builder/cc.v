@@ -4,7 +4,6 @@
 module builder
 
 import os
-import v.ast
 import v.cflag
 import v.pref
 import v.util
@@ -41,63 +40,11 @@ fn c_error_looks_like_cpp_header(c_output string) bool {
 	return false
 }
 
-fn extract_c_struct_name(line string) string {
-	start := line.index('struct ') or { return '' } + 'struct '.len
-	mut end := start
-	for end < line.len {
-		ch := line[end]
-		if !ch.is_letter() && !ch.is_digit() && ch != `_` {
-			break
-		}
-		end++
+fn (v &Builder) ensure_imported_coroutines_runtime() ! {
+	if 'coroutines' !in v.table.imports {
+		return
 	}
-	return if end > start { line[start..end] } else { '' }
-}
-
-fn c_output_suggests_missing_typedef_for_c_struct(c_output string, known_non_typedef_c_structs map[string]bool) string {
-	if known_non_typedef_c_structs.len == 0 {
-		return ''
-	}
-	mut forward_declared := map[string]bool{}
-	mut incomplete := map[string]bool{}
-	for line in c_output.split_into_lines() {
-		name := extract_c_struct_name(line)
-		if name == '' || name !in known_non_typedef_c_structs {
-			continue
-		}
-		lower_line := line.to_lower()
-		if lower_line.contains('forward declaration of') {
-			if name in incomplete {
-				return name
-			}
-			forward_declared[name] = true
-			continue
-		}
-		if lower_line.contains('incomplete result type')
-			|| lower_line.contains('has incomplete type') || lower_line.contains('incomplete type')
-			|| lower_line.contains('return type is an incomplete type') {
-			if name in forward_declared {
-				return name
-			}
-			incomplete[name] = true
-		}
-	}
-	return ''
-}
-
-fn (v &Builder) known_non_typedef_c_structs() map[string]bool {
-	mut names := map[string]bool{}
-	for sym in v.table.type_symbols {
-		if sym.language != .c || sym.kind != .struct || !sym.cname.starts_with('C__') {
-			continue
-		}
-		info := sym.info as ast.Struct
-		if info.is_typedef {
-			continue
-		}
-		names[sym.cname[3..]] = true
-	}
-	return names
+	pref.ensure_coroutines_runtime()!
 }
 
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
@@ -176,11 +123,6 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 	if res.output.contains('o: unrecognized file type')
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
-	}
-	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output,
-		v.known_non_typedef_c_structs())
-	if missing_typedef_name != '' {
-		more_suggestions += '\n${highlight_word('Suggestion')}: if `${missing_typedef_name}` is declared in the C header with `typedef struct ... ${missing_typedef_name};`, add `@[typedef]` to the V redeclaration: `@[typedef] struct C.${missing_typedef_name} { ... }`.'
 	}
 	if c_error_looks_like_cpp_header(res.output) {
 		verror('
@@ -908,6 +850,7 @@ pub fn (mut v Builder) cc() {
 		util.timing_measure(msg_mv)
 		return
 	}
+	v.ensure_imported_coroutines_runtime() or { verror(err.msg()) }
 	// Cross compiling for Windows
 	if v.pref.os == .windows && v.pref.ccompiler != 'msvc' {
 		$if !windows {

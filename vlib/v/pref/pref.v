@@ -270,6 +270,35 @@ pub mut:
 	new_generic_solver bool
 }
 
+// ensure_coroutines_runtime downloads and exposes the photon runtime used by `import coroutines`.
+pub fn ensure_coroutines_runtime() ! {
+	$if macos || linux {
+		arch := $if arm64 { 'arm64' } $else { 'amd64' }
+		vexe := vexe_path()
+		vroot := os.dir(vexe)
+		so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+		so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
+		if !os.exists(so_path) {
+			println('coroutines .so not found, downloading...')
+			res := os.execute('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"')
+			if res.exit_code != 0 || !os.exists(so_path) {
+				return error('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
+			}
+			println('done!')
+		}
+		$if macos {
+			dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
+			so_dir := os.dir(so_path)
+			if !dyld_fallback_paths.contains(so_dir) {
+				env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
+				os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
+			}
+		}
+	} $else {
+		return error('coroutines only work on macOS & Linux for now')
+	}
+}
+
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	return parse_args_and_show_errors(known_external_commands, args, false)
 }
@@ -1015,32 +1044,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
-				$if macos || linux {
-					arch := $if arm64 { 'arm64' } $else { 'amd64' }
-					vexe := vexe_path()
-					vroot := os.dir(vexe)
-					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
-					if !os.exists(so_path) {
-						println('coroutines .so not found, downloading...')
-						os.execute_opt('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"') or {
-							panic('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
-						}
-						println('done!')
-					}
-					res.compile_defines << 'is_coroutine'
-					res.compile_defines_all << 'is_coroutine'
-					$if macos {
-						dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
-						so_dir := os.dir(so_path)
-						if !dyld_fallback_paths.contains(so_dir) {
-							env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
-							os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
-						}
-					}
-				} $else {
-					eprintln_exit('coroutines only work on macOS & Linux for now')
-				}
+				ensure_coroutines_runtime() or { eprintln_exit(err.msg()) }
+				res.compile_defines << 'is_coroutine'
+				res.compile_defines_all << 'is_coroutine'
 			}
 			'-new-generic-solver' {
 				res.new_generic_solver = true
