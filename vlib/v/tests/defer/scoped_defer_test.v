@@ -130,3 +130,14 @@ fn test_defer_fn_with_inner_var() {
 		}
 	}
 }
+
+fn test_scoped_defer_can_use_inner_var_declared_in_loop() {
+	mut values := []int{}
+	for i := 0; i < 3; i++ {
+		defer {
+			j := i
+			values << j
+		}
+	}
+	assert values == [0, 1, 2]
+}
