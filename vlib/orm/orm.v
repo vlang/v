@@ -615,7 +615,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 			are_values_empty := values.len == 0
 
-			if sql_dialect == .sqlite && are_values_empty {
+			if sql_dialect in [.sqlite, .pg] && are_values_empty {
 				str += 'DEFAULT VALUES'
 			} else {
 				str += '('
