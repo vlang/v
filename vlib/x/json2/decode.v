@@ -682,7 +682,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_string[T](mut _val T) ! {
+fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -1046,7 +1046,7 @@ fn parse_integer_number[T](str string) !T {
 
 // use pointer instead of mut so enum cast works
 @[unsafe]
-fn (mut decoder Decoder) decode_number[T](_val &T) ! {
+fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {

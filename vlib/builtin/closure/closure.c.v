@@ -41,7 +41,8 @@ pub const closure_thunk = $if ppc64le {
         0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
         0x20, 0x04, 0x80, 0x4e,	// bctr
     ]!
-} $else $if ppc {
+} $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
     [
     u8(0x7c), 0x08, 0x02, 0xa6,	// mflr   %r0
         0x48, 0x00, 0x00, 0x05,	// bl     here
@@ -115,7 +116,8 @@ pub const closure_thunk = $if ppc64le {
 
 // NOTE: Keep the first branch as the longest byte sequence. In translated/bootstrap C mode
 // (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
-const closure_get_data_bytes = $if ppc {
+const closure_get_data_bytes = $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
     [
     u8(0x94), 0x21, 0xff, 0xf0,	// stwu   %r1, -16(%r1)
         0xd9, 0xc1, 0x00, 0x08,	// stfd   %f14, 8(%r1)
