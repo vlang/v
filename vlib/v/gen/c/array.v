@@ -192,6 +192,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('${ast.int_type_name} it = index;') // FIXME: Remove this line when it is fully forbidden
+		g.set_current_pos_as_last_stmt_pos()
 		g.write('*pelem = ')
 		g.expr_with_init(node)
 		g.writeln(';')
@@ -449,6 +450,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('${ast.int_type_name} it = index;') // FIXME: Remove this line when it is fully forbidden
+		g.set_current_pos_as_last_stmt_pos()
 		if elem_type.unaliased_sym.kind != .array_fixed {
 			g.write('*pelem = ')
 			g.expr_with_init(node)
