@@ -29,8 +29,8 @@ const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 // are properly checked.
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'wait',
-	'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
+	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'get',
+	'wait', 'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 pub const fixed_array_builtin_methods = ['contains', 'index', 'last_index', 'any', 'all', 'wait',
 	'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse',
