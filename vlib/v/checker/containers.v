@@ -857,8 +857,18 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 				}
 			}
 		} else {
-			// []Animal << []Cat
-			c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
+			if c.table.does_type_implement_interface(c.unwrap_generic(right_type), left_value_type) {
+				// `[]Any << []int` should append the array as a single interface value.
+				if c.type_implements(right_type, left_value_type, right_pos) {
+					if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
+						&& right_sym.kind != .interface {
+						c.mark_as_referenced(mut &node.right, true)
+					}
+				}
+			} else {
+				// []Animal << []Cat
+				c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
+			}
 		}
 		return ast.void_type
 	} else if left_value_sym.kind == .sum_type {
