@@ -39,3 +39,20 @@ fn array_init_without_commas() {
 	ch := chan u16{}
 	w := [f, 12 <- ch]
 }
+
+struct App {
+mut:
+	text       string
+	result     f64
+	is_float   bool
+	new_number bool
+	operands   []f64
+	operations []string
+	row_ops    [][]string = [
+		['C', '%', '^', '/'],
+		['7', '8', '9', '*'],
+		['4', '5', '6', '-'],
+		['1', '2', '3', '+'],
+		['0', '.', '+/-', '='],
+	]
+}
