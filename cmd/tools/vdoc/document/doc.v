@@ -154,6 +154,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt:         true
+		is_vdoc:        true
 	}
 	pref_.fill_with_defaults()
 	return pref_
@@ -493,6 +494,11 @@ pub fn (mut d Doc) generate() ! {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
 		file_asts << parser.parse_file(file_path, mut d.table, comments_mode, d.prefs)
+	}
+	mut generated_file_asts := []&ast.File{}
+	parser.append_codegen_files(mut generated_file_asts)
+	for generated_file_ast in generated_file_asts {
+		file_asts << *generated_file_ast
 	}
 	return d.file_asts(mut file_asts)
 }
