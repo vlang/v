@@ -13,6 +13,16 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
+fn run_v_ok(command string) string {
+	res := os.execute(command)
+	if res.exit_code != 0 {
+		eprintln('> failing cmd: ${command}')
+		eprintln('> output:\n${res.output}')
+		assert res.exit_code == 0
+	}
+	return res.output
+}
+
 fn test_conditional_executable_removal() {
 	os.chdir(test_path)!
 	os.mkdir_all('src')!
@@ -81,4 +91,31 @@ pub struct BS{}
 	dump(after_compile_file_list)
 	assert executable in after_compile_file_list
 	assert os.execute('./${executable}').output.trim_space() == 'AS{}=>BS{}'
+}
+
+fn test_run_explicit_src_directory_uses_project_root_lookup() {
+	os.chdir(test_path)!
+	project_dir := os.join_path(test_path, 'run_src_project')
+	defer {
+		os.chdir(test_path) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'src'))!
+	os.mkdir_all(os.join_path(project_dir, 'modules', 'somemoduletwo'))!
+	os.write_file(os.join_path(project_dir, 'src', 'main.v'), 'module main
+import somemoduletwo
+
+fn main() {
+	println(somemoduletwo.name())
+}
+')!
+	os.write_file(os.join_path(project_dir, 'modules', 'somemoduletwo', 'somemoduletwo.v'),
+		'module somemoduletwo
+
+pub fn name() string {
+	return "somemoduletwo"
+}
+')!
+	os.chdir(project_dir)!
+	assert run_v_ok('${os.quoted_path(vexe)} run src').trim_space() == 'somemoduletwo'
+	assert run_v_ok('${os.quoted_path(vexe)} run ./src').trim_space() == 'somemoduletwo'
 }
