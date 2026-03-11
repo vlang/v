@@ -1,5 +1,4 @@
 import os
-import time
 
 // tfolder will contain all the temporary files/subfolders made by
 // the different tests. It would be removed in testsuite_end(), so
@@ -1001,9 +1000,9 @@ fn test_utime() {
 		os.rm(filename) or { panic(err) }
 	}
 	f.write_string(hello) or { panic(err) }
-	atime := time.now().add_days(2).unix()
-	mtime := time.now().add_days(4).unix()
-	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
+	atime := i64(2_147_483_648)
+	mtime := i64(2_306_102_495)
+	os.utime(filename, atime, mtime) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }
 

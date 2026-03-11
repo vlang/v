@@ -114,8 +114,8 @@ mut:
 }
 
 pub struct C._utimbuf {
-	actime  int
-	modtime int
+	actime  i64
+	modtime i64
 }
 
 fn C._utime(&char, voidptr) i32
@@ -176,7 +176,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ! {
+pub fn utime(path string, actime i64, modtime i64) ! {
 	mut u := C._utimbuf{actime, modtime}
 	if C._utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
