@@ -329,8 +329,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				stmt.typ = expr_type
 				if first_iteration {
 					if unwrapped_expected_type.has_option_or_result()
-						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
-						c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
+						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .interface, .multi_return] {
+						c.check_match_branch_last_stmt(mut stmt, unwrapped_expected_type,
 							expr_type)
 						ret_type = node.expected_type
 					} else {
@@ -369,7 +369,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 							stmt.typ = ast.error_type
 						} else {
-							c.check_match_branch_last_stmt(stmt, c.unwrap_generic(ret_type),
+							c.check_match_branch_last_stmt(mut stmt, c.unwrap_generic(ret_type),
 								expr_type)
 							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
 								ret_type = c.promote_num(ret_type, expr_type)
@@ -547,13 +547,22 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	return node.return_type
 }
 
-fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
+fn (mut c Checker) check_match_branch_last_stmt(mut last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
 	if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
 		ret_sym := c.table.sym(ret_type)
+		expr_sym := c.table.sym(expr_type)
+		if ret_sym.kind == .interface {
+			if c.type_implements(expr_type, ret_type, last_stmt.pos) {
+				if !expr_type.is_any_kind_of_pointer() && expr_sym.kind != .interface
+					&& !c.inside_unsafe {
+					c.mark_as_referenced(mut &last_stmt.expr, true)
+				}
+			}
+			return
+		}
 		is_noreturn := is_noreturn_callexpr(last_stmt.expr)
 		if !(ret_sym.kind == .sum_type && (ret_type.has_flag(.generic)
 			|| c.table.is_sumtype_or_in_variant(ret_type, expr_type))) && !is_noreturn {
-			expr_sym := c.table.sym(expr_type)
 			if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
 				ret_types := ret_sym.mr_info().types
 				expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
