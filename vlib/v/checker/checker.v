@@ -1029,6 +1029,12 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 // fail_if_immutable_to_mutable checks if there is a immutable reference on right-side of assignment for mutable var
 fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
 	match right {
+		ast.CastExpr {
+			if c.cast_expr_aliases_value(right) {
+				mut expr := right.expr
+				c.fail_if_immutable(mut expr)
+			}
+		}
 		ast.Ident {
 			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
 				return true
@@ -1098,6 +1104,10 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 	return true
 }
 
+fn (mut c Checker) cast_expr_aliases_value(node ast.CastExpr) bool {
+	return c.table.final_sym(c.unwrap_generic(node.typ)).kind == .interface
+}
+
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
@@ -1106,7 +1116,10 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	mut explicit_lock_needed := false
 	match mut expr {
 		ast.CastExpr {
-			// TODO
+			if c.cast_expr_aliases_value(expr) {
+				mut inner_expr := expr.expr
+				return c.fail_if_immutable(mut inner_expr)
+			}
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
