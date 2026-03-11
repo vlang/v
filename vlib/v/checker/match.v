@@ -849,8 +849,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
+				allow_mut_selector_smartcast := node.cond is ast.SelectorExpr
 				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope,
-					false, false)
+					false, false, allow_mut_selector_smartcast)
 			}
 		}
 	}
