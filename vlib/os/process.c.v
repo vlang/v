@@ -167,11 +167,13 @@ pub fn (mut p Process) stderr_slurp() string {
 	return res
 }
 
-// stdout_read reads a block of data, from the stdout pipe of the child process.
-// It will block, if there is no data to be read. Call .is_pending() to check if
-// there is data to be read, if you do not want to block.
+// stdout_read reads a block of data from the child process stdout pipe.
+// It returns `''` immediately when there is currently no data to be read.
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call(@METHOD)
+	if !p._is_pending(.stdout) {
+		return ''
+	}
 	res := p._read_from(.stdout)
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
@@ -179,11 +181,13 @@ pub fn (mut p Process) stdout_read() string {
 	return res
 }
 
-// stderr_read reads a block of data, from the stderr pipe of the child process.
-// It will block, if there is no data to be read. Call .is_pending() to check if
-// there is data to be read, if you do not want to block.
+// stderr_read reads a block of data from the child process stderr pipe.
+// It returns `''` immediately when there is currently no data to be read.
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call(@METHOD)
+	if !p._is_pending(.stderr) {
+		return ''
+	}
 	res := p._read_from(.stderr)
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
