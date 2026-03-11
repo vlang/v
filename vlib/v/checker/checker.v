@@ -3351,12 +3351,6 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if c.inside_generic_struct_init {
-			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
-			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
-				return t_typ
-			}
-		}
 		if c.table.cur_fn != unsafe { nil } {
 			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
@@ -3369,6 +3363,12 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 				{
 					return t_typ
 				}
+			}
+		}
+		if c.inside_generic_struct_init {
+			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
+				return t_typ
 			}
 		}
 	}
