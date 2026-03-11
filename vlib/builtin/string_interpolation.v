@@ -288,15 +288,11 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			}
 
 			if base == 0 {
-				if width == 0 {
-					d_str := d.str()
-					sb.write_string(d_str)
-					d_str.free()
-					return
-				}
 				if d < 0 {
 					bf.positive = false
 				}
+				// Format straight into the builder to avoid temporary `d.str()` allocations
+				// for plain `${int}` interpolations.
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
 				// binary, we use 3 for binary
@@ -339,12 +335,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				d = u64(data.d.d_u32)
 			}
 			if base == 0 {
-				if width == 0 {
-					d_str := d.str()
-					sb.write_string(d_str)
-					d_str.free()
-					return
-				}
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				// binary, we use 3 for binary
