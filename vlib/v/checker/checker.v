@@ -1847,14 +1847,27 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 			c.cur_or_expr.err_used = err_var.is_used
 		}
 	}
-	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
-	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
+	mut last_stmt_idx := node.stmts.len - 1
+	for i := node.stmts.len - 1; i >= 0; i-- {
+		if node.stmts[i] !is ast.SemicolonStmt {
+			last_stmt_idx = i
+			break
+		}
+	}
+	mut last_stmt := if c.cur_or_expr != unsafe { nil } && c.cur_or_expr.stmts.len > last_stmt_idx {
+		c.cur_or_expr.stmts[last_stmt_idx]
+	} else {
+		node.stmts[last_stmt_idx]
+	}
 	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
 		// requires a block returning an unwrapped type of expr return type
 		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 	} else {
 		// allow f() or { var = 123 }
 		c.check_or_last_stmt(mut last_stmt, ast.void_type, expr_return_type.clear_option_and_result())
+	}
+	if c.cur_or_expr != unsafe { nil } && c.cur_or_expr.stmts.len > last_stmt_idx {
+		c.cur_or_expr.stmts[last_stmt_idx] = last_stmt
 	}
 }
 
@@ -1868,8 +1881,24 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					// return call() or { none } where fn returns an Option type
 					return
 				}
-				last_stmt_typ := c.expr(mut stmt.expr)
+				mut last_stmt_typ := c.expr(mut stmt.expr)
 				stmt.typ = last_stmt_typ
+				if c.inside_return && c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.return_type.has_flag(.result) {
+					last_stmt_sym := c.table.sym(last_stmt_typ)
+					if last_stmt_sym.kind == .struct
+						&& c.type_implements(last_stmt_typ, ast.error_type, stmt.expr.pos()) {
+						stmt.expr = ast.CastExpr{
+							expr:      stmt.expr
+							typname:   'IError'
+							typ:       ast.error_type
+							expr_type: last_stmt_typ
+							pos:       stmt.expr.pos()
+						}
+						last_stmt_typ = ast.error_type
+						stmt.typ = ast.error_type
+					}
+				}
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
