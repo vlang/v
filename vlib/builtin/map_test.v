@@ -566,6 +566,20 @@ fn test_map_clone() {
 	assert nums2['bar'] == 8
 }
 
+fn test_map_reserve_keeps_empty_map_valid() {
+	mut m := {
+		'abc': 42
+	}
+	mut moved := m.move()
+	moved.clear()
+	moved.reserve(6)
+	moved.delete('def')
+	assert moved.keys().len == 0
+	assert moved.values().len == 0
+	assert moved.clone().len == 0
+	unsafe { moved.free() }
+}
+
 struct MValue {
 	name string
 	misc map[string]string
