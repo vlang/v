@@ -573,15 +573,20 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
-			if node.or_expr.kind != .absent {
+			if node.or_expr.kind != .absent || node.is_option {
 				w.uses_index_check = true
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
-			if node.left_type == 0 {
+			left_type := if node.left_type != 0 {
+				node.left_type
+			} else {
+				w.infer_expr_type(node.left)
+			}
+			if left_type == 0 {
 				return
 			}
-			sym := w.table.final_sym(node.left_type)
+			sym := w.table.final_sym(left_type)
 			if sym.info is ast.Map {
 				if node.is_setter && !w.uses_map_setter {
 					w.mark_builtin_map_method_as_used('set')
@@ -621,18 +626,30 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else if sym.kind == .string {
 				w.uses_str_index = true
 				if node.index is ast.RangeExpr {
+					if node.is_gated {
+						w.fn_by_name('${ast.string_type_idx}.substr_ni')
+					} else if node.or_expr.kind != .absent || node.is_option {
+						w.fn_by_name('${ast.string_type_idx}.substr_with_check')
+					} else {
+						w.fn_by_name('${ast.string_type_idx}.substr')
+					}
 					if !w.uses_str_range_index {
 						w.uses_str_range_index = true
 					}
 					if !w.uses_range_index_check {
-						w.uses_range_index_check = node.or_expr.kind == .block
+						w.uses_range_index_check = node.or_expr.kind != .absent || node.is_option
 					}
 					if !w.uses_str_range_index_gated {
 						w.uses_str_range_index_gated = node.is_gated
 					}
 				} else {
+					if node.or_expr.kind != .absent || node.is_option {
+						w.fn_by_name('${ast.string_type_idx}.at_with_check')
+					} else {
+						w.fn_by_name('${ast.string_type_idx}.at')
+					}
 					if !w.uses_str_index_check {
-						w.uses_str_index_check = node.or_expr.kind == .block
+						w.uses_str_index_check = node.or_expr.kind != .absent || node.is_option
 					}
 					if !w.uses_str_range {
 						w.uses_str_range = node.index is ast.RangeExpr
@@ -1225,6 +1242,94 @@ pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
 pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 	for cf in cfields {
 		w.expr(cf.expr)
+	}
+}
+
+fn (w &Walker) infer_expr_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.ArrayInit {
+			return expr.typ
+		}
+		ast.AsCast {
+			return expr.typ
+		}
+		ast.BoolLiteral {
+			return ast.bool_type
+		}
+		ast.CallExpr {
+			return expr.return_type
+		}
+		ast.CastExpr {
+			return expr.typ
+		}
+		ast.ChanInit {
+			return expr.typ
+		}
+		ast.CharLiteral {
+			return ast.u8_type
+		}
+		ast.FloatLiteral {
+			return ast.f64_type
+		}
+		ast.Ident {
+			return match expr.obj {
+				ast.AsmRegister {
+					expr.obj.typ
+				}
+				ast.ConstField {
+					expr.obj.typ
+				}
+				ast.GlobalField {
+					expr.obj.typ
+				}
+				ast.Var {
+					if expr.obj.smartcasts.len > 0 {
+						expr.obj.smartcasts.last()
+					} else {
+						expr.obj.typ
+					}
+				}
+				else {
+					ast.void_type
+				}
+			}
+		}
+		ast.IfExpr {
+			return expr.typ
+		}
+		ast.IndexExpr {
+			return expr.typ
+		}
+		ast.IntegerLiteral {
+			return ast.int_type
+		}
+		ast.MapInit {
+			return expr.typ
+		}
+		ast.MatchExpr {
+			return expr.return_type
+		}
+		ast.ParExpr {
+			return w.infer_expr_type(expr.expr)
+		}
+		ast.PostfixExpr {
+			return expr.typ
+		}
+		ast.PrefixExpr {
+			return expr.right_type
+		}
+		ast.SelectorExpr {
+			return expr.typ
+		}
+		ast.StringInterLiteral, ast.StringLiteral {
+			return ast.string_type
+		}
+		ast.UnsafeExpr {
+			return w.infer_expr_type(expr.expr)
+		}
+		else {
+			return ast.void_type
+		}
 	}
 }
 
