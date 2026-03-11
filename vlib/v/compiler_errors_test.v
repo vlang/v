@@ -9,7 +9,6 @@ import benchmark
 
 const skip_files = [
 	'non_existing.vv', // minimize commit diff churn, do not remove
-	'vlib/v/checker/tests/unused_param.vv',
 ]
 
 const skip_on_cstrict = [
