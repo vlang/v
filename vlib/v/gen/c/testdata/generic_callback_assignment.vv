@@ -1,0 +1,32 @@
+@[heap]
+struct Client {
+mut:
+	ready_callback   ReadyHandler   = unsafe { nil }
+	message_callback MessageHandler = unsafe { nil }
+}
+
+struct Ready {}
+
+struct Message {}
+
+type ReadyHandler = fn (mut c Client, msg &Ready)
+
+type MessageHandler = fn (mut c Client, msg &Message)
+
+fn (mut client Client) on[T](event string, handler fn (mut c Client, msg &T)) {
+	if event == 'ready' {
+		client.ready_callback = handler
+	} else if event == 'message_create' {
+		client.message_callback = handler
+	}
+}
+
+fn on_ready(mut _client Client, _message &Ready) {}
+
+fn on_message(mut _client Client, _message &Message) {}
+
+fn main() {
+	mut client := &Client{}
+	client.on[Ready]('ready', on_ready)
+	client.on[Message]('message_create', on_message)
+}
