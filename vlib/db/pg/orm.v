@@ -30,8 +30,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
-	query, converted_data := orm.orm_stmt_gen(.default, table, '"', .insert, true, '$',
-		1, data, orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1,
+		data, orm.QueryData{})
 	pg_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
