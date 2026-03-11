@@ -196,7 +196,6 @@ mut:
 	array_contains_types      []ast.Type
 	array_index_types         []ast.Type
 	array_last_index_types    []ast.Type
-	array_get_types           []ast.Type
 	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
 	anon_fn_definitions       []string        // anon generated functions definition list
@@ -483,7 +482,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_contains_types << g.array_contains_types
 			global_g.array_index_types << g.array_index_types
 			global_g.array_last_index_types << g.array_last_index_types
-			global_g.array_get_types << g.array_get_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
@@ -528,7 +526,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_array_contains_methods()
 	global_g.gen_array_index_methods(false) // .index()
 	global_g.gen_array_index_methods(true) // .last_index()
-	global_g.gen_array_get_methods() // .get()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
 	global_g.register_iface_return_types()
@@ -1287,44 +1284,6 @@ fn (mut g Gen) styp(t ast.Type) string {
 	} else {
 		return g.base_type(t)
 	}
-}
-
-fn (mut g Gen) fixed_array_elem_styp(typ ast.Type) string {
-	mut elem_type := g.unwrap_generic(typ)
-	if g.table.sym(elem_type).kind == .alias {
-		usage_nr_muls := elem_type.nr_muls()
-		usage_is_option := elem_type.has_flag(.option)
-		usage_is_result := elem_type.has_flag(.result)
-		usage_is_shared := elem_type.has_flag(.shared_f)
-		usage_is_atomic := elem_type.has_flag(.atomic_f)
-		for {
-			elem_sym := g.table.sym(elem_type)
-			if elem_sym.kind != .alias || elem_sym.info !is ast.Alias {
-				break
-			}
-			elem_type = (elem_sym.info as ast.Alias).parent_type
-		}
-		if usage_nr_muls > 0 {
-			elem_type = elem_type.set_nr_muls(elem_type.nr_muls() + usage_nr_muls)
-		}
-		if usage_is_option {
-			elem_type = elem_type.set_flag(.option)
-		}
-		if usage_is_result {
-			elem_type = elem_type.set_flag(.result)
-		}
-		if usage_is_shared {
-			elem_type = elem_type.set_flag(.shared_f)
-		}
-		if usage_is_atomic {
-			elem_type = elem_type.set_flag(.atomic_f)
-		}
-	}
-	mut elem_styp := g.styp(elem_type.set_nr_muls(0))
-	if elem_type.is_ptr() {
-		elem_styp += '*'.repeat(elem_type.nr_muls())
-	}
-	return elem_styp
 }
 
 fn (mut g Gen) base_type(_t ast.Type) string {
@@ -2159,7 +2118,10 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			&& elem_sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
-		fixed_elem_name := g.fixed_array_elem_styp(info.elem_type)
+		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
+		if info.elem_type.is_ptr() {
+			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())
+		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
 		g.type_definitions.writeln('struct ${sym.cname} {')
 		g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
@@ -3146,31 +3108,10 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (g &Gen) interface_expr_needs_heap(expr ast.Expr) bool {
-	match expr {
-		ast.Ident {
-			if expr.obj is ast.Var {
-				return !expr.obj.typ.is_ptr() && !expr.is_auto_heap()
-			}
-			return false
-		}
-		ast.SelectorExpr {
-			root := expr.root_ident() or { return false }
-			if root.obj is ast.Var {
-				return !root.obj.typ.is_ptr() && !root.is_auto_heap()
-			}
-			return false
-		}
-		ast.ParExpr {
-			return g.interface_expr_needs_heap(expr.expr)
-		}
-		ast.UnsafeExpr {
-			return g.interface_expr_needs_heap(expr.expr)
-		}
-		else {
-			return false
-		}
-	}
+@[inline]
+fn (g &Gen) can_reuse_sumtype_variant_storage(exp ast.Type, got_is_ptr bool) bool {
+	// `&SumType(value)` must copy value variants unless the cast is borrowing a mutable argument.
+	return exp.is_ptr() && (got_is_ptr || g.expected_arg_mut)
 }
 
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
@@ -3180,7 +3121,6 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
-	is_interface_cast := !got_is_fn && fname.contains('_to_Interface_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
@@ -3199,17 +3139,20 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		is_cast_fixed_array_init := expr is ast.CastExpr
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
 
-		is_primitive_to_interface := is_interface_cast && expr is ast.Ident
+		is_primitive_to_interface := fname.contains('_to_Interface_') && expr is ast.Ident
 			&& g.table.sym(got).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .bool, .rune]
 
-		// Interface casts must not store pointers into stack-rooted lvalues such as
-		// local variables or fields on by-value fn args (`p.email`).
-		is_stack_rooted_interface_expr := is_interface_cast && g.interface_expr_needs_heap(expr)
+		// Check if the expression is a function argument (local variable) that needs heap allocation
+		is_fn_arg := if expr is ast.Ident && expr.obj is ast.Var {
+			expr.obj.is_arg
+		} else {
+			false
+		}
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface || is_stack_rooted_interface_expr) {
+			|| is_primitive_to_interface || is_fn_arg) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
@@ -3249,7 +3192,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	if is_sumtype_cast {
 		// the `_to_sumtype_` family of functions last `is_mut` param
 		g.write(')'.repeat(rparen_n - mutable_is_mut_arg_pos))
-		g.write(', ${exp.is_ptr()}')
+		g.write(', ${g.can_reuse_sumtype_variant_storage(exp, got_is_ptr)}')
 		g.write(')'.repeat(mutable_is_mut_arg_pos))
 	} else {
 		g.write(')'.repeat(rparen_n))
@@ -3332,26 +3275,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if got_sym.kind == .none && exp_sym.idx == ast.error_type_idx {
 		g.expr(expr)
-		return
-	}
-	if got_sym.info is ast.Interface && exp_sym.info is ast.Interface
-		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
-		g.write('I_${got_sym.cname}_as_I_${exp_sym.cname}(')
-		if got_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(expr)
-		g.write(')')
-		mut info := got_sym.info as ast.Interface
-		lock info.conversions {
-			if expected_type !in info.conversions {
-				left_variants := g.table.iface_types[got_sym.name]
-				right_variants := g.table.iface_types[exp_sym.name]
-				info.conversions[expected_type] = left_variants.filter(it in right_variants)
-			}
-		}
-		mut got_interface_sym := g.table.sym(got_type)
-		got_interface_sym.info = info
 		return
 	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
@@ -3455,7 +3378,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.expr(expr)
 					g.writeln(';')
 					g.write2(stmt_str, ' ')
-					g.write('${fname}(&${tmp_var}, ${unwrapped_expected_type.is_ptr()})')
+					g.write('${fname}(&${tmp_var}, ${g.can_reuse_sumtype_variant_storage(unwrapped_expected_type,
+						got_is_ptr)})')
 					return
 				} else {
 					g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type,
@@ -4486,7 +4410,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('builtin__tos3(v_typeof_sumtype_${sym.cname}( (')
+		g.write('builtin__charptr_vstring_literal(v_typeof_sumtype_${sym.cname}( (')
 		if typ.nr_muls() > 0 {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
@@ -7289,7 +7213,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							continue
 						}
 						styp := field_sym.cname
-						fixed_elem_name := g.fixed_array_elem_styp(arr.elem_type)
+						mut fixed_elem_name := g.styp(arr.elem_type.set_nr_muls(0))
+						if arr.elem_type.is_ptr() {
+							fixed_elem_name += '*'.repeat(arr.elem_type.nr_muls())
+						}
 						len := arr.size
 						lock g.done_options {
 							if styp !in g.done_options {
@@ -7385,7 +7312,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					// array_fixed_char_300 => char x[300]
 					// [16]&&&EventListener{} => Array_fixed_main__EventListener_16_ptr3
 					// => typedef main__EventListener*** Array_fixed_main__EventListener_16_ptr3 [16]
-					mut fixed_elem_name := g.fixed_array_elem_styp(sym.info.elem_type)
+					mut fixed_elem_name := g.styp(sym.info.elem_type.set_nr_muls(0))
+					if sym.info.elem_type.is_ptr() {
+						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
+					}
 					len := sym.info.size
 					if len > 0 {
 						if elem_sym.info is ast.FnType {
@@ -8778,10 +8708,10 @@ return ${cast_shared_struct_str};
 				variant_sym := g.table.sym(variant)
 				conversion_functions.writeln('\tif (x._typ == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_to_Interface_${vsym.cname}(x._${variant_sym.cname});')
 			}
-			pmessage := '_S("`as_cast`: cannot convert interface value to ${util.strip_main_name(vsym.name)}")'
+			pmessage := 'builtin__string__plus(builtin__string__plus(builtin__tos3("`as_cast`: cannot convert "), builtin__tos3(v_typeof_interface_${interface_name}(x._typ))), builtin__tos3(" to ${util.strip_main_name(vsym.name)}"))'
 			if g.pref.is_debug {
 				// TODO: actually return a valid position here
-				conversion_functions.write_string2('\tbuiltin__panic_debug(1, _S("builtin.v"), _S("builtin"), _S("__as_cast"), ',
+				conversion_functions.write_string2('\tbuiltin__panic_debug(1, builtin__tos3("builtin.v"), builtin__tos3("builtin"), builtin__tos3("__as_cast"), ',
 					pmessage)
 				conversion_functions.writeln(');')
 			} else {
