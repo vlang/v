@@ -6383,8 +6383,10 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		}
 		else {}
 	}
-	if !c.ensure_supported_map_key_types(typ, pos) {
-		return c.pref.is_vls
+	if sym.kind == .map {
+		if !c.ensure_supported_map_key_types(typ, pos) {
+			return c.pref.is_vls
+		}
 	}
 	return true
 }
