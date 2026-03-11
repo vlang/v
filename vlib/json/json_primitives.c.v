@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module json
 
+import math
+
 #flag -I @VEXEROOT/thirdparty/cJSON
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
@@ -28,6 +30,7 @@ fn C.cJSON_IsObject(&C.cJSON) bool
 fn C.cJSON_IsArray(&C.cJSON) bool
 
 fn C.cJSON_CreateNumber(f64) &C.cJSON
+fn C.cJSON_CreateRaw(&char) &C.cJSON
 
 fn C.cJSON_CreateBool(bool) &C.cJSON
 
@@ -233,12 +236,12 @@ fn encode_u64(val u64) &C.cJSON {
 
 @[markused]
 fn encode_f32(val f32) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
+	return C.cJSON_CreateRaw(&char(json_float_to_raw_string(val).str))
 }
 
 @[markused]
 fn encode_f64(val f64) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
+	return C.cJSON_CreateRaw(&char(json_float_to_raw_string(val).str))
 }
 
 @[markused]
@@ -254,6 +257,21 @@ fn encode_rune(val rune) &C.cJSON {
 @[markused]
 fn encode_string(val string) &C.cJSON {
 	return C.cJSON_CreateString(&char(val.str))
+}
+
+// json_float_to_raw_string uses V's float formatter so json.encode keeps exact float round-trips.
+fn json_float_to_raw_string[T](val T) string {
+	if val == 0 {
+		return '0'
+	}
+	if math.is_nan(f64(val)) || math.is_inf(f64(val), 0) {
+		return 'null'
+	}
+	mut raw := val.str()
+	if raw.len > 2 && raw[raw.len - 2] == `.` && raw[raw.len - 1] == `0` {
+		raw = raw[..raw.len - 2]
+	}
+	return raw
 }
 
 // ///////////////////////
