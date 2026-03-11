@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/os/file.c.v", "fhash": "cea272df42e499c4",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 11,
+  "points": [  15,19,353,355,361,362,368,369,372,487,495  ]
+}

@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/builtin/float.c.v", "fhash": "c0b4e0793196b5fd",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 38,
+  "points": [  16,17,20,21,23,24,27,28,29,31,38,39,41,42,43,45,82,83,86,87,89,90,93,94,95,97,104,105,107,108,109,111,138,139,141,148,149,151  ]
+}

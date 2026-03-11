@@ -4222,7 +4222,8 @@ fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr, concr
 				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					node.concrete_types)
 				{
-					if typ.has_flag(.generic) {
+					typ_sym := c.table.sym(typ)
+					if typ.has_flag(.generic) || (typ_sym.kind == .generic_inst&& (typ_sym.info as ast.GenericInst).concrete_types.any(it.has_flag(.generic))) {
 						return typ
 					}
 				}

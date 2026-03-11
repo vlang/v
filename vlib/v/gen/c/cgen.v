@@ -1405,6 +1405,50 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
+fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	sym := g.table.sym(typ)
+	match sym.info {
+		ast.Array {
+			return g.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return g.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.Chan {
+			return g.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.Thread {
+			return g.type_has_unresolved_generic_parts(sym.info.return_type)
+		}
+		ast.Map {
+			return g.type_has_unresolved_generic_parts(sym.info.key_type)
+				|| g.type_has_unresolved_generic_parts(sym.info.value_type)
+		}
+		ast.FnType {
+			return g.type_has_unresolved_generic_parts(sym.info.func.return_type)
+				|| sym.info.func.params.any(g.type_has_unresolved_generic_parts(it.typ))
+		}
+		ast.MultiReturn {
+			return sym.info.types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		ast.Struct, ast.Interface, ast.SumType {
+			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		ast.GenericInst {
+			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
 	mut styp := ''
@@ -1477,7 +1521,8 @@ fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
 	// Only skip registration if the computed base is still an unresolved generic type name
 	// (base_type should have resolved generics, but check to be safe)
-	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	is_unresolved_generic := (g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names)
+		|| g.type_has_unresolved_generic_parts(t)
 	if !is_unresolved_generic {
 		g.options[base] = styp
 	}
@@ -1487,7 +1532,8 @@ fn (mut g Gen) register_option(t ast.Type) string {
 fn (mut g Gen) register_result(t ast.Type) string {
 	styp, base := g.result_type_name(t)
 	// Only skip registration if the computed base is still an unresolved generic type name
-	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	is_unresolved_generic := (g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names)
+		|| g.type_has_unresolved_generic_parts(t)
 	if !is_unresolved_generic {
 		g.results[base] = styp
 	}
@@ -2054,13 +2100,13 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	}
 
 	for param in func.params {
-		if param.typ.has_flag(.generic) {
+		if g.type_has_unresolved_generic_parts(param.typ) {
 			has_generic_arg = true
 			break
 		}
 	}
-	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic)
-		&& !has_generic_arg {
+	if !info.has_decl && (not_anon || is_fn_sig)
+		&& !g.type_has_unresolved_generic_parts(func.return_type) && !has_generic_arg {
 		fn_name := sym.cname
 		mut call_conv := ''
 		mut msvc_call_conv := ''

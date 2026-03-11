@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/v/tests/fns/closure_struct_init_cov_regression_test.v", "fhash": "6d884d6f2f5a7454",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 9,
+  "points": [  17,18,19,20,21,30,31,34,37  ]
+}
