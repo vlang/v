@@ -210,11 +210,8 @@ fn echo(mut p os.Process, echo_string string) {
 
 fn test_stdin_write() {
 	eprintln(@FN)
-	echo_exe := $if windows {
-		echo_process_exe_filename
-	} $else {
-		os.find_abs_path_of_executable('cat') or { '/bin/cat' }
-	}
+	echo_exe := $if windows { echo_process_exe_filename } $else { os.find_abs_path_of_executable('cat') or {
+			'/bin/cat'} }
 	mut p := os.new_process(echo_exe)
 	p.set_redirect_stdio()
 	assert p.status != .exited

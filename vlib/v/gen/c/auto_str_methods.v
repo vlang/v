@@ -213,11 +213,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
-		dot := if expects_ptr {
-			'*'.repeat(typ.nr_muls())
-		} else {
-			'*'.repeat(typ.nr_muls() + 1)
-		}
+		dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
 		'${dot}(${parent_cast_type}**)&'
 	} else if typ.has_flag(.option_mut_param_t) {
 		'*(${parent_cast_type}*)'
@@ -1053,11 +1049,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		} else {
 			field.typ
 		}
-		mut ptr_amp := if ftyp_noshared.is_ptr() {
-			'&'
-		} else {
-			''
-		}
+		mut ptr_amp := if ftyp_noshared.is_ptr() { '&' } else { '' }
 		mut base_typ := g.unwrap_generic(field.typ)
 		if base_typ.has_flag(.shared_f) {
 			base_typ = base_typ.clear_flag(.shared_f).deref()

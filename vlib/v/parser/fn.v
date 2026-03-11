@@ -610,11 +610,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
-	mut comments_before_key_fn := if p.pref.is_vls {
-		p.cur_comments.clone()
-	} else {
-		[]
-	}
+	mut comments_before_key_fn := if p.pref.is_vls { p.cur_comments.clone() } else { [] }
 	comments << p.eat_comments()
 	p.open_scope()
 	defer {

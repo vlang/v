@@ -1526,11 +1526,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 	struct_name := fm.si.name
 
 	first_letter := flag_name.split('')[0]
-	next_first_letter := if next != '' {
-		next.split('')[0]
-	} else {
-		''
-	}
+	next_first_letter := if next != '' { next.split('')[0] } else { '' }
 	count_of_first_letter_repeats := flag_name.count(first_letter)
 	count_of_next_first_letter_repeats := next.count(next_first_letter)
 

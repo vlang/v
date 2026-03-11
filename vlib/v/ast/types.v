@@ -468,11 +468,7 @@ pub fn (t Type) has_option_or_result() bool {
 
 @[inline]
 pub fn (ts &TypeSymbol) scoped_name() string {
-	return if ts.info is Struct && ts.info.scoped_name != '' {
-		ts.info.scoped_name
-	} else {
-		ts.name
-	}
+	return if ts.info is Struct && ts.info.scoped_name != '' { ts.info.scoped_name } else { ts.name }
 }
 
 @[inline]

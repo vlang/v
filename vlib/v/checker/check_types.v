@@ -331,11 +331,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			return
 		}
 	}
-	exp_type := if !is_aliased || expected_.has_flag(.variadic) {
-		expected
-	} else {
-		expected_
-	}
+	exp_type := if !is_aliased || expected_.has_flag(.variadic) { expected } else { expected_ }
 	if c.check_types(if is_exp_sumtype { got_ } else { got }, exp_type) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || exp_is_ptr {
@@ -415,23 +411,11 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 	}
 	mut outside_type_range := false
 	if expected.is_signed() {
-		max_signed_i64 := if bit_size >= 64 {
-			max_i64
-		} else {
-			i64((u64(1) << (bit_size - 1)) - 1)
-		}
-		min_signed := if bit_size >= 64 {
-			min_i64
-		} else {
-			-max_signed_i64 - 1
-		}
+		max_signed_i64 := if bit_size >= 64 { max_i64 } else { i64((u64(1) << (bit_size - 1)) - 1) }
+		min_signed := if bit_size >= 64 { min_i64 } else { -max_signed_i64 - 1 }
 		max_signed := u64(max_signed_i64)
 		if is_negative {
-			min_negative_abs := if min_signed == min_i64 {
-				u64(1) << 63
-			} else {
-				u64(-min_signed)
-			}
+			min_negative_abs := if min_signed == min_i64 { u64(1) << 63 } else { u64(-min_signed) }
 			outside_type_range = literal_value > min_negative_abs
 		} else {
 			outside_type_range = literal_value > max_signed
@@ -440,11 +424,7 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 		if is_negative {
 			outside_type_range = true
 		} else {
-			max_unsigned := if bit_size >= 64 {
-				max_u64
-			} else {
-				(u64(1) << bit_size) - 1
-			}
+			max_unsigned := if bit_size >= 64 { max_u64 } else { (u64(1) << bit_size) - 1 }
 			outside_type_range = literal_value > max_unsigned
 		}
 	}

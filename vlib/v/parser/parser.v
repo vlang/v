@@ -1731,11 +1731,9 @@ fn (mut p Parser) name_expr() ast.Expr {
 		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
 		|| p.peek_token(6).kind == .lpar)) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
-		mut original_name := if is_array {
-			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
-		} else {
-			p.tok.lit
-		}
+		mut original_name := if is_array { p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
+		 } else { p.tok.lit
+		 }
 		if is_fixed_array && p.peek_token(4).kind == .dot {
 			mod = original_name
 			original_name = p.peek_token(5).lit
@@ -1883,11 +1881,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if !known_var && lit0_is_capital && p.peek_tok.kind == .dot && language == .v
 			&& p.peek_token(2).kind == .name {
 			type_name := p.tok.lit
-			full_type_name := if mod != '' {
-				'${mod}.${type_name}'
-			} else {
-				p.imported_symbols[type_name] or { p.prepend_mod(type_name) }
-			}
+			full_type_name := if mod != '' { '${mod}.${type_name}' } else { p.imported_symbols[type_name] or {
+					p.prepend_mod(type_name)} }
 			if func := p.table.find_fn(full_type_name + '__static__' + p.peek_token(2).lit) {
 				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false,
 					true))
@@ -2988,11 +2983,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
-	mut comments_before_key_type := if p.pref.is_vls {
-		p.cur_comments.clone()
-	} else {
-		[]
-	}
+	mut comments_before_key_type := if p.pref.is_vls { p.cur_comments.clone() } else { [] }
 	end_pos := p.tok.pos()
 	decl_pos := start_pos.extend(end_pos)
 	name_pos := p.tok.pos()

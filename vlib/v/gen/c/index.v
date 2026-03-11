@@ -183,16 +183,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	}
 	result_sym := g.table.final_sym(result_type)
-	elem_type_str := if elem_sym.kind == .function {
-		'voidptr'
-	} else {
-		g.styp(info.elem_type)
-	}
-	result_type_str := if result_sym.kind == .function {
-		'voidptr'
-	} else {
-		g.styp(result_type)
-	}
+	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(info.elem_type) }
+	result_type_str := if result_sym.kind == .function { 'voidptr' } else { g.styp(result_type) }
 	left_is_shared := node.left_type.has_flag(.shared_f)
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`

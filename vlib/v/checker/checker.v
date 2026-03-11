@@ -3364,11 +3364,7 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 			unreachable = stmt.pos
 		}
 		prev_expected_or_type := c.expected_or_type
-		c.expected_or_type = if c.is_last_stmt {
-			expected_or_type
-		} else {
-			ast.void_type
-		}
+		c.expected_or_type = if c.is_last_stmt { expected_or_type } else { ast.void_type }
 		c.stmt(mut stmt)
 		c.expected_or_type = prev_expected_or_type
 		if !c.inside_anon_fn && c.in_for_count > 0 && stmt is ast.BranchStmt
@@ -3966,11 +3962,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
-	final_to_type := if mut to_sym.info is ast.Alias {
-		to_sym.info.parent_type
-	} else {
-		to_type
-	}
+	final_to_type := if mut to_sym.info is ast.Alias { to_sym.info.parent_type } else { to_type }
 
 	if final_to_sym == final_from_sym && final_to_type.flags() == from_type.flags()
 		&& to_type.flags() == from_type.flags() {

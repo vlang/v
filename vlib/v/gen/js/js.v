@@ -1299,11 +1299,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.doc.gen_typ(styp)
 			}
 			if stmt.op == .decl_assign {
-				g.write(if g.inside_loop || is_mut {
-					'let '
-				} else {
-					'const '
-				})
+				g.write(if g.inside_loop || is_mut { 'let ' } else { 'const ' })
 			}
 
 			mut array_set := false

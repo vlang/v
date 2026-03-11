@@ -17,11 +17,7 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
-	idents := if query.len == 0 {
-		get_installed_modules()
-	} else {
-		query.clone()
-	}
+	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
 	pp.set_shared_context(ctx)

@@ -403,11 +403,9 @@ pub fn raw_execute(cmd string) Result {
 	}
 	// encoding: from ANSI to UTF-8
 	soutput_str := read_data.str()
-	soutput := if validate.utf8_string(soutput_str) {
-		soutput_str
-	} else {
-		string_from_wide(soutput_str.to_wide(from_ansi: true))
-	}
+	soutput := if validate.utf8_string(soutput_str) { soutput_str } else { string_from_wide(soutput_str.to_wide(
+			from_ansi: true
+		)) }
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)

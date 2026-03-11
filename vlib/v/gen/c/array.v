@@ -422,11 +422,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		}
 		if is_default_array {
 			info := elem_type.unaliased_sym.info as ast.Array
-			depth := if g.table.sym(info.elem_type).kind == .array {
-				1
-			} else {
-				0
-			}
+			depth := if g.table.sym(info.elem_type).kind == .array { 1 } else { 0 }
 			g.write2('(${elem_styp}[]){', g.type_default(node.elem_type))
 			g.write('}[0], ${depth})')
 		} else if node.has_len && node.elem_type == ast.string_type {
@@ -495,11 +491,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 	if is_default_array {
 		info := elem_type.unaliased_sym.info as ast.Array
-		depth := if g.table.sym(info.elem_type).kind == .array {
-			1
-		} else {
-			0
-		}
+		depth := if g.table.sym(info.elem_type).kind == .array { 1 } else { 0 }
 		g.write('(${elem_styp}[]){')
 		g.expr(node.init_expr)
 		g.write('}[0], ${depth})')
@@ -2052,11 +2044,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 			g.write('}')
 		}
 	}
-	embed_field := if is_update_embed {
-		g.get_embed_field_name(field_type, field_name)
-	} else {
-		''
-	}
+	embed_field := if is_update_embed { g.get_embed_field_name(field_type, field_name) } else { '' }
 	for i in 0 .. size {
 		if elem_sym.info is ast.ArrayFixed {
 			init_str := if g.inside_array_fixed_struct {
@@ -2114,11 +2102,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 }
 
 fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
-	return if mut expr is ast.LambdaExpr {
-		expr.params[0].name
-	} else {
-		'it'
-	}
+	return if mut expr is ast.LambdaExpr { expr.params[0].name } else { 'it' }
 }
 
 const wrap_at_array_element = 0x0F

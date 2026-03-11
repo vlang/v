@@ -813,11 +813,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	for i, param in params {
-		mut caname := if param.name == '_' {
-			'_d${i + 1}'
-		} else {
-			c_name(param.name)
-		}
+		mut caname := if param.name == '_' { '_d${i + 1}' } else { c_name(param.name) }
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
