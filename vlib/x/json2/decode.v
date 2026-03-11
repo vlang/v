@@ -897,6 +897,35 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	decoder.decode_error('Expected number or string value for enum, got: ${enum_info.value_kind}')!
 }
 
+@[inline]
+fn number_string_is_real(str string) bool {
+	for ch in str {
+		if ch == `.` || ch == `e` || ch == `E` {
+			return true
+		}
+	}
+	return false
+}
+
+// Keep compatibility with the legacy json module, which truncates real-number
+// tokens when decoding into 64-bit integer targets.
+fn decode_i64_from_number_string(str string) !i64 {
+	if number_string_is_real(str) {
+		return i64(strconv.atof_quick(str))
+	}
+	return strconv.atoi64(str)!
+}
+
+fn decode_u64_from_number_string(str string) !u64 {
+	if number_string_is_real(str) {
+		if str.len > 0 && str[0] == `-` {
+			return strconv.atou64(str)!
+		}
+		return u64(strconv.atof_quick(str))
+	}
+	return strconv.atou64(str)!
+}
+
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
@@ -906,14 +935,14 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		i8 { *val = strconv.atoi8(str)! }
 		i16 { *val = strconv.atoi16(str)! }
 		i32 { *val = strconv.atoi32(str)! }
-		i64 { *val = strconv.atoi64(str)! }
+		i64 { *val = decode_i64_from_number_string(str)! }
 		u8 { *val = strconv.atou8(str)! }
 		u16 { *val = strconv.atou16(str)! }
 		u32 { *val = strconv.atou32(str)! }
-		u64 { *val = strconv.atou64(str)! }
+		u64 { *val = decode_u64_from_number_string(str)! }
 		int { *val = strconv.atoi(str)! }
-		isize { *val = isize(strconv.atoi64(str)!) }
-		usize { *val = usize(strconv.atou64(str)!) }
+		isize { *val = isize(decode_i64_from_number_string(str)!) }
+		usize { *val = usize(decode_u64_from_number_string(str)!) }
 		f32 { *val = f32(strconv.atof_quick(str)) }
 		f64 { *val = strconv.atof_quick(str) }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
@@ -936,7 +965,7 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	} $else $if T.unaliased_typ is i32 {
 		return T(strconv.atoi32(str)!)
 	} $else $if T.unaliased_typ is i64 {
-		return T(strconv.atoi64(str)!)
+		return T(decode_i64_from_number_string(str)!)
 	} $else $if T.unaliased_typ is u8 {
 		return T(strconv.atou8(str)!)
 	} $else $if T.unaliased_typ is u16 {
@@ -944,13 +973,13 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	} $else $if T.unaliased_typ is u32 {
 		return T(strconv.atou32(str)!)
 	} $else $if T.unaliased_typ is u64 {
-		return T(strconv.atou64(str)!)
+		return T(decode_u64_from_number_string(str)!)
 	} $else $if T.unaliased_typ is int {
 		return T(strconv.atoi(str)!)
 	} $else $if T.unaliased_typ is isize {
-		return T(isize(strconv.atoi64(str)!))
+		return T(isize(decode_i64_from_number_string(str)!))
 	} $else $if T.unaliased_typ is usize {
-		return T(usize(strconv.atou64(str)!))
+		return T(usize(decode_u64_from_number_string(str)!))
 	} $else $if T.unaliased_typ is f32 {
 		return T(f32(strconv.atof_quick(str)))
 	} $else $if T.unaliased_typ is f64 {
