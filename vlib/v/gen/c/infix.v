@@ -329,20 +329,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			}
 			.struct {
 				ptr_typ := g.equality_fn(left.unaliased)
-				if node.op == .ne {
-					g.write('!')
+				if left.typ.is_ptr() || right.typ.is_ptr() {
+					g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+				} else {
+					if node.op == .ne {
+						g.write('!')
+					}
+					g.write('${ptr_typ}_struct_eq(')
+					g.expr(node.left)
+					g.write(', ')
+					g.expr(node.right)
+					g.write(')')
 				}
-				g.write('${ptr_typ}_struct_eq(')
-				if left.typ.is_ptr() {
-					g.write('*'.repeat(left.typ.nr_muls()))
-				}
-				g.expr(node.left)
-				g.write(', ')
-				if right.typ.is_ptr() {
-					g.write('*'.repeat(right.typ.nr_muls()))
-				}
-				g.expr(node.right)
-				g.write(')')
 			}
 			.sum_type {
 				ptr_typ := g.equality_fn(left.unaliased)
@@ -431,6 +429,64 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	} else {
 		g.gen_plain_infix_expr(node)
 	}
+}
+
+fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, ptr_typ string) {
+	mut stmt_str := ''
+	mut restore_stmt := false
+	mut left_expr := ''
+	mut right_expr := ''
+	if left_type.is_ptr() && !node.left.is_lvalue() {
+		if !restore_stmt {
+			stmt_str = g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			restore_stmt = true
+		}
+		mut left_tmp := g.new_ctemp_var(node.left, left_type)
+		g.gen_ctemp_var(mut left_tmp)
+		left_expr = left_tmp.name
+	} else {
+		left_expr = g.expr_string(node.left)
+	}
+	if right_type.is_ptr() && !node.right.is_lvalue() {
+		if !restore_stmt {
+			stmt_str = g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			restore_stmt = true
+		}
+		mut right_tmp := g.new_ctemp_var(node.right, right_type)
+		g.gen_ctemp_var(mut right_tmp)
+		right_expr = right_tmp.name
+	} else {
+		right_expr = g.expr_string(node.right)
+	}
+	if restore_stmt {
+		g.write(stmt_str)
+	}
+	if node.op == .ne {
+		g.write('!')
+	}
+	g.write('(')
+	if left_type.is_ptr() && right_type.is_ptr() {
+		g.write('${left_expr} == ${right_expr} || (${left_expr} != 0 && ${right_expr} != 0 && ')
+		g.write('${ptr_typ}_struct_eq(')
+		g.write('*'.repeat(left_type.nr_muls()))
+		g.write(left_expr)
+		g.write(', ')
+		g.write('*'.repeat(right_type.nr_muls()))
+		g.write(right_expr)
+		g.write('))')
+	} else if left_type.is_ptr() {
+		g.write('${left_expr} != 0 && ${ptr_typ}_struct_eq(')
+		g.write('*'.repeat(left_type.nr_muls()))
+		g.write(left_expr)
+		g.write(', ${right_expr})')
+	} else {
+		g.write('${right_expr} != 0 && ${ptr_typ}_struct_eq(${left_expr}, ')
+		g.write('*'.repeat(right_type.nr_muls()))
+		g.write('${right_expr})')
+	}
+	g.write(')')
 }
 
 // infix_expr_cmp_op generates code for `<`, `<=`, `>`, `>=`
