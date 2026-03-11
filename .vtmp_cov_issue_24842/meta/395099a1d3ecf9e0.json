@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/builtin/printing.c.v", "fhash": "395099a1d3ecf9e0",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 31,
-  "points": [  10,17,18,23,24,35,42,43,47,48,55,62,68,74,145,155,156,157,163,164,166,167,168,169,181,182,183,185,187,188,189  ]
-}

@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/builtin/map.c.v", "fhash": "73862a265996d360",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 69,
-  "points": [  12,13,15,16,21,22,32,37,41,45,49,53,54,56,57,59,60,61,63,64,66,67,69,70,73,74,75,77,78,80,81,83,84,87,88,89,91,92,94,95,97,98,101,107,108,109,111,113,114,116,117,118,120,121,122,125,128,129,130,131,133,135,136,137,138,140,142,143,144  ]
-}

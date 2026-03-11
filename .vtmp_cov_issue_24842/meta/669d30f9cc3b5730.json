@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch4/issue-26234/vlib/os/os_stat_default.c.v", "fhash": "669d30f9cc3b5730",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d macos",
-  "npoints": 17,
-  "points": [  8,9,10,11,12,14,57,59,62,65,68,71,74,77,80,109,110  ]
-}
