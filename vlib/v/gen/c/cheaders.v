@@ -523,6 +523,49 @@ typedef struct sync__Channel* chan;
 #endif
 '
 
+const c_shift_helpers = '
+#define V_SAFE_SHIFT_BITS(type) ((u64)(sizeof(type) * 8))
+#define V_SAFE_LSHIFT_UNSIGNED(name, type) static inline type name(type x, u64 y) { return y >= V_SAFE_SHIFT_BITS(type) ? (type)0 : (type)(x << y); }
+#define V_SAFE_LSHIFT_SIGNED(name, type, unsigned_type) static inline type name(type x, u64 y) { return y >= V_SAFE_SHIFT_BITS(type) ? (type)0 : (type)(((unsigned_type)x) << y); }
+#define V_SAFE_RSHIFT_UNSIGNED(name, type) static inline type name(type x, u64 y) { return y >= V_SAFE_SHIFT_BITS(type) ? (type)0 : (type)(x >> y); }
+#define V_SAFE_RSHIFT_SIGNED(name, type) static inline type name(type x, u64 y) { return y >= V_SAFE_SHIFT_BITS(type) ? (type)(x < 0 ? -1 : 0) : (type)(x >> y); }
+V_SAFE_LSHIFT_SIGNED(v__lshift_char, char, u8)
+V_SAFE_RSHIFT_SIGNED(v__rshift_char, char)
+V_SAFE_LSHIFT_SIGNED(v__lshift_i8, i8, u8)
+V_SAFE_RSHIFT_SIGNED(v__rshift_i8, i8)
+V_SAFE_LSHIFT_SIGNED(v__lshift_i16, i16, u16)
+V_SAFE_RSHIFT_SIGNED(v__rshift_i16, i16)
+V_SAFE_LSHIFT_SIGNED(v__lshift_i32, i32, u32)
+V_SAFE_RSHIFT_SIGNED(v__rshift_i32, i32)
+V_SAFE_LSHIFT_SIGNED(v__lshift_int, int, unsigned int)
+V_SAFE_RSHIFT_SIGNED(v__rshift_int, int)
+V_SAFE_LSHIFT_SIGNED(v__lshift_vint_t, vint_t, u64)
+V_SAFE_RSHIFT_SIGNED(v__rshift_vint_t, vint_t)
+V_SAFE_LSHIFT_SIGNED(v__lshift_i64, i64, u64)
+V_SAFE_RSHIFT_SIGNED(v__rshift_i64, i64)
+V_SAFE_LSHIFT_SIGNED(v__lshift_isize, isize, usize)
+V_SAFE_RSHIFT_SIGNED(v__rshift_isize, isize)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_u8, u8)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_u8, u8)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_u16, u16)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_u16, u16)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_u32, u32)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_u32, u32)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_u64, u64)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_u64, u64)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_usize, usize)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_usize, usize)
+V_SAFE_LSHIFT_UNSIGNED(v__lshift_rune, rune)
+V_SAFE_RSHIFT_UNSIGNED(v__rshift_rune, rune)
+V_SAFE_LSHIFT_SIGNED(v__lshift_int_literal, int_literal, u64)
+V_SAFE_RSHIFT_SIGNED(v__rshift_int_literal, int_literal)
+#undef V_SAFE_RSHIFT_SIGNED
+#undef V_SAFE_RSHIFT_UNSIGNED
+#undef V_SAFE_LSHIFT_SIGNED
+#undef V_SAFE_LSHIFT_UNSIGNED
+#undef V_SAFE_SHIFT_BITS
+'
+
 const c_mapfn_callback_types = '
 typedef u64 (*MapHashFn)(voidptr);
 typedef bool (*MapEqFn)(voidptr, voidptr);

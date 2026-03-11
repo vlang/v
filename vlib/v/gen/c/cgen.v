@@ -1016,6 +1016,7 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln('#define VNOFLOAT 1')
 		}
 		g.cheaders.writeln(c_builtin_types)
+		g.cheaders.writeln(c_shift_helpers)
 		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
 			g.cheaders.writeln(c_mapfn_callback_types)
 		}
