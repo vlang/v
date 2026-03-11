@@ -29,8 +29,8 @@ const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 // are properly checked.
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'get',
-	'wait', 'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
+	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'wait',
+	'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 pub const fixed_array_builtin_methods = ['contains', 'index', 'last_index', 'any', 'all', 'wait',
 	'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse',
@@ -1029,12 +1029,6 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 // fail_if_immutable_to_mutable checks if there is a immutable reference on right-side of assignment for mutable var
 fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
 	match right {
-		ast.CastExpr {
-			if c.cast_expr_aliases_value(right) {
-				mut expr := right.expr
-				c.fail_if_immutable(mut expr)
-			}
-		}
 		ast.Ident {
 			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
 				return true
@@ -1104,10 +1098,6 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 	return true
 }
 
-fn (mut c Checker) cast_expr_aliases_value(node ast.CastExpr) bool {
-	return c.table.final_sym(c.unwrap_generic(node.typ)).kind == .interface
-}
-
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
@@ -1116,10 +1106,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	mut explicit_lock_needed := false
 	match mut expr {
 		ast.CastExpr {
-			if c.cast_expr_aliases_value(expr) {
-				mut inner_expr := expr.expr
-				return c.fail_if_immutable(mut inner_expr)
-			}
+			// TODO
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
@@ -1346,27 +1333,6 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
-fn (mut c Checker) interface_embeds_interface(typ ast.Type, interface_type ast.Type, mut visited map[int]bool) bool {
-	utyp := c.unwrap_generic(typ)
-	uinter := c.unwrap_generic(interface_type)
-	if utyp.idx() == uinter.idx() {
-		return true
-	}
-	if utyp.idx() in visited {
-		return false
-	}
-	visited[utyp.idx()] = true
-	typ_sym := c.table.sym(utyp)
-	if typ_sym.info is ast.Interface {
-		for embed in typ_sym.info.embeds {
-			if c.interface_embeds_interface(embed, uinter, mut visited) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	if typ == interface_type {
 		return true
@@ -1438,11 +1404,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
-		mut visited := map[int]bool{}
-		if !c.interface_embeds_interface(utyp, interface_type, mut visited) {
-			c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-				pos)
-		}
+		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+			pos)
 	}
 	imethods := if inter_sym.kind == .interface {
 		(inter_sym.info as ast.Interface).methods
@@ -1503,8 +1466,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 			}
 		}
-		if typ_sym.kind != .interface && utyp != ast.voidptr_type && utyp != ast.nil_type
-			&& utyp != ast.none_type && !inter_sym.info.types.contains(utyp) {
+		if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type
+			&& !inter_sym.info.types.contains(utyp) {
 			inter_sym.info.types << utyp
 		}
 		if !inter_sym.info.types.contains(ast.voidptr_type) {
@@ -1731,27 +1694,14 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 			c.cur_or_expr.err_used = err_var.is_used
 		}
 	}
-	mut last_stmt_idx := node.stmts.len - 1
-	for i := node.stmts.len - 1; i >= 0; i-- {
-		if node.stmts[i] !is ast.SemicolonStmt {
-			last_stmt_idx = i
-			break
-		}
-	}
-	mut last_stmt := if c.cur_or_expr != unsafe { nil } && c.cur_or_expr.stmts.len > last_stmt_idx {
-		c.cur_or_expr.stmts[last_stmt_idx]
-	} else {
-		node.stmts[last_stmt_idx]
-	}
+	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
+	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
 	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
 		// requires a block returning an unwrapped type of expr return type
 		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 	} else {
 		// allow f() or { var = 123 }
 		c.check_or_last_stmt(mut last_stmt, ast.void_type, expr_return_type.clear_option_and_result())
-	}
-	if c.cur_or_expr != unsafe { nil } && c.cur_or_expr.stmts.len > last_stmt_idx {
-		c.cur_or_expr.stmts[last_stmt_idx] = last_stmt
 	}
 }
 
@@ -1765,24 +1715,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					// return call() or { none } where fn returns an Option type
 					return
 				}
-				mut last_stmt_typ := c.expr(mut stmt.expr)
+				last_stmt_typ := c.expr(mut stmt.expr)
 				stmt.typ = last_stmt_typ
-				if c.inside_return && c.table.cur_fn != unsafe { nil }
-					&& c.table.cur_fn.return_type.has_flag(.result) {
-					last_stmt_sym := c.table.sym(last_stmt_typ)
-					if last_stmt_sym.kind == .struct
-						&& c.type_implements(last_stmt_typ, ast.error_type, stmt.expr.pos()) {
-						stmt.expr = ast.CastExpr{
-							expr:      stmt.expr
-							typname:   'IError'
-							typ:       ast.error_type
-							expr_type: last_stmt_typ
-							pos:       stmt.expr.pos()
-						}
-						last_stmt_typ = ast.error_type
-						stmt.typ = ast.error_type
-					}
-				}
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
@@ -3362,8 +3296,58 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	c.scope_returns = false
 }
 
-fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
+fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
 	if typ.has_flag(.generic) {
+		return true
+	}
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array {
+			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.Chan {
+			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ast.Thread {
+			return c.type_has_unresolved_generic_parts(sym.info.return_type)
+		}
+		ast.Map {
+			return c.type_has_unresolved_generic_parts(sym.info.key_type)
+				|| c.type_has_unresolved_generic_parts(sym.info.value_type)
+		}
+		ast.FnType {
+			return c.type_has_unresolved_generic_parts(sym.info.func.return_type)
+				|| sym.info.func.params.any(c.type_has_unresolved_generic_parts(it.typ))
+		}
+		ast.MultiReturn {
+			return sym.info.types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		ast.Struct, ast.Interface, ast.SumType {
+			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		ast.GenericInst {
+			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
+	if c.type_has_unresolved_generic_parts(typ) {
+		if c.inside_generic_struct_init {
+			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
+				return t_typ
+			}
+		}
 		if c.table.cur_fn != unsafe { nil } {
 			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
@@ -3376,12 +3360,6 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 				{
 					return t_typ
 				}
-			}
-		}
-		if c.inside_generic_struct_init {
-			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
-			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
-				return t_typ
 			}
 		}
 	}
@@ -4985,7 +4963,7 @@ fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
-	is_comptime bool, is_option_unwrap bool, allow_mut_selector_smartcast bool) {
+	is_comptime bool, is_option_unwrap bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
 		to_type_.ref()
@@ -4995,7 +4973,6 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 	match mut expr {
 		ast.SelectorExpr {
 			mut is_mut := false
-			mut root_is_arg := false
 			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.sym(expr.expr_type)
 			mut orig_type := ast.no_type
@@ -5004,7 +4981,6 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					if root_ident := expr.root_ident() {
 						if v := scope.find_var(root_ident.name) {
 							is_mut = v.is_mut
-							root_is_arg = v.is_arg
 						}
 					}
 				}
@@ -5021,9 +4997,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap
-				|| orig_type.has_flag(.option)
-				|| (allow_mut_selector_smartcast && root_is_arg) {
+			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) {
 				smartcasts << to_type
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type

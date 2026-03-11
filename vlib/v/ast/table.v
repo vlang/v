@@ -1418,11 +1418,14 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 
 pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_types []Type) int {
 	parent_sym := t.sym(parent_typ)
-	if parent_sym.info !is Struct {
-		return 0
+	expected_generic_types := match parent_sym.info {
+		Struct { parent_sym.info.generic_types.len }
+		Interface { parent_sym.info.generic_types.len }
+		SumType { parent_sym.info.generic_types.len }
+		FnType { parent_sym.info.func.generic_names.len }
+		else { 0 }
 	}
-	struct_info := parent_sym.info as Struct
-	if struct_info.generic_types.len == 0 || concrete_types.len != struct_info.generic_types.len {
+	if expected_generic_types == 0 || concrete_types.len != expected_generic_types {
 		return 0
 	}
 	mut inst_name := parent_sym.ngname + '['
@@ -1439,6 +1442,15 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	inst_name += ']'
 	existing_idx := t.type_idxs[inst_name]
 	if existing_idx > 0 {
+		if t.type_symbols[existing_idx].kind == .placeholder {
+			t.type_symbols[existing_idx].kind = .generic_inst
+			t.type_symbols[existing_idx].ngname = parent_sym.ngname
+			t.type_symbols[existing_idx].mod = parent_sym.mod
+			t.type_symbols[existing_idx].info = GenericInst{
+				parent_idx:     parent_typ.idx()
+				concrete_types: concrete_types
+			}
+		}
 		return existing_idx
 	}
 	return t.register_sym(
@@ -1908,29 +1920,31 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		FnType {
 			mut func := sym.info.func
 			mut has_generic := false
-			orig_return_type := func.return_type
-			if typ := t.convert_generic_type(func.return_type, generic_names, to_types) {
-				func.return_type = typ
-			}
-			if t.sym(func.return_type).kind == .placeholder {
-				func.return_type = t.unwrap_generic_type_ex(orig_return_type, generic_names,
-					to_types, true)
-			}
-			if func.return_type.has_flag(.generic) || t.generic_type_names(func.return_type).len > 0 {
-				has_generic = true
+			return_type_sym := t.sym(func.return_type)
+			if func.return_type.has_flag(.generic)
+				|| (return_type_sym.kind == .generic_inst
+				&& (return_type_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
+				if typ := t.convert_generic_type(func.return_type, generic_names, to_types) {
+					func.return_type = typ
+					typ_sym := t.sym(typ)
+					if typ.has_flag(.generic) || (typ_sym.kind == .generic_inst
+						&& (typ_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
+						has_generic = true
+					}
+				}
 			}
 			func.params = func.params.clone()
 			for mut param in func.params {
-				orig_param_type := param.typ
-				if typ := t.convert_generic_type(param.typ, generic_names, to_types) {
-					param.typ = typ
-				}
-				if t.sym(param.typ).kind == .placeholder {
-					param.typ = t.unwrap_generic_type_ex(orig_param_type, generic_names,
-						to_types, true)
-				}
-				if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
-					has_generic = true
+				param_typ_sym := t.sym(param.typ)
+				if param.typ.has_flag(.generic)
+					|| (param_typ_sym.kind == .generic_inst&& (param_typ_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
+					if typ := t.convert_generic_type(param.typ, generic_names, to_types) {
+						param.typ = typ
+						typ_sym := t.sym(typ)
+						if typ.has_flag(.generic) || (typ_sym.kind == .generic_inst&& (typ_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
+							has_generic = true
+						}
+					}
 				}
 			}
 			func.name = ''
@@ -1940,6 +1954,23 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 			} else {
 				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+			}
+		}
+		GenericInst {
+			mut concrete_types := sym.info.concrete_types.clone()
+			mut type_changed := false
+			for i, concrete_type in concrete_types {
+				if typ := t.convert_generic_type(concrete_type, generic_names, to_types) {
+					concrete_types[i] = typ
+					type_changed = true
+				}
+			}
+			if type_changed {
+				idx := t.find_or_register_generic_inst(new_type(sym.info.parent_idx),
+					concrete_types)
+				if idx > 0 {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		MultiReturn {
@@ -1993,6 +2024,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				mut nrt := '${sym.name}['
 				mut rnrt := '${sym.rname}['
 				mut cnrt := '${sym.cname}_T_'
+				mut converted_types := []Type{}
 				mut t_generic_names := generic_names.clone()
 				mut t_to_types := to_types.clone()
 				mut has_generic := false
@@ -2020,6 +2052,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 					if ct := t.convert_generic_type(sym.info.generic_types[i], t_generic_names,
 						t_to_types)
 					{
+						converted_types << ct
 						gts := t.sym(ct)
 						if ct.is_ptr() {
 							nrt += '&'.repeat(ct.nr_muls())
@@ -2037,6 +2070,12 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						}
 					} else {
 						return none
+					}
+				}
+				if has_generic && converted_types.len == sym.info.generic_types.len {
+					idx := t.find_or_register_generic_inst(new_type(type_idx), converted_types)
+					if idx > 0 {
+						return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 					}
 				}
 				nrt += ']'
@@ -2531,6 +2570,10 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 		if sym.kind == .generic_inst {
 			info := sym.info as GenericInst
 			parent := t.type_symbols[info.parent_idx]
+			if info.concrete_types.any(it.has_flag(.generic))
+				&& (parent.info is Struct || parent.info is Interface || parent.info is SumType) {
+				continue
+			}
 			if parent.kind == .placeholder {
 				sym.kind = .placeholder
 				continue

@@ -145,7 +145,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		return
 	}
-
 	for i, mut left in node.left {
 		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
@@ -627,8 +626,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			if return_sym.kind == .placeholder {
 				c.error('unknown return type: cannot assign `${right}` as a function variable',
 					right.pos())
-			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
-				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
+			} else if right !is ast.AnonFn
+				&& c.type_has_unresolved_generic_parts(right_sym.info.func.return_type) {
 				c.error('cannot assign `${right}` as a generic function variable', right.pos())
 			}
 		}

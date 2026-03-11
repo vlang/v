@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/strconv/number_to_base.c.v", "fhash": "060894dfa2489788",
+  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 38,
+  "points": [  9,10,11,13,14,16,17,18,19,20,22,24,25,26,27,28,29,31,33,34,35,36,38,46,47,48,50,51,53,54,55,57,58,59,60,61,63,65  ]
+}
