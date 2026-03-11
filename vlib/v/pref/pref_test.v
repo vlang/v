@@ -52,6 +52,16 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn test_explicit_gc_mode_is_forwarded_to_build_module() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for gc_mode in ['none', 'boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
+		'boehm_leak'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['-usecache', '-gc', gc_mode, target],
+			false)
+		assert prefs.build_options.contains('-gc ${gc_mode}')
+	}
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
