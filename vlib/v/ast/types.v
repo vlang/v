@@ -1337,11 +1337,13 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 					align = t.pointer_size
 				}
 				Interface {
-					size = (sym.info.fields.len + 2) * t.pointer_size
+					interface_header_size := round_up(t.pointer_size + 4, t.pointer_size) +
+						t.pointer_size
+					size = interface_header_size + sym.info.fields.len * t.pointer_size
 					align = t.pointer_size
 					for etyp in sym.info.embeds {
 						esize, _ := t.type_size(etyp)
-						size += esize - 2 * t.pointer_size
+						size += esize - interface_header_size
 					}
 				}
 				else {
