@@ -53,10 +53,10 @@ pub enum Language {
 	rv32  // 32-bit risc-v
 	s390x
 	ppc64le
-	ppc64be
-	ppc32
 	loongarch64
 	wasm32
+	ppc64be
+	ppc32
 }
 
 // pref_arch_to_table_language returns target language based on pref_arch
