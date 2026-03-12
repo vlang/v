@@ -203,8 +203,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// Mac OS 10.4 and older requires Macports legacy software to build programs
 		if user_darwin_version <= 8 {
 			vexe_path := v.pref.vroot
-			ccoptions.args << '-I' + vexe_path + '/thirdparty/legacy/include/LegacySupport/'
-			ccoptions.args << vexe_path + '/thirdparty/legacy/lib/libMacportsLegacySupport.a'
+			ccoptions.args << '-I'+@VEXEROOT+'/thirdparty/legacy/include/LegacySupport/'
+			ccoptions.args << @VEXEROOT+'/thirdparty/legacy/lib/libMacportsLegacySupport.a'
 		}
 	}
 	ccoptions.debug_mode = v.pref.is_debug
