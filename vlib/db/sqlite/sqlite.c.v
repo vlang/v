@@ -5,11 +5,11 @@ $if freebsd || openbsd {
 	#flag -L/usr/local/lib
 }
 #flag -I@VEXEROOT/thirdparty/sqlite
-$if windows {
+$if $pkgconfig('sqlite3') {
+	#pkgconfig sqlite3
+} $else $if windows {
 	#flag windows -L@VEXEROOT/thirdparty/sqlite
 	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-} $else $if $pkgconfig('sqlite3') {
-	#pkgconfig sqlite3
 } $else {
 	#flag -lsqlite3
 }
