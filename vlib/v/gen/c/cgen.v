@@ -4403,7 +4403,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('builtin__tos3(v_typeof_sumtype_${sym.cname}( (')
+		g.write('builtin__charptr_vstring_literal(v_typeof_sumtype_${sym.cname}( (')
 		if typ.nr_muls() > 0 {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
@@ -8148,7 +8148,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if node.expr.has_fn_call() && !g.is_cc_msvc {
+		if node.expr.has_fn_call() && !g.prefers_msvc_compatible_code() {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -8212,7 +8212,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		expr_type_sym.info = info
 	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if node.expr.has_fn_call() && !g.is_cc_msvc {
+		if node.expr.has_fn_call() && !g.prefers_msvc_compatible_code() {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')

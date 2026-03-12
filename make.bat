@@ -220,12 +220,16 @@ cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP /F33554432 "%V_C_FILE%" u
 if %ERRORLEVEL% NEQ 0 (
 	echo In some cases, compile errors happen because of the MSVC compiler version
 	cl.exe
-	goto :compile_error
+	if exist %ObjFile% del %ObjFile%
+	if not exist "%tcc_exe%" goto :compile_error
+	echo  ^> Retrying bootstrap with TCC before compiling "%V_EXE%" with MSVC
+	"!tcc_exe!" -Bthirdparty/tcc -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32
+	if %ERRORLEVEL% NEQ 0 goto :compile_error
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
 "%V_BOOTSTRAP%" -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
-del %ObjFile%
+if exist %ObjFile% del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 call :move_updated_to_v
 goto :success

@@ -873,6 +873,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.TypeOf {
 			w.expr(node.expr)
 			w.mark_by_type(node.typ)
+			if !node.is_type && node.typ != 0 && w.table.final_sym(node.typ).kind == .sum_type {
+				w.uses_type_name = true
+			}
 		}
 		///
 		ast.AsCast {
@@ -1042,6 +1045,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				if concrete_types_list := w.table.fn_generic_types[w.cur_fn] {
 					for concrete_types in concrete_types_list {
 						for concrete_type in concrete_types {
+							if node.name == 'type_name'
+								&& w.table.final_sym(concrete_type).kind in [.sum_type, .interface] {
+								w.uses_type_name = true
+							}
 							method_name := '${int(concrete_type)}.${node.name}'
 							if !w.used_fns[method_name] {
 								w.fn_by_name(method_name)

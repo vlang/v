@@ -49,8 +49,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
 				if field.expr.is_fixed && !field.expr.has_index
-					&& g.pref.build_mode != .build_module && (!g.prefers_msvc_compatible_code()
-					|| field.expr.elem_type != ast.string_type) && elems_are_const {
+					&& g.pref.build_mode != .build_module
+					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
 					styp := g.styp(field.expr.typ)
 					val := g.expr_string(field.expr)
 					// eprintln('> const_name: ${const_name} | name: ${name} | styp: ${styp} | val: ${val}')
@@ -60,8 +60,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
 				} else if field.expr.is_fixed && !field.expr.has_index
-					&& ((g.prefers_msvc_compatible_code()
-					&& field.expr.elem_type == ast.string_type) || !elems_are_const) {
+					&& ((g.is_cc_msvc && field.expr.elem_type == ast.string_type)
+					|| !elems_are_const) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, const_name,
 						field.expr, field.typ)
 				} else {
