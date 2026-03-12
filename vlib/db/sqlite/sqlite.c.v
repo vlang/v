@@ -4,15 +4,17 @@ $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
 }
+#flag -I@VEXEROOT/thirdparty/sqlite
 $if windows {
-	#flag windows -I@VEXEROOT/thirdparty/sqlite
 	#flag windows -L@VEXEROOT/thirdparty/sqlite
 	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+} $else $if $pkgconfig('sqlite3') {
+	#pkgconfig sqlite3
 } $else {
-	#flag -lsqlite3
-	#include "sqlite3.h" # The SQLite header file is missing. Please install its development package first.
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#flag -lpthread -ldl -lm
 }
+#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation, or install its development package.
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
