@@ -3152,13 +3152,13 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
-				fn_attrs += call_convention_attribute('stdcall', g.prefers_keyword_call_convention())
+				fn_attrs += call_convention_attribute('stdcall', g.prefers_msvc_compatible_code())
 			}
 			'_fastcall' {
-				fn_attrs += call_convention_attribute('fastcall', g.prefers_keyword_call_convention())
+				fn_attrs += call_convention_attribute('fastcall', g.prefers_msvc_compatible_code())
 			}
 			'callconv' {
-				fn_attrs += call_convention_attribute(attr.arg, g.prefers_keyword_call_convention())
+				fn_attrs += call_convention_attribute(attr.arg, g.prefers_msvc_compatible_code())
 			}
 			'console' {
 				g.force_main_console = true
@@ -3171,7 +3171,7 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 	return fn_attrs
 }
 
-fn (g &Gen) prefers_keyword_call_convention() bool {
+fn (g &Gen) prefers_msvc_compatible_code() bool {
 	return g.pref.os == .windows || g.is_cc_msvc
 }
 
@@ -3186,7 +3186,7 @@ fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType, nr_muls int) {
 	for attr in info.func.attrs {
 		match attr.name {
 			'callconv' {
-				if g.prefers_keyword_call_convention() {
+				if g.prefers_msvc_compatible_code() {
 					msvc_call_conv = '__${attr.arg} '
 				} else {
 					call_conv = '${attr.arg}'
