@@ -5108,7 +5108,7 @@ fn (mut e Eval) call_array_method(receiver ArrayValue, method_name string, args 
 		'clone' {
 			return ArrayValue{
 				elem_type_name: receiver.elem_type_name
-				values: receiver.values.clone()
+				values:         receiver.values.clone()
 			}
 		}
 		'contains' {
