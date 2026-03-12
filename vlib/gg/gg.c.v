@@ -51,8 +51,28 @@ $if windows {
 
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 
+$if macos {
+	fn C.gg_macos_resize_window(window voidptr, width int, height int)
+}
+
+$if windows {
+	struct C.RECT {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
+
+	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
+	fn C.GetWindowLongW(hwnd voidptr, index int) i32
+	fn C.AdjustWindowRectEx(rect &C.RECT, style u32, menu int, ex_style u32) int
+	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
+}
+
 // call Windows API to get screen size
 fn C.GetSystemMetrics(i32) i32
+fn C.XResizeWindow(display voidptr, window u64, width u32, height u32) int
+fn C.XFlush(display voidptr) int
 
 pub type TouchPoint = C.sapp_touchpoint
 
@@ -306,8 +326,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			// changed meanwhile.
 			win_size := ctx.window_size()
 			if ctx.width != win_size.width || ctx.height != win_size.height {
-				ctx.width = win_size.width
-				ctx.height = win_size.height
+				ctx.set_cached_window_size(win_size.width, win_size.height)
 				if ctx.config.resized_fn != unsafe { nil } {
 					e := Event{
 						typ:           .resized
@@ -471,6 +490,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		.resized {
 			ctx.scale = dpi_scale()
 			ctx.ft.scale = ctx.scale
+			ctx.set_cached_window_size(e.window_width, e.window_height)
 			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.user_data)
 			}
@@ -582,6 +602,59 @@ pub fn new_context(cfg Config) &Context {
 	return ctx
 }
 
+fn (mut ctx Context) set_cached_window_size(width int, height int) {
+	ctx.width = width
+	ctx.height = height
+	ctx.window.width = width
+	ctx.window.height = height
+}
+
+fn gg_resize_window(width int, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	$if macos {
+		window := sapp.macos_get_window()
+		if window != unsafe { nil } {
+			C.gg_macos_resize_window(window, width, height)
+		}
+	} $else $if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		scale := dpi_scale()
+		client_width := int(f32(width) * scale + 0.5)
+		client_height := int(f32(height) * scale + 0.5)
+		mut rect := C.RECT{
+			right:  i32(client_width)
+			bottom: i32(client_height)
+		}
+		style := u32(C.GetWindowLongW(hwnd, C.GWL_STYLE))
+		ex_style := u32(C.GetWindowLongW(hwnd, C.GWL_EXSTYLE))
+		if C.AdjustWindowRectEx(&rect, style, 0, ex_style) == 0 {
+			return
+		}
+		mut current_rect := C.RECT{}
+		if C.GetWindowRect(hwnd, &current_rect) == 0 {
+			return
+		}
+		C.SetWindowPos(hwnd, unsafe { nil }, int(current_rect.left), int(current_rect.top),
+			int(rect.right - rect.left), int(rect.bottom - rect.top), u32(C.SWP_NOZORDER | C.SWP_NOACTIVATE))
+	} $else $if linux && !sokol_wayland ? {
+		display := sapp.x11_get_display()
+		window := u64(usize(sapp.x11_get_window()))
+		if display == unsafe { nil } || window == 0 {
+			return
+		}
+		scale := dpi_scale()
+		x11_width := int(f32(width) * scale + 0.5)
+		x11_height := int(f32(height) * scale + 0.5)
+		C.XResizeWindow(display, window, u32(x11_width), u32(x11_height))
+		C.XFlush(display)
+	}
+}
+
 // run starts the main loop of the context.
 pub fn (mut ctx Context) run() {
 	// set context late, in case it changed (e.g., due to embedding)
@@ -610,8 +683,8 @@ pub fn (mut ctx Context) set_bg_color(c Color) {
 
 // Resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
-	ctx.width = width
-	ctx.height = height
+	ctx.set_cached_window_size(width, height)
+	gg_resize_window(width, height)
 }
 
 // refresh_ui requests a complete re-draw of the window contents.

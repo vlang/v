@@ -58,6 +58,14 @@ gg__Size gg_get_screen_size() {
 	return res;
 }
 
+void gg_macos_resize_window(void *window_ptr, int width, int height) {
+	if (window_ptr == nil || width <= 0 || height <= 0) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	[window setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
+}
+
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSFont* font = [NSFont userFontOfSize:0]; // cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
