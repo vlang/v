@@ -68,6 +68,9 @@ See the `/examples/term.ui/` folder for more usage examples.
 - `capture_events bool` - sets the terminal into raw mode, which makes it intercept some
     escape codes such as `ctrl + c` and `ctrl + z`.
     Useful if you want to use those key combinations in your app.
+- `mouse_enabled bool` - enables terminal mouse tracking for `mouse_*` events.
+    Leave this off unless your app actually handles mouse input, so the terminal can still use the
+    mouse for regular text selection and copy/paste.
 - `window_title string` - sets the title of the terminal window.
     This may be changed later, by calling the `set_window_title()` method.
 - `reset []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]` - a list of reset signals,
@@ -89,7 +92,8 @@ If your terminal does not work, open an issue with the output of `echo $TERM`.
 Q: There are screen tearing issues when doing large prints
 A: This is an issue with how terminals render frames,
 as they may decide to do so in the middle of receiving a frame,
-and cannot be fully fixed unless your console implements the [synchronized updates spec](https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec).
+and cannot be fully fixed unless your console implements the
+[synchronized updates spec](https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec).
 It can be reduced *drastically*, though, by using the rendering methods built in to the module,
 and by only painting frames when your app's content has actually changed.
 

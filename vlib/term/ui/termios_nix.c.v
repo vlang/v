@@ -101,9 +101,11 @@ fn (mut ctx Context) termios_setup() ! {
 	tios.c_cc[C.VTIME] = 0
 	tios.c_cc[C.VMIN] = 0
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut tios)
-	// enable mouse input
-	print('\x1b[?1003h\x1b[?1006h')
-	flush_stdout()
+	if ctx.cfg.mouse_enabled {
+		// enable mouse input
+		print('\x1b[?1003h\x1b[?1006h')
+		flush_stdout()
+	}
 	if ctx.cfg.use_alternate_buffer {
 		// switch to the alternate buffer
 		print('\x1b[?1049h')
