@@ -270,6 +270,7 @@ pub mut:
 	__v_native_render bool // V patch to allow for native rendering
 	min_width         int  // V patch to allow for min window width
 	min_height        int  // V patch to allow for min window height
+	borderless_window bool // V patch to create a window without native decorations when supported
 }
 
 pub type Desc = C.sapp_desc

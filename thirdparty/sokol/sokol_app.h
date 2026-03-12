@@ -2269,6 +2269,7 @@ typedef struct sapp_desc {
   bool __v_native_render; // V patch to allow for native rendering
   int min_width;
   int min_height;
+  bool borderless_window; // V patch to remove native window decorations
   // __v_ end
 } sapp_desc;
 
@@ -6505,9 +6506,11 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
   if ((_sapp.window_width == 0) || (_sapp.window_height == 0)) {
     _sapp_macos_init_default_dimensions();
   }
-  const NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                           NSWindowStyleMaskMiniaturizable |
-                           NSWindowStyleMaskResizable;
+  const NSUInteger style =
+      _sapp.desc.borderless_window
+          ? NSWindowStyleMaskBorderless
+          : (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+             NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable);
   NSRect window_rect =
       NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
   _sapp.macos.window =
@@ -10016,14 +10019,20 @@ _SOKOL_PRIVATE void _sapp_win32_set_fullscreen(bool fullscreen,
   const int monitor_w = mr.right - mr.left;
   const int monitor_h = mr.bottom - mr.top;
 
-  const DWORD win_ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+  const DWORD win_ex_style =
+      _sapp.desc.borderless_window ? WS_EX_APPWINDOW
+                                   : (WS_EX_APPWINDOW | WS_EX_WINDOWEDGE);
   DWORD win_style;
   RECT rect = {0, 0, 0, 0};
 
   _sapp.fullscreen = fullscreen;
   if (!_sapp.fullscreen) {
-    win_style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU |
-                WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX;
+    win_style =
+        WS_CLIPSIBLINGS | WS_CLIPCHILDREN |
+        (_sapp.desc.borderless_window
+             ? WS_POPUP
+             : (WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX |
+                WS_SIZEBOX));
     rect = _sapp.win32.stored_window_rect;
   } else {
     GetWindowRect(_sapp.win32.hwnd, &_sapp.win32.stored_window_rect);
@@ -10783,10 +10792,16 @@ _SOKOL_PRIVATE void _sapp_win32_create_window(void) {
      windowed-mode window will always be created first (however in hidden
      mode, so that no windowed-mode window pops up before the fullscreen window)
   */
-  const DWORD win_ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+  const DWORD win_ex_style =
+      _sapp.desc.borderless_window ? WS_EX_APPWINDOW
+                                   : (WS_EX_APPWINDOW | WS_EX_WINDOWEDGE);
   RECT rect = {0, 0, 0, 0};
-  DWORD win_style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION |
-                    WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX;
+  DWORD win_style =
+      WS_CLIPSIBLINGS | WS_CLIPCHILDREN |
+      (_sapp.desc.borderless_window
+           ? WS_POPUP
+           : (WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX |
+              WS_SIZEBOX));
   rect.right = (int)((float)_sapp.window_width * _sapp.win32.dpi.window_scale);
   rect.bottom =
       (int)((float)_sapp.window_height * _sapp.win32.dpi.window_scale);
@@ -13876,6 +13891,29 @@ _SOKOL_PRIVATE void _sapp_x11_set_fullscreen(bool enable) {
   XFlush(_sapp.x11.display);
 }
 
+_SOKOL_PRIVATE void _sapp_x11_set_borderless(bool borderless) {
+  if (!_sapp.x11.display || !_sapp.x11.window) {
+    return;
+  }
+  const Atom motif_wm_hints = XInternAtom(_sapp.x11.display, "_MOTIF_WM_HINTS",
+                                          False);
+  if (motif_wm_hints) {
+    struct {
+      unsigned long flags;
+      unsigned long functions;
+      unsigned long decorations;
+      long input_mode;
+      unsigned long status;
+    } hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.flags = 1L << 1; /* MWM_HINTS_DECORATIONS */
+    hints.decorations = borderless ? 0 : 1;
+    XChangeProperty(_sapp.x11.display, _sapp.x11.window, motif_wm_hints,
+                    motif_wm_hints, 32, PropModeReplace,
+                    (unsigned char *)&hints, 5);
+  }
+}
+
 _SOKOL_PRIVATE void _sapp_x11_create_hidden_cursor(void) {
   SOKOL_ASSERT(0 == _sapp.x11.hidden_cursor);
   const int w = 16;
@@ -14198,6 +14236,9 @@ _SOKOL_PRIVATE void _sapp_x11_create_window(Visual *visual_or_null, int depth) {
   _sapp_x11_release_error_handler();
   if (!_sapp.x11.window) {
     _SAPP_PANIC(LINUX_X11_CREATE_WINDOW_FAILED);
+  }
+  if (_sapp.desc.borderless_window) {
+    _sapp_x11_set_borderless(true);
   }
   Atom protocols[] = {_sapp.x11.WM_DELETE_WINDOW};
   XSetWMProtocols(_sapp.x11.display, _sapp.x11.window, protocols, 1);
@@ -16569,7 +16610,9 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
     if (_sapp.wl.toplevel_decoration) {
       zxdg_toplevel_decoration_v1_set_mode(
           _sapp.wl.toplevel_decoration,
-          ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+          _sapp.desc.borderless_window
+              ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+              : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
     }
   }
 
