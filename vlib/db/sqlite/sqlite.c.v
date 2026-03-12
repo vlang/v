@@ -11,8 +11,7 @@ $if windows {
 } $else $if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else {
-	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.o
-	#flag -lpthread -ldl -lm
+	#flag -lsqlite3
 }
 #include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation, or install its development package.
 
