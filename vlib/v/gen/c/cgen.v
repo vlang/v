@@ -2067,7 +2067,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					if g.is_cc_msvc {
+					if g.prefers_keyword_call_convention() {
 						msvc_call_conv = '__${attr.arg} '
 					} else {
 						call_conv = '${attr.arg}'
