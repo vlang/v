@@ -177,20 +177,8 @@ fn get_v_files_from_dir(dir string) []string {
 		if file.contains('.arm64.') || file.contains('.arm32.') || file.contains('.amd64.') {
 			continue
 		}
-		$if macos {
-			if file.contains('_windows.') || file.contains('_linux.') || file.contains('_android') {
-				continue
-			}
-		} $else $if linux {
-			if file.contains('_windows.') || file.contains('_macos.') || file.contains('_darwin.')
-				|| file.contains('_android') {
-				continue
-			}
-		} $else $if windows {
-			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.')
-				|| file.contains('_android') {
-				continue
-			}
+		if pref.file_has_incompatible_os_suffix(file, os.user_os()) {
+			continue
 		}
 		if file.contains('_d_') {
 			continue
