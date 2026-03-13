@@ -84,7 +84,8 @@ pub fn (mut t TypeResolver) update_ct_type(key string, var_type ast.Type) {
 // get_ct_type_or_default retrieves a comptime variable value on type map or default_type otherwise
 @[inline]
 pub fn (t &TypeResolver) get_ct_type_or_default(key string, default_type ast.Type) ast.Type {
-	return t.type_map[key] or { default_type }
+	resolved_key := if key.contains('|') { key.all_before('|') } else { key }
+	return t.type_map[resolved_key] or { default_type }
 }
 
 @[noreturn]

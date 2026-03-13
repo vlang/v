@@ -1698,6 +1698,9 @@ pub fn (mut t Table) register_fn_generic_types(fn_name string) {
 }
 
 pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
+	if types.len == 0 {
+		return false
+	}
 	mut a := t.fn_generic_types[fn_name] or { return false }
 	if types in a {
 		return false

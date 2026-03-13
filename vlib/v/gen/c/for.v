@@ -141,19 +141,52 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
+	if node.cond is ast.Ident {
+		cond_ident := node.cond as ast.Ident
+		param_cond_type := g.resolve_current_fn_generic_param_type(cond_ident.name)
+		if param_cond_type != 0 {
+			node.cond_type = param_cond_type
+		}
+	}
+	resolved_cond_type := g.resolved_expr_type(node.cond, node.cond_type)
+	if resolved_cond_type != 0 {
+		node.cond_type = resolved_cond_type
+	}
+	node.cond_type = g.recheck_concrete_type(node.cond_type)
+	if node.cond_type != 0 {
+			resolved_cond_sym := g.table.final_sym(g.unwrap_generic(node.cond_type))
+		if resolved_cond_sym.kind in [.array, .array_fixed, .map, .string, .aggregate, .alias] {
+			node.kind = resolved_cond_sym.kind
+			}
+			if node.kind in [.array, .array_fixed, .map, .string] {
+				unwrapped_cond_type := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+			if node.key_var.len > 0 {
+				node.key_type = match resolved_cond_sym.kind {
+					.map { resolved_cond_sym.map_info().key_type }
+					else { ast.int_type }
+				}
+				node.scope.update_var_type(node.key_var, node.key_type)
+			}
+				node.val_type = g.recheck_concrete_type(g.table.value_type(unwrapped_cond_type))
+			if node.val_is_mut {
+				node.val_type = node.val_type.ref()
+			}
+			node.scope.update_var_type(node.val_var, node.val_type)
+		}
+	}
 
 	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
 		ctyp := g.type_resolver.get_type(node.cond)
 		if ctyp != ast.void_type {
-			unwrapped_typ = g.unwrap_generic(ctyp)
+			unwrapped_typ = g.unwrap_generic(g.recheck_concrete_type(ctyp))
 			is_comptime = true
 		}
 
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 
 		node.cond_type = unwrapped_typ
-		node.val_type = g.table.value_type(unwrapped_typ)
+		node.val_type = g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
 		if node.val_is_mut {
 			node.val_type = node.val_type.ref()
 		}
@@ -189,7 +222,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 
 	if node.kind == .any && !is_comptime {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
@@ -201,10 +234,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 		}
-		node.val_type = g.table.value_type(unwrapped_typ)
+		node.val_type = g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else if node.kind == .alias {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
 		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
@@ -216,7 +249,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 		}
-		node.val_type = g.table.value_type(g.table.unaliased_type(unwrapped_typ))
+		node.val_type = g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
 		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
@@ -241,12 +274,19 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.write('; ${i} < ')
 		g.expr(node.high)
 		g.writeln('; ${plus_plus_i}) {')
-	} else if node.kind == .array {
-		// `for num in nums {`
-		// g.writeln('// FOR IN array')
-		mut styp := g.styp(node.val_type)
-		mut val_sym := g.table.sym(node.val_type)
-		op_field := g.dot_or_ptr(node.cond_type)
+		} else if node.kind == .array {
+			// `for num in nums {`
+			// g.writeln('// FOR IN array')
+			if node.cond_type != 0 {
+				resolved_val_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(g.recheck_concrete_type(node.cond_type))))
+				if resolved_val_type != 0 {
+					node.val_type = if node.val_is_mut { resolved_val_type.ref() } else { resolved_val_type }
+						node.scope.update_var_type(node.val_var, node.val_type)
+					}
+				}
+				mut styp := g.styp(node.val_type)
+				mut val_sym := g.table.sym(node.val_type)
+				op_field := g.dot_or_ptr(node.cond_type)
 
 		mut cond_var := ''
 		cond_is_option := node.cond_type.has_flag(.option)

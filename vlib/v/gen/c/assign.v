@@ -230,10 +230,23 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
 	match right_expr {
-		ast.CallExpr { return_type = right_expr.return_type }
-		ast.LockExpr { return_type = right_expr.typ }
-		ast.MatchExpr { return_type = right_expr.return_type }
-		ast.IfExpr { return_type = right_expr.typ }
+		ast.CallExpr {
+			resolved_call_type := g.resolve_return_type(right_expr)
+			if resolved_call_type != ast.void_type {
+				return_type = resolved_call_type
+			} else {
+				return_type = right_expr.return_type
+			}
+		}
+		ast.LockExpr {
+			return_type = right_expr.typ
+		}
+		ast.MatchExpr {
+			return_type = right_expr.return_type
+		}
+		ast.IfExpr {
+			return_type = right_expr.typ
+		}
 		else {}
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
@@ -406,17 +419,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							left.obj.typ = var_type
 						}
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
-						if val.return_type_generic != 0
-							&& val.return_type_generic.has_flag(.generic) {
-							fn_ret_type := g.resolve_return_type(val)
-							if fn_ret_type != ast.void_type {
-								var_type = fn_ret_type
-								val_type = var_type
-								left.obj.typ = var_type
-								g.assign_ct_type[val.pos.pos] = var_type
-							}
-						} else if val.is_static_method && val.left_type.has_flag(.generic) {
-							fn_ret_type := g.resolve_return_type(val)
+						fn_ret_type := g.resolve_return_type(val)
+						if fn_ret_type != ast.void_type {
 							var_type = fn_ret_type
 							val_type = var_type
 							left.obj.typ = var_type
@@ -483,6 +487,89 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
 			if val.typ_key != '' {
 				val_type = g.type_resolver.get_ct_type_or_default(val.typ_key, var_type)
+			}
+		}
+		if is_decl && val is ast.CallExpr && val.or_block.kind != .absent {
+			resolved_call_type := g.resolve_return_type(val)
+			var_type = if resolved_call_type != ast.void_type {
+				resolved_call_type
+			} else {
+				val.return_type.clear_option_and_result()
+			}
+			val_type = var_type
+			if mut left is ast.Ident && left.obj is ast.Var {
+				left.obj.typ = var_type
+			}
+		}
+		if is_decl && val is ast.PostfixExpr && val.op == .question {
+			resolved_val_type := g.resolved_expr_type(val, val_type)
+			if resolved_val_type != 0 && resolved_val_type != ast.void_type {
+				var_type = resolved_val_type
+				val_type = resolved_val_type
+				if mut left is ast.Ident && left.obj is ast.Var {
+					left.obj.typ = var_type
+				}
+			}
+		}
+		if is_decl && var_type.has_option_or_result() {
+			if (val is ast.CallExpr && val.or_block.kind != .absent)
+				|| (val is ast.PostfixExpr && val.op == .question) {
+				var_type = var_type.clear_option_and_result()
+				val_type = val_type.clear_option_and_result()
+				if mut left is ast.Ident && left.obj is ast.Var {
+					left.obj.typ = var_type
+				}
+			}
+		}
+			if is_decl && mut left is ast.Ident && left.obj is ast.Var {
+				mut should_recompute_decl_type := false
+			match val {
+				ast.Ident {
+					should_recompute_decl_type = val.ct_expr
+						|| (val.obj is ast.Var && val.obj.ct_type_var != .no_comptime)
+						|| (val.obj is ast.Var && (val.obj.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.obj.typ)))
+				}
+				ast.SelectorExpr {
+					should_recompute_decl_type = val.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.typ)
+						|| val.expr_type.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.expr_type)
+				}
+				ast.IndexExpr {
+					should_recompute_decl_type = val.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.typ)
+						|| val.left_type.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.left_type)
+						|| (val.left is ast.Ident && val.left.ct_expr)
+				}
+				ast.ComptimeSelector {
+					should_recompute_decl_type = true
+				}
+				ast.CastExpr {
+					should_recompute_decl_type = val.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.typ)
+				}
+				ast.PostfixExpr {
+					should_recompute_decl_type = val.op == .question
+				}
+				else {}
+				}
+				if val is ast.CallExpr {
+					should_recompute_decl_type = val.return_type_generic != 0 || val.is_static_method
+						|| val.concrete_types.len > 0 || val.raw_concrete_types.len > 0
+						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+						|| (val.is_method && (val.left_type.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.left_type)
+						|| val.receiver_type.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(val.receiver_type)))
+					}
+					resolved_val_type := g.resolved_expr_type(val, val_type)
+					if should_recompute_decl_type && resolved_val_type != 0
+						&& resolved_val_type != ast.void_type {
+				var_type = resolved_val_type
+				val_type = resolved_val_type
+				left.obj.typ = var_type
 			}
 		}
 		mut styp := g.styp(var_type)
@@ -1231,7 +1318,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.expr(node.right[0])
 	g.writeln(';')
 	mr_types := (ret_sym.info as ast.MultiReturn).types
-	mut recompute_types := false
+	mut recompute_types := node.op == .decl_assign
 	if g.comptime.inside_comptime_for && node.right[0] is ast.CallExpr {
 		call_expr := node.right[0] as ast.CallExpr
 		if call_expr.concrete_types.len > 0 && g.comptime.comptime_for_field_var != ''
@@ -1242,6 +1329,15 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					if mut lx.obj is ast.Var {
 						lx.obj.typ = mr_types[i]
 					}
+				}
+			}
+		}
+	}
+	if recompute_types {
+		for i, mut lx in &node.left {
+			if mut lx is ast.Ident && lx.kind != .blank_ident {
+				if mut lx.obj is ast.Var && i < mr_types.len {
+					lx.obj.typ = mr_types[i]
 				}
 			}
 		}

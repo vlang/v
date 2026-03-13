@@ -2592,34 +2592,39 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	mut method_generic_names_len := method.generic_names.len
 	match rec_sym.info {
 		ast.Struct, ast.SumType, ast.Interface {
+			receiver_generic_names := rec_sym.info.generic_types.map(c.table.sym(it).name)
+			receiver_generics_in_method := receiver_generic_names.len > 0
+				&& method.generic_names.len >= receiver_generic_names.len
+				&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
 			if rec_sym.info.concrete_types.len > 0 {
 				rec_concrete_types = rec_sym.info.concrete_types.clone()
 			}
 			concrete_types_len := node.concrete_types.len
-			if rec_is_generic && concrete_types_len == 0
-				&& method_generic_names_len == rec_sym.info.generic_types.len {
+			if rec_is_generic && concrete_types_len == 0 && receiver_generics_in_method {
 				node.concrete_types = rec_sym.info.generic_types
-			} else if rec_is_generic && concrete_types_len > 0
+			} else if rec_is_generic && concrete_types_len > 0 && receiver_generics_in_method
 				&& method_generic_names_len > concrete_types_len
 				&& rec_sym.info.generic_types.len + concrete_types_len == method_generic_names_len {
 				t_concrete_types := node.concrete_types.clone()
 				node.concrete_types = rec_sym.info.generic_types
 				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
-				&& concrete_types_len > 0
+				&& receiver_generics_in_method && concrete_types_len > 0
 				&& rec_sym.info.concrete_types.len + concrete_types_len == method_generic_names_len {
 				t_concrete_types := node.concrete_types.clone()
 				node.concrete_types = rec_sym.info.concrete_types
 				node.concrete_types << t_concrete_types
-			} else if !rec_is_generic && rec_concrete_types.len > 0
-				&& method_generic_names_len == rec_concrete_types.len {
+			} else if !rec_is_generic && receiver_generics_in_method && rec_concrete_types.len > 0
+				&& concrete_types_len == 0 {
 				node.concrete_types = rec_concrete_types
 			}
 		}
 		else {}
 	}
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-	if concrete_types.len > 0 && c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
+	if method_generic_names_len > 0 && concrete_types.len == method_generic_names_len
+		&& concrete_types.all(!it.has_flag(.generic))
+		&& c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
 		c.need_recheck_generic_fns = true
 	}
 	node.is_noreturn = method.is_noreturn
@@ -2655,7 +2660,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& method.language == .v && final_left_kind != .interface && method.no_body {
 		c.error('cannot call a method that does not have a body', node.pos)
 	}
-	if node.concrete_types.len > 0 && method_generic_names_len > 0
+	if node.raw_concrete_types.len > 0 && method_generic_names_len > 0
 		&& node.concrete_types.len != method_generic_names_len {
 		plural := if method_generic_names_len == 1 { '' } else { 's' }
 		c.error('expected ${method_generic_names_len} generic parameter${plural}, got ${node.concrete_types.len}',
@@ -2813,7 +2818,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if need_recheck {
 				c.need_recheck_generic_fns = true
 			}
-			if !concrete_types[0].has_flag(.generic) {
+			if concrete_types.len == method_generic_names_len
+				&& concrete_types.all(!it.has_flag(.generic)) {
 				c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 			}
 		}
@@ -2956,7 +2962,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.infer_fn_generic_types(method, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
-	if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
+	if concrete_types.len == method_generic_names_len && concrete_types.all(!it.has_flag(.generic)) {
 		c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 		need_recheck, _ := c.type_resolver.resolve_fn_generic_args(c.table.cur_fn, method, mut
 			node)
@@ -3112,8 +3118,33 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		}
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
-			c.fn_decl(mut c.file.generic_fns[i])
-			if c.file.generic_fns[i].name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
+			mut concrete_fn := c.file.generic_fns[i]
+			original_generic_names := concrete_fn.generic_names.clone()
+			if concrete_fn.is_method && concrete_types.len > original_generic_names.len {
+				receiver_generic_names := c.table.generic_type_names(concrete_fn.receiver.typ)
+				if receiver_generic_names.len > 0 {
+					mut effective_generic_names := []string{cap: receiver_generic_names.len +
+						original_generic_names.len}
+					for name in receiver_generic_names {
+						if name !in effective_generic_names {
+							effective_generic_names << name
+						}
+					}
+					for name in original_generic_names {
+						if name !in effective_generic_names {
+							effective_generic_names << name
+						}
+					}
+					if effective_generic_names.len == concrete_types.len {
+						concrete_fn = &ast.FnDecl{
+							...*concrete_fn
+							generic_names: effective_generic_names
+						}
+					}
+				}
+			}
+			c.fn_decl(mut concrete_fn)
+			if concrete_fn.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
 				'vweb.run', 'vweb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {

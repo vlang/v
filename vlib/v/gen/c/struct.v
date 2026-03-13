@@ -37,7 +37,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(3)
 		return
 	}
-	unwrapped_typ := g.unwrap_generic(node.typ)
+	resolved_node_type := g.recheck_concrete_type(node.typ)
+	unwrapped_typ := g.unwrap_generic(resolved_node_type)
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
 		if unwrapped_typ.is_ptr() {
@@ -280,10 +281,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if sfield.typ == 0 {
 					continue
 				}
-				if sfield.expected_type.has_flag(.generic) && g.cur_fn != unsafe { nil } {
-					mut t_generic_names := g.table.cur_fn.generic_names.clone()
-					mut t_concrete_types := g.cur_concrete_types.clone()
-					ts := g.table.sym(node.typ)
+					sfield.expected_type = g.recheck_concrete_type(field.typ)
+					if sfield.expected_type.has_flag(.generic) && g.cur_fn != unsafe { nil } {
+						mut t_generic_names := g.cur_fn.generic_names.clone()
+						mut t_concrete_types := g.cur_concrete_types.clone()
+						ts := g.table.sym(resolved_node_type)
 					if ts.generic_types.len > 0 && ts.generic_types.len == info.generic_types.len
 						&& ts.generic_types != info.generic_types {
 						t_generic_names = info.generic_types.map(g.table.sym(it).name)
@@ -291,17 +293,17 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						for t_typ in ts.generic_types {
 							if !t_typ.has_flag(.generic) {
 								t_concrete_types << t_typ
-							} else if g.table.sym(t_typ).kind == .any {
-								tname := g.table.sym(t_typ).name
-								index := g.table.cur_fn.generic_names.index(tname)
-								if index >= 0 && index < g.cur_concrete_types.len {
-									t_concrete_types << g.cur_concrete_types[index]
-								}
-							} else {
-								if tt := g.table.convert_generic_type(t_typ, g.table.cur_fn.generic_names,
-									g.cur_concrete_types)
-								{
-									t_concrete_types << tt
+								} else if g.table.sym(t_typ).kind == .any {
+									tname := g.table.sym(t_typ).name
+									index := g.cur_fn.generic_names.index(tname)
+									if index >= 0 && index < g.cur_concrete_types.len {
+										t_concrete_types << g.cur_concrete_types[index]
+									}
+								} else {
+									if tt := g.table.convert_generic_type(t_typ, g.cur_fn.generic_names,
+										g.cur_concrete_types)
+									{
+										t_concrete_types << tt
 								}
 							}
 						}

@@ -5,8 +5,17 @@ module type_resolver
 import v.ast
 
 pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
-	field_name := t.info.comptime_for_field_value.name
-	left_sym := t.table.sym(t.resolver.unwrap_generic(node.left_type))
+	field_name := if node.typ_key.contains('|') {
+		node.typ_key.all_after('|')
+	} else {
+		t.info.comptime_for_field_value.name
+	}
+	mut left_type := node.left_type
+	resolved_left_type := t.get_type_or_default(node.left, node.left_type)
+	if resolved_left_type != ast.void_type {
+		left_type = resolved_left_type
+	}
+	left_sym := t.table.sym(t.resolver.unwrap_generic(left_type))
 	field := t.table.find_field_with_embeds(left_sym, field_name) or {
 		t.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
 	}

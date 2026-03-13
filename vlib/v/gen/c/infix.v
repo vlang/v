@@ -1024,11 +1024,18 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
-	left := g.unwrap(g.type_resolver.get_type_or_default(node.left, node.left_type))
-	right := g.unwrap(g.type_resolver.get_type_or_default(node.right, node.right_type))
+	left_type := g.resolved_expr_type(node.left, node.left_type)
+	right_type := g.resolved_expr_type(node.right, node.right_type)
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
+		mut concrete_types := left.sym.info.concrete_types.clone()
+		resolved_left_sym := g.table.final_sym(left.typ)
+		if resolved_left_sym.info is ast.Struct && resolved_left_sym.info.concrete_types.len > 0 {
+			concrete_types = resolved_left_sym.info.concrete_types.clone()
+		}
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		if left.sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
@@ -1056,8 +1063,13 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			}
 			if left.unaliased_sym.info is ast.Struct
 				&& left.unaliased_sym.info.generic_types.len > 0 {
-				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
-					method_name)
+				mut concrete_types := left.unaliased_sym.info.concrete_types.clone()
+				resolved_left_sym := g.table.final_sym(left.typ)
+				if resolved_left_sym.info is ast.Struct
+					&& resolved_left_sym.info.concrete_types.len > 0 {
+					concrete_types = resolved_left_sym.info.concrete_types.clone()
+				}
+				method_name = g.generic_fn_name(concrete_types, method_name)
 			}
 		} else {
 			g.gen_plain_infix_expr(node)
@@ -1339,16 +1351,31 @@ struct VSafeArithmeticOp {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	needs_cast := node.left_type.is_number() && node.right_type.is_number()
+	resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
+	resolved_right_type := g.resolved_expr_type(node.right, node.right_type)
+	needs_cast := resolved_left_type.is_number() && resolved_right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	mut typ := node.promoted_type
+	if resolved_left_type == resolved_right_type && resolved_left_type.is_number()
+		&& resolved_left_type !in [ast.int_literal_type, ast.float_literal_type] {
+		typ = resolved_left_type
+	} else {
+		resolved_promoted_type := g.type_resolver.promote_type(g.unwrap_generic(resolved_left_type),
+			g.unwrap_generic(resolved_right_type))
+		if resolved_promoted_type in [ast.f32_type, ast.f64_type] {
+			typ = resolved_promoted_type
+		}
+	}
 	mut typ_str := g.styp(typ)
 	if needs_cast {
 		typ = if node.left_ct_expr {
 			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
 			g.type_resolver.get_type_or_default(node.right, node.promoted_type)
+		} else if typ != ast.void_type && !typ.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(typ) {
+			typ
 		} else {
 			node.promoted_type
 		}
@@ -1356,14 +1383,14 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('(${typ_str})(')
 	}
 	// do not use promoted_type for overflow detect
-	left_type := g.unwrap_generic(node.left_type)
+	left_type := g.unwrap_generic(resolved_left_type)
 	checkoverflow_op := g.do_int_overflow_checks && left_type.is_int()
 	is_safe_add := checkoverflow_op && node.op == .plus
 	is_safe_sub := checkoverflow_op && node.op == .minus
 	is_safe_mul := checkoverflow_op && node.op == .mul
 	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
 	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
-	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
+	if resolved_left_type.is_ptr() && node.left.is_auto_deref_var() && !resolved_right_type.is_pointer() {
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
@@ -1412,16 +1439,16 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 
 	if is_ctemp_fixed_ret {
-		g.write('(${g.styp(node.right_type)})')
+		g.write('(${g.styp(resolved_right_type)})')
 	}
-	if node.right_type.is_ptr() && node.right.is_auto_deref_var() && !node.left_type.is_pointer() {
+	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var() && !resolved_left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
-		g.expr_with_cast(node.right, node.right_type, node.left_type)
+		g.expr_with_cast(node.right, resolved_right_type, resolved_left_type)
 	}
 	if is_ctemp_fixed_ret {
-		g.write(', sizeof(${g.styp(node.right_type)}))')
+		g.write(', sizeof(${g.styp(resolved_right_type)}))')
 	}
 	if is_safe_add || is_safe_sub || is_safe_mul || is_safe_div || is_safe_mod {
 		g.write(')')

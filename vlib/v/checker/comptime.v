@@ -311,7 +311,11 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		}
 		node.is_name = node.field_expr.field_name == 'name'
 		if mut node.field_expr.expr is ast.Ident {
-			node.typ_key = '${node.field_expr.expr.name}.typ'
+			node.typ_key = if c.comptime.comptime_for_field_value.name != '' {
+				'${node.field_expr.expr.name}.typ|${c.comptime.comptime_for_field_value.name}'
+			} else {
+				'${node.field_expr.expr.name}.typ'
+			}
 		}
 		expr_type = c.type_resolver.get_comptime_selector_type(node, ast.void_type)
 		if expr_type != ast.void_type {

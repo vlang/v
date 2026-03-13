@@ -9,12 +9,13 @@ import v.util
 import v.type_resolver
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
-	is_interface_field := g.table.sym(node.left_type).kind == .interface
+	left_type := g.resolved_expr_type(node.left, node.left_type)
+	is_interface_field := g.table.sym(left_type).kind == .interface
 	if is_interface_field {
 		g.write('*(')
 	}
 	g.expr(node.left)
-	if g.unwrap_generic(node.left_type).is_ptr() {
+	if g.unwrap_generic(left_type).is_ptr() {
 		g.write('->')
 	} else {
 		g.write('.')
@@ -23,7 +24,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	if node.is_name && node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comptime.comptime_for_field_var {
-				_, field_name := g.type_resolver.get_comptime_selector_var_type(node)
+				field_name := g.comptime.comptime_for_field_value.name
 				g.write(c_name(field_name))
 				if is_interface_field {
 					g.write(')')
@@ -39,8 +40,20 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 }
 
 fn (mut g Gen) gen_comptime_selector(expr ast.ComptimeSelector) string {
-	arrow_or_dot := if expr.left_type.is_ptr() { '->' } else { '.' }
-	return '${expr.left.str()}${arrow_or_dot}${g.comptime.comptime_for_field_value.name}'
+	left_type := g.resolved_expr_type(expr.left, expr.left_type)
+	arrow_or_dot := if left_type.is_ptr() { '->' } else { '.' }
+	mut field_name := if expr.typ_key.contains('|') {
+		expr.typ_key.all_after('|')
+	} else {
+		g.comptime.comptime_for_field_value.name
+	}
+	if expr.field_expr is ast.SelectorExpr {
+		if expr.field_expr.expr is ast.Ident
+			&& expr.field_expr.expr.name == g.comptime.comptime_for_field_var {
+			field_name = g.comptime.comptime_for_field_value.name
+		}
+	}
+	return '${expr.left.str()}${arrow_or_dot}${field_name}'
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {

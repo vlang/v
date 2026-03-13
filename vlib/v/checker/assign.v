@@ -216,9 +216,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
-		} else if c.inside_recheck {
-			// on generic recheck phase it might be needed to resolve the rhs again
-			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
+		} else if c.inside_recheck && i < node.right.len {
+			// Generic rechecks reuse the same AST nodes, so cached rhs types for
+			// identifiers/selectors can be stale across concrete instantiations.
+			needs_rhs_recheck := c.comptime.has_comptime_expr(node.right[i])
+				|| node.right[i] in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ComptimeSelector, ast.PrefixExpr, ast.CastExpr]
+			if needs_rhs_recheck {
 				mut expr := mut node.right[i]
 				right_type := c.expr(mut expr)
 				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],

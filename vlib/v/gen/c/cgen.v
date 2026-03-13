@@ -6750,7 +6750,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	exprs_len := node.exprs.len
 	expr0 := if exprs_len > 0 { node.exprs[0] } else { ast.empty_expr }
-	type0 := if exprs_len > 0 { g.unwrap_generic(node.types[0]) } else { ast.void_type }
+	type0_default := if exprs_len > 0 && node.types.len > 0 { node.types[0] } else { ast.void_type }
+	type0 := if exprs_len > 0 { g.resolved_expr_type(expr0, type0_default) } else { ast.void_type }
 
 	if exprs_len > 0 {
 		// skip `return $vweb.html()`

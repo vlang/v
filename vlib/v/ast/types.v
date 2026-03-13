@@ -1921,7 +1921,6 @@ fn specialize_method_with_concrete_types(method Fn, generic_names []string, conc
 			param.typ = pt
 		}
 	}
-	resolved.generic_names = []
 	return resolved
 }
 
