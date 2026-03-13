@@ -4,27 +4,41 @@ import os
 import v2.parser
 import v2.pref
 import v2.token
+import time
+
+fn eval_backend_tmp_dir() string {
+	return os.join_path(os.temp_dir(), 'v2_eval_integration_${os.getpid()}')
+}
+
+fn ensure_eval_backend_runner(vexe string) !string {
+	tmp_dir := eval_backend_tmp_dir()
+	os.mkdir_all(tmp_dir)!
+	v2_exe := os.join_path(tmp_dir, 'v2_eval_runner')
+	if os.exists(v2_exe) {
+		return v2_exe
+	}
+	vroot := os.dir(vexe)
+	build_res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v2_exe)} ${os.quoted_path(os.join_path(vroot,
+		'cmd', 'v2', 'v2.v'))}')
+	if build_res.exit_code != 0 {
+		return error(build_res.output)
+	}
+	return v2_exe
+}
 
 fn run_eval_backend(code string) !os.Result {
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
 		return error('VEXE is not set')
 	}
-	vroot := os.dir(vexe)
-	tmp_dir := os.join_path(os.temp_dir(), 'v2_eval_integration_${os.getpid()}')
-	os.rmdir_all(tmp_dir) or {}
+	tmp_dir := eval_backend_tmp_dir()
 	os.mkdir_all(tmp_dir)!
-	defer {
-		os.rmdir_all(tmp_dir) or {}
-	}
-	tmp_file := os.join_path(tmp_dir, 'sample.v')
-	v2_exe := os.join_path(tmp_dir, 'v2_eval_runner')
+	tmp_file := os.join_path(tmp_dir, 'sample_${time.now().unix_micro()}.v')
 	os.write_file(tmp_file, code)!
-	build_res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v2_exe)} ${os.quoted_path(os.join_path(vroot,
-		'cmd', 'v2', 'v2.v'))}')
-	if build_res.exit_code != 0 {
-		return error(build_res.output)
+	defer {
+		os.rm(tmp_file) or {}
 	}
+	v2_exe := ensure_eval_backend_runner(vexe)!
 	return os.execute('${os.quoted_path(v2_exe)} -backend eval ${os.quoted_path(tmp_file)}')
 }
 
