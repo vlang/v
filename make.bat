@@ -143,7 +143,9 @@ echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
 "!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" -keepc -g -showcc -cc "!tcc_exe!" -cflags "-B%tcc_dir%" -o "%V_UPDATED%" cmd/v
+REM Keep the TCC root relative here; V forwards -cflags through a response file.
+REM An absolute -B path breaks there when the checkout path contains spaces.
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 call :move_updated_to_v
 goto :success
