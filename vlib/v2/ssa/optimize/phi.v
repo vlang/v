@@ -135,8 +135,6 @@ fn split_critical_edges(mut m ssa.Module) {
 	mut cfg := build_cfg(mut m)
 
 	for fi in 0 .. m.funcs.len {
-		mut new_blocks := []ssa.BlockID{}
-
 		// Collect edges to split (can't modify while iterating)
 		mut edges_to_split := [][]ssa.BlockID{} // [pred_id, succ_id]
 
@@ -175,10 +173,8 @@ fn split_critical_edges(mut m ssa.Module) {
 			// Create new intermediate block
 			func2 := m.funcs[fi]
 			split_blk := m.add_block(func2.id, 'split_${pred_id}_${succ_id}')
-			new_blocks << split_blk
 
-			// Re-build block_val_ids after adding the split block
-			// (new blocks get new val_ids that need to be in the table)
+			// Build block_val_ids once per edge (must include newly added block)
 			block_val_ids := build_block_val_ids(m)
 
 			succ_val := get_block_val_id(m, succ_id, block_val_ids)
@@ -273,6 +269,12 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 	mut src_ref_count := []int{len: m.values.len + 1024}
 	mut touched_ids := []int{cap: 256}
 
+	// Collect all copies per block across all functions, then batch-insert.
+	// pending_block_copies_dests/srcs accumulate the sequenced copies from Briggs.
+	mut pending_block_copies_dests := [][]int{len: n_blocks}
+	mut pending_block_copies_srcs := [][]int{len: n_blocks}
+	mut pending_blocks := []int{cap: 256}
+
 	for fi in 0 .. n_funcs {
 		func := m.funcs[fi]
 		func_blocks_len2 := func.blocks.len
@@ -298,10 +300,6 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 				}
 				instr := m.instrs[idx]
 				if instr.op == .phi {
-					is_do_loop := func.name == 'do_loop'
-					if is_do_loop {
-						eprintln('  do_loop phi: val=${val_id} blk=${blk_id} nops=${instr.operands.len}')
-					}
 					// Phi operands: [val0, blk0, val1, blk1, ...]
 					for i := 0; i < instr.operands.len; i += 2 {
 						if i + 1 >= instr.operands.len {
@@ -310,18 +308,10 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 						val_in := instr.operands[i]
 						blk_val := instr.operands[i + 1]
 						if blk_val < 0 || blk_val >= m.values.len {
-							if is_do_loop {
-								eprintln('    op[${i}]: val_in=${val_in} blk_val=${blk_val} SKIP(oob)')
-							}
 							continue
 						}
 						// Use val_to_block reverse map instead of blk_v.index
 						pred_blk_idx := val_to_block[blk_val]
-						if is_do_loop {
-							blk_kind := m.values[blk_val].kind
-							blk_index := m.values[blk_val].index
-							eprintln('    op[${i}]: val_in=${val_in} blk_val=${blk_val} kind=${blk_kind} index=${blk_index} pred_blk_idx=${pred_blk_idx}')
-						}
 
 						if pred_blk_idx >= 0 && pred_blk_idx < n_blocks {
 							if pred_copy_dests[pred_blk_idx].len == 0 {
@@ -336,11 +326,25 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 		}
 
 		// For each predecessor that has copies, resolve with Briggs algorithm
+		// and collect sequenced copies for batch insertion
 		for pki in 0 .. pred_copy_blocks.len {
 			pred_blk := pred_copy_blocks[pki]
-			resolve_parallel_copies_flat(mut m, pred_blk, pred_copy_dests[pred_blk], pred_copy_srcs[pred_blk], mut
-				src_ref_count, mut touched_ids)
+			resolve_parallel_copies_batched(mut m, pred_blk,
+				pred_copy_dests[pred_blk], pred_copy_srcs[pred_blk],
+				mut src_ref_count, mut touched_ids,
+				mut pending_block_copies_dests, mut pending_block_copies_srcs,
+				mut pending_blocks)
 		}
+
+		// Batch-insert all collected copies into their blocks (one rebuild per block)
+		for pbi in 0 .. pending_blocks.len {
+			bid := pending_blocks[pbi]
+			batch_insert_copies_in_block(mut m, bid,
+				pending_block_copies_dests[bid], pending_block_copies_srcs[bid])
+			pending_block_copies_dests[bid] = []
+			pending_block_copies_srcs[bid] = []
+		}
+		pending_blocks.clear()
 
 		// Cleanup: clear pred_copies for blocks we touched
 		for pki2 in 0 .. pred_copy_blocks.len {
@@ -384,12 +388,10 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 	}
 }
 
-// resolve_parallel_copies_flat sequences a set of parallel copies (dest[i] = src[i])
-// using the Briggs algorithm with worklist-based scheduling.
-// A copy dest←src is "ready" when no other pending copy reads from dest.
-// Uses caller-provided flat array src_ref_count[] indexed by value ID (no maps).
-// touched_ids tracks which entries were modified so we can zero only those on cleanup.
-fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs []int, mut src_ref_count []int, mut touched_ids []int) {
+// resolve_parallel_copies_batched sequences a set of parallel copies (dest[i] = src[i])
+// using the Briggs algorithm, and collects the results into pending_block arrays
+// for batch insertion (instead of inserting one-by-one).
+fn resolve_parallel_copies_batched(mut m ssa.Module, blk_id int, dests []int, srcs []int, mut src_ref_count []int, mut touched_ids []int, mut pending_dests [][]int, mut pending_srcs [][]int, mut pending_blocks []int) {
 	if dests.len == 0 {
 		return
 	}
@@ -412,7 +414,6 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 	}
 
 	// Ensure src_ref_count is large enough for all value IDs we'll encounter.
-	// Check current max needed against array length.
 	mut need_len := m.values.len + np + 4
 	for i in 0 .. np {
 		if p_dest[i] >= need_len {
@@ -423,14 +424,12 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 		}
 	}
 	if need_len > src_ref_count.len {
-		// Grow array
 		for _ in 0 .. need_len - src_ref_count.len {
 			src_ref_count << 0
 		}
 	}
 
 	// src_ref_count[val] = how many pending copies use val as source
-	// (array is pre-zeroed or cleaned from previous call via touched_ids)
 	touched_ids.clear()
 	for i in 0 .. np {
 		s := p_src[i]
@@ -439,25 +438,28 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 		}
 		src_ref_count[s] = src_ref_count[s] + 1
 	}
-	// Also track dests we'll read from src_ref_count
+
+	// Build reverse index: dest_value → list of copy indices for O(1) lookup
+	// when a source becomes available as a destination
+	mut dest_to_indices := [][]int{len: need_len}
+	mut dest_touched := []int{cap: np}
 	for i in 0 .. np {
 		d := p_dest[i]
-		if src_ref_count[d] == 0 {
-			// dest not in touched_ids yet but we read it; track for safety
-			// (it's already 0, but if cycle-breaking modifies it we need to clean it)
+		if dest_to_indices[d].len == 0 {
+			dest_touched << d
 		}
+		dest_to_indices[d] << i
 	}
 
-	// Use int instead of bool for alive - ARM64 codegen may mishandle []bool{init: true}
 	// alive[i] = 1 if copy i is still pending, 0 if done
 	mut alive := []int{len: np}
 	for ai in 0 .. np {
 		alive[ai] = 1
 	}
 
-	// Worklist: use manual stack pointer instead of .delete() which may be buggy in ARM64
+	// Worklist: use manual stack pointer
 	mut worklist := []int{len: np + np + 4}
-	mut wl_top := 0 // stack pointer: worklist[0..wl_top] are valid entries
+	mut wl_top := 0
 	for i in 0 .. np {
 		d := p_dest[i]
 		if src_ref_count[d] == 0 {
@@ -473,7 +475,6 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 	mut remaining := np
 	for remaining > 0 {
 		if wl_top > 0 {
-			// Pop a ready copy from the worklist
 			wl_top -= 1
 			idx := worklist[wl_top]
 			if idx < 0 || idx >= np || alive[idx] == 0 {
@@ -491,14 +492,17 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 			src_ref_count[s] = src_ref_count[s] - 1
 			if src_ref_count[s] == 0 {
 				// s is no longer used as source; any pending copy with dest==s is now ready
-				for j in 0 .. np {
-					if alive[j] == 1 && p_dest[j] == s {
-						// Grow worklist if needed
-						if wl_top >= worklist.len {
-							worklist << 0
+				// Use dest_to_indices for O(1) lookup instead of scanning all copies
+				if s < dest_to_indices.len {
+					for ji in 0 .. dest_to_indices[s].len {
+						j := dest_to_indices[s][ji]
+						if alive[j] == 1 {
+							if wl_top >= worklist.len {
+								worklist << 0
+							}
+							worklist[wl_top] = j
+							wl_top += 1
 						}
-						worklist[wl_top] = j
-						wl_top += 1
 					}
 				}
 			}
@@ -546,13 +550,16 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 		src_ref_count[cycle_src] = 0
 
 		// Check if any copy whose dest was cycle_src is now ready
-		for j in 0 .. np {
-			if alive[j] == 1 && p_dest[j] == cycle_src {
-				if wl_top >= worklist.len {
-					worklist << 0
+		if cycle_src < dest_to_indices.len {
+			for ji in 0 .. dest_to_indices[cycle_src].len {
+				j := dest_to_indices[cycle_src][ji]
+				if alive[j] == 1 {
+					if wl_top >= worklist.len {
+						worklist << 0
+					}
+					worklist[wl_top] = j
+					wl_top += 1
 				}
-				worklist[wl_top] = j
-				wl_top += 1
 			}
 		}
 	}
@@ -564,11 +571,83 @@ fn resolve_parallel_copies_flat(mut m ssa.Module, blk_id int, dests []int, srcs 
 			src_ref_count[tid] = 0
 		}
 	}
-
-	// Emit the sequenced copies
-	for si in 0 .. s_dest.len {
-		insert_copy_in_block(mut m, blk_id, s_dest[si], s_src[si])
+	// Clean up dest_to_indices
+	for dti in 0 .. dest_touched.len {
+		dest_to_indices[dest_touched[dti]] = []
 	}
+
+	// Collect sequenced copies for batch insertion
+	if s_dest.len > 0 {
+		if pending_dests[blk_id].len == 0 {
+			pending_blocks << blk_id
+		}
+		for si in 0 .. s_dest.len {
+			pending_dests[blk_id] << s_dest[si]
+			pending_srcs[blk_id] << s_src[si]
+		}
+	}
+}
+
+// batch_insert_copies_in_block creates all copy instructions for a block and
+// inserts them before the terminator in a single array rebuild.
+fn batch_insert_copies_in_block(mut m ssa.Module, blk_id int, dests []int, srcs []int) {
+	if dests.len == 0 {
+		return
+	}
+
+	// Create all copy instructions and value nodes first
+	mut copy_val_ids := []int{cap: dests.len}
+	for ci in 0 .. dests.len {
+		dest := dests[ci]
+		src := srcs[ci]
+		dest_val := m.values[dest]
+		typ := dest_val.typ
+		m.instrs << ssa.Instruction{
+			op:       .assign
+			block:    blk_id
+			typ:      typ
+			operands: [ssa.ValueID(dest), src]
+		}
+		val_id := m.add_value_node(.instruction, typ, 'copy', m.instrs.len - 1)
+		copy_val_ids << val_id
+
+		// Update use lists (read-modify-write for ARM64 safety)
+		if dest < m.values.len {
+			mut dv := m.values[dest]
+			dv.uses << val_id
+			m.values[dest] = dv
+		}
+		if src < m.values.len {
+			mut sv := m.values[src]
+			sv.uses << val_id
+			m.values[src] = sv
+		}
+	}
+
+	// Single array rebuild: insert all copies before the terminator
+	mut blk := m.blocks[blk_id]
+	mut insert_idx := blk.instrs.len
+	if insert_idx > 0 {
+		last_val_id := blk.instrs[blk.instrs.len - 1]
+		last_val := m.values[last_val_id]
+		last_instr := m.instrs[last_val.index]
+		if last_instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {
+			insert_idx = blk.instrs.len - 1
+		}
+	}
+	n_copies := copy_val_ids.len
+	mut new_instrs := []int{cap: blk.instrs.len + n_copies}
+	for ii in 0 .. insert_idx {
+		new_instrs << blk.instrs[ii]
+	}
+	for ci in 0 .. n_copies {
+		new_instrs << copy_val_ids[ci]
+	}
+	for ii in insert_idx .. blk.instrs.len {
+		new_instrs << blk.instrs[ii]
+	}
+	blk.instrs = new_instrs
+	m.blocks[blk_id] = blk
 }
 
 fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
@@ -609,49 +688,4 @@ fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 	blk.instrs = new_instrs
 	m.blocks[blk_id] = blk
 	return temp_id
-}
-
-fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
-	dest_val := m.values[dest]
-	typ := dest_val.typ
-	m.instrs << ssa.Instruction{
-		op:       .assign
-		block:    blk_id
-		typ:      typ
-		operands: [ssa.ValueID(dest), src]
-	}
-	val_id := m.add_value_node(.instruction, typ, 'copy', m.instrs.len - 1)
-	// Read whole struct, modify, write back (chained field assign broken in ARM64)
-	if dest < m.values.len && val_id !in m.values[dest].uses {
-		mut dv := m.values[dest]
-		dv.uses << val_id
-		m.values[dest] = dv
-	}
-	if src < m.values.len && val_id !in m.values[src].uses {
-		mut sv := m.values[src]
-		sv.uses << val_id
-		m.values[src] = sv
-	}
-
-	// Insert before terminator — build new instrs array
-	mut blk := m.blocks[blk_id]
-	mut insert_idx := blk.instrs.len
-	if insert_idx > 0 {
-		last_val_id := blk.instrs[blk.instrs.len - 1]
-		last_val := m.values[last_val_id]
-		last_instr := m.instrs[last_val.index]
-		if last_instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {
-			insert_idx = blk.instrs.len - 1
-		}
-	}
-	mut new_instrs := []int{cap: blk.instrs.len + 1}
-	for ii in 0 .. insert_idx {
-		new_instrs << blk.instrs[ii]
-	}
-	new_instrs << val_id
-	for ii in insert_idx .. blk.instrs.len {
-		new_instrs << blk.instrs[ii]
-	}
-	blk.instrs = new_instrs
-	m.blocks[blk_id] = blk
 }

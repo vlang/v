@@ -51,10 +51,12 @@ pub mut:
 	// therefore must outlive the current stack frame.
 	sumtype_data_heap_allocas map[int]bool
 	// Type layout caches/guards to avoid recursive size/alignment loops.
-	type_size_cache  map[int]int
-	type_align_cache map[int]int
-	type_size_stack  map[int]bool
-	type_align_stack map[int]bool
+	type_size_cache  []int  // indexed by type_id, 0 = not cached (valid sizes are > 0 or == 0 only for void)
+	type_align_cache []int  // indexed by type_id, 0 = not cached
+	type_size_stack  []bool // indexed by type_id (recursion guard)
+	type_align_stack []bool // indexed by type_id (recursion guard)
+	// Cache for struct field offset calculations (key: typ_id << 16 | field_idx)
+	struct_field_offset_cache map[int]int
 	// Lookup caches for O(1) name resolution
 	func_by_name   map[string]int // function name → index in g.mod.funcs
 	global_by_name map[string]int // global name → index in g.mod.globals
@@ -90,13 +92,14 @@ pub mut:
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
+	n_types := mod.type_store.types.len
 	return &Gen{
 		mod:                   mod
 		macho:                 MachOObject.new()
-		type_size_cache:       map[int]int{}
-		type_align_cache:      map[int]int{}
-		type_size_stack:       map[int]bool{}
-		type_align_stack:      map[int]bool{}
+		type_size_cache:       []int{len: n_types}
+		type_align_cache:      []int{len: n_types}
+		type_size_stack:       []bool{len: n_types}
+		type_align_stack:      []bool{len: n_types}
 		env_dump_funcrefs:     os.getenv('V2_ARM64_DUMP_FUNCREFS')
 		env_trace_skip_dead:   os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
 		env_dump_stackmap:     os.getenv('V2_ARM64_DUMP_STACKMAP')
@@ -403,20 +406,11 @@ fn (mut g Gen) gen_func(func mir.Function) {
 					used_string_literals[op] = true
 				}
 			}
-		}
-	}
-	// Also check return values - if function returns a string_literal directly
-	for blk_id in func.blocks {
-		blk := g.mod.blocks[blk_id]
-		for val_id in blk.instrs {
-			val := g.mod.values[val_id]
-			if val.kind == .instruction {
-				instr := g.mod.instrs[val.index]
-				if instr.op == .ret && instr.operands.len > 0 {
-					ret_val := g.mod.values[instr.operands[0]]
-					if ret_val.kind == .string_literal {
-						used_string_literals[instr.operands[0]] = true
-					}
+			// Also check return values - if function returns a string_literal directly
+			if instr.op == .ret && instr.operands.len > 0 {
+				ret_val := g.mod.values[instr.operands[0]]
+				if ret_val.kind == .string_literal {
+					used_string_literals[instr.operands[0]] = true
 				}
 			}
 		}
@@ -2754,37 +2748,82 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.mod.values[instr.operands[2]].index
 			}
 
-			// Fallthrough optimization for False block
-			// If false block is next, we only need CBNZ to true block
+			has_phis := g.block_has_phis(true_blk) || g.block_has_phis(false_blk)
+			if has_phis {
+				// When target blocks have phi nodes (e.g. -O0 mode), we must emit
+				// phi copies on each branch path separately. Structure:
+				//   CBZ x8, false_path
+				//   <true phi copies>
+				//   B true_blk
+				//   false_path:
+				//   <false phi copies>
+				//   B false_blk (or fall-through)
+				cbz_off := g.macho.text_data.len - g.curr_offset
+				g.emit(asm_cbz(Reg(8), 0)) // placeholder, will patch
 
-			if true_blk >= 0 && true_blk < g.block_offsets.len && g.block_offsets[true_blk] != -1 {
-				off := g.block_offsets[true_blk]
-				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				if rel >= -262144 && rel < 262144 {
-					g.emit(asm_cbnz(Reg(8), rel))
-				} else {
-					// Branch target too far for CBNZ (19-bit range).
-					// Use trampoline: CBZ skip; B target; skip:
-					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-					g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
-				}
-			} else {
-				// Forward reference: use trampoline pattern to avoid 19-bit overflow.
-				// CBZ x8, skip; B target; skip:
-				g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-				g.record_pending_label(true_blk)
-				g.emit(asm_b(0))
-			}
-
-			if false_blk != g.next_blk {
-				if false_blk >= 0 && false_blk < g.block_offsets.len
-					&& g.block_offsets[false_blk] != -1 {
-					off := g.block_offsets[false_blk]
+				// True path: emit phi copies then branch to true block
+				g.emit_phi_copies(true_blk)
+				if true_blk >= 0 && true_blk < g.block_offsets.len
+					&& g.block_offsets[true_blk] != -1 {
+					off := g.block_offsets[true_blk]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					g.emit(asm_b(rel))
 				} else {
-					g.record_pending_label(false_blk)
+					g.record_pending_label(true_blk)
 					g.emit(asm_b(0))
+				}
+
+				// Patch CBZ to jump here (false path)
+				false_path_off := g.macho.text_data.len - g.curr_offset
+				cbz_rel := (false_path_off - cbz_off) / 4
+				cbz_abs := g.curr_offset + cbz_off
+				g.write_u32(cbz_abs, asm_cbz(Reg(8), cbz_rel))
+
+				// False path: emit phi copies then branch to false block
+				g.emit_phi_copies(false_blk)
+				if false_blk != g.next_blk {
+					if false_blk >= 0 && false_blk < g.block_offsets.len
+						&& g.block_offsets[false_blk] != -1 {
+						off := g.block_offsets[false_blk]
+						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+						g.emit(asm_b(rel))
+					} else {
+						g.record_pending_label(false_blk)
+						g.emit(asm_b(0))
+					}
+				}
+			} else {
+				// No phi nodes — use efficient branch pattern
+				if true_blk >= 0 && true_blk < g.block_offsets.len
+					&& g.block_offsets[true_blk] != -1 {
+					off := g.block_offsets[true_blk]
+					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+					if rel >= -262144 && rel < 262144 {
+						g.emit(asm_cbnz(Reg(8), rel))
+					} else {
+						// Branch target too far for CBNZ (19-bit range).
+						// Use trampoline: CBZ skip; B target; skip:
+						g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+						g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
+					}
+				} else {
+					// Forward reference: use trampoline pattern to avoid 19-bit overflow.
+					// CBZ x8, skip; B target; skip:
+					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+					g.record_pending_label(true_blk)
+					g.emit(asm_b(0))
+				}
+
+				if false_blk != g.next_blk {
+					if false_blk >= 0 && false_blk < g.block_offsets.len
+						&& g.block_offsets[false_blk] != -1 {
+						off := g.block_offsets[false_blk]
+						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+						g.emit(asm_b(rel))
+					} else {
+						g.record_pending_label(false_blk)
+						g.emit(asm_b(0))
+					}
 				}
 			}
 		}
@@ -2831,6 +2870,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				g.mod.values[def_blk_val].index
 			}
+			g.emit_phi_copies(def_idx)
 			if def_idx >= 0 && def_idx < g.block_offsets.len && g.block_offsets[def_idx] != -1 {
 				off := g.block_offsets[def_idx]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
@@ -5631,11 +5671,16 @@ fn (mut g Gen) emit_phi_copies(target_blk_id int) {
 			// Copy src_val_id → phi_val_id slot
 			phi_size := g.type_size(phi_val.typ)
 			if phi_size > 8 {
-				// Aggregate copy: load source pointer, copy field by field
-				g.store_reg_to_val(phi_val_id, src_val_id, phi_val.typ)
+				// Aggregate copy: load source address, copy bytes to dest slot
+				if src_off := g.stack_map[src_val_id] {
+					g.emit_add_fp_imm(9, src_off)
+					if dst_off := g.stack_map[phi_val_id] {
+						g.copy_ptr_to_fp_bytes(9, dst_off, phi_size)
+					}
+				}
 			} else {
 				g.load_val_to_reg(8, src_val_id)
-				g.store_reg_val(8, phi_val_id)
+				g.store_reg_to_val(8, phi_val_id)
 			}
 			break
 		}
@@ -6462,16 +6507,16 @@ fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
 	if typ_id < 0 || typ_id >= g.mod.type_store.types.len {
 		return 8
 	}
-	if typ_id in g.type_size_cache {
-		return g.type_size_cache[typ_id]
+	// Flat array cache: check if already computed (cached values are offset by +1, 0 = not cached)
+	if typ_id < g.type_size_cache.len && g.type_size_cache[typ_id] != 0 {
+		return g.type_size_cache[typ_id] - 1
 	}
-	if typ_id in g.type_size_stack {
+	if typ_id < g.type_size_stack.len && g.type_size_stack[typ_id] {
 		// Break recursive layout cycles (e.g. malformed self-referential aggregates).
 		return 8
 	}
-	g.type_size_stack[typ_id] = true
-	defer {
-		g.type_size_stack.delete(typ_id)
+	if typ_id < g.type_size_stack.len {
+		g.type_size_stack[typ_id] = true
 	}
 	typ := g.mod.type_store.types[typ_id]
 	mut size := 0
@@ -6533,7 +6578,13 @@ fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
 			size = 0
 		}
 	}
-	g.type_size_cache[typ_id] = size
+	if typ_id < g.type_size_stack.len {
+		g.type_size_stack[typ_id] = false
+	}
+	// Store size+1 so that 0 means "not cached" (size 0 is valid for void/label/metadata)
+	if typ_id < g.type_size_cache.len {
+		g.type_size_cache[typ_id] = size + 1
+	}
 	return size
 }
 
@@ -6541,15 +6592,15 @@ fn (mut g Gen) type_align(typ_id ssa.TypeID) int {
 	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
 		return if typ_id == 0 { 1 } else { 8 }
 	}
-	if typ_id in g.type_align_cache {
-		return g.type_align_cache[typ_id]
+	// Flat array cache: cached values stored as align+1, 0 = not cached
+	if typ_id < g.type_align_cache.len && g.type_align_cache[typ_id] != 0 {
+		return g.type_align_cache[typ_id] - 1
 	}
-	if typ_id in g.type_align_stack {
+	if typ_id < g.type_align_stack.len && g.type_align_stack[typ_id] {
 		return 8
 	}
-	g.type_align_stack[typ_id] = true
-	defer {
-		g.type_align_stack.delete(typ_id)
+	if typ_id < g.type_align_stack.len {
+		g.type_align_stack[typ_id] = true
 	}
 	typ := g.mod.type_store.types[typ_id]
 	mut align := 1
@@ -6566,13 +6617,23 @@ fn (mut g Gen) type_align(typ_id ssa.TypeID) int {
 			align = 2
 		}
 	}
-	g.type_align_cache[typ_id] = align
+	if typ_id < g.type_align_stack.len {
+		g.type_align_stack[typ_id] = false
+	}
+	if typ_id < g.type_align_cache.len {
+		g.type_align_cache[typ_id] = align + 1
+	}
 	return align
 }
 
 fn (mut g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int) int {
 	if struct_typ_id <= 0 || struct_typ_id >= g.mod.type_store.types.len {
 		return field_idx * 8
+	}
+	// Cache key: (typ_id << 16) | field_idx — supports up to 65535 fields per struct
+	cache_key := (struct_typ_id << 16) | field_idx
+	if cache_key in g.struct_field_offset_cache {
+		return g.struct_field_offset_cache[cache_key]
 	}
 	typ := g.mod.type_store.types[struct_typ_id]
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
@@ -6589,6 +6650,7 @@ fn (mut g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int
 			offset = (offset + align - 1) & ~(align - 1)
 		}
 		if i == field_idx {
+			g.struct_field_offset_cache[cache_key] = offset
 			return offset
 		}
 		field_size := g.type_size(field_typ)
@@ -7442,6 +7504,12 @@ fn (g &Gen) lookup_struct_from_env(name string) ?types.Struct {
 }
 
 fn (mut g Gen) allocate_registers(func mir.Function) {
+	// Register allocation is currently disabled (no available register pools).
+	// Short-circuit to avoid expensive interval analysis and map operations.
+	// When register pools are populated, remove this guard.
+	if true {
+		return
+	}
 	mut intervals := map[int]&Interval{}
 	mut call_indices := []int{}
 	mut instr_idx := 0
