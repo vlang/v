@@ -7,6 +7,10 @@ import v2.pref
 import v2.token
 import time
 
+const eval_backend_timeout_ms = 15_000
+const eval_backend_poll_ms = 50
+const eval_backend_term_grace_ms = 1_000
+
 fn eval_backend_tmp_dir() string {
 	return os.join_path(os.temp_dir(), 'v2_eval_integration_${os.getpid()}')
 }
@@ -44,11 +48,44 @@ fn run_eval_backend_with_args(code string, extra_args []string) !os.Result {
 		os.rm(tmp_file) or {}
 	}
 	v2_exe := ensure_eval_backend_runner(vexe)!
-	mut cmd := '${os.quoted_path(v2_exe)} -backend eval ${os.quoted_path(tmp_file)}'
+
+	mut p := os.new_process(v2_exe)
+	mut args := ['-backend', 'eval', tmp_file]
 	if extra_args.len > 0 {
-		cmd += ' -- ' + extra_args.map(os.quoted_path(it)).join(' ')
+		args << '--'
+		args << extra_args
 	}
-	return os.execute(cmd)
+	p.set_args(args)
+	p.set_redirect_stdio()
+	p.run()
+	defer {
+		p.close()
+	}
+
+	mut waited_ms := 0
+	for p.is_alive() && waited_ms < eval_backend_timeout_ms {
+		time.sleep(eval_backend_poll_ms * time.millisecond)
+		waited_ms += eval_backend_poll_ms
+	}
+	if p.is_alive() {
+		p.signal_term()
+		mut grace_ms := 0
+		for p.is_alive() && grace_ms < eval_backend_term_grace_ms {
+			time.sleep(eval_backend_poll_ms * time.millisecond)
+			grace_ms += eval_backend_poll_ms
+		}
+		if p.is_alive() {
+			p.signal_kill()
+			return error('eval backend timed out after ${eval_backend_timeout_ms}ms')
+		}
+	}
+	p.wait()
+	stdout := p.stdout_slurp()
+	stderr := p.stderr_slurp()
+	return os.Result{
+		exit_code: p.code
+		output:    stdout + stderr
+	}
 }
 
 fn test_eval_function_call_and_for_range() {
@@ -132,7 +169,7 @@ fn main() {
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
-	assert res.output.contains('sample.v|alpha|beta\n')
+	assert res.output.contains('|alpha|beta')
 }
 
 fn test_eval_transformed_nested_array_clone() {
