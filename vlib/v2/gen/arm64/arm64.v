@@ -30,7 +30,8 @@ pub mut:
 	// Register allocation
 	reg_map   map[int]int
 	used_regs []int
-	next_blk  int
+	next_blk   int
+	cur_blk_id int // current block being generated (for phi copy emission)
 
 	// Track which string literals have been materialized (value_id -> str_data offset)
 	string_literal_offsets map[int]int
@@ -853,6 +854,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	for i := 0; i < func.blocks.len; i++ {
 		blk_id := int(func.blocks[i])
 		g.next_blk = if i + 1 < func.blocks.len { int(func.blocks[i + 1]) } else { -1 }
+		g.cur_blk_id = blk_id
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
 
@@ -2703,6 +2705,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				g.mod.values[target_blk].index
 			}
+
+			// Emit phi copies for the target block before branching
+			g.emit_phi_copies(target_idx)
 
 			// Fallthrough optimization: Don't jump if target is next block
 			if target_idx != g.next_blk {
@@ -5569,6 +5574,71 @@ fn (mut g Gen) emit_sub_sp(imm int) {
 		// Very large stack: use register
 		g.emit_mov_imm(10, u64(imm))
 		g.emit(asm_sub_sp_reg(Reg(10)))
+	}
+}
+
+// block_has_phis returns true if the given block contains any phi instructions.
+fn (g Gen) block_has_phis(blk_id int) bool {
+	if blk_id < 0 || blk_id >= g.mod.blocks.len {
+		return false
+	}
+	blk := g.mod.blocks[blk_id]
+	for vid in blk.instrs {
+		v := g.mod.values[vid]
+		if v.kind != .instruction {
+			continue
+		}
+		if g.mod.instrs[v.index].op == .phi {
+			return true
+		}
+	}
+	return false
+}
+
+// emit_phi_copies emits register/stack copies for phi nodes in the target block.
+// Called before jmp/br to ensure phi values from the current predecessor block
+// are written to the phi output slots. In -O0 mode, phi nodes are not eliminated
+// by the optimizer, so the codegen must lower them directly.
+fn (mut g Gen) emit_phi_copies(target_blk_id int) {
+	if target_blk_id < 0 || target_blk_id >= g.mod.blocks.len {
+		return
+	}
+	target_blk := g.mod.blocks[target_blk_id]
+	cur_blk_id := g.cur_blk_id
+
+	for phi_val_id in target_blk.instrs {
+		phi_val := g.mod.values[phi_val_id]
+		if phi_val.kind != .instruction {
+			continue
+		}
+		phi_instr := g.mod.instrs[phi_val.index]
+		if phi_instr.op != .phi {
+			continue
+		}
+		// Phi operands are [value, block, value, block, ...]
+		// Find the operand pair matching our current block
+		for pi := 0; pi + 1 < phi_instr.operands.len; pi += 2 {
+			src_val_id := phi_instr.operands[pi]
+			blk_val_id := phi_instr.operands[pi + 1]
+			src_blk := if blk_val_id >= 0 && blk_val_id < g.val_to_block.len {
+				g.val_to_block[blk_val_id]
+			} else {
+				g.mod.values[blk_val_id].index
+			}
+			if src_blk != cur_blk_id {
+				continue
+			}
+			// Copy src_val_id → phi_val_id slot
+			phi_size := g.type_size(phi_val.typ)
+			if phi_size > 8 {
+				// Aggregate copy: load source pointer, copy field by field
+				g.store_reg_to_val(phi_val_id, src_val_id, phi_val.typ)
+			} else {
+				g.load_val_to_reg(8, src_val_id)
+				g.store_reg_val(8, phi_val_id)
+			}
+			break
+		}
 	}
 }
 
