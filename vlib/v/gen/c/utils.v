@@ -75,6 +75,157 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	return muttable.unwrap_generic_type_ex(typ, generic_names, concrete_types, true)
 }
 
+fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
+	if expr.scope == unsafe { nil } {
+		return 0
+	}
+	if v := expr.scope.find_var(expr.name) {
+		if v.typ != 0 {
+			return g.unwrap_generic(g.recheck_concrete_type(v.typ))
+		}
+	}
+	return 0
+}
+
+fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
+	if expr.obj !is ast.Var {
+		return 0
+	}
+	var_obj := expr.obj as ast.Var
+	if var_obj.expr is ast.ArrayInit {
+		array_init := var_obj.expr as ast.ArrayInit
+		if array_init.elem_type != 0 {
+			return g.unwrap_generic(g.recheck_concrete_type(array_init.elem_type))
+		}
+		if array_init.typ != 0 {
+			elem_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(array_init.typ)))
+			if elem_type != 0 {
+				return g.unwrap_generic(elem_type)
+			}
+		}
+	}
+	if var_obj.typ != 0 {
+		elem_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(var_obj.typ)))
+		if elem_type != 0 {
+			return g.unwrap_generic(elem_type)
+		}
+	}
+	return 0
+}
+
+fn (mut g Gen) resolved_ident_map_key_type(expr ast.Ident) ast.Type {
+	if expr.obj !is ast.Var {
+		return 0
+	}
+	var_obj := expr.obj as ast.Var
+	if var_obj.expr is ast.MapInit {
+		map_init := var_obj.expr as ast.MapInit
+		if map_init.key_type != 0 {
+			return g.unwrap_generic(g.recheck_concrete_type(map_init.key_type))
+		}
+	}
+	if var_obj.typ != 0 {
+		typ_sym := g.table.final_sym(g.unwrap_generic(var_obj.typ))
+		if typ_sym.kind == .map {
+			key_type := g.recheck_concrete_type(typ_sym.map_info().key_type)
+			if key_type != 0 {
+				return g.unwrap_generic(key_type)
+			}
+		}
+	}
+	return 0
+}
+
+fn (mut g Gen) resolved_ident_map_value_type(expr ast.Ident) ast.Type {
+	if expr.obj !is ast.Var {
+		return 0
+	}
+	var_obj := expr.obj as ast.Var
+	if var_obj.expr is ast.MapInit {
+		map_init := var_obj.expr as ast.MapInit
+		if map_init.value_type != 0 {
+			return g.unwrap_generic(g.recheck_concrete_type(map_init.value_type))
+		}
+	}
+	if var_obj.typ != 0 {
+		typ_sym := g.table.final_sym(g.unwrap_generic(var_obj.typ))
+		if typ_sym.kind == .map {
+			val_type := g.recheck_concrete_type(typ_sym.map_info().value_type)
+			if val_type != 0 {
+				return g.unwrap_generic(val_type)
+			}
+		}
+	}
+	return 0
+}
+
+fn (mut g Gen) resolved_array_elem_type_from_name(name string) ast.Type {
+	if !name.starts_with('[]') {
+		return 0
+	}
+	elem_type := g.table.find_type(name[2..])
+	if elem_type != 0 {
+		return g.unwrap_generic(g.recheck_concrete_type(elem_type))
+	}
+	return 0
+}
+
+fn split_map_type_name(name string) (string, string) {
+	if !name.starts_with('map[') {
+		return '', ''
+	}
+	mut depth := 1
+	mut i := 4
+	for i < name.len {
+		ch := name[i]
+		if ch == `[` {
+			depth++
+		} else if ch == `]` {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		i++
+	}
+	if depth != 0 || i >= name.len {
+		return '', ''
+	}
+	return name[4..i], name[i + 1..]
+}
+
+fn (mut g Gen) resolved_map_types_from_name(name string) (ast.Type, ast.Type) {
+	key_name, val_name := split_map_type_name(name)
+	if key_name.len == 0 || val_name.len == 0 {
+		return ast.Type(0), ast.Type(0)
+	}
+	key_type := g.table.find_type(key_name)
+	val_type := g.table.find_type(val_name)
+	return g.unwrap_generic(g.recheck_concrete_type(key_type)), g.unwrap_generic(g.recheck_concrete_type(val_type))
+}
+
+fn (mut g Gen) resolved_call_like_expr_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.CallExpr {
+			resolved := g.resolve_return_type(expr)
+			if resolved != ast.void_type {
+				return g.unwrap_generic(g.recheck_concrete_type(resolved)).clear_option_and_result()
+			}
+		}
+		ast.PostfixExpr {
+			resolved := g.resolved_call_like_expr_type(expr.expr)
+			if resolved != 0 {
+				return g.unwrap_generic(resolved).clear_option_and_result()
+			}
+		}
+		ast.UnsafeExpr {
+			return g.resolved_call_like_expr_type(expr.expr)
+		}
+		else {}
+	}
+	return 0
+}
+
 // resolved_expr_type recomputes the concrete type for expr nodes that can keep
 // stale generic metadata across concrete rechecks/codegen.
 fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
@@ -83,18 +234,16 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			return g.resolved_expr_type(expr.expr, default_typ)
 		}
 		ast.Ident {
-				if expr.obj is ast.Var {
-					if expr.obj.ct_type_var == .generic_param {
-						resolved := g.resolve_current_fn_generic_param_type(expr.name)
-						if resolved != 0 {
-							return g.unwrap_generic(g.recheck_concrete_type(resolved))
-						}
+			if expr.obj is ast.Var {
+				if expr.obj.ct_type_var == .generic_param {
+					resolved := g.resolve_current_fn_generic_param_type(expr.name)
+					if resolved != 0 {
+						return g.unwrap_generic(g.recheck_concrete_type(resolved))
 					}
-				if expr.obj.expr !is ast.EmptyExpr
-					&& (expr.obj.ct_type_var == .generic_var
+				}
+				if expr.obj.expr !is ast.EmptyExpr && (expr.obj.ct_type_var == .generic_var
 					|| ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
-					&& expr.obj.expr !in [ast.IntegerLiteral, ast.FloatLiteral, ast.StringLiteral, ast.BoolLiteral, ast.CharLiteral]))
-				{
+					&& expr.obj.expr !in [ast.IntegerLiteral, ast.FloatLiteral, ast.StringLiteral, ast.BoolLiteral, ast.CharLiteral])) {
 					if !(expr.obj.expr is ast.Ident && expr.obj.expr.name == expr.name) {
 						resolved := g.resolved_expr_type(expr.obj.expr, expr.obj.typ)
 						if resolved != 0 {
@@ -108,25 +257,38 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						return g.unwrap_generic(ctyp)
 					}
 				}
-				}
-				resolved := g.resolve_current_fn_generic_param_type(expr.name)
-				if resolved != 0 {
-					return g.unwrap_generic(g.recheck_concrete_type(resolved))
-				}
-				if expr.obj is ast.Var && expr.obj.typ != 0 && !expr.obj.typ.has_flag(.generic)
-					&& !g.type_has_unresolved_generic_parts(expr.obj.typ) {
-					return g.unwrap_generic(g.recheck_concrete_type(expr.obj.typ))
-				}
-				if expr.obj is ast.Var && expr.obj.typ != 0 {
-					return g.unwrap_generic(g.recheck_concrete_type(expr.obj.typ))
+			}
+			resolved := g.resolve_current_fn_generic_param_type(expr.name)
+			if resolved != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(resolved))
+			}
+			if expr.obj is ast.Var && expr.obj.typ != 0 {
+				resolved_obj_type := g.unwrap_generic(g.recheck_concrete_type(expr.obj.typ))
+				if resolved_obj_type != 0 && (expr.obj.is_arg || expr.obj.typ.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(expr.obj.typ)) {
+					return resolved_obj_type
 				}
 			}
-			ast.SelectorExpr {
-				left_default := if expr.expr_type != 0 { expr.expr_type } else { default_typ }
-				left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.expr, left_default))
-				if left_type != 0 {
-					sym := g.table.sym(g.unwrap_generic(left_type))
-					if field := g.table.find_field_with_embeds(sym, expr.field_name) {
+			default_resolved_type := g.unwrap_generic(g.recheck_concrete_type(default_typ))
+			resolver_type := g.unwrap_generic(g.recheck_concrete_type(g.type_resolver.get_type_or_default(expr,
+				default_typ)))
+			if resolver_type != 0 && !g.type_has_unresolved_generic_parts(resolver_type)
+				&& (resolver_type != default_resolved_type || (expr.obj is ast.Var
+				&& (expr.obj.is_unwrapped || expr.obj.orig_type != 0
+				|| expr.obj.smartcasts.len > 0))) {
+				return resolver_type
+			}
+			scope_type := g.resolved_scope_var_type(expr)
+			if scope_type != 0 {
+				return scope_type
+			}
+		}
+		ast.SelectorExpr {
+			left_default := if expr.expr_type != 0 { expr.expr_type } else { default_typ }
+			left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.expr, left_default))
+			if left_type != 0 {
+				sym := g.table.sym(g.unwrap_generic(left_type))
+				if field := g.table.find_field_with_embeds(sym, expr.field_name) {
 					mut field_type := field.typ
 					match sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
@@ -163,7 +325,9 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						ast.GenericInst {
 							parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
 							mut source_field_type := field.typ
-							if parent_field := g.table.find_field_with_embeds(parent_sym, expr.field_name) {
+							if parent_field := g.table.find_field_with_embeds(parent_sym,
+								expr.field_name)
+							{
 								source_field_type = parent_field.typ
 							}
 							match parent_sym.info {
@@ -172,44 +336,57 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 									if generic_names.len == sym.info.concrete_types.len
 										&& sym.info.concrete_types.len > 0 {
 										mut muttable := unsafe { &ast.Table(g.table) }
-										if resolved_field_type := muttable.convert_generic_type(
-											source_field_type, generic_names, sym.info.concrete_types)
+										if resolved_field_type := muttable.convert_generic_type(source_field_type,
+											generic_names, sym.info.concrete_types)
 										{
 											field_type = resolved_field_type
 										}
 									}
 								}
 								else {}
-								}
 							}
-							else {}
 						}
-						return g.unwrap_generic(g.recheck_concrete_type(field_type))
+						else {}
 					}
-				}
-				if expr.typ != 0 {
-					return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+					return g.unwrap_generic(g.recheck_concrete_type(field_type))
 				}
 			}
-			ast.IndexExpr {
-				left_default := if expr.left_type != 0 { expr.left_type } else { default_typ }
-				left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.left, left_default))
-				if left_type != 0 {
-					if expr.index is ast.RangeExpr {
-						return g.unwrap_generic(left_type)
+			if expr.typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			}
+		}
+		ast.IndexExpr {
+			left_default := if expr.left_type != 0 { expr.left_type } else { default_typ }
+			left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.left, left_default))
+			if left_type != 0 {
+				if expr.index is ast.RangeExpr {
+					if expr.left is ast.Ident {
+						resolved_left_type := g.resolve_current_fn_generic_param_type(expr.left.name)
+						if resolved_left_type != 0 {
+							return g.unwrap_generic(resolved_left_type)
+						}
+					}
+					return g.unwrap_generic(left_type)
+				}
+				if expr.left is ast.Ident {
+					resolved_value_type := g.resolve_current_fn_generic_param_value_type(expr.left.name)
+					if resolved_value_type != 0 {
+						return g.unwrap_generic(resolved_value_type)
+					}
+				}
+				value_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(left_type)))
+				if value_type != 0 {
+					return g.unwrap_generic(value_type)
 				}
 				if expr.typ != 0 && !expr.typ.has_flag(.generic)
 					&& !g.type_has_unresolved_generic_parts(expr.typ) {
 					return g.unwrap_generic(expr.typ)
 				}
-					value_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(left_type)))
-					if value_type != 0 {
-						return g.unwrap_generic(value_type)
-					}
 			}
 		}
 		ast.InfixExpr {
-			if expr.op in [.eq, .ne, .gt, .ge, .lt, .le, .logical_or, .and, .key_in, .not_in, .key_is, .not_is] {
+			if expr.op in [.eq, .ne, .gt, .ge, .lt, .le, .logical_or, .and, .key_in, .not_in, .key_is,
+				.not_is] {
 				return ast.bool_type
 			}
 			left_default := if expr.left_type != 0 { expr.left_type } else { default_typ }
@@ -231,19 +408,19 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				return g.unwrap_generic(left_type)
 			}
 		}
-			ast.CallExpr {
-				resolved := g.resolve_return_type(expr)
-				if resolved != ast.void_type {
-					return g.unwrap_generic(g.recheck_concrete_type(resolved))
-				}
-				if expr.return_type != 0 {
-					return if expr.or_block.kind == .absent {
-						g.unwrap_generic(g.recheck_concrete_type(expr.return_type))
-					} else {
-						g.unwrap_generic(g.recheck_concrete_type(expr.return_type)).clear_option_and_result()
-					}
+		ast.CallExpr {
+			resolved := g.resolve_return_type(expr)
+			if resolved != ast.void_type {
+				return g.unwrap_generic(g.recheck_concrete_type(resolved))
+			}
+			if expr.return_type != 0 {
+				return if expr.or_block.kind == .absent {
+					g.unwrap_generic(g.recheck_concrete_type(expr.return_type))
+				} else {
+					g.unwrap_generic(g.recheck_concrete_type(expr.return_type)).clear_option_and_result()
 				}
 			}
+		}
 		ast.ComptimeSelector {
 			if expr.typ_key != '' {
 				ctyp := g.type_resolver.get_ct_type_or_default(expr.typ_key, default_typ)
@@ -257,8 +434,26 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 		}
 		ast.CastExpr {
 			if expr.typ != 0 {
-				return g.unwrap_generic(expr.typ)
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
 			}
+		}
+		ast.ArrayInit {
+			if expr.typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			}
+		}
+		ast.StructInit {
+			if expr.typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			}
+		}
+		ast.MapInit {
+			if expr.typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			}
+		}
+		ast.UnsafeExpr {
+			return g.resolved_expr_type(expr.expr, default_typ)
 		}
 		ast.PrefixExpr {
 			right_default := if expr.right_type != 0 { expr.right_type } else { default_typ }

@@ -10,7 +10,16 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.index_range_expr(node, node.index)
 	} else {
-		left_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		mut left_type := g.unwrap_generic(g.recheck_concrete_type(node.left_type))
+		if left_type == 0 || left_type.has_flag(.generic)
+			|| g.type_has_unresolved_generic_parts(left_type) {
+			left_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.left,
+				node.left_type)))
+		}
+		if left_type == 0 {
+			left_type = g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
+				node.left_type))
+		}
 		sym := g.table.final_sym(left_type)
 		if sym.kind == .array {
 			g.index_of_array(node, sym)
@@ -167,10 +176,23 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 
 fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
-	left_is_ptr := node.left_type.is_ptr()
-	info := sym.info as ast.Array
-	elem_type := info.elem_type
+	resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type))
+	left_type := if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+	left_sym := if left_type != 0 {
+		g.table.final_sym(g.unwrap_generic(left_type))
+	} else {
+		g.table.final_sym(g.unwrap_generic(node.left_type))
+	}
+	array_left_type := if left_sym.kind == .array { left_type } else { node.left_type }
+	info := if left_sym.kind == .array {
+		left_sym.info as ast.Array
+	} else {
+		sym.info as ast.Array
+	}
+	resolved_elem_type := g.recheck_concrete_type(g.resolved_expr_type(node, node.typ))
+	elem_type := if resolved_elem_type != 0 { resolved_elem_type } else { info.elem_type }
 	elem_sym := g.table.final_sym(elem_type)
+	left_is_ptr := array_left_type.is_ptr()
 	result_type := match true {
 		gen_or && elem_type.has_flag(.option) {
 			node.typ.clear_flag(.option)
@@ -183,9 +205,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	}
 	result_sym := g.table.final_sym(result_type)
-	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(info.elem_type) }
+	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(elem_type) }
 	result_type_str := if result_sym.kind == .function { 'voidptr' } else { g.styp(result_type) }
-	left_is_shared := node.left_type.has_flag(.shared_f)
+	left_is_shared := array_left_type.has_flag(.shared_f)
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
@@ -434,12 +456,61 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 
 fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
-	left_is_ptr := node.left_type.is_ptr()
-	info := sym.info as ast.Map
-	key_type_str := g.styp(info.key_type)
-	val_type := info.value_type
-	val_sym := g.table.sym(val_type)
-	left_is_shared := node.left_type.has_flag(.shared_f)
+	mut map_left_type := g.recheck_concrete_type(node.left_type)
+	if map_left_type == 0 || map_left_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(map_left_type) {
+		resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
+			node.left_type))
+		map_left_type = if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+	}
+	left_is_ptr := map_left_type.is_ptr()
+	left_sym := if map_left_type != 0 {
+		*g.table.final_sym(g.unwrap_generic(map_left_type))
+	} else {
+		sym
+	}
+	info := if left_sym.kind == .map {
+		left_sym.info as ast.Map
+	} else {
+		sym.info as ast.Map
+	}
+	mut key_type := g.unwrap_generic(g.recheck_concrete_type(info.key_type))
+	mut val_type := g.unwrap_generic(g.recheck_concrete_type(info.value_type))
+	if key_type == 0 {
+		key_type = info.key_type
+	}
+	if val_type == 0 {
+		val_type = info.value_type
+	}
+	if node.left is ast.Ident {
+		ident_key_type := g.resolved_ident_map_key_type(node.left)
+		if ident_key_type != 0 {
+			key_type = ident_key_type
+		}
+		ident_val_type := g.resolved_ident_map_value_type(node.left)
+		if ident_val_type != 0 {
+			val_type = ident_val_type
+		}
+	}
+	if key_type == ast.usize_type || val_type == ast.usize_type {
+		name_key_type, name_val_type := g.resolved_map_types_from_name(left_sym.name)
+		if key_type == ast.usize_type && name_key_type != 0 {
+			key_type = name_key_type
+		}
+		if val_type == ast.usize_type && name_val_type != 0 {
+			val_type = name_val_type
+		}
+	}
+	if val_type == ast.usize_type && node.typ != 0 {
+		candidate_val_type := g.unwrap_generic(g.recheck_concrete_type(node.typ))
+		if candidate_val_type != 0 && candidate_val_type != ast.void_type
+			&& candidate_val_type !in [ast.int_literal_type, ast.float_literal_type] {
+			val_type = candidate_val_type
+		}
+	}
+	key_type_str := g.styp(key_type)
+	val_sym := g.table.final_sym(val_type)
+	left_is_shared := map_left_type.has_flag(.shared_f)
 	val_type_str := if val_sym.kind == .function {
 		'voidptr'
 	} else {
@@ -452,7 +523,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	get_and_set_types := val_sym.kind in [.struct, .map, .array, .array_fixed]
 	use_get_and_set := node.is_setter && !g.inside_map_infix && !g.inside_left_shift
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
-		if g.assign_op == .assign || info.value_type == ast.string_type {
+		if g.assign_op == .assign || val_type == ast.string_type {
 			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true
 			g.write('builtin__map_set(')
@@ -487,14 +558,14 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.write('}')
 		g.arraymap_set_pos = g.out.len
 		g.write(', &(${val_type_str}[]) { ')
-		if g.assign_op != .assign && info.value_type != ast.string_type {
-			zero := g.type_default(info.value_type)
+		if g.assign_op != .assign && val_type != ast.string_type {
+			zero := g.type_default(val_type)
 			g.write('${zero} })))')
 		}
 	} else if !gen_or && (g.inside_map_postfix || g.inside_map_infix
 		|| g.inside_map_index || g.inside_array_index || (g.is_assign_lhs && !g.is_arraymap_set
 		&& get_and_set_types)) {
-		zero := g.type_default(info.value_type)
+		zero := g.type_default(val_type)
 		if use_get_and_set {
 			g.write('(*(${val_type_str}*)builtin__map_get_and_set((map*)')
 		} else {
@@ -514,7 +585,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}, &(${val_type_str}[]){ ${zero} }))')
 	} else {
-		zero := g.type_default(info.value_type)
+		zero := g.type_default(val_type)
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_last_stmt()

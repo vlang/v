@@ -521,8 +521,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 		}
-			if is_decl && mut left is ast.Ident && left.obj is ast.Var {
-				mut should_recompute_decl_type := false
+		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
+			mut should_recompute_decl_type := false
 			match val {
 				ast.Ident {
 					should_recompute_decl_type = val.ct_expr
@@ -554,19 +554,23 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					should_recompute_decl_type = val.op == .question
 				}
 				else {}
-				}
-				if val is ast.CallExpr {
-					should_recompute_decl_type = val.return_type_generic != 0 || val.is_static_method
-						|| val.concrete_types.len > 0 || val.raw_concrete_types.len > 0
-						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
-						|| (val.is_method && (val.left_type.has_flag(.generic)
-						|| g.type_has_unresolved_generic_parts(val.left_type)
-						|| val.receiver_type.has_flag(.generic)
-						|| g.type_has_unresolved_generic_parts(val.receiver_type)))
-					}
-					resolved_val_type := g.resolved_expr_type(val, val_type)
-					if should_recompute_decl_type && resolved_val_type != 0
-						&& resolved_val_type != ast.void_type {
+			}
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				should_recompute_decl_type = true
+			}
+			if val is ast.CallExpr {
+				should_recompute_decl_type = val.return_type_generic != 0
+					|| val.is_static_method || val.concrete_types.len > 0
+					|| val.raw_concrete_types.len > 0
+					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+					|| (val.is_method && (val.left_type.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(val.left_type)
+					|| val.receiver_type.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(val.receiver_type)))
+			}
+			resolved_val_type := g.resolved_expr_type(val, val_type)
+			if should_recompute_decl_type && resolved_val_type != 0
+				&& resolved_val_type != ast.void_type {
 				var_type = resolved_val_type
 				val_type = resolved_val_type
 				left.obj.typ = var_type
@@ -1259,7 +1263,21 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							g.expr_with_cast(val, val_type, exp_type)
+							if g.is_arraymap_set && g.arraymap_set_pos >= 0 && left is ast.IndexExpr
+								&& left.is_map && val is ast.Ident && !exp_type.has_flag(.option) {
+								if g.arraymap_set_pos > 0 {
+									g.go_back_to(g.arraymap_set_pos)
+								}
+								g.write(', &${c_name(val.name)})')
+								if cur_indexexpr != -1 {
+									g.cur_indexexpr.delete(cur_indexexpr)
+									cur_indexexpr = -1
+								}
+								g.is_arraymap_set = false
+								g.arraymap_set_pos = 0
+							} else {
+								g.expr_with_cast(val, val_type, exp_type)
+							}
 						}
 					}
 				}
