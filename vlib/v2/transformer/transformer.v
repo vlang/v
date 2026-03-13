@@ -2183,12 +2183,19 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 		if prefix_stmts.len == 0 {
 			return none
 		}
-		// Add the final assignment with the extracted expression
-		prefix_stmts << ast.AssignStmt{
+		// Add the final assignment with the extracted expression.
+		// If the LHS is a map IndexExpr (e.g., indegree[i] = (indegree[i] or { 0 }) + 1),
+		// the assignment must be lowered to map__set.
+		final_assign := ast.AssignStmt{
 			op:  stmt.op
 			lhs: stmt.lhs
 			rhs: [t.transform_expr(new_rhs)]
 			pos: stmt.pos
+		}
+		if map_assign := t.try_transform_map_index_assign(final_assign) {
+			prefix_stmts << map_assign
+		} else {
+			prefix_stmts << final_assign
 		}
 		return prefix_stmts
 	}
