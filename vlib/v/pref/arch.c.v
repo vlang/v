@@ -10,7 +10,7 @@ pub enum Arch {
 	i386
 	s390x
 	ppc64le
-	ppc64be
+	ppc64
 	ppc32
 	loongarch64
 	js_node
@@ -62,8 +62,8 @@ pub fn arch_from_string(arch_str string) !Arch {
 		'ppc64le' {
 			return .ppc64le
 		}
-		'ppc64be' {
-			return .ppc64be
+		'ppc64' {
+			return .ppc64
 		}
 		'ppc32' {
 			return .ppc32

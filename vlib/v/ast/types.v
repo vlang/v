@@ -55,7 +55,7 @@ pub enum Language {
 	ppc64le
 	loongarch64
 	wasm32
-	ppc64be
+	ppc64
 	ppc32
 }
 
@@ -86,8 +86,8 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.ppc64le {
 			.ppc64le
 		}
-		.ppc64be {
-			.ppc64be
+		.ppc64 {
+			.ppc64
 		}
 		.ppc32 {
 			.ppc32
