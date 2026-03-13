@@ -1756,7 +1756,7 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 //       ((T*)_awi_tN.data)[_v_index] = init_expr  (with `index` renamed to `_v_index`)
 //   }
 //   <returns _awi_tN ident>
-fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, pos token.Pos) ast.Expr {
+fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, _pos token.Pos) ast.Expr {
 	t.temp_counter++
 	arr_name := '_awi_t${t.temp_counter}'
 	arr_ident := ast.Ident{

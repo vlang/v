@@ -1028,35 +1028,39 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		''
 	}
+	mut effective_return_type := node.return_type
 	if (gen_or || gen_keep_alive) && node.return_type != 0 {
-		mut ret_typ := node.return_type
+		mut ret_typ := effective_return_type
 		if g.table.sym(ret_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(ret_typ)
 			if unaliased_type.has_option_or_result() {
 				ret_typ = unaliased_type
 			}
-		} else if node.return_type_generic != 0 && node.raw_concrete_types.len == 0 {
-			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
-			if !unwrapped_ret_typ.has_flag(.generic) {
-				ret_sym := g.table.sym(unwrapped_ret_typ)
-				if ret_sym.info is ast.Array && g.table.sym(node.return_type_generic).kind == .array {
-					// Make []T returns T type when array was supplied to T
-					if g.table.type_to_str(node.return_type_generic).count('[]') < g.table.type_to_str(unwrapped_ret_typ).count('[]') {
-						ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
-					}
+		} else if node.return_type_generic != 0 {
+			r_typ := g.resolve_return_type(node)
+			if r_typ != ast.void_type && !r_typ.has_flag(.generic) {
+				if node.return_type.has_flag(.result) && !r_typ.has_flag(.result) {
+					ret_typ = r_typ.set_flag(.result)
+				} else if node.return_type.has_flag(.option) && !r_typ.has_flag(.option) {
+					ret_typ = r_typ.set_flag(.option)
+				} else {
+					ret_typ = r_typ
 				}
 			} else {
-				r_typ := g.resolve_return_type(node)
-				if r_typ != ast.void_type && !r_typ.has_flag(.generic) {
-					// restore result/option flag, as `resolve_return_type` may clean them
-					if node.return_type.has_flag(.result) {
-						ret_typ = r_typ.set_flag(.result)
-					} else {
-						ret_typ = r_typ.set_flag(.option)
+				unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
+				if !unwrapped_ret_typ.has_flag(.generic) {
+					ret_sym := g.table.sym(unwrapped_ret_typ)
+					if ret_sym.info is ast.Array
+						&& g.table.sym(node.return_type_generic).kind == .array {
+						// Make []T returns T type when array was supplied to T
+						if g.table.type_to_str(node.return_type_generic).count('[]') < g.table.type_to_str(unwrapped_ret_typ).count('[]') {
+							ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
+						}
 					}
 				}
 			}
 		}
+		effective_return_type = ret_typ
 		mut styp := g.styp(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_last_stmt()
@@ -1092,8 +1096,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.fn_call(node)
 	}
 	if gen_or && node.return_type != 0 {
-		g.or_block(tmp_opt, node.or_block, node.return_type)
-		mut unwrapped_typ := node.return_type.clear_option_and_result()
+		g.or_block(tmp_opt, node.or_block, effective_return_type)
+		mut unwrapped_typ := effective_return_type.clear_option_and_result()
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
 			if unaliased_type.has_option_or_result() {
@@ -1111,9 +1115,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
 				if g.assign_ct_type[node.pos.pos] != 0 && node.or_block.kind != .absent {
-					unwrapped_styp = g.styp(g.assign_ct_type[node.pos.pos].derive(node.return_type).clear_option_and_result())
+					unwrapped_styp = g.styp(g.assign_ct_type[node.pos.pos].derive(effective_return_type).clear_option_and_result())
 				}
-				if g.table.sym(node.return_type).kind == .array_fixed
+				if g.table.sym(effective_return_type).kind == .array_fixed
 					&& unwrapped_styp.starts_with('_v_') {
 					unwrapped_styp = unwrapped_styp[3..]
 				}
@@ -1565,7 +1569,12 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 }
 
 fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
-	left_type := g.unwrap_generic(node.left_type)
+	mut left_type := g.unwrap_generic(node.left_type)
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+		if resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type) {
+			left_type = g.unwrap_generic(resolved_left_type)
+		}
+	}
 	mut unwrapped_rec_type := node.receiver_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
@@ -1643,7 +1652,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	left_type := g.unwrap_generic(node.left_type)
+	mut left_type := g.unwrap_generic(node.left_type)
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+		if resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type) {
+			left_type = g.unwrap_generic(resolved_left_type)
+		}
+	}
 	mut unwrapped_rec_type, typ_sym := g.unwrap_receiver_type(node)
 
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
@@ -1776,7 +1790,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	if node.concrete_types.len > 0 {
+	mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+	if concrete_types.len == 0 {
+		rec_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+		match rec_sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				if rec_sym.info.concrete_types.len > 0 {
+					concrete_types = rec_sym.info.concrete_types.map(g.unwrap_generic(it))
+				}
+			}
+			ast.GenericInst {
+				concrete_types = rec_sym.info.concrete_types.map(g.unwrap_generic(it))
+			}
+			else {}
+		}
+	}
+	if concrete_types.len > 0 {
 		mut rec_len := 0
 		if node.left_type.has_flag(.generic) {
 			rec_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
@@ -1787,7 +1816,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				else {}
 			}
 		}
-		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			mut node_ := unsafe { node }
 			comptime_args := g.type_resolver.resolve_args(g.cur_fn, m, mut node_, concrete_types)

@@ -310,23 +310,23 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 
 	idx_got := got.idx()
 	idx_expected := expected.idx()
-	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
-		|| idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+	if got in ast.byteptr_types || got in ast.charptr_types || expected in ast.byteptr_types
+		|| expected in ast.charptr_types {
 		muls_got := got.nr_muls()
 		muls_expected := expected.nr_muls()
-		if idx_got == ast.byteptr_type_idx && idx_expected == ast.u8_type_idx
+		if got in ast.byteptr_types && idx_expected == ast.u8_type_idx
 			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.byteptr_type_idx && idx_got == ast.u8_type_idx
+		if expected in ast.byteptr_types && idx_got == ast.u8_type_idx
 			&& muls_expected + 1 == muls_got {
 			return
 		}
-		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx
+		if got in ast.charptr_types && idx_expected == ast.char_type_idx
 			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx
+		if expected in ast.charptr_types && idx_got == ast.char_type_idx
 			&& muls_expected + 1 == muls_got {
 			return
 		}
@@ -1211,7 +1211,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-				if arg.expr.is_auto_deref_var() {
+				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...

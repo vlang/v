@@ -761,7 +761,21 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						exp_type = unwrapped
 					}
 				}
+				if exp_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
+					if unwrapped := c.table.convert_generic_type(exp_type, c.table.cur_fn.generic_names,
+						c.table.cur_concrete_types)
+					{
+						exp_type = unwrapped
+					}
+				}
 				exp_type_sym := c.table.sym(exp_type)
+				exp_final_sym := if exp_type_sym.kind == .generic_inst {
+					c.table.sym(ast.new_type((exp_type_sym.info as ast.GenericInst).parent_idx))
+				} else {
+					exp_type_sym
+				}
 				c.expected_type = exp_type
 				got_type = c.expr(mut init_field.expr)
 				got_type_sym := c.table.sym(got_type)
@@ -845,7 +859,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 					}
 				}
-				if exp_type_sym.kind == .interface {
+				if exp_final_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
 						if !c.inside_unsafe && got_type_sym.kind != .interface
 							&& !got_type.is_any_kind_of_pointer() {
@@ -880,8 +894,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						init_field.typ = exp_type
 					} else {
 						c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
-							c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
-								init_field.pos)
+							if field_info.typ.has_flag(.generic) || exp_type != field_info.typ {
+								c.error('cannot assign `${c.table.type_to_str(c.unwrap_generic(got_type))}` to struct field `${field_info.name}` with type `${c.table.type_to_str(c.unwrap_generic(exp_type))}`',
+									init_field.expr.pos())
+							} else {
+								c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
+									init_field.pos)
+							}
 						}
 					}
 				}

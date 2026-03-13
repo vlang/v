@@ -1677,7 +1677,7 @@ fn (t &Transformer) try_extract_sincos_arg(expr ast.Expr) ?ast.Expr {
 
 // try_expand_or_expr_assign checks if an assignment has an OrExpr RHS (used by transform_stmt)
 // Returns none since expansion is handled by try_expand_or_expr_assign_stmts at the list level
-fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt {
+fn (mut t Transformer) try_expand_or_expr_assign(_stmt ast.AssignStmt) ?ast.Stmt {
 	return none
 }
 

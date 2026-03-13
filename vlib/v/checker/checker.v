@@ -30,7 +30,7 @@ const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'wait',
-	'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
+	'any', 'all', 'first', 'last', 'get', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 pub const fixed_array_builtin_methods = ['contains', 'index', 'last_index', 'any', 'all', 'wait',
 	'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse',
@@ -1279,7 +1279,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 						return '', expr.pos
 					}
 				}
-				.aggregate, .placeholder {
+				.aggregate, .placeholder, .generic_inst {
 					c.fail_if_immutable(mut expr.expr)
 				}
 				else {
@@ -1393,6 +1393,13 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			return c.type_implements(typ, inferred_type, pos)
 		}
 	}
+	if inter_sym.kind == .generic_inst {
+		generic_inst_info := inter_sym.info as ast.GenericInst
+		if !generic_inst_info.concrete_types.any(it.has_flag(.generic)) {
+			c.table.generic_insts_to_concrete()
+			inter_sym = c.table.final_sym(interface_type)
+		}
+	}
 	// do not check the same type more than once
 	if mut inter_sym.info is ast.Interface {
 		for t in inter_sym.info.types {
@@ -1415,26 +1422,42 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			pos)
 	}
 	interface_sym := c.table.sym(interface_type)
-	imethods := if interface_sym.kind == .interface {
-		mut methods := []ast.Fn{}
-		interface_info := interface_sym.info as ast.Interface
-		generic_names := interface_info.generic_types.map(c.table.sym(it).name)
-		mut concrete_types := interface_info.concrete_types.clone()
-		if concrete_types.len == 0 && interface_sym.generic_types.len == generic_names.len {
-			concrete_types = interface_sym.generic_types.clone()
+	mut interface_generic_names := []string{}
+	mut interface_concrete_types := []ast.Type{}
+	mut interface_info := ast.Interface{}
+	mut has_resolved_interface_info := false
+	if interface_sym.kind == .interface && interface_sym.info is ast.Interface {
+		interface_info = interface_sym.info
+		interface_generic_names = interface_info.generic_types.map(c.table.sym(it).name)
+		interface_concrete_types = interface_info.concrete_types.clone()
+		if interface_concrete_types.len == 0
+			&& interface_sym.generic_types.len == interface_generic_names.len {
+			interface_concrete_types = interface_sym.generic_types.clone()
 		}
+		has_resolved_interface_info = true
+	} else if interface_sym.kind == .generic_inst {
+		parent_sym := c.table.sym(ast.new_type((interface_sym.info as ast.GenericInst).parent_idx))
+		if parent_sym.info is ast.Interface {
+			interface_info = parent_sym.info
+			interface_generic_names = interface_info.generic_types.map(c.table.sym(it).name)
+			interface_concrete_types = (interface_sym.info as ast.GenericInst).concrete_types.clone()
+			has_resolved_interface_info = true
+		}
+	}
+	imethods := if has_resolved_interface_info {
+		mut methods := []ast.Fn{}
 		for imethod in interface_info.methods {
 			mut resolved_method := imethod
-			if generic_names.len == concrete_types.len {
+			if interface_generic_names.len == interface_concrete_types.len {
 				if resolved_return_type := c.table.convert_generic_type(imethod.return_type,
-					generic_names, concrete_types)
+					interface_generic_names, interface_concrete_types)
 				{
 					resolved_method.return_type = resolved_return_type
 				}
 				resolved_method.params = resolved_method.params.clone()
 				for i, param in resolved_method.params {
 					if resolved_param_type := c.table.convert_generic_type(param.typ,
-						generic_names, concrete_types)
+						interface_generic_names, interface_concrete_types)
 					{
 						resolved_method.params[i].typ = resolved_param_type
 					}
@@ -1453,8 +1476,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 
 		// Verify methods
 		for imethod in imethods {
-			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
-				typ_sym.find_method_with_generic_parent(imethod.name) or {
+			method := typ_sym.find_method_with_generic_parent(imethod.name) or {
+				c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
 					are_methods_implemented = false
@@ -1506,6 +1529,35 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		}
 		if !inter_sym.info.types.contains(ast.voidptr_type) {
 			inter_sym.info.types << ast.voidptr_type
+		}
+	} else if has_resolved_interface_info {
+		for ifield in interface_info.fields {
+			mut resolved_ifield := ifield
+			if interface_generic_names.len == interface_concrete_types.len {
+				if ft := c.table.convert_generic_type(ifield.typ, interface_generic_names,
+					interface_concrete_types)
+				{
+					resolved_ifield.typ = ft
+				}
+			}
+			if field := c.table.find_field_with_embeds(typ_sym, resolved_ifield.name) {
+				if resolved_ifield.typ != field.typ {
+					exp := c.table.type_to_str(resolved_ifield.typ)
+					got := c.table.type_to_str(field.typ)
+					c.error('`${styp}` incorrectly implements field `${resolved_ifield.name}` of interface `${inter_sym.name}`, expected `${exp}`, got `${got}`',
+						pos)
+					return false
+				} else if resolved_ifield.is_mut && !(field.is_mut || field.is_global) {
+					c.error('`${styp}` incorrectly implements interface `${inter_sym.name}`, field `${resolved_ifield.name}` must be mutable',
+						pos)
+					return false
+				}
+				continue
+			}
+			if utyp != ast.voidptr_type && utyp != ast.nil_type {
+				c.error("`${styp}` doesn't implement field `${resolved_ifield.name}` of interface `${inter_sym.name}`",
+					pos)
+			}
 		}
 	}
 	return true
@@ -3390,12 +3442,6 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if c.inside_generic_struct_init {
-			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
-			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
-				return t_typ
-			}
-		}
 		if c.table.cur_fn != unsafe { nil } {
 			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
@@ -3408,6 +3454,12 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 				{
 					return t_typ
 				}
+			}
+		}
+		if c.inside_generic_struct_init {
+			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
+				return t_typ
 			}
 		}
 	}
@@ -4690,7 +4742,22 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	} else if node.kind in [.constant, .global, .variable] {
 		// second use
 		info := node.info as ast.IdentVar
-		typ := c.type_resolver.get_type_or_default(node, info.typ)
+		mut info_typ := info.typ
+		if node.kind == .variable && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+			if current_var := node.scope.find_var(node.name) {
+				info_typ = current_var.typ
+				node.info = ast.IdentVar{
+					...info
+					typ:       info_typ
+					is_option: info_typ.has_option_or_result() || node.or_expr.kind != .absent
+				}
+				node.obj = *current_var
+				node.ct_expr = current_var.ct_type_var != .no_comptime
+			}
+		}
+		typ := c.unwrap_generic(c.type_resolver.get_type_or_default(node, info_typ))
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !info.typ.has_flag(.option) {
@@ -4802,6 +4869,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						&& !is_sum_type_cast {
 						typ = typ.deref()
 					}
+					typ = c.unwrap_generic(typ)
 					is_option := typ.has_option_or_result() || node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
@@ -5070,6 +5138,9 @@ fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
 	is_comptime bool, is_option_unwrap bool, allow_mut_selector_smartcast bool) {
+	if cur_type.idx() == 0 || to_type_.idx() == 0 {
+		return
+	}
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
 		to_type_.ref()
@@ -5078,6 +5149,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 	}
 	match mut expr {
 		ast.SelectorExpr {
+			if expr.expr_type.idx() == 0 {
+				return
+			}
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.sym(expr.expr_type)
@@ -5216,10 +5290,10 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
-	if typ.has_flag(.generic) {
+	sym := c.table.sym(typ)
+	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
 	}
-	sym := c.table.sym(typ)
 	match sym.info {
 		ast.Array {
 			return c.type_has_unresolved_generic_parts(sym.info.elem_type)
@@ -5244,11 +5318,42 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 		ast.MultiReturn {
 			return sym.info.types.any(c.type_has_unresolved_generic_parts(it))
 		}
-		ast.Struct, ast.Interface, ast.SumType {
-			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		ast.Struct {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
+				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		ast.Interface {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.is_generic && concrete_types.len == 0)
+				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		ast.SumType {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.is_generic && concrete_types.len == 0)
+				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
+		}
+		ast.UnknownTypeInfo {
+			if sym.name.contains('[') && sym.name.contains(']') {
+				args := ast.split_generic_args(sym.name.all_after_last('[').trim_right(']'))
+				return args.any(util.is_generic_type_name(it))
+			}
+			return false
 		}
 		else {
 			return false
@@ -5257,14 +5362,20 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 }
 
 @[inline]
-fn (c &Checker) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
-	if is_mut || orig_type == 0 || smartcast_type == 0 || !smartcast_type.is_ptr()
-		|| orig_type.is_ptr() {
+fn (mut c Checker) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
+	if is_mut || orig_type == 0 || smartcast_type == 0 || orig_type.is_ptr() {
 		return smartcast_type
 	}
-	if c.table.final_sym(orig_type).kind == .interface
-		&& c.table.final_sym(smartcast_type).kind != .interface {
-		return smartcast_type.deref()
+	orig_sym := c.table.final_sym(orig_type)
+	resolved_smartcast_type := c.unwrap_generic(smartcast_type)
+	smartcast_sym := c.table.final_sym(resolved_smartcast_type)
+	if orig_sym.kind == .interface && smartcast_sym.kind != .interface {
+		if smartcast_sym.kind in [.struct, .aggregate] && !smartcast_sym.is_builtin() {
+			return if smartcast_type.is_ptr() { smartcast_type } else { smartcast_type.ref() }
+		}
+		if smartcast_type.is_ptr() {
+			return smartcast_type.deref()
+		}
 	}
 	return smartcast_type
 }

@@ -7,6 +7,9 @@ import strings
 
 @[inline]
 fn (mut g Gen) register_free_method(typ ast.Type) {
+	if g.type_has_unresolved_generic_parts(typ) {
+		return
+	}
 	if typ.has_flag(.shared_f) {
 		g.get_free_method(typ.clear_flag(.shared_f).set_nr_muls(0))
 	} else {
@@ -36,6 +39,9 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 
 fn (mut g Gen) gen_free_methods() {
 	for typ, _ in g.autofree_methods {
+		if g.type_has_unresolved_generic_parts(typ) {
+			continue
+		}
 		g.gen_free_method(typ)
 	}
 }
@@ -43,6 +49,9 @@ fn (mut g Gen) gen_free_methods() {
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	styp := g.styp(typ).replace('*', '')
 	mut fn_name := styp_to_free_fn_name(styp)
+	if g.type_has_unresolved_generic_parts(typ) {
+		return fn_name
+	}
 	deref_typ := if typ.has_flag(.option) { typ } else { typ.set_nr_muls(0) }
 	if deref_typ in g.generated_free_methods {
 		return fn_name

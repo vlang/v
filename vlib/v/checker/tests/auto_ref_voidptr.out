@@ -1,3 +1,20 @@
+vlib/v/checker/tests/auto_ref_voidptr.vv:1:8: notice: unused parameter: `x`
+    1 | fn foo(x int, p voidptr) {}
+      |        ^
+    2 | 
+    3 | fn foo2(p &Aa) {}
+vlib/v/checker/tests/auto_ref_voidptr.vv:1:15: notice: unused parameter: `p`
+    1 | fn foo(x int, p voidptr) {}
+      |               ^
+    2 | 
+    3 | fn foo2(p &Aa) {}
+vlib/v/checker/tests/auto_ref_voidptr.vv:3:9: notice: unused parameter: `p`
+    1 | fn foo(x int, p voidptr) {}
+    2 | 
+    3 | fn foo2(p &Aa) {}
+      |         ^
+    4 | 
+    5 | struct Aa {}
 vlib/v/checker/tests/auto_ref_voidptr.vv:9:9: warning: automatic Aa referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`
     7 | fn main() {
     8 |     a := Aa{}

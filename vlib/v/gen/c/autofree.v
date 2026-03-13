@@ -153,6 +153,10 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	}
 	// }
 	base_typ := v.typ.set_nr_muls(0).clear_option_and_result()
+	if g.type_has_unresolved_generic_parts(base_typ) {
+		g.print_autofree_var(v, 'unresolved generic type')
+		return
+	}
 	mut free_fn := g.styp(base_typ) + '_free'
 	if sym.kind == .array {
 		free_fn = g.get_free_method(base_typ)
@@ -231,6 +235,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 	mut af := strings.new_builder(128)
 	if v.typ.is_ptr() && v.typ.idx() != ast.u8_type_idx {
+		if !v.is_auto_heap {
+			return
+		}
 		af.write_string('\t')
 		if v.typ.share() == .shared_t {
 			af.write_string(free_fn_name.replace_each(['__shared__', '']))

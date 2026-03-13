@@ -1,3 +1,10 @@
+vlib/v/checker/tests/assign_type_mismatch_with_generics_err.vv:10:26: notice: unused parameter: `arg`
+    8 | struct Bar {}
+    9 | 
+   10 | fn (mut f Foo[T]) method(arg T) {
+      |                          ~~~
+   11 |     mut b := false
+   12 |     if f.f != none {
 vlib/v/checker/tests/assign_type_mismatch_with_generics_err.vv:13:11: error: unexpected `or` block, the field `f` is not an Option or a Result
    11 |     mut b := false
    12 |     if f.f != none {

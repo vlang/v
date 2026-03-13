@@ -1905,10 +1905,31 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
+fn specialize_method_with_concrete_types(method Fn, generic_names []string, concrete_types []Type) Fn {
+	mut table := global_table
+	mut resolved := method
+	return_sym := table.sym(resolved.return_type)
+	if return_sym.kind in [.struct, .interface, .sum_type] {
+		resolved.return_type = table.unwrap_generic_type(resolved.return_type, generic_names,
+			concrete_types)
+	} else if rt := table.convert_generic_type(resolved.return_type, generic_names, concrete_types) {
+		resolved.return_type = rt
+	}
+	resolved.params = resolved.params.clone()
+	for mut param in resolved.params {
+		if pt := table.convert_generic_type(param.typ, generic_names, concrete_types) {
+			param.typ = pt
+		}
+	}
+	resolved.generic_names = []
+	return resolved
+}
+
 pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	mut table := global_table
 	mut generic_names := []string{}
 	mut concrete_types := []Type{}
+	mut generic_inst_parent_idx := 0
 	match t.info {
 		Struct, Interface, SumType {
 			generic_names = t.info.generic_types.map(table.sym(it).name)
@@ -1919,29 +1940,37 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 				concrete_types = t.generic_types.clone()
 			}
 		}
+		GenericInst {
+			generic_inst_parent_idx = t.info.parent_idx
+			parent_sym := table.sym(new_type(generic_inst_parent_idx))
+			match parent_sym.info {
+				Struct, Interface, SumType {
+					generic_names = parent_sym.info.generic_types.map(table.sym(it).name)
+					concrete_types = t.info.concrete_types.clone()
+				}
+				FnType {
+					generic_names = parent_sym.info.func.generic_names.clone()
+					concrete_types = t.info.concrete_types.clone()
+				}
+				else {}
+			}
+		}
 		else {}
 	}
 	if m := t.find_method(name) {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
-			mut method := m
-			return_sym := table.sym(method.return_type)
-			if return_sym.kind in [.struct, .interface, .sum_type] {
-				method.return_type = table.unwrap_generic_type(method.return_type, generic_names,
-					concrete_types)
-			} else if rt := table.convert_generic_type(method.return_type, generic_names,
-				concrete_types)
-			{
-				method.return_type = rt
-			}
-			method.params = method.params.clone()
-			for mut param in method.params {
-				if pt := table.convert_generic_type(param.typ, generic_names, concrete_types) {
-					param.typ = pt
-				}
-			}
-			return method
+			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
 		}
 		return m
+	}
+	if generic_inst_parent_idx != 0 {
+		parent_sym := table.sym(new_type(generic_inst_parent_idx))
+		if m := parent_sym.find_method(name) {
+			if generic_names.len == concrete_types.len && concrete_types.len > 0 {
+				return specialize_method_with_concrete_types(m, generic_names, concrete_types)
+			}
+			return m
+		}
 	}
 	match t.info {
 		Struct, Interface, SumType {
@@ -1950,27 +1979,8 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 				if x := parent_sym.find_method(name) {
 					match parent_sym.info {
 						Struct, Interface, SumType {
-							mut method := x
-							return_sym := table.sym(method.return_type)
-							if return_sym.kind in [.struct, .interface, .sum_type] {
-								method.return_type = table.unwrap_generic_type(method.return_type,
-									generic_names, concrete_types)
-							} else {
-								if rt := table.convert_generic_type(method.return_type,
-									generic_names, concrete_types)
-								{
-									method.return_type = rt
-								}
-							}
-							method.params = method.params.clone()
-							for mut param in method.params {
-								if pt := table.convert_generic_type(param.typ, generic_names,
-									concrete_types)
-								{
-									param.typ = pt
-								}
-							}
-							return method
+							return specialize_method_with_concrete_types(x, generic_names,
+								concrete_types)
 						}
 						else {}
 					}

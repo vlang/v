@@ -683,6 +683,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 }
 
 fn (mut decoder Decoder) decode_string[T](mut val T) ! {
+	_ = val
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -810,7 +811,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -843,15 +844,18 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			mut map_value := V{}
 
 			decoder.decode_value(mut map_value)!
-
-			$if V is $map {
-				val[key] = map_value.move()
-			} $else {
-				val[key] = map_value
-			}
+			(*val)[key] = move_if_map(&map_value)
 		}
 	} else {
 		decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
+	}
+}
+
+fn move_if_map[V](val &V) V {
+	$if V.unaliased_typ is $map {
+		return (*val).move()
+	} $else {
+		return *val
 	}
 }
 
@@ -1047,6 +1051,7 @@ fn parse_integer_number[T](str string) !T {
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
+	_ = val
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {

@@ -466,7 +466,11 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 	}
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
-	g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin___v_malloc(sizeof(${styp}));')
+	if info.is_empty_struct() {
+		g.writeln('${styp}* ${tmp_var} = HEAP(${styp}, ((${styp}){E_STRUCT}));')
+	} else {
+		g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin___v_malloc(sizeof(${styp}));')
+	}
 	for i, init_field in node.init_fields {
 		mut resolved_field := init_field
 		if node.no_keys {
@@ -601,6 +605,14 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var, true)
 			return true
+		} else if field.default_expr is ast.CastExpr {
+			resolved_field_type := g.unwrap_generic(field.typ)
+			resolved_default_type := g.unwrap_generic(field.default_expr.typ)
+			if resolved_field_type != 0 && resolved_default_type == 0 {
+				g.expr_with_cast(field.default_expr.expr, field.default_expr.expr_type,
+					resolved_field_type)
+				return true
+			}
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			old_inside_memset := g.inside_memset
 			g.inside_memset = true
@@ -612,7 +624,10 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.init_shared_field(field)
 			return true
 		}
+		old_expected_cast_type := g.expected_cast_type
+		g.expected_cast_type = field.typ
 		g.expr(field.default_expr)
+		g.expected_cast_type = old_expected_cast_type
 	} else if field.typ.has_flag(.option) {
 		g.gen_option_error(field.typ, ast.None{})
 		return true

@@ -938,6 +938,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 }
 
 // array_of_tables_contents parses next tokens into an array of `ast.Value`s.
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
@@ -1067,6 +1068,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 }
 
 // double_array_of_tables_contents parses next tokens into an array of `ast.Value`s.
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}

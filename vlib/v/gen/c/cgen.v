@@ -155,6 +155,7 @@ mut:
 	inside_cast               bool
 	inside_sumtype_cast       bool
 	inside_selector           bool
+	inside_selector_lhs       bool
 	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
 	inside_const              bool
@@ -833,7 +834,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 }
 
-fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
+fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
 	file := p.get_item[&ast.File](idx)
 	timing_label_for_thread := 'C GEN thread ${wid}'
 	util.timing_start(timing_label_for_thread)
@@ -908,7 +909,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info
 	g.gen_file()
-	return g
+	return voidptr(g)
 }
 
 // free_builders should be called only when a Gen would NOT be used anymore
@@ -1426,10 +1427,10 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
-	if typ.has_flag(.generic) {
+	sym := g.table.sym(typ)
+	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
 	}
-	sym := g.table.sym(typ)
 	match sym.info {
 		ast.Array {
 			return g.type_has_unresolved_generic_parts(sym.info.elem_type)
@@ -1454,11 +1455,42 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 		ast.MultiReturn {
 			return sym.info.types.any(g.type_has_unresolved_generic_parts(it))
 		}
-		ast.Struct, ast.Interface, ast.SumType {
-			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		ast.Struct {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
+				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		ast.Interface {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.is_generic && concrete_types.len == 0)
+				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		ast.SumType {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			return (sym.info.is_generic && concrete_types.len == 0)
+				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
+		}
+		ast.UnknownTypeInfo {
+			if sym.name.contains('[') && sym.name.contains(']') {
+				args := sym.name.all_after('[').trim_right(']').split(',').map(it.trim_space())
+				return args.any(util.is_generic_type_name(it))
+			}
+			return false
 		}
 		else {
 			return false
@@ -1535,11 +1567,12 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 }
 
 fn (mut g Gen) register_option(t ast.Type) string {
-	styp, base := g.option_type_name(t)
+	resolved_t := g.unwrap_generic(t)
+	styp, base := g.option_type_name(resolved_t)
 	// Only skip registration if the computed base is still an unresolved generic type name
 	// (base_type should have resolved generics, but check to be safe)
 	is_unresolved_generic := (g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names)
-		|| g.type_has_unresolved_generic_parts(t)
+		|| g.type_has_unresolved_generic_parts(resolved_t)
 	if !is_unresolved_generic {
 		g.options[base] = styp
 	}
@@ -1547,10 +1580,11 @@ fn (mut g Gen) register_option(t ast.Type) string {
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
-	styp, base := g.result_type_name(t)
+	resolved_t := g.unwrap_generic(t)
+	styp, base := g.result_type_name(resolved_t)
 	// Only skip registration if the computed base is still an unresolved generic type name
 	is_unresolved_generic := (g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names)
-		|| g.type_has_unresolved_generic_parts(t)
+		|| g.type_has_unresolved_generic_parts(resolved_t)
 	if !is_unresolved_generic {
 		g.results[base] = styp
 	}
@@ -1897,6 +1931,39 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 	return u32(t).str()
 }
 
+fn (g &Gen) unalias_type_keep_muls(typ ast.Type) ast.Type {
+	mut resolved := typ
+	for {
+		sym := g.table.sym(resolved)
+		if sym.info is ast.Alias {
+			resolved = sym.info.parent_type.derive_add_muls(resolved)
+			continue
+		}
+		if sym.info !is ast.Alias {
+			break
+		}
+	}
+	return resolved
+}
+
+fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
+	if is_mut || orig_type == 0 || smartcast_type == 0 || orig_type.is_ptr() {
+		return smartcast_type
+	}
+	orig_sym := g.table.final_sym(orig_type)
+	resolved_smartcast_type := g.unwrap_generic(smartcast_type)
+	smartcast_sym := g.table.final_sym(resolved_smartcast_type)
+	if orig_sym.kind == .interface && smartcast_sym.kind != .interface {
+		if smartcast_sym.kind in [.struct, .aggregate] && !smartcast_sym.is_builtin() {
+			return if smartcast_type.is_ptr() { smartcast_type } else { smartcast_type.ref() }
+		}
+		if smartcast_type.is_ptr() {
+			return smartcast_type.deref()
+		}
+	}
+	return smartcast_type
+}
+
 pub fn (mut g Gen) write_typedef_types() {
 	type_symbols := g.table.type_symbols.filter(!it.is_builtin
 		&& it.kind in [.array, .array_fixed, .chan, .map])
@@ -1920,7 +1987,12 @@ pub fn (mut g Gen) write_typedef_types() {
 					styp := sym.cname
 					len := info.size
 					if len > 0 {
-						mut fixed := g.styp(info.elem_type)
+						fixed_elem_type := if elem_sym.info is ast.Alias {
+							elem_sym.info.parent_type
+						} else {
+							info.elem_type
+						}
+						mut fixed := g.styp(fixed_elem_type)
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
 							// pos2:=g.out_parallel[g.out_idx].len
@@ -2180,16 +2252,17 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_array_fixed_return_types() {
-	fixed_arr_rets := g.table.type_symbols.filter(it.info is ast.ArrayFixed && it.info.is_fn_ret
+	fixed_arr_wrappers := g.table.type_symbols.filter(it.info is ast.ArrayFixed
 		&& !it.info.elem_type.has_flag(.generic))
-	if fixed_arr_rets.len == 0 {
+	if fixed_arr_wrappers.len == 0 {
 		return
 	}
 
 	g.typedefs.writeln('\n// BEGIN_array_fixed_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_array_fixed_return_structs')
+	mut generated_wrappers := map[string]bool{}
 
-	for sym in fixed_arr_rets {
+	for sym in fixed_arr_wrappers {
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
@@ -2200,18 +2273,32 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 		}
 		// Skip if element type is a non-builtin struct that isn't marked as used
 		// This prevents generating wrapper structs that reference undefined types
-		elem_sym := g.table.sym(info.elem_type)
-		if g.pref.skip_unused && elem_sym.kind == .struct && !elem_sym.is_builtin()
-			&& elem_sym.idx !in g.table.used_features.used_syms {
+		resolved_elem_type := g.unalias_type_keep_muls(info.elem_type)
+		resolved_elem_sym := g.table.sym(resolved_elem_type)
+		if g.pref.skip_unused && resolved_elem_sym.kind == .struct
+			&& !resolved_elem_sym.is_builtin()
+			&& resolved_elem_sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
-		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
-		if info.elem_type.is_ptr() {
-			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())
+		wrapper_name := '_v_${sym.cname}'
+		if wrapper_name in generated_wrappers {
+			continue
 		}
-		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
-		g.type_definitions.writeln('struct ${sym.cname} {')
-		g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
+		generated_wrappers[wrapper_name] = true
+		g.typedefs.writeln('typedef struct ${wrapper_name} ${wrapper_name};')
+		g.type_definitions.writeln('struct ${wrapper_name} {')
+		if resolved_elem_sym.info is ast.FnType {
+			pos := g.out.len
+			g.write_fn_ptr_decl(&resolved_elem_sym.info, 'ret_arr[${info.size}]')
+			field_decl := g.out.cut_to(pos)
+			g.type_definitions.writeln('\t${field_decl};')
+		} else {
+			mut fixed_elem_name := g.styp(resolved_elem_type.set_nr_muls(0))
+			if resolved_elem_type.is_ptr() {
+				fixed_elem_name += '*'.repeat(resolved_elem_type.nr_muls())
+			}
+			g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
+		}
 		g.type_definitions.writeln('};')
 	}
 
@@ -2605,6 +2692,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		mut fn_option_clone := false
 		mut already_generated := false
 		if ret_typ_is_option {
+			if !expr_typ_is_option {
+				expected_type = ret_typ.clear_flag(.option)
+			}
 			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit && !expr.typ.has_flag(.generic)
 				if simple_assign {
@@ -4910,9 +5000,21 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('((${g.base_type(field_typ)})')
 	}
 	old_inside_selector := g.inside_selector
+	old_inside_selector_lhs := g.inside_selector_lhs
 	old_inside_selector_deref := g.inside_selector_deref
 	g.inside_selector = node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
-	n_ptr := node.expr_type.nr_muls() - 1
+	g.inside_selector_lhs = true
+	pre_is_interface_smartcast_expr := node.expr is ast.Ident && node.expr.obj is ast.Var
+		&& g.table.is_interface_smartcast(node.expr.obj)
+	is_interface_smartcast_selector := node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
+		&& node.expr.expr.obj is ast.Var && node.expr.field_name.starts_with('_')
+		&& g.table.is_interface_smartcast(node.expr.expr.obj)
+	n_ptr := if is_interface_smartcast_selector
+		|| (pre_is_interface_smartcast_expr && node.expr_type.nr_muls() > 1) {
+		0
+	} else {
+		node.expr_type.nr_muls() - 1
+	}
 	if n_ptr > 0 {
 		g.write2('(', '*'.repeat(n_ptr))
 		g.expr(node.expr)
@@ -4922,6 +5024,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut opt_ptr_already_deref := g.inside_selector_deref
 	g.inside_selector = old_inside_selector
+	g.inside_selector_lhs = old_inside_selector_lhs
 	g.inside_selector_deref = old_inside_selector_deref
 	if field_is_opt {
 		g.write(')')
@@ -4968,13 +5071,26 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
-	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
-		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
+	is_dereferenced := (node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
+		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type])
+		|| is_interface_smartcast_selector
+	is_interface_smartcast_expr := node.expr is ast.Ident && node.expr.obj is ast.Var
+		&& g.table.is_interface_smartcast(node.expr.obj)
+	is_interface_smartcast_lhs := is_interface_smartcast_expr || is_interface_smartcast_selector
+	exposed_interface_smartcast_type := if is_interface_smartcast_expr {
+		g.exposed_smartcast_type(node.expr.obj.orig_type, node.expr.obj.smartcasts.last(),
+			node.expr.obj.is_mut)
+	} else {
+		ast.void_type
+	}
+	interface_smartcast_expr_is_dereferenced := is_interface_smartcast_expr
+		&& node.expr.obj.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
 	left_is_ptr := field_is_opt
-		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
-		|| alias_to_ptr) && node.from_embed_types.len == 0)
+		|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
+		|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
+		|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast)
-		|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr())
+		|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr() && !is_interface_smartcast_lhs)
 	if !has_embed && left_is_ptr {
 		g.write('->')
 	} else {
@@ -5880,9 +5996,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 			// Skip smartcasts for comptime_for variables to avoid using stale types
 			skip_smartcasts := g.is_comptime_for_var(node)
 			if node.obj.smartcasts.len > 0 && !skip_smartcasts {
+				current_smartcast_type := g.exposed_smartcast_type(node.obj.orig_type,
+					node.obj.smartcasts.last(), node.obj.is_mut)
 				needs_interface_smartcast_deref := g.table.is_interface_smartcast(node.obj)
-					&& node.info.typ != 0
-					&& node.obj.smartcasts.last().nr_muls() == node.info.typ.nr_muls() + 1
+					&& current_smartcast_type != 0
+					&& node.obj.smartcasts.last().nr_muls() == current_smartcast_type.nr_muls() + 1
 				obj_sym := g.table.final_sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := node.obj.smartcasts.len > 1
@@ -5910,9 +6028,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 							} else if !g.arg_no_auto_deref {
 								g.write('*')
 							}
-						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
+						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj)
+							&& !(g.inside_selector_lhs && g.table.is_interface_smartcast(node.obj)))
 							|| needs_interface_smartcast_deref
-							|| node.obj.ct_type_var == .smartcast
+							|| (node.obj.ct_type_var == .smartcast && !(g.inside_selector_lhs
+							&& g.table.is_interface_smartcast(node.obj)))
 							|| (obj_sym.kind == .interface
 							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
@@ -6042,12 +6162,25 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	defer {
 		g.inside_cast = tmp_inside_cast
 	}
-	node_typ := g.unwrap_generic(node.typ)
+	mut node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
+	if node_typ == 0 {
+		if g.expected_cast_type != 0 {
+			expected_cast_type := g.unwrap_generic(g.expected_cast_type)
+			if expected_cast_type != 0 {
+				node_typ = expected_cast_type
+			}
+		}
+		if node_typ == 0 {
+			node_typ = g.unwrap_generic(expr_type)
+		}
+	}
 	sym := g.table.sym(node_typ)
 	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
+	} else if expr_type == 0 {
+		expr_type = g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr, ast.void_type))
 	}
 	expr_sym := g.table.sym(expr_type)
 	final_expr_sym := g.table.final_sym(expr_type)
@@ -7459,23 +7592,26 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					// array_fixed_char_300 => char x[300]
 					// [16]&&&EventListener{} => Array_fixed_main__EventListener_16_ptr3
 					// => typedef main__EventListener*** Array_fixed_main__EventListener_16_ptr3 [16]
-					mut fixed_elem_name := g.styp(sym.info.elem_type.set_nr_muls(0))
-					if sym.info.elem_type.is_ptr() {
-						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
+					fixed_elem_type := g.unalias_type_keep_muls(sym.info.elem_type)
+					resolved_elem_sym := g.table.sym(fixed_elem_type)
+					mut fixed_elem_name := g.styp(fixed_elem_type.set_nr_muls(0))
+					if fixed_elem_type.is_ptr() {
+						fixed_elem_name += '*'.repeat(fixed_elem_type.nr_muls())
 					}
 					len := sym.info.size
 					if len > 0 {
-						if elem_sym.info is ast.FnType {
+						if resolved_elem_sym.info is ast.FnType {
 							pos := g.out.len
-							g.write_fn_ptr_decl(&elem_sym.info, '')
+							g.write_fn_ptr_decl(&resolved_elem_sym.info, '')
 							fixed_elem_name = g.out.cut_to(pos)
 							mut def_str := 'typedef ${fixed_elem_name};'
 							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 							g.type_definitions.writeln(def_str)
-						} else if elem_sym.info !is ast.ArrayFixed
-							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
+						} else if resolved_elem_sym.info !is ast.ArrayFixed
+							|| (resolved_elem_sym.info as ast.ArrayFixed).size > 0 {
 							// fixed array of option struct must be defined backwards
-							if sym.info.elem_type.has_flag(.option) && elem_sym.info is ast.Struct {
+							if sym.info.elem_type.has_flag(.option)
+								&& resolved_elem_sym.info is ast.Struct {
 								styp_elem, base := g.option_type_name(sym.info.elem_type)
 								lock g.done_options {
 									if base !in g.done_options {
@@ -7486,7 +7622,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 									}
 								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
-							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
+							} else if !(resolved_elem_sym.info is ast.ArrayFixed
+								&& resolved_elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
@@ -8755,9 +8892,10 @@ return ${cast_shared_struct_str};
 					// a method that is not part of the interface should be just skipped
 					continue
 				}
-				// .speak = Cat_speak
+				// Concrete generic receiver methods keep their generic suffix in C names.
 				if st_sym.info is ast.Struct {
-					if method.generic_names.len > 0 && st_sym.info.parent_type.has_flag(.generic) {
+					if st_sym.info.parent_type.has_flag(.generic)
+						&& st_sym.info.concrete_types.len > 0 {
 						name = g.generic_fn_name(st_sym.info.concrete_types, method.name)
 					}
 				}

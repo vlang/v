@@ -344,11 +344,29 @@ fn check_not_empty[T](val T) ?bool {
 			return false
 		}
 	} $else $if val is ?string {
-		return val ? != ''
+		opt := ?string(val)
+		if sval := opt {
+			return sval != ''
+		}
+		return false
 	} $else $if val is ?int {
-		return val ? != 0
-	} $else $if val is ?f64 || val is ?f32 {
-		return val ? != 0.0
+		opt := ?int(val)
+		if ival := opt {
+			return ival != 0
+		}
+		return false
+	} $else $if val is ?f64 {
+		opt := ?f64(val)
+		if fval := opt {
+			return fval != 0.0
+		}
+		return false
+	} $else $if val is ?f32 {
+		opt := ?f32(val)
+		if fval := opt {
+			return fval != 0.0
+		}
+		return false
 	}
 	return true
 }

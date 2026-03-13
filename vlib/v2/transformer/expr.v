@@ -486,7 +486,7 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 	}
 }
 
-fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Expr, range ast.RangeExpr, is_gated bool) ast.Expr {
+fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Expr, range ast.RangeExpr, _is_gated bool) ast.Expr {
 	start_expr := if range.start is ast.EmptyExpr {
 		ast.Expr(ast.BasicLiteral{
 			kind:  .number

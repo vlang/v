@@ -618,10 +618,20 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
+			mut missing_fn_concrete_types := false
+			if right is ast.Ident {
+				ident := right as ast.Ident
+				if ident.kind == .function {
+					if func := c.table.find_fn(ident.name) {
+						missing_fn_concrete_types = func.generic_names.len > 0
+							&& ident.concrete_types.len == 0
+					}
+				}
+			}
 			if return_sym.kind == .placeholder {
 				c.error('unknown return type: cannot assign `${right}` as a function variable',
 					right.pos())
-			} else if right !is ast.AnonFn
+			} else if !missing_fn_concrete_types && right !is ast.AnonFn
 				&& c.type_has_unresolved_generic_parts(right_sym.info.func.return_type) {
 				c.error('cannot assign `${right}` as a generic function variable', right.pos())
 			}

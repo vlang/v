@@ -28,6 +28,33 @@ fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concre
 	}
 }
 
+fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
+	if c.table.cur_concrete_types.len == 0
+		|| node.generic_names.len != c.table.cur_concrete_types.len {
+		return
+	}
+	if node.is_method {
+		receiver_type := c.table.unwrap_generic_type_ex(node.receiver.typ, node.generic_names,
+			c.table.cur_concrete_types, true)
+		if mut receiver_var := c.fn_scope.find_var(node.receiver.name) {
+			receiver_var.typ = receiver_type
+			receiver_var.orig_type = ast.no_type
+			receiver_var.smartcasts = []
+			receiver_var.is_unwrapped = false
+		}
+	}
+	for param in node.params {
+		param_type := c.table.unwrap_generic_type_ex(param.typ, node.generic_names, c.table.cur_concrete_types,
+			true)
+		if mut param_var := c.fn_scope.find_var(param.name) {
+			param_var.typ = param_type
+			param_var.orig_type = ast.no_type
+			param_var.smartcasts = []
+			param_var.is_unwrapped = false
+		}
+	}
+}
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// handle vls go to definition for method receiver types
 	if c.pref.is_vls {
@@ -205,13 +232,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if node.generic_names.len > 0 {
 			gs := c.table.sym(node.return_type)
+			mut has_missing_generic_return_type := false
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
+					has_missing_generic_return_type = true
 					c.error('return generic struct `${gs.name}` in fn declaration must specify the generic type names, e.g. ${gs.name}[T]',
 						node.return_type_pos)
 				}
 			}
-			if gs.kind == .struct && c.needs_unwrap_generic_type(node.return_type) {
+			if gs.kind == .struct && !has_missing_generic_return_type
+				&& c.needs_unwrap_generic_type(node.return_type) {
 				// resolve generic Array[T], Map[T] generics, avoid recursive generic resolving type
 				if c.ensure_generic_type_specify_type_names(node.return_type, node.return_type_pos,
 					false, false)
@@ -572,6 +602,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
+	c.refresh_generic_fn_scope_vars(node)
 	// Register implicit context var
 	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
 	if node.is_method && node.return_type == typ_veb_result {
@@ -736,6 +767,19 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
 			panic('unexpected checker error: cannot find parent of inherited variable `${var.name}`')
 		}
+		mut declared_parent_typ := parent_var.typ
+		if keep_fn != unsafe { nil } {
+			if keep_fn.is_method && keep_fn.receiver.name == var.name {
+				declared_parent_typ = keep_fn.receiver.typ
+			} else {
+				for param in keep_fn.params {
+					if param.name == var.name {
+						declared_parent_typ = param.typ
+						break
+					}
+				}
+			}
+		}
 		if var.is_mut && !parent_var.is_mut {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
@@ -748,11 +792,11 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		}
 		node.has_ct_var = node.has_ct_var
 			|| var.name in [c.comptime.comptime_for_field_var, c.comptime.comptime_for_method_var]
-		if parent_var.typ != ast.no_type {
-			parent_var_sym := c.table.final_sym(ptyp)
+		if declared_parent_typ != ast.no_type {
+			parent_var_sym := c.table.final_sym(declared_parent_typ)
 			if parent_var_sym.info is ast.FnType {
-				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
-				if ret_typ.has_flag(.generic) {
+				ret_typ := parent_var_sym.info.func.return_type
+				if c.type_has_unresolved_generic_parts(ret_typ) {
 					generic_names := c.table.generic_type_names(ret_typ)
 					curr_list := c.table.cur_fn.generic_names.join(', ')
 					for name in generic_names {
@@ -779,7 +823,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		} else {
 			var.typ = ptyp
 		}
-		if var.typ.has_flag(.generic) {
+		if c.type_has_unresolved_generic_parts(declared_parent_typ) {
 			has_generic = true
 		}
 		node.decl.scope.update_var_type(var.name, var.typ)
@@ -938,7 +982,13 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 }
 
 fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
-	if typ == 0 || !typ.has_flag(.generic) {
+	if typ == 0 {
+		return false
+	}
+	if c.type_has_unresolved_generic_parts(typ) {
+		return true
+	}
+	if !typ.has_flag(.generic) {
 		return false
 	}
 	sym := c.table.sym(typ)
@@ -1376,12 +1426,26 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func = generic_vts.info.func
 				found = true
 				found_in_args = true
+			} else if generic_vts.info is ast.GenericInst {
+				parent_sym := c.table.sym(ast.new_type(generic_vts.info.parent_idx))
+				if parent_sym.info is ast.FnType {
+					func = parent_sym.info.func
+					found = true
+					found_in_args = true
+				}
 			} else {
 				vts := c.table.sym(c.unwrap_generic(typ))
 				if vts.info is ast.FnType {
 					func = vts.info.func
 					found = true
 					found_in_args = true
+				} else if vts.info is ast.GenericInst {
+					parent_sym := c.table.sym(ast.new_type(vts.info.parent_idx))
+					if parent_sym.info is ast.FnType {
+						func = parent_sym.info.func
+						found = true
+						found_in_args = true
+					}
 				}
 			}
 		}
@@ -1484,6 +1548,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	node.is_noreturn = func.is_noreturn
 	node.is_expand_simple_interpolation = func.is_expand_simple_interpolation
 	node.is_ctor_new = func.is_ctor_new
+	if node.is_fn_var && node.concrete_types.len > 0 && func.generic_names.len == 0 {
+		if node.raw_concrete_types.len == 0 {
+			node.raw_concrete_types = node.concrete_types.clone()
+		}
+		node.concrete_types = []
+	}
 	if !found_in_args {
 		if node.scope.known_var(fn_name) {
 			c.error('ambiguous call to: `${fn_name}`, may refer to fn `${fn_name}` or variable `${fn_name}`',
@@ -2181,6 +2251,7 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
+	node.concrete_types = node.raw_concrete_types.clone()
 	mut left_expr := node.left
 	left_expr = left_expr.remove_par()
 	if mut left_expr is ast.IfExpr {
@@ -2216,14 +2287,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	unwrapped_left_type := c.unwrap_generic(left_type)
 	left_sym := c.table.sym(unwrapped_left_type)
 	final_left_sym := c.table.final_sym(unwrapped_left_type)
-	mut has_custom_array_get := false
+	final_left_kind := if final_left_sym.kind == .generic_inst {
+		c.table.sym(ast.new_type((final_left_sym.info as ast.GenericInst).parent_idx)).kind
+	} else {
+		final_left_sym.kind
+	}
 
 	method_name := node.name
-	if method_name == 'get' {
-		if method := c.table.find_method(left_sym, method_name) {
-			has_custom_array_get = method.receiver_type != ast.array_type
-		}
-	}
 	if left_type.has_flag(.option) {
 		c.error('Option type `${left_sym.name}` cannot be called directly, you should unwrap it first',
 			node.left.pos())
@@ -2248,11 +2318,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		return ast.void_type
 	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
-		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) && !has_custom_array_get {
+		&& !left_sym.has_method(method_name) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
-		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
-		&& left_sym.has_method(method_name)) {
+		&& fixed_array_builtin_methods_chk.matches(method_name) && !left_sym.has_method(method_name) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map && node.kind in [.clone, .keys, .values, .move, .delete]
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
@@ -2290,16 +2359,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.check_must_use_call_result(node, method, 'method')
 		}
 	}
-	if left_sym.kind == .interface
-		&& ((left_sym.info is ast.Interface && left_sym.info.parent_type.has_flag(.generic))
-		|| left_sym.generic_types.len > 0) {
-		if m := left_sym.find_method_with_generic_parent(method_name) {
-			method = m
-			has_method = true
-			if left_sym.kind == .interface && m.from_embedded_type != 0 {
-				is_method_from_embed = true
-				node.from_embed_types = [m.from_embedded_type]
-			}
+	if m := left_sym.find_method_with_generic_parent(method_name) {
+		method = m
+		has_method = true
+		if left_sym.kind == .interface && m.from_embedded_type != 0 {
+			is_method_from_embed = true
+			node.from_embed_types = [m.from_embedded_type]
 		}
 	} else if m := c.table.find_method(left_sym, method_name) {
 		method = m
@@ -2587,7 +2652,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.fail_if_unreadable(node.left, left_type, 'receiver')
 	}
 	if left_sym.language != .js && (!left_sym.is_builtin() && method.mod != 'builtin')
-		&& method.language == .v && final_left_sym.kind != .interface && method.no_body {
+		&& method.language == .v && final_left_kind != .interface && method.no_body {
 		c.error('cannot call a method that does not have a body', node.pos)
 	}
 	if node.concrete_types.len > 0 && method_generic_names_len > 0

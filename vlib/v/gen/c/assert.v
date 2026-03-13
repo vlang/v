@@ -32,6 +32,7 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		}
 	}
 	metaname := g.gen_assert_metainfo_common(node)
+	g.set_current_pos_as_last_stmt_pos()
 	g.inside_ternary++
 	if g.pref.is_test {
 		g.write('if (')
@@ -90,6 +91,9 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
 			}
 		}
+		ast.PostfixExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
+		}
 		ast.SelectorExpr {
 			if expr.expr is ast.CallExpr {
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
@@ -98,6 +102,9 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 						return unsupported_ctemp_assert_transform
 					}
 				}
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+			if g.need_tmp_var_in_expr(expr) {
 				return g.new_ctemp_var_then_gen(expr, expr_type)
 			}
 		}
@@ -109,7 +116,16 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				return g.new_ctemp_var_then_gen(expr, expr_type)
 			}
 		}
-		else {}
+		ast.StructInit {
+			if g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {
+			if g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
 	}
 	return unsupported_ctemp_assert_transform
 }

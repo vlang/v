@@ -149,7 +149,7 @@ fn (mut g Gen) emit_comparison_op(wasm_typ wasm.NumType, typ ast.Type, op token.
 	}
 }
 
-fn (mut g Gen) emit_bitwise_op(wasm_typ wasm.NumType, typ ast.Type, op token.Kind) {
+fn (mut g Gen) emit_bitwise_op(wasm_typ wasm.NumType, _typ ast.Type, op token.Kind) {
 	match op {
 		.xor { g.func.b_xor(wasm_typ) }
 		.pipe { g.func.b_or(wasm_typ) }

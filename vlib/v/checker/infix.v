@@ -907,7 +907,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			&& c.symmetric_check(right_type, left_type)
 		left_allows_auto_deref := infix_expr_allows_auto_deref(node.left)
 		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
-		pointer_value_mismatch := left_type.is_any_kind_of_pointer() != right_type.is_any_kind_of_pointer()
+		unalias_left_type := c.table.unaliased_type(left_type)
+		unalias_right_type := c.table.unaliased_type(right_type)
+		left_is_any_kind_of_pointer := unalias_left_type.is_any_kind_of_pointer()
+		right_is_any_kind_of_pointer := unalias_right_type.is_any_kind_of_pointer()
+		allows_cstring_byte_compare :=
+			(unalias_right_type in ast.byteptr_types && unalias_left_type == ast.u8_type)
+			|| (unalias_right_type in ast.charptr_types && unalias_left_type == ast.char_type)
+		pointer_value_mismatch := left_is_any_kind_of_pointer != right_is_any_kind_of_pointer
 		mut types_match_after_deref := false
 		mut deref_left_type := left_type
 		mut deref_right_type := right_type
@@ -918,8 +925,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			types_match_after_deref = c.symmetric_check(deref_left_type, deref_right_type)
 				&& c.symmetric_check(deref_right_type, deref_left_type)
 		}
-		if node.op in [.eq, .ne] && right_type.is_any_kind_of_pointer()
-			&& !left_type.is_any_kind_of_pointer() && !infix_expr_is_zero_integer_literal(node.left)
+		if node.op in [.eq, .ne] && right_is_any_kind_of_pointer && !left_is_any_kind_of_pointer
+			&& !allows_cstring_byte_compare && !infix_expr_is_zero_integer_literal(node.left)
 			&& !infix_expr_is_nil_like(node.left) && !infix_expr_is_nil_like(node.right)
 			&& !c.file.path.ends_with('.c.v') && left_sym.language == .v && right_sym.language == .v
 			&& !types_match_after_deref && !c.pref.translated && !c.file.is_translated

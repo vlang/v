@@ -6,7 +6,7 @@ module c
 import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
-	if typ.has_flag(.generic) {
+	if typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
 		// NOTE: `convert_generic_type` should not mutate the table.
 		//
 		// It mutates if the generic type is for example `[]T` and the concrete
@@ -25,7 +25,12 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+						mut concrete_types := sym.info.concrete_types.clone()
+						if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
+							&& sym.generic_types != sym.info.generic_types {
+							concrete_types = sym.generic_types.clone()
+						}
+						if t_typ := g.table.convert_generic_type(typ, generic_names, concrete_types) {
 							return t_typ
 						}
 					}
@@ -37,7 +42,12 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-					if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+					mut concrete_types := sym.info.concrete_types.clone()
+					if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
+						&& sym.generic_types != sym.info.generic_types {
+						concrete_types = sym.generic_types.clone()
+					}
+					if t_typ := g.table.convert_generic_type(typ, generic_names, concrete_types) {
 						return t_typ
 					}
 

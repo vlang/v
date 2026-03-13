@@ -80,7 +80,7 @@ mut:
 const is_interactive = false
 
 // Instantly updates CHANGELOG.md without confirming each line
-fn no_interactive(version string) {
+fn no_interactive(_version string) {
 }
 
 fn main() {

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/array_filter_fn_err.vv:19:16: notice: unused parameter: `b`
+   17 | }
+   18 | 
+   19 | fn fil1(a int, b int) bool {
+      |                ^
+   20 |     return a > 0
+   21 | }
 vlib/v/checker/tests/array_filter_fn_err.vv:2:28: error: function needs exactly 1 argument
     1 | fn main() {
     2 |     a1 := [1, 2, 3, 4].filter(fn (a int, b int) bool {

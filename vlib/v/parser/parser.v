@@ -2310,19 +2310,20 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			}
 		}
 		mcall_expr := ast.CallExpr{
-			left:              left
-			name:              field_name
-			kind:              p.call_kind(field_name)
-			args:              args
-			name_pos:          name_pos
-			pos:               pos
-			is_method:         true
-			concrete_types:    concrete_types
-			concrete_list_pos: concrete_list_pos
-			or_block:          or_block
-			scope:             p.scope
-			comments:          comments
-			is_return_used:    p.expecting_value
+			left:               left
+			name:               field_name
+			kind:               p.call_kind(field_name)
+			args:               args
+			name_pos:           name_pos
+			pos:                pos
+			is_method:          true
+			concrete_types:     concrete_types
+			raw_concrete_types: concrete_types
+			concrete_list_pos:  concrete_list_pos
+			or_block:           or_block
+			scope:              p.scope
+			comments:           comments
+			is_return_used:     p.expecting_value
 		}
 		return mcall_expr
 	}

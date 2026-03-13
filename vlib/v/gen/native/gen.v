@@ -1174,7 +1174,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	g.println('; to_string }')
 }
 
-fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config VarConfig) {
+fn (mut g Gen) gen_var_to_string(reg Register, _expr ast.Expr, var Var, config VarConfig) {
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {

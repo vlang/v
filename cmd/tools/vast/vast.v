@@ -2009,7 +2009,7 @@ fn (t Tree) node_error(expr ast.NodeError) &Node {
 	return obj
 }
 
-fn (t Tree) empty_expr(expr ast.EmptyExpr) &Node {
+fn (t Tree) empty_expr(_expr ast.EmptyExpr) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('EmptyExpr'))
 	// obj.add('x', t.number_node(expr.x))

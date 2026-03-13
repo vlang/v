@@ -12,9 +12,3 @@ vlib/v/checker/tests/array_of_sumtype_append_err.vv:14:9: error: cannot append `
       |            ~~~~~
    15 |     bar << produce_bar_a_array()
    16 | }
-vlib/v/checker/tests/array_of_sumtype_append_err.vv:15:9: error: cannot append `[]BarA` to `[]Bar`
-   13 |     bar << ['hey']
-   14 |     bar << 'hey'
-   15 |     bar << produce_bar_a_array()
-      |            ~~~~~~~~~~~~~~~~~~~~~
-   16 | }

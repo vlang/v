@@ -338,7 +338,7 @@ fn value_type_with_depth(t Type, depth int) Type {
 			if elem_type := t.elem_type {
 				return elem_type
 			}
-			return Type(t)
+			return Type(Channel{})
 		} // TODO: ?
 		Map {
 			return t.value_type
@@ -358,7 +358,7 @@ fn value_type_with_depth(t Type, depth int) Type {
 			if elem_type := t.elem_type {
 				return elem_type
 			}
-			return Type(t)
+			return Type(Thread{})
 		} // TODO: ?
 		OptionType, ResultType {
 			return value_type_with_depth(t.base_type, depth + 1)

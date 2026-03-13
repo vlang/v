@@ -13,7 +13,7 @@ import v.ast
 import v.util
 
 fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
-	if fmt == `p` || !typ.is_int_valptr() {
+	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
 		return false
 	}
 	if expr.is_auto_deref_var() {
@@ -418,6 +418,16 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				node_.expr_types << field_typ
 			} else {
 				node_.expr_types[i] = field_typ
+			}
+		}
+		if expr is ast.Ident && expr.obj is ast.Var && g.table.is_interface_smartcast(expr.obj)
+			&& field_typ.is_ptr() && !expr.obj.orig_type.is_ptr()
+			&& g.table.final_sym(expr.obj.orig_type).kind == .interface
+			&& g.table.final_sym(field_typ).kind != .interface {
+			field_typ = field_typ.deref()
+			node_.expr_types[i] = field_typ
+			if !node_.need_fmts[i] {
+				fmts[i] = g.get_default_fmt(field_typ, field_typ)
 			}
 		}
 	}
