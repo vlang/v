@@ -6,7 +6,6 @@ module arm64
 
 import os
 import time
-import crypto.sha256
 
 // Mach-O executable constants
 const mh_execute = 2
@@ -876,42 +875,19 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	sig << ident_bytes
 	sig << 0
 
-	// Write special slot hashes (slots -2, -1 in that order)
-	// Slot -2: Requirements hash (we'll compute it from our empty requirements blob)
-	// Slot -1: Info.plist hash (zeros for no Info.plist)
+	// Write placeholder hashes (all zeros). The external codesign tool
+	// will recompute all hashes, so we just need the correct structure/sizes.
+	// This avoids expensive pure-V SHA-256 computation (~1400 pages).
 
-	// First, create the requirements blob to hash it
+	// Special slot hashes (slots -2, -1) + code slot hashes + alignment padding
+	remaining := cd_blob_offset + cd_size_aligned - sig.len
+	sig << []u8{len: remaining}
+
+	// Write Requirements blob (empty)
 	mut req_blob := []u8{}
 	write_u32_be(mut req_blob, csmagic_requirements)
 	write_u32_be(mut req_blob, u32(req_size))
 	write_u32_be(mut req_blob, 0) // count = 0
-
-	// Slot -2: Hash of requirements blob
-	req_hash := sha256.sum(req_blob)
-	sig << req_hash
-
-	// Slot -1: Info.plist (zeros = no Info.plist)
-	for _ in 0 .. cs_hash_size {
-		sig << 0
-	}
-
-	// Compute and write page hashes (16KB pages)
-	for page := 0; page < n_pages; page++ {
-		start := page * cs_page_size_arm64
-		mut end := start + cs_page_size_arm64
-		if end > code_limit {
-			end = code_limit
-		}
-		hash := sha256.sum(l.buf[start..end])
-		sig << hash
-	}
-
-	// Pad CodeDirectory to alignment
-	for sig.len < cd_blob_offset + cd_size_aligned {
-		sig << 0
-	}
-
-	// Write Requirements blob
 	sig << req_blob
 
 	// Write empty CMS signature blob (for ad-hoc signing)
