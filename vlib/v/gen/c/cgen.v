@@ -4747,9 +4747,33 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
-	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	mut lhs_expr_type := node.expr_type
+	if node.expr is ast.Ident && node.expr.obj is ast.Var && (node.expr.obj.typ.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(node.expr.obj.typ))
+		&& !node.expr_type.has_flag(.generic) {
+		lhs_expr_type = g.unwrap_generic(node.expr.obj.typ)
+	}
+	if lhs_expr_type == 0 {
+		lhs_expr_type = node.expr_type
+	}
+	unwrapped_expr_type := g.unwrap_generic(lhs_expr_type)
 	sym := g.table.sym(unwrapped_expr_type)
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
+	resolved_selector_expr_type := if lhs_expr_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(lhs_expr_type) {
+		unwrapped_expr_type
+	} else {
+		lhs_expr_type
+	}
+	mut selector_embed_types := node.from_embed_types.clone()
+	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
+		direct_expr_field := g.table.find_field(sym, node.field_name) or { ast.StructField{} }
+		if direct_expr_field.name == '' {
+			if _, embed_types := g.table.find_field_from_embeds(sym, node.field_name) {
+				selector_embed_types = embed_types.clone()
+			}
+		}
+	}
 	is_as_cast := node.expr is ast.AsCast
 	if is_as_cast {
 		g.write('(')
@@ -4779,13 +4803,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 		}
 		g.expr(node.expr)
-		for i, embed in node.from_embed_types {
+		for i, embed in selector_embed_types {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
 			is_left_ptr := if i == 0 {
-				node.expr_type.is_ptr()
+				resolved_selector_expr_type.is_ptr()
 			} else {
-				node.from_embed_types[i - 1].is_ptr()
+				selector_embed_types[i - 1].is_ptr()
 			}
 			if is_left_ptr {
 				g.write('->')
@@ -4794,7 +4818,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 			g.write(embed_name)
 		}
-		if node.expr_type.is_ptr() && node.from_embed_types.len == 0 {
+		if resolved_selector_expr_type.is_ptr() && selector_embed_types.len == 0 {
 			g.write('->')
 		} else {
 			g.write('.')
@@ -5021,10 +5045,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	n_ptr := if is_interface_smartcast_selector
-		|| (is_interface_smartcast_expr && node.expr_type.nr_muls() > 1) {
+		|| (is_interface_smartcast_expr && resolved_selector_expr_type.nr_muls() > 1) {
 		0
 	} else {
-		node.expr_type.nr_muls() - 1
+		resolved_selector_expr_type.nr_muls() - 1
 	}
 	if n_ptr > 0 {
 		g.write2('(', '*'.repeat(n_ptr))
@@ -5049,7 +5073,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	// struct embedding
 	mut has_embed := false
 	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
-		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
+		if selector_embed_types.len > 0 {
+			has_embed = true
+			g.write_selector_expr_embed_name(node, selector_embed_types)
+		} else if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
 			if sym.info.embeds.len > 0 {
 				mut is_find := false
 				for arr_val in node.generic_from_embed_types {
@@ -5196,11 +5223,23 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 
 fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
 	is_shared := node.expr_type.has_flag(.shared_f)
+	mut lhs_expr_type := node.expr_type
+	if node.expr is ast.Ident && node.expr.obj is ast.Var && (node.expr.obj.typ.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(node.expr.obj.typ))
+		&& !node.expr_type.has_flag(.generic) {
+		lhs_expr_type = g.unwrap_generic(node.expr.obj.typ)
+	}
+	resolved_selector_expr_type := if lhs_expr_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(lhs_expr_type) {
+		g.unwrap_generic(lhs_expr_type)
+	} else {
+		lhs_expr_type
+	}
 	for i, embed in embed_types {
 		embed_sym := g.table.sym(embed)
 		embed_name := embed_sym.embed_name()
 		is_left_ptr := if i == 0 {
-			node.expr_type.is_ptr() && !is_shared
+			resolved_selector_expr_type.is_ptr() && !is_shared
 		} else {
 			embed_types[i - 1].is_ptr()
 		}
@@ -5998,6 +6037,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
+			if is_auto_heap && (node.obj.typ.has_flag(.generic)
+				|| g.type_has_unresolved_generic_parts(node.obj.typ)) {
+				resolved_obj_typ := g.unwrap_generic(node.obj.typ)
+				if resolved_obj_typ != 0 && !resolved_obj_typ.is_ptr() {
+					is_auto_heap = false
+				}
+			}
 			if is_auto_heap && !g.inside_assign_fn_var {
 				g.write('(*(')
 			}
