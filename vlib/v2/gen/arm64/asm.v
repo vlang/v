@@ -67,7 +67,7 @@ fn asm_add_reg(rd Reg, rn Reg, rm Reg) u32 {
 
 // add rd, rn, rm, lsl #3 (for GEP: index * 8)
 fn asm_add_reg_lsl3(rd Reg, rn Reg, rm Reg) u32 {
-	return 0x8B200C00 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
+	return 0x8B000C00 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
 }
 
 // sub rd, rn, #imm12

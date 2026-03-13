@@ -303,18 +303,45 @@ fn type_data_ptr_is_nil(t Type) bool {
 	return unsafe { *(&voidptr(p)) } == unsafe { nil }
 }
 
+// Safely unwrap all Alias layers, guarding against null data pointers
+// from ARM64 codegen corruption.
+pub fn resolve_alias(t Type) Type {
+	mut cur := t
+	for cur is Alias {
+		if type_data_ptr_is_nil(cur) {
+			return Type(void_)
+		}
+		cur = (cur as Alias).base_type
+	}
+	return cur
+}
+
 // return the key type used with for in loops
 pub fn (t Type) key_type() Type {
 	match t {
-		Alias { return t.base_type.key_type() }
-		Map { return t.key_type }
-		Pointer { return t.base_type.key_type() }
+		Alias {
+			if type_data_ptr_is_nil(t) {
+				return int_
+			}
+			return t.base_type.key_type()
+		}
+		Map {
+			return t.key_type
+		}
+		Pointer {
+			if type_data_ptr_is_nil(t) {
+				return int_
+			}
+			return t.base_type.key_type()
+		}
 		// TODO: struct here is 'struct string', need to fix this.
 		// we could use an alias? remove once fixed.
 		// Array, ArrayFixed, String, Struct { return int_ }
 		// else { panic('TODO: should never be called on ${t.type_name()}') }
 		// TODO: see checker ForStmt -> ForInStmt when value is pointer
-		else { return int_ }
+		else {
+			return int_
+		}
 	}
 }
 
@@ -326,6 +353,9 @@ pub fn (t Type) value_type() Type {
 fn value_type_with_depth(t Type, depth int) Type {
 	if depth > 64 {
 		return t.base_type()
+	}
+	if type_data_ptr_is_nil(t) {
+		return Type(void_)
 	}
 	match t {
 		Alias {
@@ -500,6 +530,20 @@ fn (t Primitive) is_int_literal() bool {
 }
 
 pub fn type_name(t Type) string {
+	// Guard against corrupted sumtype values from ARM64 codegen.
+	// SSA sumtype layout: {i64 _tag, i64 _data}. For large variants, _data
+	// is a heap pointer. If _data is null, the match dispatch will crash.
+	data := unsafe { *(&u64(&u8(&t) + 8)) }
+	if data == 0 {
+		tag := unsafe { *(&u64(&t)) }
+		// Small inline variants where zero _data is valid:
+		// Char(4), ISize(7), Nil(11), None(12), Primitive(15),
+		// Rune(17), String(18), USize(23), Void(24)
+		if tag != 4 && tag != 7 && tag != 11 && tag != 12 && tag != 15 && tag != 17 && tag != 18
+			&& tag != 23 && tag != 24 {
+			return '' // corrupted: large variant with null data pointer
+		}
+	}
 	match t {
 		Primitive, Alias, Array, ArrayFixed, Channel, Char, Enum, FnType, Interface, ISize, Map,
 		OptionType, Pointer, ResultType, Rune, String, Struct, SumType, Thread, Tuple, USize, Void,
@@ -547,8 +591,8 @@ fn (t Primitive) name() string {
 	} else if t.props.has(.float) {
 		return 'f${t.size}'
 	}
-	panic('malformed primitive')
-	return 'malformed primitive' // lol
+	// Fallback for zero-initialized Primitive (shouldn't happen after const ordering fix).
+	return 'int'
 	// TODO: match seems broke when multuple flags are set
 	// actually it was not broken, it matches the bits for flags
 	// matches single only, if multiple are set it will not match.

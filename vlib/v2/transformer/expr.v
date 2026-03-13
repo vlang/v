@@ -910,23 +910,38 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 			}
 		}
 
-		// Transform match expression to use _tag field
-		// IMPORTANT: Remove ALL smartcast contexts for this expression
-		// to prevent incorrect casting. We need to access the sum type's _tag,
-		// not the smartcast result's _tag.
-		mut removed_contexts := []SmartcastContext{}
-		for {
-			if existing_ctx := t.remove_smartcast_for_expr(smartcast_expr) {
-				removed_contexts << existing_ctx
+		// Transform match expression to use _tag field.
+		// For nested sum type matches (e.g., match o { Inner { match o { Small { ... } } } }),
+		// the expression is already smartcasted to the inner sum type. We must keep the
+		// smartcast so we access the INNER type's _tag, not the outer one.
+		// Only remove smartcast contexts when this is NOT a nested sum type match.
+		mut is_nested_sumtype_match := false
+		if ctx := t.find_smartcast_for_expr(smartcast_expr) {
+			if t.is_sum_type(ctx.variant) || t.is_sum_type(if ctx.variant.contains('__') {
+				ctx.variant.all_after_last('__')
 			} else {
-				break
+				ctx.variant
+			}) {
+				is_nested_sumtype_match = true
+			}
+		}
+		mut removed_contexts := []SmartcastContext{}
+		if !is_nested_sumtype_match {
+			for {
+				if existing_ctx := t.remove_smartcast_for_expr(smartcast_expr) {
+					removed_contexts << existing_ctx
+				} else {
+					break
+				}
 			}
 		}
 		transformed_match_expr := t.transform_expr(expr.expr)
-		// Re-add the contexts in reverse order (to preserve original order)
-		for i := removed_contexts.len - 1; i >= 0; i-- {
-			ctx := removed_contexts[i]
-			t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+		if !is_nested_sumtype_match {
+			// Re-add the contexts in reverse order (to preserve original order)
+			for i := removed_contexts.len - 1; i >= 0; i-- {
+				ctx := removed_contexts[i]
+				t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+			}
 		}
 		tag_access := t.synth_selector(transformed_match_expr, '_tag', types.Type(types.int_))
 

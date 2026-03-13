@@ -17,12 +17,26 @@ mut:
 	dfnum    []int   // DFS number (0 means unvisited)
 	ancestor []int   // DSU parent
 	label    []int   // DSU label (min semi in path)
+	idom     []int   // Immediate dominator (flat array, indexed by block ID)
+	dom_tree [][]int // Dom tree children (flat array, indexed by block ID)
 	n        int     // Counter
 }
 
-fn compute_dominators(mut m ssa.Module) {
-	// Pre-allocate context once and reuse for all functions
-	// Size based on total blocks since block IDs are indices into m.blocks
+// DFS frame for iterative lt_dfs
+struct DfsFrame {
+mut:
+	node     int
+	succ_idx int // next successor to process
+}
+
+// DomInfo holds dominator results in flat arrays to avoid struct field access issues
+struct DomInfo {
+mut:
+	idom     []int   // Immediate dominator, indexed by block ID
+	dom_tree [][]int // Dom tree children, indexed by block ID
+}
+
+fn compute_dominators(mut m ssa.Module, cfg &CfgData) DomInfo {
 	max_id := m.blocks.len
 
 	mut ctx := LTContext{
@@ -33,23 +47,30 @@ fn compute_dominators(mut m ssa.Module) {
 		dfnum:    []int{len: max_id, init: 0}
 		ancestor: []int{len: max_id, init: -1}
 		label:    []int{len: max_id, init: -1}
+		idom:     []int{len: max_id, init: -1}
+		dom_tree: [][]int{len: max_id}
 		n:        0
 	}
 
 	for fi in 0 .. m.funcs.len {
-		if m.funcs[fi].blocks.len == 0 {
+		func := m.funcs[fi]
+		if func.blocks.len == 0 {
 			continue
 		}
 
 		// Validate that all block IDs and their successor/predecessor
 		// references are within bounds.
 		mut valid := true
-		for blk_id in m.funcs[fi].blocks {
+		n_func_blocks := func.blocks.len
+		for fbi in 0 .. n_func_blocks {
+			blk_id := func.blocks[fbi]
 			if blk_id < 0 || blk_id >= max_id {
 				valid = false
 				break
 			}
-			for s in m.blocks[blk_id].succs {
+			n_succs := cfg.succs[blk_id].len
+			for si in 0 .. n_succs {
+				s := cfg.succs[blk_id][si]
 				if s < 0 || s >= max_id {
 					valid = false
 					break
@@ -58,7 +79,9 @@ fn compute_dominators(mut m ssa.Module) {
 			if !valid {
 				break
 			}
-			for p in m.blocks[blk_id].preds {
+			n_preds := cfg.preds[blk_id].len
+			for pi in 0 .. n_preds {
+				p := cfg.preds[blk_id][pi]
 				if p < 0 || p >= max_id {
 					valid = false
 					break
@@ -74,7 +97,8 @@ fn compute_dominators(mut m ssa.Module) {
 
 		// Reset context for this function (only reset what's needed)
 		ctx.n = 0
-		for blk_id in m.funcs[fi].blocks {
+		for fbi2 in 0 .. n_func_blocks {
+			blk_id := func.blocks[fbi2]
 			ctx.parent[blk_id] = -1
 			ctx.semi[blk_id] = blk_id
 			ctx.vertex[blk_id] = -1
@@ -82,12 +106,12 @@ fn compute_dominators(mut m ssa.Module) {
 			ctx.dfnum[blk_id] = 0
 			ctx.ancestor[blk_id] = -1
 			ctx.label[blk_id] = blk_id
-			// Initialize idom to -1
-			m.blocks[blk_id].idom = -1
+			ctx.idom[blk_id] = -1
+			ctx.dom_tree[blk_id] = []
 		}
 
-		entry := m.funcs[fi].blocks[0]
-		lt_dfs(mut m, entry, mut ctx)
+		entry := func.blocks[0]
+		lt_dfs(entry, cfg, mut ctx)
 
 		// Process in reverse DFS order (skip root)
 		for i := ctx.n; i >= 2; i-- {
@@ -95,24 +119,25 @@ fn compute_dominators(mut m ssa.Module) {
 				continue
 			}
 			w := ctx.vertex[i]
-			if w < 0 || w >= m.blocks.len {
+			if w < 0 || w >= max_id {
 				continue
 			}
 
-			// 1. Calculate Semidominator
-			for p in m.blocks[w].preds {
-				// Only process reachable predecessors
-				if p < 0 || p >= ctx.dfnum.len || ctx.dfnum[p] == 0 {
+			// 1. Calculate Semidominator - use cfg.preds instead of m.blocks[w].preds
+			n_w_preds := cfg.preds[w].len
+			for pi2 in 0 .. n_w_preds {
+				p := cfg.preds[w][pi2]
+				if p < 0 || p >= max_id || ctx.dfnum[p] == 0 {
 					continue
 				}
 
 				u := ctx.eval(p)
-				if u < 0 || u >= ctx.semi.len {
+				if u < 0 || u >= max_id {
 					continue
 				}
 				semi_u := ctx.semi[u]
 				semi_w := ctx.semi[w]
-				if semi_u < 0 || semi_u >= ctx.dfnum.len || semi_w < 0 || semi_w >= ctx.dfnum.len {
+				if semi_u < 0 || semi_u >= max_id || semi_w < 0 || semi_w >= max_id {
 					continue
 				}
 				if ctx.dfnum[semi_u] < ctx.dfnum[semi_w] {
@@ -122,7 +147,7 @@ fn compute_dominators(mut m ssa.Module) {
 
 			// Add w to bucket of its semidominator
 			semi_w2 := ctx.semi[w]
-			if semi_w2 >= 0 && semi_w2 < ctx.bucket.len {
+			if semi_w2 >= 0 && semi_w2 < max_id {
 				ctx.bucket[semi_w2] << w
 			}
 
@@ -131,24 +156,24 @@ fn compute_dominators(mut m ssa.Module) {
 
 			// 2. Implicitly compute IDom
 			parent_w := ctx.parent[w]
-			if parent_w < 0 || parent_w >= ctx.bucket.len {
+			if parent_w < 0 || parent_w >= max_id {
 				continue
 			}
 			// Drain bucket of parent
-			// Note: We copy to iterate because we might clear/modify?
-			// Standard algo drains bucket[parent_w] now.
-			for v in ctx.bucket[parent_w] {
-				if v < 0 || v >= m.blocks.len {
+			n_bucket := ctx.bucket[parent_w].len
+			for bvi in 0 .. n_bucket {
+				v := ctx.bucket[parent_w][bvi]
+				if v < 0 || v >= max_id {
 					continue
 				}
 				u := ctx.eval(v)
-				if u < 0 || u >= ctx.semi.len || v >= ctx.semi.len {
+				if u < 0 || u >= max_id || v >= max_id {
 					continue
 				}
 				if ctx.semi[u] == ctx.semi[v] {
-					m.blocks[v].idom = parent_w
+					ctx.idom[v] = parent_w
 				} else {
-					m.blocks[v].idom = u // Deferred: idom[v] = idom[u]
+					ctx.idom[v] = u // Deferred: idom[v] = idom[u]
 				}
 			}
 			ctx.bucket[parent_w].clear()
@@ -160,11 +185,11 @@ fn compute_dominators(mut m ssa.Module) {
 				continue
 			}
 			w := ctx.vertex[i]
-			if w < 0 || w >= m.blocks.len {
+			if w < 0 || w >= max_id {
 				continue
 			}
 			semi_w := ctx.semi[w]
-			if semi_w < 0 || semi_w >= ctx.dfnum.len {
+			if semi_w < 0 || semi_w >= max_id {
 				continue
 			}
 			dfnum_semi_w := ctx.dfnum[semi_w]
@@ -175,53 +200,86 @@ fn compute_dominators(mut m ssa.Module) {
 			if target < 0 {
 				continue
 			}
-			if m.blocks[w].idom != target {
-				idom_w := m.blocks[w].idom
-				if idom_w >= 0 && idom_w < m.blocks.len {
-					next_idom := m.blocks[idom_w].idom
+			if ctx.idom[w] != target {
+				idom_w := ctx.idom[w]
+				if idom_w >= 0 && idom_w < max_id {
+					next_idom := ctx.idom[idom_w]
 					if next_idom >= 0 {
-						m.blocks[w].idom = next_idom
+						ctx.idom[w] = next_idom
 					}
 				}
 			}
 		}
 
-		m.blocks[entry].idom = entry
+		ctx.idom[entry] = entry
 
 		// Build Dom Tree Children
-		for blk_id in m.funcs[fi].blocks {
-			m.blocks[blk_id].dom_tree = []
-		}
-		for blk_id in m.funcs[fi].blocks {
-			idom := m.blocks[blk_id].idom
+		for fbi4 in 0 .. n_func_blocks {
+			blk_id := func.blocks[fbi4]
+			idom := ctx.idom[blk_id]
 			if idom != -1 && idom != blk_id {
-				m.blocks[idom].dom_tree << blk_id
+				if idom >= 0 && idom < max_id {
+					ctx.dom_tree[idom] << blk_id
+				}
 			}
 		}
 	}
+
+	return DomInfo{
+		idom:     ctx.idom
+		dom_tree: ctx.dom_tree
+	}
 }
 
-fn lt_dfs(mut m ssa.Module, v int, mut ctx LTContext) {
-	if v < 0 || v >= ctx.dfnum.len {
+fn lt_dfs(root int, cfg &CfgData, mut ctx LTContext) {
+	if root < 0 || root >= ctx.dfnum.len {
 		return
 	}
+	n_total_blocks := cfg.succs.len
+
+	mut stack := []DfsFrame{}
+	// Visit root
 	ctx.n++
 	if ctx.n >= ctx.vertex.len {
 		return
 	}
-	ctx.dfnum[v] = ctx.n
-	ctx.vertex[ctx.n] = v
+	ctx.dfnum[root] = ctx.n
+	ctx.vertex[ctx.n] = root
 
-	if v >= m.blocks.len {
-		return
+	stack << DfsFrame{
+		node: root
 	}
-	for w in m.blocks[v].succs {
-		if w < 0 || w >= ctx.dfnum.len {
+
+	for stack.len > 0 {
+		top := stack.len - 1
+		node := stack[top].node
+		if node < 0 || node >= n_total_blocks {
+			stack.pop()
 			continue
 		}
-		if ctx.dfnum[w] == 0 {
-			ctx.parent[w] = v
-			lt_dfs(mut m, w, mut ctx)
+		// Use cfg.succs flat array instead of m.blocks[node].succs
+		n_succs := cfg.succs[node].len
+		si := stack[top].succ_idx
+		if si < n_succs {
+			// Avoid stack[top].succ_idx++ -- chained field increment broken in ARM64 self-hosted
+			mut frame := stack[top]
+			frame.succ_idx++
+			stack[top] = frame
+			w := cfg.succs[node][si]
+			if w >= 0 && w < ctx.dfnum.len && ctx.dfnum[w] == 0 {
+				ctx.parent[w] = node
+				ctx.n++
+				if ctx.n >= ctx.vertex.len {
+					return
+				}
+				ctx.dfnum[w] = ctx.n
+				ctx.vertex[ctx.n] = w
+				stack << DfsFrame{
+					node: w
+				}
+			}
+		} else {
+			stack.pop()
 		}
 	}
 }
@@ -230,42 +288,56 @@ fn (mut ctx LTContext) compress(v int) {
 	if v < 0 || v >= ctx.ancestor.len {
 		return
 	}
-	av := ctx.ancestor[v]
-	if av < 0 || av >= ctx.ancestor.len {
-		return
+	mut chain := []int{}
+	mut cur := v
+	for cur >= 0 && cur < ctx.ancestor.len {
+		av := ctx.ancestor[cur]
+		if av < 0 || av >= ctx.ancestor.len {
+			break
+		}
+		if ctx.ancestor[av] == -1 {
+			break
+		}
+		chain << cur
+		cur = av
 	}
-	if ctx.ancestor[av] != -1 {
-		ctx.compress(av)
-
-		// Update label based on ancestor
-		new_av := ctx.ancestor[v]
-		if new_av < 0 || new_av >= ctx.label.len || v >= ctx.label.len {
-			return
+	for ci := chain.len - 1; ci >= 0; ci-- {
+		node := chain[ci]
+		if node < 0 || node >= ctx.ancestor.len {
+			continue
 		}
-		label_av := ctx.label[new_av]
-		label_v := ctx.label[v]
-		if label_av < 0 || label_av >= ctx.semi.len || label_v < 0 || label_v >= ctx.semi.len {
-			return
+		anc := ctx.ancestor[node]
+		if anc < 0 || anc >= ctx.label.len || node >= ctx.label.len {
+			continue
 		}
-		semi_label_av := ctx.semi[label_av]
-		semi_label_v := ctx.semi[label_v]
-		if semi_label_av < 0 || semi_label_av >= ctx.dfnum.len || semi_label_v < 0
-			|| semi_label_v >= ctx.dfnum.len {
-			return
+		label_anc := ctx.label[anc]
+		label_node := ctx.label[node]
+		if label_anc < 0 || label_anc >= ctx.semi.len || label_node < 0
+			|| label_node >= ctx.semi.len {
+			continue
 		}
-		if ctx.dfnum[semi_label_av] < ctx.dfnum[semi_label_v] {
-			ctx.label[v] = ctx.label[new_av]
+		semi_label_anc := ctx.semi[label_anc]
+		semi_label_node := ctx.semi[label_node]
+		if semi_label_anc < 0 || semi_label_anc >= ctx.dfnum.len || semi_label_node < 0
+			|| semi_label_node >= ctx.dfnum.len {
+			continue
 		}
-		aav := ctx.ancestor[new_av]
+		if ctx.dfnum[semi_label_anc] < ctx.dfnum[semi_label_node] {
+			ctx.label[node] = ctx.label[anc]
+		}
+		aav := ctx.ancestor[anc]
 		if aav >= 0 {
-			ctx.ancestor[v] = aav
+			ctx.ancestor[node] = aav
 		}
 	}
 }
 
 fn (mut ctx LTContext) eval(v int) int {
 	if v < 0 || v >= ctx.ancestor.len {
-		return if v >= 0 && v < ctx.label.len { ctx.label[v] } else { 0 }
+		if v >= 0 && v < ctx.label.len {
+			return ctx.label[v]
+		}
+		return 0
 	}
 	if ctx.ancestor[v] == -1 {
 		return ctx.label[v]
@@ -273,7 +345,10 @@ fn (mut ctx LTContext) eval(v int) int {
 	ctx.compress(v)
 	av := ctx.ancestor[v]
 	if av < 0 || av >= ctx.label.len {
-		return if v < ctx.label.len { ctx.label[v] } else { 0 }
+		if v < ctx.label.len {
+			return ctx.label[v]
+		}
+		return 0
 	}
 	if v >= ctx.label.len {
 		return 0

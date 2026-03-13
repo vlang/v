@@ -209,6 +209,13 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(' };')
 					return
 				}
+				// `return err` propagates the error from the or-block
+				if expr is ast.Ident && expr.name == 'err' {
+					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+					g.expr(expr)
+					g.sb.writeln(' };')
+					return
+				}
 				value_type := g.result_value_type(g.cur_fn_ret_type)
 				if value_type in g.tuple_aliases && node.exprs.len > 1 {
 					field_types := g.tuple_aliases[value_type]

@@ -93,7 +93,10 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 		name:   unique_name
 		parent: func_id
 	}
-	m.funcs[func_id].blocks << id
+	// Avoid m.funcs[func_id].blocks << id -- chained broken in ARM64 self-hosted
+	mut f := m.funcs[func_id]
+	f.blocks << id
+	m.funcs[func_id] = f
 	return id
 }
 
@@ -108,6 +111,57 @@ pub fn (mut m Module) add_value_node(kind ValueKind, typ TypeID, name string, in
 		index: index
 	}
 	return id
+}
+
+// --- Helpers to avoid chained struct-array mutations (broken in ARM64 self-hosted) ---
+
+pub fn (mut m Module) func_add_param(func_id int, param_val ValueID) {
+	mut f := m.funcs[func_id]
+	f.params << param_val
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) func_set_c_extern(func_id int, val bool) {
+	mut f := m.funcs[func_id]
+	f.is_c_extern = val
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) func_clear_blocks(func_id int) {
+	mut f := m.funcs[func_id]
+	f.blocks.clear()
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) func_clear_params(func_id int) {
+	mut f := m.funcs[func_id]
+	f.params.clear()
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) func_set_params(func_id int, params []ValueID) {
+	mut f := m.funcs[func_id]
+	f.params = params
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) block_add_succ(from int, to int) {
+	mut blk := m.blocks[from]
+	blk.succs << to
+	m.blocks[from] = blk
+}
+
+pub fn (mut m Module) block_add_pred(to int, from int) {
+	mut blk := m.blocks[to]
+	blk.preds << from
+	m.blocks[to] = blk
+}
+
+pub fn (mut m Module) nop_instr(val_idx int) {
+	mut instr := m.instrs[val_idx]
+	instr.op = .bitcast
+	instr.operands = []
+	m.instrs[val_idx] = instr
 }
 
 // Get or create a constant value, reusing existing ones when possible.
@@ -141,13 +195,17 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 	// 2. Pass instr_idx to Value
 	val_id := m.add_value_node(.instruction, typ, 'v${m.values.len}', instr_idx)
 
-	// 3. Link Block
-	m.blocks[block].instrs << val_id
+	// 3. Link Block — read whole struct, modify, write back (chained broken in ARM64)
+	mut blk := m.blocks[block]
+	blk.instrs << val_id
+	m.blocks[block] = blk
 
-	// 4. Update Def-Use
+	// 4. Update Def-Use — same pattern
 	for op_id in operands {
 		if op_id < m.values.len {
-			m.values[op_id].uses << val_id
+			mut v := m.values[op_id]
+			v.uses << val_id
+			m.values[op_id] = v
 		}
 	}
 
@@ -225,15 +283,31 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 	m.instrs << instr
 	val_id := m.add_value_node(.instruction, typ, 'v${m.values.len}', instr_idx)
 
-	// Prepend to block instructions
-	m.blocks[block].instrs.prepend(val_id)
+	// Prepend to block instructions — read whole struct, modify, write back (chained broken in ARM64)
+	mut blk := m.blocks[block]
+	blk.instrs.prepend(val_id)
+	m.blocks[block] = blk
 
+	// Update Def-Use — same pattern
 	for op_id in operands {
 		if op_id < m.values.len {
-			m.values[op_id].uses << val_id
+			mut v := m.values[op_id]
+			v.uses << val_id
+			m.values[op_id] = v
 		}
 	}
 	return val_id
+}
+
+// append_phi_operands appends a (val, block_val) pair to a phi instruction's operands.
+// Append (val, block_val) pair to phi instruction operands.
+// Avoid m.instrs[idx].operands << x — chained append broken in ARM64 self-hosted.
+pub fn (mut m Module) append_phi_operands(instr_idx int, val int, block_val int) {
+	// Read whole struct, modify, write back (chained broken in ARM64)
+	mut instr := m.instrs[instr_idx]
+	instr.operands << val
+	instr.operands << block_val
+	m.instrs[instr_idx] = instr
 }
 
 pub fn (mut m Module) replace_uses(old_val int, new_val int) {
@@ -242,20 +316,29 @@ pub fn (mut m Module) replace_uses(old_val int, new_val int) {
 	for use_id in uses {
 		use_val := m.values[use_id]
 		if use_val.kind == .instruction {
+			// Read whole instr, modify operands, write back (chained broken in ARM64)
+			mut instr := m.instrs[use_val.index]
 			mut replaced := false
-			for i in 0 .. m.instrs[use_val.index].operands.len {
-				if m.instrs[use_val.index].operands[i] == old_val {
-					m.instrs[use_val.index].operands[i] = new_val
+			for i in 0 .. instr.operands.len {
+				if instr.operands[i] == old_val {
+					instr.operands[i] = new_val
 					replaced = true
 				}
 			}
+			if replaced {
+				m.instrs[use_val.index] = instr
+			}
 			// Only add to uses list once per user, even if used multiple times
 			if replaced && use_id !in m.values[new_val].uses {
-				m.values[new_val].uses << use_id
+				mut nv := m.values[new_val]
+				nv.uses << use_id
+				m.values[new_val] = nv
 			}
 		}
 	}
-	m.values[old_val].uses = []
+	mut ov := m.values[old_val]
+	ov.uses = []
+	m.values[old_val] = ov
 }
 
 fn dfs(mut m Module, blk int, mut visited map[int]bool, mut rpo []int) {

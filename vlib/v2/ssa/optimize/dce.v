@@ -58,7 +58,10 @@ fn dead_code_elimination(mut m ssa.Module) bool {
 							new_instrs << val_id
 						}
 					}
-					m.blocks[blk_id].instrs = new_instrs
+					// Avoid m.blocks[X].instrs = ... -- chained field assign broken in ARM64 self-hosted
+					mut dce_blk := m.blocks[blk_id]
+					dce_blk.instrs = new_instrs
+					m.blocks[blk_id] = dce_blk
 					changed = true
 					any_changed = true
 				}

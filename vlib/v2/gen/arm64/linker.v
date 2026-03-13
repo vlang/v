@@ -117,12 +117,29 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_erf', '_erfc', '_lgamma', '_tgamma',
 	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn',
 	// Memory protection and cache (hot code reloading)
-	'_mprotect', '_sys_icache_invalidate']
+	'_mprotect', '_sys_icache_invalidate',
+	// Objective-C runtime (from libobjc.A.dylib)
+	'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop',
+	// Metal framework
+	'_MTLCreateSystemDefaultDevice',
+	// Dynamic loading
+	'_dlopen', '_dlsym']
 
 // vfmt on
 
+// Symbols that live in libobjc.A.dylib (not libSystem).
+const objc_syms = ['_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop']
+
+// Symbols that live in Metal.framework.
+const metal_syms = ['_MTLCreateSystemDefaultDevice']
+
 pub struct Linker {
 	macho &MachOObject
+pub mut:
+	// Frameworks to link (e.g. ['Metal', 'Cocoa', 'QuartzCore'])
+	frameworks []string
 mut:
 	// Output buffer
 	buf []u8
@@ -150,6 +167,10 @@ mut:
 
 	// Symbol to GOT index mapping
 	sym_to_got map[string]int
+
+	// Multi-dylib support: dylib paths and per-symbol ordinal mapping
+	dylibs       []string       // ['/usr/lib/libSystem.B.dylib', '/usr/lib/libobjc.A.dylib', ...]
+	sym_to_dylib map[string]int // symbol name → index into dylibs[] (ordinal = idx + 1)
 
 	// Code start offset (after header + load commands)
 	code_start int
@@ -196,10 +217,54 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	l.got_size = l.extern_syms.len * 8
 	l.stubs_size = l.extern_syms.len * 12 // Each stub is 12 bytes on ARM64
 
+	// Build dylib list: libSystem always first, then libobjc + frameworks as needed.
+	l.dylibs = ['/usr/lib/libSystem.B.dylib']
+	// Map all existing symbols to libSystem (ordinal 0 = index into dylibs)
+	for sym_name in l.extern_syms {
+		l.sym_to_dylib[sym_name] = 0 // default: libSystem
+	}
+	// Check if any objc symbols are used → add libobjc
+	mut need_objc := false
+	for sym_name in l.extern_syms {
+		if sym_name in objc_syms {
+			need_objc = true
+			break
+		}
+	}
+	if need_objc {
+		objc_idx := l.dylibs.len
+		l.dylibs << '/usr/lib/libobjc.A.dylib'
+		for sym_name in l.extern_syms {
+			if sym_name in objc_syms {
+				l.sym_to_dylib[sym_name] = objc_idx
+			}
+		}
+	}
+	// Check if any framework symbols are used → add framework dylibs
+	for sym_name in l.extern_syms {
+		if sym_name in metal_syms {
+			if 'Metal' !in l.frameworks {
+				l.frameworks << 'Metal'
+			}
+		}
+	}
+	for fw in l.frameworks {
+		fw_idx := l.dylibs.len
+		l.dylibs << '/System/Library/Frameworks/${fw}.framework/${fw}'
+		// Map framework symbols to this dylib index
+		if fw == 'Metal' {
+			for sym_name in l.extern_syms {
+				if sym_name in metal_syms {
+					l.sym_to_dylib[sym_name] = fw_idx
+				}
+			}
+		}
+	}
+
 	// Calculate layout
 	// On macOS, __TEXT segment MUST start at fileoff 0
 	// The header and load commands are inside the __TEXT segment
-	n_load_cmds := 14 // Including LC_CODE_SIGNATURE
+	n_load_cmds := 13 + l.dylibs.len // 13 fixed commands + 1 LC_LOAD_DYLIB per dylib
 	pagezero_cmd_size := 72
 	text_cmd_size := 72 + (80 * 2) // __text + __stubs
 	data_cmd_size := 72 + (80 * 2) // __data + __got
@@ -208,7 +273,13 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	symtab_cmd_size := 24
 	dysymtab_cmd_size := 80
 	dylinker_cmd_size := 32
-	dylib_cmd_size := 56
+	// Each LC_LOAD_DYLIB: 24 bytes header + path padded to 8-byte alignment
+	mut dylib_cmd_size := 0
+	for dylib_path in l.dylibs {
+		path_len := dylib_path.len + 1 // +1 for null terminator
+		padded_path := (path_len + 7) & ~7
+		dylib_cmd_size += 24 + padded_path
+	}
 	main_cmd_size := 24
 	uuid_cmd_size := 24
 	build_version_cmd_size := 24
@@ -352,7 +423,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	l.write_symtab(symtab_off, n_syms, strtab_off, strtab_size)
 	l.write_dysymtab(n_syms)
 	l.write_load_dylinker()
-	l.write_load_dylib()
+	l.write_load_dylibs()
 
 	// Find entry point
 	entry_off := l.find_entry_offset(entry_name)
@@ -641,14 +712,19 @@ fn (mut l Linker) write_load_dylinker() {
 	write_string_fixed(mut l.buf, '/usr/lib/dyld', 20)
 }
 
-fn (mut l Linker) write_load_dylib() {
-	write_u32_le(mut l.buf, u32(lc_load_dylib))
-	write_u32_le(mut l.buf, 56)
-	write_u32_le(mut l.buf, 24) // offset to string
-	write_u32_le(mut l.buf, 0) // timestamp
-	write_u32_le(mut l.buf, 0x10000) // current version
-	write_u32_le(mut l.buf, 0x10000) // compatibility version
-	write_string_fixed(mut l.buf, '/usr/lib/libSystem.B.dylib', 32)
+fn (mut l Linker) write_load_dylibs() {
+	for dylib_path in l.dylibs {
+		path_len := dylib_path.len + 1 // +1 for null terminator
+		padded_path := (path_len + 7) & ~7
+		cmd_size := 24 + padded_path // header (24) + padded path
+		write_u32_le(mut l.buf, u32(lc_load_dylib))
+		write_u32_le(mut l.buf, u32(cmd_size))
+		write_u32_le(mut l.buf, 24) // offset to string (always 24 in header)
+		write_u32_le(mut l.buf, 0) // timestamp
+		write_u32_le(mut l.buf, 0x10000) // current version
+		write_u32_le(mut l.buf, 0x10000) // compatibility version
+		write_string_fixed(mut l.buf, dylib_path, padded_path)
+	}
 }
 
 fn (mut l Linker) write_main_cmd(entry_off int) {
@@ -872,8 +948,9 @@ fn (mut l Linker) generate_bind_info() []u8 {
 			bind_flags = bind_symbol_flags_weak_import
 		}
 
-		// Set dylib ordinal (1 = first dylib = libSystem)
-		info << (bind_opcode_set_dylib_ordinal_imm | 1)
+		// Set dylib ordinal (1-based: 1 = first dylib)
+		ordinal := u8((l.sym_to_dylib[sym_name] or { 0 }) + 1)
+		info << (bind_opcode_set_dylib_ordinal_imm | ordinal)
 
 		// Set symbol name
 		info << (bind_opcode_set_symbol_flags_imm | bind_flags)

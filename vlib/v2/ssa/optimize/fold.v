@@ -44,8 +44,11 @@ fn constant_fold(mut m ssa.Module) bool {
 							}
 							typ := m.values[val_id].typ
 							one_val := m.get_or_add_const(typ, '1')
-							m.instrs[m.values[val_id].index].op = .shl
-							m.instrs[m.values[val_id].index].operands = [other_id, one_val]
+							// Avoid m.instrs[X].field = ... -- chained field assign broken in ARM64 self-hosted
+							mut shl_instr := m.instrs[m.values[val_id].index]
+							shl_instr.op = .shl
+							shl_instr.operands = [other_id, one_val]
+							m.instrs[m.values[val_id].index] = shl_instr
 							changed = true
 							continue
 						} else if needs_zero {
@@ -201,8 +204,11 @@ fn branch_fold(mut m ssa.Module) bool {
 					cond_int := cond_val.name.i64()
 					// Replace with unconditional jump to the taken branch
 					target := if cond_int != 0 { term.operands[1] } else { term.operands[2] }
-					m.instrs[m.values[term_val_id].index].op = .jmp
-					m.instrs[m.values[term_val_id].index].operands = [target]
+					// Avoid m.instrs[X].field = ... -- chained field assign broken in ARM64 self-hosted
+					mut jmp_instr := m.instrs[m.values[term_val_id].index]
+					jmp_instr.op = .jmp
+					jmp_instr.operands = [target]
+					m.instrs[m.values[term_val_id].index] = jmp_instr
 					changed = true
 				}
 			}

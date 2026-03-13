@@ -8,21 +8,24 @@ import v2.pref
 import v2.builder
 
 fn main() {
-	args := os.args[1..]
+	compile_args, runtime_args := split_eval_runtime_args(os.args[1..])
 
 	// Check for 'ast' subcommand
-	if args.len > 0 && args[0] == 'ast' {
-		run_ast_command(args[1..])
+	if compile_args.len > 0 && compile_args[0] == 'ast' {
+		run_ast_command(compile_args[1..])
 		return
 	}
 
-	prefs := pref.new_preferences_from_args(args)
+	mut prefs := pref.new_preferences_from_args(compile_args)
 
-	files := get_files(args)
+	files := get_files(compile_args)
 	if files.len == 0 {
 		eprintln('At least 1 .v file expected')
 		exit(1)
 	}
+	mut eval_runtime_args := [files[0]]
+	eval_runtime_args << runtime_args
+	prefs.eval_runtime_args = eval_runtime_args
 
 	mut b := builder.new_builder(prefs)
 	b.build(files)
@@ -40,6 +43,15 @@ fn main() {
 			exit(ret)
 		}
 	}
+}
+
+fn split_eval_runtime_args(args []string) ([]string, []string) {
+	for i, arg in args {
+		if arg == '--' {
+			return args[..i], args[i + 1..]
+		}
+	}
+	return args, []string{}
 }
 
 fn run_ast_command(args []string) {
@@ -90,6 +102,9 @@ fn get_files(args []string) []string {
 	mut files := []string{}
 	mut skip_next := false
 	for arg in args {
+		if arg == '--' {
+			break
+		}
 		if skip_next {
 			skip_next = false
 			continue

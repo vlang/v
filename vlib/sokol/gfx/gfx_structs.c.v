@@ -171,8 +171,9 @@ pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element
 
 pub struct C.sg_stage_bindings {
 pub mut:
-	images   [12]Image
-	samplers [8]Sampler
+	images          [12]Image
+	samplers        [8]Sampler
+	storage_buffers [8]Buffer
 }
 
 pub type StageBindings = C.sg_stage_bindings

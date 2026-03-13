@@ -349,12 +349,30 @@ fn sanitized_utf8_str_visible_length_fn() string {
 
 fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) {
 	cc_start := sw.elapsed()
-	// Non-cached path: compile and link in one step, so include both compile and link flags.
-	mut all_flags := cc_flags
-	if cc_link_flags.len > 0 {
-		all_flags += ' ${cc_link_flags}'
+	if b.pref.is_shared_lib {
+		// Shared library: compile with -shared -fPIC -undefined dynamic_lookup
+		// Use -fvisibility=hidden so only explicitly exported (impl_live_*) symbols
+		// are visible. All other functions become hidden, causing the dylib to
+		// resolve them from the host executable at load time.
+		mut cc_cmd := '${cc} ${cc_flags} -shared -fPIC -fvisibility=hidden -undefined dynamic_lookup -w -Wno-incompatible-function-pointer-types "${staged_c_file}"'
+		if cc_link_flags.len > 0 {
+			cc_cmd += ' -x none ${cc_link_flags}'
+		}
+		cc_cmd += ' -o "${output_name}"${error_limit_flag}'
+		run_cc_cmd_or_exit(cc_cmd, 'shared lib compilation', b.pref.show_cc)
+		print_time('CC (shared)', time.Duration(sw.elapsed() - cc_start))
+		println('[*] Compiled shared library ${output_name}')
+		return
 	}
-	cc_cmd := '${cc} ${all_flags} -w "${staged_c_file}" -o "${output_name}"${error_limit_flag}'
+	// Non-cached path: compile and link in one step.
+	// Place link flags (which may include .o files) AFTER the source file.
+	// Use `-x none` to reset the language before .o files, since -x objective-c
+	// would cause cc to treat .o files as source code.
+	mut cc_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types "${staged_c_file}"'
+	if cc_link_flags.len > 0 {
+		cc_cmd += ' -x none ${cc_link_flags}'
+	}
+	cc_cmd += ' -o "${output_name}"${error_limit_flag}'
 	run_cc_cmd_or_exit(cc_cmd, 'C compilation', b.pref.show_cc)
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
@@ -924,7 +942,7 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 
 	cc_start := sw.elapsed()
 	main_obj := staged_main_obj_file
-	compile_main_cmd := '${main_cc} ${main_cc_flags} -w -c "${main_c_file}" -o "${main_obj}"${error_limit_flag}'
+	compile_main_cmd := '${main_cc} ${main_cc_flags} -w -Wno-incompatible-function-pointer-types -c "${main_c_file}" -o "${main_obj}"${error_limit_flag}'
 	main_fell_back := run_cc_cmd_or_exit(compile_main_cmd, 'C compilation', b.pref.show_cc)
 	if main_fell_back && main_cc.contains('tcc') {
 		// TCC failed on main.c but cached .o files are ELF (from TCC).
@@ -936,7 +954,11 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		}
 		return false
 	}
-	mut link_cmd := '${main_cc} ${main_cc_flags} -w "${main_obj}" "${builtin_obj}"'
+	// Strip -c and -x flags from link command since we're linking, not compiling.
+	// -x objective-c would cause cc to treat .o files as source code.
+	mut link_flags := main_cc_flags.replace('-x objective-c', '').replace('-x c', '').replace(' -c ',
+		' ')
+	mut link_cmd := '${main_cc} ${link_flags} -w "${main_obj}" "${builtin_obj}"'
 	if vlib_obj.len > 0 {
 		link_cmd += ' "${vlib_obj}"'
 	}
@@ -1070,7 +1092,7 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 	}
 	os.write_file(c_path, module_source)!
 
-	compile_cmd := '${cc} ${cc_flags} -w -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
+	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
@@ -1235,6 +1257,17 @@ fn flag_references_missing_file(flag string) bool {
 			|| clean.ends_with('.dylib') || clean.ends_with('.m') || clean.ends_with('.c') {
 			if os.is_abs_path(clean) || clean.starts_with('./') || clean.starts_with('../') {
 				if !os.exists(clean) {
+					// For .o files, try to build from corresponding .c file
+					if clean.ends_with('.o') {
+						c_file := clean[..clean.len - 2] + '.c'
+						if os.exists(c_file) {
+							compile_cmd := 'cc -c -w -O2 "${c_file}" -o "${clean}"'
+							res := os.execute(compile_cmd)
+							if res.exit_code == 0 {
+								continue // successfully compiled, not missing
+							}
+						}
+					}
 					return true
 				}
 			}
@@ -1479,10 +1512,52 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
-	ssa_optimize.optimize(mut mod)
+	if b.pref.no_optimize {
+		eprintln('  opt: skipped (-O0)')
+	} else {
+		ssa_optimize.optimize(mut mod)
+	}
 	print_time('SSA Optimize', time.Duration(native_sw.elapsed() - stage_start))
 	$if debug {
-		ssa_optimize.verify_and_panic(mod, 'full optimization')
+		if !b.pref.no_optimize {
+			ssa_optimize.verify_and_panic(mod, 'full optimization')
+		}
+	}
+
+	// Post-optimization SSA dump for debugging
+	dump_fn_name := os.getenv('V2_DUMP_OPT_SSA')
+	if dump_fn_name.len > 0 {
+		for func in mod.funcs {
+			if func.name == dump_fn_name {
+				eprintln('=== POST-OPT SSA DUMP: ${func.name} ===')
+				eprintln('  params: ${func.params}')
+				for pi, pid in func.params {
+					pval := mod.values[pid]
+					eprintln('  param[${pi}]: v${pid} kind=${pval.kind} name=`${pval.name}` typ=${pval.typ}')
+				}
+				for blk_id in func.blocks {
+					blk := mod.blocks[blk_id]
+					eprintln('  block ${blk_id} (${blk.name}):')
+					for dval_id in blk.instrs {
+						dval := mod.values[dval_id]
+						if dval.kind != .instruction {
+							continue
+						}
+						dinstr := mod.instrs[dval.index]
+						mut ops_str := ''
+						for oi, op_id in dinstr.operands {
+							op_v := mod.values[op_id]
+							ops_str += 'v${op_id}(${op_v.kind}:${op_v.name})'
+							if oi < dinstr.operands.len - 1 {
+								ops_str += ', '
+							}
+						}
+						eprintln('    v${dval_id}: ${dinstr.op} [${ops_str}] typ=${dval.typ}')
+					}
+				}
+				eprintln('=== END POST-OPT SSA DUMP ===')
+			}
+		}
 	}
 
 	stage_start = native_sw.elapsed()

@@ -201,6 +201,10 @@ fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, mut seen map
 }
 
 fn (mut g Gen) emit_deferred_m_includes() {
+	// Skip .m includes when compiling as shared library (avoids duplicate ObjC classes)
+	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
+		return
+	}
 	for line in g.deferred_m_includes {
 		g.sb.writeln(line)
 	}
@@ -531,6 +535,37 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 		g.sb.writeln('#define ${values_name} ((array){ .data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(${name}) })')
 	}
 	g.sb.writeln('')
+}
+
+// collect_force_emit_str_fns scans map_aliases and array_aliases to find which
+// str functions will be called from generated map/array str code, and adds them
+// to force_emit_fn_names so they get emitted even if mark_used didn't trace them.
+fn (mut g Gen) collect_force_emit_str_fns() {
+	if g.used_fn_keys.len == 0 {
+		return
+	}
+	for name, _ in g.map_aliases {
+		if '${name}_str' in g.fn_return_types {
+			continue // user-defined map str function
+		}
+		without_prefix := name.all_after('Map_')
+		_, value_type := g.parse_map_kv_types(without_prefix)
+		if value_type == '' {
+			continue
+		}
+		g.add_force_emit_str_fn(value_type)
+	}
+}
+
+fn (mut g Gen) add_force_emit_str_fn(type_name string) {
+	// Primitive types don't need force-emitting (already in builtin)
+	if type_name in ['string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
+		'f64', 'bool', 'rune', 'voidptr'] {
+		return
+	}
+	if str_fn := g.get_str_fn_for_type(type_name) {
+		g.force_emit_fn_names[str_fn] = true
+	}
 }
 
 // emit_map_str_functions generates Map_K_V_str functions for all map types.

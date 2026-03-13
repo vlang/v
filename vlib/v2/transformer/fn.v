@@ -559,9 +559,10 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		}
 	}
 
-	// Detect @[live] functions for hot code reloading (native backends only)
+	// Detect @[live] functions for hot code reloading
 	mut live_fn_detected := false
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+	if t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64 || t.pref.backend == .cleanc) {
 		if decl.attributes.has('live') {
 			mangled := if decl.is_method {
 				recv_name := t.get_receiver_type_name(decl.receiver.typ)
@@ -714,6 +715,11 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
+	// Resolve $d('key', default) comptime define calls to their default value.
+	// $d reads from compile-time environment; we just use the default.
+	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
+		return t.transform_expr(expr.args[1])
+	}
 	// Inline generic math functions (abs[T], min[T], max[T], maxof[T], minof[T]).
 	// Generic function declarations are not instantiated by the compiler, so these
 	// become unresolved symbols unless inlined here.
@@ -867,6 +873,13 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				str_fn_info := t.get_str_fn_info_for_expr(sel.lhs)
 				if str_fn_info.str_fn_name != '' {
 					t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
+					// Also register enum types so the generator produces
+					// the proper if-else variant chain instead of a struct stub.
+					if typ := t.get_expr_type(sel.lhs) {
+						if typ is types.Enum {
+							t.needed_enum_str_fns[str_fn_info.str_fn_name] = typ
+						}
+					}
 					return ast.CallExpr{
 						lhs:  ast.Ident{
 							name: str_fn_info.str_fn_name
@@ -972,6 +985,11 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				str_fn_info := t.get_str_fn_info_for_expr(arg)
 				if str_fn_info.str_fn_name != '' {
 					t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
+					if typ := t.get_expr_type(arg) {
+						if typ is types.Enum {
+							t.needed_enum_str_fns[str_fn_info.str_fn_name] = typ
+						}
+					}
 					mut str_call_args := []ast.Expr{cap: 1}
 					str_call_args << t.transform_expr(arg)
 					// Transform to println(Type_str(arg))
@@ -1999,6 +2017,11 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				if str_fn_info.str_fn_name != '' {
 					// Record needed str function for later generation
 					t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
+					if typ := t.get_expr_type(arg) {
+						if typ is types.Enum {
+							t.needed_enum_str_fns[str_fn_info.str_fn_name] = typ
+						}
+					}
 					mut str_call_args := []ast.Expr{cap: 1}
 					str_call_args << t.transform_expr(arg)
 					// Transform to println(Type_str(arg)) - use CallExpr for proper function call syntax

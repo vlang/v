@@ -81,6 +81,25 @@ fn (g &Gen) should_emit_fn_decl(module_name string, decl ast.FnDecl) bool {
 	if decl.name == 'init' || decl.name == 'deinit' {
 		return true
 	}
+	// Check if this function was force-requested by generated code (e.g. map str functions).
+	if g.force_emit_fn_names.len > 0 && decl.name == 'str' && decl.is_method {
+		// Build the C function name for method str: ReceiverType__str
+		recv_type_name := if decl.receiver.typ is ast.Ident {
+			decl.receiver.typ.name
+		} else {
+			''
+		}
+		if recv_type_name.len > 0 {
+			c_name := if module_name.len > 0 && module_name != 'builtin' && module_name != 'main' {
+				'${module_name}__${recv_type_name}__str'
+			} else {
+				'${recv_type_name}__str'
+			}
+			if c_name in g.force_emit_fn_names {
+				return true
+			}
+		}
+	}
 	key := markused.decl_key(module_name, decl, g.env)
 	return key in g.used_fn_keys
 }
@@ -274,6 +293,28 @@ fn (mut g Gen) collect_fn_signatures() {
 					if fn_name == '' {
 						continue
 					}
+					// If this function has an @[export] attribute, map the V-qualified
+					// name to the export name so call sites resolve correctly.
+					for attr in stmt.attributes {
+						if attr.name == 'export' {
+							if attr.value is ast.StringLiteral {
+								export_name := attr.value.value.trim('\'"')
+								if export_name.len > 0 {
+									// Compute what the V-qualified name would be without export.
+									v_name := sanitize_fn_ident(stmt.name)
+									v_qualified := if g.cur_module != '' && g.cur_module != 'main'
+										&& g.cur_module != 'builtin' {
+										'${g.cur_module}__${v_name}'
+									} else {
+										v_name
+									}
+									if v_qualified != export_name {
+										g.export_fn_names[v_qualified] = export_name
+									}
+								}
+							}
+						}
+					}
 					mut ret_type := if stmt.name == 'main' {
 						'int'
 					} else if stmt.typ.return_type !is ast.EmptyExpr {
@@ -349,6 +390,13 @@ fn (mut g Gen) emit_fixed_array_return_wrappers() {
 fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	if !g.should_emit_fn_decl(g.cur_module, node) {
 		return
+	}
+	// In shared library mode, only emit @[live] function bodies.
+	// All other functions are resolved from the host executable.
+	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
+		if !node.attributes.has('live') {
+			return
+		}
 	}
 	// Generate V and .c.v function bodies, but skip JS and C extern declarations.
 	if node.language == .js {
@@ -491,8 +539,15 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 		}
 	}
 
-	// Generate function header
-	g.gen_fn_head(node)
+	// Check for @[live] attribute
+	is_live_fn := node.name != 'main' && node.attributes.has('live')
+
+	// Generate function header (with impl_live_ prefix for @[live] functions)
+	if is_live_fn {
+		g.gen_fn_head_live(node, fn_name)
+	} else {
+		g.gen_fn_head(node)
+	}
 	g.sb.writeln(' {')
 	g.indent++
 
@@ -524,6 +579,11 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 				}
 			}
 		}
+	}
+	// Live reload: emit init call placeholder in main (will be defined by emit_live_reload_infrastructure)
+	if node.name == 'main' {
+		g.write_indent()
+		g.sb.writeln('__v_live_init();')
 	}
 	g.gen_stmts(node.stmts)
 
@@ -720,7 +780,95 @@ fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 	g.sb.write_string(')')
 }
 
+// gen_fn_head_live generates the function signature with `impl_live_` prefix for @[live]
+// functions, and records the function info for generating wrappers and dlsym binding.
+fn (mut g Gen) gen_fn_head_live(node ast.FnDecl, fn_name string) {
+	sig_param_types := g.fn_param_types[fn_name] or { []string{} }
+
+	mut c_ret := g.cur_fn_c_ret_type
+	is_void := c_ret == 'void'
+
+	// Build parameter list string and arg forwarding string
+	mut params_parts := []string{}
+	mut args_parts := []string{}
+	mut sig_idx := 0
+
+	// Receiver as first param for methods
+	if node.is_method && node.receiver.name != '' {
+		receiver_type := if sig_idx < sig_param_types.len {
+			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
+		} else if node.receiver.is_mut {
+			rt := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			if rt.ends_with('*') {
+				rt
+			} else {
+				rt + '*'
+			}
+		} else {
+			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+		}
+		params_parts << '${receiver_type} ${node.receiver.name}'
+		args_parts << node.receiver.name
+		sig_idx++
+	}
+
+	for param in node.typ.params {
+		t := if sig_idx < sig_param_types.len {
+			normalize_signature_type_name(sig_param_types[sig_idx], 'int')
+		} else if param.is_mut {
+			pt := normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
+			if pt.ends_with('*') {
+				pt
+			} else {
+				pt + '*'
+			}
+		} else {
+			normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
+		}
+		params_parts << '${t} ${param.name}'
+		args_parts << param.name
+		sig_idx++
+	}
+
+	params_str := params_parts.join(', ')
+	args_str := args_parts.join(', ')
+
+	// Record live function info for later wrapper generation
+	g.live_fns << LiveFnInfo{
+		c_name:   fn_name
+		ret_type: c_ret
+		params:   params_str
+		args:     args_str
+		is_void:  is_void
+	}
+	if g.cur_file_name.len > 0 {
+		g.live_source_file = os.real_path(g.cur_file_name)
+	}
+
+	// Write function signature: ret_type impl_live_FUNC(params)
+	// Mark with visibility("default") so it's exported from shared libraries
+	// even when -fvisibility=hidden is used.
+	g.sb.write_string('__attribute__((visibility("default"))) ')
+	g.sb.write_string(c_ret)
+	g.sb.write_string(' impl_live_')
+	g.sb.write_string(fn_name)
+	g.sb.write_string('(')
+	g.sb.write_string(params_str)
+	g.sb.write_string(')')
+}
+
 fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
+	// Check for @[export: 'name'] attribute — use the export name as the C symbol.
+	for attr in node.attributes {
+		if attr.name == 'export' {
+			if attr.value is ast.StringLiteral {
+				export_name := attr.value.value.trim('\'"')
+				if export_name.len > 0 {
+					return export_name
+				}
+			}
+		}
+	}
 	if node.name == 'main' {
 		return 'main'
 	}
@@ -2284,6 +2432,10 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	// when the call originates from a non-builtin module.
 	if c_name == 'panic' || c_name.ends_with('__panic') {
 		c_name = 'v_panic'
+	}
+	// Apply @[export] name mapping: V-qualified names → export C symbols.
+	if export_name := g.export_fn_names[c_name] {
+		c_name = export_name
 	}
 	g.sb.write_string('${c_name}(')
 	mut total_args := call_args.len

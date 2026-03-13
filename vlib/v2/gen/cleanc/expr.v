@@ -439,7 +439,7 @@ fn (mut g Gen) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 			if lhs.name in g.fn_param_is_ptr || lhs.name in g.fn_return_types {
 				return false
 			}
-			if g.is_type_name(lhs.name) {
+			if g.is_type_name(lhs.name) || g.is_c_type_name(lhs.name) {
 				return true
 			}
 			for mod in [g.cur_module, 'builtin'] {
@@ -463,7 +463,21 @@ fn (mut g Gen) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 			if lhs.lhs is ast.Ident {
 				mod_name := lhs.lhs.name
 				if mod_name == 'C' {
-					return g.is_c_type_name(lhs.rhs.name)
+					if g.is_c_type_name(lhs.rhs.name) {
+						return true
+					}
+					// Check if a C.Type is known as a struct/type in the environment
+					if g.is_type_name(lhs.rhs.name) || g.is_type_name('C__${lhs.rhs.name}') {
+						return true
+					}
+					// C types starting with uppercase that aren't known functions
+					// are likely type casts (e.g. C.FONScontext(ptr))
+					c_name := lhs.rhs.name
+					if c_name.len > 0 && c_name[0] >= `A` && c_name[0] <= `Z`
+						&& c_name !in g.fn_return_types && c_name !in g.fn_param_is_ptr {
+						return true
+					}
+					return false
 				}
 				qualified := '${mod_name}__${lhs.rhs.name}'
 				if qualified in g.fn_param_is_ptr || qualified in g.fn_return_types {
@@ -1492,11 +1506,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			lhs_expr := sel.lhs
 			rhs_name := sel.rhs.name
 			lhs_name := if lhs_expr is ast.Ident { sel.lhs.name() } else { '' }
-			if lhs_name == 'c' && rhs_name in ['a', 'r', 'g', 'b'] && g.cur_module == 'gg' {
-				eprintln('[debug-sel] c.${rhs_name} in ${g.cur_module}::${g.cur_fn_name}, is_known_var=${g.local_var_c_type_for_expr(lhs_expr) != none}, local_type=${g.get_local_var_c_type('c') or {
-					'NONE'
-				}}')
-			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if lhs_expr is ast.Ident {
 				if lhs_name == 'C' {
@@ -1680,7 +1689,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// module.const / module.var => module__const / module__var
 			if lhs_expr is ast.Ident {
 				lhs_ident := lhs_expr as ast.Ident
-				if g.is_module_ident(lhs_ident.name) {
+				is_local := g.local_var_c_type_for_expr(lhs_expr) != none
+				if g.is_module_ident(lhs_ident.name) && !is_local {
 					mod_name := g.resolve_module_name(lhs_ident.name)
 					if rhs_name.starts_with('${mod_name}__') {
 						g.sb.write_string(rhs_name)
@@ -1718,7 +1728,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			// Check if LHS is an enum type name -> emit EnumName__field
 			if lhs_expr is ast.Ident {
-				if g.is_enum_type(lhs_name) {
+				is_local_var := g.local_var_c_type_for_expr(lhs_expr) != none
+					|| lhs_name in g.cur_fn_mut_params
+				if !is_local_var && g.is_enum_type(lhs_name) {
 					enum_name := g.get_qualified_name(lhs_name)
 					g.sb.write_string('${enum_name}__${rhs_name}')
 				} else {

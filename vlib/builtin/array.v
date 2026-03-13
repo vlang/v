@@ -161,7 +161,10 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
 	panic_on_negative_len(len)
 	panic_on_negative_cap(cap)
-	cap_ := if cap < len { len } else { cap }
+	mut cap_ := cap
+	if cap < len {
+		cap_ = len
+	}
 	arr := array{
 		element_size: elm_size
 		data:         vcalloc(u64(cap_) * u64(elm_size))

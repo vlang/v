@@ -1,6 +1,7 @@
 module eval
 
 import os
+import v2.ast
 import v2.parser
 import v2.pref
 import v2.token
@@ -27,6 +28,10 @@ fn ensure_eval_backend_runner(vexe string) !string {
 }
 
 fn run_eval_backend(code string) !os.Result {
+	return run_eval_backend_with_args(code, []string{})
+}
+
+fn run_eval_backend_with_args(code string, extra_args []string) !os.Result {
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
 		return error('VEXE is not set')
@@ -39,7 +44,11 @@ fn run_eval_backend(code string) !os.Result {
 		os.rm(tmp_file) or {}
 	}
 	v2_exe := ensure_eval_backend_runner(vexe)!
-	return os.execute('${os.quoted_path(v2_exe)} -backend eval ${os.quoted_path(tmp_file)}')
+	mut cmd := '${os.quoted_path(v2_exe)} -backend eval ${os.quoted_path(tmp_file)}'
+	if extra_args.len > 0 {
+		cmd += ' -- ' + extra_args.map(os.quoted_path(it)).join(' ')
+	}
+	return os.execute(cmd)
 }
 
 fn test_eval_function_call_and_for_range() {
@@ -109,6 +118,21 @@ fn main() {
 		panic(res.output)
 	}
 	assert res.output.contains('7:9:2\n')
+}
+
+fn test_eval_runtime_args_follow_separator() {
+	res := run_eval_backend_with_args('
+import os
+
+fn main() {
+	println(os.args.join("|"))
+}
+',
+		['alpha', 'beta']) or { panic(err) }
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+	assert res.output.contains('sample.v|alpha|beta\n')
 }
 
 fn test_eval_transformed_nested_array_clone() {
@@ -372,6 +396,118 @@ fn test_eval_type_sum_data_is_nil() {
 	})
 }
 
+fn test_eval_zero_value_for_sumtype_data_field() {
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(&prefs)
+	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
+	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(dummy_main) or {}
+	}
+	mut files_to_parse := ast_files.clone()
+	files_to_parse << dummy_main
+	files := par.parse_files(files_to_parse, mut file_set)
+	mut e := create()
+	e.register_files(files) or { panic(err) }
+	value := e.zero_value_for_sumtype_data_field('ast.Expr._data', '_ArrayInitExpr') or {
+		panic('missing sumtype data field zero value')
+	}
+	assert value is StructValue
+	assert (value as StructValue).type_name == 'ast.ArrayInitExpr'
+}
+
+fn test_eval_selector_on_sumtype_data_void_field_returns_zero_value() {
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(&prefs)
+	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
+	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(dummy_main) or {}
+	}
+	mut files_to_parse := ast_files.clone()
+	files_to_parse << dummy_main
+	files := par.parse_files(files_to_parse, mut file_set)
+	mut e := create()
+	e.register_files(files) or { panic(err) }
+	e.open_scope()
+	defer {
+		e.close_scope() or { panic(err) }
+	}
+	e.declare_var('data', StructValue{
+		type_name: 'ast.Expr._data'
+		fields:    {
+			'_ArrayInitExpr': Value(void_value())
+		}
+	})
+	data_ident := ast.Ident{
+		name: 'data'
+	}
+	data_lhs := ast.Expr(data_ident)
+	data_rhs := ast.Ident{
+		name: '_ArrayInitExpr'
+	}
+	data_selector := ast.SelectorExpr{
+		lhs: data_lhs
+		rhs: data_rhs
+	}
+	value := e.eval_selector_expr(data_selector) or { panic(err) }
+	assert value is StructValue
+	array_init := value as StructValue
+	assert array_init.type_name == 'ast.ArrayInitExpr'
+	assert 'exprs' in array_init.fields
+	assert array_init.fields['exprs'] or { panic('missing exprs field') } is ArrayValue
+}
+
+fn test_eval_selector_on_sumtype_wrapper_variant_field_returns_zero_value() {
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(&prefs)
+	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
+	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(dummy_main) or {}
+	}
+	mut files_to_parse := ast_files.clone()
+	files_to_parse << dummy_main
+	files := par.parse_files(files_to_parse, mut file_set)
+	mut e := create()
+	e.register_files(files) or { panic(err) }
+	info := e.sum_type_info('ast.Expr') or { panic('missing ast.Expr sum type info') }
+	ident_tag := e.lookup_sumtype_variant_tag(info, 'ast.Ident') or {
+		panic('missing ast.Ident sumtype tag')
+	}
+	expr_value := e.build_sumtype_wrapper('ast.Expr', info, ident_tag, StructValue{
+		type_name: 'ast.Ident'
+		fields:    {
+			'name': Value('')
+		}
+	})
+	e.open_scope()
+	defer {
+		e.close_scope() or { panic(err) }
+	}
+	e.declare_var('expr', expr_value)
+	expr_ident := ast.Ident{
+		name: 'expr'
+	}
+	expr_lhs := ast.Expr(expr_ident)
+	expr_rhs := ast.Ident{
+		name: '_ArrayInitExpr'
+	}
+	expr_selector := ast.SelectorExpr{
+		lhs: expr_lhs
+		rhs: expr_rhs
+	}
+	value := e.eval_selector_expr(expr_selector) or { panic(err) }
+	assert value is StructValue
+	assert (value as StructValue).type_name == 'ast.ArrayInitExpr'
+}
+
 fn test_eval_lookup_parent_through_parent_scope() {
 	res := run_eval_backend("
 import v2.types
@@ -511,6 +647,52 @@ fn main() {
 		panic(res.output)
 	}
 	assert res.output.contains('int\nint\n')
+}
+
+fn test_eval_transformed_object_module_roundtrip_keeps_wrapper() {
+	res := run_eval_backend("
+import v2.types
+
+fn id(obj types.Object) types.Object {
+	return obj
+}
+
+fn main() {
+	mut mod_scope := types.new_scope(unsafe { nil })
+	mod_scope.insert('File', types.Object(types.Struct{
+		name: 'File'
+	}))
+	obj := types.Object(types.Module{
+		name:  'ast'
+		scope: mod_scope
+	})
+	println(obj.type_name())
+	println(id(obj).type_name())
+	mut arr := []types.Object{}
+	arr << obj
+	println(arr[0].type_name())
+	mut m := map[string]types.Object{}
+	m['ast'] = obj
+	println(m['ast'].type_name())
+	if got := m['ast'] {
+		println(got.type_name())
+		if got is types.Module {
+			println(got.name)
+			if file_obj := got.scope.lookup_parent('File', 0) {
+				println(file_obj.type_name())
+				println(file_obj.typ().name())
+			}
+		}
+	}
+}
+	") or {
+		panic(err)
+	}
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+	assert res.output.contains('types.Module\ntypes.Module\ntypes.Module\ntypes.Module\ntypes.Module\n')
+	assert res.output.contains('ast\ntypes.Type\nFile\n')
 }
 
 fn test_eval_transformed_array_parameter_keeps_array_shape() {

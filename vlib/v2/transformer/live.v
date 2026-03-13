@@ -3,17 +3,20 @@
 // that can be found in the LICENSE file.
 module transformer
 
+import os
 import v2.ast
 
 // inject_live_reload generates hot code reloading infrastructure for @[live] functions.
 //
-// Approach: function pointer indirection with global state (not branch patching, which
-// fails on macOS Apple Silicon because mprotect cannot make kernel-loaded code pages writable).
+// Approach: function pointer indirection with direct memory patching.
+// @[live] functions are recompiled via `v2 -backend arm64 -hot-fn` which extracts
+// raw machine code. The code is read into an mmap'd executable page and the
+// global function pointer is updated to point at it.
 //
 // Supports multiple @[live] functions (including methods) across different callers.
 //
-// 1. Injects GlobalDecl for function pointers, code pages, and mtime tracking
-// 2. Adds initialization code to main() (mmap code pages, init pointers, read initial mtime)
+// 1. Injects GlobalDecl for function pointers, code page, and mtime tracking
+// 2. Adds initialization code to main() (mmap code page, init pointers, read initial mtime)
 // 3. Replaces calls to @[live] functions with indirect calls through global pointers
 // 4. Injects reload checks at the top of for-loop bodies in ALL functions
 fn (mut t Transformer) inject_live_reload(mut files []ast.File) {
@@ -21,7 +24,9 @@ fn (mut t Transformer) inject_live_reload(mut files []ast.File) {
 		return
 	}
 
-	source_file := t.live_source_file
+	// Resolve source file to absolute path so the reload command works
+	// regardless of the binary's working directory.
+	source_file := os.real_path(t.live_source_file)
 
 	// Build C extern function declarations
 	c_decls := build_live_c_decls()
@@ -35,9 +40,8 @@ fn (mut t Transformer) inject_live_reload(mut files []ast.File) {
 	// Build reload-check statements for for-loop bodies
 	check_stmts := t.build_live_check(source_file)
 
-	// Find the user file that contains the @[live] functions and main()
+	// Find the user file that contains main()
 	for i, file in files {
-		// Only process the file that contains main()
 		mut has_main := false
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && !stmt.is_method && stmt.name == 'main' {
@@ -199,16 +203,12 @@ fn (t &Transformer) rewrite_live_call_in_stmt_b(stmt ast.Stmt) (ast.Stmt, bool) 
 
 // rewrite_live_call_in_expr checks if an expression is a call to a @[live] function
 // and if so, replaces it with an indirect call through the global pointer.
-// Handles both regular calls (fn_name(args)) and method calls (obj.method(args)).
-// Returns the expression and whether it was rewritten.
 fn (t &Transformer) rewrite_live_call_in_expr(expr ast.Expr) (ast.Expr, bool) {
 	if expr is ast.CallExpr {
 		// Check regular function calls: fn_name(args)
 		if expr.lhs is ast.Ident {
 			for lf in t.live_fns {
 				if !lf.is_method && expr.lhs.name == lf.decl_name {
-					// Replace fn_name(args) with __live_<mangled>(args)
-					// Transform mut args to &args since call_indirect has no fn signature
 					return ast.Expr(ast.CallExpr{
 						lhs:  mk_ident('__live_${lf.mangled_name}')
 						args: transform_mut_args(expr.args)
@@ -220,8 +220,6 @@ fn (t &Transformer) rewrite_live_call_in_expr(expr ast.Expr) (ast.Expr, bool) {
 		if expr.lhs is ast.SelectorExpr {
 			for lf in t.live_fns {
 				if lf.is_method && expr.lhs.rhs.name == lf.decl_name {
-					// Replace obj.method(args) with __live_<mangled>(obj, args)
-					// The receiver becomes the first explicit argument
 					mut new_args := []ast.Expr{cap: 1 + expr.args.len}
 					new_args << ast.Expr(ast.PrefixExpr{
 						op:   .amp
@@ -250,14 +248,11 @@ fn (t &Transformer) rewrite_live_call_in_expr(expr ast.Expr) (ast.Expr, bool) {
 }
 
 // transform_mut_args strips `mut` modifiers from arguments so that call_indirect
-// (which has no function signature) passes the value directly. For @[live] functions
-// with mut params, the value is typically already a pointer (e.g., &Game), so
-// passing it without the mut modifier correctly avoids double-indirection.
+// (which has no function signature) passes the value directly.
 fn transform_mut_args(args []ast.Expr) []ast.Expr {
 	mut result := []ast.Expr{cap: args.len}
 	for arg in args {
 		if arg is ast.ModifierExpr && arg.kind == .key_mut {
-			// mut x → x (strip mut, pass value directly — it's already a pointer)
 			result << arg.expr
 		} else {
 			result << arg
@@ -267,53 +262,50 @@ fn transform_mut_args(args []ast.Expr) []ast.Expr {
 }
 
 // build_live_globals generates GlobalDecl statements for live reload state.
-// These are module-level mutable globals accessible from any function.
 fn (t &Transformer) build_live_globals() []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 
 	// __global __live_mtime : i64
 	stmts << mk_global_decl('__live_mtime', 'i64')
 
-	// __global __live_page_size : i64
-	stmts << mk_global_decl('__live_page_size', 'i64')
+	// __global __live_code_page : voidptr  (mmap'd RWX page for hot code)
+	stmts << mk_global_decl('__live_code_page', 'voidptr')
 
-	// Per live function: global function pointer and code page
+	// __global __live_code_offset : i64  (current write offset into code page)
+	stmts << mk_global_decl('__live_code_offset', 'i64')
+
+	// Per live function: global function pointer
 	for lf in t.live_fns {
-		// __global __live_<mangled> : voidptr
 		stmts << mk_global_decl('__live_${lf.mangled_name}', 'voidptr')
-		// __global __live_page_<mangled> : voidptr
-		stmts << mk_global_decl('__live_page_${lf.mangled_name}', 'voidptr')
 	}
 
 	return stmts
 }
 
 // build_live_preamble generates the statements prepended to main() body.
-// Initializes code pages, function pointers, and reads initial source file mtime.
+// mmap a code page, init function pointers, read initial source file mtime.
 fn (t &Transformer) build_live_preamble(source_file string) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 
-	// __live_page_size = i64(0x4000)
-	stmts << mk_assign('__live_page_size', mk_cast('i64', mk_int('0x4000')))
-
-	// Per live function: allocate code page and init function pointer
+	// Per live function: init function pointer to original function address
 	for lf in t.live_fns {
-		// __live_page_<mangled> = C.mmap(nil, usize(__live_page_size), 3, 0x1802, -1, 0)
-		stmts << mk_assign('__live_page_${lf.mangled_name}', mk_call('C.mmap', [
-			mk_unsafe_nil(),
-			mk_cast('usize', mk_ident('__live_page_size')),
-			mk_int('3'),
-			mk_int('0x1802'),
-			mk_neg_one(),
-			mk_int('0'),
-		]))
-
-		// __live_<mangled> = voidptr(&fn_name) or voidptr(&RecvType__method)
+		// __live_<mangled> = voidptr(&fn_name)
 		stmts << mk_assign('__live_${lf.mangled_name}', mk_cast('voidptr', ast.Expr(ast.PrefixExpr{
 			op:   .amp
 			expr: mk_ident(lf.mangled_name)
 		})))
 	}
+
+	// __live_code_page = C.mmap(nil, 0x4000, 3, 0x1802, -1, 0)
+	// PROT_READ|PROT_WRITE=3, MAP_ANON|MAP_PRIVATE|MAP_JIT=0x1802
+	stmts << mk_assign('__live_code_page', mk_call('C.mmap', [
+		mk_unsafe_nil(),
+		mk_hex('0x4000'),
+		mk_int('3'),
+		mk_hex('0x1802'),
+		mk_neg_one(),
+		mk_int('0'),
+	]))
 
 	// mut __live_sb := [144]u8{}
 	stmts << mk_decl_assign('__live_sb', mk_fixed_array_init('144', 'u8'))
@@ -327,7 +319,8 @@ fn (t &Transformer) build_live_preamble(source_file string) []ast.Stmt {
 }
 
 // build_live_check generates the reload-check statements injected at the top
-// of for-loop bodies. Checks if source file changed and reloads all @[live] functions.
+// of for-loop bodies. Checks if source file changed, recompiles each @[live]
+// function to raw machine code, reads it into the code page, and updates the pointer.
 fn (t &Transformer) build_live_check(source_file string) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 
@@ -347,25 +340,7 @@ fn (t &Transformer) build_live_check(source_file string) []ast.Stmt {
 	])
 
 	// Inner: __live_nm := unsafe { *(&i64(&__live_ns[48])) }
-	mtime_read := mk_decl_assign('__live_nm', ast.Expr(ast.UnsafeExpr{
-		stmts: [
-			ast.Stmt(ast.ExprStmt{
-				expr: ast.Expr(ast.PrefixExpr{
-					op:   .mul
-					expr: ast.Expr(ast.PrefixExpr{
-						op:   .amp
-						expr: mk_cast('i64', ast.Expr(ast.PrefixExpr{
-							op:   .amp
-							expr: ast.Expr(ast.IndexExpr{
-								lhs:  mk_ident('__live_ns')
-								expr: mk_int('48')
-							})
-						}))
-					})
-				})
-			}),
-		]
-	}))
+	mtime_read := mk_decl_assign('__live_nm', mk_unsafe_deref_i64('__live_ns', '48'))
 
 	// if __live_nm > __live_mtime { ... reload all live functions ... }
 	mut reload_body := []ast.Stmt{}
@@ -382,9 +357,121 @@ fn (t &Transformer) build_live_check(source_file string) []ast.Stmt {
 	reload_body << mk_call_stmt('C.printf', [mk_cstring('[live] reloading...\\n')])
 	reload_body << mk_call_stmt('C.fflush', [mk_unsafe_nil()])
 
-	// For each live function: recompile and load
+	// Resolve v2 binary path
+	v2_path := if t.pref != unsafe { nil } && t.pref.vroot.len > 0 {
+		t.pref.vroot + '/cmd/v2/v2'
+	} else {
+		'./v2'
+	}
+
+	// For each @[live] function: recompile, fread, patch
 	for lf in t.live_fns {
-		reload_body << t.build_live_reload_one(lf, source_file)
+		bin_path := '/tmp/_hot_${lf.mangled_name}.bin'
+		compile_cmd := '${v2_path} -backend arm64 -nocache -hot-fn ${lf.mangled_name} -o ${bin_path} ${source_file} >/dev/null 2>&1'
+
+		// C.system(c'v2 -backend arm64 -nocache -hot-fn <name> -o /tmp/_hot_<name>.bin source.v ...')
+		reload_body << mk_call_stmt('C.system', [mk_cstring(compile_cmd)])
+
+		// __live_f := C.fopen(c'/tmp/_hot_<name>.bin', c'rb')
+		f_var := '__live_f_${lf.mangled_name}'
+		reload_body << mk_decl_assign(f_var, mk_call('C.fopen', [
+			mk_cstring(bin_path),
+			mk_cstring('rb'),
+		]))
+
+		// if __live_f != nil { ... read code, patch pointer ... }
+		mut patch_body := []ast.Stmt{}
+
+		// C.fseek(f, 0, 2)  -- SEEK_END
+		patch_body << mk_call_stmt('C.fseek', [mk_ident(f_var),
+			mk_int('0'), mk_int('2')])
+
+		// __live_sz := int(C.ftell(f))
+		sz_var := '__live_sz_${lf.mangled_name}'
+		patch_body << mk_decl_assign(sz_var, mk_cast('int', mk_call('C.ftell', [
+			mk_ident(f_var),
+		])))
+
+		// C.fseek(f, 0, 0)  -- SEEK_SET
+		patch_body << mk_call_stmt('C.fseek', [mk_ident(f_var),
+			mk_int('0'), mk_int('0')])
+
+		// __live_dest := voidptr(u64(__live_code_page) + u64(__live_code_offset))
+		dest_var := '__live_dest_${lf.mangled_name}'
+		patch_body << mk_decl_assign(dest_var, mk_cast('voidptr', ast.Expr(ast.InfixExpr{
+			op:  .plus
+			lhs: mk_cast('u64', mk_ident('__live_code_page'))
+			rhs: mk_cast('u64', mk_ident('__live_code_offset'))
+		})))
+
+		// C.mprotect(__live_code_page, 0x4000, 3)  -- PROT_READ|PROT_WRITE
+		patch_body << mk_call_stmt('C.mprotect', [
+			mk_ident('__live_code_page'),
+			mk_hex('0x4000'),
+			mk_int('3'),
+		])
+
+		// C.fread(__live_dest, 1, usize(__live_sz), f)
+		patch_body << mk_call_stmt('C.fread', [
+			mk_ident(dest_var),
+			mk_int('1'),
+			mk_cast('usize', mk_ident(sz_var)),
+			mk_ident(f_var),
+		])
+
+		// C.fclose(f)
+		patch_body << mk_call_stmt('C.fclose', [mk_ident(f_var)])
+
+		// C.mprotect(__live_code_page, 0x4000, 5)  -- PROT_READ|PROT_EXEC
+		patch_body << mk_call_stmt('C.mprotect', [
+			mk_ident('__live_code_page'),
+			mk_hex('0x4000'),
+			mk_int('5'),
+		])
+
+		// C.sys_icache_invalidate(__live_code_page, 0x4000)
+		patch_body << mk_call_stmt('C.sys_icache_invalidate', [
+			mk_ident('__live_code_page'),
+			mk_hex('0x4000'),
+		])
+
+		// __live_<name> = __live_dest
+		patch_body << mk_assign('__live_${lf.mangled_name}', mk_ident(dest_var))
+
+		// __live_code_offset = __live_code_offset + i64(__live_sz)
+		// Align to 16 bytes: offset = (offset + sz + 15) & ~15
+		patch_body << mk_assign('__live_code_offset', ast.Expr(ast.InfixExpr{
+			op:  .amp
+			lhs: ast.Expr(ast.InfixExpr{
+				op:  .plus
+				lhs: ast.Expr(ast.InfixExpr{
+					op:  .plus
+					lhs: mk_ident('__live_code_offset')
+					rhs: mk_cast('i64', mk_ident(sz_var))
+				})
+				rhs: mk_int('15')
+			})
+			rhs: mk_neg('16')
+		}))
+
+		// C.printf(c'[live] patched %s (%d bytes)\n', c'<name>', __live_sz)
+		patch_body << mk_call_stmt('C.printf', [
+			mk_cstring('[live] patched %s (%d bytes)\\n'),
+			mk_cstring(lf.mangled_name),
+			mk_ident(sz_var),
+		])
+
+		// if __live_f != nil { ...patch_body... }
+		reload_body << ast.Stmt(ast.ExprStmt{
+			expr: ast.IfExpr{
+				cond:  ast.Expr(ast.InfixExpr{
+					op:  .ne
+					lhs: mk_ident(f_var)
+					rhs: mk_unsafe_nil()
+				})
+				stmts: patch_body
+			}
+		})
 	}
 
 	// __live_t1 := C.clock_gettime_nsec_np(4)
@@ -403,9 +490,9 @@ fn (t &Transformer) build_live_check(source_file string) []ast.Stmt {
 		rhs: mk_int('1000000')
 	}))
 
-	// C.printf(c'[live] patched! (%lldms)\n', __live_ms)
+	// C.printf(c'[live] done (%lldms)\n', __live_ms)
 	reload_body << mk_call_stmt('C.printf', [
-		mk_cstring('[live] patched! (%lldms)\\n'),
+		mk_cstring('[live] done (%lldms)\\n'),
 		mk_ident('__live_ms'),
 	])
 	reload_body << mk_call_stmt('C.fflush', [mk_unsafe_nil()])
@@ -437,103 +524,6 @@ fn (t &Transformer) build_live_check(source_file string) []ast.Stmt {
 	return stmts
 }
 
-// build_live_reload_one generates statements to recompile and load one @[live] function.
-fn (t &Transformer) build_live_reload_one(lf LiveFn, source_file string) ast.Stmt {
-	mut load_stmts := []ast.Stmt{}
-
-	// C.system(c'./v2 -backend arm64 -gc none -nocache -hot-fn <mangled> -o /tmp/_live_<mangled>.bin <source> >/dev/null 2>&1')
-	compile_cmd := './v2 -backend arm64 -gc none -nocache -hot-fn ${lf.mangled_name} -o /tmp/_live_${lf.mangled_name}.bin ${source_file} >/dev/null 2>&1'
-	load_stmts << mk_call_stmt('C.system', [mk_cstring(compile_cmd)])
-
-	// __live_lf := C.fopen(c'/tmp/_live_<mangled>.bin', c'rb')
-	bin_path := '/tmp/_live_${lf.mangled_name}.bin'
-	load_stmts << mk_decl_assign('__live_lf_${lf.mangled_name}', mk_call('C.fopen', [
-		mk_cstring(bin_path),
-		mk_cstring('rb'),
-	]))
-
-	// if __live_lf != nil { load code and update pointer }
-	file_var := '__live_lf_${lf.mangled_name}'
-	page_var := '__live_page_${lf.mangled_name}'
-	ptr_var := '__live_${lf.mangled_name}'
-
-	mut file_body := []ast.Stmt{}
-
-	// C.fseek(f, 0, 2)
-	file_body << mk_call_stmt('C.fseek', [mk_ident(file_var),
-		mk_int('0'), mk_int('2')])
-
-	// __live_sz_X := int(C.ftell(f))
-	sz_var := '__live_sz_${lf.mangled_name}'
-	file_body << mk_decl_assign(sz_var, mk_cast('int', mk_call('C.ftell', [
-		mk_ident(file_var),
-	])))
-
-	// C.fseek(f, 0, 0)
-	file_body << mk_call_stmt('C.fseek', [mk_ident(file_var),
-		mk_int('0'), mk_int('0')])
-
-	// C.mprotect(page, page_size, 3) -- RW
-	file_body << mk_call_stmt('C.mprotect', [
-		mk_ident(page_var),
-		mk_cast('usize', mk_ident('__live_page_size')),
-		mk_int('3'),
-	])
-
-	// C.fread(page, 1, usize(sz), f)
-	file_body << mk_call_stmt('C.fread', [
-		mk_ident(page_var),
-		mk_int('1'),
-		mk_cast('usize', mk_ident(sz_var)),
-		mk_ident(file_var),
-	])
-
-	// C.fclose(f)
-	file_body << mk_call_stmt('C.fclose', [mk_ident(file_var)])
-
-	// C.mprotect(page, page_size, 5) -- RX
-	file_body << mk_call_stmt('C.mprotect', [
-		mk_ident(page_var),
-		mk_cast('usize', mk_ident('__live_page_size')),
-		mk_int('5'),
-	])
-
-	// C.sys_icache_invalidate(page, page_size)
-	file_body << mk_call_stmt('C.sys_icache_invalidate', [
-		mk_ident(page_var),
-		mk_cast('usize', mk_ident('__live_page_size')),
-	])
-
-	// Update function pointer: __live_<mangled> = page
-	file_body << mk_assign(ptr_var, mk_ident(page_var))
-
-	// if f != nil { ...file_body... }
-	load_stmts << ast.Stmt(ast.ExprStmt{
-		expr: ast.IfExpr{
-			cond:  ast.Expr(ast.InfixExpr{
-				op:  .ne
-				lhs: mk_ident(file_var)
-				rhs: mk_unsafe_nil()
-			})
-			stmts: file_body
-		}
-	})
-
-	// Wrap in a block (ExprStmt wrapping a block isn't needed — just return as-is)
-	// Return as a single compound statement by wrapping in if(1) { ... }
-	// Actually, just return a block via IfExpr with always-true condition
-	return ast.Stmt(ast.ExprStmt{
-		expr: ast.IfExpr{
-			cond:  ast.Expr(ast.InfixExpr{
-				op:  .eq
-				lhs: mk_int('1')
-				rhs: mk_int('1')
-			})
-			stmts: load_stmts
-		}
-	})
-}
-
 // mk_global_decl generates: __global <name> : <type>
 fn mk_global_decl(name string, typ_name string) ast.Stmt {
 	return ast.Stmt(ast.GlobalDecl{
@@ -562,33 +552,7 @@ fn mk_stat_check(buf_name string, source_file string, mtime_var string) ast.Stmt
 		}),
 	])
 
-	mtime_assign := ast.Stmt(ast.AssignStmt{
-		op:  .assign
-		lhs: [ast.Expr(ast.Ident{
-			name: mtime_var
-		})]
-		rhs: [
-			ast.Expr(ast.UnsafeExpr{
-				stmts: [
-					ast.Stmt(ast.ExprStmt{
-						expr: ast.Expr(ast.PrefixExpr{
-							op:   .mul
-							expr: ast.Expr(ast.PrefixExpr{
-								op:   .amp
-								expr: mk_cast('i64', ast.Expr(ast.PrefixExpr{
-									op:   .amp
-									expr: ast.Expr(ast.IndexExpr{
-										lhs:  mk_ident(buf_name)
-										expr: mk_int('48')
-									})
-								}))
-							})
-						})
-					}),
-				]
-			}),
-		]
-	})
+	mtime_assign := mk_assign(mtime_var, mk_unsafe_deref_i64(buf_name, '48'))
 
 	return ast.Stmt(ast.ExprStmt{
 		expr: ast.IfExpr{
@@ -599,6 +563,29 @@ fn mk_stat_check(buf_name string, source_file string, mtime_var string) ast.Stmt
 			})
 			stmts: [mtime_assign]
 		}
+	})
+}
+
+// mk_unsafe_deref_i64 generates: unsafe { *(&i64(&<buf>[<offset>])) }
+fn mk_unsafe_deref_i64(buf_name string, offset string) ast.Expr {
+	return ast.Expr(ast.UnsafeExpr{
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.PrefixExpr{
+					op:   .mul
+					expr: ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: mk_cast('i64', ast.Expr(ast.PrefixExpr{
+							op:   .amp
+							expr: ast.Expr(ast.IndexExpr{
+								lhs:  mk_ident(buf_name)
+								expr: mk_int(offset)
+							})
+						}))
+					})
+				})
+			}),
+		]
 	})
 }
 
@@ -617,10 +604,24 @@ fn mk_int(value string) ast.Expr {
 	})
 }
 
+fn mk_hex(value string) ast.Expr {
+	return ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: value
+	})
+}
+
 fn mk_neg_one() ast.Expr {
 	return ast.Expr(ast.PrefixExpr{
 		op:   .minus
 		expr: mk_int('1')
+	})
+}
+
+fn mk_neg(value string) ast.Expr {
+	return ast.Expr(ast.PrefixExpr{
+		op:   .minus
+		expr: mk_int(value)
 	})
 }
 
@@ -639,7 +640,7 @@ fn mk_cast(type_name string, expr ast.Expr) ast.Expr {
 }
 
 fn mk_call(fn_name string, args []ast.Expr) ast.Expr {
-	// For C functions (C.mmap, C.stat, etc.), create a SelectorExpr so the SSA
+	// For C functions (C.stat, C.mmap, etc.), create a SelectorExpr so the SSA
 	// builder's resolve_call_name correctly strips the C module prefix.
 	lhs := if fn_name.starts_with('C.') {
 		ast.Expr(ast.SelectorExpr{
@@ -713,6 +714,12 @@ fn mk_unsafe_nil() ast.Expr {
 fn build_live_c_decls() []ast.Stmt {
 	mut decls := []ast.Stmt{}
 
+	// fn C.stat(path &u8, buf &u8) int
+	decls << mk_c_fn_decl('stat', [
+		mk_param('path', '&u8'),
+		mk_param('buf', '&u8'),
+	], 'int')
+
 	// fn C.mmap(addr voidptr, len usize, prot int, flags int, fd int, offset i64) voidptr
 	decls << mk_c_fn_decl('mmap', [
 		mk_param('addr', 'voidptr'),
@@ -736,22 +743,19 @@ fn build_live_c_decls() []ast.Stmt {
 		mk_param('size', 'usize'),
 	], '')
 
-	// fn C.stat(path &u8, buf &u8) int
-	decls << mk_c_fn_decl('stat', [
-		mk_param('path', '&u8'),
-		mk_param('buf', '&u8'),
-	], 'int')
-
 	// fn C.fopen(path &u8, mode &u8) voidptr
 	decls << mk_c_fn_decl('fopen', [
 		mk_param('path', '&u8'),
 		mk_param('mode', '&u8'),
 	], 'voidptr')
 
-	// fn C.fclose(f voidptr) int
-	decls << mk_c_fn_decl('fclose', [
+	// fn C.fread(buf voidptr, size usize, count usize, f voidptr) usize
+	decls << mk_c_fn_decl('fread', [
+		mk_param('buf', 'voidptr'),
+		mk_param('size', 'usize'),
+		mk_param('count', 'usize'),
 		mk_param('f', 'voidptr'),
-	], 'int')
+	], 'usize')
 
 	// fn C.fseek(f voidptr, offset i64, whence int) int
 	decls << mk_c_fn_decl('fseek', [
@@ -765,20 +769,17 @@ fn build_live_c_decls() []ast.Stmt {
 		mk_param('f', 'voidptr'),
 	], 'i64')
 
-	// fn C.fread(buf voidptr, size usize, count usize, f voidptr) usize
-	decls << mk_c_fn_decl('fread', [
-		mk_param('buf', 'voidptr'),
-		mk_param('size', 'usize'),
-		mk_param('count', 'usize'),
+	// fn C.fclose(f voidptr) int
+	decls << mk_c_fn_decl('fclose', [
 		mk_param('f', 'voidptr'),
-	], 'usize')
+	], 'int')
 
 	// fn C.system(cmd &u8) int
 	decls << mk_c_fn_decl('system', [
 		mk_param('cmd', '&u8'),
 	], 'int')
 
-	// fn C.printf(fmt &u8) int  (variadic, but declared with just first param)
+	// fn C.printf(fmt &u8) int  (variadic)
 	decls << mk_c_fn_decl('printf', [
 		mk_param('fmt', '&u8'),
 	], 'int')
@@ -812,7 +813,6 @@ fn mk_c_fn_decl(name string, params []ast.Parameter, ret_type string) ast.Stmt {
 }
 
 fn mk_param(name string, typ_name string) ast.Parameter {
-	// Handle pointer types like &u8
 	typ_expr := if typ_name.starts_with('&') {
 		ast.Expr(ast.PrefixExpr{
 			op:   .amp

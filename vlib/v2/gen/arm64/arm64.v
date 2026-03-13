@@ -83,6 +83,9 @@ pub mut:
 	env_trace_struct_addr string
 	env_trace_strlit      string
 	env_trace_storeval    string
+	// Reverse map: val_id → block_id for block-kind values.
+	// Value.index is unreliable in ARM64-compiled binaries, so use this instead.
+	val_to_block []int
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
@@ -165,6 +168,10 @@ pub fn (mut g Gen) gen() {
 		if gvar.linkage == .external {
 			continue
 		}
+		// Skip globals that collide with function names (same as pre-registration loop)
+		if gvar.name in g.func_by_name {
+			continue
+		}
 		for g.macho.data_data.len % 8 != 0 {
 			g.macho.data_data << 0
 		}
@@ -213,9 +220,35 @@ pub fn (mut g Gen) gen() {
 				}
 			}
 		} else {
-			// For regular globals, initialize with zeros.
-			for _ in 0 .. size {
-				g.macho.data_data << 0
+			// For regular (mutable) globals, emit initial value if set, else zeros.
+			if gvar.initial_value != 0 {
+				match size {
+					1 {
+						g.macho.data_data << u8(gvar.initial_value)
+					}
+					2 {
+						mut bytes := []u8{len: 2}
+						binary.little_endian_put_u16(mut bytes, u16(gvar.initial_value))
+						g.macho.data_data << bytes
+					}
+					4 {
+						mut bytes := []u8{len: 4}
+						binary.little_endian_put_u32(mut bytes, u32(gvar.initial_value))
+						g.macho.data_data << bytes
+					}
+					else {
+						mut bytes := []u8{len: 8}
+						binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+						g.macho.data_data << bytes
+						for _ in 0 .. size - 8 {
+							g.macho.data_data << 0
+						}
+					}
+				}
+			} else {
+				for _ in 0 .. size {
+					g.macho.data_data << 0
+				}
 			}
 		}
 	}
@@ -257,6 +290,20 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	// Initialize to -1 manually (init: -1 may not work on all backends)
 	for bo_idx := 0; bo_idx < g.block_offsets.len; bo_idx++ {
 		g.block_offsets[bo_idx] = -1
+	}
+	// Build reverse map: val_id → block_id.
+	// Value.index is unreliable for block-kind values in ARM64-compiled binaries.
+	if g.val_to_block.len < g.mod.values.len {
+		g.val_to_block = []int{len: g.mod.values.len}
+	}
+	for vtb_i := 0; vtb_i < g.val_to_block.len; vtb_i++ {
+		g.val_to_block[vtb_i] = -1
+	}
+	for bid := 0; bid < g.mod.blocks.len; bid++ {
+		bval := g.mod.blocks[bid].val_id
+		if bval >= 0 && bval < g.val_to_block.len {
+			g.val_to_block[bval] = bid
+		}
 	}
 	g.pending_label_blks = []int{}
 	g.pending_label_offs = []int{}
@@ -389,48 +436,6 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	trace_skip_dead := g.env_trace_skip_dead.len > 0
 		&& (g.env_trace_skip_dead == '*' || func.name == g.env_trace_skip_dead)
-
-	// Diagnostic: dump SSA instructions for const init functions
-	if func.name.contains('__v_init_consts_builtin') {
-		mut n_stores := 0
-		mut n_bitcast_nop := 0
-		mut n_total := 0
-		eprintln('=== MIR DUMP: ${func.name} (${func.blocks.len} blocks) ===')
-		for dblk_id in func.blocks {
-			dblk := g.mod.blocks[dblk_id]
-			eprintln('  block ${dblk_id} (${dblk.name}): ${dblk.instrs.len} instrs')
-			for dval_id in dblk.instrs {
-				dval := g.mod.values[dval_id]
-				n_total += 1
-				if dval.kind != .instruction {
-					eprintln('    v${dval_id}: [non-instr kind=${dval.kind} name=${dval.name}]')
-					continue
-				}
-				dinstr := g.mod.instrs[dval.index]
-				if dinstr.op == .store {
-					n_stores += 1
-				}
-				if dinstr.op == .bitcast && dinstr.operands.len == 0 {
-					n_bitcast_nop += 1
-				}
-				mut ops_str := ''
-				for oi, op_id in dinstr.operands {
-					if op_id < g.mod.values.len {
-						op_v := g.mod.values[op_id]
-						ops_str += '${op_id}(${op_v.kind}:${op_v.name})'
-					} else {
-						ops_str += '${op_id}(OUT_OF_BOUNDS)'
-					}
-					if oi < dinstr.operands.len - 1 {
-						ops_str += ', '
-					}
-				}
-				eprintln('    v${dval_id}: ${dinstr.op} [${ops_str}] typ=${dval.typ}')
-			}
-		}
-		eprintln('=== SUMMARY: total=${n_total} stores=${n_stores} nop_bitcasts=${n_bitcast_nop} ===')
-		eprintln('=== END MIR DUMP ===')
-	}
 
 	for i, blk_id in func.blocks {
 		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
@@ -847,18 +852,6 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	for i := 0; i < func.blocks.len; i++ {
 		blk_id := int(func.blocks[i])
-		if func.name == 'builtin__fast_string_eq' && i == 0 {
-			// Dump raw struct bytes to find actual offset of blocks field
-			struct_ptr := u64(&func)
-			eprintln('  &func=0x${struct_ptr.hex()} sizeof=${sizeof(mir.Function)}')
-			// Dump first 120 bytes of struct in 8-byte chunks
-			for off := 0; off < 120; off += 8 {
-				val := unsafe { *(&u64(u64(&func) + u64(off))) }
-				eprintln('  struct[${off}..${off + 8}] = 0x${val.hex()}')
-			}
-			// Print blocks field access info
-			eprintln('  func.blocks.data=0x${u64(func.blocks.data).hex()} .len=${func.blocks.len} .str=${func.blocks}')
-		}
 		g.next_blk = if i + 1 < func.blocks.len { int(func.blocks[i + 1]) } else { -1 }
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
@@ -896,15 +889,6 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	unresolved := g.total_pending - g.total_resolved
 	if unresolved > 0 {
 		eprintln('BRANCH: fn=${func.name} pending=${g.total_pending} resolved=${g.total_resolved} unresolved=${unresolved} pending_blks_len=${g.pending_label_blks.len}')
-		if func.name == 'builtin__fast_string_eq' {
-			eprintln('  func.blocks: ${func.blocks}')
-			for pi := 0; pi < g.pending_label_blks.len; pi++ {
-				eprintln('  pending[${pi}]: blk=${g.pending_label_blks[pi]} off=${g.pending_label_offs[pi]}')
-			}
-			for bi, bid in func.blocks {
-				eprintln('  block_offsets[${bid}] = ${g.block_offsets[bid]}')
-			}
-		}
 	}
 }
 
@@ -1866,7 +1850,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.get_element_ptr {
 			// GEP: Base + scaled index (or struct field offset for aggregate pointers)
-			mut base_reg := g.get_operand_reg(instr.operands[0], 8)
 			idx_id := instr.operands[1]
 			base_typ_id := g.mod.values[instr.operands[0]].typ
 			mut pointee_typ_id := ssa.TypeID(0)
@@ -1879,6 +1862,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					base_elem_typ_id = base_typ.elem_type
 				}
 			}
+			mut base_reg := g.get_operand_reg(instr.operands[0], 8)
 
 			// Struct field GEP with constant index: use real field byte offsets.
 			// Distinguish from array-style GEP: if the GEP result type equals the
@@ -2714,7 +2698,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.jmp {
 			target_blk := instr.operands[0]
-			target_idx := g.mod.values[target_blk].index
+			target_idx := if target_blk >= 0 && target_blk < g.val_to_block.len {
+				g.val_to_block[target_blk]
+			} else {
+				g.mod.values[target_blk].index
+			}
 
 			// Fallthrough optimization: Don't jump if target is next block
 			if target_idx != g.next_blk {
@@ -2750,8 +2738,16 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit(asm_and(Reg(8), Reg(8), Reg(9)))
 			}
 
-			true_blk := g.mod.values[instr.operands[1]].index
-			false_blk := g.mod.values[instr.operands[2]].index
+			true_blk := if instr.operands[1] >= 0 && instr.operands[1] < g.val_to_block.len {
+				g.val_to_block[instr.operands[1]]
+			} else {
+				g.mod.values[instr.operands[1]].index
+			}
+			false_blk := if instr.operands[2] >= 0 && instr.operands[2] < g.val_to_block.len {
+				g.val_to_block[instr.operands[2]]
+			} else {
+				g.mod.values[instr.operands[2]].index
+			}
 
 			// Fallthrough optimization for False block
 			// If false block is next, we only need CBNZ to true block
@@ -2798,7 +2794,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 				// b.eq target
 				target_blk_val := instr.operands[i + 1]
-				target_blk_idx := g.mod.values[target_blk_val].index
+				target_blk_idx := if target_blk_val >= 0 && target_blk_val < g.val_to_block.len {
+					g.val_to_block[target_blk_val]
+				} else {
+					g.mod.values[target_blk_val].index
+				}
 
 				if target_blk_idx >= 0 && target_blk_idx < g.block_offsets.len
 					&& g.block_offsets[target_blk_idx] != -1 {
@@ -2821,7 +2821,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Default (Unconditional Branch)
 			def_blk_val := instr.operands[1]
-			def_idx := g.mod.values[def_blk_val].index
+			def_idx := if def_blk_val >= 0 && def_blk_val < g.val_to_block.len {
+				g.val_to_block[def_blk_val]
+			} else {
+				g.mod.values[def_blk_val].index
+			}
 			if def_idx >= 0 && def_idx < g.block_offsets.len && g.block_offsets[def_idx] != -1 {
 				off := g.block_offsets[def_idx]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
@@ -5440,6 +5444,10 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			}
 		} else {
 			if offset := g.stack_map[val_id] {
+				if g.env_trace_load.len > 0
+					&& (g.env_trace_load == '*' || g.cur_func_name == g.env_trace_load) {
+					eprintln('LOAD_VAL fn=${g.cur_func_name} val=${val_id} off=${offset} reg=${reg} kind=${val.kind} name=${val.name}')
+				}
 				g.emit_ldr_reg_offset(reg, 29, offset)
 				g.canonicalize_narrow_int_result(reg, val.typ)
 			} else {
@@ -5490,20 +5498,13 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 				if val_typ.kind in [.struct_t, .array_t] {
 					val_size := g.type_size(val_typ_id)
 					if val_size > 8 && val_size <= 16 {
-						val_dbg := g.mod.values[val_id]
-						mut op_dbg := 'na'
-						if val_dbg.kind == .instruction {
-							op := g.selected_opcode(g.mod.instrs[val_dbg.index])
-							op_dbg = '${op}'
-							if op in [.get_element_ptr, .extractvalue, .bitcast, .assign, .phi] {
-								if trace_storeval {
-									eprintln('ARM64 STOREVAL ptr-copy fn=${g.cur_func_name} val=${val_id} op=${op_dbg} typ=${val_typ_id}/${val_typ.kind} size=${val_size} reg=${stored_reg} off=${offset}')
-								}
-								g.copy_ptr_to_fp_bytes(stored_reg, offset, val_size)
-								return
-							}
+						// For 9-16 byte structs, the register holds a pointer to the
+						// stack location containing the struct data. Copy it.
+						if trace_storeval {
+							eprintln('ARM64 STOREVAL ptr-copy fn=${g.cur_func_name} val=${val_id} typ=${val_typ_id}/${val_typ.kind} size=${val_size} reg=${stored_reg} off=${offset}')
 						}
-						panic('arm64 store_reg_to_val scalar store for small aggregate: fn=${g.cur_func_name} val=${val_id} kind=${val_dbg.kind} op=${op_dbg} typ=${val_typ_id}/${val_typ.kind} size=${val_size} uses=${val_dbg.uses}')
+						g.copy_ptr_to_fp_bytes(stored_reg, offset, val_size)
+						return
 					}
 				}
 				if val_typ.kind == .struct_t && g.type_size(val_typ_id) <= 8 {

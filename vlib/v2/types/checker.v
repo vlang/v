@@ -319,6 +319,9 @@ fn to_optional_type(typ Type) ?Type {
 fn unwrap_map_type(typ Type) ?Map {
 	mut cur := typ
 	for {
+		if type_data_ptr_is_nil(cur) {
+			break
+		}
 		if cur is Pointer {
 			cur = (cur as Pointer).base_type
 			continue
@@ -886,15 +889,9 @@ fn (mut c Checker) index_expr(expr ast.IndexExpr) Type {
 	mut container_type := lhs_type
 	// Const/global strings can be represented as pointer-to-string in some paths.
 	// For direct indexing/slicing expressions, treat them as plain strings.
-	mut lhs_check := lhs_type
-	for lhs_check is Alias {
-		lhs_check = (lhs_check as Alias).base_type
-	}
+	mut lhs_check := resolve_alias(lhs_type)
 	if lhs_check is Pointer {
-		mut ptr_base := (lhs_check as Pointer).base_type
-		for ptr_base is Alias {
-			ptr_base = (ptr_base as Alias).base_type
-		}
+		mut ptr_base := resolve_alias((lhs_check as Pointer).base_type)
 		if ptr_base is String {
 			is_explicit_deref := expr.lhs is ast.PrefixExpr
 				&& (expr.lhs as ast.PrefixExpr).op == .mul
@@ -1026,10 +1023,7 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 	// }
 	typ := c.expr(expr.typ)
 	// Unwrap aliases to get the base struct type for field lookups.
-	mut resolved := typ
-	for resolved is Alias {
-		resolved = (resolved as Alias).base_type
-	}
+	mut resolved := resolve_alias(typ)
 	// Visit field value expressions to store their types in the environment
 	resolved_imm := resolved
 	if resolved_imm is Struct {
@@ -1354,15 +1348,11 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			c.expected_type = expected_type_prev
 
 			// Base expression should match the assoc target type (allow pointers and sum types).
-			mut base_check := base_type
-			for base_check is Alias {
-				base_check = (base_check as Alias).base_type
-			}
+			mut base_check := resolve_alias(base_type)
 			if base_check is Pointer {
-				base_check = (base_check as Pointer).base_type
-			}
-			for base_check is Alias {
-				base_check = (base_check as Alias).base_type
+				if !type_data_ptr_is_nil(base_check) {
+					base_check = resolve_alias((base_check as Pointer).base_type)
+				}
 			}
 			// Smart-casting does not apply to mutable variables. Use an immutable copy.
 			final_base := base_check
@@ -1378,10 +1368,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			}
 
 			// Unwrap aliases to get the base struct type for field lookups.
-			mut resolved := typ
-			for resolved is Alias {
-				resolved = (resolved as Alias).base_type
-			}
+			mut resolved := resolve_alias(typ)
 			resolved_imm := resolved
 			if resolved_imm is Struct {
 				for field in expr.fields {
@@ -1783,7 +1770,9 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 				if stmt.init.key is ast.Ident {
 					// TODO: remove
 					if expr_type is Void {
-						c.scope.print(false)
+						if c.pref.verbose {
+							c.scope.print(false)
+						}
 						// dump(stmt)
 						panic('## expr_type is Void!')
 					}
@@ -2469,7 +2458,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		method_type_name := method_owner_type.name()
 		lock c.env.methods {
 			mut methods_for_type := []&Fn{}
-			if method_type_name in c.env.methods {
+			found_in_map := method_type_name in c.env.methods
+			if found_in_map {
 				methods_for_type = unsafe { c.env.methods[method_type_name] }
 			}
 			methods_for_type << obj
@@ -2813,10 +2803,7 @@ fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexE
 }
 
 fn (c &Checker) generic_struct_template(t Type) ?Struct {
-	mut cur := t
-	for cur is Alias {
-		cur = (cur as Alias).base_type
-	}
+	mut cur := resolve_alias(t)
 	if cur is Struct {
 		st := cur as Struct
 		if st.generic_params.len > 0 {
@@ -3520,7 +3507,6 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 			// generic_params << NamedType(generic_param.name)
 			generic_params << generic_param.name
 		} else {
-			eprintln('DEBUG fn_type generic_param kind=`${generic_param.type_name()}` repr=`${generic_param}`')
 			// TODO: correct position
 			c.error_with_pos('expecting identifier', token.Pos{})
 		}
@@ -3707,7 +3693,9 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 						// c.log('assuming C constant: ${expr.lhs.name} . ${expr.rhs.name}')
 						return int_
 					}
-					mod_scope.print(true)
+					if c.pref.verbose {
+						mod_scope.print(true)
+					}
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
 					return Type(void_)
 				}

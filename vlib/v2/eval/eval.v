@@ -90,6 +90,16 @@ mut:
 	tag_field_aliases map[int][]string
 }
 
+struct InferredSumTypeVariant {
+	tag          int
+	variant_name string
+}
+
+struct WrappedSumTypeVariant {
+	tag     int
+	payload Value
+}
+
 struct ScopeFrame {
 mut:
 	vars   map[string]Value
@@ -659,13 +669,221 @@ fn (e &Eval) type_value_variant_aliases(info SumTypeInfo, value TypeValue) []str
 	return aliases
 }
 
+fn (e &Eval) canonical_sumtype_variant_name(info SumTypeInfo, alias string) string {
+	if alias.contains('.') {
+		return alias
+	}
+	if alias.contains('__') {
+		dotted := alias.replace('__', '.')
+		if dotted.contains('.') {
+			return dotted
+		}
+	}
+	short_name := alias.all_after_last('__')
+	if info.module_name != '' && short_name != '' {
+		return '${info.module_name}.${short_name}'
+	}
+	if short_name != '' {
+		return short_name
+	}
+	return alias
+}
+
+fn (e &Eval) lookup_struct_field_names(type_name string) ?[]string {
+	for candidate in struct_field_lookup_candidates(type_name) {
+		mut module_name := ''
+		mut short_type_name := candidate
+		if candidate.contains('.') {
+			module_name = candidate.all_before_last('.')
+			short_type_name = candidate.all_after_last('.')
+		}
+		if module_name != '' {
+			if module_fields := e.struct_field_types[module_name] {
+				if type_fields := module_fields[short_type_name] {
+					return type_fields.keys()
+				}
+			}
+			continue
+		}
+		current_module := e.current_module_name()
+		if module_fields := e.struct_field_types[current_module] {
+			if type_fields := module_fields[short_type_name] {
+				return type_fields.keys()
+			}
+		}
+		for _, module_fields in e.struct_field_types {
+			if type_fields := module_fields[short_type_name] {
+				return type_fields.keys()
+			}
+		}
+	}
+	return none
+}
+
+fn (e &Eval) zero_value_for_type_name(type_name string) Value {
+	if type_name == '' {
+		return void_value()
+	}
+	if type_name.starts_with('[]') {
+		return ArrayValue{}
+	}
+	if type_name.starts_with('map[') {
+		inner := type_name[4..]
+		if bracket_idx := inner.index(']') {
+			return MapValue{
+				default_value: e.zero_value_for_type_name(inner[bracket_idx + 1..])
+			}
+		}
+		return MapValue{}
+	}
+	if type_name.starts_with('?') || type_name.starts_with('!') {
+		return void_value()
+	}
+	match type_name {
+		'bool' {
+			return false
+		}
+		'byte', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'u8', 'u16', 'u32',
+		'u64', 'usize' {
+			return i64(0)
+		}
+		'f32', 'f64' {
+			return f64(0.0)
+		}
+		'string' {
+			return ''
+		}
+		else {
+			return e.zero_struct_value(type_name)
+		}
+	}
+}
+
+fn (e &Eval) zero_value_for_sumtype_data_field(data_type_name string, field_name string) ?Value {
+	if !data_type_name.ends_with('._data') || !field_name.starts_with('_') {
+		return none
+	}
+	parent_sumtype_name := data_type_name.all_before_last('._data')
+	info := e.sum_type_info(parent_sumtype_name) or { return none }
+	mut variant_alias := ''
+	for alias in info.variant_tags.keys() {
+		if '_' + e.sumtype_variant_field_name(alias) == field_name {
+			variant_alias = e.canonical_sumtype_variant_name(info, alias)
+			break
+		}
+	}
+	if variant_alias == '' {
+		return none
+	}
+	return e.zero_value_for_type_name(variant_alias)
+}
+
+fn (e &Eval) sumtype_variant_field_value(sum_value StructValue, field_name string) ?Value {
+	if !field_name.starts_with('_') {
+		return none
+	}
+	info := e.sum_type_info(sum_value.type_name) or { return none }
+	tag_value := sum_value.fields['_tag'] or { return none }
+	tag := int(e.value_as_int(tag_value) or { return none })
+	mut variant_alias := ''
+	mut variant_tag := -1
+	for alias, alias_tag in info.variant_tags {
+		if '_' + e.sumtype_variant_field_name(alias) == field_name {
+			variant_alias = e.canonical_sumtype_variant_name(info, alias)
+			variant_tag = alias_tag
+			break
+		}
+	}
+	if variant_alias == '' {
+		return none
+	}
+	if tag == variant_tag {
+		if payload := e.unwrap_sumtype_value(sum_value, variant_alias) {
+			if !is_semantically_empty_value(payload) {
+				return payload
+			}
+		}
+	}
+	return e.zero_value_for_type_name(variant_alias)
+}
+
+fn (e &Eval) infer_bare_sumtype_variant(info SumTypeInfo, value StructValue) ?InferredSumTypeVariant {
+	if '_tag' in value.fields || '_data' in value.fields {
+		return none
+	}
+	if value.fields.len == 0 {
+		return none
+	}
+	mut matches := map[int]string{}
+	for alias, tag in info.variant_tags {
+		field_names := e.lookup_struct_field_names(alias) or { continue }
+		if field_names.len != value.fields.len {
+			continue
+		}
+		mut all_fields_match := true
+		for field_name in value.fields.keys() {
+			if field_name !in field_names {
+				all_fields_match = false
+				break
+			}
+		}
+		if !all_fields_match {
+			continue
+		}
+		if tag !in matches {
+			matches[tag] = e.canonical_sumtype_variant_name(info, alias)
+		}
+	}
+	if matches.len != 1 {
+		return none
+	}
+	for tag, variant_name in matches {
+		return InferredSumTypeVariant{
+			tag:          tag
+			variant_name: variant_name
+		}
+	}
+	return none
+}
+
+fn (e &Eval) infer_nested_sumtype_variant(info SumTypeInfo, value Value) ?WrappedSumTypeVariant {
+	for alias, tag in info.variant_tags {
+		nested_info := e.sum_type_info(alias) or { continue }
+		if nested_info.name == info.name && nested_info.module_name == info.module_name {
+			continue
+		}
+		nested_payload := e.cast_value(value, alias) or { continue }
+		match nested_payload {
+			StructValue {
+				if e.type_name_matches(nested_payload.type_name, alias)
+					&& '_tag' in nested_payload.fields && '_data' in nested_payload.fields {
+					return WrappedSumTypeVariant{
+						tag:     tag
+						payload: nested_payload
+					}
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
 fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
 	match value {
 		StructValue {
+			if e.type_name_matches(value.type_name, '${info.module_name}.${info.name}') {
+				if tag_value := value.fields['_tag'] {
+					return int(e.value_as_int(tag_value) or { return none })
+				}
+			}
 			for alias in e.type_name_aliases(info.module_name, value.type_name) {
 				if alias in info.variant_tags {
 					return info.variant_tags[alias]
 				}
+			}
+			if inferred := e.infer_bare_sumtype_variant(info, value) {
+				return inferred.tag
 			}
 		}
 		string {
@@ -719,6 +937,9 @@ fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
 			}
 		}
 		else {}
+	}
+	if nested := e.infer_nested_sumtype_variant(info, value) {
+		return nested.tag
 	}
 	return none
 }
@@ -856,6 +1077,18 @@ fn (e &Eval) wrap_sumtype_value(sum_type_name string, value Value, expr ast.Expr
 	}
 	info := e.sum_type_info(sum_type_name) or {
 		return error('v2.eval: unknown sum type `${sum_type_name}`')
+	}
+	if value is StructValue {
+		if inferred := e.infer_bare_sumtype_variant(info, value) {
+			payload := StructValue{
+				type_name: inferred.variant_name
+				fields:    value.fields.clone()
+			}
+			return e.build_sumtype_wrapper(sum_type_name, info, inferred.tag, payload)
+		}
+	}
+	if nested := e.infer_nested_sumtype_variant(info, value) {
+		return e.build_sumtype_wrapper(sum_type_name, info, nested.tag, nested.payload)
 	}
 	if variant_name := e.sumtype_variant_name_from_expr(expr) {
 		if tag := e.lookup_sumtype_variant_tag(info, variant_name) {
@@ -1306,6 +1539,17 @@ fn (e &Eval) annotate_value_for_type(value Value, typ ast.Expr) Value {
 	}
 }
 
+fn (e &Eval) is_existing_sumtype_wrapper(value Value, target_name string) bool {
+	return match value {
+		StructValue {
+			e.type_name_matches(value.type_name, target_name)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 	if type_name == '' {
 		return value
@@ -1333,6 +1577,9 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 	}
 	if e.is_sum_type_name(type_name) {
+		if e.is_existing_sumtype_wrapper(value, type_name) {
+			return value
+		}
 		return e.cast_value(value, type_name) or { value }
 	}
 	match type_name {
@@ -1382,6 +1629,9 @@ fn (e &Eval) adapt_value_to_type(value Value, typ ast.Expr) Value {
 	}
 	target_name := e.type_expr_name(typ)
 	if target_name != '' && e.is_sum_type_name(target_name) {
+		if e.is_existing_sumtype_wrapper(adapted, target_name) {
+			return adapted
+		}
 		return e.cast_value(adapted, target_name) or { adapted }
 	}
 	return adapted
@@ -1944,7 +2194,7 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 				return MaybeValue{
 					found: true
 					value: ArrayValue{
-						values: os.args.map(Value(it))
+						values: e.program_args().map(Value(it))
 					}
 				}
 			}
@@ -2051,7 +2301,7 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 				return MaybeValue{
 					found: true
 					value: ArrayValue{
-						values: os.args.map(Value(it))
+						values: e.program_args().map(Value(it))
 					}
 				}
 			}
@@ -3533,7 +3783,7 @@ fn (mut e Eval) lookup_const(module_name string, name string) MaybeValue {
 	e.call_stack << CallFrame{
 		module_name: module_name
 		file_name:   entry.file_name
-		fn_name:     ''
+		fn_name:     'const ${name}'
 	}
 	value := e.eval_expr(entry.expr) or {
 		entry.evaluating = false
@@ -4408,8 +4658,10 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 		}
 	}
 	if expr.rhs.name == '_data' {
-		if _ := e.contextual_sumtype_tag(expr.lhs, left) {
-			return left
+		if left !is StructValue || '_data' !in (left as StructValue).fields {
+			if _ := e.contextual_sumtype_tag(expr.lhs, left) {
+				return left
+			}
 		}
 	}
 	match left {
@@ -4483,15 +4735,30 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 					return i64(tag)
 				}
 			}
-			if expr.rhs.name == '_data' {
+			if expr.rhs.name == '_data' && '_data' !in left.fields {
 				if _ := e.inferred_sumtype_tag(left) {
 					return left
 				}
 			}
+			if variant_value := e.sumtype_variant_field_value(left, expr.rhs.name) {
+				return variant_value
+			}
 			if expr.rhs.name in left.fields {
-				return left.fields[expr.rhs.name] or {
-					return error('v2.eval: unknown struct field `${expr.rhs.name}` on `${left.type_name}` in `${e.current_function_label()}` stack `${e.call_stack_trace()}`')
+				field_value := left.fields[expr.rhs.name] or {
+					return error('v2.eval: unknown struct field `${expr.rhs.name}` on `${left.type_name}` fields `${left.fields.keys()}` in `${e.current_function_label()}` stack `${e.call_stack_trace()}`')
 				}
+				if left.type_name.ends_with('._data') && expr.rhs.name.starts_with('_')
+					&& is_semantically_empty_value(field_value) {
+					if zero_payload := e.zero_value_for_sumtype_data_field(left.type_name,
+						expr.rhs.name)
+					{
+						return zero_payload
+					}
+				}
+				return field_value
+			}
+			if zero_payload := e.zero_value_for_sumtype_data_field(left.type_name, expr.rhs.name) {
+				return zero_payload
 			}
 			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name,
 				0)
@@ -4501,7 +4768,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 			if field_type := e.lookup_struct_field_type(left.type_name, expr.rhs.name) {
 				return e.zero_value_for_type_expr(field_type)
 			}
-			return error('v2.eval: unknown struct field `${expr.rhs.name}` on `${left.type_name}` in `${e.current_function_label()}` stack `${e.call_stack_trace()}`')
+			return error('v2.eval: unknown struct field `${expr.rhs.name}` on `${left.type_name}` fields `${left.fields.keys()}` in `${e.current_function_label()}` stack `${e.call_stack_trace()}`')
 		}
 		string {
 			if expr.rhs.name == 'len' {
@@ -5414,11 +5681,18 @@ fn (e &Eval) module_property(module_name string, field_name string) MaybeValue {
 		return MaybeValue{
 			found: true
 			value: ArrayValue{
-				values: os.args.map(Value(it))
+				values: e.program_args().map(Value(it))
 			}
 		}
 	}
 	return MaybeValue{}
+}
+
+fn (e &Eval) program_args() []string {
+	if e.prefs.eval_runtime_args.len > 0 {
+		return e.prefs.eval_runtime_args
+	}
+	return os.args
 }
 
 fn (e &Eval) is_type_expr(expr ast.Expr) bool {
@@ -5602,9 +5876,20 @@ fn (e &Eval) sizeof_type_name(name string) i64 {
 
 fn (e &Eval) cast_value(value Value, type_name string) !Value {
 	if info := e.sum_type_info(type_name) {
-		if value is StructValue && value.type_name == type_name && '_tag' in value.fields
-			&& '_data' in value.fields {
+		if e.is_existing_sumtype_wrapper(value, type_name) {
 			return value
+		}
+		if value is StructValue {
+			if inferred := e.infer_bare_sumtype_variant(info, value) {
+				payload := StructValue{
+					type_name: inferred.variant_name
+					fields:    value.fields.clone()
+				}
+				return e.build_sumtype_wrapper(type_name, info, inferred.tag, payload)
+			}
+		}
+		if nested := e.infer_nested_sumtype_variant(info, value) {
+			return e.build_sumtype_wrapper(type_name, info, nested.tag, nested.payload)
 		}
 		if tag := e.sumtype_tag_from_value(info, value) {
 			return e.build_sumtype_wrapper(type_name, info, tag, value)

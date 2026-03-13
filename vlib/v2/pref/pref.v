@@ -37,12 +37,15 @@ pub mut:
 	print_parsed_files    bool // Print all parsed files grouped by full/.vh parse mode
 	keep_c                bool // Keep generated C file after compilation
 	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
+	is_shared_lib         bool // Compile to shared library (.dylib/.so) for live reload
+	no_optimize           bool // -O0: skip SSA optimization (mem2reg, phi elimination)
 	backend               Backend
 	arch                  Arch = .auto
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // User-defined comptime flags via -d <name>
 	hot_fn                string   // Extract raw machine code for this function only (hot reload)
+	eval_runtime_args     []string // Program argv exposed to the eval backend
 pub:
 	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
@@ -241,7 +244,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'--skip-imports', '--skip-type-check', '--parallel', '-nocache', '--nocache', '-nomarkused',
 		'--nomarkused', '-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files',
 		'--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals',
-		'--enable-globals']
+		'--enable-globals', '-shared', '--shared', '-O0']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -258,6 +261,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -nocache, --nocache    Disable build cache')
 			eprintln('  -d <name>              Define a comptime flag')
 			eprintln('  -enable-globals        Accepted for v1 compatibility')
+			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
 			eprintln('  --debug                Enable debug mode')
 			eprintln('  -v, --verbose          Enable verbose output')
 			eprintln('  -showcc, --showcc      Print C compiler command')
@@ -284,6 +288,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
 		keep_c:                '-keepc' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		is_shared_lib:         '-shared' in options || '--shared' in options
+		no_optimize:           '-O0' in options
 		backend:               backend
 		arch:                  arch
 		output_file:           output_file
@@ -336,6 +342,8 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		stats:                 '-stats' in options || '--stats' in options
 		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		is_shared_lib:         '-shared' in options || '--shared' in options
+		no_optimize:           '-O0' in options
 		backend:               backend
 		arch:                  arch
 	}

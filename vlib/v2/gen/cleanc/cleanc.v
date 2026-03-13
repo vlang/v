@@ -72,10 +72,25 @@ mut:
 
 	const_exprs         map[string]string // const name → C expression string (for inlining)
 	used_fn_keys        map[string]bool
+	force_emit_fn_names map[string]bool   // function C names that must be emitted regardless of mark_used
+	export_fn_names     map[string]string // V-qualified name → export name (from @[export:] attribute)
 	called_fn_names     map[string]bool
-	anon_fn_defs        []string // lifted anonymous function definitions
-	pass5_start_pos     int      // position in sb where pass 5 starts
-	deferred_m_includes []string // Objective-C .m file #include lines deferred until after type definitions
+	anon_fn_defs        []string        // lifted anonymous function definitions
+	pass5_start_pos     int             // position in sb where pass 5 starts
+	deferred_m_includes []string        // Objective-C .m file #include lines deferred until after type definitions
+	spawned_fns         map[string]bool // spawn wrapper names already emitted
+	spawn_wrapper_defs  []string        // spawn wrapper struct + function definitions
+	// @[live] hot code reloading
+	live_fns         []LiveFnInfo // @[live] functions detected during code generation
+	live_source_file string       // source file containing @[live] functions
+}
+
+struct LiveFnInfo {
+	c_name   string // C function name (e.g., 'main__frame', 'Game__update_model')
+	ret_type string // C return type (e.g., 'void', 'string')
+	params   string // C parameter list (e.g., 'Game* game')
+	args     string // argument names for forwarding (e.g., 'game')
+	is_void  bool   // true if return type is void
 }
 
 struct ExportedConstSymbol {
@@ -206,6 +221,140 @@ fn is_builtin_string_file(path string) bool {
 	return normalized.ends_with('vlib/builtin/string.v')
 }
 
+fn (mut g Gen) emit_live_reload_infrastructure() {
+	// Don't emit live infrastructure in shared library mode (only impl_live_ bodies needed)
+	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
+		return
+	}
+	if g.live_fns.len == 0 {
+		// No @[live] functions — emit a no-op __v_live_init
+		g.sb.writeln('')
+		g.sb.writeln('void __v_live_init(void) {}')
+		return
+	}
+
+	g.sb.writeln('')
+	g.sb.writeln('// ===== @[live] hot code reloading infrastructure =====')
+	g.sb.writeln('#include <dlfcn.h>')
+	g.sb.writeln('')
+
+	// Mutex for thread-safe function pointer updates
+	g.sb.writeln('static pthread_mutex_t __live_fn_mutex = PTHREAD_MUTEX_INITIALIZER;')
+	g.sb.writeln('')
+
+	// Function pointer globals (initialized to impl_live_ versions)
+	for lf in g.live_fns {
+		if lf.params.len > 0 {
+			g.sb.writeln('static ${lf.ret_type} (*__live_ptr_${lf.c_name})(${lf.params}) = &impl_live_${lf.c_name};')
+		} else {
+			g.sb.writeln('static ${lf.ret_type} (*__live_ptr_${lf.c_name})(void) = &impl_live_${lf.c_name};')
+		}
+	}
+	g.sb.writeln('')
+
+	// Wrapper functions that call through pointers with mutex protection
+	for lf in g.live_fns {
+		params := if lf.params.len > 0 { lf.params } else { 'void' }
+		g.sb.writeln('${lf.ret_type} ${lf.c_name}(${params}) {')
+		g.sb.writeln('\tpthread_mutex_lock(&__live_fn_mutex);')
+		if lf.is_void {
+			if lf.args.len > 0 {
+				g.sb.writeln('\t__live_ptr_${lf.c_name}(${lf.args});')
+			} else {
+				g.sb.writeln('\t__live_ptr_${lf.c_name}();')
+			}
+		} else {
+			if lf.args.len > 0 {
+				g.sb.writeln('\t${lf.ret_type} __live_ret = __live_ptr_${lf.c_name}(${lf.args});')
+			} else {
+				g.sb.writeln('\t${lf.ret_type} __live_ret = __live_ptr_${lf.c_name}();')
+			}
+		}
+		g.sb.writeln('\tpthread_mutex_unlock(&__live_fn_mutex);')
+		if !lf.is_void {
+			g.sb.writeln('\treturn __live_ret;')
+		}
+		g.sb.writeln('}')
+		g.sb.writeln('')
+	}
+
+	// v_bind_live_symbols: called after dlopen to update function pointers
+	g.sb.writeln('static void __v_bind_live_symbols(void* __live_lib) {')
+	for lf in g.live_fns {
+		g.sb.writeln('\tvoid* __sym_${lf.c_name} = dlsym(__live_lib, "impl_live_${lf.c_name}");')
+		g.sb.writeln('\tif (__sym_${lf.c_name}) {')
+		g.sb.writeln('\t\t__live_ptr_${lf.c_name} = __sym_${lf.c_name};')
+		g.sb.writeln('\t}')
+	}
+	g.sb.writeln('}')
+	g.sb.writeln('')
+
+	// Background reloader thread
+	source_file := g.live_source_file
+	dylib_path := '/tmp/_v2_live_reload.dylib'
+	// c_path := '/tmp/_v2_live_reload.c'
+	// Resolve absolute path to v2 binary at compile time
+	v2_path := if g.pref != unsafe { nil } && g.pref.vroot.len > 0 {
+		g.pref.vroot + '/cmd/v2/v2'
+	} else {
+		'./v2'
+	}
+	g.sb.writeln('static void* __v_live_reloader_thread(void* __arg) {')
+	g.sb.writeln('\t(void)__arg;')
+	g.sb.writeln('\tchar* __live_src = "${source_file}";')
+	g.sb.writeln('\tlong long __live_last_mtime = 0;')
+	g.sb.writeln('\tstruct stat __live_st;')
+	g.sb.writeln('\t// Get initial mtime')
+	g.sb.writeln('\tif (stat(__live_src, &__live_st) == 0) {')
+	g.sb.writeln('\t\t__live_last_mtime = __live_st.st_mtimespec.tv_sec;')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\tint __live_reload_count = 0;')
+	g.sb.writeln('\twhile (1) {')
+	g.sb.writeln('\t\tusleep(250000); // 250ms')
+	g.sb.writeln('\t\tif (stat(__live_src, &__live_st) != 0) continue;')
+	g.sb.writeln('\t\tlong long __live_new_mtime = __live_st.st_mtimespec.tv_sec;')
+	g.sb.writeln('\t\tif (__live_new_mtime <= __live_last_mtime) continue;')
+	g.sb.writeln('\t\t__live_last_mtime = __live_new_mtime;')
+	g.sb.writeln('\t\tprintf("[live] source changed, recompiling...\\n");')
+	g.sb.writeln('\t\tfflush(stdout);')
+
+	// Recompile V source directly to shared library
+	g.sb.writeln('\t\tint __live_rc = system("${v2_path} -backend cleanc -gc none -nocache -shared -o ${dylib_path} ${source_file} 2>/dev/null");')
+	g.sb.writeln('\t\tif (__live_rc != 0) {')
+	g.sb.writeln('\t\t\tprintf("[live] recompilation failed (exit %d)\\n", __live_rc);')
+	g.sb.writeln('\t\t\tfflush(stdout);')
+	g.sb.writeln('\t\t\tcontinue;')
+	g.sb.writeln('\t\t}')
+
+	// Step 3: dlopen and rebind
+	g.sb.writeln('\t\tvoid* __live_lib = dlopen("${dylib_path}", RTLD_NOW | RTLD_LOCAL);')
+	g.sb.writeln('\t\tif (!__live_lib) {')
+	g.sb.writeln('\t\t\tprintf("[live] dlopen failed: %s\\n", dlerror());')
+	g.sb.writeln('\t\t\tfflush(stdout);')
+	g.sb.writeln('\t\t\tcontinue;')
+	g.sb.writeln('\t\t}')
+	g.sb.writeln('\t\tpthread_mutex_lock(&__live_fn_mutex);')
+	g.sb.writeln('\t\t__v_bind_live_symbols(__live_lib);')
+	g.sb.writeln('\t\tpthread_mutex_unlock(&__live_fn_mutex);')
+	g.sb.writeln('\t\t__live_reload_count++;')
+	g.sb.writeln('\t\tprintf("[live] reload #%d complete\\n", __live_reload_count);')
+	g.sb.writeln('\t\tfflush(stdout);')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn 0;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+
+	// __v_live_init: called from main() to start the reloader thread
+	g.sb.writeln('void __v_live_init(void) {')
+	g.sb.writeln('\tpthread_t __live_thread;')
+	g.sb.writeln('\tpthread_create(&__live_thread, 0, __v_live_reloader_thread, 0);')
+	g.sb.writeln('\tpthread_detach(__live_thread);')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+	g.sb.writeln('// ===== end @[live] infrastructure =====')
+	g.sb.writeln('')
+}
+
 fn should_keep_builtin_map_decl(decl ast.FnDecl) bool {
 	base_keep := decl.name in ['new_map', 'move', 'clear', 'key_to_index', 'meta_less',
 		'meta_greater', 'ensure_extra_metas', 'ensure_extra_metas_grow', 'set', 'expand', 'rehash',
@@ -247,6 +396,7 @@ fn is_builtin_runtime_keep_file(path string) bool {
 		|| normalized.ends_with('vlib/strconv/f32_str.c.v')
 		|| normalized.ends_with('vlib/strconv/f64_str.c.v')
 		|| normalized.ends_with('vlib/math/bits/bits.v')
+		|| normalized.ends_with('vlib/sokol/memory/memory.c.v')
 }
 
 fn (g &Gen) should_emit_module(module_name string) bool {
@@ -587,6 +737,8 @@ pub fn (mut g Gen) gen() string {
 		'pass 4 fn forward declarations')
 
 	g.sb.writeln('')
+	// Forward declaration for live reload init (always emitted — no-op if no @[live] functions)
+	g.sb.writeln('void __v_live_init(void);')
 	g.emit_cached_init_call_decls()
 	g.emit_ierror_wrapper_decls()
 	g.collect_interface_wrapper_specs()
@@ -599,6 +751,9 @@ pub fn (mut g Gen) gen() string {
 
 	// Pass 5: Everything else (function bodies, consts, globals, etc.)
 	g.pass5_start_pos = g.sb.len
+	// Collect str function names needed by generated map/array str functions,
+	// so they get emitted even if mark_used didn't trace them.
+	g.collect_force_emit_str_fns()
 	// Pre-pass: emit extern forward declarations for all globals across all modules
 	// to avoid ordering issues (e.g. rand__default_rng used before its definition).
 	for file in g.files {
@@ -615,6 +770,7 @@ pub fn (mut g Gen) gen() string {
 	}
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
+	g.emit_live_reload_infrastructure()
 	// Map str/eq functions are type-specific (Map_int_int_str, Map_string_int_map_eq, etc.)
 	// and depend on which concrete map types the user program uses. They must be emitted
 	// in the main compilation unit, NOT in the cache (which is shared across programs).
@@ -681,10 +837,13 @@ pub fn (mut g Gen) gen() string {
 		'final helper emission')
 
 	mut out := ''
-	if g.anon_fn_defs.len > 0 {
+	if g.anon_fn_defs.len > 0 || g.spawn_wrapper_defs.len > 0 {
 		full := g.sb.str()
 		mut out_sb := strings.new_builder(full.len + 4096)
 		unsafe { out_sb.write_ptr(full.str, g.pass5_start_pos) }
+		for def in g.spawn_wrapper_defs {
+			out_sb.write_string(def)
+		}
 		for def in g.anon_fn_defs {
 			out_sb.write_string(def)
 		}
@@ -742,10 +901,13 @@ const c_stdlib_fns = ['malloc', 'calloc', 'realloc', 'free', 'atoi', 'atof', 'at
 	'memset', 'memmove', 'strlen', 'strcpy', 'strcat', 'strcmp', 'memcmp', 'exit']
 
 fn escape_c_keyword(name string) string {
-	if name in c_keywords {
-		return '_${name}'
+	// V uses @keyword to escape reserved identifiers (e.g. @type -> type).
+	// Strip the @ prefix first, then check if it's a C keyword.
+	n := if name.len > 0 && name[0] == `@` { name[1..] } else { name }
+	if n in c_keywords {
+		return '_${n}'
 	}
-	return name
+	return n
 }
 
 fn sanitize_fn_ident(name string) string {
@@ -1135,10 +1297,139 @@ fn (mut g Gen) gen_keyword_operator(node ast.KeywordOperator) {
 				g.sb.write_string('0')
 			}
 		}
+		.key_spawn, .key_go {
+			g.gen_spawn_expr(node)
+		}
 		else {
 			g.sb.write_string('/* KeywordOperator: ${node.op} */ 0')
 		}
 	}
+}
+
+// gen_spawn_expr generates C code for `spawn call()` / `go call()`.
+// This creates a pthread that executes the given function call in a new thread.
+// For method calls: `spawn obj.method(args)` generates a wrapper struct containing
+// the function pointer, receiver, and arguments, a wrapper function that unpacks
+// them and calls the actual function, and a pthread_create call.
+fn (mut g Gen) gen_spawn_expr(node ast.KeywordOperator) {
+	if node.exprs.len == 0 {
+		g.sb.write_string('0')
+		return
+	}
+	spawn_call := node.exprs[0]
+	mut call_lhs := ast.empty_expr
+	mut call_args := []ast.Expr{}
+	if spawn_call is ast.CallExpr {
+		call_lhs = spawn_call.lhs
+		call_args = spawn_call.args.clone()
+	} else if spawn_call is ast.CallOrCastExpr {
+		call_lhs = spawn_call.lhs
+		call_args = [spawn_call.expr]
+	} else {
+		g.sb.write_string('/* spawn: unsupported expr type */ 0')
+		return
+	}
+	// Resolve the C function name
+	c_name := g.resolve_call_name(call_lhs, call_args.len)
+	if c_name == '' {
+		g.sb.write_string('/* spawn: could not resolve fn name */ 0')
+		return
+	}
+	// Determine if this is a method call (lhs is SelectorExpr)
+	mut is_method := false
+	mut receiver_expr := ast.empty_expr
+	if call_lhs is ast.SelectorExpr {
+		sel := call_lhs as ast.SelectorExpr
+		if !(sel.lhs is ast.Ident && g.is_module_ident((sel.lhs as ast.Ident).name)) {
+			is_method = true
+			receiver_expr = sel.lhs
+		}
+	}
+	// Build a unique name for the wrapper (deduplication key)
+	wrapper_name := c_name.replace('__', '_')
+	wrapper_struct_name := 'thread_arg_${wrapper_name}'
+	wrapper_fn_name := '${wrapper_name}_thread_wrapper'
+	// Emit the wrapper struct and function if not already done
+	if wrapper_name !in g.spawned_fns {
+		g.spawned_fns[wrapper_name] = true
+		// Get the receiver C type
+		mut receiver_c_type := ''
+		if is_method {
+			receiver_c_type = g.get_expr_type(receiver_expr)
+			if receiver_c_type == '' || receiver_c_type == 'int' {
+				receiver_c_type = g.method_receiver_base_type(receiver_expr) + '*'
+			}
+		}
+		// Get argument C types
+		mut arg_c_types := []string{}
+		for arg in call_args {
+			mut arg_type := g.get_expr_type(arg)
+			if arg_type == '' {
+				arg_type = 'int'
+			}
+			arg_c_types << arg_type
+		}
+		// Build wrapper struct definition
+		mut def := strings.new_builder(512)
+		def.writeln('typedef struct ${wrapper_struct_name} {')
+		if is_method {
+			def.writeln('\t${receiver_c_type} arg0;')
+		}
+		for i, arg_type in arg_c_types {
+			arg_idx := if is_method { i + 1 } else { i }
+			def.writeln('\t${arg_type} arg${arg_idx};')
+		}
+		def.writeln('} ${wrapper_struct_name};')
+		// Build wrapper function
+		def.writeln('static void* ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
+		def.write_string('\t${c_name}(')
+		mut param_idx := 0
+		if is_method {
+			def.write_string('arg->arg0')
+			param_idx++
+		}
+		for i, _ in call_args {
+			if param_idx > 0 {
+				def.write_string(', ')
+			}
+			arg_idx := if is_method { i + 1 } else { i }
+			def.write_string('arg->arg${arg_idx}')
+			param_idx++
+		}
+		def.writeln(');')
+		def.writeln('\tfree(arg);')
+		def.writeln('\treturn 0;')
+		def.writeln('}')
+		g.spawn_wrapper_defs << def.str()
+	}
+	// Generate the inline spawn code
+	tmp := g.tmp_counter
+	g.tmp_counter++
+	arg_tmp := '_spawn_arg_${tmp}'
+	g.sb.writeln('({')
+	g.write_indent()
+	g.sb.writeln('\t${wrapper_struct_name} *${arg_tmp} = (${wrapper_struct_name}*)malloc(sizeof(${wrapper_struct_name}));')
+	if is_method {
+		g.write_indent()
+		g.sb.write_string('\t${arg_tmp}->arg0 = ')
+		g.expr(receiver_expr)
+		g.sb.writeln(';')
+	}
+	for i, arg in call_args {
+		arg_idx := if is_method { i + 1 } else { i }
+		g.write_indent()
+		g.sb.write_string('\t${arg_tmp}->arg${arg_idx} = ')
+		g.expr(arg)
+		g.sb.writeln(';')
+	}
+	g.write_indent()
+	g.sb.writeln('\tpthread_t _spawn_thr_${tmp};')
+	g.write_indent()
+	g.sb.writeln('\tpthread_create(&_spawn_thr_${tmp}, NULL, (void*)${wrapper_fn_name}, ${arg_tmp});')
+	g.write_indent()
+	g.sb.writeln('\tpthread_detach(_spawn_thr_${tmp});')
+	g.write_indent()
+	g.sb.write_string('\t0; })')
 }
 
 fn (mut g Gen) write_indent() {

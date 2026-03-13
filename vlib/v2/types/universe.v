@@ -4,9 +4,6 @@
 // [has_globals]
 module types
 
-// __global universe = init_universe()
-const universe = init_universe()
-
 // primitives
 pub const bool_ = Primitive{
 	props: .boolean
@@ -107,8 +104,12 @@ const thread_ = Thread{
 	elem_type: none
 }
 
+// NOTE: universe MUST be declared AFTER all primitive/alias/type constants above.
+// For SSA-based backends (arm64, x64), struct literal consts need runtime init.
+// init_universe() references bool_, int_, u8_, etc., so they must be initialized first.
+const universe = init_universe()
+
 pub fn init_universe() &Scope {
-	// universe scope
 	mut universe_ := new_scope(unsafe { nil })
 	universe_.insert('bool', Type(bool_))
 	universe_.insert('i8', Type(i8_))

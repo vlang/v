@@ -1980,7 +1980,7 @@ fn (g &Gen) is_c_type_name(name string) bool {
 	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
 		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
 		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un', 'fd_set',
-		'mach_timebase_info_data_t']
+		'mach_timebase_info_data_t', 'FONScontext', 'FONSparams']
 }
 
 fn (g &Gen) env_scope(module_name string) ?&types.Scope {

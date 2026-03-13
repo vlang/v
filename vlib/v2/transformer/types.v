@@ -186,6 +186,53 @@ fn (t &Transformer) is_interface_type_check(typ types.Type) bool {
 	return typ is types.Interface
 }
 
+// is_type_valid does a quick sanity check on an extracted Type sumtype.
+// SSA sumtype layout: {i64 _tag, i64 _data} = 16 bytes total.
+// For large variants (> 8 bytes), _data is a heap pointer to variant data.
+// In v3 (ARM64-compiled), extracting nested sumtype (Type from Object) from
+// map[string]Object can produce a Type with _data=0 (null heap pointer).
+// Calling .name() on such a Type crashes when the match dispatch dereferences null.
+fn is_type_valid(typ types.Type) bool {
+	// Read _data field at offset 8 (second i64 in the sumtype struct).
+	// For both C backend (union after tag) and ARM64 backend ({i64,i64}),
+	// offset 8 contains either inline data or a heap pointer.
+	data := unsafe { *(&u64(&u8(&typ) + 8)) }
+	if data == 0 {
+		// _data is null/zero. This is valid ONLY for tiny type-alias variants
+		// stored inline (Char, Nil, None, Void, Rune, String, ISize, USize)
+		// which have no fields or a single u8 field. For these, zero _data
+		// means the variant value is 0/false/nil which is valid.
+		// But for Alias (tag=0, 32B), Array (tag=1, 16B), etc., zero _data
+		// means a null heap pointer → invalid.
+		// Read the tag to distinguish:
+		tag := unsafe { *(&u64(&typ)) }
+		// Small inline-safe variants whose zero value is valid:
+		// We conservatively allow tag values for Primitive and the type aliases.
+		// Primitive is tag 14 (size=2B, fits inline). Type alias tags depend on
+		// declaration order. Rather than enumerating, just check: if tag < 24
+		// (valid variant range) and it's not one of the known large variants,
+		// allow it. Known large variants that need non-null _data:
+		// Alias=0, Array=1, ArrayFixed=2, Channel=3, Enum=5, FnType=6,
+		// Interface=8, Map=9, OptionType=13, Pointer=14(?), ResultType=15(?),
+		// Struct=18, SumType=19, Thread=20, Tuple=21
+		// Actually, the tag numbering depends on the order in the Type declaration.
+		// Type = Alias(0) | Array(1) | ArrayFixed(2) | Channel(3) | Char(4) |
+		//        Enum(5) | FnType(6) | ISize(7) | Interface(8) | Map(9) |
+		//        NamedType(10) | Nil(11) | None(12) | OptionType(13) | Pointer(14) |
+		//        Primitive(15) | ResultType(16) | Rune(17) | String(18) | Struct(19) |
+		//        SumType(20) | Thread(21) | Tuple(22) | USize(23) | Void(24)
+		// Small (inline-safe with zero _data): Char(4), ISize(7), Nil(11), None(12),
+		//   Primitive(15), Rune(17), String(18), USize(23), Void(24)
+		// Large (need non-null _data): everything else
+		if tag == 4 || tag == 7 || tag == 11 || tag == 12 || tag == 15 || tag == 17 || tag == 18
+			|| tag == 23 || tag == 24 {
+			return true // small inline variant, zero _data is OK
+		}
+		return false // large variant with null heap pointer
+	}
+	return true
+}
+
 // lookup_type looks up a type by name in the module scope
 fn (t &Transformer) lookup_type(name string) ?types.Type {
 	// Handle qualified names like "ast__Expr" by extracting module and type name
@@ -201,6 +248,9 @@ fn (t &Transformer) lookup_type(name string) ?types.Type {
 	mut scope := t.get_module_scope(lookup_module) or { return none }
 	obj := scope.lookup_parent(lookup_name, 0) or { return none }
 	if obj is types.Type {
+		if !is_type_valid(obj) {
+			return none
+		}
 		return obj
 	}
 	return none

@@ -168,6 +168,11 @@ fn call_signature(m mir.Module, instr &mir.Instruction, fn_by_name map[string]in
 						ret_typ = fn_typ.ret_type
 						param_types = fn_typ.params.clone()
 					}
+				} else if fn_ptr_typ.kind == .func_t {
+					// Function pointer extracted from struct field via extractvalue
+					// has func_t type directly (not wrapped in ptr_t).
+					ret_typ = fn_ptr_typ.ret_type
+					param_types = fn_ptr_typ.params.clone()
 				}
 			}
 		}

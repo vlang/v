@@ -507,7 +507,12 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 			if is_core {
 				core_fns << gf
 			} else if fn_module != '' {
-				module_fns[fn_module] << gf
+				// Workaround for ARM64 chained-access bug:
+				// module_fns[fn_module] << gf would append to a copy, not the original.
+				// Read into local, append, write back.
+				mut arr := module_fns[fn_module]
+				arr << gf
+				module_fns[fn_module] = arr
 			} else {
 				user_fns << gf
 			}
@@ -811,14 +816,16 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 	if inits.len < 2 {
 		return inits
 	}
+	// Use maps instead of parallel arrays to avoid ARM64 stack corruption
+	// when multiple local arrays interact with array_set operations.
 	mut index_by_name := map[string]int{}
 	for i, item in inits {
 		if item.name !in index_by_name {
 			index_by_name[item.name] = i
 		}
 	}
-	mut indegree := []int{len: inits.len}
-	mut dependents := [][]int{len: inits.len}
+	mut indegree := map[int]int{}
+	mut dependents := map[int][]int{}
 	for i, item in inits {
 		mut ident_names := map[string]bool{}
 		t.collect_ident_names_in_expr(item.expr, mut ident_names)
@@ -827,13 +834,16 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 				continue
 			}
 			if dep_idx := index_by_name[dep_name] {
-				dependents[dep_idx] << i
-				indegree[i]++
+				mut dep := dependents[dep_idx] or { []int{} }
+				dep << i
+				dependents[dep_idx] = dep
+				indegree[i] = (indegree[i] or { 0 }) + 1
 			}
 		}
 	}
 	mut ready := []int{}
-	for i, deg in indegree {
+	for i := 0; i < inits.len; i++ {
+		deg := indegree[i] or { 0 }
 		if deg == 0 {
 			ready << i
 		}
@@ -841,8 +851,6 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 	mut ordered_idx := []int{cap: inits.len}
 	for ready.len > 0 {
 		// Prefer non-call initializers first when dependency order allows it.
-		// This ensures call-based initializers that read module const globals
-		// (e.g. init_universe()) run after those globals are initialized.
 		mut best_pos := 0
 		for pos := 1; pos < ready.len; pos++ {
 			a := ready[pos]
@@ -862,9 +870,11 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		cur := ready[best_pos]
 		ready.delete(best_pos)
 		ordered_idx << cur
-		for dep in dependents[cur] {
-			indegree[dep]--
-			if indegree[dep] == 0 {
+		deps := dependents[cur] or { []int{} }
+		for dep in deps {
+			indegree[dep] = (indegree[dep] or { 0 }) - 1
+			deg := indegree[dep] or { 0 }
+			if deg == 0 {
 				ready << dep
 			}
 		}
@@ -1395,6 +1405,14 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 			if expanded_map_postfix := t.try_transform_map_index_postfix(stmt) {
 				result << expanded_map_postfix
 				continue
+			}
+			// For native backends, transform obj.field++ / obj.field-- to compound assignment
+			// to avoid the build_postfix code path which has issues in self-hosted binaries.
+			if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+				if postfix_assign := t.try_transform_selector_postfix(stmt) {
+					result << postfix_assign
+					continue
+				}
 			}
 		}
 		// Check for map iteration expansion
@@ -2115,6 +2133,31 @@ fn (mut t Transformer) try_transform_map_index_postfix(stmt ast.ExprStmt) ?ast.S
 		return assign_stmt
 	}
 	return t.try_transform_map_index_assign(assign_stmt)
+}
+
+// try_transform_selector_postfix transforms obj.field++ / obj.field-- to compound assignment.
+// Converts: obj.field++ -> obj.field += 1   and   obj.field-- -> obj.field -= 1
+// This avoids the build_postfix SelectorExpr code path which has issues in self-hosted binaries.
+fn (mut t Transformer) try_transform_selector_postfix(stmt ast.ExprStmt) ?ast.Stmt {
+	if stmt.expr !is ast.PostfixExpr {
+		return none
+	}
+	postfix := stmt.expr as ast.PostfixExpr
+	if postfix.op != .inc && postfix.op != .dec {
+		return none
+	}
+	if postfix.expr !is ast.SelectorExpr {
+		return none
+	}
+	assign_op := if postfix.op == .inc { token.Token.plus_assign } else { token.Token.minus_assign }
+	return ast.AssignStmt{
+		op:  assign_op
+		lhs: [t.transform_expr(postfix.expr)]
+		rhs: [ast.Expr(ast.BasicLiteral{
+			value: '1'
+			kind:  .number
+		})]
+	}
 }
 
 // try_expand_or_expr_assign_stmts expands an OrExpr assignment to multiple statements.
@@ -3030,7 +3073,7 @@ fn (mut t Transformer) get_or_block_stmts_and_value(stmts []ast.Stmt) ([]ast.Stm
 //   if _t1.is_error { err := _t1.err; _t1.data = 0 }
 //   println(_t1.data)
 fn (mut t Transformer) try_expand_or_expr_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
-	// Check if expression contains any OrExpr
+	// Check if expression contains any OrExpr or error propagation (PostfixExpr{.not/.question})
 	if !t.expr_has_or_expr(stmt.expr) {
 		return none
 	}
@@ -3086,6 +3129,13 @@ fn (mut t Transformer) try_expand_or_expr_return(stmt ast.ReturnStmt) ?[]ast.Stm
 fn (t &Transformer) expr_has_or_expr(expr ast.Expr) bool {
 	if expr is ast.OrExpr {
 		return true
+	}
+	// `expr!` and `expr?` are syntactic sugar for `expr or { return err }`
+	// and `expr or { none }` respectively — treat them like OrExpr.
+	if expr is ast.PostfixExpr {
+		if expr.op in [.not, .question] {
+			return true
+		}
 	}
 	match expr {
 		ast.CallExpr {
@@ -3170,6 +3220,37 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 	// If this is an OrExpr, expand it directly
 	if expr is ast.OrExpr {
 		return t.expand_single_or_expr(expr, mut prefix_stmts)
+	}
+	// `expr!` (error propagation) is equivalent to `expr or { return err }`
+	// `expr?` (option propagation) is equivalent to `expr or { return none }`
+	if expr is ast.PostfixExpr {
+		if expr.op in [.not, .question] {
+			or_stmts := if expr.op == .not {
+				// `!` → `or { return err }`
+				[
+					ast.Stmt(ast.ReturnStmt{
+						exprs: [ast.Expr(ast.Ident{
+							name: 'err'
+						})]
+					}),
+				]
+			} else {
+				// `?` → `or { return none }`
+				[
+					ast.Stmt(ast.ReturnStmt{
+						exprs: [ast.Expr(ast.Ident{
+							name: 'none'
+						})]
+					}),
+				]
+			}
+			or_expr := ast.OrExpr{
+				expr:  expr.expr
+				stmts: or_stmts
+				pos:   expr.pos
+			}
+			return t.expand_single_or_expr(or_expr, mut prefix_stmts)
+		}
 	}
 	// Recursively check sub-expressions
 	match expr {
@@ -4482,9 +4563,6 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 fn (t &Transformer) unwrap_assoc_expr(expr ast.Expr) ?ast.AssocExpr {
 	match expr {
 		ast.AssocExpr {
-			if usize(expr.fields.data) > 0 && usize(expr.fields.data) < 4096 {
-				eprintln('UNWRAP_ASSOC returning bad fields data=${usize(expr.fields.data)} len=${expr.fields.len} cap=${expr.fields.cap} off=${expr.fields.offset} flags=${expr.fields.flags} esz=${expr.fields.element_size} pos=${expr.pos}')
-			}
 			return expr
 		}
 		ast.ParenExpr {
@@ -5067,6 +5145,11 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 			str_fn_info := t.get_str_fn_info_for_expr(inter.expr)
 			if str_fn_info.str_fn_name != '' {
 				t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
+				if etyp := t.get_expr_type(inter.expr) {
+					if etyp is types.Enum {
+						t.needed_enum_str_fns[str_fn_info.str_fn_name] = etyp
+					}
+				}
 				str_call := ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: str_fn_info.str_fn_name
@@ -5594,16 +5677,22 @@ fn (t &Transformer) match_variant(c_name string, variants []string) ?string {
 	}
 	// Allow matching C-mangled container names (Array_*, Map_*, Array_fixed_*)
 	// against V-notation sum variants (e.g. []string, map[string]int, [3]int).
-	if c_typ := t.c_name_to_type(c_name) {
-		v_name := c_typ.name()
-		if v_name in variants {
-			return v_name
-		}
-		v_short := if v_name.contains('__') { v_name.all_after_last('__') } else { v_name }
-		for v in variants {
-			var_short := if v.contains('__') { v.all_after_last('__') } else { v }
-			if v_name == v || v_short == var_short || v_short == v {
-				return v
+	// Only call c_name_to_type for container prefixes - it constructs Array/Map/ArrayFixed
+	// types directly without scope lookup. For other names, skip to string-based matching
+	// to avoid scope.lookup_parent which can crash in v3 (ARM64) due to corrupted sumtype
+	// data when extracting nested Type from Object from map[string]Object.
+	if c_name.starts_with('Array_') || c_name.starts_with('Map_') {
+		if c_typ := t.c_name_to_type(c_name) {
+			v_name := c_typ.name()
+			if v_name in variants {
+				return v_name
+			}
+			v_short := if v_name.contains('__') { v_name.all_after_last('__') } else { v_name }
+			for v in variants {
+				var_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if v_name == v || v_short == var_short || v_short == v {
+					return v
+				}
 			}
 		}
 	}

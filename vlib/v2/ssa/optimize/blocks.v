@@ -35,7 +35,10 @@ fn remove_unreachable_blocks(mut m ssa.Module) {
 				new_blocks << blk
 			}
 		}
-		m.funcs[fi].blocks = new_blocks
+		// Avoid m.funcs[fi].blocks = ... -- chained field assign broken in ARM64 self-hosted
+		mut func := m.funcs[fi]
+		func.blocks = new_blocks
+		m.funcs[fi] = func
 	}
 }
 
@@ -90,11 +93,12 @@ fn merge_blocks(mut m ssa.Module) {
 						// Candidate: target_id (only if no phi nodes)
 						if target_id != blk_id && m.blocks[target_id].preds.len == 1
 							&& m.blocks[target_id].preds[0] == blk_id && !has_phi {
-							// MERGE: Remove JMP from A
-							m.blocks[blk_id].instrs.delete_last()
-
-							// Append B's instrs to A
-							m.blocks[blk_id].instrs << m.blocks[target_id].instrs
+							// MERGE: Remove JMP from A, then append B's instrs to A
+							// Read whole struct, modify, write back (chained broken in ARM64)
+							mut merge_blk := m.blocks[blk_id]
+							merge_blk.instrs.delete_last()
+							merge_blk.instrs << m.blocks[target_id].instrs
+							m.blocks[blk_id] = merge_blk
 
 							// Update instructions in B to point to A (for their 'block' field)?
 							// Not strictly needed if we just use the list.
@@ -113,10 +117,19 @@ fn merge_blocks(mut m ssa.Module) {
 									if ins.op == .phi {
 										// Replace all occurrences (defensive - handles edge cases)
 										// i=1,3,5... are block references in phi [val0, blk0, val1, blk1, ...]
-										for i := 1; i < ins.operands.len; i += 2 {
-											if ins.operands[i] == m.blocks[target_id].val_id {
-												m.instrs[v.index].operands[i] = m.blocks[blk_id].val_id
+										// Avoid m.instrs[X].operands[i] = ... -- chained broken in ARM64 self-hosted
+										mut phi_ops := ins.operands.clone()
+										mut phi_modified := false
+										for i := 1; i < phi_ops.len; i += 2 {
+											if phi_ops[i] == m.blocks[target_id].val_id {
+												phi_ops[i] = m.blocks[blk_id].val_id
+												phi_modified = true
 											}
+										}
+										if phi_modified {
+											mut phi_ins := m.instrs[v.index]
+											phi_ins.operands = phi_ops
+											m.instrs[v.index] = phi_ins
 										}
 									}
 								}
@@ -138,7 +151,10 @@ fn merge_blocks(mut m ssa.Module) {
 						new_blks << b
 					}
 				}
-				m.funcs[fi].blocks = new_blks
+				// Avoid m.funcs[fi].blocks = ... -- chained field assign broken in ARM64 self-hosted
+				mut func2 := m.funcs[fi]
+				func2.blocks = new_blks
+				m.funcs[fi] = func2
 			}
 		}
 		// Rebuild CFG for next iteration if we made changes

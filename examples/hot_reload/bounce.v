@@ -51,7 +51,7 @@ fn main() {
 fn frame(mut game Game) {
 	game.gg.begin()
 	game.gg.draw_text_def(10, 5, 'Modify examples/hot_reload/bounce.v to get instant updates')
-	game.gg.draw_rect_filled(game.x, game.y, width, width, gg.blue)
+	game.gg.draw_rect_filled(game.x, game.y, width, width, gg.black)
 	game.gg.draw_rect_filled(window_width - width - game.x + 10, 200 - game.y + width,
 		width, width, gg.rgb(228, 10, 55))
 	game.gg.draw_rect_filled(game.x - 25, 250 - game.y, width, width, gg.rgb(28, 240,

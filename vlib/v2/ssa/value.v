@@ -42,7 +42,7 @@ pub:
 }
 
 pub struct GlobalVar {
-pub:
+pub mut:
 	name          string
 	typ           TypeID
 	linkage       Linkage
