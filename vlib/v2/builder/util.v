@@ -4,6 +4,7 @@
 module builder
 
 import os
+import v2.pref
 
 fn list_dir_entries(path string) []string {
 	return os.ls(path) or { []string{} }
@@ -27,22 +28,9 @@ pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 		if file.contains('.arm64.') || file.contains('.arm32.') || file.contains('.amd64.') {
 			continue
 		}
-		// skip OS-specific files for other platforms
-		// Note: _nix files are for Unix-like systems including macOS and Linux
-		$if macos {
-			if file.contains('_windows.') || file.contains('_linux.') || file.contains('_android') {
-				continue
-			}
-		} $else $if linux {
-			if file.contains('_windows.') || file.contains('_macos.') || file.contains('_darwin.')
-				|| file.contains('_android') {
-				continue
-			}
-		} $else $if windows {
-			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.')
-				|| file.contains('_android') {
-				continue
-			}
+		// Skip files specialized for a different target OS before parsing/type checking.
+		if pref.file_has_incompatible_os_suffix(file, os.user_os()) {
+			continue
 		}
 		// Conditional compilation files: _d_<feature> included when -d <feature> is set,
 		// _notd_<feature> included when -d <feature> is NOT set.
