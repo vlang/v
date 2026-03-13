@@ -421,7 +421,11 @@ pub fn (mut b Builder) build(files []string) {
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = trans.transform_files(b.files)
+	b.files = if b.pref.no_parallel_transform {
+		trans.transform_files(b.files)
+	} else {
+		b.transform_files_parallel(mut trans)
+	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 

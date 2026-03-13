@@ -30,6 +30,7 @@ pub mut:
 	skip_imports          bool
 	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
 	no_parallel           bool = true // default to sequential parsing until parallel is fixed
+	no_parallel_transform bool // when true, run transform sequentially (default: parallel)
 	no_cache              bool // Disable build cache
 	no_markused           bool // Disable markused stage and dead-function pruning
 	show_cc               bool // Print C compiler command(s)
@@ -241,10 +242,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
 		'-d', '-hot-fn']
 	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
-		'--skip-imports', '--skip-type-check', '--parallel', '-nocache', '--nocache', '-nomarkused',
-		'--nomarkused', '-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files',
-		'--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals',
-		'--enable-globals', '-shared', '--shared', '-O0']
+		'--skip-imports', '--skip-type-check', '--parallel', '--no-parallel', '-nocache', '--nocache',
+		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
+		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc',
+		'-profile-alloc', '-enable-globals', '--enable-globals', '-shared', '--shared', '-O0']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -267,6 +268,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -showcc, --showcc      Print C compiler command')
 			eprintln('  -keepc                 Keep generated C file')
 			eprintln('  --parallel             Enable parallel parsing')
+			eprintln('  --no-parallel          Disable parallel transform')
 			exit(1)
 		}
 	}
@@ -281,6 +283,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
 		no_parallel:           !use_parallel
+		no_parallel_transform: '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
@@ -336,6 +339,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
 		no_parallel:           !use_parallel
+		no_parallel_transform: '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options

@@ -151,6 +151,65 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 	t.file_set = unsafe { fs }
 }
 
+// new_worker_clone creates a lightweight Transformer that shares read-only state
+// (env, pref, elided_fns, comptime_vmodroot, file_set) but has its own
+// accumulator maps for thread-safe per-file transformation.
+pub fn (t &Transformer) new_worker_clone() &Transformer {
+	return &Transformer{
+		pref:                        unsafe { t.pref }
+		env:                         unsafe { t.env }
+		elided_fns:                  t.elided_fns
+		comptime_vmodroot:           t.comptime_vmodroot
+		file_set:                    unsafe { t.file_set }
+		needed_str_fns:              map[string]string{}
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+		needed_sort_fns:             map[string]SortComparatorInfo{}
+		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:  map[string]string{}
+	}
+}
+
+// merge_worker merges accumulated state from a worker transformer into this one.
+pub fn (mut t Transformer) merge_worker(w &Transformer) {
+	for k, v in w.needed_str_fns {
+		t.needed_str_fns[k] = v
+	}
+	for k, v in w.needed_array_contains_fns {
+		t.needed_array_contains_fns[k] = v
+	}
+	for k, v in w.needed_array_index_fns {
+		t.needed_array_index_fns[k] = v
+	}
+	for k, v in w.needed_array_last_index_fns {
+		t.needed_array_last_index_fns[k] = v
+	}
+	for k, v in w.needed_sort_fns {
+		t.needed_sort_fns[k] = v
+	}
+	for k, v in w.needed_enum_str_fns {
+		t.needed_enum_str_fns[k] = v
+	}
+	for k, v in w.interface_concrete_types {
+		t.interface_concrete_types[k] = v
+	}
+	for k, v in w.array_elem_type_overrides {
+		t.array_elem_type_overrides[k] = v
+	}
+	for lf in w.live_fns {
+		t.live_fns << lf
+	}
+	if w.live_source_file.len > 0 {
+		t.live_source_file = w.live_source_file
+	}
+}
+
+// transform_file_standalone transforms a single file, for use in parallel workers.
+pub fn (mut t Transformer) transform_file_pub(file ast.File) ast.File {
+	return t.transform_file(file)
+}
+
 fn resolve_comptime_vmodroot(files []ast.File, p &pref.Preferences) string {
 	if p != unsafe { nil } && p.vroot.len > 0 {
 		return p.vroot
@@ -442,8 +501,8 @@ fn (t &Transformer) is_var_enum(name string) ?string {
 	return none
 }
 
-// transform_files transforms all files and returns transformed copies
-pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+// pre_pass runs the sequential pre-pass: builds elided_fns and collects runtime const inits.
+pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	// Pre-pass: scan all function declarations for conditional compilation attributes
 	// to build elided_fns set before transforming call sites
 	for file in files {
@@ -463,10 +522,11 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	if !t.is_eval_backend() {
 		t.collect_runtime_const_inits(files)
 	}
-	mut result := []ast.File{cap: files.len}
-	for file in files {
-		result << t.transform_file(file)
-	}
+}
+
+// post_pass runs the sequential post-pass: injects runtime const init fns, generated functions,
+// test main, live reload, and propagates types.
+pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if !t.is_eval_backend() {
 		t.inject_runtime_const_init_fns(mut result)
 	}
@@ -629,6 +689,16 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 		t.inject_live_reload(mut result)
 	}
 	t.propagate_types(result)
+}
+
+// transform_files transforms all files and returns transformed copies
+pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	t.pre_pass(files)
+	mut result := []ast.File{cap: files.len}
+	for file in files {
+		result << t.transform_file(file)
+	}
+	t.post_pass(mut result)
 	return result
 }
 
