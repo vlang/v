@@ -26,10 +26,10 @@ mut:
 	is_promotable []bool
 	// Track which block_ids have phi placements (for cleanup and iteration)
 	phi_blocks []int
-	// Bitset for O(1) phi_blocks membership test
-	phi_blocks_set []bool
-	// Grouped phi operands: keyed by phi instruction index → flat list [val, bvid, val, bvid, ...]
-	phi_ops_by_instr map[int][]int
+	// Deferred phi operands: flat list of [instr_idx, val, bvid, instr_idx, val, bvid, ...].
+	// Applied after rename to avoid m.instrs[idx].operands << x which is broken
+	// in ARM64 self-hosted binaries (chained array-element-field-append bug).
+	deferred_phi_ops []int
 }
 
 fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
@@ -38,18 +38,22 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 
 	// Pre-allocate flat arrays ONCE outside the function loop.
 	mut ctx := Mem2RegCtx{
-		defs:             [][]int{len: n_values}
-		uses:             [][]int{len: n_values}
-		phi_placements:   [][]int{len: n_blocks}
-		phi_vals:         [][]int{len: n_blocks}
-		stacks:           [][]int{len: n_values}
-		is_promotable:    []bool{len: n_values}
-		phi_blocks:       []int{}
-		phi_blocks_set:   []bool{len: n_blocks}
-		phi_ops_by_instr: map[int][]int{}
+		defs:           [][]int{len: n_values}
+		uses:           [][]int{len: n_values}
+		phi_placements: [][]int{len: n_blocks}
+		phi_vals:       [][]int{len: n_blocks}
+		stacks:         [][]int{len: n_values}
+		is_promotable:  []bool{len: n_values}
+		phi_blocks:     []int{}
 	}
 
-	// Dominance frontier: indexed by block_id (separate from ctx.defs!)
+	// Pre-allocate stack_counts array (for rename_recursive).
+	mut stack_counts := []int{len: n_values}
+	for sci in 0 .. n_values {
+		stack_counts[sci] = -1
+	}
+
+	// Dominance frontier: indexed by block_id
 	mut df := [][]int{len: n_blocks}
 	// Track which blocks have DF entries for cleanup
 	mut df_blocks := []int{}
@@ -142,9 +146,8 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 					d := df[b][di]
 					if !has_phi[d] {
 						ctx.phi_placements[d] << alloc_id
-						if !ctx.phi_blocks_set[d] {
+						if d !in ctx.phi_blocks {
 							ctx.phi_blocks << d
-							ctx.phi_blocks_set[d] = true
 						}
 						has_phi[d] = true
 						has_phi_list << d
@@ -191,34 +194,76 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		if func2.blocks.len > 0 {
 			entry := func2.blocks[0]
 			total_blocks_in_funcs += func2.blocks.len
-			bv, bs := rename_iterative(mut m, entry, mut ctx, promotable,
+			bv, bs := rename_recursive(mut m, entry, mut ctx, promotable, mut stack_counts,
 				&dom, cfg, block_val_ids)
 			total_blocks_visited += bv
 			total_blocks_skipped += bs
 		}
 
-		// 4b. Apply grouped phi operands.
-		// phi_ops_by_instr[instr_idx] contains [val, bvid, val, bvid, ...]
-		n_phi_blocks3 := ctx.phi_blocks.len
-		for pbi3 in 0 .. n_phi_blocks3 {
-			pb_id := ctx.phi_blocks[pbi3]
-			n_phi_allocs3 := ctx.phi_vals[pb_id].len
-			for pai3 in 0 .. n_phi_allocs3 {
-				phi_vid := ctx.phi_vals[pb_id][pai3]
-				phi_v := m.values[phi_vid]
-				phi_instr_idx := phi_v.index
-				// Direct lookup by instruction index — O(1) instead of O(n) scan
-				if phi_instr_idx in ctx.phi_ops_by_instr {
-					ops := ctx.phi_ops_by_instr[phi_instr_idx]
-					// Avoid m.instrs[X].operands = ops -- chained field assign broken in ARM64 self-hosted
-					mut phi_instr := m.instrs[phi_instr_idx]
-					phi_instr.operands = ops
-					m.instrs[phi_instr_idx] = phi_instr
+		// 4b. Apply deferred phi operands.
+		// Groups by instr_idx using radix-sort approach: since phi instrs are known from
+		// phi_blocks/phi_vals, iterate phis and scan once with a sorted deferred list.
+		// This avoids O(N_phis × N_deferred) quadratic scan.
+		if ctx.deferred_phi_ops.len > 0 {
+			n_deferred := ctx.deferred_phi_ops.len
+			// Sort deferred_phi_ops triples by instr_idx (first element of each triple).
+			// Simple insertion sort on triples — N is typically small (hundreds).
+			n_triples := n_deferred / 3
+			for ti in 1 .. n_triples {
+				key0 := ctx.deferred_phi_ops[ti * 3]
+				key1 := ctx.deferred_phi_ops[ti * 3 + 1]
+				key2 := ctx.deferred_phi_ops[ti * 3 + 2]
+				mut tj := ti - 1
+				for tj >= 0 && ctx.deferred_phi_ops[tj * 3] > key0 {
+					ctx.deferred_phi_ops[(tj + 1) * 3] = ctx.deferred_phi_ops[tj * 3]
+					ctx.deferred_phi_ops[(tj + 1) * 3 + 1] = ctx.deferred_phi_ops[tj * 3 + 1]
+					ctx.deferred_phi_ops[(tj + 1) * 3 + 2] = ctx.deferred_phi_ops[tj * 3 + 2]
+					tj--
+				}
+				ctx.deferred_phi_ops[(tj + 1) * 3] = key0
+				ctx.deferred_phi_ops[(tj + 1) * 3 + 1] = key1
+				ctx.deferred_phi_ops[(tj + 1) * 3 + 2] = key2
+			}
+
+			// Now apply: for each phi, binary search for its instr_idx in the sorted list,
+			// then collect all consecutive triples with the same instr_idx.
+			n_phi_blocks3 := ctx.phi_blocks.len
+			for pbi3 in 0 .. n_phi_blocks3 {
+				pb_id := ctx.phi_blocks[pbi3]
+				n_phi_allocs3 := ctx.phi_vals[pb_id].len
+				for pai3 in 0 .. n_phi_allocs3 {
+					phi_vid := ctx.phi_vals[pb_id][pai3]
+					phi_v := m.values[phi_vid]
+					phi_instr_idx := phi_v.index
+					// Binary search for first triple with this instr_idx
+					mut lo := 0
+					mut hi := n_triples
+					for lo < hi {
+						mid := (lo + hi) / 2
+						if ctx.deferred_phi_ops[mid * 3] < phi_instr_idx {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					// Collect all triples with matching instr_idx
+					mut ops := []int{}
+					for lo < n_triples && ctx.deferred_phi_ops[lo * 3] == phi_instr_idx {
+						ops << ctx.deferred_phi_ops[lo * 3 + 1]
+						ops << ctx.deferred_phi_ops[lo * 3 + 2]
+						lo++
+					}
+					if ops.len > 0 {
+						// Avoid m.instrs[X].operands = ops -- chained field assign broken in ARM64 self-hosted
+						mut phi_instr := m.instrs[phi_instr_idx]
+						phi_instr.operands = ops
+						m.instrs[phi_instr_idx] = phi_instr
+					}
 				}
 			}
+			ctx.deferred_phi_ops = []
 		}
-
-		// Update uses for phi operands
+		// Update uses for phi operands (deferred from step 3)
 		n_phi_blocks4 := ctx.phi_blocks.len
 		for pbi4 in 0 .. n_phi_blocks4 {
 			pb_id := ctx.phi_blocks[pbi4]
@@ -230,7 +275,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				instr := m.instrs[phi_instr_idx]
 				for oi := 0; oi < instr.operands.len; oi += 2 {
 					val_op := instr.operands[oi]
-					if val_op < m.values.len {
+					if val_op < m.values.len && phi_vid !in m.values[val_op].uses {
 						// Read whole struct, modify, write back (chained broken in ARM64)
 						mut vop := m.values[val_op]
 						vop.uses << phi_vid
@@ -250,26 +295,14 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		}
 		n_phi_blocks2 := ctx.phi_blocks.len
 		for cli2 in 0 .. n_phi_blocks2 {
-			blk_id := ctx.phi_blocks[cli2]
-			// Clean up phi_ops_by_instr for phis in this block
-			n_pv := ctx.phi_vals[blk_id].len
-			for pvi in 0 .. n_pv {
-				phi_vid := ctx.phi_vals[blk_id][pvi]
-				if phi_vid < m.values.len {
-					phi_instr_idx := m.values[phi_vid].index
-					ctx.phi_ops_by_instr.delete(phi_instr_idx)
-				}
-			}
-			ctx.phi_placements[blk_id] = []
-			ctx.phi_vals[blk_id] = []
-			ctx.phi_blocks_set[blk_id] = false
+			ctx.phi_placements[ctx.phi_blocks[cli2]] = []
+			ctx.phi_vals[ctx.phi_blocks[cli2]] = []
 		}
 		ctx.phi_blocks = []
 		n_df_blocks := df_blocks.len
 		for cli3 in 0 .. n_df_blocks {
-			bid := df_blocks[cli3]
-			df[bid] = []
-			df_blocks_set[bid] = false
+			df[df_blocks[cli3]] = []
+			df_blocks_set[df_blocks[cli3]] = false
 		}
 		df_blocks = []
 	}
@@ -354,10 +387,9 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 					// Avoid duplicate entries in dominance frontier
 					if blk_id !in df[runner] {
 						df[runner] << blk_id
-						// O(1) df_blocks membership via bitset
 						if !df_blocks_set[runner] {
-							df_blocks_set[runner] = true
 							df_blocks << runner
+							df_blocks_set[runner] = true
 						}
 					}
 					if runner == dom.idom[runner] {
@@ -379,11 +411,7 @@ mut:
 	processed     bool  // whether steps 1-3 have been run for this block
 }
 
-fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
-	// block_val_ids is pre-built once and passed in (avoids 260K scan per function)
-
-	// phi_ops_by_instr is a map now, no pre-allocation needed
-
+fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
 	mut work := []RenameFrame{}
 	work << RenameFrame{
 		blk_id: root_blk
@@ -407,19 +435,25 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 				visited[blk_id] = true
 			}
 			blocks_visited += 1
+			// Steps 1-3: process this block (runs once per block)
 			// Avoid work[fi].processed = true — chained field assignment broken in ARM64 self-hosted.
 			mut frame2 := work[fi]
 			frame2.processed = true
 			work[fi] = frame2
 
-			// 1. Push Phis to stack
+			// 1. Push Phis to stack (use phi_vals[] for direct lookup, no string matching)
 			if blk_id < ctx.phi_placements.len && ctx.phi_placements[blk_id].len > 0 {
 				n_phi_allocs := ctx.phi_placements[blk_id].len
 				for pai in 0 .. n_phi_allocs {
 					alloc_id := ctx.phi_placements[blk_id][pai]
+					// Direct lookup: phi_vals[blk_id][pai] is the phi for this alloc
 					if blk_id < ctx.phi_vals.len && pai < ctx.phi_vals[blk_id].len {
 						phi_val_id := ctx.phi_vals[blk_id][pai]
-						ctx.stacks[alloc_id] << phi_val_id
+						// Avoid ctx.stacks[X] << Y — chained append broken in ARM64 self-hosted.
+						mut new_stack := ctx.stacks[alloc_id].clone()
+						new_stack << phi_val_id
+						ctx.stacks[alloc_id] = new_stack
+						// Avoid work[fi].pushed_allocs = X — chained field assignment broken in ARM64.
 						mut wf := work[fi]
 						wf.pushed_allocs << alloc_id
 						work[fi] = wf
@@ -439,7 +473,11 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 				if instr.op == .store {
 					ptr := instr.operands[1]
 					if ptr < ctx.is_promotable.len && ctx.is_promotable[ptr] {
-						ctx.stacks[ptr] << instr.operands[0]
+						// Avoid ctx.stacks[X] << Y — chained append broken in ARM64 self-hosted.
+						mut new_stack := ctx.stacks[ptr].clone()
+						new_stack << instr.operands[0]
+						ctx.stacks[ptr] = new_stack
+						// Avoid work[fi].pushed_allocs = X — chained field assignment broken in ARM64.
 						mut wf := work[fi]
 						wf.pushed_allocs << ptr
 						work[fi] = wf
@@ -470,13 +508,14 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 			for nopi in 0 .. instrs_to_nop.len {
 				vid := instrs_to_nop[nopi]
 				vid_val := m.values[vid]
+				// Avoid m.instrs[X].op/operands = ... -- chained field assign broken in ARM64 self-hosted
 				mut nop_instr := m.instrs[vid_val.index]
 				nop_instr.op = .bitcast
 				nop_instr.operands = []
 				m.instrs[vid_val.index] = nop_instr
 			}
 
-			// 3. Update Successor Phi Operands — group by phi instruction index
+			// 3. Update Successor Phi Operands
 			n_succs := cfg.succs[blk_id].len
 			for si in 0 .. n_succs {
 				succ_id := cfg.succs[blk_id][si]
@@ -484,6 +523,7 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 					n_succ_phi_allocs := ctx.phi_placements[succ_id].len
 					for spai in 0 .. n_succ_phi_allocs {
 						alloc_id := ctx.phi_placements[succ_id][spai]
+						// Direct lookup: phi_vals[succ_id][spai] is the phi for this alloc
 						if succ_id < ctx.phi_vals.len && spai < ctx.phi_vals[succ_id].len {
 							vid := ctx.phi_vals[succ_id][spai]
 							v := m.values[vid]
@@ -491,23 +531,27 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 							if ctx.stacks[alloc_id].len > 0 {
 								val = ctx.stacks[alloc_id].last()
 							} else {
+								// Undef - reading uninitialized memory
 								alloc_v := m.values[alloc_id]
 								alloc_typ := m.type_store.types[alloc_v.typ]
 								typ := alloc_typ.elem_type
 								val = m.get_or_add_const(typ, 'undef')
 							}
 							bvid := block_val_ids[blk_id]
-							// Group by phi instruction index for O(1) lookup during apply
-							instr_idx := v.index
-							if instr_idx >= 0 {
-								ctx.phi_ops_by_instr[instr_idx] << val
-								ctx.phi_ops_by_instr[instr_idx] << bvid
-							}
-							// Update uses
+							// Defer phi operand append to avoid m.instrs[idx].operands << x
+							// which is broken in ARM64 self-hosted binaries.
+							ctx.deferred_phi_ops << v.index
+							ctx.deferred_phi_ops << val
+							ctx.deferred_phi_ops << bvid
+							// FIX: Update uses so DCE doesn't remove the value
+							// Avoid m.values[X].uses << Y — chained append broken in ARM64 self-hosted.
 							if val < m.values.len {
-								mut vv := m.values[val]
-								vv.uses << vid
-								m.values[val] = vv
+								if vid !in m.values[val].uses {
+									// Read whole struct, modify, write back (chained broken in ARM64)
+									mut vv := m.values[val]
+									vv.uses << vid
+									m.values[val] = vv
+								}
 							}
 						}
 					}
@@ -520,6 +564,7 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 		child_idx := work[fi].child_idx
 		if child_idx < n_children {
 			child := dom.dom_tree[blk_id][child_idx]
+			// Avoid work[fi].child_idx++ — chained field increment broken in ARM64 self-hosted.
 			mut frame := work[fi]
 			frame.child_idx++
 			work[fi] = frame
@@ -528,15 +573,13 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 			}
 		} else {
 			// 5. All children processed - pop stacks (cleanup)
-			// Direct pop instead of clone() — much faster
-			pushed := work[fi].pushed_allocs
-			n_pushed := pushed.len
+			pushed := work[fi].pushed_allocs.clone()
 			work.pop()
-			for i := n_pushed - 1; i >= 0; i-- {
-				aid := pushed[i]
-				if ctx.stacks[aid].len > 0 {
-					ctx.stacks[aid].pop()
-				}
+			for i := pushed.len - 1; i >= 0; i-- {
+				// Avoid ctx.stacks[X].pop() — chained method broken in ARM64 self-hosted.
+				mut s := ctx.stacks[pushed[i]].clone()
+				s.pop()
+				ctx.stacks[pushed[i]] = s
 			}
 		}
 	}
@@ -544,6 +587,6 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 }
 
 fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
-	return rename_iterative(mut m, blk_id, mut ctx, promotable, dom,
+	return rename_iterative(mut m, blk_id, mut ctx, promotable, mut stack_counts, dom,
 		cfg, block_val_ids)
 }
