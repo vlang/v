@@ -6,6 +6,7 @@ module arm64
 
 import os
 import time
+import runtime
 
 // Mach-O executable constants
 const mh_execute = 2
@@ -887,20 +888,28 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 		sig << 0
 	}
 
-	// Compute and write page hashes (16KB pages)
-	for page := 0; page < n_pages; page++ {
-		start := page * cs_page_size_arm64
-		mut end := start + cs_page_size_arm64
-		if end > code_limit {
-			end = code_limit
+	// Compute page hashes in parallel (16KB pages)
+	mut all_hashes := []u8{len: n_pages * 32}
+	data_ptr := unsafe { &u8(l.buf.data) }
+	hash_ptr := unsafe { &u8(all_hashes.data) }
+	n_threads := runtime.nr_cpus()
+	pages_per_thread := (n_pages + n_threads - 1) / n_threads
+
+	mut threads := []thread{}
+	for t := 0; t < n_threads; t++ {
+		page_start := t * pages_per_thread
+		mut page_end := page_start + pages_per_thread
+		if page_end > n_pages {
+			page_end = n_pages
 		}
-		unsafe {
-			sha256_hash(&u8(l.buf.data) + start, end - start, mut &hash_buf)
+		if page_start >= page_end {
+			break
 		}
-		for b in hash_buf {
-			sig << b
-		}
+		threads << spawn sha256_hash_pages(data_ptr, hash_ptr, page_start, page_end,
+			code_limit)
 	}
+	threads.wait()
+	sig << all_hashes
 
 	// Pad CodeDirectory to alignment
 	for sig.len < cd_blob_offset + cd_size_aligned {
@@ -1285,6 +1294,23 @@ const sha256_k = [
 @[inline]
 fn rotr32(x u32, n u32) u32 {
 	return (x >> n) | (x << (32 - n))
+}
+
+// sha256_hash_pages hashes a range of 16KB pages in a worker thread.
+// Each thread writes 32-byte hashes into disjoint slots of the pre-allocated output buffer.
+fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_limit int) {
+	mut hash_buf := [32]u8{}
+	for page := page_start; page < page_end; page++ {
+		start := page * cs_page_size_arm64
+		mut end := start + cs_page_size_arm64
+		if end > code_limit {
+			end = code_limit
+		}
+		unsafe {
+			sha256_hash(data + start, end - start, mut &hash_buf)
+			vmemcpy(hashes + page * 32, &hash_buf[0], 32)
+		}
+	}
 }
 
 // sha256_hash computes SHA-256 of data[0..data_len] into out[0..32].
