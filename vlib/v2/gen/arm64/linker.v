@@ -507,16 +507,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Make executable
 	os.chmod(output_path, 0o755) or {}
-	l.codesign_output(output_path)
 
 	println('  TOTAL linker: ${time.since(t_total)}')
-}
-
-fn (l Linker) codesign_output(output_path string) {
-	// Re-sign with system codesign to ensure valid signature for large binaries.
-	// Our built-in ad-hoc signature works for small binaries but has issues with
-	// large (30MB+) executables that cause dyld to hang.
-	os.execute('codesign -s - -f ${output_path}')
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
@@ -875,19 +867,47 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	sig << ident_bytes
 	sig << 0
 
-	// Write placeholder hashes (all zeros). The external codesign tool
-	// will recompute all hashes, so we just need the correct structure/sizes.
-	// This avoids expensive pure-V SHA-256 computation (~1400 pages).
+	// Write special slot hashes (slots -2, -1 in that order)
 
-	// Special slot hashes (slots -2, -1) + code slot hashes + alignment padding
-	remaining := cd_blob_offset + cd_size_aligned - sig.len
-	sig << []u8{len: remaining}
-
-	// Write Requirements blob (empty)
+	// Build the requirements blob first so we can hash it
 	mut req_blob := []u8{}
 	write_u32_be(mut req_blob, csmagic_requirements)
 	write_u32_be(mut req_blob, u32(req_size))
 	write_u32_be(mut req_blob, 0) // count = 0
+
+	// Slot -2: Hash of requirements blob
+	mut hash_buf := [32]u8{}
+	sha256_hash(req_blob.data, req_blob.len, mut &hash_buf)
+	for b in hash_buf {
+		sig << b
+	}
+
+	// Slot -1: Info.plist (zeros = no Info.plist)
+	for _ in 0 .. cs_hash_size {
+		sig << 0
+	}
+
+	// Compute and write page hashes (16KB pages)
+	for page := 0; page < n_pages; page++ {
+		start := page * cs_page_size_arm64
+		mut end := start + cs_page_size_arm64
+		if end > code_limit {
+			end = code_limit
+		}
+		unsafe {
+			sha256_hash(&u8(l.buf.data) + start, end - start, mut &hash_buf)
+		}
+		for b in hash_buf {
+			sig << b
+		}
+	}
+
+	// Pad CodeDirectory to alignment
+	for sig.len < cd_blob_offset + cd_size_aligned {
+		sig << 0
+	}
+
+	// Write Requirements blob
 	sig << req_blob
 
 	// Write empty CMS signature blob (for ad-hoc signing)
@@ -1238,4 +1258,144 @@ fn (mut l Linker) write_zeros(n int) {
 		return
 	}
 	unsafe { l.buf.grow_len(n) }
+}
+
+// Self-contained SHA-256 implementation. Zero heap allocations —
+// uses fixed-size arrays and operates on raw pointers.
+
+const sha256_k = [
+	u32(0x428a2f98), 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+	0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+	0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+	0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+	0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+	0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+	0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+	0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]!
+
+@[inline]
+fn rotr32(x u32, n u32) u32 {
+	return (x >> n) | (x << (32 - n))
+}
+
+// sha256_hash computes SHA-256 of data[0..data_len] into out[0..32].
+// No heap allocations — uses fixed-size arrays on the stack.
+@[direct_array_access]
+fn sha256_hash(data &u8, data_len int, mut out &[32]u8) {
+	mut state := [u32(0x6A09E667), 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+		0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19]!
+	mut w := [64]u32{}
+
+	// Process complete 64-byte blocks directly from input
+	n_full_blocks := data_len / 64
+	for blk := 0; blk < n_full_blocks; blk++ {
+		off := blk * 64
+		for i in 0 .. 16 {
+			j := off + i * 4
+			unsafe {
+				w[i] = (u32(data[j]) << 24) | (u32(data[j + 1]) << 16) | (u32(data[j + 2]) << 8) | u32(data[j + 3])
+			}
+		}
+		sha256_compress(mut &state, mut &w)
+	}
+
+	// Build final padded block(s): remaining data + 0x80 + zeros + 64-bit big-endian length
+	remaining := data_len - n_full_blocks * 64
+	mut pad := [128]u8{} // At most 2 final blocks
+	for i in 0 .. remaining {
+		unsafe {
+			pad[i] = data[n_full_blocks * 64 + i]
+		}
+	}
+	pad[remaining] = 0x80
+
+	// Need room for 8-byte length at end of last 64-byte block
+	mut pad_blocks := 1
+	if remaining >= 56 {
+		pad_blocks = 2
+	}
+
+	// Write bit length (big-endian u64) at end of last padding block
+	bit_len := u64(data_len) * 8
+	pad_end := pad_blocks * 64
+	pad[pad_end - 8] = u8(bit_len >> 56)
+	pad[pad_end - 7] = u8(bit_len >> 48)
+	pad[pad_end - 6] = u8(bit_len >> 40)
+	pad[pad_end - 5] = u8(bit_len >> 32)
+	pad[pad_end - 4] = u8(bit_len >> 24)
+	pad[pad_end - 3] = u8(bit_len >> 16)
+	pad[pad_end - 2] = u8(bit_len >> 8)
+	pad[pad_end - 1] = u8(bit_len)
+
+	for blk in 0 .. pad_blocks {
+		off := blk * 64
+		for i in 0 .. 16 {
+			j := off + i * 4
+			w[i] = (u32(pad[j]) << 24) | (u32(pad[j + 1]) << 16) | (u32(pad[j + 2]) << 8) | u32(pad[j + 3])
+		}
+		sha256_compress(mut &state, mut &w)
+	}
+
+	// Write result big-endian
+	for i in 0 .. 8 {
+		out[i * 4] = u8(state[i] >> 24)
+		out[i * 4 + 1] = u8(state[i] >> 16)
+		out[i * 4 + 2] = u8(state[i] >> 8)
+		out[i * 4 + 3] = u8(state[i])
+	}
+}
+
+@[direct_array_access]
+fn sha256_compress(mut state &[8]u32, mut w &[64]u32) {
+	// Extend the first 16 words into the remaining 48
+	for i := 16; i < 64; i++ {
+		s0 := rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3)
+		s1 := rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10)
+		w[i] = w[i - 16] + s0 + w[i - 7] + s1
+	}
+
+	mut a := state[0]
+	mut b := state[1]
+	mut c := state[2]
+	mut d := state[3]
+	mut e := state[4]
+	mut f := state[5]
+	mut g := state[6]
+	mut h := state[7]
+
+	for i in 0 .. 64 {
+		s1 := rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)
+		ch := (e & f) ^ (~e & g)
+		t1 := h + s1 + ch + sha256_k[i] + w[i]
+		s0 := rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)
+		maj := (a & b) ^ (a & c) ^ (b & c)
+		t2 := s0 + maj
+
+		h = g
+		g = f
+		f = e
+		e = d + t1
+		d = c
+		c = b
+		b = a
+		a = t1 + t2
+	}
+
+	state[0] += a
+	state[1] += b
+	state[2] += c
+	state[3] += d
+	state[4] += e
+	state[5] += f
+	state[6] += g
+	state[7] += h
 }
