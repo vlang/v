@@ -1571,7 +1571,8 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	mut left_type := g.unwrap_generic(node.left_type)
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-		if resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type) {
+		resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
+		if resolved_left_type != 0 {
 			left_type = g.unwrap_generic(resolved_left_type)
 		}
 	}
@@ -1654,7 +1655,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	mut left_type := g.unwrap_generic(node.left_type)
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-		if resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type) {
+		resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
+		if resolved_left_type != 0 {
 			left_type = g.unwrap_generic(resolved_left_type)
 		}
 	}
