@@ -11,6 +11,7 @@ const is_debug = args_.contains('-debug')
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const vroot = os.dir(vexe)
+const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define']
 
 fn main() {
 	// make testing `v up` easier, by providing a way to force `v self` to fail,
@@ -25,7 +26,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	mut args := args_[1..].filter(it != 'self')
+	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
 	if args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
@@ -43,28 +44,71 @@ fn main() {
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }
-	cmd := '${os.quoted_path(vexe)} ${sargs} ${os.quoted_path('cmd/v')}'
 	options := if args.len > 0 { '(${sargs})' } else { '' }
-	println('V self compiling ${options}...')
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	mut used_pgo := false
 	pgo_cc_kind := pgo_compiler_kind(args)
-	if pgo_cc_kind != '' {
-		used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
+	for run_idx in 0 .. repeat_count {
+		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
+		println('V self compiling${run_label} ${options}...')
+		cmd := '${os.quoted_path(vexe)} ${sargs} ${os.quoted_path('cmd/v')}'
+		mut used_pgo := false
+		if pgo_cc_kind != '' {
+			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
+			if !used_pgo {
+				eprintln('PGO self-build failed; falling back to a regular self-build.')
+			}
+		}
 		if !used_pgo {
-			eprintln('PGO self-build failed; falling back to a regular self-build.')
+			compile(vroot, cmd)
+		}
+		if obinary == '' {
+			backup_old_version_and_rename_newer(short_v_name) or { panic(err.msg()) }
 		}
 	}
-	if !used_pgo {
-		compile(vroot, cmd)
-	}
 	if obinary != '' {
-		// When -o was given, there is no need to backup/rename the original.
-		// The user just wants an independent copy of v, and so we are done.
 		return
 	}
-	backup_old_version_and_rename_newer(short_v_name) or { panic(err.msg()) }
 	println('V built successfully as executable "${vexe_name}".')
+}
+
+fn repeat_count_arg(arg string) int {
+	if arg.len < 2 || arg[0] != `x` {
+		return 0
+	}
+	for ch in arg[1..].bytes() {
+		if !ch.is_digit() {
+			return 0
+		}
+	}
+	count := arg[1..].int()
+	return if count > 0 { count } else { 0 }
+}
+
+fn extract_repeat_count(args []string) (int, []string) {
+	mut repeat_count := 1
+	mut filtered := []string{cap: args.len}
+	mut should_skip_repeat_check := false
+	for arg in args {
+		if should_skip_repeat_check {
+			filtered << arg
+			should_skip_repeat_check = false
+			continue
+		}
+		if arg in vself_flags_with_values {
+			filtered << arg
+			should_skip_repeat_check = true
+			continue
+		}
+		if repeat_count == 1 {
+			count := repeat_count_arg(arg)
+			if count > 0 {
+				repeat_count = count
+				continue
+			}
+		}
+		filtered << arg
+	}
+	return repeat_count, filtered
 }
 
 fn has_gc_arg(args []string) bool {
