@@ -14,19 +14,24 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	}
 	mut name := node.cname
 	mut expr_type := node.expr_type
-	if node.expr is ast.CallExpr && node.expr.return_type_generic != 0 {
-		resolved_call_type := g.resolve_return_type(node.expr)
-		if resolved_call_type != ast.void_type {
-			expr_type = g.unwrap_generic(resolved_call_type)
-			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+	if node.expr is ast.CallExpr {
+		if node.expr.return_type_generic != 0 {
+			resolved_call_type := g.resolve_return_type(node.expr)
+			if resolved_call_type != ast.void_type {
+				expr_type = g.unwrap_generic(resolved_call_type)
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
+					'')
+			}
 		}
 	}
-	if node.expr is ast.PostfixExpr && node.expr.expr is ast.CallExpr
-		&& node.expr.expr.return_type_generic != 0 {
-		resolved_postfix_type := g.resolve_return_type(node.expr.expr)
-		if resolved_postfix_type != ast.void_type {
-			expr_type = g.unwrap_generic(resolved_postfix_type)
-			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+	if node.expr is ast.PostfixExpr {
+		if node.expr.expr is ast.CallExpr && node.expr.expr.return_type_generic != 0 {
+			resolved_postfix_type := g.resolve_return_type(node.expr.expr)
+			if resolved_postfix_type != ast.void_type {
+				expr_type = g.unwrap_generic(resolved_postfix_type)
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
+					'')
+			}
 		}
 	}
 	resolved_expr_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
@@ -47,9 +52,21 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		// generic func with recursion rewrite node.expr_type
 		if node.expr is ast.Ident {
 			// var
-			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
-					.result))).replace('*', '')
+			if node.expr.info is ast.IdentVar {
+				current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+				if current_fn_ident_type != 0 {
+					expr_type = current_fn_ident_type
+				} else {
+					resolved_ident_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
+						expr_type))
+					if resolved_ident_type != 0 {
+						expr_type = resolved_ident_type
+					} else {
+						expr_type = g.unwrap_generic(node.expr.info.typ)
+					}
+				}
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
+					'')
 			}
 		} else if node.expr is ast.CallExpr {
 			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
@@ -96,6 +113,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 
 	if g.table.sym(node.expr_type).language == .c {
 		name = name[3..]
+	}
+	if node.expr is ast.Ident {
+		current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+		if current_fn_ident_type != 0 {
+			expr_type = current_fn_ident_type
+			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+		}
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
 		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })

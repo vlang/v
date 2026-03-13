@@ -5004,13 +5004,24 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	old_inside_selector_deref := g.inside_selector_deref
 	g.inside_selector = node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 	g.inside_selector_lhs = true
-	pre_is_interface_smartcast_expr := node.expr is ast.Ident && node.expr.obj is ast.Var
-		&& g.table.is_interface_smartcast(node.expr.obj)
-	is_interface_smartcast_selector := node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
-		&& node.expr.expr.obj is ast.Var && node.expr.field_name.starts_with('_')
-		&& g.table.is_interface_smartcast(node.expr.expr.obj)
+	mut smartcast_expr_var := ast.Var{}
+	mut is_interface_smartcast_expr := false
+	if node.expr is ast.Ident {
+		if node.expr.obj is ast.Var && g.table.is_interface_smartcast(node.expr.obj) {
+			smartcast_expr_var = node.expr.obj
+			is_interface_smartcast_expr = true
+		}
+	}
+	mut is_interface_smartcast_selector := false
+	if node.expr is ast.SelectorExpr {
+		if node.expr.expr is ast.Ident && node.expr.expr.obj is ast.Var
+			&& node.expr.field_name.starts_with('_')
+			&& g.table.is_interface_smartcast(node.expr.expr.obj) {
+			is_interface_smartcast_selector = true
+		}
+	}
 	n_ptr := if is_interface_smartcast_selector
-		|| (pre_is_interface_smartcast_expr && node.expr_type.nr_muls() > 1) {
+		|| (is_interface_smartcast_expr && node.expr_type.nr_muls() > 1) {
 		0
 	} else {
 		node.expr_type.nr_muls() - 1
@@ -5074,17 +5085,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	is_dereferenced := (node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
 		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type])
 		|| is_interface_smartcast_selector
-	is_interface_smartcast_expr := node.expr is ast.Ident && node.expr.obj is ast.Var
-		&& g.table.is_interface_smartcast(node.expr.obj)
 	is_interface_smartcast_lhs := is_interface_smartcast_expr || is_interface_smartcast_selector
 	exposed_interface_smartcast_type := if is_interface_smartcast_expr {
-		g.exposed_smartcast_type(node.expr.obj.orig_type, node.expr.obj.smartcasts.last(),
-			node.expr.obj.is_mut)
+		g.exposed_smartcast_type(smartcast_expr_var.orig_type, smartcast_expr_var.smartcasts.last(),
+			smartcast_expr_var.is_mut)
 	} else {
 		ast.void_type
 	}
 	interface_smartcast_expr_is_dereferenced := is_interface_smartcast_expr
-		&& node.expr.obj.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
+		&& smartcast_expr_var.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
 	left_is_ptr := field_is_opt
 		|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
 		|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())

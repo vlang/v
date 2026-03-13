@@ -482,7 +482,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-subsystem' {
 				subsystem := cmdline.option(args[i..], '-subsystem', '')
-				res.subsystem = Subsystem.from(subsystem) or {
+				res.subsystem = Subsystem.from_string(subsystem) or {
 					mut valid := []string{}
 					$for x in Subsystem.values {
 						valid << x.name

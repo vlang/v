@@ -1,17 +1,3 @@
-vlib/x/json2/decode.v:685:47: notice: unused parameter: `val`
-  683 | }
-  684 | 
-  685 | fn (mut decoder Decoder) decode_string[T](mut val T) ! {
-      |                                               ~~~
-  686 |     string_info := decoder.current_node.value
-  687 |
-vlib/x/json2/decode.v:1049:43: notice: unused parameter: `val`
- 1047 | // use pointer instead of mut so enum cast works
- 1048 | @[unsafe]
- 1049 | fn (mut decoder Decoder) decode_number[T](val &T) ! {
-      |                                           ~~~
- 1050 |     number_info := decoder.current_node.value
- 1051 |     str := decoder.json[number_info.position..number_info.position + number_info.length]
 vlib/v/checker/tests/comptime_selector_assign.vv:18:24: error: mismatched types: check field type with $if to avoid this problem
    16 |                 typ.$(field.name) = 2
    17 |             }

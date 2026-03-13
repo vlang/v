@@ -1,3 +1,10 @@
+vlib/v/checker/tests/generics_struct_init_with_inconsistent_generic_types_3_err.vv:27:14: error: a non generic function called like a generic one
+   25 | fn main() {
+   26 |     m := some[int](12)
+   27 |     ret := m.map[int, string](fn (i int) string {
+      |                 ~~~~~~~~~~~~~
+   28 |         return i.str()
+   29 |     })
 vlib/v/checker/tests/generics_struct_init_with_inconsistent_generic_types_3_err.vv:12:25: error: cannot assign `string` to struct field `val` with type `int`
    10 | pub fn (me Maybe[T]) map[T, U](f fn (T) U) Maybe[U] {
    11 |     if me.present {

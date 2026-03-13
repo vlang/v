@@ -28,7 +28,7 @@ pub fn encode[T](val T, config EncoderOptions) string {
 		EncoderOptions: config
 	}
 
-	encoder.encode_value(val)
+	encoder.encode_value[T](val)
 
 	return encoder.output.bytestr()
 }
@@ -67,15 +67,15 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	} $else $if T.unaliased_typ is $map {
 		encoder.encode_map(val)
 	} $else $if T.unaliased_typ is $enum {
-		encoder.encode_enum(val)
+		encoder.encode_enum[T](val)
 	} $else $if T.unaliased_typ is $sumtype {
-		encoder.encode_sumtype(val)
+		encoder.encode_sumtype[T](val)
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
-		encoder.encode_custom(val)
+		encoder.encode_custom[T](val)
 	} $else $if T is Encodable { // uses T, because alias could be implementing JsonEncoder, while the base type does not
-		encoder.encode_custom2(val)
+		encoder.encode_custom2[T](val)
 	} $else $if T.unaliased_typ is $struct {
-		unsafe { encoder.encode_struct(val) }
+		unsafe { encoder.encode_struct[T](val) }
 	}
 }
 
@@ -420,7 +420,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 fn (mut encoder Encoder) encode_struct[T](val T) {
 	encoder.output << `{`
 
-	is_first := encoder.encode_struct_fields(val, true, [], '')
+	is_first := encoder.encode_struct_fields[T](val, true, [], '')
 
 	if encoder.prettify && !is_first {
 		encoder.decrement_level()

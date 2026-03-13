@@ -573,7 +573,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		}
 	}
 
-	ch := chan &net.TcpConn{cap: params.pool_channel_slots}
+	ch := chan mut net.TcpConn{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
 		ws << new_worker[T](ch, worker_number, unsafe { global_app }, controllers_sorted,
@@ -1185,37 +1185,21 @@ fn filter(s string) string {
 	return html.escape(s)
 }
 
-// Worker functions for the thread pool:
-struct Worker[T] {
-	id          int
-	ch          chan &net.TcpConn
-	global_app  voidptr
-	controllers []&ControllerPath
-	routes      &map[string]Route
+fn new_worker[T](ch chan mut net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) thread {
+	return spawn process_incoming_requests[T](ch, id, global_app, controllers, unsafe { routes })
 }
 
-fn new_worker[T](ch chan &net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) thread {
-	mut w := &Worker[T]{
-		id:          id
-		ch:          ch
-		global_app:  global_app
-		controllers: controllers
-		routes:      unsafe { routes }
-	}
-	return spawn w.process_incoming_requests[T]()
-}
-
-fn (mut w Worker[T]) process_incoming_requests() {
-	sid := '[vweb] tid: ${w.id:03d} received request'
+fn process_incoming_requests[T](ch chan mut net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) {
+	sid := '[vweb] tid: ${id:03d} received request'
 	for {
-		mut connection := <-w.ch or { break }
+		mut connection := <-ch or { break }
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		handle_conn[T](mut connection, w.global_app, w.controllers, w.routes, w.id)
+		handle_conn[T](mut connection, global_app, controllers, routes, id)
 	}
 	$if vweb_trace_worker_scan ? {
-		eprintln('[vweb] closing worker ${w.id}.')
+		eprintln('[vweb] closing worker ${id}.')
 	}
 }
 

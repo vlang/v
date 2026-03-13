@@ -4,3 +4,45 @@ vlib/v/checker/tests/check_err_msg_with_generics.vv:15:10: error: cannot cast st
    15 |     println(int(typ))
       |             ~~~~~~~~
    16 | }
+vlib/datatypes/bstree.v:78:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
+   76 | // insert_helper walks the tree and inserts the given node.
+   77 | fn (mut bst BSTree[T]) insert_helper(mut node BSTreeNode[T], value T) bool {
+   78 |     if node.value < value {
+      |                   ^
+   79 |         if unsafe { node.right != 0 } && node.right.is_init {
+   80 |             return bst.insert_helper(mut node.right, value)
+vlib/datatypes/bstree.v:84:23: error: cannot use operator `>` with `Result[[]Token, Err[string]]`
+   82 |         node.right = new_node(node, value)
+   83 |         return true
+   84 |     } else if node.value > value {
+      |                          ^
+   85 |         if unsafe { node.left != 0 } && node.left.is_init {
+   86 |             return bst.insert_helper(mut node.left, value)
+vlib/datatypes/bstree.v:105:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
+  103 |         return false
+  104 |     }
+  105 |     if node.value < value {
+      |                   ^
+  106 |         return bst.contains_helper(node.right, value)
+  107 |     } else if node.value > value {
+vlib/datatypes/bstree.v:107:23: error: cannot use operator `>` with `Result[[]Token, Err[string]]`
+  105 |     if node.value < value {
+  106 |         return bst.contains_helper(node.right, value)
+  107 |     } else if node.value > value {
+      |                          ^
+  108 |         return bst.contains_helper(node.left, value)
+  109 |     }
+vlib/datatypes/bstree.v:148:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
+  146 |     }
+  147 | 
+  148 |     if node.value < value {
+      |                   ^
+  149 |         return bst.remove_helper(mut node.right, value, false)
+  150 |     }
+vlib/datatypes/bstree.v:246:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
+  244 |     }
+  245 | 
+  246 |     if node.value < value {
+      |                   ^
+  247 |         return bst.get_node(node.right, value)
+  248 |     }

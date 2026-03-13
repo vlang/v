@@ -622,6 +622,10 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 				continue
 			}
 		}
+		if c.type_has_unresolved_generic_parts(got_arg_typ)
+			|| c.type_has_unresolved_generic_parts(exp_arg_typ) {
+			continue
+		}
 		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
 			return false
 		}

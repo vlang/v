@@ -420,15 +420,23 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				node_.expr_types[i] = field_typ
 			}
 		}
-		if expr is ast.Ident && expr.obj is ast.Var && g.table.is_interface_smartcast(expr.obj)
-			&& field_typ.is_ptr() && !expr.obj.orig_type.is_ptr()
-			&& g.table.final_sym(expr.obj.orig_type).kind == .interface
-			&& g.table.final_sym(field_typ).kind != .interface {
-			field_typ = field_typ.deref()
-			node_.expr_types[i] = field_typ
-			if !node_.need_fmts[i] {
-				fmts[i] = g.get_default_fmt(field_typ, field_typ)
+		expr_ := expr
+		match expr_ {
+			ast.Ident {
+				if expr_.obj is ast.Var && g.table.is_interface_smartcast(expr_.obj) {
+					expr_var := expr_.obj
+					if field_typ.is_ptr() && !expr_var.orig_type.is_ptr()
+						&& g.table.final_sym(expr_var.orig_type).kind == .interface
+						&& g.table.final_sym(field_typ).kind != .interface {
+						field_typ = field_typ.deref()
+						node_.expr_types[i] = field_typ
+						if !node_.need_fmts[i] {
+							fmts[i] = g.get_default_fmt(field_typ, field_typ)
+						}
+					}
+				}
 			}
+			else {}
 		}
 	}
 	g.write2('builtin__str_intp(', node.vals.len.str())
