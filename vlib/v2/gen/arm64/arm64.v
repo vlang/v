@@ -154,6 +154,22 @@ pub fn (mut g Gen) gen() {
 		g.global_by_name[gvar.name] = gi
 	}
 
+	// Build val_to_block once (block data doesn't change between functions).
+	// Scan values for basic_block kind instead of using g.mod.blocks[bid].val_id
+	// which returns wrong results in ARM64-compiled binaries (large struct copy bug).
+	g.val_to_block = []int{len: g.mod.values.len}
+	for vtb_i := 0; vtb_i < g.val_to_block.len; vtb_i++ {
+		g.val_to_block[vtb_i] = -1
+	}
+	for vi := 0; vi < g.mod.values.len; vi++ {
+		if g.mod.values[vi].kind == .basic_block {
+			bid := g.mod.values[vi].index
+			if bid >= 0 && bid < g.mod.blocks.len {
+				g.val_to_block[vi] = bid
+			}
+		}
+	}
+
 	for fi := 0; fi < g.mod.funcs.len; fi++ {
 		g.gen_func(g.mod.funcs[fi])
 	}
@@ -287,38 +303,37 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		return
 	}
 	g.curr_offset = g.macho.text_data.len
-	g.stack_map = map[int]int{}
-	g.alloca_offsets = map[int]int{}
-	g.alloca_ptr_cache = map[int]u8{}
-	g.block_offsets = []int{len: g.mod.blocks.len}
-	// Initialize to -1 manually (init: -1 may not work on all backends)
-	for bo_idx := 0; bo_idx < g.block_offsets.len; bo_idx++ {
-		g.block_offsets[bo_idx] = -1
-	}
-	// Build reverse map: val_id → block_id.
-	// Value.index is unreliable for block-kind values in ARM64-compiled binaries.
-	if g.val_to_block.len < g.mod.values.len {
-		g.val_to_block = []int{len: g.mod.values.len}
-	}
-	for vtb_i := 0; vtb_i < g.val_to_block.len; vtb_i++ {
-		g.val_to_block[vtb_i] = -1
-	}
-	for bid := 0; bid < g.mod.blocks.len; bid++ {
-		bval := g.mod.blocks[bid].val_id
-		if bval >= 0 && bval < g.val_to_block.len {
-			g.val_to_block[bval] = bid
+	g.stack_map.clear()
+	g.alloca_offsets.clear()
+	g.alloca_ptr_cache.clear()
+	// Reuse block_offsets array, grow if needed, only zero this function's blocks
+	n_blks := g.mod.blocks.len
+	if g.block_offsets.len < n_blks {
+		g.block_offsets = []int{len: n_blks}
+		// Fresh allocation needs full -1 init
+		for bo_idx := 0; bo_idx < n_blks; bo_idx++ {
+			g.block_offsets[bo_idx] = -1
+		}
+	} else {
+		// Only reset blocks belonging to this function
+		for fbi := 0; fbi < func.blocks.len; fbi++ {
+			bid := func.blocks[fbi]
+			if bid >= 0 && bid < g.block_offsets.len {
+				g.block_offsets[bid] = -1
+			}
 		}
 	}
-	g.pending_label_blks = []int{}
-	g.pending_label_offs = []int{}
+	// val_to_block is built once in gen(), not per function
+	g.pending_label_blks.clear()
+	g.pending_label_offs.clear()
 	g.func_count++
 	g.total_pending = 0
 	g.total_resolved = 0
-	g.reg_map = map[int]int{}
-	g.used_regs = []int{}
-	g.string_literal_offsets = map[int]int{}
-	g.const_cache = map[int]i64{}
-	g.sumtype_data_heap_allocas = map[int]bool{}
+	g.reg_map.clear()
+	g.used_regs.clear()
+	g.string_literal_offsets.clear()
+	g.const_cache.clear()
+	g.sumtype_data_heap_allocas.clear()
 	g.cur_func_ret_type = func.typ
 	g.cur_func_name = func.name
 	g.x8_save_offset = 0

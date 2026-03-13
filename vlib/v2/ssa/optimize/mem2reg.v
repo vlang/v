@@ -53,10 +53,25 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 	mut df := [][]int{len: n_blocks}
 	// Track which blocks have DF entries for cleanup
 	mut df_blocks := []int{}
+	// Bitset for O(1) df_blocks membership test
+	mut df_blocks_set := []bool{len: n_blocks}
 
 	// Per-alloc visited/has_phi bitsets (reused across allocs within a function)
 	mut visited := []bool{len: n_blocks}
 	mut has_phi := []bool{len: n_blocks}
+
+	// Pre-build block_val_ids ONCE (used by rename_iterative).
+	// Avoids scanning all ~260K values per function call.
+	mut block_val_ids := []int{len: n_blocks}
+	n_vals := m.values.len
+	for vi in 0 .. n_vals {
+		if m.values[vi].kind == .basic_block {
+			bid := m.values[vi].index
+			if bid >= 0 && bid < n_blocks {
+				block_val_ids[bid] = vi
+			}
+		}
+	}
 
 	mut total_allocas := 0
 	mut total_promoted := 0
@@ -106,7 +121,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		}
 
 		// 2. Compute Dominance Frontier (flat array version)
-		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks)
+		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks, mut df_blocks_set)
 
 		// 3. Insert Phis (Dominance Frontier)
 		n_promotable := promotable.len
@@ -177,7 +192,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 			entry := func2.blocks[0]
 			total_blocks_in_funcs += func2.blocks.len
 			bv, bs := rename_iterative(mut m, entry, mut ctx, promotable,
-				&dom, cfg)
+				&dom, cfg, block_val_ids)
 			total_blocks_visited += bv
 			total_blocks_skipped += bs
 		}
@@ -252,7 +267,9 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		ctx.phi_blocks = []
 		n_df_blocks := df_blocks.len
 		for cli3 in 0 .. n_df_blocks {
-			df[df_blocks[cli3]] = []
+			bid := df_blocks[cli3]
+			df[bid] = []
+			df_blocks_set[bid] = false
 		}
 		df_blocks = []
 	}
@@ -316,7 +333,7 @@ fn is_promotable(m &ssa.Module, alloc_id int) bool {
 	return true
 }
 
-fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int) {
+fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int, mut df_blocks_set []bool) {
 	func := m.funcs[func_idx]
 	n_func_blocks := func.blocks.len
 	for bi in 0 .. n_func_blocks {
@@ -337,7 +354,9 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 					// Avoid duplicate entries in dominance frontier
 					if blk_id !in df[runner] {
 						df[runner] << blk_id
-						if runner !in df_blocks {
+						// O(1) df_blocks membership via bitset
+						if !df_blocks_set[runner] {
+							df_blocks_set[runner] = true
 							df_blocks << runner
 						}
 					}
@@ -360,19 +379,8 @@ mut:
 	processed     bool  // whether steps 1-3 have been run for this block
 }
 
-fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, dom &DomInfo, cfg &CfgData) (int, int) {
-	// Pre-build block_val_ids[] by scanning values for basic_block kind.
-	n_blks := m.blocks.len
-	mut block_val_ids := []int{len: n_blks}
-	n_vals := m.values.len
-	for vi in 0 .. n_vals {
-		if m.values[vi].kind == .basic_block {
-			bid := m.values[vi].index
-			if bid >= 0 && bid < n_blks {
-				block_val_ids[bid] = vi
-			}
-		}
-	}
+fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
+	// block_val_ids is pre-built once and passed in (avoids 260K scan per function)
 
 	// phi_ops_by_instr is a map now, no pre-allocation needed
 
@@ -535,7 +543,7 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 	return blocks_visited, blocks_skipped
 }
 
-fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
+fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
 	return rename_iterative(mut m, blk_id, mut ctx, promotable, dom,
-		cfg)
+		cfg, block_val_ids)
 }

@@ -134,6 +134,12 @@ fn build_block_val_ids(m &ssa.Module) []int {
 fn split_critical_edges(mut m ssa.Module) {
 	mut cfg := build_cfg(mut m)
 
+	// Build block_val_ids ONCE before all function loops.
+	// Cannot use m.blocks[bid].val_id directly — in ARM64-compiled binaries,
+	// BasicBlock is 168 bytes and array[i] returns a copy with potentially
+	// wrong field values for large structs.
+	mut block_val_ids := build_block_val_ids(m)
+
 	for fi in 0 .. m.funcs.len {
 		// Collect edges to split (can't modify while iterating)
 		mut edges_to_split := [][]ssa.BlockID{} // [pred_id, succ_id]
@@ -174,9 +180,19 @@ fn split_critical_edges(mut m ssa.Module) {
 			func2 := m.funcs[fi]
 			split_blk := m.add_block(func2.id, 'split_${pred_id}_${succ_id}')
 
-			// Use m.blocks[bid].val_id directly — safe for reads (chained-access
-			// bug only affects modifications). Avoids expensive build_block_val_ids scan.
-			succ_val := m.blocks[succ_id].val_id
+			// Extend block_val_ids for newly added block(s)
+			for block_val_ids.len <= split_blk {
+				block_val_ids << 0
+			}
+			// Find val_id for the new split block by scanning recently added values
+			for bvi := m.values.len - 1; bvi >= 0; bvi-- {
+				if m.values[bvi].kind == .basic_block && m.values[bvi].index == split_blk {
+					block_val_ids[split_blk] = bvi
+					break
+				}
+			}
+
+			succ_val := get_block_val_id(m, succ_id, block_val_ids)
 			// Add unconditional jump from split block to original successor
 			m.add_instr(.jmp, split_blk, 0, [succ_val])
 
@@ -189,7 +205,7 @@ fn split_critical_edges(mut m ssa.Module) {
 					mut term := &m.instrs[term_val.index]
 
 					old_succ_val := succ_val
-					new_succ_val := m.blocks[split_blk].val_id
+					new_succ_val := get_block_val_id(m, split_blk, block_val_ids)
 
 					// Replace ALL occurrences (handles switch with duplicate targets)
 					for i in 0 .. term.operands.len {
@@ -218,8 +234,8 @@ fn split_critical_edges(mut m ssa.Module) {
 				}
 				mut instr := &m.instrs[idx]
 				if instr.op == .phi {
-					old_pred_val := m.blocks[pred_id].val_id
-					new_pred_val := m.blocks[split_blk].val_id
+					old_pred_val := get_block_val_id(m, pred_id, block_val_ids)
+					new_pred_val := get_block_val_id(m, split_blk, block_val_ids)
 					// Replace all occurrences (defensive - handles edge cases)
 					for i := 1; i < instr.operands.len; i += 2 {
 						if instr.operands[i] == old_pred_val {
