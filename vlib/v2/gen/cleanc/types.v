@@ -1449,6 +1449,25 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		} else if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
 			// Numeric literals mistyped as bool by env (e.g. `1 in map` context).
 			return 'int'
+		} else if node is ast.IndexExpr && node.expr !is ast.RangeExpr
+			&& t.starts_with('Array_') && !t.starts_with('Array_fixed_') {
+			// Env may return the container type instead of the element type for IndexExpr.
+			// Cross-check against raw type of the LHS container: if the LHS is an Array
+			// whose element type is known, prefer that.
+			if lhs_raw := g.get_raw_type(node.lhs) {
+				if lhs_raw is types.Array {
+					raw_elem := g.types_type_to_c(lhs_raw.elem_type)
+					if raw_elem != '' && raw_elem != t {
+						return raw_elem
+					}
+				} else if lhs_raw is types.Pointer && lhs_raw.base_type is types.Array {
+					raw_elem := g.types_type_to_c(lhs_raw.base_type.elem_type)
+					if raw_elem != '' && raw_elem != t {
+						return raw_elem
+					}
+				}
+			}
+			return t
 		} else if t in ['void*', 'voidptr'] && node is ast.IndexExpr {
 			// For IndexExpr, env returns void* for fixed-array element access.
 			// Try to infer element type from the container type.
@@ -2262,6 +2281,13 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 				return lhs_type.value_type
 			}
 			if lhs_type is types.Pointer {
+				// Pointer to array: indexing dereferences then indexes, return element type
+				if lhs_type.base_type is types.Array {
+					return lhs_type.base_type.elem_type
+				}
+				if lhs_type.base_type is types.ArrayFixed {
+					return lhs_type.base_type.elem_type
+				}
 				return lhs_type.base_type
 			}
 		}

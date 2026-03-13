@@ -2184,19 +2184,15 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 			return none
 		}
 		// Add the final assignment with the extracted expression.
-		// If the LHS is a map IndexExpr (e.g., indegree[i] = (indegree[i] or { 0 }) + 1),
-		// the assignment must be lowered to map__set.
+		// Run through transform_stmt to handle map index assignment lowering (map__set),
+		// string compound assignment (string__plus), and other statement-level transforms.
 		final_assign := ast.AssignStmt{
 			op:  stmt.op
 			lhs: stmt.lhs
 			rhs: [t.transform_expr(new_rhs)]
 			pos: stmt.pos
 		}
-		if map_assign := t.try_transform_map_index_assign(final_assign) {
-			prefix_stmts << map_assign
-		} else {
-			prefix_stmts << final_assign
-		}
+		prefix_stmts << t.transform_stmt(final_assign)
 		return prefix_stmts
 	}
 	return none
@@ -4900,6 +4896,11 @@ fn (t &Transformer) get_sprintf_format_for_type(typ types.Type) string {
 			return '%d'
 		}
 		types.Pointer {
+			// If the pointed-to type has a str() method, use %s (the value will be
+			// dereferenced and passed to str() by transform_sprintf_arg).
+			if _ := t.get_str_fn_name_for_type(typ.base_type) {
+				return '%s'
+			}
 			return '%p'
 		}
 		types.Alias {
@@ -5085,6 +5086,25 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 		types.String {
 			// Keep as string value; backend string interpolation lowering
 			// handles conversion to C `%s` argument.
+			return transformed
+		}
+		types.Pointer {
+			// Pointer to a type with str(): dereference and call str().
+			// e.g., `mut t Termios` is &Termios → *t passed to Termios__str.
+			if str_fn_name := t.get_str_fn_name_for_type(typ.base_type) {
+				t.needed_str_fns[str_fn_name] = ''
+				deref := ast.Expr(ast.PrefixExpr{
+					op:   .mul
+					expr: transformed
+				})
+				str_call := ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: str_fn_name
+					}
+					args: [deref]
+				})
+				return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
+			}
 			return transformed
 		}
 		types.Primitive {
