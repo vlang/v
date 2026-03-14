@@ -7,7 +7,7 @@ import v2.pref
 import v2.token
 import time
 
-const eval_backend_timeout_ms = 15_000
+const eval_backend_timeout_ms = 60_000
 const eval_backend_poll_ms = 50
 const eval_backend_term_grace_ms = 1_000
 
