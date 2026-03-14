@@ -11,6 +11,7 @@ import encoding.binary
 import os
 
 pub struct Gen {
+pub:
 	mod &mir.Module
 mut:
 	macho &MachOObject
@@ -127,6 +128,16 @@ pub fn Gen.new(mod &mir.Module) &Gen {
 }
 
 pub fn (mut g Gen) gen() {
+	g.gen_pre_pass()
+	for fi := 0; fi < g.mod.funcs.len; fi++ {
+		g.gen_func(g.mod.funcs[fi])
+	}
+	g.gen_post_pass()
+}
+
+// gen_pre_pass registers global symbols and builds lookup caches.
+// Must be called before any gen_func calls.
+pub fn (mut g Gen) gen_pre_pass() {
 	// Pre-register global symbols BEFORE generating functions
 	// This ensures add_undefined() finds existing symbols instead of creating undefined ones
 	mut data_offset := u64(0)
@@ -170,10 +181,13 @@ pub fn (mut g Gen) gen() {
 		}
 	}
 
-	for fi := 0; fi < g.mod.funcs.len; fi++ {
-		g.gen_func(g.mod.funcs[fi])
-	}
+	// Pre-populate type size/align caches so parallel workers can share them read-only
+	g.pre_populate_type_caches()
+}
 
+// gen_post_pass emits the unresolved stub, global data, and patches symbol addresses.
+// Must be called after all gen_func calls.
+pub fn (mut g Gen) gen_post_pass() {
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
@@ -287,7 +301,117 @@ pub fn (mut g Gen) gen() {
 	}
 }
 
-fn (mut g Gen) gen_func(func mir.Function) {
+// new_worker_clone creates a new Gen instance for parallel code generation.
+// The worker shares the read-only MIR module and lookup caches, but has its
+// own MachOObject buffers for independent code emission.
+// pre_populate_type_caches computes type_size and type_align for ALL types
+// in the type store, so that workers can share the caches read-only.
+pub fn (mut g Gen) pre_populate_type_caches() {
+	for tid := 0; tid < g.mod.type_store.types.len; tid++ {
+		g.type_size(tid)
+		g.type_align(tid)
+	}
+}
+
+pub fn (g &Gen) new_worker_clone() &Gen {
+	return &Gen{
+		mod:                   g.mod
+		macho:                 MachOObject.new()
+		func_by_name:          g.func_by_name
+		global_by_name:        g.global_by_name
+		val_to_block:          g.val_to_block
+		type_size_cache:       g.type_size_cache
+		type_align_cache:      g.type_align_cache
+		type_size_stack:       g.type_size_stack
+		type_align_stack:      g.type_align_stack
+		env_dump_funcrefs:     g.env_dump_funcrefs
+		env_trace_skip_dead:   g.env_trace_skip_dead
+		env_dump_stackmap:     g.env_dump_stackmap
+		env_dump_blocks:       g.env_dump_blocks
+		env_trace_paramspill:  g.env_trace_paramspill
+		env_trace_val:         g.env_trace_val
+		env_trace_instr:       g.env_trace_instr
+		env_trace_cmp:         g.env_trace_cmp
+		env_trace_store:       g.env_trace_store
+		env_trace_load:        g.env_trace_load
+		env_trace_call:        g.env_trace_call
+		env_trace_ret:         g.env_trace_ret
+		env_trace_bitcast:     g.env_trace_bitcast
+		env_trace_assign:      g.env_trace_assign
+		env_trace_extract:     g.env_trace_extract
+		env_trace_struct_init: g.env_trace_struct_init
+		env_trace_agg_copy:    g.env_trace_agg_copy
+		env_trace_insert:      g.env_trace_insert
+		env_trace_callcount:   g.env_trace_callcount
+		env_trace_callarg:     g.env_trace_callarg
+		env_trace_struct_addr: g.env_trace_struct_addr
+		env_trace_strlit:      g.env_trace_strlit
+		env_trace_storeval:    g.env_trace_storeval
+	}
+}
+
+// merge_worker merges a parallel worker's output buffers into the main Gen.
+// text_data, str_data, symbols, and relocations are concatenated with offset adjustment.
+pub fn (mut g Gen) merge_worker(w &Gen) {
+	text_base := g.macho.text_data.len
+	str_base := g.macho.str_data.len
+
+	// Append machine code
+	g.macho.text_data << w.macho.text_data
+
+	// Append string literal data
+	g.macho.str_data << w.macho.str_data
+
+	// Merge symbols: remap worker symbol indices to main symbol table
+	mut sym_remap := []int{len: w.macho.symbols.len}
+	for wi, sym in w.macho.symbols {
+		mut new_value := sym.value
+		if sym.sect == 1 {
+			new_value += u64(text_base)
+		} else if sym.sect == 2 {
+			new_value += u64(str_base)
+		}
+		// Check if symbol already exists in main (e.g., pre-registered global or extern)
+		if existing := g.macho.sym_by_name[sym.name] {
+			// Update existing symbol with definition if this one defines it
+			if sym.type_ != 0x01 { // not N_UNDF
+				mut main_sym := &g.macho.symbols[existing]
+				main_sym.type_ = sym.type_
+				main_sym.sect = sym.sect
+				main_sym.value = new_value
+			}
+			sym_remap[wi] = existing
+		} else {
+			sym_remap[wi] = g.macho.symbols.len
+			name_off := g.macho.str_table.len
+			g.macho.str_table << sym.name.bytes()
+			g.macho.str_table << 0
+			g.macho.symbols << Symbol{
+				name:     sym.name
+				type_:    sym.type_
+				sect:     sym.sect
+				desc:     sym.desc
+				value:    new_value
+				name_off: name_off
+			}
+			g.macho.sym_by_name[sym.name] = sym_remap[wi]
+		}
+	}
+
+	// Merge relocations with adjusted addresses and remapped symbol indices
+	for rel in w.macho.relocs {
+		g.macho.relocs << RelocationInfo{
+			addr:    rel.addr + text_base
+			sym_idx: sym_remap[rel.sym_idx]
+			pcrel:   rel.pcrel
+			length:  rel.length
+			extern:  rel.extern
+			type_:   rel.type_
+		}
+	}
+}
+
+pub fn (mut g Gen) gen_func(func mir.Function) {
 	if func.is_c_extern {
 		// C extern functions are provided by external libraries (libc, etc.).
 		// Don't emit any local symbol — let the linker resolve them as undefined externals.

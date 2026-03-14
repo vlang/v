@@ -1585,7 +1585,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Use built-in linker for ARM64 macOS
 		stage_start = native_sw.elapsed()
 		mut gen := arm64.Gen.new(&mir_mod)
-		gen.gen()
+		if b.pref.no_parallel {
+			gen.gen()
+		} else {
+			b.gen_arm64_parallel(mut gen)
+		}
 		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
@@ -1609,7 +1613,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 		if arch == .arm64 {
 			mut gen := arm64.Gen.new(&mir_mod)
-			gen.gen()
+			if b.pref.no_parallel {
+				gen.gen()
+			} else {
+				b.gen_arm64_parallel(mut gen)
+			}
 			gen.write_file(obj_file)
 		} else {
 			mut gen := x64.Gen.new(&mir_mod)
