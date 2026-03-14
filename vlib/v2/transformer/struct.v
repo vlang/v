@@ -99,7 +99,9 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		}
 	}
 	// Fallback: scan all scopes
-	for _, scope in t.cached_scopes {
+	scope_keys := t.cached_scopes.keys()
+	for sk in scope_keys {
+		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				typ := types.Type(obj)
@@ -1516,7 +1518,9 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 		}
 	}
 	// Fallback: scan all scopes
-	for _, scope in t.cached_scopes {
+	scope_keys2 := t.cached_scopes.keys()
+	for sk in scope_keys2 {
+		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
@@ -1633,7 +1637,9 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 		}
 	}
 	// Fallback: scan all scopes
-	for _, scope in t.cached_scopes {
+	scope_keys3 := t.cached_scopes.keys()
+	for sk in scope_keys3 {
+		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
@@ -1699,7 +1705,9 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 			}
 		}
 	}
-	for _, scope in t.cached_scopes {
+	scope_keys4 := t.cached_scopes.keys()
+	for sk in scope_keys4 {
+		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				if obj is types.Struct {
@@ -1744,7 +1752,9 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 
 // get_field_array_elem_c_name returns the C type name for the element type of an array field
 fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
-	for _, scope in t.cached_scopes {
+	scope_keys5 := t.cached_scopes.keys()
+	for sk in scope_keys5 {
+		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				if obj is types.Struct {

@@ -220,6 +220,39 @@ pub fn (e &Environment) get_fn_scope_by_key(key string) ?&Scope {
 	return scope
 }
 
+// snapshot_scopes returns a non-shared copy of the scopes map.
+pub fn (e &Environment) snapshot_scopes() map[string]&Scope {
+	mut result := map[string]&Scope{}
+	lock e.scopes {
+		for k, v in e.scopes {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// snapshot_methods returns a non-shared copy of the methods map.
+pub fn (e &Environment) snapshot_methods() map[string][]&Fn {
+	mut result := map[string][]&Fn{}
+	lock e.methods {
+		for k, v in e.methods {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// snapshot_fn_scopes returns a non-shared copy of the fn_scopes map.
+pub fn (e &Environment) snapshot_fn_scopes() map[string]&Scope {
+	mut result := map[string]&Scope{}
+	lock e.fn_scopes {
+		for k, v in e.fn_scopes {
+			result[k] = v
+		}
+	}
+	return result
+}
+
 pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic

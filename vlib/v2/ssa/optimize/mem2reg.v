@@ -32,6 +32,15 @@ mut:
 	deferred_phi_ops []int
 }
 
+// Helper: append to an inner array of a [][]int with proper write-back.
+// Direct `arr[idx] << val` is broken in ARM64 self-hosted binaries
+// (chained array-element append copies the struct instead of modifying in-place).
+fn array2d_append(mut arr [][]int, idx int, val int) {
+	mut inner := arr[idx]
+	inner << val
+	arr[idx] = inner
+}
+
 fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 	n_values := m.values.len
 	n_blocks := m.blocks.len
@@ -57,25 +66,10 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 	mut df := [][]int{len: n_blocks}
 	// Track which blocks have DF entries for cleanup
 	mut df_blocks := []int{}
-	// Bitset for O(1) df_blocks membership test
-	mut df_blocks_set := []bool{len: n_blocks}
 
 	// Per-alloc visited/has_phi bitsets (reused across allocs within a function)
 	mut visited := []bool{len: n_blocks}
 	mut has_phi := []bool{len: n_blocks}
-
-	// Pre-build block_val_ids ONCE (used by rename_iterative).
-	// Avoids scanning all ~260K values per function call.
-	mut block_val_ids := []int{len: n_blocks}
-	n_vals := m.values.len
-	for vi in 0 .. n_vals {
-		if m.values[vi].kind == .basic_block {
-			bid := m.values[vi].index
-			if bid >= 0 && bid < n_blocks {
-				block_val_ids[bid] = vi
-			}
-		}
-	}
 
 	mut total_allocas := 0
 	mut total_promoted := 0
@@ -112,20 +106,20 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 					ptr := instr.operands[1]
 					// Avoid duplicate def entries for same block
 					if ptr < n_values && blk_id !in ctx.defs[ptr] {
-						ctx.defs[ptr] << blk_id
+						array2d_append(mut ctx.defs, ptr, blk_id)
 					}
 				} else if instr.op == .load {
 					ptr := instr.operands[0]
 					// Avoid duplicate use entries for same block
 					if ptr < n_values && blk_id !in ctx.uses[ptr] {
-						ctx.uses[ptr] << blk_id
+						array2d_append(mut ctx.uses, ptr, blk_id)
 					}
 				}
 			}
 		}
 
 		// 2. Compute Dominance Frontier (flat array version)
-		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks, mut df_blocks_set)
+		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks)
 
 		// 3. Insert Phis (Dominance Frontier)
 		n_promotable := promotable.len
@@ -145,7 +139,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				for di in 0 .. n_df_b {
 					d := df[b][di]
 					if !has_phi[d] {
-						ctx.phi_placements[d] << alloc_id
+						array2d_append(mut ctx.phi_placements, d, alloc_id)
 						if d !in ctx.phi_blocks {
 							ctx.phi_blocks << d
 						}
@@ -185,7 +179,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				pv.name = '${alloc_val.name}.phi_${blk_id}'
 				m.values[phi_val] = pv
 				// Store phi_val_id in parallel array for direct lookup (no string matching)
-				ctx.phi_vals[blk_id] << phi_val
+				array2d_append(mut ctx.phi_vals, blk_id, phi_val)
 			}
 		}
 
@@ -195,39 +189,21 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 			entry := func2.blocks[0]
 			total_blocks_in_funcs += func2.blocks.len
 			bv, bs := rename_recursive(mut m, entry, mut ctx, promotable, mut stack_counts,
-				&dom, cfg, block_val_ids)
+				&dom, cfg)
 			total_blocks_visited += bv
 			total_blocks_skipped += bs
 		}
 
 		// 4b. Apply deferred phi operands.
-		// Groups by instr_idx using radix-sort approach: since phi instrs are known from
-		// phi_blocks/phi_vals, iterate phis and scan once with a sorted deferred list.
-		// This avoids O(N_phis × N_deferred) quadratic scan.
+		// Builds complete operand lists for each phi and assigns them all at once.
+		// This avoids m.instrs[idx].operands << x which is broken in v3-compiled binaries
+		// (chained array-element-field-append copies the struct instead of modifying in-place).
 		if ctx.deferred_phi_ops.len > 0 {
 			n_deferred := ctx.deferred_phi_ops.len
-			// Sort deferred_phi_ops triples by instr_idx (first element of each triple).
-			// Simple insertion sort on triples — N is typically small (hundreds).
-			n_triples := n_deferred / 3
-			for ti in 1 .. n_triples {
-				key0 := ctx.deferred_phi_ops[ti * 3]
-				key1 := ctx.deferred_phi_ops[ti * 3 + 1]
-				key2 := ctx.deferred_phi_ops[ti * 3 + 2]
-				mut tj := ti - 1
-				for tj >= 0 && ctx.deferred_phi_ops[tj * 3] > key0 {
-					ctx.deferred_phi_ops[(tj + 1) * 3] = ctx.deferred_phi_ops[tj * 3]
-					ctx.deferred_phi_ops[(tj + 1) * 3 + 1] = ctx.deferred_phi_ops[tj * 3 + 1]
-					ctx.deferred_phi_ops[(tj + 1) * 3 + 2] = ctx.deferred_phi_ops[tj * 3 + 2]
-					tj--
-				}
-				ctx.deferred_phi_ops[(tj + 1) * 3] = key0
-				ctx.deferred_phi_ops[(tj + 1) * 3 + 1] = key1
-				ctx.deferred_phi_ops[(tj + 1) * 3 + 2] = key2
-			}
-
-			// Now apply: for each phi, binary search for its instr_idx in the sorted list,
-			// then collect all consecutive triples with the same instr_idx.
 			n_phi_blocks3 := ctx.phi_blocks.len
+			mut n_applied := 0
+			mut n_verified := 0
+			mut n_mismatch := 0
 			for pbi3 in 0 .. n_phi_blocks3 {
 				pb_id := ctx.phi_blocks[pbi3]
 				n_phi_allocs3 := ctx.phi_vals[pb_id].len
@@ -235,31 +211,48 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 					phi_vid := ctx.phi_vals[pb_id][pai3]
 					phi_v := m.values[phi_vid]
 					phi_instr_idx := phi_v.index
-					// Binary search for first triple with this instr_idx
-					mut lo := 0
-					mut hi := n_triples
-					for lo < hi {
-						mid := (lo + hi) / 2
-						if ctx.deferred_phi_ops[mid * 3] < phi_instr_idx {
-							lo = mid + 1
-						} else {
-							hi = mid
-						}
-					}
-					// Collect all triples with matching instr_idx
+					// Collect all operands for this phi from deferred list
 					mut ops := []int{}
-					for lo < n_triples && ctx.deferred_phi_ops[lo * 3] == phi_instr_idx {
-						ops << ctx.deferred_phi_ops[lo * 3 + 1]
-						ops << ctx.deferred_phi_ops[lo * 3 + 2]
-						lo++
+					mut dj := 0
+					for dj + 2 < n_deferred {
+						if ctx.deferred_phi_ops[dj] == phi_instr_idx {
+							ops << ctx.deferred_phi_ops[dj + 1]
+							ops << ctx.deferred_phi_ops[dj + 2]
+						}
+						dj += 3
 					}
 					if ops.len > 0 {
 						// Avoid m.instrs[X].operands = ops -- chained field assign broken in ARM64 self-hosted
 						mut phi_instr := m.instrs[phi_instr_idx]
 						phi_instr.operands = ops
 						m.instrs[phi_instr_idx] = phi_instr
+						n_applied += 1
+						// Verify the assignment was actually written
+						actual_len := m.instrs[phi_instr_idx].operands.len
+						if actual_len != ops.len {
+							n_mismatch += 1
+							if n_mismatch <= 5 {
+								eprintln('  DEFERRED MISMATCH: phi_vid=${phi_vid} instr=${phi_instr_idx} wanted=${ops.len} got=${actual_len}')
+							}
+						} else {
+							n_verified += 1
+							// Also verify first operand value
+							if ops.len >= 2 {
+								actual0 := m.instrs[phi_instr_idx].operands[0]
+								actual1 := m.instrs[phi_instr_idx].operands[1]
+								if actual0 != ops[0] || actual1 != ops[1] {
+									n_mismatch += 1
+									if n_mismatch <= 5 {
+										eprintln('  DEFERRED VALUE MISMATCH: phi_vid=${phi_vid} instr=${phi_instr_idx} wanted[0]=${ops[0]},${ops[1]} got=${actual0},${actual1}')
+									}
+								}
+							}
+						}
 					}
 				}
+			}
+			if n_mismatch > 0 {
+				eprintln('  DEFERRED phi ops: applied=${n_applied} verified=${n_verified} MISMATCH=${n_mismatch}')
 			}
 			ctx.deferred_phi_ops = []
 		}
@@ -302,7 +295,6 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		n_df_blocks := df_blocks.len
 		for cli3 in 0 .. n_df_blocks {
 			df[df_blocks[cli3]] = []
-			df_blocks_set[df_blocks[cli3]] = false
 		}
 		df_blocks = []
 	}
@@ -366,7 +358,7 @@ fn is_promotable(m &ssa.Module, alloc_id int) bool {
 	return true
 }
 
-fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int, mut df_blocks_set []bool) {
+fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int) {
 	func := m.funcs[func_idx]
 	n_func_blocks := func.blocks.len
 	for bi in 0 .. n_func_blocks {
@@ -386,10 +378,9 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 					}
 					// Avoid duplicate entries in dominance frontier
 					if blk_id !in df[runner] {
-						df[runner] << blk_id
-						if !df_blocks_set[runner] {
+						array2d_append(mut df, runner, blk_id)
+						if runner !in df_blocks {
 							df_blocks << runner
-							df_blocks_set[runner] = true
 						}
 					}
 					if runner == dom.idom[runner] {
@@ -411,7 +402,43 @@ mut:
 	processed     bool  // whether steps 1-3 have been run for this block
 }
 
-fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
+fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
+	// Pre-build block_val_ids[] by scanning values for basic_block kind.
+	// This avoids m.blocks[blk_id].val_id which produces wrong results
+	// in ARM64-compiled binaries (large struct field access bug).
+	n_blks := m.blocks.len
+	mut block_val_ids := []int{len: n_blks}
+	n_vals := m.values.len
+	mut n_bb_found := 0
+	mut n_bb_valid := 0
+	for vi in 0 .. n_vals {
+		if m.values[vi].kind == .basic_block {
+			bid := m.values[vi].index
+			n_bb_found += 1
+			if bid >= 0 && bid < n_blks {
+				block_val_ids[bid] = vi
+				n_bb_valid += 1
+			}
+		}
+	}
+	// Verify: also check using m.blocks[bid].val_id approach and compare
+	mut n_match := 0
+	mut n_mismatch := 0
+	for bid in 0 .. n_blks {
+		bval := m.blocks[bid].val_id
+		if block_val_ids[bid] != bval {
+			n_mismatch += 1
+			if n_mismatch <= 3 {
+				eprintln('  mem2reg block_val_ids MISMATCH: bid=${bid} scan=${block_val_ids[bid]} blocks=${bval}')
+			}
+		} else {
+			n_match += 1
+		}
+	}
+	if n_mismatch > 0 {
+		eprintln('  mem2reg block_val_ids: bb_found=${n_bb_found} valid=${n_bb_valid} match=${n_match} mismatch=${n_mismatch}')
+	}
+
 	mut work := []RenameFrame{}
 	work << RenameFrame{
 		blk_id: root_blk
@@ -527,30 +554,30 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 						if succ_id < ctx.phi_vals.len && spai < ctx.phi_vals[succ_id].len {
 							vid := ctx.phi_vals[succ_id][spai]
 							v := m.values[vid]
-							mut val_id := 0
+							mut val := 0
 							if ctx.stacks[alloc_id].len > 0 {
-								val_id = ctx.stacks[alloc_id].last()
+								val = ctx.stacks[alloc_id].last()
 							} else {
 								// Undef - reading uninitialized memory
 								alloc_v := m.values[alloc_id]
 								alloc_typ := m.type_store.types[alloc_v.typ]
 								typ := alloc_typ.elem_type
-								val_id = int(m.get_or_add_const(typ, 'undef'))
+								val = m.get_or_add_const(typ, 'undef')
 							}
 							bvid := block_val_ids[blk_id]
 							// Defer phi operand append to avoid m.instrs[idx].operands << x
 							// which is broken in ARM64 self-hosted binaries.
 							ctx.deferred_phi_ops << v.index
-							ctx.deferred_phi_ops << val_id
+							ctx.deferred_phi_ops << val
 							ctx.deferred_phi_ops << bvid
 							// FIX: Update uses so DCE doesn't remove the value
 							// Avoid m.values[X].uses << Y — chained append broken in ARM64 self-hosted.
-							if val_id < m.values.len {
-								if vid !in m.values[val_id].uses {
+							if val < m.values.len {
+								if vid !in m.values[val].uses {
 									// Read whole struct, modify, write back (chained broken in ARM64)
-									mut vv := m.values[val_id]
+									mut vv := m.values[val]
 									vv.uses << vid
-									m.values[val_id] = vv
+									m.values[val] = vv
 								}
 							}
 						}
@@ -586,7 +613,7 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 	return blocks_visited, blocks_skipped
 }
 
-fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData, block_val_ids []int) (int, int) {
+fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
 	return rename_iterative(mut m, blk_id, mut ctx, promotable, mut stack_counts, dom,
-		cfg, block_val_ids)
+		cfg)
 }

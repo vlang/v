@@ -38,7 +38,9 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 		}
 	}
 	// Fallback: scan all module scopes for local/private functions.
-	for _, scope_ptr in t.cached_scopes {
+	scope_keys := t.cached_scopes.keys()
+	for sk in scope_keys {
+		scope_ptr := t.cached_scopes[sk] or { continue }
 		mut scope := unsafe { scope_ptr }
 		if obj := scope.lookup_parent(fn_name, 0) {
 			if obj is types.Fn {
@@ -234,9 +236,10 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 			}
 		}
 	}
-	for key, methods_for_type in t.cached_methods {
+	mkeys := t.cached_methods.keys()
+	for key in mkeys {
 		mut matches_receiver := false
-		for type_name, _ in seen {
+		for type_name in seen.keys() {
 			if t.method_key_matches_type_name(key, type_name) {
 				matches_receiver = true
 				break
@@ -245,6 +248,7 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 		if !matches_receiver {
 			continue
 		}
+		methods_for_type := t.cached_methods[key] or { continue }
 		for method in methods_for_type {
 			if method.get_name() != method_name {
 				continue
@@ -1430,7 +1434,8 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		}
 	}
 	// Fuzzy fallback: iterate method keys to find matching receiver types
-	for key, methods_for_type in t.cached_methods {
+	method_keys := t.cached_methods.keys()
+	for key in method_keys {
 		mut matches_receiver := false
 		for name in lookup_names {
 			if t.method_key_matches_type_name(key, name) {
@@ -1441,6 +1446,7 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		if !matches_receiver {
 			continue
 		}
+		methods_for_type := t.cached_methods[key] or { continue }
 		for method in methods_for_type {
 			if method.get_name() == method_name {
 				return '${c_prefix}__${method_name}'

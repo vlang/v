@@ -514,10 +514,12 @@ fn (t &Transformer) qualify_type_name(type_name string) string {
 			}
 		}
 	}
-	for mod_name, scope in t.cached_scopes {
+	scope_keys := t.cached_scopes.keys()
+	for mod_name in scope_keys {
 		if mod_name in ['main', 'builtin', ''] {
 			continue
 		}
+		scope := t.cached_scopes[mod_name] or { continue }
 		if obj := scope.objects[type_name] {
 			if obj is types.Type {
 				return '${mod_name}__${type_name}'

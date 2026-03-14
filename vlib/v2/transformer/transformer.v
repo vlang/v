@@ -553,21 +553,9 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 // cache_env_maps snapshots the shared Environment maps into plain maps
 // for lock-free access during parallel file transformation.
 fn (mut t Transformer) cache_env_maps() {
-	lock t.env.scopes {
-		for k, v in t.env.scopes {
-			t.cached_scopes[k] = v
-		}
-	}
-	lock t.env.methods {
-		for k, v in t.env.methods {
-			t.cached_methods[k] = v
-		}
-	}
-	lock t.env.fn_scopes {
-		for k, v in t.env.fn_scopes {
-			t.cached_fn_scopes[k] = v
-		}
-	}
+	t.cached_scopes = t.env.snapshot_scopes()
+	t.cached_methods = t.env.snapshot_methods()
+	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
 }
 
 // post_pass runs the sequential post-pass: injects runtime const init fns, generated functions,
@@ -741,7 +729,9 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	}
 	// Push cached_fn_scopes back to the environment for prop_types.
 	lock t.env.fn_scopes {
-		for k, v in t.cached_fn_scopes {
+		fn_scope_keys := t.cached_fn_scopes.keys()
+		for k in fn_scope_keys {
+			v := t.cached_fn_scopes[k] or { continue }
 			t.env.fn_scopes[k] = v
 		}
 	}
