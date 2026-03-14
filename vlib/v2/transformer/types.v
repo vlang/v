@@ -7,9 +7,39 @@ import v2.ast
 import v2.token
 import v2.types
 
-// register_synth_type registers a type for a synthesized node position
+// register_synth_type registers a type for a synthesized node position.
+// Accumulates in synth_types map for deferred application (thread-safe).
 fn (mut t Transformer) register_synth_type(pos token.Pos, typ types.Type) {
-	t.env.set_expr_type(pos.id, typ)
+	t.synth_types[pos.id] = typ
+}
+
+// lookup_method_cached looks up a method by receiver type name and method name
+// using cached_methods (lock-free) instead of env.lookup_method.
+fn (t &Transformer) lookup_method_cached(type_name string, method_name string) ?types.FnType {
+	methods := t.cached_methods[type_name] or { return none }
+	for method in methods {
+		if method.get_name() == method_name {
+			typ := method.get_typ()
+			if typ is types.FnType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+// lookup_fn_cached looks up a function by module and name
+// using cached_scopes (lock-free) instead of env.lookup_fn.
+fn (t &Transformer) lookup_fn_cached(module_name string, fn_name string) ?types.FnType {
+	scope := t.cached_scopes[module_name] or { return none }
+	obj := scope.objects[fn_name] or { return none }
+	if obj is types.Fn {
+		typ := obj.get_typ()
+		if typ is types.FnType {
+			return typ
+		}
+	}
+	return none
 }
 
 // register_generated_fn_scope creates a function scope for a transformer-generated function
@@ -27,7 +57,8 @@ fn (mut t Transformer) register_generated_fn_scope(fn_name string, module_name s
 			fn_scope.insert(param.name, types.Object(param_type))
 		}
 	}
-	t.env.set_fn_scope(module_name, fn_name, fn_scope)
+	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	t.cached_fn_scopes[key] = fn_scope
 }
 
 // c_name_to_type converts a C-style type name (e.g. "Array_int", "int", "string") to types.Type.
@@ -178,7 +209,7 @@ fn (t &Transformer) is_fn_ident(ident ast.Ident) bool {
 		return t.is_callable_type(typ)
 	}
 	// Fallback: check if the name exists as a registered function
-	return t.env.lookup_fn('', ident.name) != none || t.env.lookup_fn('builtin', ident.name) != none
+	return t.lookup_fn_cached('', ident.name) != none || t.lookup_fn_cached('builtin', ident.name) != none
 }
 
 // is_interface_type checks if a type is an Interface
@@ -473,26 +504,22 @@ fn (t &Transformer) qualify_type_name(type_name string) string {
 	// Search all module scopes to find which module defines this type.
 	// Check main and builtin first to avoid ambiguity when the same type
 	// name exists in multiple modules (e.g. Coord in main and term).
-	lock t.env.scopes {
-		for priority_mod in ['main', 'builtin', ''] {
-			if scope := t.env.scopes[priority_mod] {
-				if obj := scope.objects[type_name] {
-					if obj is types.Type {
-						return type_name
-					}
+	for priority_mod in ['main', 'builtin', ''] {
+		if scope := t.cached_scopes[priority_mod] {
+			if obj := scope.objects[type_name] {
+				if obj is types.Type {
+					return type_name
 				}
 			}
 		}
-		scope_names := t.env.scopes.keys()
-		for mod_name in scope_names {
-			if mod_name in ['main', 'builtin', ''] {
-				continue
-			}
-			scope := t.env.scopes[mod_name] or { continue }
-			if obj := scope.objects[type_name] {
-				if obj is types.Type {
-					return '${mod_name}__${type_name}'
-				}
+	}
+	for mod_name, scope in t.cached_scopes {
+		if mod_name in ['main', 'builtin', ''] {
+			continue
+		}
+		if obj := scope.objects[type_name] {
+			if obj is types.Type {
+				return '${mod_name}__${type_name}'
 			}
 		}
 	}
@@ -928,7 +955,7 @@ fn (t &Transformer) get_error_wrapper_type(type_name string) string {
 	}
 	// Check if this type has its own msg() method using the type environment
 	// Types with custom msg() need their own wrapper; types without use Error's wrapper
-	if t.env.lookup_method(type_name, 'msg') != none {
+	if t.lookup_method_cached(type_name, 'msg') != none {
 		// Has custom msg() method - use full type name for wrapper
 		return type_name
 	}
@@ -958,7 +985,7 @@ fn (t &Transformer) is_error_type_name(type_name string) bool {
 	// Look up the type and check if it embeds Error
 	typ := t.lookup_type(type_name) or {
 		// If type lookup fails, check if it has msg() method (implements IError)
-		if t.env.lookup_method(type_name, 'msg') != none {
+		if t.lookup_method_cached(type_name, 'msg') != none {
 			return true
 		}
 		return false
@@ -971,7 +998,7 @@ fn (t &Transformer) is_error_type_name(type_name string) bool {
 		}
 	}
 	// Also check if the type has msg() method (implements IError directly)
-	if t.env.lookup_method(type_name, 'msg') != none {
+	if t.lookup_method_cached(type_name, 'msg') != none {
 		return true
 	}
 	return false
@@ -1484,22 +1511,12 @@ fn (t &Transformer) is_interface_type(type_name string) bool {
 
 // get_current_scope returns the scope for the current module
 fn (t &Transformer) get_current_scope() ?&types.Scope {
-	lock t.env.scopes {
-		if t.cur_module in t.env.scopes {
-			return unsafe { t.env.scopes[t.cur_module] }
-		}
-	}
-	return none
+	return t.cached_scopes[t.cur_module] or { return none }
 }
 
 // get_module_scope returns the scope for a specific module
 fn (t &Transformer) get_module_scope(module_name string) ?&types.Scope {
-	lock t.env.scopes {
-		if module_name in t.env.scopes {
-			return unsafe { t.env.scopes[module_name] }
-		}
-	}
-	return none
+	return t.cached_scopes[module_name] or { return none }
 }
 
 // resolve_module_name resolves a module alias to its real module name via scope lookup.

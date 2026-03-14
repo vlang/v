@@ -39,18 +39,16 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 		}
 	}
 	// Fallback: scan all module scopes for local/private functions.
-	lock t.env.scopes {
-		scope_names := t.env.scopes.keys()
-		for module_name in scope_names {
-			scope_ptr := t.env.scopes[module_name] or { continue }
-			mut scope := unsafe { scope_ptr }
-			if obj := scope.lookup_parent(fn_name, 0) {
-				if obj is types.Fn {
-					fn_typ := obj.get_typ()
-					if fn_typ is types.FnType {
-						if ret_type := fn_typ.get_return_type() {
-							return ret_type
-						}
+	scope_names := t.cached_scopes.keys()
+	for module_name in scope_names {
+		scope_ptr := t.cached_scopes[module_name] or { continue }
+		mut scope := unsafe { scope_ptr }
+		if obj := scope.lookup_parent(fn_name, 0) {
+			if obj is types.Fn {
+				fn_typ := obj.get_typ()
+				if fn_typ is types.FnType {
+					if ret_type := fn_typ.get_return_type() {
+						return ret_type
 					}
 				}
 			}
@@ -227,35 +225,31 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 			continue
 		}
 		seen[raw_name] = true
-		if fn_type := t.env.lookup_method(raw_name, method_name) {
+		if fn_type := t.lookup_method_cached(raw_name, method_name) {
 			if ret_type := fn_type.get_return_type() {
 				return ret_type
 			}
 		}
 	}
-	lock t.env.methods {
-		method_keys := t.env.methods.keys()
-		for key in method_keys {
-			mut matches_receiver := false
-			for type_name in seen.keys() {
-				if t.method_key_matches_type_name(key, type_name) {
-					matches_receiver = true
-					break
-				}
+	for key, methods_for_type in t.cached_methods {
+		mut matches_receiver := false
+		for type_name in seen.keys() {
+			if t.method_key_matches_type_name(key, type_name) {
+				matches_receiver = true
+				break
 			}
-			if !matches_receiver {
+		}
+		if !matches_receiver {
+			continue
+		}
+		for method in methods_for_type {
+			if method.get_name() != method_name {
 				continue
 			}
-			methods_for_type := t.env.methods[key] or { continue }
-			for method in methods_for_type {
-				if method.get_name() != method_name {
-					continue
-				}
-				method_typ := method.get_typ()
-				if method_typ is types.FnType {
-					if ret_type := method_typ.get_return_type() {
-						return ret_type
-					}
+			method_typ := method.get_typ()
+			if method_typ is types.FnType {
+				if ret_type := method_typ.get_return_type() {
+					return ret_type
 				}
 			}
 		}
@@ -610,10 +604,11 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	} else {
 		decl.name
 	}
-	if fn_scope := t.env.get_fn_scope(t.cur_module, scope_fn_name) {
-		t.scope = fn_scope
-		// Set fn_root_scope so temp variables can be registered here
-		t.fn_root_scope = fn_scope
+	fn_scope_key := if t.cur_module == '' { scope_fn_name } else { '${t.cur_module}__${scope_fn_name}' }
+	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
+		// Create a child scope so for-loop variable insertions don't modify the shared scope.
+		t.scope = types.new_scope(fn_scope)
+		t.fn_root_scope = t.scope
 	} else {
 		// Fallback: create a new scope if function scope not found
 		t.open_scope()
@@ -906,8 +901,8 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				// is defined on the sum type and we should NOT apply the smartcast
 				// to the receiver. E.g. `for cur is types.Alias { cur.base_type() }`
 				// where base_type() is defined on types.Type (the sum type), not on Alias.
-				variant_has_method := t.env.lookup_method(ctx.variant, sel.rhs.name) != none
-					|| t.env.lookup_method(ctx.variant_full, sel.rhs.name) != none
+				variant_has_method := t.lookup_method_cached(ctx.variant, sel.rhs.name) != none
+					|| t.lookup_method_cached(ctx.variant_full, sel.rhs.name) != none
 				if variant_has_method {
 					// Resolve to a direct function call using the variant's method name
 					// (e.g. types__Char__name) to avoid infinite recursion through sum type dispatch
@@ -1197,7 +1192,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 	}
 	if lhs is ast.Ident {
 		if t.cur_module != '' {
-			if fn_type := t.env.lookup_fn(t.cur_module, lhs.name) {
+			if fn_type := t.lookup_fn_cached(t.cur_module, lhs.name) {
 				return CallFnInfo{
 					param_types: fn_type.get_param_types()
 					param_names: fn_type.get_param_names()
@@ -1205,7 +1200,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 				}
 			}
 		}
-		if fn_type := t.env.lookup_fn('builtin', lhs.name) {
+		if fn_type := t.lookup_fn_cached('builtin', lhs.name) {
 			return CallFnInfo{
 				param_types: fn_type.get_param_types()
 				param_names: fn_type.get_param_names()
@@ -1217,7 +1212,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 	if lhs is ast.SelectorExpr {
 		if lhs.lhs is ast.Ident {
 			mod_name := (lhs.lhs as ast.Ident).name
-			if fn_type := t.env.lookup_fn(mod_name, lhs.rhs.name) {
+			if fn_type := t.lookup_fn_cached(mod_name, lhs.rhs.name) {
 				return CallFnInfo{
 					param_types: fn_type.get_param_types()
 					param_names: fn_type.get_param_names()
@@ -1236,7 +1231,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 				lookup_names << '${t.cur_module}__${type_name}'
 			}
 			for name in lookup_names {
-				if fn_type := t.env.lookup_method(name, lhs.rhs.name) {
+				if fn_type := t.lookup_method_cached(name, lhs.rhs.name) {
 					return CallFnInfo{
 						param_types: fn_type.get_param_types()
 						param_names: fn_type.get_param_names()
@@ -1345,7 +1340,7 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		if method_name !in ['str', 'hex', 'clone', 'free', 'trim', 'bytes', 'bytestr', 'replace',
 			'contains', 'len', 'index', 'last_index', 'is_blank', 'join', 'to_upper', 'to_lower',
 			'repeat', 'vbytes', 'plus_two', 'write_u8', 'write_string', 'write_rune'] {
-			if t.env.lookup_method('array', method_name) != none {
+			if t.lookup_method_cached('array', method_name) != none {
 				return 'array__${method_name}'
 			}
 		}
@@ -1379,17 +1374,17 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	if base_type is types.Alias {
 		alias_c_name := t.type_to_c_name(base_type)
 		// type_name is already base_type.name() (the alias name like 'strings__Builder')
-		if t.env.lookup_method(type_name, method_name) != none {
+		if t.lookup_method_cached(type_name, method_name) != none {
 			return '${alias_c_name}__${method_name}'
 		}
 	}
 	// Verify method exists via env.lookup_method
 	for name in lookup_names {
-		if t.env.lookup_method(name, method_name) != none {
+		if t.lookup_method_cached(name, method_name) != none {
 			// For array types: if the method is NOT on generic 'array' but on
 			// a typed array (e.g., []rune.string()), use the specific C type name
 			// (e.g., Array_rune) instead of generic 'array'.
-			if c_prefix == 'array' && t.env.lookup_method('array', method_name) == none {
+			if c_prefix == 'array' && t.lookup_method_cached('array', method_name) == none {
 				specific_name := t.type_to_c_name(base_type)
 				return '${specific_name}__${method_name}'
 			}
@@ -1397,24 +1392,20 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		}
 	}
 	// Fuzzy fallback: iterate method keys to find matching receiver types
-	lock t.env.methods {
-		method_keys := t.env.methods.keys()
-		for key in method_keys {
-			mut matches_receiver := false
-			for name in lookup_names {
-				if t.method_key_matches_type_name(key, name) {
-					matches_receiver = true
-					break
-				}
+	for key, methods_for_type in t.cached_methods {
+		mut matches_receiver := false
+		for name in lookup_names {
+			if t.method_key_matches_type_name(key, name) {
+				matches_receiver = true
+				break
 			}
-			if !matches_receiver {
-				continue
-			}
-			methods_for_type := t.env.methods[key] or { continue }
-			for method in methods_for_type {
-				if method.get_name() == method_name {
-					return '${c_prefix}__${method_name}'
-				}
+		}
+		if !matches_receiver {
+			continue
+		}
+		for method in methods_for_type {
+			if method.get_name() == method_name {
+				return '${c_prefix}__${method_name}'
 			}
 		}
 	}
@@ -1911,8 +1902,8 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				// Check if the method exists on the variant type. If not, the method
 				// is defined on the sum type and we should NOT apply the smartcast
 				// to the receiver.
-				variant_has_method := t.env.lookup_method(ctx.variant, sel.rhs.name) != none
-					|| t.env.lookup_method(ctx.variant_full, sel.rhs.name) != none
+				variant_has_method := t.lookup_method_cached(ctx.variant, sel.rhs.name) != none
+					|| t.lookup_method_cached(ctx.variant_full, sel.rhs.name) != none
 				casted_receiver := if variant_has_method {
 					t.smartcast_method_receiver(sel.lhs, ctx)
 				} else {
@@ -2485,7 +2476,7 @@ fn (t &Transformer) get_call_return_type(expr ast.Expr) string {
 				base_type := if recv_type is types.Pointer { recv_type.base_type } else { recv_type }
 				type_name := base_type.name()
 				// Look up method using environment
-				if fn_typ := t.env.lookup_method(type_name, fn_name) {
+				if fn_typ := t.lookup_method_cached(type_name, fn_name) {
 					if ret := fn_typ.get_return_type() {
 						return ret.name()
 					}

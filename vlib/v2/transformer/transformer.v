@@ -76,6 +76,15 @@ mut:
 	// @[live] hot code reloading: function names and source file
 	live_fns         []LiveFn
 	live_source_file string
+	// Cached scope/method/fn_scope snapshots for lock-free parallel access.
+	// Populated once in pre_pass from the shared Environment fields.
+	cached_scopes    map[string]&types.Scope
+	cached_methods   map[string][]&types.Fn
+	cached_fn_scopes map[string]&types.Scope
+	// Accumulated synth types for deferred application (thread-safe).
+	// Instead of writing directly to env.set_expr_type during parallel transform,
+	// store here and apply after merge.
+	synth_types map[int]types.Type
 }
 
 struct LiveFn {
@@ -154,13 +163,18 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 // new_worker_clone creates a lightweight Transformer that shares read-only state
 // (env, pref, elided_fns, comptime_vmodroot, file_set) but has its own
 // accumulator maps for thread-safe per-file transformation.
-pub fn (t &Transformer) new_worker_clone() &Transformer {
+// worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs.
+pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
 		pref:                        unsafe { t.pref }
 		env:                         unsafe { t.env }
 		elided_fns:                  t.elided_fns
 		comptime_vmodroot:           t.comptime_vmodroot
 		file_set:                    unsafe { t.file_set }
+		cached_scopes:               t.cached_scopes
+		cached_methods:              t.cached_methods
+		cached_fn_scopes:            t.cached_fn_scopes
+		synth_pos_counter:           -(worker_idx * 100_000)
 		needed_str_fns:              map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
@@ -202,6 +216,12 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	}
 	if w.live_source_file.len > 0 {
 		t.live_source_file = w.live_source_file
+	}
+	for k, v in w.cached_fn_scopes {
+		t.cached_fn_scopes[k] = v
+	}
+	for k, v in w.synth_types {
+		t.synth_types[k] = v
 	}
 }
 
@@ -442,6 +462,10 @@ fn (t &Transformer) cur_smartcast_variant() string {
 	return ''
 }
 
+pub fn (mut t Transformer) set_synth_pos_counter(val int) {
+	t.synth_pos_counter = val
+}
+
 // next_synth_pos returns a unique negative position for synthesized AST nodes
 fn (mut t Transformer) next_synth_pos() token.Pos {
 	id := t.synth_pos_counter
@@ -521,6 +545,28 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	// Pre-pass: collect const declarations that require runtime initialization.
 	if !t.is_eval_backend() {
 		t.collect_runtime_const_inits(files)
+	}
+	// Cache scope and method maps for lock-free access during transform.
+	t.cache_env_maps()
+}
+
+// cache_env_maps snapshots the shared Environment maps into plain maps
+// for lock-free access during parallel file transformation.
+fn (mut t Transformer) cache_env_maps() {
+	lock t.env.scopes {
+		for k, v in t.env.scopes {
+			t.cached_scopes[k] = v
+		}
+	}
+	lock t.env.methods {
+		for k, v in t.env.methods {
+			t.cached_methods[k] = v
+		}
+	}
+	lock t.env.fn_scopes {
+		for k, v in t.env.fn_scopes {
+			t.cached_fn_scopes[k] = v
+		}
 	}
 }
 
@@ -687,6 +733,17 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	}
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
 		t.inject_live_reload(mut result)
+	}
+	// Apply accumulated synth types to the environment.
+	// Must happen after all generation steps since they also create synth types.
+	for id, typ in t.synth_types {
+		t.env.set_expr_type(id, typ)
+	}
+	// Push cached_fn_scopes back to the environment for prop_types.
+	for k, v in t.cached_fn_scopes {
+		lock t.env.fn_scopes {
+			t.env.fn_scopes[k] = v
+		}
 	}
 	t.propagate_types(result)
 }
@@ -6570,7 +6627,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			if sel.lhs is ast.Ident {
 				mod_name := (sel.lhs as ast.Ident).name
 				// Try looking up as a module-qualified function
-				if fn_type := t.env.lookup_fn(mod_name, method_name) {
+				if fn_type := t.lookup_fn_cached(mod_name, method_name) {
 					if return_type := fn_type.get_return_type() {
 						if return_type is types.String {
 							return true
@@ -6585,7 +6642,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			// Try method lookup
 			if receiver_type := t.get_expr_type(sel.lhs) {
 				type_name := t.get_type_name(receiver_type)
-				if fn_type := t.env.lookup_method(type_name, method_name) {
+				if fn_type := t.lookup_method_cached(type_name, method_name) {
 					if return_type := fn_type.get_return_type() {
 						if return_type is types.String {
 							return true
@@ -6655,7 +6712,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 					mod_name := parts[0]
 					actual_fn := parts[1..].join('__')
 					// Use environment's lookup_fn which checks the module's scope
-					if fn_type := t.env.lookup_fn(mod_name, actual_fn) {
+					if fn_type := t.lookup_fn_cached(mod_name, actual_fn) {
 						if return_type := fn_type.get_return_type() {
 							if return_type is types.String {
 								return true
@@ -6682,7 +6739,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			// First check for module-qualified function calls (e.g., os.user_os())
 			if sel.lhs is ast.Ident {
 				mod_name := (sel.lhs as ast.Ident).name
-				if fn_type := t.env.lookup_fn(mod_name, method_name) {
+				if fn_type := t.lookup_fn_cached(mod_name, method_name) {
 					if return_type := fn_type.get_return_type() {
 						if return_type is types.String {
 							return true
@@ -6697,7 +6754,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			// Try method lookup
 			if receiver_type := t.get_expr_type(sel.lhs) {
 				type_name := t.get_type_name(receiver_type)
-				if fn_type := t.env.lookup_method(type_name, method_name) {
+				if fn_type := t.lookup_method_cached(type_name, method_name) {
 					if return_type := fn_type.get_return_type() {
 						if return_type is types.String {
 							return true
@@ -6751,7 +6808,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 				if parts.len >= 2 {
 					mod_name := parts[0]
 					actual_fn := parts[1..].join('__')
-					if fn_type := t.env.lookup_fn(mod_name, actual_fn) {
+					if fn_type := t.lookup_fn_cached(mod_name, actual_fn) {
 						if return_type := fn_type.get_return_type() {
 							if return_type is types.String {
 								return true
