@@ -404,14 +404,10 @@ pub fn (mut b Builder) build(files []string) {
 	if b.pref.skip_type_check {
 		b.env = types.Environment.new()
 	} else {
-		$if parallel ? {
-			b.env = if b.pref.no_parallel {
-				b.type_check_files()
-			} else {
-				b.type_check_files_parallel()
-			}
-		} $else {
-			b.env = b.type_check_files()
+		b.env = if b.pref.no_parallel {
+			b.type_check_files()
+		} else {
+			b.type_check_files_parallel()
 		}
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
