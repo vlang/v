@@ -80,6 +80,28 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 		return 0
 	}
 	if v := expr.scope.find_var(expr.name) {
+		if v.is_inherited && expr.scope.parent != unsafe { nil } {
+			if parent_v := expr.scope.parent.find_var(expr.name) {
+				if parent_v.smartcasts.len > 0 {
+					smartcast_type := if parent_v.ct_type_var == .smartcast {
+						g.type_resolver.get_type(expr)
+					} else {
+						g.exposed_smartcast_type(parent_v.orig_type, parent_v.smartcasts.last(),
+							parent_v.is_mut)
+					}
+					return g.unwrap_generic(g.recheck_concrete_type(smartcast_type))
+				}
+				if parent_v.expr !is ast.EmptyExpr {
+					resolved_parent_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
+					if resolved_parent_type != 0 {
+						return g.unwrap_generic(g.recheck_concrete_type(resolved_parent_type))
+					}
+				}
+				if parent_v.typ != 0 {
+					return g.unwrap_generic(g.recheck_concrete_type(parent_v.typ))
+				}
+			}
+		}
 		if v.smartcasts.len > 0 {
 			smartcast_type := if v.ct_type_var == .smartcast {
 				g.type_resolver.get_type(expr)
@@ -261,6 +283,11 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						return g.unwrap_generic(g.recheck_concrete_type(resolved))
 					}
 				}
+				scope_type := g.resolved_scope_var_type(expr)
+				if scope_type != 0 && !expr.obj.is_arg && !scope_type.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(scope_type) {
+					return scope_type
+				}
 				if expr.obj.expr !is ast.EmptyExpr && (expr.obj.ct_type_var == .generic_var
 					|| ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
 					&& expr.obj.expr !in [ast.IntegerLiteral, ast.FloatLiteral, ast.StringLiteral, ast.BoolLiteral, ast.CharLiteral])) {
@@ -409,6 +436,10 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				.not_is] {
 				return ast.bool_type
 			}
+			if expr.promoted_type != 0 && !expr.promoted_type.has_flag(.generic)
+				&& !g.type_has_unresolved_generic_parts(expr.promoted_type) {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.promoted_type))
+			}
 			left_default := if expr.left_type != 0 { expr.left_type } else { default_typ }
 			right_default := if expr.right_type != 0 { expr.right_type } else { default_typ }
 			left_type := g.resolved_expr_type(expr.left, left_default)
@@ -429,6 +460,12 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			}
 		}
 		ast.CallExpr {
+			if expr.kind == .type_name {
+				return ast.string_type
+			}
+			if expr.kind == .type_idx {
+				return ast.int_type
+			}
 			resolved := g.resolve_return_type(expr)
 			if resolved != ast.void_type {
 				return g.unwrap_generic(g.recheck_concrete_type(resolved))

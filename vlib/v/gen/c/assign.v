@@ -249,6 +249,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		else {}
 	}
+	if node.right.len == 1 && node.left.len > 1 && node.left_types.len == node.left.len {
+		concrete_left_types := node.left_types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+		if concrete_left_types.all(it != 0 && !it.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(it))
+		{
+			expected_multi_return := g.table.find_or_register_multi_return(concrete_left_types)
+			if return_type == ast.void_type || return_type == 0 {
+				return_type = expected_multi_return
+			} else if g.table.sym(return_type).kind == .multi_return
+				&& return_type != expected_multi_return {
+				return_type = expected_multi_return
+			}
+		}
+	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
 	// or `x.str = [new value]` )
 	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.op == .assign
@@ -300,7 +314,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 	// TODO: g.gen_assign_vars_autofree(node)
 	// json_test failed w/o this check
-	if return_type != ast.void_type && return_type != 0 {
+	if node.right.len == 1 && return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
 		if sym.kind == .multi_return {
 			g.gen_multi_return_assign(node, return_type, sym)
@@ -467,7 +481,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = val_type
 					}
 				}
-				is_auto_heap = left.obj.is_auto_heap
+				is_auto_heap = g.resolved_ident_is_auto_heap(left)
 				if left.obj.typ != 0 && val is ast.PrefixExpr {
 					is_fn_var = g.table.final_sym(left.obj.typ).kind == .function
 				}
@@ -1266,7 +1280,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							g.expr_with_cast(val, val_type, exp_type)
+							if val is ast.PrefixExpr && val.op == .amp && val.right is ast.Ident
+								&& ((val.right as ast.Ident).is_auto_heap()
+								|| g.resolved_ident_is_auto_heap(val.right as ast.Ident)) {
+								old_inside_assign_fn_var := g.inside_assign_fn_var
+								g.inside_assign_fn_var = true
+								g.expr(val.right)
+								g.inside_assign_fn_var = old_inside_assign_fn_var
+							} else {
+								g.expr_with_cast(val, val_type, exp_type)
+							}
 						}
 					}
 				}
@@ -1314,6 +1337,39 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			suffix = '_${g.comptime.comptime_for_field_value.name}'
 		}
 	}
+	if node.right[0] is ast.CallExpr {
+		call_expr := node.right[0] as ast.CallExpr
+		mut fn_var_type := ast.void_type
+		lookup_name := if call_expr.left is ast.Ident {
+			call_expr.left.name
+		} else {
+			call_expr.name
+		}
+		resolved_current_type := g.resolve_current_fn_generic_param_type(lookup_name)
+		if resolved_current_type != 0
+			&& g.table.final_sym(g.unwrap_generic(resolved_current_type)).kind == .function {
+			fn_var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_current_type))
+		} else if call_expr.is_fn_var {
+			fn_var_type = g.unwrap_generic(g.recheck_concrete_type(call_expr.fn_var_type))
+		}
+		if fn_var_type == 0 {
+			if obj := call_expr.scope.find_var(lookup_name) {
+				if g.table.final_sym(g.unwrap_generic(obj.typ)).kind == .function {
+					fn_var_type = g.unwrap_generic(g.recheck_concrete_type(obj.typ))
+				}
+			}
+		}
+		if fn_var_type != 0 {
+			fn_sym := g.table.final_sym(fn_var_type)
+			if fn_sym.info is ast.FnType {
+				resolved_ret_type := g.unwrap_generic(g.recheck_concrete_type(fn_sym.info.func.return_type))
+				if resolved_ret_type != 0 && g.table.sym(resolved_ret_type).kind == .multi_return {
+					ret_type = resolved_ret_type
+					ret_sym = *g.table.sym(ret_type)
+				}
+			}
+		}
+	}
 	mr_var_name := 'mr_${node.pos.pos}${suffix}'
 	mut is_option := ret_type.has_flag(.option)
 	mut mr_styp := g.styp(ret_type.clear_flag(.result))
@@ -1325,7 +1381,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.expr(node.right[0])
 	g.writeln(';')
 	mr_types := (ret_sym.info as ast.MultiReturn).types
-	mut recompute_types := node.op == .decl_assign
+	mut recompute_types := node.op == .decl_assign || ret_type != return_type
 	if g.comptime.inside_comptime_for && node.right[0] is ast.CallExpr {
 		call_expr := node.right[0] as ast.CallExpr
 		if call_expr.concrete_types.len > 0 && g.comptime.comptime_for_field_var != ''

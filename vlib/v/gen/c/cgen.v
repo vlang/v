@@ -115,6 +115,8 @@ mut:
 	results                   map[string]string // to avoid duplicates
 	done_options              shared []string   // to avoid duplicates
 	done_results              shared []string   // to avoid duplicates
+	late_chan_types           shared []string   // concrete channel cnames discovered during file generation
+	emitted_chan_types        map[string]bool   // concrete channel typedefs/helpers already emitted
 	chan_pop_options          map[string]string // types for `x := <-ch or {...}`
 	chan_push_options         map[string]string // types for `ch <- x or {...}`
 	mtxs                      string            // array of mutexes if the `lock` has multiple variables
@@ -424,7 +426,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.hotcode_definitions << g.hotcode_definitions
 			global_g.embedded_data << g.embedded_data
 			global_g.shared_types << g.shared_types
-			global_g.shared_functions << g.channel_definitions
+			global_g.shared_functions << g.shared_functions
 			global_g.export_funcs << g.export_funcs
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
@@ -525,6 +527,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
 	}
 	global_g.write_shareds()
+	global_g.emit_late_chan_type_definitions()
 	global_g.write_chan_pop_option_fns()
 	global_g.write_chan_push_option_fns()
 	global_g.gen_array_contains_methods()
@@ -897,6 +900,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		results_forward:       global_g.results_forward
 		done_options:          global_g.done_options
 		done_results:          global_g.done_results
+		late_chan_types:       global_g.late_chan_types
 		is_autofree:           global_g.pref.autofree
 		obf_table:             global_g.obf_table
 		referenced_fns:        global_g.referenced_fns
@@ -1812,6 +1816,74 @@ fn (mut g Gen) register_chan_pop_option_call(opt_el_type string, styp string) {
 	g.chan_pop_options[opt_el_type] = styp
 }
 
+fn (mut g Gen) note_chan_type_definition(chan_typ ast.Type) {
+	mut concrete_chan_typ := g.unwrap_generic(g.recheck_concrete_type(chan_typ))
+	if concrete_chan_typ == 0 {
+		return
+	}
+	sym := g.table.final_sym(concrete_chan_typ)
+	if sym.kind != .chan || sym.name == 'chan' {
+		return
+	}
+	lock g.late_chan_types {
+		if sym.cname in g.late_chan_types {
+			return
+		}
+		g.late_chan_types << sym.cname
+	}
+}
+
+fn (mut g Gen) ensure_chan_type_definition(chan_typ ast.Type) {
+	mut concrete_chan_typ := g.unwrap_generic(g.recheck_concrete_type(chan_typ))
+	if concrete_chan_typ == 0 {
+		return
+	}
+	sym := g.table.final_sym(concrete_chan_typ)
+	if sym.kind != .chan || sym.name == 'chan' {
+		return
+	}
+	if sym.cname in g.emitted_chan_types {
+		return
+	}
+	g.emitted_chan_types[sym.cname] = true
+	chan_inf := sym.chan_info()
+	chan_elem_type := g.unwrap_generic(g.recheck_concrete_type(chan_inf.elem_type))
+	esym := g.table.sym(chan_elem_type)
+	g.type_definitions.writeln('typedef chan ${sym.cname};')
+	is_fixed_arr := esym.kind == .array_fixed
+	if !chan_elem_type.has_flag(.generic) {
+		el_stype := if is_fixed_arr { '_v_' } else { '' } + g.styp(chan_elem_type)
+		val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
+		val_arg_push := if is_fixed_arr { 'val' } else { '&val' }
+		push_arg := el_stype + if is_fixed_arr { '*' } else { '' }
+		g.channel_definitions.writeln('
+static inline ${el_stype} __${sym.cname}_popval(${sym.cname} ch) {
+	${el_stype} val = {0};
+	sync__Channel_try_pop_priv(ch, ${val_arg_pop}, false);
+	return val;
+}')
+		g.channel_definitions.writeln('
+static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
+	sync__Channel_try_push_priv(ch, ${val_arg_push}, false);
+}')
+	}
+}
+
+fn (mut g Gen) emit_late_chan_type_definitions() {
+	mut late_chan_cnames := []string{}
+	lock g.late_chan_types {
+		late_chan_cnames = g.late_chan_types.clone()
+	}
+	for cname in late_chan_cnames {
+		for idx, sym in g.table.type_symbols {
+			if sym.cname == cname {
+				g.ensure_chan_type_definition(ast.new_type(idx))
+				break
+			}
+		}
+	}
+}
+
 fn (mut g Gen) write_chan_pop_option_fns() {
 	mut done := []string{}
 	for opt_el_type, styp in g.chan_pop_options {
@@ -2029,29 +2101,7 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.chan {
-				if sym.name != 'chan' {
-					chan_inf := sym.chan_info()
-					chan_elem_type := chan_inf.elem_type
-					esym := g.table.sym(chan_elem_type)
-					g.type_definitions.writeln('typedef chan ${sym.cname};')
-					is_fixed_arr := esym.kind == .array_fixed
-					if !chan_elem_type.has_flag(.generic) {
-						el_stype := if is_fixed_arr { '_v_' } else { '' } + g.styp(chan_elem_type)
-						val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
-						val_arg_push := if is_fixed_arr { 'val' } else { '&val' }
-						push_arg := el_stype + if is_fixed_arr { '*' } else { '' }
-						g.channel_definitions.writeln('
-static inline ${el_stype} __${sym.cname}_popval(${sym.cname} ch) {
-	${el_stype} val = {0};
-	sync__Channel_try_pop_priv(ch, ${val_arg_pop}, false);
-	return val;
-}')
-						g.channel_definitions.writeln('
-static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
-	sync__Channel_try_push_priv(ch, ${val_arg_push}, false);
-}')
-					}
-				}
+				g.ensure_chan_type_definition(ast.new_type(sym.idx))
 			}
 			.map {
 				g.type_definitions.writeln('typedef map ${sym.cname};')
@@ -3610,6 +3660,14 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
+	if expr is ast.Ident && g.resolved_ident_is_auto_heap(expr) && expected_is_ptr && !got_is_ptr
+		&& neither_void {
+		old_inside_assign_fn_var := g.inside_assign_fn_var
+		g.inside_assign_fn_var = true
+		g.expr(expr)
+		g.inside_assign_fn_var = old_inside_assign_fn_var
+		return
+	}
 	if (g.inside_struct_init && expected_type == ast.voidptr_type && expected_type != got_type_raw
 		&& expr !is ast.StructInit) || (g.inside_call && expected_type == ast.voidptr_type
 		&& expr is ast.ArrayInit && (expr as ast.ArrayInit).is_fixed) {
@@ -4196,8 +4254,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.cast_expr(node)
 		}
 		ast.ChanInit {
-			elem_typ_str := g.styp(node.elem_type)
-			noscan := g.check_noscan(node.elem_type)
+			resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(node.elem_type))
+			mut muttable := unsafe { &ast.Table(g.table) }
+			chan_type := ast.new_type(muttable.find_or_register_chan(resolved_elem_type,
+				resolved_elem_type.nr_muls() > 0))
+			g.note_chan_type_definition(chan_type)
+			elem_typ_str := g.styp(resolved_elem_type)
+			noscan := g.check_noscan(resolved_elem_type)
 			g.write('sync__new_channel_st${noscan}(')
 			if node.has_cap {
 				g.expr(node.cap_expr)
@@ -4458,10 +4521,26 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.is_amp = true
 			}
 			if node.op == .arrow {
-				styp := g.styp(node.right_type)
-				right_sym := g.table.sym(node.right_type)
+				mut right_type := g.resolved_expr_type(node.right, node.right_type)
+				if right_type == 0 {
+					right_type = node.right_type
+				}
+				right_type = g.unwrap_generic(g.recheck_concrete_type(right_type))
+				mut styp := g.styp(right_type)
+				mut right_sym := g.table.sym(right_type)
+				if right_sym.info !is ast.Chan {
+					right_type = node.right_type
+					styp = g.styp(right_type)
+					right_sym = g.table.sym(right_type)
+				}
+				g.note_chan_type_definition(right_type)
 				mut right_inf := right_sym.info as ast.Chan
-				elem_type := right_inf.elem_type
+				elem_type := g.unwrap_generic(g.recheck_concrete_type(right_inf.elem_type))
+				if g.pref.skip_unused {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					muttable.used_features.used_syms[right_type.idx()] = true
+					muttable.used_features.used_syms[elem_type.idx()] = true
+				}
 				is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_last_stmt()
@@ -4513,7 +4592,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 				mut has_slice_call := false
-				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
+				right_is_auto_heap_ident := node.op == .amp && node.right is ast.Ident
+					&& ((node.right as ast.Ident).is_auto_heap()
+					|| g.resolved_ident_is_auto_heap(node.right))
+				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var())
+					&& !right_is_auto_heap_ident {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
 					if has_slice_call {
@@ -4523,7 +4606,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 				if tmp_var == '' {
-					g.expr(node.right)
+					if right_is_auto_heap_ident {
+						old_inside_assign_fn_var := g.inside_assign_fn_var
+						g.inside_assign_fn_var = true
+						g.expr(node.right)
+						g.inside_assign_fn_var = old_inside_assign_fn_var
+					} else {
+						g.expr(node.right)
+					}
 				} else {
 					g.write(tmp_var)
 				}
@@ -5044,7 +5134,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			is_interface_smartcast_selector = true
 		}
 	}
-	expr_is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
+	mut expr_is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
+	if expr_is_auto_heap {
+		expr_ident := node.expr as ast.Ident
+		if expr_ident.obj is ast.Var && expr_ident.obj.is_inherited {
+			inherited_typ := g.resolved_scope_var_type(expr_ident)
+			if (inherited_typ != 0 && !inherited_typ.is_ptr())
+				|| (inherited_typ == 0 && !expr_ident.obj.typ.is_ptr()) {
+				expr_is_auto_heap = false
+			}
+		}
+	}
 	n_ptr := if is_interface_smartcast_selector
 		|| (is_interface_smartcast_expr && resolved_selector_expr_type.nr_muls() > 1) {
 		0
@@ -5960,7 +6060,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 						g.write('(*(${styp}*)${name}${ptr}data)')
 					}
 				} else {
-					if is_auto_heap {
+					emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
+						&& !g.inside_selector_lhs
+					if emit_auto_heap_deref {
 						g.write2('*', name)
 					} else {
 						g.write(name)
@@ -5970,7 +6072,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 					&& !g.is_assign_lhs) {
 					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
-					var_name := if !g.is_assign_lhs && is_auto_heap { '(*${name})' } else { name }
+					var_name := if !g.is_assign_lhs && is_auto_heap && !g.inside_assign_fn_var
+						&& !g.inside_selector_lhs {
+						'(*${name})'
+					} else {
+						name
+					}
 					g.or_block(var_name, node.or_expr, comptime_type)
 					g.writeln(stmt_str)
 				}

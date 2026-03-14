@@ -303,14 +303,15 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut result)!
-	unsafe {
-		decoder.values_info.free()
-	}
 	return result
 }
 
 fn get_dynamic_from_element[T](_t T) []T {
 	return []T{}
+}
+
+fn decode_map_value[V](mut decoder Decoder, mut val map[string]V) ! {
+	decoder.decode_map[V](mut val)!
 }
 
 // decode_value decodes a value from the JSON nodes.
@@ -377,7 +378,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		decoder.decode_sumtype(mut val)!
 		return
 	} $else $if T.unaliased_typ is $map {
-		decoder.decode_map(mut val)!
+		decode_map_value(mut decoder, mut val)!
 		return
 	} $else $if T.unaliased_typ is $array_dynamic {
 		val.clear()

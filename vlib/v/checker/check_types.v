@@ -1192,11 +1192,11 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ = typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) && param_sym.name == gt_name {
-				typ = ast.mktyp(arg.typ)
-				if typ == ast.nil_type {
-					typ = ast.voidptr_type
-				}
+				} else if param.typ.has_flag(.generic) && param_sym.name == gt_name {
+					typ = ast.mktyp(arg.typ)
+					if typ == ast.nil_type {
+						typ = ast.voidptr_type
+					}
 				sym := c.table.final_sym(arg.typ)
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
@@ -1215,9 +1215,10 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
-					typ = typ.deref()
-				}
+					if (arg.is_mut || arg.expr.is_auto_deref_var()) && typ.is_ptr()
+						&& !param.typ.is_ptr() {
+						typ = typ.deref()
+					}
 				// resolve &T &&T ...
 				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {
 					param_muls := param.typ.nr_muls()
@@ -1228,13 +1229,17 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) {
-				arg_typ := if c.table.sym(arg.typ).kind == .any {
-					c.unwrap_generic(arg.typ)
-				} else {
-					arg.typ
-				}
-				arg_sym := c.table.final_sym(arg_typ)
+				} else if param.typ.has_flag(.generic) {
+					mut arg_typ := if c.table.sym(arg.typ).kind == .any {
+						c.unwrap_generic(arg.typ)
+					} else {
+						arg.typ
+					}
+					if (arg.is_mut || arg.expr.is_auto_deref_var()) && arg_typ.is_ptr()
+						&& !param.typ.is_ptr() {
+						arg_typ = arg_typ.deref()
+					}
+					arg_sym := c.table.final_sym(arg_typ)
 				if param.typ.has_flag(.variadic) {
 					typ = ast.mktyp(arg_typ)
 				} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {

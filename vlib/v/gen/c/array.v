@@ -607,9 +607,9 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 	ret_styp := g.styp(return_type)
 	ret_sym := g.table.final_sym(return_type)
-
-	left_is_array := g.table.final_sym(node.left_type).kind == .array
-	inp_sym := g.table.final_sym(node.receiver_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	inp_sym := g.table.final_sym(resolved_left_type)
+	left_is_array := inp_sym.kind == .array
 
 	ret_elem_type := if left_is_array {
 		(ret_sym.info as ast.Array).elem_type
@@ -836,9 +836,13 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	defer {
 		g.past_tmp_var_done(past)
 	}
-	resolved_return_type := g.resolve_return_type(node)
+	mut resolved_return_type := g.resolve_return_type(node)
+	mut sym := g.table.final_sym(resolved_return_type)
+	if sym.kind !in [.array, .array_fixed] {
+		resolved_return_type = node.return_type
+		sym = g.table.final_sym(resolved_return_type)
+	}
 	atype := g.styp(resolved_return_type)
-	sym := g.table.final_sym(resolved_return_type)
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type

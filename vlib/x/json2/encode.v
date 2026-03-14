@@ -79,10 +79,6 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	}
 }
 
-fn encode_concrete_value[T](mut encoder Encoder, val T) {
-	encoder.encode_value[T](val)
-}
-
 fn (mut encoder Encoder) encode_string(val string) {
 	encoder.output << `"`
 	mut buffer_start := 0
@@ -214,7 +210,32 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 }
 
 fn (mut encoder Encoder) encode_number[T](val T) {
-	integer_val := val.str()
+	mut integer_val := ''
+	$if T is u8 {
+		integer_val = u8(val).str()
+	} $else $if T is u16 {
+		integer_val = u16(val).str()
+	} $else $if T is u32 {
+		integer_val = u32(val).str()
+	} $else $if T is u64 {
+		integer_val = u64(val).str()
+	} $else $if T is i8 {
+		integer_val = i8(val).str()
+	} $else $if T is i16 {
+		integer_val = i16(val).str()
+	} $else $if T is int || T is i32 {
+		integer_val = i32(val).str()
+	} $else $if T is i64 {
+		integer_val = i64(val).str()
+	} $else $if T is usize {
+		integer_val = usize(val).str()
+	} $else $if T is isize {
+		integer_val = isize(val).str()
+	} $else $if T is f32 {
+		integer_val = f32(val).str()
+	} $else $if T is f64 {
+		integer_val = f64(val).str()
+	}
 	$if T is $float {
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
@@ -240,7 +261,7 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 	}
 
 	for i, item in val {
-		encode_concrete_value[T](mut encoder, item)
+		encoder.encode_value[T](item)
 		if i < val.len - 1 {
 			encoder.output << `,`
 			if encoder.prettify {
@@ -271,7 +292,7 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 		if encoder.prettify {
 			encoder.output << ` `
 		}
-		encode_concrete_value[T](mut encoder, value)
+		encoder.encode_value[T](value)
 		if i < val.len - 1 {
 			encoder.output << `,`
 			if encoder.prettify {

@@ -27,10 +27,11 @@ $if !new_veb ? {
 			println('[veb] Running app on http://${host}:${params.port}/')
 		}
 		flush_stdout()
+		routes_ptr := &routes
 		mut pico_context := &RequestParams{
 			global_app:         unsafe { global_app }
 			controllers:        controllers_sorted
-			routes:             &routes
+			routes:             routes_ptr
 			timeout_in_seconds: params.timeout_in_seconds
 		}
 		pico_context.idx = []int{len: picoev.max_fds}

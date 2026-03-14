@@ -213,7 +213,9 @@ fn to_any[T](value T) Any {
 		return Any(value)
 	} $else $if T is bool {
 		return Any(value)
-	} $else $if T is $float {
+	} $else $if T is f32 {
+		return Any(value)
+	} $else $if T is f64 {
 		return Any(value)
 	} $else $if T is i64 {
 		return Any(value)

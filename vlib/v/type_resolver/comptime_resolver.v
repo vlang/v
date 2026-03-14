@@ -10,7 +10,8 @@ pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSele
 	} else {
 		t.info.comptime_for_field_value.name
 	}
-	if node.field_expr is ast.SelectorExpr {
+	if node.field_expr is ast.SelectorExpr && t.info.comptime_for_field_var != ''
+		&& t.info.comptime_for_method_var == '' && node.field_expr.field_name == 'name' {
 		if node.field_expr.expr is ast.Ident
 			&& node.field_expr.expr.name == t.info.comptime_for_field_var {
 			field_name = t.info.comptime_for_field_value.name

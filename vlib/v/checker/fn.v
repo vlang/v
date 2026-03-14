@@ -2317,8 +2317,14 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
+	mut use_builtin_array_sort := false
+	if final_left_sym.kind == .array && node.kind in [.sort, .sorted] && node.args.len > 0 {
+		if method := left_sym.find_method(method_name) {
+			use_builtin_array_sort = method.params.len == 1
+		}
+	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
-		&& !left_sym.has_method(method_name) {
+		&& (!left_sym.has_method(method_name) || use_builtin_array_sort) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
 		&& fixed_array_builtin_methods_chk.matches(method_name) && !left_sym.has_method(method_name) {
