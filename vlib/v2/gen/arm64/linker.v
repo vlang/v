@@ -312,6 +312,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Text segment size includes header, load commands, code, cstrings, stubs
 	text_content_end := l.stubs_offset + l.stubs_size
 	l.text_size = (text_content_end + page_size - 1) & ~(page_size - 1)
+	eprintln('DEBUG layout: text_content_end=0x${text_content_end:x} page_size=0x${page_size:x} mask=0x${~(page_size - 1):016x} text_size=0x${l.text_size:016x}')
 
 	// Data segment follows text
 	l.data_fileoff = l.text_size
@@ -541,6 +542,7 @@ fn (mut l Linker) write_text_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72 + 80 * 2) // cmd size with 2 sections
 	write_string_fixed(mut l.buf, '__TEXT', 16)
+	eprintln('DEBUG write_text_segment: text_vmaddr=0x${l.text_vmaddr:016x} text_size=0x${l.text_size:016x} text_size_u64=0x${u64(l.text_size):016x}')
 	write_u64_le(mut l.buf, l.text_vmaddr) // vmaddr = base_addr
 	write_u64_le(mut l.buf, u64(l.text_size)) // vmsize
 	write_u64_le(mut l.buf, 0) // fileoff MUST be 0

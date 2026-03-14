@@ -2853,9 +2853,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.mod.values[target_blk].index
 			}
 
-			// Emit phi copies for the target block before branching
-			g.emit_phi_copies(target_idx)
-
 			// Fallthrough optimization: Don't jump if target is next block
 			if target_idx != g.next_blk {
 				if target_idx >= 0 && target_idx < g.block_offsets.len
@@ -2901,82 +2898,30 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.mod.values[instr.operands[2]].index
 			}
 
-			has_phis := g.block_has_phis(true_blk) || g.block_has_phis(false_blk)
-			if has_phis {
-				// When target blocks have phi nodes (e.g. -O0 mode), we must emit
-				// phi copies on each branch path separately. Structure:
-				//   CBZ x8, false_path
-				//   <true phi copies>
-				//   B true_blk
-				//   false_path:
-				//   <false phi copies>
-				//   B false_blk (or fall-through)
-				cbz_off := g.macho.text_data.len - g.curr_offset
-				g.emit(asm_cbz(Reg(8), 0)) // placeholder, will patch
+			if true_blk >= 0 && true_blk < g.block_offsets.len && g.block_offsets[true_blk] != -1 {
+				off := g.block_offsets[true_blk]
+				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+				if rel >= -262144 && rel < 262144 {
+					g.emit(asm_cbnz(Reg(8), rel))
+				} else {
+					g.emit(asm_cbz(Reg(8), 2))
+					g.emit(asm_b(rel - 1))
+				}
+			} else {
+				g.emit(asm_cbz(Reg(8), 2))
+				g.record_pending_label(true_blk)
+				g.emit(asm_b(0))
+			}
 
-				// True path: emit phi copies then branch to true block
-				g.emit_phi_copies(true_blk)
-				if true_blk >= 0 && true_blk < g.block_offsets.len
-					&& g.block_offsets[true_blk] != -1 {
-					off := g.block_offsets[true_blk]
+			if false_blk != g.next_blk {
+				if false_blk >= 0 && false_blk < g.block_offsets.len
+					&& g.block_offsets[false_blk] != -1 {
+					off := g.block_offsets[false_blk]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					g.emit(asm_b(rel))
 				} else {
-					g.record_pending_label(true_blk)
+					g.record_pending_label(false_blk)
 					g.emit(asm_b(0))
-				}
-
-				// Patch CBZ to jump here (false path)
-				false_path_off := g.macho.text_data.len - g.curr_offset
-				cbz_rel := (false_path_off - cbz_off) / 4
-				cbz_abs := g.curr_offset + cbz_off
-				g.write_u32(cbz_abs, asm_cbz(Reg(8), cbz_rel))
-
-				// False path: emit phi copies then branch to false block
-				g.emit_phi_copies(false_blk)
-				if false_blk != g.next_blk {
-					if false_blk >= 0 && false_blk < g.block_offsets.len
-						&& g.block_offsets[false_blk] != -1 {
-						off := g.block_offsets[false_blk]
-						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-						g.emit(asm_b(rel))
-					} else {
-						g.record_pending_label(false_blk)
-						g.emit(asm_b(0))
-					}
-				}
-			} else {
-				// No phi nodes — use efficient branch pattern
-				if true_blk >= 0 && true_blk < g.block_offsets.len
-					&& g.block_offsets[true_blk] != -1 {
-					off := g.block_offsets[true_blk]
-					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-					if rel >= -262144 && rel < 262144 {
-						g.emit(asm_cbnz(Reg(8), rel))
-					} else {
-						// Branch target too far for CBNZ (19-bit range).
-						// Use trampoline: CBZ skip; B target; skip:
-						g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-						g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
-					}
-				} else {
-					// Forward reference: use trampoline pattern to avoid 19-bit overflow.
-					// CBZ x8, skip; B target; skip:
-					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-					g.record_pending_label(true_blk)
-					g.emit(asm_b(0))
-				}
-
-				if false_blk != g.next_blk {
-					if false_blk >= 0 && false_blk < g.block_offsets.len
-						&& g.block_offsets[false_blk] != -1 {
-						off := g.block_offsets[false_blk]
-						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-						g.emit(asm_b(rel))
-					} else {
-						g.record_pending_label(false_blk)
-						g.emit(asm_b(0))
-					}
 				}
 			}
 		}
@@ -3023,7 +2968,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				g.mod.values[def_blk_val].index
 			}
-			g.emit_phi_copies(def_idx)
 			if def_idx >= 0 && def_idx < g.block_offsets.len && g.block_offsets[def_idx] != -1 {
 				off := g.block_offsets[def_idx]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
@@ -5410,12 +5354,6 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
-	if r := g.reg_map[val_id] {
-		if r != reg {
-			g.emit_mov_reg(reg, r)
-		}
-		return
-	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return
