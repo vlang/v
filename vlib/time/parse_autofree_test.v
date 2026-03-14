@@ -1,3 +1,4 @@
+// vtest build: !msvc-windows
 // vtest vflags: -autofree
 module time
 

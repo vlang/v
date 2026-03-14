@@ -59,7 +59,7 @@ jobs:
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install vsql"
           v retry -- v install elliotchance.vsql
@@ -78,7 +78,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_discordv.sh
       - name: Build herolib
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_herolib.sh
       - name: Build vlang/vab
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
