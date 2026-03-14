@@ -5622,9 +5622,22 @@ sql db {
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
 
-### Troubleshooting compilation problems with SQLite on Windows
-On Windows, if you get a compilation error, about a missing sqlite3.h file, you have to run:
-`v vlib/db/sqlite/install_thirdparty_sqlite.vsh` once, then retry your compilation.
+### Troubleshooting compilation problems with SQLite
+
+On **any platform** (Windows, Linux, macOS), you can run:
+
+`v vlib/db/sqlite/install_thirdparty_sqlite.vsh`
+
+This downloads the SQLite amalgamation source and places it in
+`v/thirdparty/sqlite`. V will then compile it automatically
+during your build.
+
+On **Linux**, you can also install the system development package
+instead:
+
+- Debian/Ubuntu: `sudo apt install -y libsqlite3-dev`
+- Fedora/RHEL: `sudo dnf -y install sqlite-devel`
+- Arch: `sudo pacman -S sqlite`
 
 ### Using the self contained SQLite module
 V also maintains a separate `sqlite` module, that wraps an SQLite amalgamation, but otherwise

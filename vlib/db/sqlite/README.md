@@ -6,23 +6,20 @@ high-reliability, full-featured, SQL database engine."
 
 # Install SQLite Dependency
 
-Before you can use this module, you must first have the SQLite development
-library installed on your system.
+On **any platform** (Windows, Linux, macOS), you can run:
 
-**Fedora 31**:
+`v vlib/db/sqlite/install_thirdparty_sqlite.vsh`
 
-`sudo dnf -y install sqlite-devel`
+This downloads the SQLite amalgamation source and places it in
+`v/thirdparty/sqlite`. V will then compile it automatically
+during your build.
 
+On **Linux**, you can also install the system development package
+instead:
 
-**Ubuntu 20.04**:
-
-`sudo apt install -y libsqlite3-dev`
-
-
-**Windows**:
-- Download the source zip from [SQLite Downloads](https://sqlite.org/download.html)
-- Create a new `sqlite` subfolder inside `v/thirdparty`
-- Extract the zip into that folder
+- Debian/Ubuntu: `sudo apt install -y libsqlite3-dev`
+- Fedora/RHEL: `sudo dnf -y install sqlite-devel`
+- Arch: `sudo pacman -S sqlite`
 
 # Performance Tips
 
