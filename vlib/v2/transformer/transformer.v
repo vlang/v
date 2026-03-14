@@ -6883,9 +6883,11 @@ fn (t &Transformer) is_string_expr_in_block(expr ast.Expr, stmts []ast.Stmt) boo
 
 // is_string_returning_fn returns true if a function is known to return a string
 fn (t &Transformer) is_string_returning_fn(fn_name string) bool {
-	// Known string-returning functions
+	// Known string-returning functions (hardcoded to avoid scope lookup failures
+	// in ARM64-compiled binaries where the checker's type store may be unreliable)
 	if fn_name in ['string__plus', 'string__plus_two', 'string__substr', 'string__substr_unsafe',
-		'string__repeat'] {
+		'string__repeat', 'tos', 'tos2', 'tos3', 'tos4', 'tos5', 'tos_clone',
+		'cstring_to_vstring', 'string_clone'] {
 		return true
 	}
 	// String module functions generally return strings (except bytes/vbytes which return []u8)

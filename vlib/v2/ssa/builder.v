@@ -4719,6 +4719,9 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 			// Try module-qualified FIRST to avoid shadowing by C functions.
 			// E.g., os.getenv() should resolve to os__getenv, not C.getenv.
 			qualified := '${b.cur_module}__${name}'
+			if name.contains('clone') {
+				eprintln('SSA resolve_call: name=${name} qualified=${qualified} q_in=${qualified in b.fn_index} n_in=${name in b.fn_index}')
+			}
 			if qualified in b.fn_index {
 				return qualified
 			}
@@ -4917,6 +4920,34 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 	if expr is ast.Ident {
 		return expr.name
 	}
+	// For CallExpr/CallOrCastExpr, try to infer receiver type from the called
+	// function's return type. This is needed when env.get_expr_type fails (e.g.,
+	// in ARM64-compiled binaries where the checker's type store may be unreliable).
+	if expr is ast.CallExpr {
+		call_fn_name := b.resolve_call_name(expr)
+		if call_fn_name in b.fn_index {
+			fn_idx := b.fn_index[call_fn_name]
+			ret_typ := b.mod.funcs[fn_idx].typ
+			if ret_typ != 0 {
+				return b.type_id_to_receiver_name(ret_typ)
+			}
+		}
+	}
+	if expr is ast.CallOrCastExpr {
+		// Try resolving as CallExpr for receiver type inference
+		call_expr := ast.CallExpr{
+			lhs:  expr.lhs
+			args: if expr.expr is ast.EmptyExpr { []ast.Expr{} } else { [expr.expr] }
+		}
+		call_fn_name := b.resolve_call_name(call_expr)
+		if call_fn_name in b.fn_index {
+			fn_idx := b.fn_index[call_fn_name]
+			ret_typ := b.mod.funcs[fn_idx].typ
+			if ret_typ != 0 {
+				return b.type_id_to_receiver_name(ret_typ)
+			}
+		}
+	}
 	// For SelectorExpr (e.g., obj.field), try to resolve the field's type
 	// by looking up the LHS type and then the field type in struct definitions.
 	if expr is ast.SelectorExpr {
@@ -4933,6 +4964,49 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 						}
 					}
 				}
+			}
+		}
+	}
+	return 'unknown'
+}
+
+// type_id_to_receiver_name converts an SSA TypeID to a C-style receiver name
+// for method resolution (e.g., 'string', 'array', 'int', struct names).
+fn (mut b Builder) type_id_to_receiver_name(typ TypeID) string {
+	// Check against known struct types (reverse lookup)
+	for name, id in b.struct_types {
+		if id == typ {
+			return name
+		}
+	}
+	// Check the SSA type kind for primitives
+	if int(typ) >= 0 && int(typ) < b.mod.type_store.types.len {
+		t := b.mod.type_store.types[int(typ)]
+		match t.kind {
+			.int_t {
+				if t.is_unsigned {
+					return match t.width {
+						8 { 'u8' }
+						16 { 'u16' }
+						64 { 'u64' }
+						else { 'u32' }
+					}
+				}
+				return match t.width {
+					8 { 'i8' }
+					16 { 'i16' }
+					64 { 'i64' }
+					else { 'int' }
+				}
+			}
+			.float_t {
+				return if t.width == 32 { 'f32' } else { 'f64' }
+			}
+			.ptr_t {
+				return 'unknown'
+			}
+			else {
+				return 'unknown'
 			}
 		}
 	}

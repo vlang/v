@@ -1046,6 +1046,25 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			&& t.lookup_var_type(sel.lhs.name) == none
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+				// Guard against misresolution: if the receiver is known to be a string
+				// (e.g., tos2() returns string), ensure string methods aren't resolved to
+				// array methods. This can happen when the checker's type store is unreliable
+				// (e.g., in ARM64-compiled binaries with chained-access issues).
+				if resolved.starts_with('array__') && t.is_string_expr(sel.lhs) {
+					call_args := t.lower_missing_call_args(expr.lhs, expr.args)
+					mut args := []ast.Expr{cap: call_args.len + 1}
+					args << t.transform_expr(sel.lhs)
+					for arg in call_args {
+						args << t.transform_expr(arg)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: 'string__${sel.rhs.name}'
+						}
+						args: args
+						pos:  expr.pos
+					}
+				}
 				// For nested array .clone(), use clone_to_depth with the correct depth
 				// so inner arrays are deeply cloned instead of shallow-copied.
 				if resolved == 'array__clone' && expr.args.len == 0 {
@@ -1347,10 +1366,31 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 				return 'array__${method_name}'
 			}
 		}
+		// When type lookup fails but receiver is a known string expression, resolve
+		// as string method. This prevents falling through to SSA builder where
+		// non-deterministic map iteration could resolve to the wrong overload.
+		if method_name == 'clone' {
+			eprintln('resolve_method clone: NO TYPE for receiver, is_string=${t.is_string_expr(receiver)}')
+		}
+		if t.is_string_expr(receiver) {
+			if t.lookup_method_cached('string', method_name) != none {
+				return 'string__${method_name}'
+			}
+		}
 		return none
 	}
 	base_type := t.unwrap_alias_and_pointer_type(recv_type)
-	c_prefix := t.receiver_type_to_c_prefix(base_type)
+	mut c_prefix := t.receiver_type_to_c_prefix(base_type)
+	// Guard against type misresolution: when the checker returns array type but
+	// the receiver is actually a string expression (verified via structural analysis),
+	// correct the prefix. This can happen in ARM64-compiled binaries where the
+	// checker's type store may have incorrect entries due to chained-access issues.
+	if c_prefix == 'array' && t.is_string_expr(receiver) {
+		c_prefix = 'string'
+	}
+	if method_name == 'clone' {
+		eprintln('resolve_method clone: c_prefix=${c_prefix} base_type=${base_type.name()} is_string=${t.is_string_expr(receiver)}')
+	}
 	if c_prefix == '' {
 		return none
 	}
