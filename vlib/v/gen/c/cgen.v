@@ -4591,32 +4591,21 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						g.write(str)
 					}
 				}
-				mut has_slice_call := false
-				right_is_auto_heap_ident := node.op == .amp && node.right is ast.Ident
-					&& ((node.right as ast.Ident).is_auto_heap()
-					|| g.resolved_ident_is_auto_heap(node.right))
-				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var())
-					&& !right_is_auto_heap_ident {
-					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
-						&& node.right.index is ast.RangeExpr
-					if has_slice_call {
-						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else {
-						g.write(node.op.str())
+					mut has_slice_call := false
+					if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
+						has_slice_call = node.op == .amp && node.right is ast.IndexExpr
+							&& node.right.index is ast.RangeExpr
+						if has_slice_call {
+							g.write('ADDR(${g.styp(node.right_type)}, ')
+						} else {
+							g.write(node.op.str())
+						}
 					}
-				}
-				if tmp_var == '' {
-					if right_is_auto_heap_ident {
-						old_inside_assign_fn_var := g.inside_assign_fn_var
-						g.inside_assign_fn_var = true
+					if tmp_var == '' {
 						g.expr(node.right)
-						g.inside_assign_fn_var = old_inside_assign_fn_var
 					} else {
-						g.expr(node.right)
+						g.write(tmp_var)
 					}
-				} else {
-					g.write(tmp_var)
-				}
 				if has_slice_call {
 					g.write(')')
 				}

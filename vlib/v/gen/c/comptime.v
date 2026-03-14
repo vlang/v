@@ -24,7 +24,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	if node.is_name && node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comptime.comptime_for_field_var {
-				field_name := g.comptime.comptime_for_field_value.name
+				_, field_name := g.type_resolver.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
 				if is_interface_field {
 					g.write(')')
