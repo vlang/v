@@ -1263,21 +1263,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							if g.is_arraymap_set && g.arraymap_set_pos >= 0 && left is ast.IndexExpr
-								&& left.is_map && val is ast.Ident && !exp_type.has_flag(.option) {
-								if g.arraymap_set_pos > 0 {
-									g.go_back_to(g.arraymap_set_pos)
-								}
-								g.write(', &${c_name(val.name)})')
-								if cur_indexexpr != -1 {
-									g.cur_indexexpr.delete(cur_indexexpr)
-									cur_indexexpr = -1
-								}
-								g.is_arraymap_set = false
-								g.arraymap_set_pos = 0
-							} else {
-								g.expr_with_cast(val, val_type, exp_type)
-							}
+							g.expr_with_cast(val, val_type, exp_type)
 						}
 					}
 				}

@@ -1473,8 +1473,8 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 		left_sym := g.table.sym(left_type)
 		final_left_sym := g.table.final_sym(g.unwrap_generic(left_type))
 		if final_left_sym.kind == .array && !(left_sym.kind == .alias
-			&& left_sym.has_method(node.name))
-			&& node.kind in [.first, .last, .pop_left, .pop, .filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted, .sorted_with_compare] {
+			&& left_sym.has_method(node.name)) && (node.name == 'get'
+			|| node.kind in [.first, .last, .pop_left, .pop, .filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted, .sorted_with_compare]) {
 			return_type := g.resolved_array_builtin_method_return_type(node, left_type,
 				node.return_type)
 			return if node.or_block.kind == .absent {
@@ -1648,6 +1648,13 @@ fn (mut g Gen) resolved_array_builtin_method_return_type(node ast.CallExpr, left
 	resolved_left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
 	if resolved_left_sym.kind != .array {
 		return return_type
+	}
+	if node.name == 'get' {
+		array_info := resolved_left_sym.info as ast.Array
+		if array_info.elem_type == 0 {
+			return return_type
+		}
+		return g.unwrap_generic(g.recheck_concrete_type(array_info.elem_type.set_flag(.option)))
 	}
 	match node.kind {
 		.filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted,
@@ -2101,7 +2108,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
-		if !(node.name == 'get' && receiver_type != 0 && receiver_type != ast.array_type)
+		if !(node.name == 'get' && receiver_type != 0
+			&& g.table.final_sym(g.unwrap_generic(receiver_type)).kind != .array)
 			&& g.gen_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
