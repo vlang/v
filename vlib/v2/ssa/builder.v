@@ -5050,6 +5050,8 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			'CLOCK_REALTIME' { '0' }
 			// System
 			'_SC_PAGESIZE' { '29' }
+			'_SC_NPROCESSORS_ONLN' { '58' }
+			'_SC_PHYS_PAGES' { '200' }
 			// Errno
 			'EINTR' { '4' }
 			'EINVAL' { '22' }
@@ -5080,6 +5082,9 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			'PT_TRACE_ME' { '0' }
 			// Signals
 			'SIG_ERR' { '-1' }
+			'SIG_BLOCK' { '1' }
+			'SIG_UNBLOCK' { '2' }
+			'SIG_SETMASK' { '3' }
 			'SIGCONT' { '19' }
 			'SIGSTOP' { '17' }
 			// Wait

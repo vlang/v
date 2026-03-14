@@ -6,7 +6,6 @@ module arm64
 
 import os
 import time
-import runtime
 
 // Mach-O executable constants
 const mh_execute = 2
@@ -81,7 +80,8 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	// Other
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
-	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_arc4random_buf',
+	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
+	'_pthread_join', '_arc4random_buf',
 	'_proc_pidpath', '_backtrace', '_backtrace_symbols_fd',
 	// macOS specific
 	'_dispatch_semaphore_create', '_dispatch_semaphore_signal',
@@ -892,23 +892,9 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	mut all_hashes := []u8{len: n_pages * 32}
 	data_ptr := unsafe { &u8(l.buf.data) }
 	hash_ptr := unsafe { &u8(all_hashes.data) }
-	n_threads := runtime.nr_cpus()
-	pages_per_thread := (n_pages + n_threads - 1) / n_threads
-
-	mut threads := []thread{}
-	for t := 0; t < n_threads; t++ {
-		page_start := t * pages_per_thread
-		mut page_end := page_start + pages_per_thread
-		if page_end > n_pages {
-			page_end = n_pages
-		}
-		if page_start >= page_end {
-			break
-		}
-		threads << spawn sha256_hash_pages(data_ptr, hash_ptr, page_start, page_end,
-			code_limit)
-	}
-	threads.wait()
+	// Hash all pages sequentially. V's `spawn` is not supported on the native
+	// ARM64 backend, so we avoid threads here for self-hosting compatibility.
+	sha256_hash_pages(data_ptr, hash_ptr, 0, n_pages, code_limit)
 	sig << all_hashes
 
 	// Pad CodeDirectory to alignment
