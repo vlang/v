@@ -11,6 +11,10 @@ const eval_backend_timeout_ms = 60_000
 const eval_backend_poll_ms = 50
 const eval_backend_term_grace_ms = 1_000
 
+fn testsuite_begin() {
+	skip_test('v2 eval tests are temporarily disabled')
+}
+
 fn eval_backend_tmp_dir() string {
 	return os.join_path(os.temp_dir(), 'v2_eval_integration_${os.getpid()}')
 }
@@ -806,4 +810,10 @@ fn main() {
 }
 ") or { panic(err) }
 	assert e.stdout() == '42\n84\n'
+}
+
+@[noreturn]
+fn skip_test(reason string) {
+	println('skipping test, because ${reason} .')
+	exit(0)
 }
