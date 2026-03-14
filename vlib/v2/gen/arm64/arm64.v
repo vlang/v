@@ -371,29 +371,36 @@ pub fn (mut g Gen) merge_worker(w &Gen) {
 		} else if sym.sect == 2 {
 			new_value += u64(str_base)
 		}
+		// Local symbols (L_str_*, L_cstr_*) are per-worker and must never be
+		// deduplicated — each worker's L_str_0 refers to a different string literal.
+		is_local := sym.name.len > 2 && sym.name[0] == `L` && sym.name[1] == `_`
 		// Check if symbol already exists in main (e.g., pre-registered global or extern)
-		if existing := g.macho.sym_by_name[sym.name] {
-			// Update existing symbol with definition if this one defines it
-			if sym.type_ != 0x01 { // not N_UNDF
-				mut main_sym := &g.macho.symbols[existing]
-				main_sym.type_ = sym.type_
-				main_sym.sect = sym.sect
-				main_sym.value = new_value
+		if !is_local {
+			if existing := g.macho.sym_by_name[sym.name] {
+				// Update existing symbol with definition if this one defines it
+				if sym.type_ != 0x01 { // not N_UNDF
+					mut main_sym := &g.macho.symbols[existing]
+					main_sym.type_ = sym.type_
+					main_sym.sect = sym.sect
+					main_sym.value = new_value
+				}
+				sym_remap[wi] = existing
+				continue
 			}
-			sym_remap[wi] = existing
-		} else {
-			sym_remap[wi] = g.macho.symbols.len
-			name_off := g.macho.str_table.len
-			g.macho.str_table << sym.name.bytes()
-			g.macho.str_table << 0
-			g.macho.symbols << Symbol{
-				name:     sym.name
-				type_:    sym.type_
-				sect:     sym.sect
-				desc:     sym.desc
-				value:    new_value
-				name_off: name_off
-			}
+		}
+		sym_remap[wi] = g.macho.symbols.len
+		name_off := g.macho.str_table.len
+		g.macho.str_table << sym.name.bytes()
+		g.macho.str_table << 0
+		g.macho.symbols << Symbol{
+			name:     sym.name
+			type_:    sym.type_
+			sect:     sym.sect
+			desc:     sym.desc
+			value:    new_value
+			name_off: name_off
+		}
+		if !is_local {
 			g.macho.sym_by_name[sym.name] = sym_remap[wi]
 		}
 	}

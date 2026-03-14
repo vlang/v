@@ -15,12 +15,17 @@ struct DynConstArray {
 }
 
 pub struct Builder {
-mut:
+pub mut:
 	mod        &Module
+	cur_module string = 'main'
+	// When set, build_fn_bodies only builds this function (hot code reload optimization)
+	hot_fn string
+	// When set, build_all skips Phase 4 (function bodies) — caller handles it.
+	skip_fn_bodies bool
+mut:
 	env        &types.Environment = unsafe { nil }
 	cur_func   int                = -1
 	cur_block  BlockID            = -1
-	cur_module string             = 'main'
 	// Variable name -> SSA ValueID (alloca pointer)
 	vars map[string]ValueID
 	// Loop break/continue targets
@@ -65,9 +70,6 @@ mut:
 	// Array element types by variable name (for transformer-generated functions
 	// where checker position info is unavailable). Maps param/var name to element SSA type.
 	array_elem_types map[string]TypeID
-pub mut:
-	// When set, build_fn_bodies only builds this function (hot code reload optimization)
-	hot_fn string
 }
 
 struct LoopInfo {
@@ -97,6 +99,38 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 		mod.env = env
 	}
 	return b
+}
+
+// new_worker_clone creates a Builder for parallel SSA building.
+// Shares read-only maps from the main builder, uses a separate worker Module.
+pub fn (mut b Builder) new_worker_clone(worker_mod &Module) &Builder {
+	// Clone all maps to avoid COW races between threads.
+	// Maps that are read-only in Phase 4 (struct_types, enum_values, const_values, etc.)
+	// still need cloning because V's map read operations can trigger internal COW writes.
+	// Maps that are written in Phase 4 (fn_index, option_wrapper_types, etc.)
+	// obviously need per-worker copies.
+	return &Builder{
+		mod:                    worker_mod
+		env:                    b.env
+		struct_types:           b.struct_types.clone()
+		enum_values:            b.enum_values.clone()
+		fn_index:               b.fn_index.clone()
+		global_refs:            b.global_refs.clone()
+		const_values:           b.const_values.clone()
+		const_value_types:      b.const_value_types.clone()
+		string_const_values:    b.string_const_values.clone()
+		float_const_values:     b.float_const_values.clone()
+		const_array_globals:    b.const_array_globals.clone()
+		const_array_elem_count: b.const_array_elem_count.clone()
+		option_wrapper_types:   b.option_wrapper_types.clone()
+		result_wrapper_types:   b.result_wrapper_types.clone()
+		// Per-function state is reset at start of each build_fn, so empty init is fine
+		fn_refs:       map[string]ValueID{}
+		vars:          map[string]ValueID{}
+		loop_stack:    []LoopInfo{}
+		label_blocks:  map[string]BlockID{}
+		mut_ptr_params: map[string]bool{}
+	}
 }
 
 pub fn (mut b Builder) build_all(files []ast.File) {
@@ -180,19 +214,27 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	}
 
 	// Phase 4: Build function bodies
-	for file in files {
-		b.cur_module = file_module_name(file)
-		b.build_fn_bodies(file)
+	if !b.skip_fn_bodies {
+		b.build_all_fn_bodies(files)
 	}
 
 	// Phase 5: Generate _vinit for dynamic array constant initialization
 	// Always generate _vinit (even if empty) so the symbol is always resolvable
-	if b.hot_fn.len == 0 {
+	if b.hot_fn.len == 0 && !b.skip_fn_bodies {
 		b.generate_vinit()
 	}
 }
 
-fn file_module_name(file ast.File) string {
+// build_all_fn_bodies builds SSA for all function bodies (Phase 4).
+// Separated from build_all to allow the parallel builder to replace this step.
+pub fn (mut b Builder) build_all_fn_bodies(files []ast.File) {
+	for file in files {
+		b.cur_module = file_module_name(file)
+		b.build_fn_bodies(file)
+	}
+}
+
+pub fn file_module_name(file ast.File) string {
 	for stmt in file.stmts {
 		if stmt is ast.ModuleStmt {
 			return stmt.name.replace('.', '_')
@@ -2135,7 +2177,7 @@ fn (mut b Builder) receiver_type_name(typ ast.Expr) string {
 
 // --- Phase 3: Build function bodies ---
 
-fn (mut b Builder) build_fn_bodies(file ast.File) {
+pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 	nstmts := file.stmts.len
 	for si in 0 .. nstmts {
 		if file.stmts[si] is ast.FnDecl {
@@ -2158,7 +2200,7 @@ fn (mut b Builder) build_fn_bodies(file ast.File) {
 	}
 }
 
-fn (mut b Builder) build_fn(decl ast.FnDecl) {
+pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	fn_name := b.mangle_fn_name(decl)
 	// Skip C-language extern functions without bodies
 	if decl.language == .c {
@@ -7735,7 +7777,7 @@ fn (b &Builder) find_fd_fn(name string) ?string {
 // Dynamic arrays ([]T) can't be fully serialized to the data segment because their
 // struct contains a pointer to data. This function sets up the array struct fields
 // (data, offset, len, cap, flags, element_size) at program startup.
-fn (mut b Builder) generate_vinit() {
+pub fn (mut b Builder) generate_vinit() {
 	fn_idx := b.mod.new_function('_vinit', 0, [])
 	b.mod.func_set_c_extern(fn_idx, false) // Override: we provide the body
 	entry := b.mod.add_block(fn_idx, 'entry')

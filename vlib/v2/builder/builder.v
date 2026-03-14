@@ -1508,7 +1508,16 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	// Build all files together with proper multi-file ordering
 	mut stage_start := native_sw.elapsed()
-	ssa_builder.build_all(b.files)
+	if b.pref.no_parallel || b.pref.hot_fn.len > 0 {
+		ssa_builder.build_all(b.files)
+	} else {
+		// Phases 1-3 sequential, Phase 4 parallel, Phase 5 sequential
+		ssa_builder.skip_fn_bodies = true
+		ssa_builder.build_all(b.files)
+		ssa_builder.skip_fn_bodies = false
+		b.ssa_build_parallel(mut ssa_builder, b.files)
+		ssa_builder.generate_vinit()
+	}
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
