@@ -609,7 +609,6 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	}
 	fn_scope_key := if t.cur_module == '' { scope_fn_name } else { '${t.cur_module}__${scope_fn_name}' }
 	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
-		// Create a child scope so for-loop variable insertions don't modify the shared scope.
 		t.scope = types.new_scope(fn_scope)
 		t.fn_root_scope = t.scope
 	} else {
@@ -1369,9 +1368,6 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		// When type lookup fails but receiver is a known string expression, resolve
 		// as string method. This prevents falling through to SSA builder where
 		// non-deterministic map iteration could resolve to the wrong overload.
-		if method_name == 'clone' {
-			eprintln('resolve_method clone: NO TYPE for receiver, is_string=${t.is_string_expr(receiver)}')
-		}
 		if t.is_string_expr(receiver) {
 			if t.lookup_method_cached('string', method_name) != none {
 				return 'string__${method_name}'
@@ -1387,9 +1383,6 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	// checker's type store may have incorrect entries due to chained-access issues.
 	if c_prefix == 'array' && t.is_string_expr(receiver) {
 		c_prefix = 'string'
-	}
-	if method_name == 'clone' {
-		eprintln('resolve_method clone: c_prefix=${c_prefix} base_type=${base_type.name()} is_string=${t.is_string_expr(receiver)}')
 	}
 	if c_prefix == '' {
 		return none

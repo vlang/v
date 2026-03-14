@@ -425,8 +425,9 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 		return
 	}
 	if func.blocks.len == 0 {
-		// Emit a minimal stub: just a ret instruction
-		// This is needed for functions like __v_init_consts that are called but have no body
+		// Emit a minimal stub: just a ret instruction.
+		// This handles functions registered in Phase 3 but not built in Phase 4
+		// (dead code elimination), or functions with empty bodies.
 		g.curr_offset = g.macho.text_data.len
 		sym_name := '_' + func.name
 		g.macho.add_symbol(sym_name, u64(g.curr_offset), false, 1)

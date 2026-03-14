@@ -84,7 +84,8 @@ pub fn (s string) runes() []rune {
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn cstring_to_vstring(const_s &char) string {
-	return unsafe { tos2(byteptr(const_s)) }.clone()
+	s := unsafe { tos2(byteptr(const_s)) }
+	return s.clone()
 }
 
 // tos_clone creates a new V string copy of the C style string, pointed by `s`.
@@ -93,7 +94,8 @@ pub fn cstring_to_vstring(const_s &char) string {
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn tos_clone(const_s &u8) string {
-	return unsafe { tos2(&u8(const_s)) }.clone()
+	s := unsafe { tos2(&u8(const_s)) }
+	return s.clone()
 }
 
 // tos creates a V string, given a C style pointer to a 0 terminated block.

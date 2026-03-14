@@ -47,6 +47,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	mut mod := ssa_builder.mod
 
 	// Collect all function declarations that need building
+	has_markused := ssa_builder.used_fn_keys.len > 0
 	mut fn_refs := []FnDeclRef{cap: 4096}
 	for fi, file in files {
 		mod_name := ssa.file_module_name(file)
@@ -58,6 +59,13 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 				}
 				if decl.typ.generic_params.len > 0 {
 					continue
+				}
+				// Dead code elimination: skip unreachable functions
+				if has_markused {
+					ssa_builder.cur_module = mod_name
+					if !ssa_builder.should_build_fn(file.name, decl) {
+						continue
+					}
 				}
 				fn_refs << FnDeclRef{
 					file_idx: fi

@@ -1501,6 +1501,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
 
+	// Pass markused data for dead code elimination
+	if b.used_fn_keys.len > 0 {
+		ssa_builder.used_fn_keys = b.used_fn_keys.clone()
+	}
+
 	// In hot_fn mode, only build the target function body (skip all others)
 	if b.pref.hot_fn.len > 0 {
 		ssa_builder.hot_fn = b.pref.hot_fn

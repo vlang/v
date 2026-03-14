@@ -5,6 +5,7 @@
 module ssa
 
 import v2.ast
+import v2.markused
 import v2.types
 
 struct DynConstArray {
@@ -22,6 +23,8 @@ pub mut:
 	hot_fn string
 	// When set, build_all skips Phase 4 (function bodies) — caller handles it.
 	skip_fn_bodies bool
+	// When set, only build functions whose decl key is in this map (dead code elimination).
+	used_fn_keys map[string]bool
 mut:
 	env        &types.Environment = unsafe { nil }
 	cur_func   int                = -1
@@ -2195,9 +2198,49 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 					continue
 				}
 			}
+			// Dead code elimination: skip functions not reachable from main
+			if !b.should_build_fn(file.name, decl) {
+				continue
+			}
 			b.build_fn(decl)
 		}
 	}
+}
+
+// should_build_fn returns true if the function should be compiled.
+// When used_fn_keys is populated (markused ran), only reachable functions are built.
+pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
+	if b.used_fn_keys.len == 0 {
+		return true // No markused data — build everything
+	}
+	// Always build init_consts, init, deinit, main
+	if decl.name.starts_with('__v_init_consts_') {
+		return true
+	}
+	if decl.name == 'init' || decl.name == 'deinit' {
+		return true
+	}
+	if decl.name == 'main' && (b.cur_module == '' || b.cur_module == 'main') {
+		return true
+	}
+	// Always build functions from core modules that the runtime needs
+	if b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
+		return true
+	}
+	// Always build .vh header declarations
+	if file_name.ends_with('.vh') {
+		return true
+	}
+	// Keep transformer-generated array/map method specializations
+	if decl.is_method {
+		mangled := b.mangle_fn_name(decl)
+		if mangled.contains('__Array_') || mangled.contains('__Map_') {
+			return true
+		}
+	}
+	// Check markused reachability
+	key := markused.decl_key(b.cur_module, decl, b.env)
+	return key in b.used_fn_keys
 }
 
 pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
@@ -4719,9 +4762,6 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 			// Try module-qualified FIRST to avoid shadowing by C functions.
 			// E.g., os.getenv() should resolve to os__getenv, not C.getenv.
 			qualified := '${b.cur_module}__${name}'
-			if name.contains('clone') {
-				eprintln('SSA resolve_call: name=${name} qualified=${qualified} q_in=${qualified in b.fn_index} n_in=${name in b.fn_index}')
-			}
 			if qualified in b.fn_index {
 				return qualified
 			}
@@ -4860,15 +4900,61 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					return mod_method
 				}
 			}
-			// When receiver type couldn't be resolved, scan fn_index for
-			// any function with matching method suffix as a fallback.
-			if receiver_type == 'unknown' || receiver_type == 'int' {
+			// Try alias names: strings.Builder = []u8 = array. The receiver_type
+			// from SSA may be 'array', but the method is registered under
+			// 'strings__Builder'. Find all struct_types names with the same TypeID.
+			if type_id := b.struct_types[receiver_type] {
+				for alt_name, alt_id in b.struct_types {
+					if alt_id == type_id && alt_name != receiver_type {
+						alt_method := '${alt_name}__${sel.rhs.name}'
+						if alt_method in b.fn_index {
+							return alt_method
+						}
+						alt_builtin := 'builtin__${alt_method}'
+						if alt_builtin in b.fn_index {
+							return alt_builtin
+						}
+					}
+				}
+			}
+			// Handle Array_T patterns: Array_u8, Array_int, Array_string, etc.
+			// These are SSA names for V generic arrays ([]u8, []int, etc.).
+			// Methods may be registered under 'array__method' (base) or
+			// 'strings__Builder__method' (for Array_u8 = []u8 = strings.Builder).
+			if receiver_type.starts_with('Array_') {
+				// Try array__method (base array type)
+				array_method := 'array__${sel.rhs.name}'
+				if array_method in b.fn_index {
+					eprintln('FALLBACK Array_T→array: ${method_name} → ${array_method}')
+					return array_method
+				}
+				builtin_array := 'builtin__array__${sel.rhs.name}'
+				if builtin_array in b.fn_index {
+					eprintln('FALLBACK Array_T→builtin__array: ${method_name} → ${builtin_array}')
+					return builtin_array
+				}
+				// For Array_u8, also try strings__Builder__method
+				if receiver_type == 'Array_u8' {
+					builder_method := 'strings__Builder__${sel.rhs.name}'
+					if builder_method in b.fn_index {
+						eprintln('FALLBACK Array_u8→Builder: ${method_name} → ${builder_method}')
+						return builder_method
+					}
+					builtin_builder := 'builtin__strings__Builder__${sel.rhs.name}'
+					if builtin_builder in b.fn_index {
+						eprintln('FALLBACK Array_u8→builtin__Builder: ${method_name} → ${builtin_builder}')
+						return builtin_builder
+					}
+				}
+			}
+			// When method resolution failed, scan fn_index for matching method suffix.
+			{
 				method_suffix := '__${sel.rhs.name}'
 				mut best_match := ''
 				for fn_name, _ in b.fn_index {
 					if fn_name.ends_with(method_suffix) {
-						// Prefer module-prefixed match in current module
 						if b.cur_module != '' && fn_name.starts_with('${b.cur_module}__') {
+							eprintln('SCAN MATCH (module): ${method_name} → ${fn_name}')
 							return fn_name
 						}
 						if best_match == '' {
@@ -4877,9 +4963,11 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					}
 				}
 				if best_match != '' {
+					eprintln('SCAN MATCH (best): ${method_name} → ${best_match}')
 					return best_match
 				}
 			}
+			eprintln('UNRESOLVED method: receiver_type=${receiver_type} method=${sel.rhs.name} → ${method_name} (cur_module=${b.cur_module})')
 			return method_name
 		}
 		else {
@@ -4918,6 +5006,23 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 		}
 	}
 	if expr is ast.Ident {
+		// Try to get the type from the SSA variable's alloca type.
+		// This is more reliable than env.get_expr_type in ARM64-compiled binaries
+		// where the type checker's expr_type_values may have corrupt entries.
+		if var_id := b.vars[expr.name] {
+			mut var_type := b.mod.values[var_id].typ
+			// Alloca types are ptr(T), unwrap the pointer to get base type
+			if var_type != 0 {
+				ts_type := b.mod.type_store.types[int(var_type)]
+				if ts_type.kind == .ptr_t && ts_type.elem_type != 0 {
+					var_type = ts_type.elem_type
+				}
+				name := b.type_id_to_receiver_name(var_type)
+				if name != 'unknown' {
+					return name
+				}
+			}
+		}
 		return expr.name
 	}
 	// For CallExpr/CallOrCastExpr, try to infer receiver type from the called
