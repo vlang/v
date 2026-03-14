@@ -474,7 +474,11 @@ fn resolve_parallel_copies_batched(mut m ssa.Module, blk_id int, dests []int, sr
 		if dest_to_indices[d].len == 0 {
 			dest_touched << d
 		}
-		dest_to_indices[d] << i
+		// Avoid dest_to_indices[d] << i — chained array-element append
+		// returns a copy in ARM64-compiled binaries (len not updated in original).
+		mut dti := dest_to_indices[d]
+		dti << i
+		dest_to_indices[d] = dti
 	}
 
 	// alive[i] = 1 if copy i is still pending, 0 if done
@@ -603,14 +607,20 @@ fn resolve_parallel_copies_batched(mut m ssa.Module, blk_id int, dests []int, sr
 	}
 
 	// Collect sequenced copies for batch insertion
+	// Avoid pending_dests[blk_id] << x — chained array-element append
+	// returns a copy in ARM64-compiled binaries (len not updated in original).
 	if s_dest.len > 0 {
 		if pending_dests[blk_id].len == 0 {
 			pending_blocks << blk_id
 		}
+		mut pd := pending_dests[blk_id]
+		mut ps := pending_srcs[blk_id]
 		for si in 0 .. s_dest.len {
-			pending_dests[blk_id] << s_dest[si]
-			pending_srcs[blk_id] << s_src[si]
+			pd << s_dest[si]
+			ps << s_src[si]
 		}
+		pending_dests[blk_id] = pd
+		pending_srcs[blk_id] = ps
 	}
 }
 

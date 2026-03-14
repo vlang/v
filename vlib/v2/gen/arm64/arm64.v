@@ -87,6 +87,8 @@ pub mut:
 	env_trace_struct_addr string
 	env_trace_strlit      string
 	env_trace_storeval    string
+	env_trace_regalloc    string
+	env_no_regalloc       bool
 	// Reverse map: val_id → block_id for block-kind values.
 	// Value.index is unreliable in ARM64-compiled binaries, so use this instead.
 	val_to_block []int
@@ -124,6 +126,8 @@ pub fn Gen.new(mod &mir.Module) &Gen {
 		env_trace_struct_addr: os.getenv('V2_ARM64_TRACE_STRUCT_ADDR')
 		env_trace_strlit:      os.getenv('V2_ARM64_TRACE_STRLIT')
 		env_trace_storeval:    os.getenv('V2_ARM64_TRACE_STOREVAL')
+		env_trace_regalloc:    os.getenv('V2_ARM64_TRACE_REGALLOC')
+		env_no_regalloc:       os.getenv('V2_ARM64_NO_REGALLOC').len > 0
 	}
 }
 
@@ -347,6 +351,8 @@ pub fn (g &Gen) new_worker_clone() &Gen {
 		env_trace_struct_addr: g.env_trace_struct_addr
 		env_trace_strlit:      g.env_trace_strlit
 		env_trace_storeval:    g.env_trace_storeval
+		env_trace_regalloc:    g.env_trace_regalloc
+		env_no_regalloc:       g.env_no_regalloc
 	}
 }
 
@@ -5404,6 +5410,12 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
+	if r := g.reg_map[val_id] {
+		if r != reg {
+			g.emit_mov_reg(reg, r)
+		}
+		return
+	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return
@@ -7651,12 +7663,11 @@ fn (g &Gen) lookup_struct_from_env(name string) ?types.Struct {
 }
 
 fn (mut g Gen) allocate_registers(func mir.Function) {
-	// Register allocation is currently disabled (no available register pools).
-	// Short-circuit to avoid expensive interval analysis and map operations.
-	// When register pools are populated, remove this guard.
-	if true {
+	if g.env_no_regalloc {
 		return
 	}
+	trace_ra := g.env_trace_regalloc.len > 0
+		&& (g.env_trace_regalloc == '*' || func.name == g.env_trace_regalloc)
 	mut intervals := map[int]&Interval{}
 	mut call_indices := []int{}
 	mut instr_idx := 0
@@ -7691,16 +7702,8 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	mut block_start := map[int]int{}
 	mut block_end := map[int]int{}
 
-	for pid in func.params {
-		if pid in phi_related_vals {
-			continue
-		}
-		intervals[pid] = &Interval{
-			val_id: pid
-			start:  0
-			end:    0
-		}
-	}
+	// Don't register-allocate function parameters.
+	// Parameters have special spilling behavior managed by prologue code.
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
@@ -7713,6 +7716,13 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 				mut skip_interval := val_id in phi_related_vals
 				if val.kind == .instruction {
 					instr := g.mod.instrs[val.index]
+					// Skip instructions that build results directly on the stack.
+					// These ops write to the stack slot without going through a register,
+					// so register-allocating them leaves the register uninitialized.
+					if instr.op in [.struct_init, .insertvalue, .inline_string_init,
+						.call_sret] {
+						skip_interval = true
+					}
 					if instr.op in [.call, .call_indirect, .call_sret] {
 						result_typ := g.mod.type_store.types[val.typ]
 						if result_typ.kind == .struct_t {
@@ -7837,11 +7847,8 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	// Reserve x8/x9 as backend data path scratch registers.
 	// Reserve x10/x11/x12 for helper temporaries (large offset materialization,
 	// address arithmetic, and spill-free internal moves).
-	// Temporary conservative mode: keep values stack-resident for correctness.
-	// This avoids backend miscompilations caused by incomplete live interval
-	// modeling across complex CFG/aggregate paths.
-	short_regs := []int{}
-	long_regs := []int{}
+	short_regs := [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+	long_regs := [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 
 	// Reusable arrays to avoid allocation in the hot loop
 	mut used := []bool{len: 32, init: false}
@@ -7883,4 +7890,12 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		}
 	}
 	g.used_regs.sort()
+	if trace_ra {
+		eprintln('REGALLOC fn=${func.name} intervals=${sorted.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs=${g.used_regs} total_instrs=${total_instrs}')
+		for val_id, reg in g.reg_map {
+			if mut iv := intervals[val_id] {
+				eprintln('  val=${val_id} -> x${reg} [${iv.start},${iv.end}] has_call=${iv.has_call}')
+			}
+		}
+	}
 }
