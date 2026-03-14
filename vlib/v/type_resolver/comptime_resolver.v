@@ -5,10 +5,16 @@ module type_resolver
 import v.ast
 
 pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
-	field_name := if node.typ_key.contains('|') {
+	mut field_name := if node.typ_key.contains('|') {
 		node.typ_key.all_after('|')
 	} else {
 		t.info.comptime_for_field_value.name
+	}
+	if node.field_expr is ast.SelectorExpr {
+		if node.field_expr.expr is ast.Ident
+			&& node.field_expr.expr.name == t.info.comptime_for_field_var {
+			field_name = t.info.comptime_for_field_value.name
+		}
 	}
 	mut left_type := node.left_type
 	resolved_left_type := t.get_type_or_default(node.left, node.left_type)

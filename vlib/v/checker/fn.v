@@ -4241,6 +4241,19 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 }
 
 fn scope_register_special_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
+	if name in s.objects {
+		mut obj := unsafe { s.objects[name] }
+		if mut obj is ast.Var {
+			if obj.is_special {
+				obj.pos = pos
+				obj.typ = typ
+				obj.orig_type = ast.no_type
+				obj.smartcasts = []
+				obj.is_unwrapped = false
+				return
+			}
+		}
+	}
 	s.register(ast.Var{
 		name:       name
 		pos:        pos

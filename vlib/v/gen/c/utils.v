@@ -80,11 +80,31 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 		return 0
 	}
 	if v := expr.scope.find_var(expr.name) {
+		if v.smartcasts.len > 0 {
+			smartcast_type := if v.ct_type_var == .smartcast {
+				g.type_resolver.get_type(expr)
+			} else {
+				g.exposed_smartcast_type(v.orig_type, v.smartcasts.last(), v.is_mut)
+			}
+			return g.unwrap_generic(g.recheck_concrete_type(smartcast_type))
+		}
 		if v.typ != 0 {
 			return g.unwrap_generic(g.recheck_concrete_type(v.typ))
 		}
 	}
 	return 0
+}
+
+fn (mut g Gen) resolved_ident_is_auto_heap(expr ast.Ident) bool {
+	if expr.obj is ast.Var && expr.obj.is_auto_heap {
+		return true
+	}
+	if expr.scope != unsafe { nil } {
+		if v := expr.scope.find_var(expr.name) {
+			return v.is_auto_heap
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
@@ -459,9 +479,23 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			right_default := if expr.right_type != 0 { expr.right_type } else { default_typ }
 			inner_type := g.resolved_expr_type(expr.right, right_default)
 			return match expr.op {
-				.amp { g.unwrap_generic(inner_type).ref() }
-				.mul { g.unwrap_generic(inner_type).deref() }
-				else { g.unwrap_generic(inner_type) }
+				.amp {
+					g.unwrap_generic(inner_type).ref()
+				}
+				.mul {
+					g.unwrap_generic(inner_type).deref()
+				}
+				.arrow {
+					right_sym := g.table.final_sym(g.unwrap_generic(inner_type))
+					if right_sym.kind == .chan {
+						g.unwrap_generic(right_sym.chan_info().elem_type)
+					} else {
+						g.unwrap_generic(inner_type)
+					}
+				}
+				else {
+					g.unwrap_generic(inner_type)
+				}
 			}
 		}
 		ast.PostfixExpr {

@@ -5,10 +5,3 @@ vlib/v/parser/tests/generic_struct_parameter_err.vv:17:16: error: cannot use `My
       |                   ~~~~
    18 | }
    19 |
-vlib/v/parser/tests/generic_struct_parameter_err.vv:17:12: error: a non generic function called like a generic one
-   15 |         data: data
-   16 |     }
-   17 |     c.lst.push[T](node)
-      |               ~~~
-   18 | }
-   19 |

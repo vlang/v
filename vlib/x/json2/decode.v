@@ -105,7 +105,7 @@ fn (list &LinkedList[ValueInfo]) str() string {
 }
 
 @[manualfree]
-fn (list &LinkedList[T]) str() string {
+fn (list &LinkedList[StructFieldInfo]) str() string {
 	mut sb := strings.new_builder(128)
 	defer {
 		unsafe { sb.free() }

@@ -69,7 +69,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 
 // infix_expr_arrow_op generates C code for pushing into channels (chan <- val)
 fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
+	resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
+	left := g.unwrap(if resolved_left_type != 0 { resolved_left_type } else { node.left_type })
 	styp := left.sym.cname
 	elem_type := (left.sym.info as ast.Chan).elem_type
 	gen_or := node.or_block.kind != .absent

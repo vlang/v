@@ -56,17 +56,3 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:18: error: no known de
       |                     ^
     3 | }
     4 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:12: error: no known default format for type `A`
-    6 | 
-    7 | fn (f Foo) get_name[A, B](a A, b B) string {
-    8 |     return '${a}, ${b}'
-      |               ^
-    9 | }
-   10 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:18: error: no known default format for type `B`
-    6 | 
-    7 | fn (f Foo) get_name[A, B](a A, b B) string {
-    8 |     return '${a}, ${b}'
-      |                     ^
-    9 | }
-   10 |

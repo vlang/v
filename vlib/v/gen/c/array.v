@@ -782,14 +782,63 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 }
 
+@[inline]
+fn (mut g Gen) array_receiver_is_auto_heap(left ast.Expr) bool {
+	return left is ast.Ident && g.resolved_ident_is_auto_heap(left)
+}
+
+@[inline]
+fn (mut g Gen) resolved_array_receiver_type(node ast.CallExpr) ast.Type {
+	resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type))
+	default_left_type := g.recheck_concrete_type(node.left_type)
+	resolved_left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
+	default_left_sym := g.table.final_sym(g.unwrap_generic(default_left_type))
+	if resolved_left_type != 0 && resolved_left_sym.kind in [.array, .array_fixed] {
+		return resolved_left_type
+	}
+	if default_left_type != 0 && default_left_sym.kind in [.array, .array_fixed] {
+		return default_left_type
+	}
+	return if resolved_left_type != 0 {
+		resolved_left_type
+	} else {
+		default_left_type
+	}
+}
+
+@[inline]
+fn (mut g Gen) array_receiver_is_indirect(left ast.Expr, left_type ast.Type) bool {
+	return !left_type.has_flag(.shared_f)
+		&& (left_type.is_ptr() || g.array_receiver_is_auto_heap(left))
+}
+
+@[inline]
+fn (mut g Gen) array_receiver_field_access(left ast.Expr, left_type ast.Type) string {
+	return if g.array_receiver_is_auto_heap(left) && !left_type.has_flag(.shared_f) {
+		'->'
+	} else {
+		g.dot_or_ptr(left_type)
+	}
+}
+
+fn (mut g Gen) write_array_receiver(left ast.Expr) {
+	old_inside_selector_lhs := g.inside_selector_lhs
+	g.inside_selector_lhs = true
+	defer {
+		g.inside_selector_lhs = old_inside_selector_lhs
+	}
+	g.expr(left)
+}
+
 // `susers := users.sorted(a.age < b.age)`
 fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	past := g.past_tmp_var_new()
 	defer {
 		g.past_tmp_var_done(past)
 	}
-	atype := g.styp(node.return_type)
-	sym := g.table.final_sym(node.return_type)
+	resolved_return_type := g.resolve_return_type(node)
+	atype := g.styp(resolved_return_type)
+	sym := g.table.final_sym(resolved_return_type)
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -798,20 +847,15 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	}
 	if left_is_array {
 		depth := g.get_array_depth(elem_type)
-
-		deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
-			&& node.left_type.is_ptr() {
-			true
-		} else {
-			false
-		}
-		if !deref_field {
+		resolved_left_type := g.resolved_array_receiver_type(node)
+		left_is_indirect := g.array_receiver_is_indirect(node.left, resolved_left_type)
+		if !left_is_indirect {
 			g.write('${atype} ${past.tmp_var} = builtin__array_clone_to_depth(ADDR(${atype},')
-			g.expr(node.left)
+			g.write_array_receiver(node.left)
 			g.writeln('), ${depth});')
 		} else {
 			g.write('${atype} ${past.tmp_var} = builtin__array_clone_to_depth(')
-			g.expr(node.left)
+			g.write_array_receiver(node.left)
 			g.writeln(', ${depth});')
 		}
 	} else {
@@ -837,7 +881,8 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="${s}"')
-	rec_sym := g.table.final_sym(node.receiver_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	rec_sym := g.table.final_sym(resolved_left_type)
 	if rec_sym.kind !in [.array, .array_fixed] {
 		// println(rec_sym.kind)
 		verror('.sort() is an array method or a fixed array method')
@@ -954,29 +999,25 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_array bool) {
-	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
-		&& node.left_type.is_ptr() {
-		g.dot_or_ptr(node.left_type.deref())
-	} else {
-		g.dot_or_ptr(node.left_type)
-	}
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	deref_field := g.array_receiver_field_access(node.left, resolved_left_type)
 	// eprintln('> qsort: pointer ${node.left_type} | deref_field: `${deref_field}`')
 	g.empty_line = true
 	if is_array {
 		g.write('if (')
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 		g.write2('${deref_field}len > 0) { ', 'qsort(')
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 		g.write('${deref_field}data, ')
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 		g.write('${deref_field}len, ')
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 		g.write2('${deref_field}element_size, (voidptr)${compare_fn});', ' }')
 	} else {
 		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
 		elem_styp := g.styp(info.elem_type)
 		g.write('qsort(&')
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 		g.write(', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
 	}
 	g.writeln('')
@@ -1167,13 +1208,14 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	is_arg2_array := arg2_sym.kind == .array
 		&& g.table.unaliased_type(node.args[1].typ.clear_flag(.variadic)) == g.table.unaliased_type(node.left_type)
 	noscan := g.check_noscan(left_info.elem_type)
-	addr := if node.left_type.is_ptr() { '' } else { '&' }
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	addr := if g.array_receiver_is_indirect(node.left, resolved_left_type) { '' } else { '&' }
 	if is_arg2_array {
 		g.write('builtin__array_insert_many${noscan}(${addr}')
 	} else {
 		g.write('builtin__array_insert${noscan}(${addr}')
 	}
-	g.expr(node.left)
+	g.write_array_receiver(node.left)
 	g.write(', ')
 	g.expr(node.args[0].expr)
 	if is_arg2_array {
@@ -1206,13 +1248,14 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	is_arg_array := arg_sym.kind == .array
 		&& g.table.unaliased_type(node.args[0].typ) == g.table.unaliased_type(node.left_type)
 	noscan := g.check_noscan(left_info.elem_type)
-	addr := if node.left_type.is_ptr() { '' } else { '&' }
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	addr := if g.array_receiver_is_indirect(node.left, resolved_left_type) { '' } else { '&' }
 	if is_arg_array {
 		g.write('builtin__array_prepend_many${noscan}(${addr}')
 	} else {
 		g.write('builtin__array_prepend${noscan}(${addr}')
 	}
-	g.expr(node.left)
+	g.write_array_receiver(node.left)
 	if is_arg_array {
 		g.write(', ')
 		g.expr(node.args[0].expr)
@@ -1567,14 +1610,15 @@ fn (mut g Gen) gen_array_get_methods() {
 }
 
 fn (mut g Gen) gen_array_get(node ast.CallExpr) {
-	fn_name := g.get_array_get_method(node.left_type)
-	left_is_ptr := node.left_type.is_ptr()
-	left_is_shared := node.left_type.has_flag(.shared_f)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	fn_name := g.get_array_get_method(resolved_left_type)
+	left_is_ptr := g.array_receiver_is_indirect(node.left, resolved_left_type)
+	left_is_shared := resolved_left_type.has_flag(.shared_f)
 	g.write('${fn_name}(')
 	if left_is_ptr && !left_is_shared {
 		g.write('*')
 	}
-	g.expr(node.left)
+	g.write_array_receiver(node.left)
 	if left_is_shared {
 		if left_is_ptr {
 			g.write('->val')
@@ -1590,16 +1634,17 @@ fn (mut g Gen) gen_array_get(node ast.CallExpr) {
 // `nums.index(2)`
 // `nums.last_index(2)`
 fn (mut g Gen) gen_array_index(node ast.CallExpr, is_last_index bool) {
-	fn_name := g.get_array_index_method(node.left_type, is_last_index)
-	left_sym := g.table.final_sym(node.left_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	fn_name := g.get_array_index_method(resolved_left_type, is_last_index)
+	left_sym := g.table.final_sym(resolved_left_type)
 	g.write('${fn_name}(')
-	if node.left_type.is_ptr() {
+	if g.array_receiver_is_indirect(node.left, resolved_left_type) {
 		g.write('*')
 	}
 	if left_sym.kind == .array_fixed && node.left is ast.ArrayInit {
 		g.fixed_array_init_with_cast(node.left, node.left_type)
 	} else {
-		g.expr(node.left)
+		g.write_array_receiver(node.left)
 	}
 	g.write(', ')
 
@@ -1625,7 +1670,8 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr, is_last_index bool) {
 }
 
 fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
-	arr := g.table.sym(g.unwrap_generic(node.receiver_type))
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	arr := g.table.sym(g.unwrap_generic(resolved_left_type))
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
@@ -1633,10 +1679,10 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	elsymcname := g.table.sym(unwrapped_ret_type).cname
 	fn_name := g.register_thread_array_wait_call(elsymcname)
 	g.write('${fn_name}(')
-	if node.left_type.is_ptr() {
+	if g.array_receiver_is_indirect(node.left, resolved_left_type) {
 		g.write('*')
 	}
-	g.expr(node.left)
+	g.write_array_receiver(node.left)
 	g.write(')')
 }
 
@@ -1939,21 +1985,22 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		g.infix_left_var_name = ''
 		g.indent++
 	}
-	left_type := if node.left_type.has_flag(.shared_f) {
-		node.left_type.clear_flag(.shared_f).deref()
-	} else if node.left_type.is_ptr() {
-		node.left_type.deref()
+	resolved_left_type := g.resolved_array_receiver_type(*node)
+	left_type := if resolved_left_type.has_flag(.shared_f) {
+		resolved_left_type.clear_flag(.shared_f).deref()
+	} else if resolved_left_type.is_ptr() {
+		resolved_left_type.deref()
 	} else {
-		node.left_type
+		resolved_left_type
 	}
 	left_sym := g.table.final_sym(left_type)
 	if left_sym.kind == .array {
 		g.write('${g.styp(left_type)} ${tmp}_orig = ')
-		if !node.left_type.has_flag(.shared_f) && node.left_type.is_ptr() {
+		if g.array_receiver_is_indirect(node.left, resolved_left_type) {
 			g.write('*')
 		}
-		g.expr(node.left)
-		if node.left_type.has_flag(.shared_f) {
+		g.write_array_receiver(node.left)
+		if resolved_left_type.has_flag(.shared_f) {
 			g.write('->val')
 		}
 		g.writeln(';')
@@ -1966,11 +2013,11 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		if node.left is ast.ArrayInit {
 			g.fixed_array_init_with_cast(node.left, node.left_type)
 		} else {
-			if !node.left_type.has_flag(.shared_f) && node.left_type.is_ptr() {
+			if !resolved_left_type.has_flag(.shared_f) && resolved_left_type.is_ptr() {
 				g.write('*')
 			}
-			g.expr(node.left)
-			if node.left_type.has_flag(.shared_f) {
+			g.write_array_receiver(node.left)
+			if resolved_left_type.has_flag(.shared_f) {
 				g.write('->val')
 			}
 		}

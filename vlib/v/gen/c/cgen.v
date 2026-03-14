@@ -5044,13 +5044,20 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			is_interface_smartcast_selector = true
 		}
 	}
+	expr_is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
 	n_ptr := if is_interface_smartcast_selector
 		|| (is_interface_smartcast_expr && resolved_selector_expr_type.nr_muls() > 1) {
 		0
 	} else {
 		resolved_selector_expr_type.nr_muls() - 1
 	}
-	if n_ptr > 0 {
+	if expr_is_auto_heap {
+		expr_ident := node.expr as ast.Ident
+		if expr_ident.obj is ast.Var && expr_ident.obj.is_inherited {
+			g.write(closure_ctx + '->')
+		}
+		g.write(g.get_ternary_name(c_name(expr_ident.name)))
+	} else if n_ptr > 0 {
 		g.write2('(', '*'.repeat(n_ptr))
 		g.expr(node.expr)
 		g.write(')')
@@ -5121,7 +5128,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	interface_smartcast_expr_is_dereferenced := is_interface_smartcast_expr
 		&& smartcast_expr_var.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
-	left_is_ptr := field_is_opt
+	left_is_ptr := field_is_opt || expr_is_auto_heap
 		|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
 		|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
 		|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
@@ -6035,7 +6042,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		is_option = node.info.is_option || (node.obj is ast.Var && node.obj.typ.has_flag(.option))
 		if node.obj is ast.Var {
-			is_auto_heap = node.obj.is_auto_heap
+			is_auto_heap = g.resolved_ident_is_auto_heap(node)
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap && (node.obj.typ.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(node.obj.typ)) {
@@ -6044,7 +6051,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 					is_auto_heap = false
 				}
 			}
-			if is_auto_heap && !g.inside_assign_fn_var {
+			emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
+				&& !g.inside_selector_lhs
+			if emit_auto_heap_deref {
 				g.write('(*(')
 			}
 			is_option = is_option || node.obj.orig_type.has_flag(.option)
@@ -6172,7 +6181,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						g.write(')')
 					}
-					if is_auto_heap && !g.inside_assign_fn_var {
+					if emit_auto_heap_deref {
 						g.write('))')
 					}
 					return
@@ -6196,7 +6205,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-	if is_auto_heap && !g.inside_assign_fn_var {
+	if is_auto_heap && !g.inside_assign_fn_var && !g.inside_selector_lhs {
 		g.write('))')
 		if is_option && node.or_expr.kind != .absent {
 			g.write('.data')

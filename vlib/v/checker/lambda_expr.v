@@ -4,7 +4,10 @@ import v.ast
 
 pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) ast.Type {
 	if node.is_checked {
-		return node.typ
+		if c.table.cur_concrete_types.len == 0 || node.typ == exp_typ {
+			return node.typ
+		}
+		node.is_checked = false
 	}
 	if exp_typ in [0, ast.void_type] {
 		c.fatal('lambda expressions are allowed only in places expecting function callbacks',

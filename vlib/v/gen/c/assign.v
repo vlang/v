@@ -553,6 +553,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				ast.PostfixExpr {
 					should_recompute_decl_type = val.op == .question
 				}
+				ast.PrefixExpr {
+					should_recompute_decl_type = val.op == .arrow
+				}
 				else {}
 			}
 			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {

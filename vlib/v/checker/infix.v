@@ -797,20 +797,32 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.arrow { // `chan <- elem`
 			if left_sym.kind == .chan {
 				chan_info := left_sym.chan_info()
-				elem_type := chan_info.elem_type
-				if !c.check_types(right_type, elem_type) {
-					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+				mut elem_type := chan_info.elem_type
+				mut got_type := right_type
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+					if c.needs_unwrap_generic_type(got_type) {
+						got_type = c.table.unwrap_generic_type(got_type, c.table.cur_fn.generic_names,
+							c.table.cur_concrete_types)
+					}
+					if c.needs_unwrap_generic_type(elem_type) {
+						elem_type = c.table.unwrap_generic_type(elem_type, c.table.cur_fn.generic_names,
+							c.table.cur_concrete_types)
+					}
+				}
+				if !c.check_types(got_type, elem_type) {
+					c.error('cannot push `${c.table.type_to_str(got_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
 					c.fail_if_immutable(mut node.right)
 				}
-				if elem_type.is_ptr() && !right_type.is_ptr() {
+				if elem_type.is_ptr() && !got_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
 						right_pos)
-				} else if right_type.is_ptr() != elem_type.is_ptr() {
-					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+				} else if got_type.is_ptr() != elem_type.is_ptr() {
+					c.error('cannot push `${c.table.type_to_str(got_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
@@ -909,8 +921,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
 		unalias_left_type := c.table.unaliased_type(left_type)
 		unalias_right_type := c.table.unaliased_type(right_type)
-		left_is_any_kind_of_pointer := unalias_left_type.is_any_kind_of_pointer()
-		right_is_any_kind_of_pointer := unalias_right_type.is_any_kind_of_pointer()
+		left_is_any_kind_of_pointer := left_type.is_any_kind_of_pointer()
+			|| unalias_left_type.is_any_kind_of_pointer()
+		right_is_any_kind_of_pointer := right_type.is_any_kind_of_pointer()
+			|| unalias_right_type.is_any_kind_of_pointer()
 		allows_cstring_byte_compare :=
 			(unalias_right_type in ast.byteptr_types && unalias_left_type == ast.u8_type)
 			|| (unalias_right_type in ast.charptr_types && unalias_left_type == ast.char_type)

@@ -4,6 +4,22 @@ vlib/v/checker/tests/check_err_msg_with_generics.vv:15:10: error: cannot cast st
    15 |     println(int(typ))
       |             ~~~~~~~~
    16 | }
+vlib/datatypes/bstree.v:69:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+   67 | // insert give the possibility to insert an element in the BST.
+   68 | pub fn (mut bst BSTree[T]) insert(value T) bool {
+   69 |     if bst.is_empty() {
+      |                    ^
+   70 |         bst.root = new_root_node(value)
+   71 |         return true
+vlib/datatypes/bstree.v:73:26: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+   71 |         return true
+   72 |     }
+   73 |     return bst.insert_helper(mut bst.root, value)
+      |                             ^
+   74 | }
+   75 |
 vlib/datatypes/bstree.v:78:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
    76 | // insert_helper walks the tree and inserts the given node.
    77 | fn (mut bst BSTree[T]) insert_helper(mut node BSTreeNode[T], value T) bool {
@@ -11,6 +27,14 @@ vlib/datatypes/bstree.v:78:16: error: cannot use operator `<` with `Result[[]Tok
       |                   ^
    79 |         if unsafe { node.right != 0 } && node.right.is_init {
    80 |             return bst.insert_helper(mut node.right, value)
+vlib/datatypes/bstree.v:80:28: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+   78 |     if node.value < value {
+   79 |         if unsafe { node.right != 0 } && node.right.is_init {
+   80 |             return bst.insert_helper(mut node.right, value)
+      |                                     ^
+   81 |         }
+   82 |         node.right = new_node(node, value)
 vlib/datatypes/bstree.v:84:23: error: cannot use operator `>` with `Result[[]Token, Err[string]]`
    82 |         node.right = new_node(node, value)
    83 |         return true
@@ -18,6 +42,22 @@ vlib/datatypes/bstree.v:84:23: error: cannot use operator `>` with `Result[[]Tok
       |                          ^
    85 |         if unsafe { node.left != 0 } && node.left.is_init {
    86 |             return bst.insert_helper(mut node.left, value)
+vlib/datatypes/bstree.v:86:28: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+   84 |     } else if node.value > value {
+   85 |         if unsafe { node.left != 0 } && node.left.is_init {
+   86 |             return bst.insert_helper(mut node.left, value)
+      |                                     ^
+   87 |         }
+   88 |         node.left = new_node(node, value)
+vlib/datatypes/bstree.v:96:28: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+   94 | // contains checks if an element with a given `value` is inside the BST.
+   95 | pub fn (bst &BSTree[T]) contains(value T) bool {
+   96 |     return bst.contains_helper(bst.root, value)
+      |                               ^
+   97 | }
+   98 |
 vlib/datatypes/bstree.v:105:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
   103 |         return false
   104 |     }
@@ -25,6 +65,14 @@ vlib/datatypes/bstree.v:105:16: error: cannot use operator `<` with `Result[[]To
       |                   ^
   106 |         return bst.contains_helper(node.right, value)
   107 |     } else if node.value > value {
+vlib/datatypes/bstree.v:106:29: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  104 |     }
+  105 |     if node.value < value {
+  106 |         return bst.contains_helper(node.right, value)
+      |                                   ^
+  107 |     } else if node.value > value {
+  108 |         return bst.contains_helper(node.left, value)
 vlib/datatypes/bstree.v:107:23: error: cannot use operator `>` with `Result[[]Token, Err[string]]`
   105 |     if node.value < value {
   106 |         return bst.contains_helper(node.right, value)
@@ -32,6 +80,62 @@ vlib/datatypes/bstree.v:107:23: error: cannot use operator `>` with `Result[[]To
       |                          ^
   108 |         return bst.contains_helper(node.left, value)
   109 |     }
+vlib/datatypes/bstree.v:108:29: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  106 |         return bst.contains_helper(node.right, value)
+  107 |     } else if node.value > value {
+  108 |         return bst.contains_helper(node.left, value)
+      |                                   ^
+  109 |     }
+  110 |     assert node.value == value
+vlib/datatypes/bstree.v:116:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  114 | // remove removes an element with `value` from the BST.
+  115 | pub fn (mut bst BSTree[T]) remove(value T) bool {
+  116 |     if bst.is_empty() {
+      |                    ^
+  117 |         return false
+  118 |     }
+vlib/datatypes/bstree.v:119:26: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  117 |         return false
+  118 |     }
+  119 |     return bst.remove_helper(mut bst.root, value, false)
+      |                             ^
+  120 | }
+  121 |
+vlib/datatypes/bstree.v:130:42: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  128 |             // In order to remove the element we need to bring up as parent the max of the
+  129 |             // left sub-tree.
+  130 |             mut max_node := bst.get_max_from_right(node.left)
+      |                                                   ^
+  131 |             node.bind(mut max_node, true)
+  132 |         } else if unsafe { node.right != 0 } && node.right.is_init {
+vlib/datatypes/bstree.v:131:13: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  129 |             // left sub-tree.
+  130 |             mut max_node := bst.get_max_from_right(node.left)
+  131 |             node.bind(mut max_node, true)
+      |                      ^
+  132 |         } else if unsafe { node.right != 0 } && node.right.is_init {
+  133 |             // Bring up the element with the minimum value in the right sub-tree.
+vlib/datatypes/bstree.v:134:41: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  132 |         } else if unsafe { node.right != 0 } && node.right.is_init {
+  133 |             // Bring up the element with the minimum value in the right sub-tree.
+  134 |             mut min_node := bst.get_min_from_left(node.right)
+      |                                                  ^
+  135 |             node.bind(mut min_node, false)
+  136 |         } else {
+vlib/datatypes/bstree.v:135:13: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  133 |             // Bring up the element with the minimum value in the right sub-tree.
+  134 |             mut min_node := bst.get_min_from_left(node.right)
+  135 |             node.bind(mut min_node, false)
+      |                      ^
+  136 |         } else {
+  137 |             mut parent := node.parent
 vlib/datatypes/bstree.v:148:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
   146 |     }
   147 | 
@@ -39,6 +143,110 @@ vlib/datatypes/bstree.v:148:16: error: cannot use operator `<` with `Result[[]To
       |                   ^
   149 |         return bst.remove_helper(mut node.right, value, false)
   150 |     }
+vlib/datatypes/bstree.v:149:27: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  147 | 
+  148 |     if node.value < value {
+  149 |         return bst.remove_helper(mut node.right, value, false)
+      |                                 ^
+  150 |     }
+  151 |     return bst.remove_helper(mut node.left, value, true)
+vlib/datatypes/bstree.v:151:26: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  149 |         return bst.remove_helper(mut node.right, value, false)
+  150 |     }
+  151 |     return bst.remove_helper(mut node.left, value, true)
+      |                             ^
+  152 | }
+  153 |
+vlib/datatypes/bstree.v:163:31: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  161 |         return node
+  162 |     }
+  163 |     return bst.get_max_from_right(right_node)
+      |                                  ^
+  164 | }
+  165 |
+vlib/datatypes/bstree.v:175:30: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  173 |         return node
+  174 |     }
+  175 |     return bst.get_min_from_left(left_node)
+      |                                 ^
+  176 | }
+  177 |
+vlib/datatypes/bstree.v:186:31: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  184 | pub fn (bst &BSTree[T]) in_order_traversal() []T {
+  185 |     mut result := []T{}
+  186 |     bst.in_order_traversal_helper(bst.root, mut result)
+      |                                  ^
+  187 |     return result
+  188 | }
+vlib/datatypes/bstree.v:195:31: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  193 |         return
+  194 |     }
+  195 |     bst.in_order_traversal_helper(node.left, mut result)
+      |                                  ^
+  196 |     result << node.value
+  197 |     bst.in_order_traversal_helper(node.right, mut result)
+vlib/datatypes/bstree.v:197:31: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  195 |     bst.in_order_traversal_helper(node.left, mut result)
+  196 |     result << node.value
+  197 |     bst.in_order_traversal_helper(node.right, mut result)
+      |                                  ^
+  198 | }
+  199 |
+vlib/datatypes/bstree.v:203:33: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  201 | pub fn (bst &BSTree[T]) post_order_traversal() []T {
+  202 |     mut result := []T{}
+  203 |     bst.post_order_traversal_helper(bst.root, mut result)
+      |                                    ^
+  204 |     return result
+  205 | }
+vlib/datatypes/bstree.v:214:33: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  212 |     }
+  213 | 
+  214 |     bst.post_order_traversal_helper(node.left, mut result)
+      |                                    ^
+  215 |     bst.post_order_traversal_helper(node.right, mut result)
+  216 |     result << node.value
+vlib/datatypes/bstree.v:215:33: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  213 | 
+  214 |     bst.post_order_traversal_helper(node.left, mut result)
+  215 |     bst.post_order_traversal_helper(node.right, mut result)
+      |                                    ^
+  216 |     result << node.value
+  217 | }
+vlib/datatypes/bstree.v:222:32: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  220 | pub fn (bst &BSTree[T]) pre_order_traversal() []T {
+  221 |     mut result := []T{}
+  222 |     bst.pre_order_traversal_helper(bst.root, mut result)
+      |                                   ^
+  223 |     return result
+  224 | }
+vlib/datatypes/bstree.v:233:32: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  231 |     }
+  232 |     result << node.value
+  233 |     bst.pre_order_traversal_helper(node.left, mut result)
+      |                                   ^
+  234 |     bst.pre_order_traversal_helper(node.right, mut result)
+  235 | }
+vlib/datatypes/bstree.v:234:32: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  232 |     result << node.value
+  233 |     bst.pre_order_traversal_helper(node.left, mut result)
+  234 |     bst.pre_order_traversal_helper(node.right, mut result)
+      |                                   ^
+  235 | }
+  236 |
 vlib/datatypes/bstree.v:246:16: error: cannot use operator `<` with `Result[[]Token, Err[string]]`
   244 |     }
   245 | 
@@ -46,3 +254,83 @@ vlib/datatypes/bstree.v:246:16: error: cannot use operator `<` with `Result[[]To
       |                   ^
   247 |         return bst.get_node(node.right, value)
   248 |     }
+vlib/datatypes/bstree.v:247:22: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  245 | 
+  246 |     if node.value < value {
+  247 |         return bst.get_node(node.right, value)
+      |                            ^
+  248 |     }
+  249 |     return bst.get_node(node.left, value)
+vlib/datatypes/bstree.v:249:21: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  247 |         return bst.get_node(node.right, value)
+  248 |     }
+  249 |     return bst.get_node(node.left, value)
+      |                        ^
+  250 | }
+  251 |
+vlib/datatypes/bstree.v:260:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  258 | //```
+  259 | pub fn (bst &BSTree[T]) to_left(value T) !T {
+  260 |     if bst.is_empty() {
+      |                    ^
+  261 |         return error('BSTree is empty')
+  262 |     }
+vlib/datatypes/bstree.v:263:22: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  261 |         return error('BSTree is empty')
+  262 |     }
+  263 |     node := bst.get_node(bst.root, value)
+      |                         ^
+  264 |     if !node.is_init {
+  265 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:279:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  277 | //```
+  278 | pub fn (bst &BSTree[T]) to_right(value T) !T {
+  279 |     if bst.is_empty() {
+      |                    ^
+  280 |         return error('BSTree is empty')
+  281 |     }
+vlib/datatypes/bstree.v:282:22: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  280 |         return error('BSTree is empty')
+  281 |     }
+  282 |     node := bst.get_node(bst.root, value)
+      |                         ^
+  283 |     if !node.is_init {
+  284 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:293:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  291 | // Time complexity O(N) if the BST is not balanced
+  292 | pub fn (bst &BSTree[T]) max() !T {
+  293 |     if bst.is_empty() {
+      |                    ^
+  294 |         return error('BSTree is empty')
+  295 |     }
+vlib/datatypes/bstree.v:296:31: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  294 |         return error('BSTree is empty')
+  295 |     }
+  296 |     max := bst.get_max_from_right(bst.root)
+      |                                  ^
+  297 |     if !max.is_init {
+  298 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:306:17: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  304 | // Time complexity O(N) if the BST is not balanced.
+  305 | pub fn (bst &BSTree[T]) min() !T {
+  306 |     if bst.is_empty() {
+      |                    ^
+  307 |         return error('BSTree is empty')
+  308 |     }
+vlib/datatypes/bstree.v:309:30: error: unknown type `Token`.
+Did you mean `Ok[[]Token]`?
+  307 |         return error('BSTree is empty')
+  308 |     }
+  309 |     min := bst.get_min_from_left(bst.root)
+      |                                 ^
+  310 |     if !min.is_init {
+  311 |         return error('BSTree is not initialized')

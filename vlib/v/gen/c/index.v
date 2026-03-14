@@ -190,7 +190,11 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		sym.info as ast.Array
 	}
 	resolved_elem_type := g.recheck_concrete_type(g.resolved_expr_type(node, node.typ))
-	elem_type := if resolved_elem_type != 0 { resolved_elem_type } else { info.elem_type }
+	elem_type := if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
+		resolved_elem_type
+	} else {
+		info.elem_type
+	}
 	elem_sym := g.table.final_sym(elem_type)
 	left_is_ptr := array_left_type.is_ptr()
 	result_type := match true {
