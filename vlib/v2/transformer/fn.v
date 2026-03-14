@@ -868,7 +868,9 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			// Only lower to helper calls when there is no real method on the receiver type.
 			if t.get_method_return_type(ast.Expr(expr)) == none {
 				str_fn_info := t.get_str_fn_info_for_expr(sel.lhs)
-				if str_fn_info.str_fn_name != '' {
+				// Skip Array_u8_str: []u8 = strings.Builder which has its own .str() method
+				// with different semantics (finalizes builder vs formatting array contents).
+				if str_fn_info.str_fn_name != '' && str_fn_info.str_fn_name != 'Array_u8_str' {
 					t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
 					// Also register enum types so the generator produces
 					// the proper if-else variant chain instead of a struct stub.

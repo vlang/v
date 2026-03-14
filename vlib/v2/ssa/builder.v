@@ -4925,36 +4925,73 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 				// Try array__method (base array type)
 				array_method := 'array__${sel.rhs.name}'
 				if array_method in b.fn_index {
-					eprintln('FALLBACK Array_T→array: ${method_name} → ${array_method}')
 					return array_method
 				}
 				builtin_array := 'builtin__array__${sel.rhs.name}'
 				if builtin_array in b.fn_index {
-					eprintln('FALLBACK Array_T→builtin__array: ${method_name} → ${builtin_array}')
 					return builtin_array
 				}
 				// For Array_u8, also try strings__Builder__method
 				if receiver_type == 'Array_u8' {
 					builder_method := 'strings__Builder__${sel.rhs.name}'
 					if builder_method in b.fn_index {
-						eprintln('FALLBACK Array_u8→Builder: ${method_name} → ${builder_method}')
 						return builder_method
 					}
 					builtin_builder := 'builtin__strings__Builder__${sel.rhs.name}'
 					if builtin_builder in b.fn_index {
-						eprintln('FALLBACK Array_u8→builtin__Builder: ${method_name} → ${builtin_builder}')
 						return builtin_builder
 					}
 				}
+				// Try specialized Array_T__method (e.g., Array_string__join)
+				spec_method := 'builtin__${method_name}'
+				if spec_method in b.fn_index {
+					return spec_method
+				}
+				// For Array_ast__T, try ast__Array_T__method (strip module prefix from type)
+				if receiver_type.starts_with('Array_ast__') {
+					inner := receiver_type.replace('Array_ast__', 'Array_')
+					ast_method := 'ast__${inner}__${sel.rhs.name}'
+					if ast_method in b.fn_index {
+						return ast_method
+					}
+				}
 			}
-			// When method resolution failed, scan fn_index for matching method suffix.
-			{
+			// i64 aliases: time.Duration = i64
+			if receiver_type == 'i64' {
+				dur_method := 'time__Duration__${sel.rhs.name}'
+				if dur_method in b.fn_index {
+					return dur_method
+				}
+			}
+			// void/voidptr methods
+			if receiver_type == 'void' || receiver_type == 'voidptr' {
+				voidptr_method := 'builtin__voidptr__${sel.rhs.name}'
+				if voidptr_method in b.fn_index {
+					return voidptr_method
+				}
+			}
+			// array base type: try specialized Array_string__ for array-specific methods
+			if receiver_type == 'array' {
+				arr_string_method := 'builtin__Array_string__${sel.rhs.name}'
+				if arr_string_method in b.fn_index {
+					return arr_string_method
+				}
+			}
+			// OptionType/ResultType aliased to base Type
+			if receiver_type.contains('Option') || receiver_type.contains('Result') {
+				base_method := 'types__Type__${sel.rhs.name}'
+				if base_method in b.fn_index {
+					return base_method
+				}
+			}
+			// When method resolution failed completely, scan fn_index for matching suffix.
+			// Only for 'unknown' receiver (env type lookup failed completely).
+			if receiver_type == 'unknown' {
 				method_suffix := '__${sel.rhs.name}'
 				mut best_match := ''
 				for fn_name, _ in b.fn_index {
 					if fn_name.ends_with(method_suffix) {
 						if b.cur_module != '' && fn_name.starts_with('${b.cur_module}__') {
-							eprintln('SCAN MATCH (module): ${method_name} → ${fn_name}')
 							return fn_name
 						}
 						if best_match == '' {
@@ -4963,11 +5000,9 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					}
 				}
 				if best_match != '' {
-					eprintln('SCAN MATCH (best): ${method_name} → ${best_match}')
 					return best_match
 				}
 			}
-			eprintln('UNRESOLVED method: receiver_type=${receiver_type} method=${sel.rhs.name} → ${method_name} (cur_module=${b.cur_module})')
 			return method_name
 		}
 		else {
