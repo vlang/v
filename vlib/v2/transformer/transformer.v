@@ -740,8 +740,8 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 		t.env.set_expr_type(id, typ)
 	}
 	// Push cached_fn_scopes back to the environment for prop_types.
-	for k, v in t.cached_fn_scopes {
-		lock t.env.fn_scopes {
+	lock t.env.fn_scopes {
+		for k, v in t.cached_fn_scopes {
 			t.env.fn_scopes[k] = v
 		}
 	}

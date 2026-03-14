@@ -269,12 +269,13 @@ fn (t &Transformer) lookup_type(name string) ?types.Type {
 	// Handle qualified names like "ast__Expr" by extracting module and type name
 	mut lookup_name := name
 	mut lookup_module := t.cur_module
-	if name.contains('__') {
-		parts := name.split('__')
-		if parts.len >= 2 {
-			lookup_module = parts[0]
-			lookup_name = parts[parts.len - 1] // Get the last part (type name)
-		}
+	// Use index_of instead of split to avoid array allocation
+	dunder := name.index('__') or { -1 }
+	if dunder >= 0 {
+		lookup_module = name[..dunder]
+		// Get the last segment after '__' (handles multi-part like "a__b__C")
+		last_dunder := name.last_index('__') or { dunder }
+		lookup_name = name[last_dunder + 2..]
 	}
 	mut scope := t.get_module_scope(lookup_module) or { return none }
 	obj := scope.lookup_parent(lookup_name, 0) or { return none }

@@ -22,10 +22,9 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 			}
 		}
 	}
-	// If current module is mangled, also try its short module name.
-	if t.cur_module.contains('__') {
-		short_module := t.cur_module.all_after_last('__')
-		if mut scope := t.get_module_scope(short_module) {
+	// Try builtin scope directly (many common functions are here).
+	if t.cur_module != 'builtin' {
+		if mut scope := t.get_module_scope('builtin') {
 			if obj := scope.lookup_parent(fn_name, 0) {
 				if obj is types.Fn {
 					fn_typ := obj.get_typ()
@@ -39,9 +38,7 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 		}
 	}
 	// Fallback: scan all module scopes for local/private functions.
-	scope_names := t.cached_scopes.keys()
-	for module_name in scope_names {
-		scope_ptr := t.cached_scopes[module_name] or { continue }
+	for _, scope_ptr in t.cached_scopes {
 		mut scope := unsafe { scope_ptr }
 		if obj := scope.lookup_parent(fn_name, 0) {
 			if obj is types.Fn {
@@ -203,10 +200,16 @@ fn (t &Transformer) method_key_matches_type_name(method_key string, type_name st
 	if short_key == short_type {
 		return true
 	}
-	if method_key.ends_with('__${short_type}') {
+	if method_key.len > short_type.len + 2
+		&& method_key[method_key.len - short_type.len - 2] == `_`
+		&& method_key[method_key.len - short_type.len - 1] == `_`
+		&& method_key.ends_with(short_type) {
 		return true
 	}
-	if type_name.ends_with('__${short_key}') {
+	if type_name.len > short_key.len + 2
+		&& type_name[type_name.len - short_key.len - 2] == `_`
+		&& type_name[type_name.len - short_key.len - 1] == `_`
+		&& type_name.ends_with(short_key) {
 		return true
 	}
 	return false
@@ -233,7 +236,7 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 	}
 	for key, methods_for_type in t.cached_methods {
 		mut matches_receiver := false
-		for type_name in seen.keys() {
+		for type_name, _ in seen {
 			if t.method_key_matches_type_name(key, type_name) {
 				matches_receiver = true
 				break

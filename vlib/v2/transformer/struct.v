@@ -58,9 +58,10 @@ fn (mut t Transformer) synth_selector_from_struct(lhs ast.Expr, field_name strin
 fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name string) ?types.Type {
 	mut sname := struct_name
 	mut mod := ''
-	if struct_name.contains('__') {
-		mod = struct_name.all_before_last('__')
-		sname = struct_name.all_after_last('__')
+	dunder := struct_name.last_index('__') or { -1 }
+	if dunder >= 0 {
+		mod = struct_name[..dunder]
+		sname = struct_name[dunder + 2..]
 	}
 	// Try module scope first if qualified
 	if mod != '' {
@@ -98,11 +99,21 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		}
 	}
 	// Fallback: scan all scopes
-	scope_names := t.cached_scopes.keys()
-	for scope_name in scope_names {
-		scope := t.cached_scopes[scope_name] or { continue }
-		for name in [struct_name, sname] {
-			if obj := scope.objects[name] {
+	for _, scope in t.cached_scopes {
+		if obj := scope.objects[struct_name] {
+			if obj is types.Type {
+				typ := types.Type(obj)
+				if typ is types.Struct {
+					for field in typ.fields {
+						if field.name == field_name {
+							return field.typ
+						}
+					}
+				}
+			}
+		}
+		if sname != struct_name {
+			if obj := scope.objects[sname] {
 				if obj is types.Type {
 					typ := types.Type(obj)
 					if typ is types.Struct {
@@ -1463,10 +1474,35 @@ fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
 // This includes types that embed Error OR types that have msg() method
 fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name string) string {
 	// Look up the struct type in scopes.
-	// When the struct name is not module-qualified, prefer the current module scope
+	// For qualified names (e.g. "ast__CallExpr"), try the module scope directly first.
+	dunder := struct_name.index('__') or { -1 }
+	if dunder >= 0 {
+		mod_name := struct_name[..dunder]
+		last_dunder := struct_name.last_index('__') or { dunder }
+		short_name := struct_name[last_dunder + 2..]
+		if mod_scope := t.cached_scopes[mod_name] {
+			if obj := mod_scope.objects[short_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			// Also try the full qualified name
+			if obj := mod_scope.objects[struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+	}
+	// Prefer the current module scope for non-qualified names
 	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
-	// First: try the current module scope for non-qualified names.
-	if !struct_name.contains('__') && t.cur_module != '' && t.cur_module != 'main'
+	if dunder < 0 && t.cur_module != '' && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		if cur_scope := t.cached_scopes[t.cur_module] {
 			if obj := cur_scope.objects[struct_name] {
@@ -1479,28 +1515,23 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 			}
 		}
 	}
-	scope_names := t.cached_scopes.keys()
-	for scope_name in scope_names {
-		scope := t.cached_scopes[scope_name] or { continue }
-		// Try the struct name directly
+	// Fallback: scan all scopes
+	for _, scope in t.cached_scopes {
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
 			}
 		}
-		// Try with current module prefix
-		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			mangled := '${t.cur_module}__${struct_name}'
-			if obj := scope.objects[mangled] {
+		if dunder >= 0 {
+			short_name := struct_name[struct_name.last_index('__') or { dunder } + 2..]
+			if obj := scope.objects[short_name] {
 				if obj is types.Type {
 					return t.get_field_type_name(obj, field_name)
 				}
 			}
-		}
-		// Try stripping module prefix for cross-module types (e.g., "ast__CallExpr" -> "CallExpr")
-		if struct_name.contains('__') {
-			short_name := struct_name.all_after_last('__')
-			if obj := scope.objects[short_name] {
+		} else if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			mangled := '${t.cur_module}__${struct_name}'
+			if obj := scope.objects[mangled] {
 				if obj is types.Type {
 					return t.get_field_type_name(obj, field_name)
 				}
@@ -1553,52 +1584,64 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 	// Handle qualified names like "ast__SelectorExpr" - extract module and type name
 	mut lookup_name := struct_name
 	mut lookup_module := ''
-	if struct_name.contains('__') {
-		parts := struct_name.split('__')
-		if parts.len >= 2 {
-			lookup_module = parts[0]
-			lookup_name = parts[parts.len - 1]
+	dunder := struct_name.index('__') or { -1 }
+	if dunder >= 0 {
+		lookup_module = struct_name[..dunder]
+		last_dunder := struct_name.last_index('__') or { dunder }
+		lookup_name = struct_name[last_dunder + 2..]
+	}
+	// Fast path: try the target module scope directly
+	if lookup_module != '' {
+		if mod_scope := t.cached_scopes[lookup_module] {
+			if obj := mod_scope.objects[lookup_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			if obj := mod_scope.objects[struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
 		}
 	}
-
-	scope_names := t.cached_scopes.keys()
-	for scope_name in scope_names {
-		scope := t.cached_scopes[scope_name] or { continue }
-		// Try the lookup name directly in the appropriate module scope
-		if lookup_module != '' && scope_name == lookup_module {
-			// Look in the module scope
-			if obj := scope.objects[lookup_name] {
+	// Try current module scope
+	if t.cur_module != '' {
+		if cur_scope := t.cached_scopes[t.cur_module] {
+			if obj := cur_scope.objects[struct_name] {
 				if obj is types.Type {
-					return t.get_field_type_name(obj, field_name)
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
 				}
 			}
-			// Also try fully qualified name
-			if obj := scope.objects[struct_name] {
+			if obj := cur_scope.objects[lookup_name] {
 				if obj is types.Type {
-					return t.get_field_type_name(obj, field_name)
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
 				}
 			}
 		}
-		// Try the struct name directly
+	}
+	// Fallback: scan all scopes
+	for _, scope in t.cached_scopes {
 		if obj := scope.objects[struct_name] {
-			if obj is types.Type {
-				result := t.get_field_type_name(obj, field_name)
-				return result
-			}
-		}
-		// Try just the short name
-		if obj := scope.objects[lookup_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
 			}
 		}
-		// Try with current module prefix
-		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			mangled := '${t.cur_module}__${struct_name}'
-			if obj := scope.objects[mangled] {
-				if obj is types.Type {
-					return t.get_field_type_name(obj, field_name)
-				}
+		if obj := scope.objects[lookup_name] {
+			if obj is types.Type {
+				return t.get_field_type_name(obj, field_name)
 			}
 		}
 	}
@@ -1624,17 +1667,59 @@ fn (t &Transformer) get_field_type_name(typ types.Type, field_name string) strin
 // get_field_array_elem_sumtype_name returns the sum type name of the array element type
 // for a struct field, if the field is an array of sum types. Returns '' otherwise.
 fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_name string) string {
-	scope_names := t.cached_scopes.keys()
-	for scope_name in scope_names {
-		scope := t.cached_scopes[scope_name] or { continue }
-		// Try direct name and short name (for cross-module types like ast__CallExpr)
-		names := if struct_name.contains('__') {
-			[struct_name, struct_name.all_after_last('__')]
-		} else {
-			[struct_name]
+	// Compute short name once outside the loop
+	dunder := struct_name.index('__') or { -1 }
+	short_name := if dunder >= 0 {
+		last_dunder := struct_name.last_index('__') or { dunder }
+		struct_name[last_dunder + 2..]
+	} else {
+		struct_name
+	}
+	// Try module scope directly first for qualified names
+	if dunder >= 0 {
+		mod_name := struct_name[..dunder]
+		if mod_scope := t.cached_scopes[mod_name] {
+			if obj := mod_scope.objects[short_name] {
+				if obj is types.Type {
+					if obj is types.Struct {
+						for field in obj.fields {
+							if field.name == field_name {
+								if field.typ is types.Array {
+									field_arr := field.typ as types.Array
+									elem_name := t.type_to_name(field_arr.elem_type)
+									if t.is_sum_type(elem_name) {
+										return elem_name
+									}
+								}
+								return ''
+							}
+						}
+					}
+				}
+			}
 		}
-		for name in names {
-			if obj := scope.objects[name] {
+	}
+	for _, scope in t.cached_scopes {
+		if obj := scope.objects[struct_name] {
+			if obj is types.Type {
+				if obj is types.Struct {
+					for field in obj.fields {
+						if field.name == field_name {
+							if field.typ is types.Array {
+								field_arr := field.typ as types.Array
+								elem_name := t.type_to_name(field_arr.elem_type)
+								if t.is_sum_type(elem_name) {
+									return elem_name
+								}
+							}
+							return ''
+						}
+					}
+				}
+			}
+		}
+		if dunder >= 0 {
+			if obj := scope.objects[short_name] {
 				if obj is types.Type {
 					if obj is types.Struct {
 						for field in obj.fields {
@@ -1659,9 +1744,7 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 
 // get_field_array_elem_c_name returns the C type name for the element type of an array field
 fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
-	scope_names := t.cached_scopes.keys()
-	for scope_name in scope_names {
-		scope := t.cached_scopes[scope_name] or { continue }
+	for _, scope in t.cached_scopes {
 		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				if obj is types.Struct {
