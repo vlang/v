@@ -1656,22 +1656,22 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 		} else {
 			node.return_type.clear_option_and_result()
 		}
-		} else {
-			mut fn_var_type := ast.void_type
-			lookup_name := if node.left is ast.Ident { node.left.name } else { node.name }
-			resolved_current_type := g.resolve_current_fn_generic_param_type(lookup_name)
-			if resolved_current_type != 0
-				&& g.table.final_sym(g.unwrap_generic(resolved_current_type)).kind == .function {
-				fn_var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_current_type))
-			} else if node.is_fn_var {
-				fn_var_type = g.unwrap_generic(g.recheck_concrete_type(node.fn_var_type))
-			}
-			if fn_var_type == 0 {
-				if obj := node.scope.find_var(lookup_name) {
-					if g.table.final_sym(g.unwrap_generic(obj.typ)).kind == .function {
-						fn_var_type = g.unwrap_generic(g.recheck_concrete_type(obj.typ))
-					}
+	} else {
+		mut fn_var_type := ast.void_type
+		lookup_name := if node.left is ast.Ident { node.left.name } else { node.name }
+		resolved_current_type := g.resolve_current_fn_generic_param_type(lookup_name)
+		if resolved_current_type != 0
+			&& g.table.final_sym(g.unwrap_generic(resolved_current_type)).kind == .function {
+			fn_var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_current_type))
+		} else if node.is_fn_var {
+			fn_var_type = g.unwrap_generic(g.recheck_concrete_type(node.fn_var_type))
+		}
+		if fn_var_type == 0 {
+			if obj := node.scope.find_var(lookup_name) {
+				if g.table.final_sym(g.unwrap_generic(obj.typ)).kind == .function {
+					fn_var_type = g.unwrap_generic(g.recheck_concrete_type(obj.typ))
 				}
+			}
 		}
 		if fn_var_type != 0 {
 			fn_sym := g.table.final_sym(fn_var_type)
@@ -2098,19 +2098,19 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 			if arg_type == 0 {
 				continue
 			}
-				if arg_type in [ast.int_literal_type, ast.float_literal_type] {
-					continue
-				}
-				param_sym := g.table.sym(param.typ)
-				if (arg.expr is ast.PrefixExpr && arg.expr.op == .amp && param.typ.nr_muls() > 0)
-					|| param_sym.info is ast.FnType {
-					trust_node_concrete_types = false
-					break
-				}
-				if param_sym.info is ast.FnType
-					&& (arg_type.has_flag(.generic) || g.type_has_unresolved_generic_parts(arg_type)) {
-					continue
-				}
+			if arg_type in [ast.int_literal_type, ast.float_literal_type] {
+				continue
+			}
+			param_sym := g.table.sym(param.typ)
+			if (arg.expr is ast.PrefixExpr && arg.expr.op == .amp && param.typ.nr_muls() > 0)
+				|| param_sym.info is ast.FnType {
+				trust_node_concrete_types = false
+				break
+			}
+			if param_sym.info is ast.FnType
+				&& (arg_type.has_flag(.generic) || g.type_has_unresolved_generic_parts(arg_type)) {
+				continue
+			}
 			if resolved_param_type := muttable.convert_generic_type(param.typ, func.generic_names,
 				concrete_types)
 			{
@@ -2220,8 +2220,9 @@ fn (mut g Gen) resolve_current_fn_generic_param_value_type(name string) ast.Type
 			continue
 		}
 		mut muttable := unsafe { &ast.Table(g.table) }
-		resolved_param_type := if resolved := muttable.convert_generic_type(param.typ, generic_names,
-			g.cur_concrete_types) {
+		resolved_param_type := if resolved := muttable.convert_generic_type(param.typ,
+			generic_names, g.cur_concrete_types)
+		{
 			g.unwrap_generic(resolved)
 		} else {
 			g.unwrap_generic(g.recheck_concrete_type(param.typ))
@@ -2248,8 +2249,9 @@ fn (mut g Gen) resolve_current_fn_generic_param_key_type(name string) ast.Type {
 			continue
 		}
 		mut muttable := unsafe { &ast.Table(g.table) }
-		resolved_param_type := if resolved := muttable.convert_generic_type(param.typ, generic_names,
-			g.cur_concrete_types) {
+		resolved_param_type := if resolved := muttable.convert_generic_type(param.typ,
+			generic_names, g.cur_concrete_types)
+		{
 			g.unwrap_generic(resolved)
 		} else {
 			g.unwrap_generic(g.recheck_concrete_type(param.typ))
@@ -2576,38 +2578,39 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if node.concrete_types.len == method_generic_names_len && node.concrete_types.len > 0 {
 			trust_node_concrete_types = node.raw_concrete_types.len == method_generic_names_len
 				&& node.raw_concrete_types.len > 0
-				if !trust_node_concrete_types {
-					trust_node_concrete_types = true
-					mut muttable := unsafe { &ast.Table(g.table) }
-					for i, arg in node.args {
+			if !trust_node_concrete_types {
+				trust_node_concrete_types = true
+				mut muttable := unsafe { &ast.Table(g.table) }
+				for i, arg in node.args {
 					param := if method_for_generics.is_variadic
 						&& i >= method_for_generics.params.len - 1 {
 						method_for_generics.params.last()
 					} else {
 						method_for_generics.params[i + 1]
 					}
-						if resolved_param_type := muttable.convert_generic_type(param.typ,
-							method_for_generics.generic_names, node.concrete_types)
-						{
-							mut arg_type := g.resolved_generic_call_arg_type(arg)
-							if arg_type in [ast.int_literal_type, ast.float_literal_type] {
-								continue
-							}
-							if arg.expr.is_auto_deref_var() && arg_type.is_ptr() && !param.typ.is_ptr() {
-								arg_type = arg_type.deref()
-							}
-							param_sym := g.table.sym(param.typ)
-							if (arg.expr is ast.PrefixExpr && arg.expr.op == .amp
-								&& param.typ.nr_muls() > 0)
-								|| (arg.expr.is_auto_deref_var() && g.resolved_generic_call_arg_type(arg).is_ptr()
-								&& !param.typ.is_ptr()) || param_sym.info is ast.FnType {
-								trust_node_concrete_types = false
-								break
-							}
-							if g.unwrap_generic(resolved_param_type) != g.unwrap_generic(arg_type) {
-								trust_node_concrete_types = false
-								break
-							}
+					if resolved_param_type := muttable.convert_generic_type(param.typ,
+						method_for_generics.generic_names, node.concrete_types)
+					{
+						mut arg_type := g.resolved_generic_call_arg_type(arg)
+						if arg_type in [ast.int_literal_type, ast.float_literal_type] {
+							continue
+						}
+						if arg.expr.is_auto_deref_var() && arg_type.is_ptr() && !param.typ.is_ptr() {
+							arg_type = arg_type.deref()
+						}
+						param_sym := g.table.sym(param.typ)
+						if (arg.expr is ast.PrefixExpr && arg.expr.op == .amp
+							&& param.typ.nr_muls() > 0)
+							|| (arg.expr.is_auto_deref_var()
+							&& g.resolved_generic_call_arg_type(arg).is_ptr()
+							&& !param.typ.is_ptr()) || param_sym.info is ast.FnType {
+							trust_node_concrete_types = false
+							break
+						}
+						if g.unwrap_generic(resolved_param_type) != g.unwrap_generic(arg_type) {
+							trust_node_concrete_types = false
+							break
+						}
 					} else {
 						trust_node_concrete_types = false
 						break
@@ -2735,22 +2738,21 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				} else {
 					method_for_generics.params[offset + i]
 				}
-				if !param.typ.has_flag(.generic)
-					&& !g.type_has_unresolved_generic_parts(param.typ) {
+				if !param.typ.has_flag(.generic) && !g.type_has_unresolved_generic_parts(param.typ) {
 					continue
 				}
 				if param.typ == receiver_param_type {
 					continue
 				}
 				slot := rec_len + generic_arg_idx
-					if slot < concrete_types.len {
-						mut arg_type := g.resolved_generic_call_arg_type(arg)
-						if arg.expr.is_auto_deref_var() && arg_type.is_ptr() && !param.typ.is_ptr() {
-							arg_type = arg_type.deref()
-						}
-						current_type := concrete_types[slot]
-						if current_type != 0 && !current_type.has_flag(.generic)
-							&& !g.type_has_unresolved_generic_parts(current_type)
+				if slot < concrete_types.len {
+					mut arg_type := g.resolved_generic_call_arg_type(arg)
+					if arg.expr.is_auto_deref_var() && arg_type.is_ptr() && !param.typ.is_ptr() {
+						arg_type = arg_type.deref()
+					}
+					current_type := concrete_types[slot]
+					if current_type != 0 && !current_type.has_flag(.generic)
+						&& !g.type_has_unresolved_generic_parts(current_type)
 						&& arg_type in [ast.int_literal_type, ast.float_literal_type] {
 						generic_arg_idx++
 						continue
@@ -2761,29 +2763,29 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						&& receiver_concrete_types.len + node.raw_concrete_types.len == full_method_generic_names_len {
 						explicit_slot = slot - rec_len
 					}
-						mut explicit_concrete_type := ast.no_type
-						if explicit_slot >= 0 && explicit_slot < node.raw_concrete_types.len {
-							explicit_concrete_type = g.unwrap_generic(node.raw_concrete_types[explicit_slot])
-						} else if slot < node.concrete_types.len {
-							explicit_concrete_type = g.unwrap_generic(node.concrete_types[slot])
+					mut explicit_concrete_type := ast.no_type
+					if explicit_slot >= 0 && explicit_slot < node.raw_concrete_types.len {
+						explicit_concrete_type = g.unwrap_generic(node.raw_concrete_types[explicit_slot])
+					} else if slot < node.concrete_types.len {
+						explicit_concrete_type = g.unwrap_generic(node.concrete_types[slot])
+					}
+					if arg.expr is ast.PrefixExpr && arg.expr.op == .amp && param.typ.nr_muls() > 0 {
+						inner_type := g.resolved_expr_type(arg.expr.right, arg.expr.right_type)
+						mut resolved_inner_type := g.unwrap_generic(g.recheck_concrete_type(inner_type))
+						if arg.expr.right.is_auto_deref_var() && resolved_inner_type.is_ptr() {
+							resolved_inner_type = resolved_inner_type.deref()
 						}
-						if arg.expr is ast.PrefixExpr && arg.expr.op == .amp && param.typ.nr_muls() > 0 {
-							inner_type := g.resolved_expr_type(arg.expr.right, arg.expr.right_type)
-							mut resolved_inner_type := g.unwrap_generic(g.recheck_concrete_type(inner_type))
-							if arg.expr.right.is_auto_deref_var() && resolved_inner_type.is_ptr() {
-								resolved_inner_type = resolved_inner_type.deref()
-							}
-							if resolved_inner_type != 0 && !resolved_inner_type.has_flag(.generic)
-								&& !g.type_has_unresolved_generic_parts(resolved_inner_type) {
-								concrete_types[slot] = resolved_inner_type
-								generic_arg_idx++
-								continue
-							}
+						if resolved_inner_type != 0 && !resolved_inner_type.has_flag(.generic)
+							&& !g.type_has_unresolved_generic_parts(resolved_inner_type) {
+							concrete_types[slot] = resolved_inner_type
+							generic_arg_idx++
+							continue
 						}
-						if explicit_concrete_type != 0 {
-							node_concrete_type := explicit_concrete_type
-							if node_concrete_type != 0 && !node_concrete_type.has_flag(.generic)
-								&& !g.type_has_unresolved_generic_parts(node_concrete_type)
+					}
+					if explicit_concrete_type != 0 {
+						node_concrete_type := explicit_concrete_type
+						if node_concrete_type != 0 && !node_concrete_type.has_flag(.generic)
+							&& !g.type_has_unresolved_generic_parts(node_concrete_type)
 							&& (trust_node_concrete_types || node_concrete_type == arg_type) {
 							concrete_types[slot] = node_concrete_type
 							generic_arg_idx++
@@ -2794,8 +2796,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						&& !g.type_has_unresolved_generic_parts(arg_type) {
 						if g.type_has_unresolved_generic_parts(param.typ) {
 							prev_concrete_types := concrete_types.clone()
-							g.infer_generic_call_concrete_types_from_types(full_method_generic_names,
-								mut concrete_types, arg, param.typ, arg_type)
+							g.infer_generic_call_concrete_types_from_types(full_method_generic_names, mut
+								concrete_types, arg, param.typ, arg_type)
 							if concrete_types != prev_concrete_types {
 								generic_arg_idx++
 								continue

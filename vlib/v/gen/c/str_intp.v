@@ -12,7 +12,7 @@ module c
 import v.ast
 import v.util
 
-fn int_ref_interpolates_as_value(expr v.ast.Expr, typ v.ast.Type, fmt u8) bool {
+fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
 		return false
 	}
@@ -21,8 +21,8 @@ fn int_ref_interpolates_as_value(expr v.ast.Expr, typ v.ast.Type, fmt u8) bool {
 	}
 	return match expr {
 		v.ast.Ident {
-			if expr.obj is v.ast.Var {
-				expr.obj.is_arg || (expr.obj.expr is v.ast.PrefixExpr && expr.obj.expr.op == .amp)
+			if expr.obj is ast.Var {
+				expr.obj.is_arg || (expr.obj.expr is ast.PrefixExpr && expr.obj.expr.op == .amp)
 			} else {
 				false
 			}
@@ -36,7 +36,7 @@ fn int_ref_interpolates_as_value(expr v.ast.Expr, typ v.ast.Type, fmt u8) bool {
 	}
 }
 
-fn (mut g Gen) should_resolve_str_intp_expr_type(expr v.ast.Expr, typ v.ast.Type) bool {
+fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bool {
 	if typ == 0 || typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
 		return true
 	}
@@ -45,7 +45,7 @@ fn (mut g Gen) should_resolve_str_intp_expr_type(expr v.ast.Expr, typ v.ast.Type
 			true
 		}
 		v.ast.SelectorExpr {
-			expr.expr is v.ast.TypeOf
+			expr.expr is ast.TypeOf
 		}
 		else {
 			false
@@ -53,7 +53,7 @@ fn (mut g Gen) should_resolve_str_intp_expr_type(expr v.ast.Expr, typ v.ast.Type
 	}
 }
 
-fn (mut g Gen) get_default_fmt(ftyp v.ast.Type, typ v.ast.Type) u8 {
+fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
 	} else if typ.is_float() {
@@ -68,7 +68,7 @@ fn (mut g Gen) get_default_fmt(ftyp v.ast.Type, typ v.ast.Type) u8 {
 		mut sym := g.table.sym(g.unwrap_generic(ftyp))
 		if sym.kind == .alias {
 			// string aliases should be printable
-			info := sym.info as v.ast.Alias
+			info := sym.info as ast.Alias
 			sym = g.table.sym(info.parent_type)
 			if info.parent_type == string_type {
 				return `s`
@@ -87,7 +87,7 @@ fn (mut g Gen) get_default_fmt(ftyp v.ast.Type, typ v.ast.Type) u8 {
 	}
 }
 
-fn (mut g Gen) str_format(node v.ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
+fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set uppercase for the result string
 	expr := node.exprs[i]
@@ -238,13 +238,12 @@ fn (mut g Gen) str_format(node v.ast.StringInterLiteral, i int, fmts []u8) (u64,
 	if node.fills[i] {
 		pad_ch = 1
 	}
-	static_width := if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is v.ast.EmptyExpr {
+	static_width := if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
 		0
 	} else {
 		node.fwidths[i]
 	}
-	static_precision := if i < node.precision_exprs.len
-		&& node.precision_exprs[i] !is v.ast.EmptyExpr {
+	static_precision := if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
 		987698
 	} else {
 		node.precisions[i]
@@ -255,7 +254,7 @@ fn (mut g Gen) str_format(node v.ast.StringInterLiteral, i int, fmts []u8) (u64,
 	return res, fmt_type.str()
 }
 
-fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
+fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
 	mut orig_typ := if i < node.expr_types.len {
@@ -272,8 +271,8 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
 	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
 	typ_sym := g.table.sym(typ)
-	if g.comptime.inside_comptime_for && expr is v.ast.SelectorExpr && expr.field_name == 'name'
-		&& expr.expr is v.ast.TypeOf {
+	if g.comptime.inside_comptime_for && expr is ast.SelectorExpr && expr.field_name == 'name'
+		&& expr.expr is ast.TypeOf {
 		g.expr(expr)
 		return
 	}
@@ -288,7 +287,7 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 		} else {
 			if g.is_autofree_tmp && g.is_autofree
 				&& expr !in [v.ast.Ident, v.ast.StringLiteral, v.ast.SelectorExpr, v.ast.ComptimeSelector] {
-				if expr is v.ast.CallExpr {
+				if expr is ast.CallExpr {
 					old_is_autofree_tmp := g.is_autofree_tmp
 					g.autofree_call_pregen(expr)
 					g.is_autofree_tmp = old_is_autofree_tmp
@@ -317,7 +316,7 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface && (typ_sym.info as v.ast.Interface).defines_method('str') {
+	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
@@ -327,15 +326,15 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
-		is_comptime_for_var := expr is v.ast.Ident && g.is_comptime_for_var(expr)
-		if !is_comptime_for_var && expr is v.ast.Ident {
+		is_comptime_for_var := expr is ast.Ident && g.is_comptime_for_var(expr)
+		if !is_comptime_for_var && expr is ast.Ident {
 			if g.comptime.get_ct_type_var(expr) == .smartcast {
 				exp_typ = g.type_resolver.get_type(expr)
-			} else if expr.obj is v.ast.Var {
+			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
-					if cast_sym.info is v.ast.Aggregate {
+					if cast_sym.info is ast.Aggregate {
 						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
 					}
 					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
@@ -344,7 +343,7 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 				}
 			}
 		}
-		if exp_typ.has_flag(.option) && expr is v.ast.Ident && g.is_comptime_for_var(expr) {
+		if exp_typ.has_flag(.option) && expr is ast.Ident && g.is_comptime_for_var(expr) {
 			str_fn_name := g.get_str_fn(exp_typ.clear_flag(.option))
 			g.write('${str_fn_name}(*(${g.base_type(exp_typ)}*)(')
 			old_inside_opt_or_res := g.inside_opt_or_res
@@ -401,7 +400,7 @@ fn (mut g Gen) str_val(node v.ast.StringInterLiteral, i int, fmts []u8) {
 	}
 }
 
-fn (mut g Gen) string_inter_literal(node v.ast.StringInterLiteral) {
+fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	inside_interface_deref_old := g.inside_interface_deref
 	g.inside_interface_deref = true
 	defer {
@@ -410,27 +409,27 @@ fn (mut g Gen) string_inter_literal(node v.ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		mut field_typ := if mut expr is v.ast.Ident && g.is_comptime_for_var(expr) {
+		mut field_typ := if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
 			g.comptime.comptime_for_field_type
 		} else if i < node_.expr_types.len {
 			node_.expr_types[i]
 		} else {
 			void_type
 		}
-		if g.comptime.inside_comptime_for && mut expr is v.ast.SelectorExpr {
-			if expr.expr is v.ast.TypeOf && expr.field_name == 'name' {
-				typeof_expr := expr.expr as v.ast.TypeOf
-				if typeof_expr.expr is v.ast.Ident {
-					ident_name := (typeof_expr.expr as v.ast.Ident).name
+		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
+			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
+				typeof_expr := expr.expr as ast.TypeOf
+				if typeof_expr.expr is ast.Ident {
+					ident_name := (typeof_expr.expr as ast.Ident).name
 					if obj := typeof_expr.expr.scope.find(ident_name) {
-						if obj is v.ast.Var {
+						if obj is ast.Var {
 							field_typ = obj.typ
 						}
 					}
 				}
 			}
 		}
-		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is v.ast.Ident) {
+		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
 			ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
 			if ctyp != void_type {
 				node_.expr_types[i] = ctyp
@@ -460,7 +459,7 @@ fn (mut g Gen) string_inter_literal(node v.ast.StringInterLiteral) {
 		expr_ := expr
 		match expr_ {
 			v.ast.Ident {
-				if expr_.obj is v.ast.Var && g.table.is_interface_smartcast(expr_.obj) {
+				if expr_.obj is ast.Var && g.table.is_interface_smartcast(expr_.obj) {
 					expr_var := expr_.obj
 					if field_typ.is_ptr() && !expr_var.orig_type.is_ptr()
 						&& g.table.final_sym(expr_var.orig_type).kind == .interface
@@ -510,9 +509,9 @@ fn (mut g Gen) string_inter_literal(node v.ast.StringInterLiteral) {
 		}
 
 		g.write('}')
-		has_dynamic_width := i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is v.ast.EmptyExpr
+		has_dynamic_width := i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr
 		has_dynamic_precision := i < node.precision_exprs.len
-			&& node.precision_exprs[i] !is v.ast.EmptyExpr
+			&& node.precision_exprs[i] !is ast.EmptyExpr
 		if has_dynamic_width || has_dynamic_precision {
 			g.write(', ')
 			if has_dynamic_width {

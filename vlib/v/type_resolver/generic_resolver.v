@@ -380,20 +380,20 @@ pub fn (mut t TypeResolver) resolve_fn_generic_args(cur_fn &ast.FnDecl, func &as
 				else {}
 			}
 		}
-			mut comptime_args := t.resolve_args(cur_fn, func, mut node, concrete_types)
-			if comptime_args.len > 0 {
-				for k, v in comptime_args {
-					if (rec_len + k) < concrete_types.len {
-						current_type := concrete_types[rec_len + k]
-						if current_type == ast.void_type || current_type.has_flag(.generic) {
-							concrete_types[rec_len + k] = t.resolver.unwrap_generic(v)
-						}
+		mut comptime_args := t.resolve_args(cur_fn, func, mut node, concrete_types)
+		if comptime_args.len > 0 {
+			for k, v in comptime_args {
+				if (rec_len + k) < concrete_types.len {
+					current_type := concrete_types[rec_len + k]
+					if current_type == ast.void_type || current_type.has_flag(.generic) {
+						concrete_types[rec_len + k] = t.resolver.unwrap_generic(v)
 					}
 				}
-				if t.table.register_fn_concrete_types(func.fkey(), concrete_types) {
-					need_recheck = true
-				}
 			}
+			if t.table.register_fn_concrete_types(func.fkey(), concrete_types) {
+				need_recheck = true
+			}
+		}
 	}
 
 	return need_recheck, concrete_types
