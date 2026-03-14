@@ -54,6 +54,7 @@ pub enum Language {
 	s390x
 	ppc64le
 	loongarch64
+	sparc64
 	wasm32
 }
 
@@ -86,6 +87,9 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		}
 		.loongarch64 {
 			.loongarch64
+		}
+		.sparc64 {
+			.sparc64
 		}
 		.js_node, .js_browser, .js_freestanding {
 			.js
