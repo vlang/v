@@ -269,7 +269,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		else {}
 	}
 	if node.right.len == 1 && node.left.len > 1 && node.left_types.len == node.left.len {
-		concrete_left_types := node.left_types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+		is_generic_context := g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+		concrete_left_types := if is_generic_context {
+			node.left_types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+		} else {
+			node.left_types
+		}
 		if concrete_left_types.all(it != 0 && !it.has_flag(.generic)
 			&& !g.type_has_unresolved_generic_parts(it))
 		{
@@ -278,7 +283,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				return_type = expected_multi_return
 			} else if g.table.sym(return_type).kind == .multi_return
 				&& return_type != expected_multi_return {
-				actual_return_types := (g.table.sym(return_type).info as ast.MultiReturn).types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+				actual_return_types := if is_generic_context {
+					(g.table.sym(return_type).info as ast.MultiReturn).types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+				} else {
+					(g.table.sym(return_type).info as ast.MultiReturn).types
+				}
 				if actual_return_types.any(it == 0 || it.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(it))
 				{

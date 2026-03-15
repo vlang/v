@@ -1460,28 +1460,37 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 			return sym.info.types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.Struct {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+			concrete_types := if sym.info.concrete_types.len > 0 {
+				sym.info.concrete_types
+			} else if sym.generic_types.len == sym.info.generic_types.len
 				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+				sym.generic_types
+			} else {
+				[]ast.Type{}
 			}
 			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
 				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.Interface {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+			concrete_types := if sym.info.concrete_types.len > 0 {
+				sym.info.concrete_types
+			} else if sym.generic_types.len == sym.info.generic_types.len
 				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+				sym.generic_types
+			} else {
+				[]ast.Type{}
 			}
 			return (sym.info.is_generic && concrete_types.len == 0)
 				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.SumType {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+			concrete_types := if sym.info.concrete_types.len > 0 {
+				sym.info.concrete_types
+			} else if sym.generic_types.len == sym.info.generic_types.len
 				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+				sym.generic_types
+			} else {
+				[]ast.Type{}
 			}
 			return (sym.info.is_generic && concrete_types.len == 0)
 				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
@@ -2722,8 +2731,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 						if expr.expr.obj.expr is ast.StructInit {
 							struct_info := g.table.sym(expr.expr.obj.typ).info
 							if struct_info is ast.Struct && struct_info.concrete_types.len > 0 {
-								save_cur_concrete_types := g.cur_concrete_types.clone()
-								g.cur_concrete_types = struct_info.concrete_types.clone()
+								save_cur_concrete_types := g.cur_concrete_types
+								g.cur_concrete_types = struct_info.concrete_types
 								defer {
 									g.cur_concrete_types = save_cur_concrete_types
 								}

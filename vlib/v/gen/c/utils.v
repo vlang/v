@@ -65,12 +65,11 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return typ
 	}
-	mut generic_names := []string{}
-	mut concrete_types := []ast.Type{}
-	if g.cur_fn != unsafe { nil } {
-		generic_names = g.cur_fn.generic_names.clone()
-		concrete_types = g.cur_concrete_types.clone()
+	if g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0 {
+		return typ
 	}
+	generic_names := g.cur_fn.generic_names.clone()
+	concrete_types := g.cur_concrete_types.clone()
 	mut muttable := unsafe { &ast.Table(g.table) }
 	return muttable.unwrap_generic_type_ex(typ, generic_names, concrete_types, true)
 }
