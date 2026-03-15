@@ -56,7 +56,7 @@ pub fn (km &KeywordsMatcherTrie) matches(word string) bool {
 
 // add_word adds the given word to the KeywordsMatcherTrie instance. It associates a non
 // negative integer value to it, so later `find` could return the value, when it succeeds.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	wlen := word.len
 	if km.max_len < wlen {
@@ -135,7 +135,7 @@ pub fn (node &TrieNode) show(level int) {
 
 // add_word adds another `word` and `value` pair into the trie, starting from `node` (recursively).
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	if word_idx < 0 || word_idx >= word.len {
 		node.value = value

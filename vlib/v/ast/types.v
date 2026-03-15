@@ -474,7 +474,35 @@ pub fn (ts &TypeSymbol) scoped_name() string {
 @[inline]
 pub fn (ts &TypeSymbol) scoped_cname() string {
 	return if ts.info is Struct && ts.info.scoped_name != '' {
-		ts.info.scoped_name.replace('.', '__')
+		if ts.language == .v && ts.info.scoped_name.contains('[') {
+			ts.info.scoped_name.replace('.', '__').replace_each([
+				'[',
+				'_T_',
+				']',
+				'',
+				', ',
+				'_T_',
+				',',
+				'_T_',
+				' ',
+				'',
+			])
+		} else {
+			ts.info.scoped_name.replace('.', '__')
+		}
+	} else if ts.language == .v && ts.kind in [.placeholder, .generic_inst] && ts.name.contains('[') {
+		ts.name.replace('.', '__').replace_each([
+			'[',
+			'_T_',
+			']',
+			'',
+			', ',
+			'_T_',
+			',',
+			'_T_',
+			' ',
+			'',
+		])
 	} else {
 		ts.cname
 	}

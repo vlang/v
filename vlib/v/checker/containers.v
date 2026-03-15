@@ -504,6 +504,15 @@ fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
 }
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
+		&& node.typ != 0 && c.expected_type != ast.void_type {
+		expected_map_type := c.expected_type.clear_option_and_result()
+		if c.table.sym(expected_map_type).kind == .map && node.typ != expected_map_type {
+			node.typ = expected_map_type
+			node.key_type = 0
+			node.value_type = 0
+		}
+	}
 	// `map = {}`
 	if node.keys.len == 0 && node.vals.len == 0 && !node.has_update_expr && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)
@@ -848,26 +857,23 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		}
 	}
 	if left_value_sym.kind == .interface {
-		if right_final_sym.kind != .array {
+		right_is_interface_value := c.table.does_type_implement_interface(c.unwrap_generic(right_type),
+			left_value_type)
+		if right_is_interface_value {
+			if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
+				&& right_sym.kind != .interface {
+				c.mark_as_referenced(mut &node.right, true)
+			}
+		} else if right_final_sym.kind == .array {
+			// []Animal << []Cat
+			c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
+		} else {
 			// []Animal << Cat
 			if c.type_implements(right_type, left_value_type, right_pos) {
 				if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
 					&& right_sym.kind != .interface {
 					c.mark_as_referenced(mut &node.right, true)
 				}
-			}
-		} else {
-			if c.table.does_type_implement_interface(c.unwrap_generic(right_type), left_value_type) {
-				// `[]Any << []int` should append the array as a single interface value.
-				if c.type_implements(right_type, left_value_type, right_pos) {
-					if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
-						&& right_sym.kind != .interface {
-						c.mark_as_referenced(mut &node.right, true)
-					}
-				}
-			} else {
-				// []Animal << []Cat
-				c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
 			}
 		}
 		return ast.void_type

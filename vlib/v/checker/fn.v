@@ -29,13 +29,19 @@ fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concre
 }
 
 fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
-	if c.table.cur_concrete_types.len == 0
-		|| node.generic_names.len != c.table.cur_concrete_types.len {
+	generic_names := c.effective_fn_generic_names(node)
+	if c.table.cur_concrete_types.len == 0 || generic_names.len != c.table.cur_concrete_types.len {
 		return
 	}
 	if node.is_method {
-		receiver_type := c.table.unwrap_generic_type_ex(node.receiver.typ, node.generic_names,
-			c.table.cur_concrete_types, true)
+		receiver_type := if resolved := c.table.convert_generic_type(node.receiver.typ,
+			generic_names, c.table.cur_concrete_types)
+		{
+			c.unwrap_generic(resolved)
+		} else {
+			c.table.unwrap_generic_type_ex(node.receiver.typ, generic_names, c.table.cur_concrete_types,
+				true)
+		}
 		if mut receiver_var := c.fn_scope.find_var(node.receiver.name) {
 			receiver_var.typ = receiver_type
 			receiver_var.orig_type = ast.no_type
@@ -44,8 +50,14 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 		}
 	}
 	for param in node.params {
-		param_type := c.table.unwrap_generic_type_ex(param.typ, node.generic_names, c.table.cur_concrete_types,
-			true)
+		param_type := if resolved := c.table.convert_generic_type(param.typ, generic_names,
+			c.table.cur_concrete_types)
+		{
+			c.unwrap_generic(resolved)
+		} else {
+			c.table.unwrap_generic_type_ex(param.typ, generic_names, c.table.cur_concrete_types,
+				true)
+		}
 		if mut param_var := c.fn_scope.find_var(param.name) {
 			param_var.typ = param_type
 			param_var.orig_type = ast.no_type
@@ -53,6 +65,28 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 			param_var.is_unwrapped = false
 		}
 	}
+}
+
+fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
+	if node.generic_names.len > 0 {
+		return node.generic_names.clone()
+	}
+	if !node.is_method {
+		return []string{}
+	}
+	if !node.receiver.typ.has_flag(.generic) && !c.type_has_unresolved_generic_parts(node.receiver.typ) {
+		return []string{}
+	}
+	rec_sym := c.table.sym(c.unwrap_generic(node.receiver.typ))
+	match rec_sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if rec_sym.info.generic_types.len > 0 {
+				return rec_sym.info.generic_types.map(c.table.sym(it).name)
+			}
+		}
+		else {}
+	}
+	return c.table.generic_type_names(node.receiver.typ)
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
@@ -104,7 +138,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
+	effective_generic_names := c.effective_fn_generic_names(node)
+	if effective_generic_names.len > 0
+		&& c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
@@ -576,7 +612,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.table.cur_fn = unsafe { node }
+	mut effective_cur_fn := unsafe { node }
+	if c.table.cur_concrete_types.len > 0 && effective_generic_names.len == c.table.cur_concrete_types.len
+		&& node.generic_names != effective_generic_names {
+		effective_cur_fn = &ast.FnDecl{
+			...*node
+			generic_names: effective_generic_names.clone()
+		}
+	}
+	c.table.cur_fn = effective_cur_fn
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.option)

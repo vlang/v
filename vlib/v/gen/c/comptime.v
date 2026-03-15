@@ -24,7 +24,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	if node.is_name && node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comptime.comptime_for_field_var {
-				_, field_name := g.type_resolver.get_comptime_selector_var_type(node)
+				_, field_name := g.resolve_comptime_selector_field(node, left_type)
 				g.write(c_name(field_name))
 				if is_interface_field {
 					g.write(')')
@@ -54,6 +54,27 @@ fn (mut g Gen) gen_comptime_selector(expr ast.ComptimeSelector) string {
 		}
 	}
 	return '${expr.left.str()}${arrow_or_dot}${field_name}'
+}
+
+fn (mut g Gen) resolve_comptime_selector_field(node ast.ComptimeSelector, left_type ast.Type) (ast.StructField, string) {
+	mut field_name := if node.typ_key.contains('|') {
+		node.typ_key.all_after('|')
+	} else {
+		g.comptime.comptime_for_field_value.name
+	}
+	if node.field_expr is ast.SelectorExpr && g.comptime.comptime_for_field_var != ''
+		&& g.comptime.comptime_for_method_var == '' && node.field_expr.field_name == 'name' {
+		if node.field_expr.expr is ast.Ident
+			&& node.field_expr.expr.name == g.comptime.comptime_for_field_var {
+			field_name = g.comptime.comptime_for_field_value.name
+		}
+	}
+	resolved_left_type := g.unwrap_generic(g.recheck_concrete_type(left_type))
+	left_sym := g.table.sym(resolved_left_type)
+	field := g.table.find_field_with_embeds(left_sym, field_name) or {
+		g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+	}
+	return field, field_name
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
@@ -340,15 +361,100 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) {
 
 // gen_branch_context_string generate current branches context string.
 // context include generic types, `$for`.
+fn (mut g Gen) recover_specialized_generic_context_for(fn_name string) ([]string, []ast.Type) {
+	if fn_name == '' {
+		return []string{}, []ast.Type{}
+	}
+	if t_idx := fn_name.index('_T_') {
+		if t_idx <= 0 {
+			return []string{}, []ast.Type{}
+		}
+	} else {
+		return []string{}, []ast.Type{}
+	}
+	for generic_fn in g.file.generic_fns {
+		if generic_fn.generic_names.len == 0 {
+			continue
+		}
+		for base_name in [generic_fn.name, generic_fn.fkey()] {
+			if !fn_name.starts_with(base_name + '_T_') {
+				continue
+			}
+			mut generic_names := generic_fn.generic_names.clone()
+			fkey := generic_fn.fkey()
+			for concrete_types in g.table.fn_generic_types[fkey] {
+				if concrete_types.any(it.has_flag(.generic)) {
+					continue
+				}
+				if g.generic_fn_name(concrete_types, base_name) != fn_name {
+					if !generic_fn.is_method {
+						continue
+					}
+					receiver_generic_names := g.table.generic_type_names(generic_fn.receiver.typ)
+					if receiver_generic_names.len == 0 || concrete_types.len <= receiver_generic_names.len {
+						continue
+					}
+					method_only_concrete_types := concrete_types[receiver_generic_names.len..]
+					if g.generic_fn_name(method_only_concrete_types, base_name) != fn_name {
+						continue
+					}
+				}
+				if generic_fn.is_method && concrete_types.len > generic_names.len {
+					receiver_generic_names := g.table.generic_type_names(generic_fn.receiver.typ)
+					if receiver_generic_names.len > 0 {
+						mut effective_generic_names := []string{cap: receiver_generic_names.len +
+							generic_names.len}
+						for name in receiver_generic_names {
+							if name !in effective_generic_names {
+								effective_generic_names << name
+							}
+						}
+						for name in generic_names {
+							if name !in effective_generic_names {
+								effective_generic_names << name
+							}
+						}
+						if effective_generic_names.len == concrete_types.len {
+							generic_names = effective_generic_names.clone()
+						}
+					}
+				}
+				if generic_names.len == concrete_types.len {
+					return generic_names, concrete_types
+				}
+				return []string{}, concrete_types
+			}
+		}
+	}
+	return []string{}, []ast.Type{}
+}
+
 fn (mut g Gen) gen_branch_context_string() string {
 	mut arr := []string{}
 
 	// gen `T=int,X=string`
-	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
-		&& g.cur_fn.generic_names.len == g.cur_concrete_types.len {
-		for i in 0 .. g.cur_fn.generic_names.len {
-			arr << g.cur_fn.generic_names[i] + '=' +
-				util.strip_main_name(g.table.type_to_str(g.cur_concrete_types[i]))
+	mut generic_names := if g.cur_fn != unsafe { nil } {
+		g.cur_fn.generic_names.clone()
+	} else {
+		[]string{}
+	}
+	mut concrete_types := g.cur_concrete_types.clone()
+	if generic_names.len == 0 || generic_names.len != concrete_types.len {
+		recovered_generic_names, recovered_concrete_types := g.recover_specialized_generic_context_for(if g.cur_fn != unsafe { nil } {
+			g.cur_fn.name
+		} else {
+			''
+		})
+		if recovered_generic_names.len > 0
+			&& recovered_generic_names.len == recovered_concrete_types.len {
+			generic_names = recovered_generic_names.clone()
+			concrete_types = recovered_concrete_types.clone()
+		}
+	}
+	if generic_names.len > 0 && generic_names.len == concrete_types.len {
+		for i in 0 .. generic_names.len {
+			arr << generic_names[i] + '=' +
+				util.strip_main_name(g.table.type_to_str(concrete_types[i]))
 		}
 	}
 
@@ -424,7 +530,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	// we only save the first node, when there is embedded $if
 	old_curr_comptime_node := g.curr_comptime_node
 	if !g.comptime.inside_comptime_if {
-		g.curr_comptime_node = &node
+		g.curr_comptime_node = ast.Expr(node)
 	}
 	defer {
 		g.curr_comptime_node = old_curr_comptime_node

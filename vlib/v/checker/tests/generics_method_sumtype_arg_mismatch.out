@@ -139,17 +139,3 @@ vlib/v/checker/tests/generics_method_sumtype_arg_mismatch.vv:41:4: error: match 
       |             ~~~~~~~~~~
    42 |                 None { None{} }
    43 |                 T { m2 }
-vlib/v/checker/tests/generics_method_sumtype_arg_mismatch.vv:43:9: error: return type mismatch, it should be `Maybe[string]`, but it is instead `Maybe[int]`
-   41 |             match m2 {
-   42 |                 None { None{} }
-   43 |                 T { m2 }
-      |                     ~~
-   44 |             }
-   45 |         }
-vlib/v/checker/tests/generics_method_sumtype_arg_mismatch.vv:47:4: error: return type mismatch, it should be `Maybe[string]`, but it is instead `Maybe[int]`
-   45 |         }
-   46 |         T {
-   47 |             m
-      |             ^
-   48 |         }
-   49 |     }

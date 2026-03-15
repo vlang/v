@@ -351,7 +351,8 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 			} $else $if variant is $array {
 				encoder.encode_array(val)
 			} $else {
-				encoder.encode_value(val)
+				variant_val := val
+				encoder.encode_value(variant_val)
 			}
 		}
 	}

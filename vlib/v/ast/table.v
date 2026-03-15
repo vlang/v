@@ -144,7 +144,7 @@ pub fn (mut t Table) free() {
 }
 
 pub const fn_type_escape_seq = [' ', '', '(', '_', ')', '']
-pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
+pub const map_cname_escape_seq = ['[', '_T_', ', ', '_T_', ',', '_T_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
 
@@ -1605,7 +1605,7 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	for i, ct in concrete_types {
 		ct_sym := t.sym(ct)
 		inst_name += ct_sym.name
-		inst_cname += ct_sym.cname
+		inst_cname += ct_sym.scoped_cname()
 		if i < concrete_types.len - 1 {
 			inst_name += ', '
 			inst_cname += '_T_'
@@ -2241,11 +2241,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						}
 						nrt += gts.name
 						rnrt += gts.name
-						cnrt += gts.cname
+						cnrt += gts.scoped_cname()
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
 							rnrt += ', '
-							cnrt += '_'
+							cnrt += '_T_'
 						}
 						if ct.has_flag(.generic) {
 							has_unresolved_generic = true
@@ -2320,7 +2320,9 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 							']',
 							'',
 							', ',
-							'_',
+							'_T_',
+							',',
+							'_T_',
 							' ',
 							'',
 						]), sym.language)
@@ -3004,10 +3006,10 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						nrt += '&'.repeat(ct.nr_muls())
 					}
 					nrt += gts.name
-					c_nrt += gts.cname
+					c_nrt += gts.scoped_cname()
 					if i != ts.info.generic_types.len - 1 {
 						nrt += ', '
-						c_nrt += '_'
+						c_nrt += '_T_'
 					}
 				} else {
 					return typ
@@ -3486,6 +3488,20 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					sym.kind = parent.kind
 				}
 				else {}
+			}
+			if sym.kind != .generic_inst && sym.language == .v && sym.name.contains('[') {
+				sym.cname = sym.name.replace('.', '__').replace_each([
+					'[',
+					'_T_',
+					']',
+					'',
+					', ',
+					'_T_',
+					',',
+					'_T_',
+					' ',
+					'',
+				])
 			}
 		}
 	}

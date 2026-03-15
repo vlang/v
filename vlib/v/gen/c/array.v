@@ -1437,7 +1437,7 @@ fn (mut g Gen) get_array_index_method(typ ast.Type, is_last_index bool) string {
 fn (mut g Gen) get_array_get_method(typ ast.Type) string {
 	t := g.unwrap_generic(typ).set_nr_muls(0)
 	g.array_get_types << t
-	return g.styp(t) + '_get'
+	return g.styp(t) + '__v_get'
 }
 
 fn (mut g Gen) gen_array_index_methods(is_last_index bool) {
@@ -1586,7 +1586,7 @@ fn (mut g Gen) gen_array_get_methods() {
 		} else {
 			g.type_default(info.elem_type)
 		}
-		fn_name := '${left_type_str}_get'
+		fn_name := '${left_type_str}__v_get'
 		g.type_definitions.writeln('${g.static_non_parallel}${option_type_str} ${fn_name}(${left_type_str} a, ${ast.int_type_name} i);')
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('${g.static_non_parallel}${option_type_str} ${fn_name}(${left_type_str} a, ${ast.int_type_name} i) {')

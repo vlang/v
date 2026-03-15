@@ -7,6 +7,21 @@ import v.ast
 import v.util
 import v.token
 
+fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr { expr.or_block.kind != .absent }
+		ast.ComptimeCall { expr.or_block.kind != .absent }
+		ast.ComptimeSelector { expr.or_block.kind != .absent }
+		ast.Ident { expr.or_expr.kind != .absent }
+		ast.IndexExpr { expr.or_expr.kind != .absent && !expr.typ.has_option_or_result() }
+		ast.InfixExpr { expr.or_block.kind != .absent }
+		ast.PostfixExpr { expr.op == .question }
+		ast.PrefixExpr { expr.or_block.kind != .absent }
+		ast.SelectorExpr { expr.or_block.kind != .absent }
+		else { false }
+	}
+}
+
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type,
 	in_heap bool) {
 	gen_or := expr is ast.Ident && expr.or_expr.kind != .absent
@@ -64,6 +79,9 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.expr_with_opt(expr, expr_typ, ret_typ)
+		if in_heap {
+			g.write('))')
+		}
 	}
 }
 
@@ -259,7 +277,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				return_type = expected_multi_return
 			} else if g.table.sym(return_type).kind == .multi_return
 				&& return_type != expected_multi_return {
-				return_type = expected_multi_return
+				actual_return_types := (g.table.sym(return_type).info as ast.MultiReturn).types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+				if actual_return_types.any(it == 0 || it.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(it))
+				{
+					return_type = expected_multi_return
+				}
 			}
 		}
 	}
@@ -347,6 +370,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut is_fn_var := false
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			resolved_left_type := g.recheck_concrete_type(var_type)
+			if resolved_left_type != 0 {
+				var_type = g.unwrap_generic(resolved_left_type)
+			}
+			resolved_right_type := g.recheck_concrete_type(val_type)
+			if resolved_right_type != 0 {
+				val_type = g.unwrap_generic(resolved_right_type)
+			}
+		}
 		val := node.right[i]
 		mut is_call := false
 		mut gen_or := false
@@ -504,25 +537,58 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 		}
 		if is_decl && val is ast.CallExpr && val.or_block.kind != .absent {
-			resolved_call_type := g.resolve_return_type(val)
-			var_type = if resolved_call_type != ast.void_type {
-				resolved_call_type
-			} else {
-				val.return_type.clear_option_and_result()
+			mut resolved_call_type := g.resolve_return_type(val)
+			if resolved_call_type == ast.void_type {
+				resolved_call_type = val.return_type
 			}
+			if g.table.sym(resolved_call_type).kind == .alias {
+				unaliased_call_type := g.table.unaliased_type(resolved_call_type)
+				if unaliased_call_type.has_option_or_result() {
+					resolved_call_type = g.unwrap_generic(unaliased_call_type)
+				}
+			}
+			var_type = resolved_call_type.clear_option_and_result()
 			val_type = var_type
 			if mut left is ast.Ident && left.obj is ast.Var {
 				left.obj.typ = var_type
 			}
 		}
 		if is_decl && val is ast.PostfixExpr && val.op == .question {
-			resolved_val_type := g.resolved_expr_type(val, val_type)
+			mut resolved_val_type := g.resolved_expr_type(val.expr, val_type)
+			if g.table.sym(resolved_val_type).kind == .alias {
+				unaliased_val_type := g.table.unaliased_type(resolved_val_type)
+				if unaliased_val_type.has_option_or_result() {
+					resolved_val_type = g.unwrap_generic(unaliased_val_type)
+				}
+			}
+			resolved_val_type = resolved_val_type.clear_option_and_result()
 			if resolved_val_type != 0 && resolved_val_type != ast.void_type {
 				var_type = resolved_val_type
 				val_type = resolved_val_type
 				if mut left is ast.Ident && left.obj is ast.Var {
 					left.obj.typ = var_type
 				}
+			}
+		}
+		if is_decl && val is ast.Ident && val.or_expr.kind != .absent && g.cur_fn != unsafe { nil }
+			&& g.cur_concrete_types.len > 0 && val.or_expr.stmts.len > 0 {
+			last_or_stmt := val.or_expr.stmts.last()
+			if last_or_stmt is ast.ExprStmt && last_or_stmt.typ != ast.void_type {
+				resolved_or_type := g.resolved_expr_type(last_or_stmt.expr, last_or_stmt.typ)
+				if resolved_or_type != 0 && resolved_or_type != ast.void_type {
+					var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_or_type))
+					val_type = var_type
+					if mut left is ast.Ident && left.obj is ast.Var {
+						left.obj.typ = var_type
+					}
+				}
+			}
+		}
+		if is_decl && assign_expr_unwraps_option_or_result(val) {
+			var_type = var_type.clear_option_and_result()
+			val_type = val_type.clear_option_and_result()
+			if mut left is ast.Ident && left.obj is ast.Var {
+				left.obj.typ = var_type
 			}
 		}
 		if is_decl && var_type.has_option_or_result() {
@@ -585,12 +651,43 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					|| val.receiver_type.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(val.receiver_type)))
 			}
-			resolved_val_type := g.resolved_expr_type(val, val_type)
+			mut resolved_val_type := if val is ast.Ident && val.or_expr.kind != .absent
+				&& g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				or_value_type := g.resolved_or_block_value_type(val.or_expr)
+				if or_value_type != 0 {
+					or_value_type
+				} else {
+					g.resolved_expr_type(val, val_type)
+				}
+			} else {
+				g.resolved_expr_type(val, val_type)
+			}
 			if should_recompute_decl_type && resolved_val_type != 0
 				&& resolved_val_type != ast.void_type {
+				if assign_expr_unwraps_option_or_result(val) {
+					resolved_val_type = resolved_val_type.clear_option_and_result()
+				}
+				resolved_val_type = g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				resolved_val_sym := g.table.final_sym(resolved_val_type)
+				if resolved_val_sym.kind == .array {
+					resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_sym.array_info().elem_type))
+					if resolved_elem_type != 0 && !resolved_elem_type.has_flag(.generic)
+						&& !g.type_has_unresolved_generic_parts(resolved_elem_type) {
+						resolved_val_type = g.table.find_or_register_array(resolved_elem_type)
+					}
+				}
 				var_type = resolved_val_type
 				val_type = resolved_val_type
 				left.obj.typ = var_type
+			}
+		}
+		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
+			left.obj.typ = var_type
+			if mut scope_var := left.scope.find_var(left.name) {
+				scope_var.typ = var_type
+				scope_var.orig_type = ast.no_type
+				scope_var.smartcasts = []
+				scope_var.is_unwrapped = false
 			}
 		}
 		mut styp := g.styp(var_type)
@@ -836,7 +933,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(concrete_types, method_name)
+					specialized_suffix := g.generic_fn_name(concrete_types, '')
+					if specialized_suffix != '' && !method_name.ends_with(specialized_suffix) {
+						method_name = g.generic_fn_name(concrete_types, method_name)
+					}
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
@@ -857,7 +957,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if left_sym.kind == .alias && struct_info.kind == .struct
 					&& struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
 					mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(struct_info.info.concrete_types, method_name)
+					specialized_suffix := g.generic_fn_name(struct_info.info.concrete_types,
+						'')
+					if specialized_suffix != '' && !method_name.ends_with(specialized_suffix) {
+						method_name = g.generic_fn_name(struct_info.info.concrete_types,
+							method_name)
+					}
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
@@ -988,8 +1093,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if op_overloaded {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
-						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var()
-							&& !var_type.has_flag(.option) && !is_mut_arg_pointer_rebind {
+						if !is_decl && !is_shared_re_assign
+							&& (left.is_auto_deref_var() || is_auto_heap)
+							&& !is_mut_arg_pointer_rebind
+							&& (!var_type.has_flag(.option) || is_auto_heap) {
 							g.write('*')
 						}
 						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
@@ -1072,7 +1179,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.inside_opt_or_res = old_inside_opt_or_res
 					}
 					g.inside_opt_or_res = true
-					if is_auto_heap && var_type.has_flag(.option) {
+					if is_decl && is_auto_heap && var_type.has_flag(.option) {
 						g.write('&')
 					}
 					tmp_var := g.new_tmp_var()
@@ -1116,7 +1223,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						is_option_unwrapped := val is ast.Ident && val.or_expr.kind != .absent
+						is_option_unwrapped := assign_expr_unwraps_option_or_result(val)
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						// For large structs (with large fixed arrays), avoid stack-allocated
 						// compound literals which can cause stack overflow. Use vcalloc directly.
@@ -1231,6 +1338,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 							if nval == val {
 								g.expr(nval)
+								if !is_fn_var && is_auto_heap && is_option_auto_heap
+									&& !is_large_struct_heap {
+									if aligned != 0 {
+										g.write('), ${aligned})')
+									} else {
+										g.write('))')
+									}
+								}
 							}
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}

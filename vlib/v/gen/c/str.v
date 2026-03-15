@@ -64,8 +64,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	// original is_ptr for the typ (aliased type could overwrite it)
-	is_ptr := typ.is_ptr()
+	// option_mut_param_t is pointer-like even when nr_muls == 0
+	is_ptr := typ.is_ptr() || typ.has_flag(.option_mut_param_t)
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
@@ -76,6 +76,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	use_raw_interface_smartcast_expr := is_ptr && expr is ast.Ident && expr.obj is ast.Var
+		&& expr.obj.smartcasts.len > 0 && expr.obj.smartcasts.last().is_ptr()
+		&& (g.table.final_sym(g.unwrap_generic(expr.obj.typ)).kind == .interface
+		|| (expr.obj.orig_type != 0
+		&& g.table.final_sym(g.unwrap_generic(expr.obj.orig_type)).kind == .interface))
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
@@ -153,6 +158,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 				if temp_var_needed {
 					g.write(tmp_var)
+				} else if use_raw_interface_smartcast_expr {
+					old_inside_selector_lhs := g.inside_selector_lhs
+					g.inside_selector_lhs = true
+					g.expr(expr)
+					g.inside_selector_lhs = old_inside_selector_lhs
 				} else {
 					g.expr(expr)
 				}
@@ -197,6 +207,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else {
 			if temp_var_needed {
 				g.write(tmp_var)
+			} else if use_raw_interface_smartcast_expr {
+				old_inside_selector_lhs := g.inside_selector_lhs
+				g.inside_selector_lhs = true
+				g.expr_with_cast(expr, typ, typ)
+				g.inside_selector_lhs = old_inside_selector_lhs
 			} else {
 				g.expr_with_cast(expr, typ, typ)
 			}

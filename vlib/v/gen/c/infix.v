@@ -111,9 +111,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
 	mut eq_operator_expects_ptr := false
+	mut eq_method := ast.Fn{}
 	if m := g.table.find_method(left.sym, '==') {
 		has_defined_eq_operator = true
 		eq_operator_expects_ptr = m.receiver_type.is_ptr()
+		eq_method = m
+	} else if m := left.sym.find_method_with_generic_parent('==') {
+		has_defined_eq_operator = true
+		eq_operator_expects_ptr = m.receiver_type.is_ptr()
+		eq_method = m
 	}
 	// TODO: investigate why the following is needed for vlib/v/tests/string_alias_test.v and vlib/v/tests/anon_fn_with_alias_args_test.v
 	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
@@ -186,8 +192,11 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if is_builtin_or_alias_to_builtin {
 			method_name = 'builtin__${method_name}'
 		}
-		g.write(method_name)
-		g.write2('__eq(', '*'.repeat(left.typ.nr_muls()))
+		mut eq_fn_name := '${method_name}__eq'
+		eq_fn_name = g.specialized_method_name_from_receiver(eq_method, left.typ, eq_fn_name)
+		g.write(eq_fn_name)
+		g.write('(')
+		g.write('*'.repeat(left.typ.nr_muls()))
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
@@ -506,9 +515,15 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 
 	mut has_operator_overloading := false
 	mut operator_expects_ptr := false
+	mut operator_method := ast.Fn{}
 	if m := g.table.find_method(left.sym, '<') {
 		has_operator_overloading = true
 		operator_expects_ptr = m.receiver_type.is_ptr()
+		operator_method = m
+	} else if m := left.sym.find_method_with_generic_parent('<') {
+		has_operator_overloading = true
+		operator_expects_ptr = m.receiver_type.is_ptr()
+		operator_method = m
 	}
 
 	if g.pref.translated && !g.is_builtin_mod {
@@ -524,7 +539,12 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if left.unaliased_sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
-		method_name = g.generic_fn_name(concrete_types, method_name)
+		specialized_suffix := g.generic_fn_name(concrete_types, '')
+		if specialized_suffix != '' && !method_name.ends_with(specialized_suffix) {
+			method_name = g.generic_fn_name(concrete_types, method_name)
+		}
+		method_name = g.specialized_method_name_from_receiver(operator_method, left.typ,
+			method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write2('(', '*'.repeat(left.typ.nr_muls()))
@@ -559,6 +579,8 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if left.unaliased_sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
+		method_name = g.specialized_method_name_from_receiver(operator_method, left.typ,
+			method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write2('(', '*'.repeat(left.typ.nr_muls()))
@@ -1044,7 +1066,10 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if resolved_left_sym.info is ast.Struct && resolved_left_sym.info.concrete_types.len > 0 {
 			concrete_types = resolved_left_sym.info.concrete_types.clone()
 		}
-		method_name = g.generic_fn_name(concrete_types, method_name)
+		specialized_suffix := g.generic_fn_name(concrete_types, '')
+		if specialized_suffix != '' && !method_name.ends_with(specialized_suffix) {
+			method_name = g.generic_fn_name(concrete_types, method_name)
+		}
 		if left.sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
@@ -1190,17 +1215,32 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				elem_type = candidate_elem_type
 			}
 		}
-		elem_sym := g.table.final_sym(elem_type)
+		mut elem_sym := g.table.final_sym(elem_type)
+		if node.right is ast.StructInit && elem_sym.kind !in [.interface, .sum_type] {
+			resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.right,
+				right.typ)))
+			if resolved_right_type != 0
+				&& g.table.final_sym(resolved_right_type).kind == elem_sym.kind
+				&& g.table.type_to_str(resolved_right_type) == g.table.type_to_str(elem_type) {
+				elem_type = resolved_right_type
+				elem_sym = g.table.final_sym(elem_type)
+			}
+		}
 		noscan := g.check_noscan(elem_type)
 		elem_is_option := elem_type.has_flag(.option)
-		right_implements_elem_interface := elem_sym.kind == .interface
-			&& g.table.does_type_implement_interface(g.unwrap_generic(right_type), elem_type)
 		mut prevent_push_many := g.table.sumtype_has_variant(elem_type, right_type, false)
-		if right_implements_elem_interface {
-			// `[]Any << []int` should append the array as one interface value.
+		mut resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(right_type))
+		if resolved_right_type == 0 {
+			resolved_right_type = g.unwrap_generic(right_type)
+		}
+		rhs_is_any_value := elem_sym.kind == .any
+		rhs_is_interface_value := elem_sym.kind == .interface
+			&& g.table.does_type_implement_interface(resolved_right_type, elem_type)
+		if rhs_is_any_value || rhs_is_interface_value {
 			prevent_push_many = true
 		}
-		if prevent_push_many && node.right is ast.CallExpr && !right_implements_elem_interface {
+		if prevent_push_many && node.right is ast.CallExpr && !rhs_is_any_value
+			&& !rhs_is_interface_value {
 			// Allow concatenation for array-returning calls; avoids nesting for common builder APIs.
 			prevent_push_many = false
 		}
@@ -1288,8 +1328,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					g.expr(node.right.expr)
 				} else if elem_sym.info is ast.ArrayFixed
 					&& node.right in [ast.CallExpr, ast.DumpExpr] {
+					fixed_info := elem_sym.info as ast.ArrayFixed
 					tmpvar := g.expr_with_var(node.right, elem_type, false)
-					g.fixed_array_var_init(tmpvar, false, elem_sym.info.elem_type, elem_sym.info.size)
+					g.fixed_array_var_init(tmpvar, false, fixed_info.elem_type, fixed_info.size)
 				} else {
 					g.expr_with_cast(node.right, right.typ, elem_type)
 				}

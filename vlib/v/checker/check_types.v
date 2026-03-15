@@ -1182,6 +1182,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 			}
 			arg := node.args[arg_i]
 			param_sym := c.table.sym(param.typ)
+			param_has_generic_parts := param.typ.has_flag(.generic)
+				|| c.type_has_unresolved_generic_parts(param.typ)
 
 			if (param.typ.has_flag(.option) && arg.typ.has_flag(.option))
 				|| (param.typ.has_flag(.result) && arg.typ.has_flag(.result)) {
@@ -1192,7 +1194,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ = typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) && param_sym.name == gt_name {
+			} else if param_has_generic_parts && param_sym.name == gt_name {
 				typ = ast.mktyp(arg.typ)
 				if typ == ast.nil_type {
 					typ = ast.voidptr_type
@@ -1229,7 +1231,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) {
+			} else if param_has_generic_parts {
 				mut arg_typ := if c.table.sym(arg.typ).kind == .any {
 					c.unwrap_generic(arg.typ)
 				} else {

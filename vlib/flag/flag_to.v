@@ -894,7 +894,7 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 	the_default := defaults or { T{} }
 
 	$if T is $struct {
-		struct_name := T.name
+		struct_name := T.name.all_after_last('.')
 		$for field in T.fields {
 			if f := fm.field_map_flag[field.name] {
 				a_or_r := f.arg or { '${f.repeats}' }

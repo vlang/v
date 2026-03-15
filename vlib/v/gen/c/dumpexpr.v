@@ -81,7 +81,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	if node.expr is ast.ComptimeSelector && node.expr.is_name {
 		if node.expr.field_expr is ast.SelectorExpr && node.expr.field_expr.expr is ast.Ident {
 			if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var {
-				field, _ := g.type_resolver.get_comptime_selector_var_type(node.expr)
+				left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+				field, _ := g.resolve_comptime_selector_field(node.expr, left_type)
 				name = g.styp(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 				expr_type = field.typ
 			}

@@ -102,14 +102,14 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 			typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
 		}
 	}
-	if expr.is_auto_deref_var() {
+	if expr.is_auto_deref_var() && typ.is_ptr() {
 		typ = typ.deref()
 	}
-	if int_ref_interpolates_as_value(expr, typ, fmts[i]) {
+	if int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
-	if typ.has_flag(.shared_f) {
+	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}
 	mut remove_tail_zeros := false
@@ -243,8 +243,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	} else {
 		node.fwidths[i]
 	}
-	static_precision := if i < node.precision_exprs.len
-		&& node.precision_exprs[i] !is ast.EmptyExpr {
+	static_precision := if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
 		987698
 	} else {
 		node.precisions[i]

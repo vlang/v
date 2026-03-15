@@ -130,6 +130,13 @@ fn (mut g Gen) resolved_ident_is_auto_heap(expr ast.Ident) bool {
 }
 
 fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
+	scope_type := g.resolved_scope_var_type(expr)
+	if scope_type != 0 {
+		elem_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_type)))
+		if elem_type != 0 {
+			return g.unwrap_generic(elem_type)
+		}
+	}
 	if expr.obj !is ast.Var {
 		return 0
 	}
@@ -156,6 +163,16 @@ fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
 }
 
 fn (mut g Gen) resolved_ident_map_key_type(expr ast.Ident) ast.Type {
+	scope_type := g.resolved_scope_var_type(expr)
+	if scope_type != 0 {
+		typ_sym := g.table.final_sym(g.unwrap_generic(scope_type))
+		if typ_sym.kind == .map {
+			key_type := g.recheck_concrete_type(typ_sym.map_info().key_type)
+			if key_type != 0 {
+				return g.unwrap_generic(key_type)
+			}
+		}
+	}
 	if expr.obj !is ast.Var {
 		return 0
 	}
@@ -179,6 +196,16 @@ fn (mut g Gen) resolved_ident_map_key_type(expr ast.Ident) ast.Type {
 }
 
 fn (mut g Gen) resolved_ident_map_value_type(expr ast.Ident) ast.Type {
+	scope_type := g.resolved_scope_var_type(expr)
+	if scope_type != 0 {
+		typ_sym := g.table.final_sym(g.unwrap_generic(scope_type))
+		if typ_sym.kind == .map {
+			val_type := g.recheck_concrete_type(typ_sym.map_info().value_type)
+			if val_type != 0 {
+				return g.unwrap_generic(val_type)
+			}
+		}
+	}
 	if expr.obj !is ast.Var {
 		return 0
 	}
@@ -270,6 +297,20 @@ fn (mut g Gen) resolved_call_like_expr_type(expr ast.Expr) ast.Type {
 
 // resolved_expr_type recomputes the concrete type for expr nodes that can keep
 // stale generic metadata across concrete rechecks/codegen.
+fn (mut g Gen) resolved_or_block_value_type(or_expr ast.OrExpr) ast.Type {
+	if or_expr.stmts.len == 0 {
+		return 0
+	}
+	last_or_stmt := or_expr.stmts.last()
+	if last_or_stmt is ast.ExprStmt && last_or_stmt.typ != ast.void_type {
+		resolved_or_type := g.resolved_expr_type(last_or_stmt.expr, last_or_stmt.typ)
+		if resolved_or_type != 0 && resolved_or_type != ast.void_type {
+			return g.unwrap_generic(g.recheck_concrete_type(resolved_or_type))
+		}
+	}
+	return 0
+}
+
 fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
 	match expr {
 		ast.ParExpr {
@@ -277,6 +318,24 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 		}
 		ast.Ident {
 			if expr.obj is ast.Var {
+				if g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+					&& expr.name == g.cur_fn.receiver.name {
+					scope_type := g.resolved_scope_var_type(expr)
+					if scope_type != 0 {
+						return scope_type
+					}
+					resolved_receiver_type := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
+					if resolved_receiver_type != 0 {
+						return resolved_receiver_type
+					}
+				}
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& expr.obj.expr is ast.Ident && expr.obj.expr.or_expr.kind != .absent {
+					resolved_or_type := g.resolved_or_block_value_type(expr.obj.expr.or_expr)
+					if resolved_or_type != 0 {
+						return resolved_or_type
+					}
+				}
 				if expr.obj.ct_type_var == .generic_param {
 					resolved := g.resolve_current_fn_generic_param_type(expr.name)
 					if resolved != 0 {
@@ -316,6 +375,11 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					return resolved_obj_type
 				}
 			}
+			scope_type := g.resolved_scope_var_type(expr)
+			if scope_type != 0 && expr.obj is ast.Var
+				&& (expr.obj.is_unwrapped || expr.obj.orig_type != 0 || expr.obj.smartcasts.len > 0) {
+				return scope_type
+			}
 			default_resolved_type := g.unwrap_generic(g.recheck_concrete_type(default_typ))
 			resolver_type := g.unwrap_generic(g.recheck_concrete_type(g.type_resolver.get_type_or_default(expr,
 				default_typ)))
@@ -325,7 +389,6 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				|| expr.obj.smartcasts.len > 0))) {
 				return resolver_type
 			}
-			scope_type := g.resolved_scope_var_type(expr)
 			if scope_type != 0 {
 				return scope_type
 			}
@@ -539,7 +602,14 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			inner_default := if expr.typ != 0 { expr.typ } else { default_typ }
 			inner_type := g.resolved_expr_type(expr.expr, inner_default)
 			return if expr.op == .question {
-				g.unwrap_generic(inner_type).clear_option_and_result()
+				mut resolved_postfix_type := g.unwrap_generic(inner_type)
+				if g.table.sym(resolved_postfix_type).kind == .alias {
+					unaliased_postfix_type := g.table.unaliased_type(resolved_postfix_type)
+					if unaliased_postfix_type.has_option_or_result() {
+						resolved_postfix_type = g.unwrap_generic(unaliased_postfix_type)
+					}
+				}
+				resolved_postfix_type.clear_option_and_result()
 			} else {
 				g.unwrap_generic(inner_type)
 			}

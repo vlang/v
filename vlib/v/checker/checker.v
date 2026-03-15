@@ -1523,8 +1523,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 			}
 		}
-		if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type
-			&& !inter_sym.info.types.contains(utyp) {
+		if typ_sym.kind != .interface && utyp != ast.voidptr_type && utyp != ast.nil_type
+			&& utyp != ast.none_type && !inter_sym.info.types.contains(utyp) {
 			inter_sym.info.types << utyp
 		}
 		if !inter_sym.info.types.contains(ast.voidptr_type) {
@@ -2017,9 +2017,16 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
 	mut typ := c.expr(mut node.expr)
-	if node.expr.is_auto_deref_var() {
-		if mut node.expr is ast.Ident && node.expr.obj is ast.Var {
-			typ = node.expr.obj.typ
+	expr_is_auto_deref_var := node.expr.is_auto_deref_var()
+	receiver_uses_wrapped_smartcast := typ.has_option_or_result()
+		|| c.table.sym(c.unwrap_generic(typ)).kind in [.interface, .sum_type, .any]
+	if mut node.expr is ast.Ident {
+		if var := node.scope.find_var(node.expr.name) {
+			if var.smartcasts.len > 0 && (expr_is_auto_deref_var || receiver_uses_wrapped_smartcast) {
+				typ = c.exposed_smartcast_type(var.orig_type, var.smartcasts.last(), var.is_mut)
+			} else if expr_is_auto_deref_var {
+				typ = var.typ
+			}
 		}
 	}
 	c.inside_selector_expr = old_selector_expr
@@ -2038,6 +2045,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return node.expr_type
 	}
 	node.expr_type = typ
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len
+		&& c.type_has_unresolved_generic_parts(typ) {
+		typ = c.table.unwrap_generic_type_ex(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
+			true)
+		node.expr_type = typ
+	}
 	if !(node.expr is ast.Ident && node.expr.kind == .constant) {
 		if node.expr_type.has_flag(.option) {
 			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
@@ -2128,6 +2142,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 						unknown_field_msg += missing_variants
 					}
 				}
+				if !has_field && c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len == 0
+					&& c.table.sym(c.unwrap_generic(typ)).kind in [.interface, .any] {
+					node.typ = ast.any_type
+					return node.typ
+				}
 				if !has_field && first_err.msg() != '' {
 					c.error(first_err.msg(), node.pos)
 				}
@@ -2200,6 +2220,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		return field.typ
 	}
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len == 0
+		&& c.table.sym(c.unwrap_generic(typ)).kind in [.interface, .any] {
+		node.typ = ast.any_type
+		return node.typ
+	}
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
 		c.markused_comptime_call(typ.has_flag(.generic), '${int(method.params[0].typ)}.${field_name}')
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
@@ -2253,6 +2279,11 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return ast.void_type
 			}
 			unknown_field_msg = 'type `${sym.name}` has no field named `${field_name}`'
+		}
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_concrete_types.len == 0 && sym.kind in [.interface, .any] {
+			node.typ = ast.any_type
+			return node.typ
 		}
 		if final_sym.kind == .struct {
 			if c.smartcast_mut_pos != token.Pos{} {
@@ -5142,10 +5173,17 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 		return
 	}
 	sym := c.table.sym(cur_type)
-	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
-		to_type_.ref()
+	mut target_type := to_type_
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len
+		&& c.type_has_unresolved_generic_parts(target_type) {
+		target_type = c.table.unwrap_generic_type_ex(target_type, c.table.cur_fn.generic_names,
+			c.table.cur_concrete_types, true)
+	}
+	to_type := if sym.kind == .interface && c.table.sym(target_type).kind != .interface {
+		target_type.ref()
 	} else {
-		to_type_
+		target_type
 	}
 	match mut expr {
 		ast.SelectorExpr {
@@ -5247,7 +5285,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 						return
 					}
 				}
-				scope.register(ast.Var{
+				new_var := ast.Var{
 					name:              expr.name
 					typ:               cur_type
 					pos:               expr.pos
@@ -5259,7 +5297,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type:         orig_type
 					ct_type_var:       ct_type_var
 					ct_type_unwrapped: is_ct_type_unwrapped
-				})
+				}
+				if expr.name in scope.objects {
+					scope.objects[expr.name] = new_var
+				} else {
+					scope.register(new_var)
+				}
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos
 			}

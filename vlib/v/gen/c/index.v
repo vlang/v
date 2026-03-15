@@ -10,7 +10,16 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.index_range_expr(node, node.index)
 	} else {
-		mut left_type := g.unwrap_generic(g.recheck_concrete_type(node.left_type))
+		mut left_type := ast.Type(0)
+		if node.left is ast.Ident {
+			resolved_current_type := g.resolve_current_fn_generic_param_type(node.left.name)
+			if resolved_current_type != 0 {
+				left_type = g.unwrap_generic(g.recheck_concrete_type(resolved_current_type))
+			}
+		}
+		if left_type == 0 {
+			left_type = g.unwrap_generic(g.recheck_concrete_type(node.left_type))
+		}
 		if left_type == 0 || left_type.has_flag(.generic)
 			|| g.type_has_unresolved_generic_parts(left_type) {
 			left_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.left,

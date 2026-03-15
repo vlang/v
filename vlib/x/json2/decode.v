@@ -44,6 +44,7 @@ mut:
 // DecoderOptions provides options for JSON decoding.
 // By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
 @[params]
+@[markused]
 pub struct DecoderOptions {
 pub:
 	// In strict mode, quoted strings are not accepted as numbers.
@@ -53,6 +54,7 @@ pub:
 }
 
 // Decoder is the internal decoding state.
+@[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
@@ -153,6 +155,7 @@ fn (e JsonDecodeError) msg() string {
 }
 
 // checker_error generates a checker error message showing the position in the json string
+@[markused]
 fn (mut checker Decoder) checker_error(message string) ! {
 	position := checker.checker_idx
 
@@ -214,6 +217,7 @@ fn (mut checker Decoder) checker_error(message string) ! {
 }
 
 // decode_error generates a decoding error from the decoding stage
+@[markused]
 fn (mut decoder Decoder) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
 	if decoder.current_node != unsafe { nil } {
@@ -518,7 +522,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										if unsafe {
 											vmemcmp(decoder.json.str +
 												decoder.current_node.next.value.position,
-												float_zero_in_string.str, float_zero_in_string.len) == 0
+												'0.0'.str, '0.0'.len) == 0
 										} {
 											current_field_info = current_field_info.next
 											continue
@@ -658,8 +662,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
-				true_in_string.len) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str,
+				'true'.len) == 0
 		}
 	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value

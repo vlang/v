@@ -6,12 +6,17 @@ module c
 import v.ast
 import v.util
 
-fn for_in_val_type(base_type ast.Type, is_mut bool) ast.Type {
+fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
 	if base_type == 0 {
 		return base_type
 	}
-	if is_mut && !base_type.is_ptr() {
-		return base_type.ref()
+	if is_mut || is_ref {
+		if base_type.has_flag(.option) {
+			return base_type.set_flag(.option_mut_param_t)
+		}
+		if !base_type.is_any_kind_of_pointer() {
+			return base_type.ref()
+		}
 	}
 	return base_type
 }
@@ -190,7 +195,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			} else {
 				g.recheck_concrete_type(g.table.value_type(unwrapped_cond_type))
 			}
-			node.val_type = for_in_val_type(base_val_type, node.val_is_mut)
+			node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 			node.scope.update_var_type(node.val_var, node.val_type)
 		}
 	}
@@ -207,7 +212,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 		node.cond_type = unwrapped_typ
 		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut)
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
@@ -261,7 +266,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.scope.update_var_type(node.key_var, key_type)
 		}
 		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut)
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else if node.kind == .alias {
 		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
@@ -281,7 +286,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.scope.update_var_type(node.key_var, key_type)
 		}
 		base_val_type := g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut)
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
@@ -316,7 +321,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(g.recheck_concrete_type(node.cond_type))))
 			}
 			if resolved_val_type != 0 {
-				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut)
+				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
 				node.scope.update_var_type(node.val_var, node.val_type)
 			}
 		}
@@ -509,7 +514,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			}
 			resolved_val_type := g.resolve_current_fn_generic_param_value_type(cond_ident.name)
 			if resolved_val_type != 0 {
-				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut)
+				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
 				if node.val_var.len > 0 {
 					node.scope.update_var_type(node.val_var, node.val_type)
 				}
@@ -619,15 +624,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.is_builtin() {
 			fn_name = 'builtin__${fn_name}'
-		}
-		if receiver_sym.info is ast.Struct {
-			if receiver_sym.info.concrete_types.len > 0 {
-				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name)
-			}
 		} else if receiver_sym.info is ast.Interface {
 			left_cc_type := g.cc_type(g.table.unaliased_type(node.cond_type), false)
 			left_type_name := util.no_dots(left_cc_type)
 			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
+		} else {
+			fn_name = g.specialized_method_name_from_receiver(next_fn, node.cond_type,
+				fn_name)
 		}
 		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
