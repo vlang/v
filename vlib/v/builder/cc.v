@@ -1110,13 +1110,26 @@ fn (mut b Builder) cc_linux_cross() {
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
+	// Filter out host-specific -I and -L paths that come from running
+	// pkg-config on the host system (e.g. macOS homebrew paths).
+	// Only keep paths under the V root (thirdparty/) or the cross-compilation sysroot.
+	vroot := b.pref.vroot
+	mut filtered_others := []string{cap: others.len}
+	for other in others {
+		trimmed := other.replace('"', '')
+		if (trimmed.starts_with('-I') || trimmed.starts_with('-L')) && !trimmed.contains(vroot)
+			&& !trimmed.contains(sysroot) {
+			continue
+		}
+		filtered_others << other
+	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target x86_64-linux-gnu'
 	cc_args << defines
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-	cc_args << others
+	cc_args << filtered_others
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
@@ -1152,13 +1165,14 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
 		'-lc',
-		'-lcrypto',
-		'-lssl',
 		'-lpthread',
 		os.quoted_path('${sysroot}/crtn.o'),
 		'-lm',
 		'-ldl',
 	]
+	// Pass library flags from the cflags system (e.g. -lssl -lcrypto from -d use_openssl)
+	// instead of hardcoding them, so the linker only links what the program actually needs.
+	linker_args << libs
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
