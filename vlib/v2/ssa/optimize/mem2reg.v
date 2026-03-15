@@ -553,31 +553,29 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 						// Direct lookup: phi_vals[succ_id][spai] is the phi for this alloc
 						if succ_id < ctx.phi_vals.len && spai < ctx.phi_vals[succ_id].len {
 							vid := ctx.phi_vals[succ_id][spai]
-							v := m.values[vid]
-							mut val := 0
-							if ctx.stacks[alloc_id].len > 0 {
-								val = ctx.stacks[alloc_id].last()
+							phi_v := m.values[vid]
+							mut phi_val := if ctx.stacks[alloc_id].len > 0 {
+								ctx.stacks[alloc_id].last()
 							} else {
 								// Undef - reading uninitialized memory
 								alloc_v := m.values[alloc_id]
 								alloc_typ := m.type_store.types[alloc_v.typ]
-								typ := alloc_typ.elem_type
-								val = m.get_or_add_const(typ, 'undef')
+								m.get_or_add_const(alloc_typ.elem_type, 'undef')
 							}
 							bvid := block_val_ids[blk_id]
 							// Defer phi operand append to avoid m.instrs[idx].operands << x
 							// which is broken in ARM64 self-hosted binaries.
-							ctx.deferred_phi_ops << v.index
-							ctx.deferred_phi_ops << val
+							ctx.deferred_phi_ops << phi_v.index
+							ctx.deferred_phi_ops << phi_val
 							ctx.deferred_phi_ops << bvid
 							// FIX: Update uses so DCE doesn't remove the value
 							// Avoid m.values[X].uses << Y — chained append broken in ARM64 self-hosted.
-							if val < m.values.len {
-								if vid !in m.values[val].uses {
+							if phi_val < m.values.len {
+								if vid !in m.values[phi_val].uses {
 									// Read whole struct, modify, write back (chained broken in ARM64)
-									mut vv := m.values[val]
+									mut vv := m.values[phi_val]
 									vv.uses << vid
-									m.values[val] = vv
+									m.values[phi_val] = vv
 								}
 							}
 						}

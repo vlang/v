@@ -297,7 +297,7 @@ fn test_generate_array_method_elem_expr_registers_elem_type() {
 	}))
 	assert elem_expr is ast.IndexExpr
 	assert elem_expr.pos().id < 0
-	elem_type := t.env.get_expr_type(elem_expr.pos().id) or {
+	elem_type := t.synth_types[elem_expr.pos().id] or {
 		assert false, 'expected synthesized element type for array helper index expr'
 		return
 	}
@@ -345,6 +345,7 @@ fn test_transform_init_expr_resolves_imported_enum_shorthand() {
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		cur_module:                  'main'
+		cached_scopes:               {'ast': ast_scope}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}

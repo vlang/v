@@ -61,7 +61,7 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 		end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
 		chunk := b.files[i..end]
 		args << TransformChunkArgs{
-			t:          unsafe { voidptr(&trans) }
+			t:          unsafe { voidptr(trans) }
 			files:      chunk
 			result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
 			worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }

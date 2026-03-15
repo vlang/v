@@ -739,9 +739,6 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 				}
 			}
 
-			if val_id in g.reg_map {
-				continue
-			}
 			// Assign slot for result of instruction (or pointer for alloca)
 			g.stack_map[val_id] = -slot_offset
 			slot_offset += 8
@@ -909,11 +906,10 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			if float_reg_idx < 8 {
 				// fmov xN, dN to get float bits into integer register
 				g.emit(asm_fmov_x_d(Reg(9), float_reg_idx))
-				if reg := g.reg_map[pid] {
-					g.emit_mov_reg(reg, 9)
-				} else {
-					offset := g.stack_map[pid]
-					g.emit_str_reg_offset(9, 29, offset)
+				offset := g.stack_map[pid]
+				g.emit_str_reg_offset(9, 29, offset)
+				if pid in g.reg_map {
+					g.emit_mov_reg(g.reg_map[pid], 9)
 				}
 			}
 			float_reg_idx++
@@ -941,8 +937,8 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			}
 			// Large/indirect params are represented as addresses in registers.
 			// Materialize the local spill address for any register-allocated uses.
-			if reg := g.reg_map[pid] {
-				g.emit_add_fp_imm(reg, offset)
+			if pid in g.reg_map {
+				g.emit_add_fp_imm(g.reg_map[pid], offset)
 			}
 			reg_idx += 1
 		} else if param_type_info.kind == .struct_t && param_size > 8 {
@@ -962,11 +958,14 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 					g.emit_str_reg_offset(cur_reg, 29, offset + ri * 8)
 				}
 			}
-			if reg := g.reg_map[pid] {
-				g.emit_add_fp_imm(reg, offset)
+			if pid in g.reg_map {
+				g.emit_add_fp_imm(g.reg_map[pid], offset)
 			}
 			reg_idx += num_regs
-		} else if reg := g.reg_map[pid] {
+		} else if pid in g.reg_map {
+			reg := g.reg_map[pid]
+			offset := g.stack_map[pid]
+			g.emit_str_reg_offset(src_reg, 29, offset)
 			if reg != src_reg {
 				g.emit_mov_reg(reg, src_reg)
 			}
@@ -1067,7 +1066,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 	match op {
 		.fadd, .fsub, .fmul, .fdiv, .frem {
 			// Float operations using scalar SIMD instructions (d0-d7)
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// For now, load operands as float constants or from memory
 			// Load LHS to d0
@@ -1103,13 +1102,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Store the float bits in the result (for later int() conversion)
 			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.fptosi {
 			// Float to signed integer conversion
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// Load float operand to d0
 			g.load_float_operand(instr.operands[0], 0)
@@ -1117,13 +1114,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// FCVTZS Xd, Dn (convert to signed int, truncate toward zero)
 			g.emit(asm_fcvtzs_x_d(Reg(dest_reg), 0))
 
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.sitofp {
 			// Signed integer to float conversion
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// Load integer operand to x8
 			src_reg := g.get_operand_reg(instr.operands[0], 8)
@@ -1146,13 +1141,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 			}
 
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.uitofp {
 			// Unsigned integer to float conversion
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// Load integer operand to x8
 			src_reg := g.get_operand_reg(instr.operands[0], 8)
@@ -1175,13 +1168,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 			}
 
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.fptoui {
 			// Float to unsigned integer conversion
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// Load float operand to d0
 			g.load_float_operand(instr.operands[0], 0)
@@ -1189,15 +1180,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// FCVTZU Xd, Dn (convert to unsigned int, truncate toward zero)
 			g.emit(asm_fcvtzu_x_d(Reg(dest_reg), 0))
 
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq,
 		.ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
 			// Optimization: Use actual registers if allocated, avoid shuffling to x8/x9
 			// Dest register
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 
 			// Op0 (LHS)
 			lhs_reg := g.get_operand_reg(instr.operands[0], 8)
@@ -1371,10 +1360,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 			// If dest_reg was not the allocated one (e.g. was 8), move it.
-			// Only if spilled (not in reg_map) do we need to store.
-			if val_id !in g.reg_map {
-				g.store_reg_to_val(dest_reg, val_id)
-			}
+			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.store {
 			src_id := instr.operands[0]
@@ -1757,13 +1743,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.load {
-			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			dest_reg := g.get_dest_reg(val_id)
 			ptr_id := instr.operands[0]
 			trace_load := g.env_trace_load.len > 0
 				&& (g.env_trace_load == '*' || g.cur_func_name == g.env_trace_load)
 			mut loaded_into_aggregate_slot := false
-			mut force_spill_small_struct := false
-			mut handled_sumtype_data_word_load := false
 			mut ptr_is_null_const := false
 			// ValueID 0 is the SSA null/invalid sentinel.
 			if ptr_id <= 0 || ptr_id >= g.mod.values.len {
@@ -1773,7 +1757,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 					eprintln('ARM64 LOAD fn=${g.cur_func_name} val=${val_id} ptr=${ptr_id} sumtype_data_word=${data_word_id}')
 				}
 				g.load_val_to_reg(dest_reg, data_word_id)
-				handled_sumtype_data_word_load = true
 			} else {
 				ptr_is_null_const = g.is_effective_null_pointer_value(ptr_id)
 				ptr_reg := g.get_operand_reg(ptr_id, 9)
@@ -1925,9 +1908,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 								else { g.emit(asm_ldr(Reg(dest_reg), Reg(ptr_reg))) }
 							}
 						}
-						if result_typ.kind == .struct_t && result_size <= 8 && val_id in g.stack_map {
-							force_spill_small_struct = true
-						}
 					}
 				} else {
 					if ptr_is_null_const {
@@ -1938,8 +1918,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 
-			if !loaded_into_aggregate_slot && (handled_sumtype_data_word_load
-				|| val_id !in g.reg_map || force_spill_small_struct) {
+			if !loaded_into_aggregate_slot {
 				g.store_reg_to_val(dest_reg, val_id)
 			}
 		}
@@ -3043,7 +3022,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					&& g.mod.values[val_id].typ < g.mod.type_store.types.len
 					&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
 				if src_is_float && dst_is_float {
-					dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+					dest_reg := g.get_dest_reg(val_id)
 					if instr.op == .trunc {
 						// f64 → f32: load f64 into d0, convert to s0, move bits to int reg
 						g.load_float_operand(instr.operands[0], 0)
@@ -3054,9 +3033,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_float_operand(instr.operands[0], 0)
 						g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 					}
-					if val_id !in g.reg_map {
-						g.store_reg_to_val(dest_reg, val_id)
-					}
+					g.store_reg_to_val(dest_reg, val_id)
 				} else {
 					// Integer conversions: just copy (registers are 64-bit)
 					g.load_val_to_reg(8, instr.operands[0])
@@ -3145,8 +3122,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 											}
 											if can_reinterpret_ptr {
 												src_is_null_ptr = g.is_effective_null_pointer_value(src_id)
-												if src_reg := g.reg_map[src_id] {
-													src_ptr_reg = src_reg
+												if src_id in g.reg_map {
+													src_ptr_reg = g.reg_map[src_id]
 												} else if src_off := g.stack_map[src_id] {
 													g.emit_ldr_reg_offset(src_ptr_reg,
 														29, src_off)
@@ -3172,9 +3149,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 											g.emit_add_fp_imm(src_ptr_reg, src_off)
 										}
 										can_copy = true
-									} else if src_reg := g.reg_map[src_id] {
+									} else if src_id in g.reg_map {
 										if src_is_ptr_carried {
-											src_ptr_reg = src_reg
+											src_ptr_reg = g.reg_map[src_id]
 											can_copy = true
 										}
 									} else if src_id > 0 && src_id < g.mod.values.len {
@@ -3323,8 +3300,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 										}
 										if can_use_ptr_source {
 											src_is_null_ptr = g.is_effective_null_pointer_value(src_id)
-											if src_reg := g.reg_map[src_id] {
-												src_ptr_reg = src_reg
+											if src_id in g.reg_map {
+												src_ptr_reg = g.reg_map[src_id]
 											} else if src_off := g.stack_map[src_id] {
 												g.emit_ldr_reg_offset(src_ptr_reg, 29,
 													src_off)
@@ -3355,9 +3332,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 										g.emit_add_fp_imm(src_ptr_reg, src_off)
 									}
 									can_copy = true
-								} else if src_reg := g.reg_map[src_id] {
+								} else if src_id in g.reg_map {
 									if src_is_ptr_carried {
-										src_ptr_reg = src_reg
+										src_ptr_reg = g.reg_map[src_id]
 										can_copy = true
 									}
 								} else if src_id > 0 && src_id < g.mod.values.len {
@@ -3985,7 +3962,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.emit_ldr_reg_offset(8, 29, field_offset)
 						g.store_reg_to_val(8, val_id)
 					}
-				} else if reg := g.reg_map[tuple_id] {
+				} else if tuple_id in g.reg_map {
+					reg := g.reg_map[tuple_id]
 					// Large aggregates in registers are represented by their address.
 					if tuple_is_large_agg && idx >= 0 {
 						if field_elem_size > 8 {
@@ -4185,10 +4163,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit_str_reg_offset(10, 29, result_offset + field_off + w * 8)
 						}
 						copied_field = true
-					} else if src_reg := g.reg_map[field_id] {
+					} else if field_id in g.reg_map {
+						field_reg := g.reg_map[field_id]
 						if src_ptr_matches_field || src_is_ptr_carried {
 							for w in 0 .. copy_chunks {
-								g.emit(asm_ldr_imm(Reg(10), Reg(src_reg), u32(w)))
+								g.emit(asm_ldr_imm(Reg(10), Reg(field_reg), u32(w)))
 								g.emit_str_reg_offset(10, 29, result_offset + field_off + w * 8)
 							}
 							copied_field = true
@@ -4275,9 +4254,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 					copied_tuple = true
-				} else if src_reg := g.reg_map[tuple_id] {
+				} else if tuple_id in g.reg_map {
+					tuple_reg := g.reg_map[tuple_id]
 					for i in 0 .. num_chunks {
-						g.emit(asm_ldr_imm(Reg(9), Reg(src_reg), u32(i)))
+						g.emit(asm_ldr_imm(Reg(9), Reg(tuple_reg), u32(i)))
 						g.emit_str_reg_offset(9, 29, result_offset + i * 8)
 					}
 					copied_tuple = true
@@ -4383,10 +4363,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.emit_str_reg_offset(10, 29, result_offset + elem_off + i * 8)
 					}
 					copied_elem = true
-				} else if src_reg := g.reg_map[elem_id] {
+				} else if elem_id in g.reg_map {
+					elem_reg := g.reg_map[elem_id]
 					if src_ptr_matches_elem || src_is_ptr_carried {
 						for i in 0 .. copy_chunks {
-							g.emit(asm_ldr_imm(Reg(10), Reg(src_reg), u32(i)))
+							g.emit(asm_ldr_imm(Reg(10), Reg(elem_reg), u32(i)))
 							g.emit_str_reg_offset(10, 29, result_offset + elem_off + i * 8)
 						}
 						copied_elem = true
@@ -4833,10 +4814,17 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 	return false
 }
 
+fn (mut g Gen) get_dest_reg(val_id int) int {
+	if val_id in g.reg_map {
+		return g.reg_map[val_id]
+	}
+	return 8
+}
+
 fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 	// If value is in a register, return it
-	if r := g.reg_map[val_id] {
-		return r
+	if val_id in g.reg_map {
+		return g.reg_map[val_id]
 	}
 	// Otherwise load it into fallback
 	g.load_val_to_reg(fallback, val_id)
@@ -5410,7 +5398,8 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
-	if r := g.reg_map[val_id] {
+	if val_id in g.reg_map {
+		r := g.reg_map[val_id]
 		if r != reg {
 			g.emit_mov_reg(reg, r)
 		}
@@ -5626,7 +5615,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			// Large structs/arrays can be materialized either by-value (slot contains bytes)
 			// or indirectly (slot contains a pointer to bytes). Preserve the producer's
 			// representation when loading from stack.
-			if reg_idx := g.reg_map[val_id] {
+			if val_id in g.reg_map {
+				reg_idx := g.reg_map[val_id]
 				if reg_idx != reg {
 					g.emit_mov_reg(reg, reg_idx)
 				}
@@ -5642,7 +5632,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			} else {
 				g.emit_mov_imm64(reg, 0)
 			}
-		} else if reg_idx := g.reg_map[val_id] {
+		} else if val_id in g.reg_map {
+			reg_idx := g.reg_map[val_id]
 			if reg_idx != reg {
 				g.emit_mov_reg(reg, reg_idx)
 			}
@@ -5671,7 +5662,8 @@ fn (mut g Gen) load_fnptr_to_reg(reg int, val_id int) {
 		g.load_val_to_reg(reg, val_id)
 		return
 	}
-	if reg_idx := g.reg_map[val_id] {
+	if val_id in g.reg_map {
+		reg_idx := g.reg_map[val_id]
 		if reg_idx != reg {
 			g.emit_mov_reg(reg, reg_idx)
 		}
@@ -5688,7 +5680,8 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	mut stored_reg := reg
 	trace_storeval := g.env_trace_storeval.len > 0
 		&& (g.env_trace_storeval == '*' || g.cur_func_name == g.env_trace_storeval)
-	if reg_idx := g.reg_map[val_id] {
+	if val_id in g.reg_map {
+		reg_idx := g.reg_map[val_id]
 		if reg_idx != reg {
 			g.emit_mov_reg(reg_idx, reg)
 		}
@@ -5717,9 +5710,9 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 				}
 			}
 		}
-		if val_id !in g.reg_map {
-			g.emit_str_reg_offset(stored_reg, 29, offset)
-		}
+		// Always store to stack even when value is register-allocated,
+		// to ensure correctness with the block-local interval approximation.
+		g.emit_str_reg_offset(stored_reg, 29, offset)
 	}
 }
 
@@ -7848,7 +7841,7 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	// Reserve x10/x11/x12 for helper temporaries (large offset materialization,
 	// address arithmetic, and spill-free internal moves).
 	short_regs := []int{}
-	long_regs := []int{}
+	long_regs := [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 
 	// Reusable arrays to avoid allocation in the hot loop
 	mut used := []bool{len: 32, init: false}

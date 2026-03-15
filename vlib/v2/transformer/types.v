@@ -717,6 +717,30 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 					value: 'false'
 				})
 			}
+			// For primitives larger than 32 bits (i64, u64, f64),
+			// wrap in a cast so cleanc emits the correct type.
+			if typ.size > 32 && typ.props.has(.integer) {
+				prim_name := if typ.props.has(.unsigned) {
+					'u${typ.size}'
+				} else {
+					'i${typ.size}'
+				}
+				return ast.Expr(ast.CastExpr{
+					typ:  ast.Ident{name: prim_name}
+					expr: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				})
+			} else if typ.size > 32 && typ.props.has(.float) {
+				return ast.Expr(ast.CastExpr{
+					typ:  ast.Ident{name: 'f${typ.size}'}
+					expr: ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}
+				})
+			}
 			return ast.Expr(ast.BasicLiteral{
 				kind:  .number
 				value: '0'

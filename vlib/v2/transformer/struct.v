@@ -1046,8 +1046,9 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		is_sumtype_field := t.is_sum_type(field_type_name)
 		if has_expected_field_type {
 			field_value = t.resolve_expr_with_expected_type(field_value, expected_field_type)
-			if !is_sumtype_field && field_value.pos().id != 0 {
-				t.synth_types[field_value.pos().id] = expected_field_type
+			fv_pos := field_value.pos()
+			if !is_sumtype_field && fv_pos.id != 0 {
+				t.synth_types[fv_pos.id] = expected_field_type
 			}
 			if t.is_eval_backend() {
 				if expected_field_type is types.OptionType

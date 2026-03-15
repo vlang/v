@@ -2220,7 +2220,7 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	if decl.name == 'init' || decl.name == 'deinit' {
 		return true
 	}
-	if decl.name == 'main' && (b.cur_module == '' || b.cur_module == 'main') {
+	if decl.name == 'main' {
 		return true
 	}
 	// Always build functions from core modules that the runtime needs

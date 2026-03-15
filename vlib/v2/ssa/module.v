@@ -470,6 +470,16 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			}
 		}
 		// Register new type in main with remapped field types
+		remapped_ret := if int(wt.ret_type) < type_remap.len && int(wt.ret_type) >= seed_types {
+			type_remap[int(wt.ret_type)]
+		} else {
+			wt.ret_type
+		}
+		remapped_elem2 := if int(wt.elem_type) < type_remap.len && int(wt.elem_type) >= seed_types {
+			type_remap[int(wt.elem_type)]
+		} else {
+			wt.elem_type
+		}
 		mut new_type := Type{
 			kind:        wt.kind
 			width:       wt.width
@@ -477,16 +487,8 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			is_c_struct: wt.is_c_struct
 			is_union:    wt.is_union
 			is_unsigned: wt.is_unsigned
-			ret_type:    if int(wt.ret_type) < type_remap.len && int(wt.ret_type) >= seed_types {
-				type_remap[int(wt.ret_type)]
-			} else {
-				wt.ret_type
-			}
-			elem_type:   if int(wt.elem_type) < type_remap.len && int(wt.elem_type) >= seed_types {
-				type_remap[int(wt.elem_type)]
-			} else {
-				wt.elem_type
-			}
+			ret_type:    remapped_ret
+			elem_type:   remapped_elem2
 		}
 		if wt.fields.len > 0 {
 			mut new_fields := []TypeID{cap: wt.fields.len}
@@ -616,6 +618,12 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			continue
 		}
 		mut f := m.funcs[fd.func_idx]
+		// Skip if function was already built by a previous worker's merge.
+		// Without this guard, duplicate blocks from multiple workers get appended,
+		// leading to mismatched parameter/value IDs and crashes.
+		if f.blocks.len > 0 {
+			continue
+		}
 		for blk_id in fd.blocks {
 			f.blocks << if blk_id >= seed_blocks { blk_id + block_off } else { blk_id }
 		}
@@ -645,6 +653,7 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			wfunc.typ
 		}
 		m.funcs << Function{
+			id:     m.funcs.len
 			name:   wfunc.name
 			typ:    new_typ
 			blocks: new_blocks

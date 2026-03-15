@@ -95,6 +95,24 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 			macro_expr = macro_expr.replace('\n', ' \\\n')
 		}
 		g.emitted_types[macro_key] = true
+		// Unqualified numeric consts use #define with fully-resolved literal
+		// values and also store into const_exprs so that downstream consts
+		// that reference them can be resolved too. This avoids macro
+		// collisions with local variables of the same name (e.g. max_len
+		// from sorted_map.v vs max_len parameter in eprint_space_padding).
+		if !name.contains('__') && is_numeric_const_expr(field.value) {
+			typ := g.get_expr_type(field.value)
+			if typ != '' && typ != 'void' {
+				resolved := if expr_contains_ident(field.value) {
+					g.resolve_const_expr(macro_expr)
+				} else {
+					macro_expr
+				}
+				g.const_exprs[name] = resolved
+				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
+				continue
+			}
+		}
 		g.sb.writeln('#define ${name} ${macro_expr}')
 	}
 }
@@ -361,6 +379,34 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			g.sb.writeln('')
 		}
 	}
+}
+
+fn is_numeric_const_expr(e ast.Expr) bool {
+	if e is ast.BasicLiteral {
+		return true
+	}
+	if e is ast.InfixExpr {
+		return is_numeric_const_expr(e.lhs) && is_numeric_const_expr(e.rhs)
+	}
+	if e is ast.CastExpr {
+		return is_numeric_const_expr(e.expr)
+	}
+	if e is ast.ParenExpr {
+		return is_numeric_const_expr(e.expr)
+	}
+	if e is ast.PrefixExpr {
+		return is_numeric_const_expr(e.expr)
+	}
+	if e is ast.Ident {
+		return true // references to other consts are still numeric
+	}
+	if e is ast.CallExpr {
+		// sizeof() is a compile-time numeric expression
+		if e.lhs is ast.Ident {
+			return e.lhs.name == 'sizeof'
+		}
+	}
+	return false
 }
 
 fn expr_contains_ident(e ast.Expr) bool {

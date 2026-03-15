@@ -255,6 +255,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		mut typ := g.get_expr_type(rhs)
+		// For CastExpr RHS (e.g., `(i64)(0)`), derive type from the cast target.
+		if rhs is ast.CastExpr {
+			cast_type := g.expr_type_to_c(rhs.typ)
+			if cast_type != '' {
+				typ = cast_type
+			}
+		}
 		// For temp variables registered by the transformer with a specific type,
 		// prefer the scope-registered type over the RHS expression type.
 		if name.starts_with('_or_t') || name.starts_with('_tmp_') {
@@ -598,7 +605,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				return
 			}
 		}
-		if lhs_fixed_type.starts_with('Array_fixed_') && rhs is ast.CallExpr {
+		if lhs_fixed_type.starts_with('Array_fixed_') && lhs !is ast.IndexExpr && rhs is ast.CallExpr {
 			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
 				if call_ret == lhs_fixed_type {
 					wrapper_type := g.c_fn_return_type_from_v(lhs_fixed_type)
@@ -612,7 +619,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
-		if lhs_fixed_type.starts_with('Array_fixed_') && node.op == .assign && rhs !is ast.CallExpr {
+		if lhs_fixed_type.starts_with('Array_fixed_') && lhs !is ast.IndexExpr && node.op == .assign
+			&& rhs !is ast.CallExpr {
 			g.write_indent()
 			g.sb.write_string('memcpy(')
 			g.expr(lhs)

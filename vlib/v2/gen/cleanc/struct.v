@@ -935,6 +935,11 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			g.sb.write_string('})')
 			return
 		}
+		if type_name.starts_with('Array_') {
+			elem_c_type := type_name[6..] // e.g. Array_ast__Stmt → ast__Stmt
+			g.sb.write_string('__new_array_with_default_noscan(0, 0, sizeof(${elem_c_type}), NULL)')
+			return
+		}
 		g.sb.write_string('((${type_name}){0})')
 		return
 	}

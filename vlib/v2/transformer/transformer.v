@@ -3723,34 +3723,24 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 }
 
 // typed_deref generates a typed dereference of a voidptr:
-// *unsafe { &ValueType(ptr) }
+// *(&ValueType(ptr))
 // This is needed because map__get_check returns voidptr, and dereferencing
-// voidptr in the SSA builder loads only 1 byte (i8). The typed deref
-// emits bitcast(ptr, *ValueType) + load(*ValueType) for correct load size.
+// voidptr is invalid in C and loads only 1 byte (i8) in the SSA builder.
+// The typed deref casts to the correct pointer type first.
 fn (t &Transformer) typed_deref(ptr ast.Expr, value_type types.Type) ast.Expr {
-	// For native backends (arm64/x64), map__get_check returns voidptr and
-	// dereferencing voidptr loads only 1 byte (i8). Emit bitcast to correct
-	// pointer type first: *(&ValueType(ptr))
-	is_native := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-	if is_native {
-		// Use the same cast shape as transform_index_expr:
-		// *(&ValueType(ptr)) where &ValueType is encoded as a cast type.
-		// This avoids taking the address of an intermediate cast value.
-		return ast.PrefixExpr{
-			op:   .mul
-			expr: ast.CastExpr{
-				typ:  ast.PrefixExpr{
-					op:   .amp
-					expr: t.type_to_ast_type_expr(value_type)
-				}
-				expr: ptr
-			}
-		}
-	}
-	// C/cleanc backends handle voidptr deref correctly via C casts
+	// Use the same cast shape as transform_index_expr:
+	// *(&ValueType(ptr)) where &ValueType is encoded as a cast type.
+	// For C/cleanc: generates *((ValueType*)(ptr))
+	// For native:   emits bitcast(ptr, *ValueType) + load(*ValueType)
 	return ast.PrefixExpr{
 		op:   .mul
-		expr: ptr
+		expr: ast.CastExpr{
+			typ:  ast.PrefixExpr{
+				op:   .amp
+				expr: t.type_to_ast_type_expr(value_type)
+			}
+			expr: ptr
+		}
 	}
 }
 
@@ -6655,18 +6645,31 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 					}
 				}
 			}
-			// Fallback: check known string-returning methods
-			if t.is_string_returning_method(method_name) {
+			// Fallback: check known string-returning methods, but only when
+			// the receiver type is unknown. Methods like 'reverse', 'clone'
+			// exist on both string and array — if the receiver resolved to
+			// a non-string type above, trust that instead of the heuristic.
+			if method_name in ['reverse', 'clone'] {
+				// These methods are ambiguous (exist on string AND array).
+				// Only treat as string if the receiver is known to be a string.
+				if t.is_string_expr(sel.lhs) {
+					return true
+				}
+			} else if t.is_string_returning_method(method_name) {
 				return true
 			}
 			// Also check if receiver is string and method typically returns string
-			if t.is_string_expr(sel.lhs) && method_name in ['clone', 'str', 'string'] {
+			if t.is_string_expr(sel.lhs) && method_name in ['str', 'string'] {
 				return true
 			}
 		}
 		// Check function return type using environment
 		if expr.lhs is ast.Ident {
 			fn_name := expr.lhs.name
+			// array__ prefix functions return array, not string
+			if fn_name.starts_with('array__') || fn_name.starts_with('new_array_from_') {
+				return false
+			}
 			// Check for already-transformed string functions
 			if fn_name.starts_with('string__') && fn_name !in ['string__bytes', 'string__vbytes'] {
 				// string__ prefix functions return string (string__plus, string__repeat, etc.)

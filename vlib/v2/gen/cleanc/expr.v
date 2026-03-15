@@ -2382,6 +2382,21 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			return
 		}
 	}
+	// Fallback: check string-based local type for pointer-to-fixed-array params
+	// (e.g., `mut state &[8]u32` → type string `Array_fixed_u32_8*`)
+	// get_raw_type may miss these when the env doesn't record the parameter type.
+	if node.lhs is ast.Ident {
+		if local_type := g.get_local_var_c_type(node.lhs.name) {
+			if local_type.starts_with('Array_fixed_') && local_type.ends_with('*') {
+				g.sb.write_string('(*')
+				g.expr(node.lhs)
+				g.sb.write_string(')[')
+				g.gen_index_expr_value(node.expr)
+				g.sb.write_string(']')
+				return
+			}
+		}
+	}
 	lhs_type := g.get_expr_type(node.lhs)
 	if lhs_type == 'map' || lhs_type.starts_with('Map_') {
 		g.panic_map_index_expr(node)

@@ -880,7 +880,7 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 
 	// Slot -2: Hash of requirements blob
 	mut hash_buf := [32]u8{}
-	sha256_hash(req_blob.data, req_blob.len, mut &hash_buf)
+	sha256_hash(req_blob.data, req_blob.len, &hash_buf[0])
 	for b in hash_buf {
 		sig << b
 	}
@@ -1295,7 +1295,7 @@ fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_li
 			end = code_limit
 		}
 		unsafe {
-			sha256_hash(data + start, end - start, mut &hash_buf)
+			sha256_hash(data + start, end - start, &hash_buf[0])
 			vmemcpy(hashes + page * 32, &hash_buf[0], 32)
 		}
 	}
@@ -1304,7 +1304,7 @@ fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_li
 // sha256_hash computes SHA-256 of data[0..data_len] into out[0..32].
 // No heap allocations — uses fixed-size arrays on the stack.
 @[direct_array_access]
-fn sha256_hash(data &u8, data_len int, mut out &[32]u8) {
+fn sha256_hash(data &u8, data_len int, out_ptr &u8) {
 	mut state := [u32(0x6A09E667), 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
 		0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19]!
 	mut w := [64]u32{}
@@ -1319,7 +1319,7 @@ fn sha256_hash(data &u8, data_len int, mut out &[32]u8) {
 				w[i] = (u32(data[j]) << 24) | (u32(data[j + 1]) << 16) | (u32(data[j + 2]) << 8) | u32(data[j + 3])
 			}
 		}
-		sha256_compress(mut &state, mut &w)
+		sha256_compress(&state[0], &w[0])
 	}
 
 	// Build final padded block(s): remaining data + 0x80 + zeros + 64-bit big-endian length
@@ -1356,40 +1356,47 @@ fn sha256_hash(data &u8, data_len int, mut out &[32]u8) {
 			j := off + i * 4
 			w[i] = (u32(pad[j]) << 24) | (u32(pad[j + 1]) << 16) | (u32(pad[j + 2]) << 8) | u32(pad[j + 3])
 		}
-		sha256_compress(mut &state, mut &w)
+		sha256_compress(&state[0], &w[0])
 	}
 
 	// Write result big-endian
+	mut out := unsafe { &u8(out_ptr) }
 	for i in 0 .. 8 {
-		out[i * 4] = u8(state[i] >> 24)
-		out[i * 4 + 1] = u8(state[i] >> 16)
-		out[i * 4 + 2] = u8(state[i] >> 8)
-		out[i * 4 + 3] = u8(state[i])
+		unsafe {
+			out[i * 4] = u8(state[i] >> 24)
+			out[i * 4 + 1] = u8(state[i] >> 16)
+			out[i * 4 + 2] = u8(state[i] >> 8)
+			out[i * 4 + 3] = u8(state[i])
+		}
 	}
 }
 
 @[direct_array_access]
-fn sha256_compress(mut state &[8]u32, mut w &[64]u32) {
+fn sha256_compress(state_ptr &u32, w_ptr &u32) {
+	mut state := unsafe { &u32(state_ptr) }
+	mut w := unsafe { &u32(w_ptr) }
 	// Extend the first 16 words into the remaining 48
 	for i := 16; i < 64; i++ {
-		s0 := rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3)
-		s1 := rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10)
-		w[i] = w[i - 16] + s0 + w[i - 7] + s1
+		unsafe {
+			s0 := rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3)
+			s1 := rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10)
+			w[i] = w[i - 16] + s0 + w[i - 7] + s1
+		}
 	}
 
-	mut a := state[0]
-	mut b := state[1]
-	mut c := state[2]
-	mut d := state[3]
-	mut e := state[4]
-	mut f := state[5]
-	mut g := state[6]
-	mut h := state[7]
+	mut a := unsafe { state[0] }
+	mut b := unsafe { state[1] }
+	mut c := unsafe { state[2] }
+	mut d := unsafe { state[3] }
+	mut e := unsafe { state[4] }
+	mut f := unsafe { state[5] }
+	mut g := unsafe { state[6] }
+	mut h := unsafe { state[7] }
 
 	for i in 0 .. 64 {
 		s1 := rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)
 		ch := (e & f) ^ (~e & g)
-		t1 := h + s1 + ch + sha256_k[i] + w[i]
+		t1 := h + s1 + ch + sha256_k[i] + unsafe { w[i] }
 		s0 := rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)
 		maj := (a & b) ^ (a & c) ^ (b & c)
 		t2 := s0 + maj
@@ -1404,12 +1411,14 @@ fn sha256_compress(mut state &[8]u32, mut w &[64]u32) {
 		a = t1 + t2
 	}
 
-	state[0] += a
-	state[1] += b
-	state[2] += c
-	state[3] += d
-	state[4] += e
-	state[5] += f
-	state[6] += g
-	state[7] += h
+	unsafe {
+		state[0] += a
+		state[1] += b
+		state[2] += c
+		state[3] += d
+		state[4] += e
+		state[5] += f
+		state[6] += g
+		state[7] += h
+	}
 }
