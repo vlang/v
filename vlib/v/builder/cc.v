@@ -1110,13 +1110,29 @@ fn (mut b Builder) cc_linux_cross() {
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
+	// Separate .c source files from other flags; they must be compiled
+	// individually when cross compiling, because the main compilation
+	// step uses `-c -o` for a single output object file.
+	mut conly_flags := []string{cap: others.len}
+	mut extra_c_sources := []string{cap: 4}
+	for other in others {
+		trimmed := other.replace('"', '')
+		if trimmed.ends_with('.c') {
+			extra_c_sources << trimmed
+		} else {
+			conly_flags << other
+		}
+	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target x86_64-linux-gnu'
 	cc_args << defines
+	cc_args << conly_flags
+	// Add the sysroot include path after everything else,
+	// so that local folders like thirdparty/ or vmodules have
+	// a chance to supply their own headers.
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-	cc_args << others
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
@@ -1136,7 +1152,61 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
+	// Compile extra .c source files (from `#flag @VMODROOT/file.c` etc.)
+	// separately for the cross target, and collect the resulting .o files.
+	mut extra_obj_files := []string{cap: extra_c_sources.len}
+	for csource in extra_c_sources {
+		extra_obj := csource + '.o'
+		mut extra_cc_args := []string{cap: 10}
+		extra_cc_args << '-w'
+		extra_cc_args << '-fPIC'
+		extra_cc_args << '-target x86_64-linux-gnu'
+		extra_cc_args << defines
+		extra_cc_args << conly_flags
+		extra_cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
+		extra_cc_args << '-o ${os.quoted_path(extra_obj)}'
+		extra_cc_args << '-c ${os.quoted_path(csource)}'
+		extra_cmd := '${b.quote_compiler_name(cc_name)} ' + extra_cc_args.join(' ')
+		if b.pref.show_cc {
+			println(extra_cmd)
+		}
+		extra_res := os.execute(extra_cmd)
+		if extra_res.exit_code != 0 {
+			println('Cross compilation for Linux failed (compiling ${csource}).')
+			verror(extra_res.output)
+			return
+		}
+		extra_obj_files << os.quoted_path(extra_obj)
+	}
+	// For libraries that only exist as static .a in the sysroot (e.g. libpq.a),
+	// create shared library stubs so the linker produces a dynamically linked binary
+	// instead of pulling in incomplete static archives with missing internal deps.
+	lib_search_paths := [
+		os.join_path(sysroot, 'usr', 'lib', 'x86_64-linux-gnu'),
+		os.join_path(sysroot, 'lib', 'x86_64-linux-gnu'),
+	]
+	stubs_dir := os.join_path(os.vtmp_dir(), 'cross_linux_stubs')
+	os.mkdir_all(stubs_dir) or {}
+	for lib in libs {
+		libname := lib.replace('-l', '')
+		if libname in ['c', 'pthread', 'm', 'dl'] {
+			continue // standard libs, always available
+		}
+		has_so := lib_search_paths.any(os.exists(os.join_path(it, 'lib${libname}.so')))
+		has_a := !has_so && lib_search_paths.any(os.exists(os.join_path(it, 'lib${libname}.a')))
+		if has_a {
+			a_path := lib_search_paths.map(os.join_path(it, 'lib${libname}.a')).filter(os.exists(it))[0] or {
+				continue
+			}
+			stub_so := os.join_path(stubs_dir, 'lib${libname}.so')
+			if !os.exists(stub_so) {
+				b.create_shared_lib_stub(cc_name, a_path, stub_so, sysroot)
+			}
+		}
+	}
 	mut linker_args := [
+		'-L',
+		os.quoted_path(stubs_dir),
 		'-L',
 		os.quoted_path('${sysroot}/usr/lib/x86_64-linux-gnu/'),
 		'-L',
@@ -1152,13 +1222,15 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
 		'-lc',
-		'-lcrypto',
-		'-lssl',
 		'-lpthread',
 		os.quoted_path('${sysroot}/crtn.o'),
 		'-lm',
 		'-ldl',
 	]
+	// Pass library flags from the cflags system (e.g. -lssl -lcrypto from -d use_openssl)
+	// instead of hardcoding them, so the linker only links what the program actually needs.
+	linker_args << libs
+	linker_args << extra_obj_files
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
@@ -1177,6 +1249,38 @@ fn (mut b Builder) cc_linux_cross() {
 		return
 	}
 	println(out_name + ' has been successfully cross compiled for linux.')
+}
+
+// create_shared_lib_stub creates a minimal .so stub from a static .a archive
+// by extracting its global symbols and compiling empty function definitions.
+// This is used during cross compilation to avoid pulling in static archives
+// that have unresolvable internal dependencies.
+fn (mut b Builder) create_shared_lib_stub(cc_name string, a_path string, stub_so string, sysroot string) {
+	nm_res := os.execute('nm --defined-only -g ${os.quoted_path(a_path)}')
+	if nm_res.exit_code != 0 {
+		return
+	}
+	mut stub_lines := []string{cap: 256}
+	for line in nm_res.output.split_into_lines() {
+		parts := line.split(' ')
+		if parts.len >= 3 && parts[1] == 'T' {
+			stub_lines << 'void ${parts[2]}() {}'
+		}
+	}
+	stub_c := stub_so + '.c'
+	stub_o := stub_so + '.o'
+	os.write_file(stub_c, stub_lines.join('\n')) or { return }
+	cc_res := os.execute('${b.quote_compiler_name(cc_name)} -w -fPIC -target x86_64-linux-gnu -c ${os.quoted_path(stub_c)} -o ${os.quoted_path(stub_o)}')
+	if cc_res.exit_code != 0 {
+		return
+	}
+	ldlld := '${sysroot}/ld.lld'
+	lld_res := os.execute('${b.quote_compiler_name(ldlld)} -shared -o ${os.quoted_path(stub_so)} ${os.quoted_path(stub_o)}')
+	if lld_res.exit_code != 0 {
+		return
+	}
+	os.rm(stub_c) or {}
+	os.rm(stub_o) or {}
 }
 
 fn (mut b Builder) cc_freebsd_cross() {
