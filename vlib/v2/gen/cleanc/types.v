@@ -1452,8 +1452,8 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		} else if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
 			// Numeric literals mistyped as bool by env (e.g. `1 in map` context).
 			return 'int'
-		} else if node is ast.IndexExpr && node.expr !is ast.RangeExpr
-			&& t.starts_with('Array_') && !t.starts_with('Array_fixed_') {
+		} else if node is ast.IndexExpr && node.expr !is ast.RangeExpr && t.starts_with('Array_')
+			&& !t.starts_with('Array_fixed_') {
 			// Env may return the container type instead of the element type for IndexExpr.
 			// Cross-check against raw type of the LHS container: if the LHS is an Array
 			// whose element type is known, prefer that.

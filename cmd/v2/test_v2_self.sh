@@ -23,9 +23,21 @@ if [[ ! -x "${v1_compiler}" ]]; then
     exit 1
 fi
 
+# V1's formatter may clobber v2 source files — backup and restore.
+v2_src="${repo_root}/vlib/v2"
+v2_bak="/tmp/v2_src_bak_self_test"
+rm -rf "${v2_bak}"
+cp -R "${v2_src}" "${v2_bak}"
+
 # Build v2 with v1.
 rm -f "${v2_bin}" "${v3_bin}" "${v3_bin}.c" "${v4_bin}" "${v4_bin}.c" "${v5_bin}" "${v5_bin}.c"
-"${v1_compiler}" -gc none -o "${v2_bin}" "${v2_source}"
+"${v1_compiler}" -skip-unused -cc cc -o "${v2_bin}" "${v2_source}"
+
+# Restore v2 sources after V1 build.
+rsync -a --delete "${v2_bak}/" "${v2_src}/"
+
+# Use clang instead of TCC for v2-compiled C code.
+export V2CC="${V2CC:-cc}"
 
 # Use v2 to compile itself to v3 (using defined backend).
 "${v2_bin}" -gc none -o "${v3_bin}" -backend "${backend}" "${v2_source}"

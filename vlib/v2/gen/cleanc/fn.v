@@ -591,6 +591,12 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	if node.name == 'main' {
 		g.write_indent()
 		g.sb.writeln('return 0;')
+	} else if g.cur_fn_ret_type.starts_with('_result_') {
+		g.write_indent()
+		g.sb.writeln('return (${g.cur_fn_ret_type}){0};')
+	} else if g.cur_fn_ret_type.starts_with('_option_') {
+		g.write_indent()
+		g.sb.writeln('return (${g.cur_fn_ret_type}){0};')
 	}
 
 	g.indent--

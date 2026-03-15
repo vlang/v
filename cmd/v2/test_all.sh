@@ -3,83 +3,73 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Files that V1 may clobber during rebuild — backup and restore around v builds.
-# Use unique suffixes to avoid name collisions (e.g. two types.v files).
+# V1's formatter may clobber v2 source files during rebuild.
+# Back up the entire v2 tree and restore after each V1 build.
+V2_SRC="../../vlib/v2"
+V2_BAK="/tmp/v2_src_bak_test_all"
+
 backup_v2_src() {
-  cp ../../vlib/v2/gen/cleanc/consts_and_globals.v /tmp/bak_ta_cleanc_consts.v
-  cp ../../vlib/v2/gen/cleanc/assign.v             /tmp/bak_ta_cleanc_assign.v
-  cp ../../vlib/v2/ssa/module.v                    /tmp/bak_ta_ssa_module.v
-  cp ../../vlib/v2/ssa/optimize/mem2reg.v          /tmp/bak_ta_ssa_mem2reg.v
-  cp ../../vlib/v2/transformer/struct.v            /tmp/bak_ta_tr_struct.v
-  cp ../../vlib/v2/transformer/transformer.v       /tmp/bak_ta_tr_transformer.v
-  cp ../../vlib/v2/transformer/types.v             /tmp/bak_ta_tr_types.v
+  rm -rf "$V2_BAK"
+  cp -R "$V2_SRC" "$V2_BAK"
 }
 
 restore_v2_src() {
-  cp /tmp/bak_ta_cleanc_consts.v    ../../vlib/v2/gen/cleanc/consts_and_globals.v
-  cp /tmp/bak_ta_cleanc_assign.v    ../../vlib/v2/gen/cleanc/assign.v
-  cp /tmp/bak_ta_ssa_module.v       ../../vlib/v2/ssa/module.v
-  cp /tmp/bak_ta_ssa_mem2reg.v      ../../vlib/v2/ssa/optimize/mem2reg.v
-  cp /tmp/bak_ta_tr_struct.v        ../../vlib/v2/transformer/struct.v
-  cp /tmp/bak_ta_tr_transformer.v   ../../vlib/v2/transformer/transformer.v
-  cp /tmp/bak_ta_tr_types.v         ../../vlib/v2/transformer/types.v
+  rsync -a --delete "$V2_BAK/" "$V2_SRC/"
 }
 
 KNOWN_FAILURES=0
 
-echo "=== 1/13: ARM64 self-host hello world ==="
-if v -o v2 v2.v && ./v2 -backend arm64 -nocache -o v3 v2.v && ./v3 -o hello_arm hello.v && ./hello_arm; then
-  echo "[PASS]"
-else
-  echo "[KNOWN FAILURE] ARM64 self-host — skipping"
-  KNOWN_FAILURES=$((KNOWN_FAILURES + 1))
-fi
-
-echo ""
-echo "=== 2/13: Self-host test ==="
-if bash test_v2_self.sh; then
-  echo "[PASS]"
-else
-  echo "[KNOWN FAILURE] Self-host test — skipping"
-  KNOWN_FAILURES=$((KNOWN_FAILURES + 1))
-fi
-
-echo ""
-echo "=== 3/13: Rebuild v2 and run builtin test files ==="
-rm -rf /tmp/v2_cleanc_obj_cache
+echo "=== 1/14: ARM64 self-host hello world ==="
 backup_v2_src
-v self && v -skip-unused -cc cc -o v2 v2.v
+v -skip-unused -cc cc -o v2 v2.v
 restore_v2_src
+./v2 -backend arm64 -nocache -o v3 v2.v && ./v3 -o hello_arm hello.v && ./hello_arm
+
+echo ""
+echo "=== 2/14: ARM64 self-host chain (v2->v3->v4->v5, parallel) ==="
+echo "  Building v3 from v2..."
+./v2 -nocache -backend arm64 -o v3_chain v2.v
+echo "  Building v4 from v3..."
+./v3_chain -nocache -gc none -backend arm64 -o v4_chain v2.v
+echo "  Building v5 from v4..."
+./v4_chain -nocache -gc none -backend arm64 -o v5_chain v2.v
+V4_SIZE=$(wc -c < v4_chain)
+V5_SIZE=$(wc -c < v5_chain)
+if [ "$V4_SIZE" -eq "$V5_SIZE" ]; then
+  echo "  v4=v5 ($V4_SIZE bytes) — chain converged"
+else
+  echo "  FAIL: v4 ($V4_SIZE) != v5 ($V5_SIZE)"
+  exit 1
+fi
+rm -f v3_chain v4_chain v5_chain
+
+echo ""
+echo "=== 3/14: Self-host test ==="
+bash test_v2_self.sh
+
+echo ""
+echo "=== 4/14: Builtin test files (cleanc) ==="
+rm -rf /tmp/v2_cleanc_obj_cache
 ./v2 ../../vlib/builtin/array_test.v
 ./v2 ../../vlib/builtin/string_test.v
 ./v2 ../../vlib/builtin/map_test.v
 
 echo ""
-echo "=== 4/13: Builtin test files (arm64) ==="
-if ./v2 -backend arm64 ../../vlib/builtin/array_test.v \
-  && ./v2 -backend arm64 ../../vlib/builtin/string_test.v \
-  && ./v2 -backend arm64 ../../vlib/builtin/map_test.v; then
-  echo "[PASS]"
-else
-  echo "[KNOWN FAILURE] ARM64 builtin tests — skipping"
-  KNOWN_FAILURES=$((KNOWN_FAILURES + 1))
-fi
+echo "=== 5/14: Builtin test files (arm64) ==="
+./v2 -backend arm64 ../../vlib/builtin/array_test.v
+./v2 -backend arm64 ../../vlib/builtin/string_test.v
+./v2 -backend arm64 ../../vlib/builtin/map_test.v
 
 echo ""
-echo "=== 5/13: Math test ==="
+echo "=== 6/14: Math test ==="
 ./v2 ../../vlib/math/math_test.v
 
 echo ""
-echo "=== 6/13: Math test (arm64) ==="
-if ./v2 -backend arm64 ../../vlib/math/math_test.v; then
-  echo "[PASS]"
-else
-  echo "[KNOWN FAILURE] ARM64 math test — skipping"
-  KNOWN_FAILURES=$((KNOWN_FAILURES + 1))
-fi
+echo "=== 7/14: Math test (arm64) ==="
+./v2 -backend arm64 ../../vlib/math/math_test.v
 
 echo ""
-echo "=== 7/13: Sumtype tests ==="
+echo "=== 8/14: Sumtype tests ==="
 ./v2 test_sumtype.v
 ./v2 test_sumtype2.v
 ./v2 test_sumtype3.v
@@ -92,7 +82,7 @@ echo "=== 7/13: Sumtype tests ==="
 ./v2 test_sumtype_global.v
 
 echo ""
-echo "=== 8/13: Sumtype tests (arm64) ==="
+echo "=== 9/14: Sumtype tests (arm64) ==="
 ./v2 -backend arm64 test_sumtype.v
 ./v2 -backend arm64 test_sumtype2.v
 ./v2 -backend arm64 test_sumtype3.v
@@ -105,28 +95,23 @@ echo "=== 8/13: Sumtype tests (arm64) ==="
 ./v2 -backend arm64 test_sumtype_global.v
 
 echo ""
-echo "=== 9/13: SSA backends test (arm64) ==="
+echo "=== 10/14: SSA backends test (arm64) ==="
 v -gc none run test_ssa_backends.v arm64
 
 echo ""
-echo "=== 10/13: SSA backends test (cleanc) ==="
+echo "=== 11/14: SSA backends test (cleanc) ==="
 v -gc none run test_ssa_backends.v cleanc
 
 echo ""
-echo "=== 11/13: Transformer unit tests ==="
-if v ../../vlib/v2/transformer/transformer_test.v; then
-  echo "[PASS]"
-else
-  echo "[KNOWN FAILURE] Transformer unit tests — skipping"
-  KNOWN_FAILURES=$((KNOWN_FAILURES + 1))
-fi
+echo "=== 12/14: Transformer unit tests ==="
+v ../../vlib/v2/transformer/transformer_test.v
 
 echo ""
-echo "=== 12/13: Transformer integration test ==="
+echo "=== 13/14: Transformer integration test ==="
 v ../../vlib/v2/transformer/transformer_v2_darwin_test.v
 
 echo ""
-echo "=== 13/13: Cleanc runtime tests ==="
+echo "=== 14/14: Cleanc runtime tests ==="
 v -gc none run ../../vlib/v2/gen/cleanc/tests/run_tests.v
 
 echo ""

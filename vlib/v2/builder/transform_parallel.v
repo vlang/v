@@ -17,6 +17,9 @@ struct TransformChunkArgs {
 
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
 fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_attr_init(attr voidptr) int
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+fn C.pthread_attr_destroy(attr voidptr) int
 
 fn transform_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &TransformChunkArgs(arg) }
@@ -55,6 +58,15 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 	mut worker_ptrs := []voidptr{len: n_jobs, init: unsafe { nil }}
 	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
 	mut args := []TransformChunkArgs{cap: n_jobs}
+
+	// ARM64-compiled code uses much more stack per function (one slot per SSA
+	// value, no reuse). Increase worker thread stack size to 64 MB so deeply
+	// recursive transform functions don't overflow the default 512 KB stack.
+	attr_buf := [64]u8{}
+	attr := unsafe { voidptr(&attr_buf[0]) }
+	C.pthread_attr_init(attr)
+	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+
 	mut chunk_idx := 0
 	mut i := 0
 	for i < n_files {
@@ -67,11 +79,12 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 			worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 			worker_idx: chunk_idx
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			transform_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
+		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, attr, transform_chunk_thread,
+			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}
+	C.pthread_attr_destroy(attr)
 
 	// Wait for all workers
 	for ci := 0; ci < chunk_idx; ci++ {

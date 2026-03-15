@@ -345,7 +345,9 @@ fn test_transform_init_expr_resolves_imported_enum_shorthand() {
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		cur_module:                  'main'
-		cached_scopes:               {'ast': ast_scope}
+		cached_scopes:               {
+			'ast': ast_scope
+		}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}

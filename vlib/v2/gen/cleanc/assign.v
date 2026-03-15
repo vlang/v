@@ -605,7 +605,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				return
 			}
 		}
-		if lhs_fixed_type.starts_with('Array_fixed_') && lhs !is ast.IndexExpr && rhs is ast.CallExpr {
+		if lhs_fixed_type.starts_with('Array_fixed_') && lhs !is ast.IndexExpr
+			&& rhs is ast.CallExpr {
 			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
 				if call_ret == lhs_fixed_type {
 					wrapper_type := g.c_fn_return_type_from_v(lhs_fixed_type)

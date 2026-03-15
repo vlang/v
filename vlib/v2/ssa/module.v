@@ -413,7 +413,7 @@ pub fn (mut m Module) new_worker_module() &Module {
 // FuncSSAData holds the SSA data produced by a worker for a single function.
 pub struct FuncSSAData {
 pub:
-	func_idx int // Index into main module's funcs[]
+	func_idx int       // Index into main module's funcs[]
 	blocks   []BlockID // Worker-local block IDs
 	params   []ValueID // Worker-local param ValueIDs
 }
@@ -577,7 +577,11 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 		}
 		m.instrs << Instruction{
 			op:         instr.op
-			block:      if instr.block >= seed_blocks { instr.block + block_off } else { instr.block }
+			block:      if instr.block >= seed_blocks {
+				instr.block + block_off
+			} else {
+				instr.block
+			}
 			typ:        new_typ
 			operands:   new_ops
 			pos:        instr.pos

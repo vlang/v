@@ -34,8 +34,6 @@ pub fn Environment.new() &Environment {
 	}
 }
 
-
-
 // set_expr_type stores the computed type for an expression by its unique ID.
 pub fn (mut e Environment) set_expr_type(id int, typ Type) {
 	if id >= 0 {

@@ -29,8 +29,8 @@ pub mut:
 	total_resolved     int
 
 	// Register allocation
-	reg_map   map[int]int
-	used_regs []int
+	reg_map    map[int]int
+	used_regs  []int
 	next_blk   int
 	cur_blk_id int // current block being generated (for phi copy emission)
 
@@ -318,16 +318,19 @@ pub fn (mut g Gen) pre_populate_type_caches() {
 }
 
 pub fn (g &Gen) new_worker_clone() &Gen {
+	// Clone all maps and arrays to avoid COW data races between threads.
+	// V's map/array assignment shares internal data; concurrent reads can
+	// trigger internal rehashing/COW writes that race with other threads.
 	return &Gen{
 		mod:                   g.mod
 		macho:                 MachOObject.new()
-		func_by_name:          g.func_by_name
-		global_by_name:        g.global_by_name
-		val_to_block:          g.val_to_block
-		type_size_cache:       g.type_size_cache
-		type_align_cache:      g.type_align_cache
-		type_size_stack:       g.type_size_stack
-		type_align_stack:      g.type_align_stack
+		func_by_name:          g.func_by_name.clone()
+		global_by_name:        g.global_by_name.clone()
+		val_to_block:          g.val_to_block.clone()
+		type_size_cache:       g.type_size_cache.clone()
+		type_align_cache:      g.type_align_cache.clone()
+		type_size_stack:       g.type_size_stack.clone()
+		type_align_stack:      g.type_align_stack.clone()
 		env_dump_funcrefs:     g.env_dump_funcrefs
 		env_trace_skip_dead:   g.env_trace_skip_dead
 		env_dump_stackmap:     g.env_dump_stackmap
@@ -4816,7 +4819,10 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 
 fn (mut g Gen) get_dest_reg(val_id int) int {
 	if val_id in g.reg_map {
-		return g.reg_map[val_id]
+		r := g.reg_map[val_id]
+		if r != 0xFF {
+			return r
+		}
 	}
 	return 8
 }
@@ -4824,7 +4830,10 @@ fn (mut g Gen) get_dest_reg(val_id int) int {
 fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 	// If value is in a register, return it
 	if val_id in g.reg_map {
-		return g.reg_map[val_id]
+		r := g.reg_map[val_id]
+		if r != 0xFF {
+			return r
+		}
 	}
 	// Otherwise load it into fallback
 	g.load_val_to_reg(fallback, val_id)
@@ -5400,10 +5409,12 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 	if val_id in g.reg_map {
 		r := g.reg_map[val_id]
-		if r != reg {
-			g.emit_mov_reg(reg, r)
+		if r != 0xFF {
+			if r != reg {
+				g.emit_mov_reg(reg, r)
+			}
+			return
 		}
-		return
 	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
@@ -5682,10 +5693,12 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 		&& (g.env_trace_storeval == '*' || g.cur_func_name == g.env_trace_storeval)
 	if val_id in g.reg_map {
 		reg_idx := g.reg_map[val_id]
-		if reg_idx != reg {
-			g.emit_mov_reg(reg_idx, reg)
+		if reg_idx != 0xFF {
+			if reg_idx != reg {
+				g.emit_mov_reg(reg_idx, reg)
+			}
+			stored_reg = reg_idx
 		}
-		stored_reg = reg_idx
 	}
 	if offset := g.stack_map[val_id] {
 		if val_id > 0 && val_id < g.mod.values.len {
@@ -7712,8 +7725,7 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 					// Skip instructions that build results directly on the stack.
 					// These ops write to the stack slot without going through a register,
 					// so register-allocating them leaves the register uninitialized.
-					if instr.op in [.struct_init, .insertvalue, .inline_string_init,
-						.call_sret] {
+					if instr.op in [.struct_init, .insertvalue, .inline_string_init, .call_sret] {
 						skip_interval = true
 					}
 					if instr.op in [.call, .call_indirect, .call_sret] {
@@ -7826,13 +7838,42 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		}
 	}
 
-	mut sorted := []&Interval{cap: intervals.len}
-	for _, i in intervals {
-		sorted << i
+	// Flatten intervals into parallel arrays to avoid pointer-deref and map-access
+	// patterns that break in ARM64-compiled binaries (chained-access bug).
+	mut iv_val_ids := []int{cap: intervals.len}
+	mut iv_starts := []int{cap: intervals.len}
+	mut iv_ends := []int{cap: intervals.len}
+	mut iv_has_call := []bool{cap: intervals.len}
+	for vid, iv in intervals {
+		iv_val_ids << vid
+		iv_starts << iv.start
+		iv_ends << iv.end
+		iv_has_call << iv.has_call
 	}
-	sorted.sort(a.start < b.start)
 
-	mut active := []&Interval{cap: 32}
+	// Sort by start time using insertion sort (avoids closure-based sort issues)
+	for si in 1 .. iv_val_ids.len {
+		key_vid := iv_val_ids[si]
+		key_start := iv_starts[si]
+		key_end := iv_ends[si]
+		key_call := iv_has_call[si]
+		mut sj := si - 1
+		for sj >= 0 && iv_starts[sj] > key_start {
+			iv_val_ids[sj + 1] = iv_val_ids[sj]
+			iv_starts[sj + 1] = iv_starts[sj]
+			iv_ends[sj + 1] = iv_ends[sj]
+			iv_has_call[sj + 1] = iv_has_call[sj]
+			sj--
+		}
+		iv_val_ids[sj + 1] = key_vid
+		iv_starts[sj + 1] = key_start
+		iv_ends[sj + 1] = key_end
+		iv_has_call[sj + 1] = key_call
+	}
+
+	// Active list as parallel arrays (end time, assigned register)
+	mut act_ends := []int{cap: 32}
+	mut act_regs := []int{cap: 32}
 
 	// Registers
 	// Caller-saved (Temporaries): x9..x15
@@ -7847,12 +7888,18 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	mut used := []bool{len: 32, init: false}
 	mut used_regs_set := []bool{len: 32, init: false}
 
-	for i in sorted {
+	for si2 in 0 .. iv_val_ids.len {
+		cur_vid := iv_val_ids[si2]
+		cur_start := iv_starts[si2]
+		cur_end := iv_ends[si2]
+		cur_has_call := iv_has_call[si2]
+
 		// Remove expired intervals from active list
 		mut j := 0
-		for j < active.len {
-			if active[j].end < i.start {
-				active.delete(j)
+		for j < act_ends.len {
+			if act_ends[j] < cur_start {
+				act_ends.delete(j)
+				act_regs.delete(j)
 			} else {
 				j++
 			}
@@ -7862,17 +7909,18 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		for k in 0 .. 32 {
 			used[k] = false
 		}
-		for a in active {
-			used[g.reg_map[a.val_id]] = true
+		for ar in act_regs {
+			used[ar] = true
 		}
 
-		// Decide which pool to use (avoid clone)
-		pool := if i.has_call { long_regs } else { short_regs }
+		// Decide which pool to use
+		pool := if cur_has_call { long_regs } else { short_regs }
 
 		for r in pool {
 			if !used[r] {
-				g.reg_map[i.val_id] = r
-				active << i
+				g.reg_map[cur_vid] = r
+				act_ends << cur_end
+				act_regs << r
 				// Only track used callee-saved regs for prologue saving
 				if r >= 19 && r <= 28 && !used_regs_set[r] {
 					used_regs_set[r] = true
@@ -7882,9 +7930,10 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 			}
 		}
 	}
+
 	g.used_regs.sort()
 	if trace_ra {
-		eprintln('REGALLOC fn=${func.name} intervals=${sorted.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs=${g.used_regs} total_instrs=${total_instrs}')
+		eprintln('REGALLOC fn=${func.name} intervals=${iv_val_ids.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs=${g.used_regs} total_instrs=${total_instrs}')
 		for val_id, reg in g.reg_map {
 			if mut iv := intervals[val_id] {
 				eprintln('  val=${val_id} -> x${reg} [${iv.start},${iv.end}] has_call=${iv.has_call}')

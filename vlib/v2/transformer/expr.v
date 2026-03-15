@@ -1927,22 +1927,61 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				} else {
 					map_ptr = t.addr_of_expr_with_temp(expr.rhs, map_typ)
 				}
-				key_ptr := t.addr_of_expr_with_temp(expr.lhs, map_typ.key_type)
-				exists_call := ast.CallExpr{
+				// For the key, declare a temp variable in the same scope as the
+				// map__exists call so the pointer stays valid during the call.
+				// Using addr_of_expr_with_temp would nest the temp inside a
+				// statement expression whose scope ends before map__exists reads it.
+				lhs_trans := t.transform_expr(expr.lhs)
+				mut key_ptr := ast.Expr(ast.empty_expr)
+				mut key_stmts := []ast.Stmt{}
+				if t.can_take_address_expr(lhs_trans)
+					&& !t.is_enum_rvalue(lhs_trans, map_typ.key_type) {
+					key_ptr = ast.PrefixExpr{
+						op:   .amp
+						expr: lhs_trans
+					}
+				} else {
+					key_tmp := t.gen_temp_name()
+					key_ident := ast.Ident{
+						name: key_tmp
+					}
+					t.register_temp_var(key_tmp, map_typ.key_type)
+					key_stmts << ast.Stmt(ast.AssignStmt{
+						op:  .decl_assign
+						lhs: [ast.Expr(key_ident)]
+						rhs: [lhs_trans]
+					})
+					key_ptr = ast.PrefixExpr{
+						op:   .amp
+						expr: key_ident
+					}
+				}
+				exists_call := ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: 'map__exists'
 					}
 					args: [map_ptr, key_ptr]
 					pos:  expr.pos
-				}
+				})
+				mut result_expr := exists_call
 				if expr.op == .not_in {
-					return ast.PrefixExpr{
+					result_expr = ast.PrefixExpr{
 						op:   .not
 						expr: exists_call
 						pos:  expr.pos
 					}
 				}
-				return exists_call
+				if key_stmts.len > 0 {
+					// Wrap in UnsafeExpr so the temp key variable is in scope
+					// for the entire map__exists call.
+					key_stmts << ast.Stmt(ast.ExprStmt{
+						expr: result_expr
+					})
+					return ast.UnsafeExpr{
+						stmts: key_stmts
+					}
+				}
+				return result_expr
 			}
 		}
 		// For inline array literals, expand to a chain of equality checks
@@ -2302,10 +2341,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// (V is type-checked). This handles cases where is_string_expr fails on
 		// complex expressions like Result data access selectors.
 		should_transform := lhs_is_str || rhs_is_str
-			|| (lhs_is_str_literal && (expr.rhs is ast.Ident
-			|| expr.rhs is ast.SelectorExpr))
-			|| (rhs_is_str_literal && (expr.lhs is ast.Ident
-			|| expr.lhs is ast.SelectorExpr))
+			|| (lhs_is_str_literal && (expr.rhs is ast.Ident || expr.rhs is ast.SelectorExpr))
+			|| (rhs_is_str_literal && (expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr))
 		if should_transform {
 			// Transform string comparisons to function calls
 			match expr.op {

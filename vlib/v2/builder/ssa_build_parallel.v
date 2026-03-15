@@ -15,16 +15,18 @@ struct FnDeclRef {
 }
 
 struct SSABuildChunkArgs {
-	worker   voidptr // &ssa.Builder (pre-created worker builder)
-	files    voidptr // &[]ast.File
-	fn_refs  voidptr // &[]FnDeclRef
+	worker    voidptr // &ssa.Builder (pre-created worker builder)
+	files     voidptr // &[]ast.File
+	fn_refs   voidptr // &[]FnDeclRef
 	start_idx int
 	end_idx   int
 }
 
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-
 fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_attr_init(attr voidptr) int
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+fn C.pthread_attr_destroy(attr voidptr) int
 
 fn ssa_build_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &SSABuildChunkArgs(arg) }
@@ -32,11 +34,16 @@ fn ssa_build_chunk_thread(arg voidptr) voidptr {
 	files := unsafe { &[]ast.File(a.files) }
 	fn_refs := unsafe { &[]FnDeclRef(a.fn_refs) }
 
-	// Build assigned functions
+	// Build assigned functions.
+	// Avoid chained array access like files[i].stmts[j] — in ARM64-compiled
+	// binaries, chained indexing returns copies with potentially corrupted fields.
+	// Instead, copy to a local first, then access fields.
 	for fi := a.start_idx; fi < a.end_idx; fi++ {
 		ref := unsafe { fn_refs[fi] }
 		worker_b.cur_module = ref.mod_name
-		decl := unsafe { files[ref.file_idx].stmts[ref.stmt_idx] } as ast.FnDecl
+		file := unsafe { (*files)[ref.file_idx] }
+		stmt := file.stmts[ref.stmt_idx]
+		decl := stmt as ast.FnDecl
 		worker_b.build_fn(decl)
 	}
 	return unsafe { nil }
@@ -46,14 +53,18 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	n_jobs := runtime.nr_jobs()
 	mut mod := ssa_builder.mod
 
-	// Collect all function declarations that need building
+	// Collect all function declarations that need building.
+	// Avoid chained array access like files[fi].stmts[si] — copy to locals first.
 	has_markused := ssa_builder.used_fn_keys.len > 0
 	mut fn_refs := []FnDeclRef{cap: 4096}
-	for fi, file in files {
+	for fi in 0 .. files.len {
+		file := files[fi]
 		mod_name := ssa.file_module_name(file)
-		for si in 0 .. file.stmts.len {
-			if file.stmts[si] is ast.FnDecl {
-				decl := unsafe { files[fi].stmts[si] } as ast.FnDecl
+		nstmts := file.stmts.len
+		for si in 0 .. nstmts {
+			stmt := file.stmts[si]
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
 				if decl.language == .c && decl.stmts.len == 0 {
 					continue
 				}
@@ -109,6 +120,12 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	// Spawn worker threads
 	mut thread_ids := []voidptr{len: actual_chunks, init: unsafe { nil }}
 	mut args := []SSABuildChunkArgs{cap: actual_chunks}
+
+	attr_buf := [64]u8{}
+	attr := unsafe { voidptr(&attr_buf[0]) }
+	C.pthread_attr_init(attr)
+	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+
 	mut chunk_idx := 0
 	i = 0
 	for i < n_fns {
@@ -120,11 +137,12 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 			start_idx: i
 			end_idx:   end
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			ssa_build_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
+		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, attr, ssa_build_chunk_thread,
+			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}
+	C.pthread_attr_destroy(attr)
 
 	// Wait for all workers
 	for ci := 0; ci < chunk_idx; ci++ {
@@ -147,6 +165,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 				}
 			}
 		}
-		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks, seed_types)
+		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks,
+			seed_types)
 	}
 }

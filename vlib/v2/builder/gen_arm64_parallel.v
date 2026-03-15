@@ -5,27 +5,27 @@ module builder
 
 import runtime
 import v2.gen.arm64
+import v2.mir
 
 struct GenARM64ChunkArgs {
-	gen       voidptr // &arm64.Gen (main gen, used as template for cloning)
+	worker    voidptr // &arm64.Gen — pre-cloned worker (created on main thread)
+	mod_ptr   voidptr // &mir.Module — shared MIR module
 	start_idx int
 	end_idx   int
-	worker    voidptr // &voidptr — output slot for worker Gen pointer
 }
 
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-
 fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_attr_init(attr voidptr) int
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+fn C.pthread_attr_destroy(attr voidptr) int
 
 fn gen_arm64_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &GenARM64ChunkArgs(arg) }
-	g := unsafe { &arm64.Gen(a.gen) }
-	mut w := g.new_worker_clone()
+	mut w := unsafe { &arm64.Gen(a.worker) }
+	m := unsafe { &mir.Module(a.mod_ptr) }
 	for fi := a.start_idx; fi < a.end_idx; fi++ {
-		w.gen_func(g.mod.funcs[fi])
-	}
-	unsafe {
-		*(&voidptr(a.worker)) = voidptr(w)
+		w.gen_func(m.funcs[fi])
 	}
 	return unsafe { nil }
 }
@@ -45,26 +45,41 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 		return
 	}
 
-	// Split functions into chunks and spawn workers via pthreads
+	// Split functions into chunks
 	chunk_size := (n_funcs + n_jobs - 1) / n_jobs
-	mut worker_ptrs := []voidptr{len: n_jobs, init: unsafe { nil }}
 	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
 	mut args := []GenARM64ChunkArgs{cap: n_jobs}
+
+	// Pre-create all workers on the main thread to avoid concurrent .clone() races.
+	// Each worker gets its own deep copy of maps/arrays.
+	mut workers := []voidptr{cap: n_jobs}
+
 	mut chunk_idx := 0
 	mut i := 0
 	for i < n_funcs {
 		end := if i + chunk_size < n_funcs { i + chunk_size } else { n_funcs }
+		w := gen.new_worker_clone()
+		workers << voidptr(w)
 		args << GenARM64ChunkArgs{
-			gen:       unsafe { voidptr(&gen) }
+			worker:    voidptr(w)
+			mod_ptr:   unsafe { voidptr(gen.mod) }
 			start_idx: i
 			end_idx:   end
-			worker:    unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			gen_arm64_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}
+
+	attr_buf := [64]u8{}
+	attr := unsafe { voidptr(&attr_buf[0]) }
+	C.pthread_attr_init(attr)
+	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+
+	for ci := 0; ci < chunk_idx; ci++ {
+		C.pthread_create(unsafe { voidptr(&thread_ids[ci]) }, attr, gen_arm64_chunk_thread,
+			unsafe { voidptr(&args[ci]) })
+	}
+	C.pthread_attr_destroy(attr)
 
 	// Wait for all workers
 	for ci := 0; ci < chunk_idx; ci++ {
@@ -73,7 +88,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 
 	// Merge worker results in order
 	for ci := 0; ci < chunk_idx; ci++ {
-		w := unsafe { &arm64.Gen(worker_ptrs[ci]) }
+		w := unsafe { &arm64.Gen(workers[ci]) }
 		gen.merge_worker(w)
 	}
 
