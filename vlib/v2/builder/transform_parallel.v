@@ -67,8 +67,8 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 			worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 			worker_idx: chunk_idx
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			transform_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
+		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil }, transform_chunk_thread,
+			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}

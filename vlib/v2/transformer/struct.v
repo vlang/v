@@ -1504,8 +1504,7 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 	}
 	// Prefer the current module scope for non-qualified names
 	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
-	if dunder < 0 && t.cur_module != '' && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	if dunder < 0 && t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		if cur_scope := t.cached_scopes[t.cur_module] {
 			if obj := cur_scope.objects[struct_name] {
 				if obj is types.Type {

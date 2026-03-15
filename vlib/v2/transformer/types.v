@@ -209,7 +209,8 @@ fn (t &Transformer) is_fn_ident(ident ast.Ident) bool {
 		return t.is_callable_type(typ)
 	}
 	// Fallback: check if the name exists as a registered function
-	return t.lookup_fn_cached('', ident.name) != none || t.lookup_fn_cached('builtin', ident.name) != none
+	return t.lookup_fn_cached('', ident.name) != none
+		|| t.lookup_fn_cached('builtin', ident.name) != none
 }
 
 // is_interface_type checks if a type is an Interface

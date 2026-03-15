@@ -2302,10 +2302,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// (V is type-checked). This handles cases where is_string_expr fails on
 		// complex expressions like Result data access selectors.
 		should_transform := lhs_is_str || rhs_is_str
-			|| (lhs_is_str_literal && (expr.rhs is ast.Ident
-			|| expr.rhs is ast.SelectorExpr))
-			|| (rhs_is_str_literal && (expr.lhs is ast.Ident
-			|| expr.lhs is ast.SelectorExpr))
+			|| (lhs_is_str_literal && (expr.rhs is ast.Ident || expr.rhs is ast.SelectorExpr))
+			|| (rhs_is_str_literal && (expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr))
 		if should_transform {
 			// Transform string comparisons to function calls
 			match expr.op {

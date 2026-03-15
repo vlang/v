@@ -15,9 +15,9 @@ struct FnDeclRef {
 }
 
 struct SSABuildChunkArgs {
-	worker   voidptr // &ssa.Builder (pre-created worker builder)
-	files    voidptr // &[]ast.File
-	fn_refs  voidptr // &[]FnDeclRef
+	worker    voidptr // &ssa.Builder (pre-created worker builder)
+	files     voidptr // &[]ast.File
+	fn_refs   voidptr // &[]FnDeclRef
 	start_idx int
 	end_idx   int
 }
@@ -120,8 +120,8 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 			start_idx: i
 			end_idx:   end
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			ssa_build_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
+		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil }, ssa_build_chunk_thread,
+			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}
@@ -147,6 +147,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 				}
 			}
 		}
-		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks, seed_types)
+		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks,
+			seed_types)
 	}
 }

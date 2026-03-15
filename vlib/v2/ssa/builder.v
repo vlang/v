@@ -26,9 +26,9 @@ pub mut:
 	// When set, only build functions whose decl key is in this map (dead code elimination).
 	used_fn_keys map[string]bool
 mut:
-	env        &types.Environment = unsafe { nil }
-	cur_func   int                = -1
-	cur_block  BlockID            = -1
+	env       &types.Environment = unsafe { nil }
+	cur_func  int                = -1
+	cur_block BlockID            = -1
 	// Variable name -> SSA ValueID (alloca pointer)
 	vars map[string]ValueID
 	// Loop break/continue targets
@@ -128,10 +128,10 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module) &Builder {
 		option_wrapper_types:   b.option_wrapper_types.clone()
 		result_wrapper_types:   b.result_wrapper_types.clone()
 		// Per-function state is reset at start of each build_fn, so empty init is fine
-		fn_refs:       map[string]ValueID{}
-		vars:          map[string]ValueID{}
-		loop_stack:    []LoopInfo{}
-		label_blocks:  map[string]BlockID{}
+		fn_refs:        map[string]ValueID{}
+		vars:           map[string]ValueID{}
+		loop_stack:     []LoopInfo{}
+		label_blocks:   map[string]BlockID{}
 		mut_ptr_params: map[string]bool{}
 	}
 }

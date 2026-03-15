@@ -202,16 +202,13 @@ fn (t &Transformer) method_key_matches_type_name(method_key string, type_name st
 	if short_key == short_type {
 		return true
 	}
-	if method_key.len > short_type.len + 2
-		&& method_key[method_key.len - short_type.len - 2] == `_`
+	if method_key.len > short_type.len + 2 && method_key[method_key.len - short_type.len - 2] == `_`
 		&& method_key[method_key.len - short_type.len - 1] == `_`
 		&& method_key.ends_with(short_type) {
 		return true
 	}
-	if type_name.len > short_key.len + 2
-		&& type_name[type_name.len - short_key.len - 2] == `_`
-		&& type_name[type_name.len - short_key.len - 1] == `_`
-		&& type_name.ends_with(short_key) {
+	if type_name.len > short_key.len + 2 && type_name[type_name.len - short_key.len - 2] == `_`
+		&& type_name[type_name.len - short_key.len - 1] == `_` && type_name.ends_with(short_key) {
 		return true
 	}
 	return false
@@ -611,7 +608,11 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	} else {
 		decl.name
 	}
-	fn_scope_key := if t.cur_module == '' { scope_fn_name } else { '${t.cur_module}__${scope_fn_name}' }
+	fn_scope_key := if t.cur_module == '' {
+		scope_fn_name
+	} else {
+		'${t.cur_module}__${scope_fn_name}'
+	}
 	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
 		t.scope = types.new_scope(fn_scope)
 		t.fn_root_scope = t.scope

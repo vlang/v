@@ -244,8 +244,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
 		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
-		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc',
-		'-profile-alloc', '-enable-globals', '--enable-globals', '-shared', '--shared', '-O0']
+		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
+		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')

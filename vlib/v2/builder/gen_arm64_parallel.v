@@ -60,8 +60,8 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 			end_idx:   end
 			worker:    unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil },
-			gen_arm64_chunk_thread, unsafe { voidptr(&args[chunk_idx]) })
+		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, unsafe { nil }, gen_arm64_chunk_thread,
+			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
 	}

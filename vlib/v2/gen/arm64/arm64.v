@@ -29,8 +29,8 @@ pub mut:
 	total_resolved     int
 
 	// Register allocation
-	reg_map   map[int]int
-	used_regs []int
+	reg_map    map[int]int
+	used_regs  []int
 	next_blk   int
 	cur_blk_id int // current block being generated (for phi copy emission)
 
@@ -7719,8 +7719,7 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 					// Skip instructions that build results directly on the stack.
 					// These ops write to the stack slot without going through a register,
 					// so register-allocating them leaves the register uninitialized.
-					if instr.op in [.struct_init, .insertvalue, .inline_string_init,
-						.call_sret] {
+					if instr.op in [.struct_init, .insertvalue, .inline_string_init, .call_sret] {
 						skip_interval = true
 					}
 					if instr.op in [.call, .call_indirect, .call_sret] {
