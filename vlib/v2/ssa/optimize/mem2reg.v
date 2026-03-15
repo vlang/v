@@ -32,6 +32,15 @@ mut:
 	deferred_phi_ops []int
 }
 
+// Helper: append to an inner array of a [][]int with proper write-back.
+// Direct `arr[idx] << val` is broken in ARM64 self-hosted binaries
+// (chained array-element append copies the struct instead of modifying in-place).
+fn array2d_append(mut arr [][]int, idx int, val int) {
+	mut inner := arr[idx]
+	inner << val
+	arr[idx] = inner
+}
+
 fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 	n_values := m.values.len
 	n_blocks := m.blocks.len
@@ -97,13 +106,13 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 					ptr := instr.operands[1]
 					// Avoid duplicate def entries for same block
 					if ptr < n_values && blk_id !in ctx.defs[ptr] {
-						ctx.defs[ptr] << blk_id
+						array2d_append(mut ctx.defs, ptr, blk_id)
 					}
 				} else if instr.op == .load {
 					ptr := instr.operands[0]
 					// Avoid duplicate use entries for same block
 					if ptr < n_values && blk_id !in ctx.uses[ptr] {
-						ctx.uses[ptr] << blk_id
+						array2d_append(mut ctx.uses, ptr, blk_id)
 					}
 				}
 			}
@@ -130,7 +139,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				for di in 0 .. n_df_b {
 					d := df[b][di]
 					if !has_phi[d] {
-						ctx.phi_placements[d] << alloc_id
+						array2d_append(mut ctx.phi_placements, d, alloc_id)
 						if d !in ctx.phi_blocks {
 							ctx.phi_blocks << d
 						}
@@ -170,7 +179,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				pv.name = '${alloc_val.name}.phi_${blk_id}'
 				m.values[phi_val] = pv
 				// Store phi_val_id in parallel array for direct lookup (no string matching)
-				ctx.phi_vals[blk_id] << phi_val
+				array2d_append(mut ctx.phi_vals, blk_id, phi_val)
 			}
 		}
 
@@ -369,7 +378,7 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 					}
 					// Avoid duplicate entries in dominance frontier
 					if blk_id !in df[runner] {
-						df[runner] << blk_id
+						array2d_append(mut df, runner, blk_id)
 						if runner !in df_blocks {
 							df_blocks << runner
 						}

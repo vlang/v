@@ -34,6 +34,8 @@ pub fn Environment.new() &Environment {
 	}
 }
 
+
+
 // set_expr_type stores the computed type for an expression by its unique ID.
 pub fn (mut e Environment) set_expr_type(id int, typ Type) {
 	if id >= 0 {
@@ -216,6 +218,47 @@ pub fn (e &Environment) get_fn_scope_by_key(key string) ?&Scope {
 		return none
 	}
 	return scope
+}
+
+// snapshot_scopes returns a non-shared copy of the scopes map.
+pub fn (e &Environment) snapshot_scopes() map[string]&Scope {
+	mut result := map[string]&Scope{}
+	lock e.scopes {
+		// Use .keys() + index lookup instead of `for k, v in` to avoid
+		// ARM64 chained-access bug with shared map iteration.
+		scope_keys := e.scopes.keys()
+		for k in scope_keys {
+			v := e.scopes[k] or { continue }
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// snapshot_methods returns a non-shared copy of the methods map.
+pub fn (e &Environment) snapshot_methods() map[string][]&Fn {
+	mut result := map[string][]&Fn{}
+	lock e.methods {
+		method_keys := e.methods.keys()
+		for k in method_keys {
+			v := e.methods[k] or { continue }
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// snapshot_fn_scopes returns a non-shared copy of the fn_scopes map.
+pub fn (e &Environment) snapshot_fn_scopes() map[string]&Scope {
+	mut result := map[string]&Scope{}
+	lock e.fn_scopes {
+		fn_scope_keys := e.fn_scopes.keys()
+		for k in fn_scope_keys {
+			v := e.fn_scopes[k] or { continue }
+			result[k] = v
+		}
+	}
+	return result
 }
 
 pub enum DeferredKind {

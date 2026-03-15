@@ -6,7 +6,6 @@ module arm64
 
 import os
 import time
-import crypto.sha256
 
 // Mach-O executable constants
 const mh_execute = 2
@@ -81,7 +80,8 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	// Other
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
-	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_arc4random_buf',
+	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
+	'_pthread_join', '_arc4random_buf',
 	'_proc_pidpath', '_backtrace', '_backtrace_symbols_fd',
 	// macOS specific
 	'_dispatch_semaphore_create', '_dispatch_semaphore_signal',
@@ -313,6 +313,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	text_content_end := l.stubs_offset + l.stubs_size
 	l.text_size = (text_content_end + page_size - 1) & ~(page_size - 1)
 
+
 	// Data segment follows text
 	l.data_fileoff = l.text_size
 	l.data_vmaddr = base_addr + u64(l.text_size)
@@ -508,16 +509,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Make executable
 	os.chmod(output_path, 0o755) or {}
-	l.codesign_output(output_path)
 
 	println('  TOTAL linker: ${time.since(t_total)}')
-}
-
-fn (l Linker) codesign_output(output_path string) {
-	// Re-sign with system codesign to ensure valid signature for large binaries.
-	// Our built-in ad-hoc signature works for small binaries but has issues with
-	// large (30MB+) executables that cause dyld to hang.
-	os.execute('codesign -s - -f ${output_path}')
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
@@ -549,6 +542,7 @@ fn (mut l Linker) write_text_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72 + 80 * 2) // cmd size with 2 sections
 	write_string_fixed(mut l.buf, '__TEXT', 16)
+
 	write_u64_le(mut l.buf, l.text_vmaddr) // vmaddr = base_addr
 	write_u64_le(mut l.buf, u64(l.text_size)) // vmsize
 	write_u64_le(mut l.buf, 0) // fileoff MUST be 0
@@ -877,34 +871,33 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	sig << 0
 
 	// Write special slot hashes (slots -2, -1 in that order)
-	// Slot -2: Requirements hash (we'll compute it from our empty requirements blob)
-	// Slot -1: Info.plist hash (zeros for no Info.plist)
 
-	// First, create the requirements blob to hash it
+	// Build the requirements blob first so we can hash it
 	mut req_blob := []u8{}
 	write_u32_be(mut req_blob, csmagic_requirements)
 	write_u32_be(mut req_blob, u32(req_size))
 	write_u32_be(mut req_blob, 0) // count = 0
 
 	// Slot -2: Hash of requirements blob
-	req_hash := sha256.sum(req_blob)
-	sig << req_hash
+	mut hash_buf := [32]u8{}
+	sha256_hash(req_blob.data, req_blob.len, mut &hash_buf)
+	for b in hash_buf {
+		sig << b
+	}
 
 	// Slot -1: Info.plist (zeros = no Info.plist)
 	for _ in 0 .. cs_hash_size {
 		sig << 0
 	}
 
-	// Compute and write page hashes (16KB pages)
-	for page := 0; page < n_pages; page++ {
-		start := page * cs_page_size_arm64
-		mut end := start + cs_page_size_arm64
-		if end > code_limit {
-			end = code_limit
-		}
-		hash := sha256.sum(l.buf[start..end])
-		sig << hash
-	}
+	// Compute page hashes in parallel (16KB pages)
+	mut all_hashes := []u8{len: n_pages * 32}
+	data_ptr := unsafe { &u8(l.buf.data) }
+	hash_ptr := unsafe { &u8(all_hashes.data) }
+	// Hash all pages sequentially. V's `spawn` is not supported on the native
+	// ARM64 backend, so we avoid threads here for self-hosting compatibility.
+	sha256_hash_pages(data_ptr, hash_ptr, 0, n_pages, code_limit)
+	sig << all_hashes
 
 	// Pad CodeDirectory to alignment
 	for sig.len < cd_blob_offset + cd_size_aligned {
@@ -1262,4 +1255,161 @@ fn (mut l Linker) write_zeros(n int) {
 		return
 	}
 	unsafe { l.buf.grow_len(n) }
+}
+
+// Self-contained SHA-256 implementation. Zero heap allocations —
+// uses fixed-size arrays and operates on raw pointers.
+
+const sha256_k = [
+	u32(0x428a2f98), 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+	0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+	0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+	0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+	0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+	0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+	0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+	0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]!
+
+@[inline]
+fn rotr32(x u32, n u32) u32 {
+	return (x >> n) | (x << (32 - n))
+}
+
+// sha256_hash_pages hashes a range of 16KB pages in a worker thread.
+// Each thread writes 32-byte hashes into disjoint slots of the pre-allocated output buffer.
+fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_limit int) {
+	mut hash_buf := [32]u8{}
+	for page := page_start; page < page_end; page++ {
+		start := page * cs_page_size_arm64
+		mut end := start + cs_page_size_arm64
+		if end > code_limit {
+			end = code_limit
+		}
+		unsafe {
+			sha256_hash(data + start, end - start, mut &hash_buf)
+			vmemcpy(hashes + page * 32, &hash_buf[0], 32)
+		}
+	}
+}
+
+// sha256_hash computes SHA-256 of data[0..data_len] into out[0..32].
+// No heap allocations — uses fixed-size arrays on the stack.
+@[direct_array_access]
+fn sha256_hash(data &u8, data_len int, mut out &[32]u8) {
+	mut state := [u32(0x6A09E667), 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+		0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19]!
+	mut w := [64]u32{}
+
+	// Process complete 64-byte blocks directly from input
+	n_full_blocks := data_len / 64
+	for blk := 0; blk < n_full_blocks; blk++ {
+		off := blk * 64
+		for i in 0 .. 16 {
+			j := off + i * 4
+			unsafe {
+				w[i] = (u32(data[j]) << 24) | (u32(data[j + 1]) << 16) | (u32(data[j + 2]) << 8) | u32(data[j + 3])
+			}
+		}
+		sha256_compress(mut &state, mut &w)
+	}
+
+	// Build final padded block(s): remaining data + 0x80 + zeros + 64-bit big-endian length
+	remaining := data_len - n_full_blocks * 64
+	mut pad := [128]u8{} // At most 2 final blocks
+	for i in 0 .. remaining {
+		unsafe {
+			pad[i] = data[n_full_blocks * 64 + i]
+		}
+	}
+	pad[remaining] = 0x80
+
+	// Need room for 8-byte length at end of last 64-byte block
+	mut pad_blocks := 1
+	if remaining >= 56 {
+		pad_blocks = 2
+	}
+
+	// Write bit length (big-endian u64) at end of last padding block
+	bit_len := u64(data_len) * 8
+	pad_end := pad_blocks * 64
+	pad[pad_end - 8] = u8(bit_len >> 56)
+	pad[pad_end - 7] = u8(bit_len >> 48)
+	pad[pad_end - 6] = u8(bit_len >> 40)
+	pad[pad_end - 5] = u8(bit_len >> 32)
+	pad[pad_end - 4] = u8(bit_len >> 24)
+	pad[pad_end - 3] = u8(bit_len >> 16)
+	pad[pad_end - 2] = u8(bit_len >> 8)
+	pad[pad_end - 1] = u8(bit_len)
+
+	for blk in 0 .. pad_blocks {
+		off := blk * 64
+		for i in 0 .. 16 {
+			j := off + i * 4
+			w[i] = (u32(pad[j]) << 24) | (u32(pad[j + 1]) << 16) | (u32(pad[j + 2]) << 8) | u32(pad[j + 3])
+		}
+		sha256_compress(mut &state, mut &w)
+	}
+
+	// Write result big-endian
+	for i in 0 .. 8 {
+		out[i * 4] = u8(state[i] >> 24)
+		out[i * 4 + 1] = u8(state[i] >> 16)
+		out[i * 4 + 2] = u8(state[i] >> 8)
+		out[i * 4 + 3] = u8(state[i])
+	}
+}
+
+@[direct_array_access]
+fn sha256_compress(mut state &[8]u32, mut w &[64]u32) {
+	// Extend the first 16 words into the remaining 48
+	for i := 16; i < 64; i++ {
+		s0 := rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3)
+		s1 := rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10)
+		w[i] = w[i - 16] + s0 + w[i - 7] + s1
+	}
+
+	mut a := state[0]
+	mut b := state[1]
+	mut c := state[2]
+	mut d := state[3]
+	mut e := state[4]
+	mut f := state[5]
+	mut g := state[6]
+	mut h := state[7]
+
+	for i in 0 .. 64 {
+		s1 := rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)
+		ch := (e & f) ^ (~e & g)
+		t1 := h + s1 + ch + sha256_k[i] + w[i]
+		s0 := rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)
+		maj := (a & b) ^ (a & c) ^ (b & c)
+		t2 := s0 + maj
+
+		h = g
+		g = f
+		f = e
+		e = d + t1
+		d = c
+		c = b
+		b = a
+		a = t1 + t2
+	}
+
+	state[0] += a
+	state[1] += b
+	state[2] += c
+	state[3] += d
+	state[4] += e
+	state[5] += f
+	state[6] += g
+	state[7] += h
 }
