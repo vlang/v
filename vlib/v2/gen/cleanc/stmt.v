@@ -193,7 +193,11 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					return
 				}
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
-				g.expr(expr)
+				if value_type in g.sum_type_variants {
+					g.gen_type_cast_expr(value_type, expr)
+				} else {
+					g.expr(expr)
+				}
 				g.sb.writeln('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; });')
 				return
 			}
@@ -270,7 +274,11 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					return
 				}
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
-				g.expr(expr)
+				if value_type in g.sum_type_variants {
+					g.gen_type_cast_expr(value_type, expr)
+				} else {
+					g.expr(expr)
+				}
 				g.sb.writeln('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
 				return
 			}

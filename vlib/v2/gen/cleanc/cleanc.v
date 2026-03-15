@@ -1340,9 +1340,10 @@ fn (mut g Gen) gen_spawn_expr(node ast.KeywordOperator) {
 	mut receiver_expr := ast.empty_expr
 	if call_lhs is ast.SelectorExpr {
 		sel := call_lhs as ast.SelectorExpr
-		if !(sel.lhs is ast.Ident && g.is_module_ident((sel.lhs as ast.Ident).name)) {
+		sel_lhs := sel.lhs
+		if !(sel_lhs is ast.Ident && g.is_module_ident((sel_lhs as ast.Ident).name)) {
 			is_method = true
-			receiver_expr = sel.lhs
+			receiver_expr = sel_lhs
 		}
 	}
 	// Build a unique name for the wrapper (deduplication key)

@@ -327,8 +327,12 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 							if pred_copy_dests[pred_blk_idx].len == 0 {
 								pred_copy_blocks << pred_blk_idx
 							}
-							pred_copy_dests[pred_blk_idx] << val_id
-							pred_copy_srcs[pred_blk_idx] << val_in
+							mut pcd := pred_copy_dests[pred_blk_idx]
+							pcd << val_id
+							pred_copy_dests[pred_blk_idx] = pcd
+							mut pcs := pred_copy_srcs[pred_blk_idx]
+							pcs << val_in
+							pred_copy_srcs[pred_blk_idx] = pcs
 						}
 					}
 				}

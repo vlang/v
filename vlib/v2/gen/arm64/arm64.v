@@ -11,6 +11,7 @@ import encoding.binary
 import os
 
 pub struct Gen {
+pub:
 	mod &mir.Module
 mut:
 	macho &MachOObject
@@ -30,7 +31,8 @@ pub mut:
 	// Register allocation
 	reg_map   map[int]int
 	used_regs []int
-	next_blk  int
+	next_blk   int
+	cur_blk_id int // current block being generated (for phi copy emission)
 
 	// Track which string literals have been materialized (value_id -> str_data offset)
 	string_literal_offsets map[int]int
@@ -50,10 +52,12 @@ pub mut:
 	// therefore must outlive the current stack frame.
 	sumtype_data_heap_allocas map[int]bool
 	// Type layout caches/guards to avoid recursive size/alignment loops.
-	type_size_cache  map[int]int
-	type_align_cache map[int]int
-	type_size_stack  map[int]bool
-	type_align_stack map[int]bool
+	type_size_cache  []int  // indexed by type_id, 0 = not cached (valid sizes are > 0 or == 0 only for void)
+	type_align_cache []int  // indexed by type_id, 0 = not cached
+	type_size_stack  []bool // indexed by type_id (recursion guard)
+	type_align_stack []bool // indexed by type_id (recursion guard)
+	// Cache for struct field offset calculations (key: typ_id << 16 | field_idx)
+	struct_field_offset_cache map[int]int
 	// Lookup caches for O(1) name resolution
 	func_by_name   map[string]int // function name → index in g.mod.funcs
 	global_by_name map[string]int // global name → index in g.mod.globals
@@ -83,19 +87,22 @@ pub mut:
 	env_trace_struct_addr string
 	env_trace_strlit      string
 	env_trace_storeval    string
+	env_trace_regalloc    string
+	env_no_regalloc       bool
 	// Reverse map: val_id → block_id for block-kind values.
 	// Value.index is unreliable in ARM64-compiled binaries, so use this instead.
 	val_to_block []int
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
+	n_types := mod.type_store.types.len
 	return &Gen{
 		mod:                   mod
 		macho:                 MachOObject.new()
-		type_size_cache:       map[int]int{}
-		type_align_cache:      map[int]int{}
-		type_size_stack:       map[int]bool{}
-		type_align_stack:      map[int]bool{}
+		type_size_cache:       []int{len: n_types}
+		type_align_cache:      []int{len: n_types}
+		type_size_stack:       []bool{len: n_types}
+		type_align_stack:      []bool{len: n_types}
 		env_dump_funcrefs:     os.getenv('V2_ARM64_DUMP_FUNCREFS')
 		env_trace_skip_dead:   os.getenv('V2_ARM64_TRACE_SKIP_DEAD')
 		env_dump_stackmap:     os.getenv('V2_ARM64_DUMP_STACKMAP')
@@ -119,10 +126,22 @@ pub fn Gen.new(mod &mir.Module) &Gen {
 		env_trace_struct_addr: os.getenv('V2_ARM64_TRACE_STRUCT_ADDR')
 		env_trace_strlit:      os.getenv('V2_ARM64_TRACE_STRLIT')
 		env_trace_storeval:    os.getenv('V2_ARM64_TRACE_STOREVAL')
+		env_trace_regalloc:    os.getenv('V2_ARM64_TRACE_REGALLOC')
+		env_no_regalloc:       os.getenv('V2_ARM64_NO_REGALLOC').len > 0
 	}
 }
 
 pub fn (mut g Gen) gen() {
+	g.gen_pre_pass()
+	for fi := 0; fi < g.mod.funcs.len; fi++ {
+		g.gen_func(g.mod.funcs[fi])
+	}
+	g.gen_post_pass()
+}
+
+// gen_pre_pass registers global symbols and builds lookup caches.
+// Must be called before any gen_func calls.
+pub fn (mut g Gen) gen_pre_pass() {
 	// Pre-register global symbols BEFORE generating functions
 	// This ensures add_undefined() finds existing symbols instead of creating undefined ones
 	mut data_offset := u64(0)
@@ -150,10 +169,29 @@ pub fn (mut g Gen) gen() {
 		g.global_by_name[gvar.name] = gi
 	}
 
-	for fi := 0; fi < g.mod.funcs.len; fi++ {
-		g.gen_func(g.mod.funcs[fi])
+	// Build val_to_block once (block data doesn't change between functions).
+	// Scan values for basic_block kind instead of using g.mod.blocks[bid].val_id
+	// which returns wrong results in ARM64-compiled binaries (large struct copy bug).
+	g.val_to_block = []int{len: g.mod.values.len}
+	for vtb_i := 0; vtb_i < g.val_to_block.len; vtb_i++ {
+		g.val_to_block[vtb_i] = -1
+	}
+	for vi := 0; vi < g.mod.values.len; vi++ {
+		if g.mod.values[vi].kind == .basic_block {
+			bid := g.mod.values[vi].index
+			if bid >= 0 && bid < g.mod.blocks.len {
+				g.val_to_block[vi] = bid
+			}
+		}
 	}
 
+	// Pre-populate type size/align caches so parallel workers can share them read-only
+	g.pre_populate_type_caches()
+}
+
+// gen_post_pass emits the unresolved stub, global data, and patches symbol addresses.
+// Must be called after all gen_func calls.
+pub fn (mut g Gen) gen_post_pass() {
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
@@ -267,15 +305,135 @@ pub fn (mut g Gen) gen() {
 	}
 }
 
-fn (mut g Gen) gen_func(func mir.Function) {
+// new_worker_clone creates a new Gen instance for parallel code generation.
+// The worker shares the read-only MIR module and lookup caches, but has its
+// own MachOObject buffers for independent code emission.
+// pre_populate_type_caches computes type_size and type_align for ALL types
+// in the type store, so that workers can share the caches read-only.
+pub fn (mut g Gen) pre_populate_type_caches() {
+	for tid := 0; tid < g.mod.type_store.types.len; tid++ {
+		g.type_size(tid)
+		g.type_align(tid)
+	}
+}
+
+pub fn (g &Gen) new_worker_clone() &Gen {
+	return &Gen{
+		mod:                   g.mod
+		macho:                 MachOObject.new()
+		func_by_name:          g.func_by_name
+		global_by_name:        g.global_by_name
+		val_to_block:          g.val_to_block
+		type_size_cache:       g.type_size_cache
+		type_align_cache:      g.type_align_cache
+		type_size_stack:       g.type_size_stack
+		type_align_stack:      g.type_align_stack
+		env_dump_funcrefs:     g.env_dump_funcrefs
+		env_trace_skip_dead:   g.env_trace_skip_dead
+		env_dump_stackmap:     g.env_dump_stackmap
+		env_dump_blocks:       g.env_dump_blocks
+		env_trace_paramspill:  g.env_trace_paramspill
+		env_trace_val:         g.env_trace_val
+		env_trace_instr:       g.env_trace_instr
+		env_trace_cmp:         g.env_trace_cmp
+		env_trace_store:       g.env_trace_store
+		env_trace_load:        g.env_trace_load
+		env_trace_call:        g.env_trace_call
+		env_trace_ret:         g.env_trace_ret
+		env_trace_bitcast:     g.env_trace_bitcast
+		env_trace_assign:      g.env_trace_assign
+		env_trace_extract:     g.env_trace_extract
+		env_trace_struct_init: g.env_trace_struct_init
+		env_trace_agg_copy:    g.env_trace_agg_copy
+		env_trace_insert:      g.env_trace_insert
+		env_trace_callcount:   g.env_trace_callcount
+		env_trace_callarg:     g.env_trace_callarg
+		env_trace_struct_addr: g.env_trace_struct_addr
+		env_trace_strlit:      g.env_trace_strlit
+		env_trace_storeval:    g.env_trace_storeval
+		env_trace_regalloc:    g.env_trace_regalloc
+		env_no_regalloc:       g.env_no_regalloc
+	}
+}
+
+// merge_worker merges a parallel worker's output buffers into the main Gen.
+// text_data, str_data, symbols, and relocations are concatenated with offset adjustment.
+pub fn (mut g Gen) merge_worker(w &Gen) {
+	text_base := g.macho.text_data.len
+	str_base := g.macho.str_data.len
+
+	// Append machine code
+	g.macho.text_data << w.macho.text_data
+
+	// Append string literal data
+	g.macho.str_data << w.macho.str_data
+
+	// Merge symbols: remap worker symbol indices to main symbol table
+	mut sym_remap := []int{len: w.macho.symbols.len}
+	for wi, sym in w.macho.symbols {
+		mut new_value := sym.value
+		if sym.sect == 1 {
+			new_value += u64(text_base)
+		} else if sym.sect == 2 {
+			new_value += u64(str_base)
+		}
+		// Local symbols (L_str_*, L_cstr_*) are per-worker and must never be
+		// deduplicated — each worker's L_str_0 refers to a different string literal.
+		is_local := sym.name.len > 2 && sym.name[0] == `L` && sym.name[1] == `_`
+		// Check if symbol already exists in main (e.g., pre-registered global or extern)
+		if !is_local {
+			if existing := g.macho.sym_by_name[sym.name] {
+				// Update existing symbol with definition if this one defines it
+				if sym.type_ != 0x01 { // not N_UNDF
+					mut main_sym := &g.macho.symbols[existing]
+					main_sym.type_ = sym.type_
+					main_sym.sect = sym.sect
+					main_sym.value = new_value
+				}
+				sym_remap[wi] = existing
+				continue
+			}
+		}
+		sym_remap[wi] = g.macho.symbols.len
+		name_off := g.macho.str_table.len
+		g.macho.str_table << sym.name.bytes()
+		g.macho.str_table << 0
+		g.macho.symbols << Symbol{
+			name:     sym.name
+			type_:    sym.type_
+			sect:     sym.sect
+			desc:     sym.desc
+			value:    new_value
+			name_off: name_off
+		}
+		if !is_local {
+			g.macho.sym_by_name[sym.name] = sym_remap[wi]
+		}
+	}
+
+	// Merge relocations with adjusted addresses and remapped symbol indices
+	for rel in w.macho.relocs {
+		g.macho.relocs << RelocationInfo{
+			addr:    rel.addr + text_base
+			sym_idx: sym_remap[rel.sym_idx]
+			pcrel:   rel.pcrel
+			length:  rel.length
+			extern:  rel.extern
+			type_:   rel.type_
+		}
+	}
+}
+
+pub fn (mut g Gen) gen_func(func mir.Function) {
 	if func.is_c_extern {
 		// C extern functions are provided by external libraries (libc, etc.).
 		// Don't emit any local symbol — let the linker resolve them as undefined externals.
 		return
 	}
 	if func.blocks.len == 0 {
-		// Emit a minimal stub: just a ret instruction
-		// This is needed for functions like __v_init_consts that are called but have no body
+		// Emit a minimal stub: just a ret instruction.
+		// This handles functions registered in Phase 3 but not built in Phase 4
+		// (dead code elimination), or functions with empty bodies.
 		g.curr_offset = g.macho.text_data.len
 		sym_name := '_' + func.name
 		g.macho.add_symbol(sym_name, u64(g.curr_offset), false, 1)
@@ -283,38 +441,37 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		return
 	}
 	g.curr_offset = g.macho.text_data.len
-	g.stack_map = map[int]int{}
-	g.alloca_offsets = map[int]int{}
-	g.alloca_ptr_cache = map[int]u8{}
-	g.block_offsets = []int{len: g.mod.blocks.len}
-	// Initialize to -1 manually (init: -1 may not work on all backends)
-	for bo_idx := 0; bo_idx < g.block_offsets.len; bo_idx++ {
-		g.block_offsets[bo_idx] = -1
-	}
-	// Build reverse map: val_id → block_id.
-	// Value.index is unreliable for block-kind values in ARM64-compiled binaries.
-	if g.val_to_block.len < g.mod.values.len {
-		g.val_to_block = []int{len: g.mod.values.len}
-	}
-	for vtb_i := 0; vtb_i < g.val_to_block.len; vtb_i++ {
-		g.val_to_block[vtb_i] = -1
-	}
-	for bid := 0; bid < g.mod.blocks.len; bid++ {
-		bval := g.mod.blocks[bid].val_id
-		if bval >= 0 && bval < g.val_to_block.len {
-			g.val_to_block[bval] = bid
+	g.stack_map.clear()
+	g.alloca_offsets.clear()
+	g.alloca_ptr_cache.clear()
+	// Reuse block_offsets array, grow if needed, only zero this function's blocks
+	n_blks := g.mod.blocks.len
+	if g.block_offsets.len < n_blks {
+		g.block_offsets = []int{len: n_blks}
+		// Fresh allocation needs full -1 init
+		for bo_idx := 0; bo_idx < n_blks; bo_idx++ {
+			g.block_offsets[bo_idx] = -1
+		}
+	} else {
+		// Only reset blocks belonging to this function
+		for fbi := 0; fbi < func.blocks.len; fbi++ {
+			bid := func.blocks[fbi]
+			if bid >= 0 && bid < g.block_offsets.len {
+				g.block_offsets[bid] = -1
+			}
 		}
 	}
-	g.pending_label_blks = []int{}
-	g.pending_label_offs = []int{}
+	// val_to_block is built once in gen(), not per function
+	g.pending_label_blks.clear()
+	g.pending_label_offs.clear()
 	g.func_count++
 	g.total_pending = 0
 	g.total_resolved = 0
-	g.reg_map = map[int]int{}
-	g.used_regs = []int{}
-	g.string_literal_offsets = map[int]int{}
-	g.const_cache = map[int]i64{}
-	g.sumtype_data_heap_allocas = map[int]bool{}
+	g.reg_map.clear()
+	g.used_regs.clear()
+	g.string_literal_offsets.clear()
+	g.const_cache.clear()
+	g.sumtype_data_heap_allocas.clear()
 	g.cur_func_ret_type = func.typ
 	g.cur_func_name = func.name
 	g.x8_save_offset = 0
@@ -402,20 +559,11 @@ fn (mut g Gen) gen_func(func mir.Function) {
 					used_string_literals[op] = true
 				}
 			}
-		}
-	}
-	// Also check return values - if function returns a string_literal directly
-	for blk_id in func.blocks {
-		blk := g.mod.blocks[blk_id]
-		for val_id in blk.instrs {
-			val := g.mod.values[val_id]
-			if val.kind == .instruction {
-				instr := g.mod.instrs[val.index]
-				if instr.op == .ret && instr.operands.len > 0 {
-					ret_val := g.mod.values[instr.operands[0]]
-					if ret_val.kind == .string_literal {
-						used_string_literals[instr.operands[0]] = true
-					}
+			// Also check return values - if function returns a string_literal directly
+			if instr.op == .ret && instr.operands.len > 0 {
+				ret_val := g.mod.values[instr.operands[0]]
+				if ret_val.kind == .string_literal {
+					used_string_literals[instr.operands[0]] = true
 				}
 			}
 		}
@@ -853,6 +1001,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	for i := 0; i < func.blocks.len; i++ {
 		blk_id := int(func.blocks[i])
 		g.next_blk = if i + 1 < func.blocks.len { int(func.blocks[i + 1]) } else { -1 }
+		g.cur_blk_id = blk_id
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
 
@@ -2704,6 +2853,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.mod.values[target_blk].index
 			}
 
+			// Emit phi copies for the target block before branching
+			g.emit_phi_copies(target_idx)
+
 			// Fallthrough optimization: Don't jump if target is next block
 			if target_idx != g.next_blk {
 				if target_idx >= 0 && target_idx < g.block_offsets.len
@@ -2749,37 +2901,82 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.mod.values[instr.operands[2]].index
 			}
 
-			// Fallthrough optimization for False block
-			// If false block is next, we only need CBNZ to true block
+			has_phis := g.block_has_phis(true_blk) || g.block_has_phis(false_blk)
+			if has_phis {
+				// When target blocks have phi nodes (e.g. -O0 mode), we must emit
+				// phi copies on each branch path separately. Structure:
+				//   CBZ x8, false_path
+				//   <true phi copies>
+				//   B true_blk
+				//   false_path:
+				//   <false phi copies>
+				//   B false_blk (or fall-through)
+				cbz_off := g.macho.text_data.len - g.curr_offset
+				g.emit(asm_cbz(Reg(8), 0)) // placeholder, will patch
 
-			if true_blk >= 0 && true_blk < g.block_offsets.len && g.block_offsets[true_blk] != -1 {
-				off := g.block_offsets[true_blk]
-				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				if rel >= -262144 && rel < 262144 {
-					g.emit(asm_cbnz(Reg(8), rel))
-				} else {
-					// Branch target too far for CBNZ (19-bit range).
-					// Use trampoline: CBZ skip; B target; skip:
-					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-					g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
-				}
-			} else {
-				// Forward reference: use trampoline pattern to avoid 19-bit overflow.
-				// CBZ x8, skip; B target; skip:
-				g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-				g.record_pending_label(true_blk)
-				g.emit(asm_b(0))
-			}
-
-			if false_blk != g.next_blk {
-				if false_blk >= 0 && false_blk < g.block_offsets.len
-					&& g.block_offsets[false_blk] != -1 {
-					off := g.block_offsets[false_blk]
+				// True path: emit phi copies then branch to true block
+				g.emit_phi_copies(true_blk)
+				if true_blk >= 0 && true_blk < g.block_offsets.len
+					&& g.block_offsets[true_blk] != -1 {
+					off := g.block_offsets[true_blk]
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
 					g.emit(asm_b(rel))
 				} else {
-					g.record_pending_label(false_blk)
+					g.record_pending_label(true_blk)
 					g.emit(asm_b(0))
+				}
+
+				// Patch CBZ to jump here (false path)
+				false_path_off := g.macho.text_data.len - g.curr_offset
+				cbz_rel := (false_path_off - cbz_off) / 4
+				cbz_abs := g.curr_offset + cbz_off
+				g.write_u32(cbz_abs, asm_cbz(Reg(8), cbz_rel))
+
+				// False path: emit phi copies then branch to false block
+				g.emit_phi_copies(false_blk)
+				if false_blk != g.next_blk {
+					if false_blk >= 0 && false_blk < g.block_offsets.len
+						&& g.block_offsets[false_blk] != -1 {
+						off := g.block_offsets[false_blk]
+						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+						g.emit(asm_b(rel))
+					} else {
+						g.record_pending_label(false_blk)
+						g.emit(asm_b(0))
+					}
+				}
+			} else {
+				// No phi nodes — use efficient branch pattern
+				if true_blk >= 0 && true_blk < g.block_offsets.len
+					&& g.block_offsets[true_blk] != -1 {
+					off := g.block_offsets[true_blk]
+					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+					if rel >= -262144 && rel < 262144 {
+						g.emit(asm_cbnz(Reg(8), rel))
+					} else {
+						// Branch target too far for CBNZ (19-bit range).
+						// Use trampoline: CBZ skip; B target; skip:
+						g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+						g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
+					}
+				} else {
+					// Forward reference: use trampoline pattern to avoid 19-bit overflow.
+					// CBZ x8, skip; B target; skip:
+					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+					g.record_pending_label(true_blk)
+					g.emit(asm_b(0))
+				}
+
+				if false_blk != g.next_blk {
+					if false_blk >= 0 && false_blk < g.block_offsets.len
+						&& g.block_offsets[false_blk] != -1 {
+						off := g.block_offsets[false_blk]
+						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+						g.emit(asm_b(rel))
+					} else {
+						g.record_pending_label(false_blk)
+						g.emit(asm_b(0))
+					}
 				}
 			}
 		}
@@ -2826,6 +3023,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				g.mod.values[def_blk_val].index
 			}
+			g.emit_phi_copies(def_idx)
 			if def_idx >= 0 && def_idx < g.block_offsets.len && g.block_offsets[def_idx] != -1 {
 				off := g.block_offsets[def_idx]
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
@@ -5212,6 +5410,12 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
+	if r := g.reg_map[val_id] {
+		if r != reg {
+			g.emit_mov_reg(reg, r)
+		}
+		return
+	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return
@@ -5569,6 +5773,76 @@ fn (mut g Gen) emit_sub_sp(imm int) {
 		// Very large stack: use register
 		g.emit_mov_imm(10, u64(imm))
 		g.emit(asm_sub_sp_reg(Reg(10)))
+	}
+}
+
+// block_has_phis returns true if the given block contains any phi instructions.
+fn (g Gen) block_has_phis(blk_id int) bool {
+	if blk_id < 0 || blk_id >= g.mod.blocks.len {
+		return false
+	}
+	blk := g.mod.blocks[blk_id]
+	for vid in blk.instrs {
+		v := g.mod.values[vid]
+		if v.kind != .instruction {
+			continue
+		}
+		if g.mod.instrs[v.index].op == .phi {
+			return true
+		}
+	}
+	return false
+}
+
+// emit_phi_copies emits register/stack copies for phi nodes in the target block.
+// Called before jmp/br to ensure phi values from the current predecessor block
+// are written to the phi output slots. In -O0 mode, phi nodes are not eliminated
+// by the optimizer, so the codegen must lower them directly.
+fn (mut g Gen) emit_phi_copies(target_blk_id int) {
+	if target_blk_id < 0 || target_blk_id >= g.mod.blocks.len {
+		return
+	}
+	target_blk := g.mod.blocks[target_blk_id]
+	cur_blk_id := g.cur_blk_id
+
+	for phi_val_id in target_blk.instrs {
+		phi_val := g.mod.values[phi_val_id]
+		if phi_val.kind != .instruction {
+			continue
+		}
+		phi_instr := g.mod.instrs[phi_val.index]
+		if phi_instr.op != .phi {
+			continue
+		}
+		// Phi operands are [value, block, value, block, ...]
+		// Find the operand pair matching our current block
+		for pi := 0; pi + 1 < phi_instr.operands.len; pi += 2 {
+			src_val_id := phi_instr.operands[pi]
+			blk_val_id := phi_instr.operands[pi + 1]
+			src_blk := if blk_val_id >= 0 && blk_val_id < g.val_to_block.len {
+				g.val_to_block[blk_val_id]
+			} else {
+				g.mod.values[blk_val_id].index
+			}
+			if src_blk != cur_blk_id {
+				continue
+			}
+			// Copy src_val_id → phi_val_id slot
+			phi_size := g.type_size(phi_val.typ)
+			if phi_size > 8 {
+				// Aggregate copy: load source address, copy bytes to dest slot
+				if src_off := g.stack_map[src_val_id] {
+					g.emit_add_fp_imm(9, src_off)
+					if dst_off := g.stack_map[phi_val_id] {
+						g.copy_ptr_to_fp_bytes(9, dst_off, phi_size)
+					}
+				}
+			} else {
+				g.load_val_to_reg(8, src_val_id)
+				g.store_reg_to_val(8, phi_val_id)
+			}
+			break
+		}
 	}
 }
 
@@ -6392,16 +6666,16 @@ fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
 	if typ_id < 0 || typ_id >= g.mod.type_store.types.len {
 		return 8
 	}
-	if typ_id in g.type_size_cache {
-		return g.type_size_cache[typ_id]
+	// Flat array cache: check if already computed (cached values are offset by +1, 0 = not cached)
+	if typ_id < g.type_size_cache.len && g.type_size_cache[typ_id] != 0 {
+		return g.type_size_cache[typ_id] - 1
 	}
-	if typ_id in g.type_size_stack {
+	if typ_id < g.type_size_stack.len && g.type_size_stack[typ_id] {
 		// Break recursive layout cycles (e.g. malformed self-referential aggregates).
 		return 8
 	}
-	g.type_size_stack[typ_id] = true
-	defer {
-		g.type_size_stack.delete(typ_id)
+	if typ_id < g.type_size_stack.len {
+		g.type_size_stack[typ_id] = true
 	}
 	typ := g.mod.type_store.types[typ_id]
 	mut size := 0
@@ -6463,7 +6737,13 @@ fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
 			size = 0
 		}
 	}
-	g.type_size_cache[typ_id] = size
+	if typ_id < g.type_size_stack.len {
+		g.type_size_stack[typ_id] = false
+	}
+	// Store size+1 so that 0 means "not cached" (size 0 is valid for void/label/metadata)
+	if typ_id < g.type_size_cache.len {
+		g.type_size_cache[typ_id] = size + 1
+	}
 	return size
 }
 
@@ -6471,15 +6751,15 @@ fn (mut g Gen) type_align(typ_id ssa.TypeID) int {
 	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
 		return if typ_id == 0 { 1 } else { 8 }
 	}
-	if typ_id in g.type_align_cache {
-		return g.type_align_cache[typ_id]
+	// Flat array cache: cached values stored as align+1, 0 = not cached
+	if typ_id < g.type_align_cache.len && g.type_align_cache[typ_id] != 0 {
+		return g.type_align_cache[typ_id] - 1
 	}
-	if typ_id in g.type_align_stack {
+	if typ_id < g.type_align_stack.len && g.type_align_stack[typ_id] {
 		return 8
 	}
-	g.type_align_stack[typ_id] = true
-	defer {
-		g.type_align_stack.delete(typ_id)
+	if typ_id < g.type_align_stack.len {
+		g.type_align_stack[typ_id] = true
 	}
 	typ := g.mod.type_store.types[typ_id]
 	mut align := 1
@@ -6496,13 +6776,23 @@ fn (mut g Gen) type_align(typ_id ssa.TypeID) int {
 			align = 2
 		}
 	}
-	g.type_align_cache[typ_id] = align
+	if typ_id < g.type_align_stack.len {
+		g.type_align_stack[typ_id] = false
+	}
+	if typ_id < g.type_align_cache.len {
+		g.type_align_cache[typ_id] = align + 1
+	}
 	return align
 }
 
 fn (mut g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int) int {
 	if struct_typ_id <= 0 || struct_typ_id >= g.mod.type_store.types.len {
 		return field_idx * 8
+	}
+	// Cache key: (typ_id << 16) | field_idx — supports up to 65535 fields per struct
+	cache_key := (struct_typ_id << 16) | field_idx
+	if cache_key in g.struct_field_offset_cache {
+		return g.struct_field_offset_cache[cache_key]
 	}
 	typ := g.mod.type_store.types[struct_typ_id]
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
@@ -6519,6 +6809,7 @@ fn (mut g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int
 			offset = (offset + align - 1) & ~(align - 1)
 		}
 		if i == field_idx {
+			g.struct_field_offset_cache[cache_key] = offset
 			return offset
 		}
 		field_size := g.type_size(field_typ)
@@ -7372,6 +7663,11 @@ fn (g &Gen) lookup_struct_from_env(name string) ?types.Struct {
 }
 
 fn (mut g Gen) allocate_registers(func mir.Function) {
+	if g.env_no_regalloc {
+		return
+	}
+	trace_ra := g.env_trace_regalloc.len > 0
+		&& (g.env_trace_regalloc == '*' || func.name == g.env_trace_regalloc)
 	mut intervals := map[int]&Interval{}
 	mut call_indices := []int{}
 	mut instr_idx := 0
@@ -7406,16 +7702,8 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	mut block_start := map[int]int{}
 	mut block_end := map[int]int{}
 
-	for pid in func.params {
-		if pid in phi_related_vals {
-			continue
-		}
-		intervals[pid] = &Interval{
-			val_id: pid
-			start:  0
-			end:    0
-		}
-	}
+	// Don't register-allocate function parameters.
+	// Parameters have special spilling behavior managed by prologue code.
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
@@ -7428,6 +7716,13 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 				mut skip_interval := val_id in phi_related_vals
 				if val.kind == .instruction {
 					instr := g.mod.instrs[val.index]
+					// Skip instructions that build results directly on the stack.
+					// These ops write to the stack slot without going through a register,
+					// so register-allocating them leaves the register uninitialized.
+					if instr.op in [.struct_init, .insertvalue, .inline_string_init,
+						.call_sret] {
+						skip_interval = true
+					}
 					if instr.op in [.call, .call_indirect, .call_sret] {
 						result_typ := g.mod.type_store.types[val.typ]
 						if result_typ.kind == .struct_t {
@@ -7552,9 +7847,6 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	// Reserve x8/x9 as backend data path scratch registers.
 	// Reserve x10/x11/x12 for helper temporaries (large offset materialization,
 	// address arithmetic, and spill-free internal moves).
-	// Temporary conservative mode: keep values stack-resident for correctness.
-	// This avoids backend miscompilations caused by incomplete live interval
-	// modeling across complex CFG/aggregate paths.
 	short_regs := []int{}
 	long_regs := []int{}
 
@@ -7598,4 +7890,12 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		}
 	}
 	g.used_regs.sort()
+	if trace_ra {
+		eprintln('REGALLOC fn=${func.name} intervals=${sorted.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs=${g.used_regs} total_instrs=${total_instrs}')
+		for val_id, reg in g.reg_map {
+			if mut iv := intervals[val_id] {
+				eprintln('  val=${val_id} -> x${reg} [${iv.start},${iv.end}] has_call=${iv.has_call}')
+			}
+		}
+	}
 }
