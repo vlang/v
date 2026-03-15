@@ -6335,24 +6335,32 @@ fn (mut g Gen) ident(node ast.Ident) {
 			// Skip smartcasts for comptime_for variables to avoid using stale types
 			skip_smartcasts := g.is_comptime_for_var(node)
 			if has_resolved_var && resolved_var.smartcasts.len > 0 && !skip_smartcasts {
+				mut smartcast_types := resolved_var.smartcasts.clone()
+				if resolved_var.orig_type.has_flag(.option) {
+					unwrapped_option_type := g.unwrap_generic(g.recheck_concrete_type(resolved_var.typ.clear_option_and_result()))
+					if unwrapped_option_type != 0
+						&& g.table.final_sym(unwrapped_option_type).kind == .function {
+						smartcast_types = [unwrapped_option_type]
+					}
+				}
 				interface_source_is_interface :=
 					g.table.final_sym(g.unwrap_generic(resolved_var.typ)).kind == .interface
 					|| (resolved_var.orig_type != 0
 					&& g.table.final_sym(g.unwrap_generic(resolved_var.orig_type)).kind == .interface)
 				current_smartcast_type := g.exposed_smartcast_type(resolved_var.orig_type,
-					resolved_var.smartcasts.last(), resolved_var.is_mut)
+					smartcast_types.last(), resolved_var.is_mut)
 				mut needs_interface_smartcast_deref := g.table.is_interface_smartcast(resolved_var)
 					&& current_smartcast_type != 0
-					&& resolved_var.smartcasts.last().nr_muls() == current_smartcast_type.nr_muls() + 1
+					&& smartcast_types.last().nr_muls() == current_smartcast_type.nr_muls() + 1
 				interface_var_needs_deref := g.inside_interface_deref
 					&& g.table.is_interface_var(resolved_var)
 					&& !g.table.is_interface_smartcast(resolved_var)
-				raw_smartcast_target_kind := if resolved_var.smartcasts.last().is_ptr() {
-					g.table.final_sym(g.unwrap_generic(resolved_var.smartcasts.last().deref())).kind
+				raw_smartcast_target_kind := if smartcast_types.last().is_ptr() {
+					g.table.final_sym(g.unwrap_generic(smartcast_types.last().deref())).kind
 				} else {
 					ast.Kind.placeholder
 				}
-				if interface_source_is_interface && resolved_var.smartcasts.last().is_ptr() {
+				if interface_source_is_interface && smartcast_types.last().is_ptr() {
 					if g.inside_selector_lhs {
 						needs_interface_smartcast_deref = false
 					} else if raw_smartcast_target_kind !in [.struct, .aggregate, .array,
@@ -6362,16 +6370,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 				obj_sym := g.table.final_sym(g.unwrap_generic(resolved_var.typ))
 				interface_scalar_smartcast_needs_deref := interface_source_is_interface
-					&& resolved_var.smartcasts.len > 0 && resolved_var.smartcasts.last().is_ptr()
+					&& smartcast_types.len > 0 && smartcast_types.last().is_ptr()
 					&& !g.inside_selector_lhs
 					&& raw_smartcast_target_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface, .sum_type, .function]
 				if !prevent_sum_type_unwrapping_once {
-					nested_unwrap := resolved_var.smartcasts.len > 1
+					nested_unwrap := smartcast_types.len > 1
 					unwrap_sumtype := is_option && nested_unwrap && obj_sym.kind == .sum_type
 					if unwrap_sumtype {
 						g.write('(*(')
 					}
-					for i, typ in resolved_var.smartcasts {
+					for i, typ in smartcast_types {
 						is_option_unwrap := i == 0 && is_option
 							&& typ == resolved_var.orig_type.clear_flag(.option)
 						g.write('(')
@@ -6405,7 +6413,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write('*(${g.base_type(unwrap_typ)}*)')
 						}
 					}
-					for i, typ in resolved_var.smartcasts {
+					for i, typ in smartcast_types {
 						is_option_unwrap := is_option && typ == resolved_var.typ.clear_flag(.option)
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {

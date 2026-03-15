@@ -82,12 +82,29 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	unwrapped_left_type := g.unwrap_generic(node.left_type)
+	mut resolved_left_type := ast.Type(0)
+	if node.left is ast.Ident {
+		resolved_current_type := g.resolve_current_fn_generic_param_type(node.left.name)
+		if resolved_current_type != 0 {
+			resolved_left_type = resolved_current_type
+		}
+	}
+	if resolved_left_type == 0 {
+		resolved_left_type = g.recheck_concrete_type(node.left_type)
+	}
+	if resolved_left_type == 0 || resolved_left_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(resolved_left_type) {
+		resolved_left_type = g.resolved_expr_type(node.left, node.left_type)
+	}
+	if resolved_left_type == 0 {
+		resolved_left_type = g.type_resolver.get_type_or_default(node.left, node.left_type)
+	}
+	unwrapped_left_type := g.unwrap_generic(g.recheck_concrete_type(resolved_left_type))
 	sym := g.table.final_sym(unwrapped_left_type)
 	mut tmp_opt := ''
 	mut cur_line := ''
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
-	left_is_shared := unwrapped_left_type.has_flag(.shared_f)
+	left_is_shared := resolved_left_type.has_flag(.shared_f)
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('builtin__string_substr_ni(')
@@ -102,7 +119,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 				g.write('builtin__string_substr(')
 			}
 		}
-		if node.left_type.is_ptr() {
+		if resolved_left_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.left)
@@ -115,7 +132,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if left_is_shared {
 			g.write('(')
 		}
-		if node.left_type.is_ptr() {
+		if resolved_left_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.left)
@@ -136,7 +153,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if left_is_shared {
 			g.write('(')
 		}
-		if node.left_type.is_ptr() {
+		if resolved_left_type.is_ptr() {
 			g.write('*')
 		}
 		if node.left is ast.ArrayInit {

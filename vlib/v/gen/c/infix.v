@@ -510,8 +510,18 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 // infix_expr_cmp_op generates code for `<`, `<=`, `>`, `>=`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	mut left_type := g.resolved_expr_type(node.left, node.left_type)
+	if left_type == 0 {
+		left_type = node.left_type
+	}
+	left_type = g.unwrap_generic(g.recheck_concrete_type(left_type))
+	mut right_type := g.resolved_expr_type(node.right, node.right_type)
+	if right_type == 0 {
+		right_type = node.right_type
+	}
+	right_type = g.unwrap_generic(g.recheck_concrete_type(right_type))
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 
 	mut has_operator_overloading := false
 	mut operator_expects_ptr := false
@@ -588,7 +598,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 				g.write('&')
 			}
 			if node.left is ast.ArrayInit && g.table.sym(node.left_type).kind == .array_fixed {
-				g.fixed_array_init_with_cast(node.left, node.left_type)
+				g.fixed_array_init_with_cast(node.left, left_type)
 			} else {
 				g.expr(node.left)
 			}
@@ -597,7 +607,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 				g.write('&')
 			}
 			if node.right is ast.ArrayInit && g.table.sym(node.right_type).kind == .array_fixed {
-				g.fixed_array_init_with_cast(node.right, node.right_type)
+				g.fixed_array_init_with_cast(node.right, right_type)
 			} else {
 				g.expr(node.right)
 			}

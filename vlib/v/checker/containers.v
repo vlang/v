@@ -504,8 +504,8 @@ fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
 }
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
-		&& node.typ != 0 && c.expected_type != ast.void_type {
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 && node.typ != 0
+		&& c.expected_type != ast.void_type {
 		expected_map_type := c.expected_type.clear_option_and_result()
 		if c.table.sym(expected_map_type).kind == .map && node.typ != expected_map_type {
 			node.typ = expected_map_type
@@ -580,8 +580,10 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				node.pos)
 			c.error('cannot use type `any` here', node.pos)
 		}
-		if c.nr_errors == start_errors && info.key_type != ast.void_type
-			&& !c.table.supports_map_key_type(info.key_type) {
+		needs_explicit_key_check := c.expected_type == ast.void_type
+			|| c.expected_type.clear_option_and_result() != node.typ
+		if needs_explicit_key_check && c.nr_errors == start_errors && info.key_type != ast.void_type
+			&& !info.key_type.has_flag(.generic) && !c.table.supports_map_key_type(info.key_type) {
 			c.error('map key type `${c.table.sym(info.key_type).name}` not supported',
 				node.pos)
 		}
@@ -640,7 +642,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
 		if c.nr_errors == start_errors && map_key_type != ast.void_type
-			&& !c.table.supports_map_key_type(map_key_type) {
+			&& !map_key_type.has_flag(.generic) && !c.table.supports_map_key_type(map_key_type) {
 			c.error('map key type `${c.table.sym(map_key_type).name}` not supported',
 				node.pos)
 		}

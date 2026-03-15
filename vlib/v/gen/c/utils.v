@@ -583,7 +583,17 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					g.unwrap_generic(inner_type).ref()
 				}
 				.mul {
-					g.unwrap_generic(inner_type).deref()
+					resolved_inner_type := g.unwrap_generic(inner_type)
+					if resolved_inner_type.is_ptr() {
+						resolved_inner_type.deref()
+					} else {
+						resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(right_default))
+						if resolved_right_type.is_ptr() {
+							resolved_right_type.deref()
+						} else {
+							resolved_inner_type
+						}
+					}
 				}
 				.arrow {
 					right_sym := g.table.final_sym(g.unwrap_generic(inner_type))

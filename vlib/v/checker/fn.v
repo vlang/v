@@ -74,7 +74,8 @@ fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
 	if !node.is_method {
 		return []string{}
 	}
-	if !node.receiver.typ.has_flag(.generic) && !c.type_has_unresolved_generic_parts(node.receiver.typ) {
+	if !node.receiver.typ.has_flag(.generic)
+		&& !c.type_has_unresolved_generic_parts(node.receiver.typ) {
 		return []string{}
 	}
 	rec_sym := c.table.sym(c.unwrap_generic(node.receiver.typ))
@@ -87,6 +88,61 @@ fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
 		else {}
 	}
 	return c.table.generic_type_names(node.receiver.typ)
+}
+
+fn (mut c Checker) receiver_requires_generic_names(node &ast.FnDecl) bool {
+	if !node.is_method {
+		return false
+	}
+	return node.receiver.typ.has_flag(.generic)
+}
+
+fn (mut c Checker) check_receiver_decl_generic_type_names(node &ast.FnDecl) {
+	if !node.is_method {
+		return
+	}
+	receiver_sym := c.table.final_sym(node.receiver.typ)
+	match receiver_sym.info {
+		ast.Struct {
+			if receiver_sym.info.generic_types.len > 0 && !node.receiver.typ.has_flag(.generic)
+				&& receiver_sym.info.concrete_types.len == 0 {
+				pure_sym_name := receiver_sym.embed_name()
+				c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
+					node.receiver.type_pos)
+			}
+		}
+		ast.Interface {
+			if receiver_sym.info.generic_types.len > 0 && !node.receiver.typ.has_flag(.generic)
+				&& receiver_sym.info.concrete_types.len == 0 {
+				pure_sym_name := receiver_sym.embed_name()
+				c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
+					node.receiver.type_pos)
+			}
+		}
+		ast.SumType {
+			if receiver_sym.info.generic_types.len > 0 && !node.receiver.typ.has_flag(.generic)
+				&& receiver_sym.info.concrete_types.len == 0 {
+				pure_sym_name := receiver_sym.embed_name()
+				c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
+					node.receiver.type_pos)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut c Checker) check_receiver_decl_generic_name_mentions(node &ast.FnDecl) {
+	if !node.is_method || !node.receiver.typ.has_flag(.generic) {
+		return
+	}
+	generic_names := c.table.generic_type_names(node.receiver.typ)
+	for name in generic_names {
+		if name !in node.generic_names {
+			fn_generic_names := node.generic_names.join(', ')
+			c.error('generic type name `${name}` is not mentioned in fn `${node.name}[${fn_generic_names}]`',
+				node.receiver.type_pos)
+		}
+	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
@@ -138,9 +194,36 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	mut need_generic_names := false
+	if node.generic_names.len == 0 {
+		if node.return_type.has_flag(.generic) {
+			need_generic_names = true
+		} else if c.receiver_requires_generic_names(node) {
+			need_generic_names = true
+		} else {
+			for param in node.params {
+				if param.typ.has_flag(.generic) {
+					need_generic_names = true
+					break
+				}
+			}
+		}
+		if need_generic_names {
+			if node.is_method {
+				c.add_error_detail('use `fn (r SomeType[T]) foo[T]() {`, not just `fn (r SomeType[T]) foo() {`')
+				c.error('generic method declaration must specify generic type names',
+					node.pos)
+			} else {
+				c.add_error_detail('use `fn foo[T](x T) {`, not just `fn foo(x T) {`')
+				c.error('generic function declaration must specify generic type names',
+					node.pos)
+			}
+		}
+	}
+	c.check_receiver_decl_generic_type_names(node)
+	c.check_receiver_decl_generic_name_mentions(node)
 	effective_generic_names := c.effective_fn_generic_names(node)
-	if effective_generic_names.len > 0
-		&& c.table.cur_concrete_types.len == 0 {
+	if effective_generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
@@ -183,30 +266,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.fn_scope = prev_fn_scope
 	}
 	// Check generics fn/method without generic type parameters
-	mut need_generic_names := false
-	if node.generic_names.len == 0 {
-		if node.return_type.has_flag(.generic) {
-			need_generic_names = true
-		} else {
-			for param in node.params {
-				if param.typ.has_flag(.generic) {
-					need_generic_names = true
-					break
-				}
-			}
-		}
-		if need_generic_names {
-			if node.is_method {
-				c.add_error_detail('use `fn (r SomeType[T]) foo[T]() {`, not just `fn (r SomeType[T]) foo() {`')
-				c.error('generic method declaration must specify generic type names',
-					node.pos)
-			} else {
-				c.add_error_detail('use `fn foo[T](x T) {`, not just `fn foo(x T) {`')
-				c.error('generic function declaration must specify generic type names',
-					node.pos)
-			}
-		}
-	}
 	if node.language == .v && !c.is_builtin_mod && !node.is_anon {
 		c.check_valid_snake_case(node.get_name(), 'function name', node.pos)
 		if !node.is_method && node.mod == 'main' && node.short_name in c.table.builtin_pub_fns {
@@ -613,7 +672,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.expected_type = ast.void_type
 	mut effective_cur_fn := unsafe { node }
-	if c.table.cur_concrete_types.len > 0 && effective_generic_names.len == c.table.cur_concrete_types.len
+	if c.table.cur_concrete_types.len > 0
+		&& effective_generic_names.len == c.table.cur_concrete_types.len
 		&& node.generic_names != effective_generic_names {
 		effective_cur_fn = &ast.FnDecl{
 			...*node
@@ -2368,10 +2428,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
-		&& (!left_sym.has_method(method_name) || use_builtin_array_sort) {
+		&& (!(left_sym.kind == .alias && left_sym.has_method(method_name))
+		|| use_builtin_array_sort) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
-		&& fixed_array_builtin_methods_chk.matches(method_name) && !left_sym.has_method(method_name) {
+		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
+		&& left_sym.has_method(method_name)) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map && node.kind in [.clone, .keys, .values, .move, .delete]
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
@@ -3169,30 +3231,6 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			mut concrete_fn := c.file.generic_fns[i]
-			original_generic_names := concrete_fn.generic_names.clone()
-			if concrete_fn.is_method && concrete_types.len > original_generic_names.len {
-				receiver_generic_names := c.table.generic_type_names(concrete_fn.receiver.typ)
-				if receiver_generic_names.len > 0 {
-					mut effective_generic_names := []string{cap: receiver_generic_names.len +
-						original_generic_names.len}
-					for name in receiver_generic_names {
-						if name !in effective_generic_names {
-							effective_generic_names << name
-						}
-					}
-					for name in original_generic_names {
-						if name !in effective_generic_names {
-							effective_generic_names << name
-						}
-					}
-					if effective_generic_names.len == concrete_types.len {
-						concrete_fn = &ast.FnDecl{
-							...*concrete_fn
-							generic_names: effective_generic_names
-						}
-					}
-				}
-			}
 			c.fn_decl(mut concrete_fn)
 			if concrete_fn.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
 				'vweb.run', 'vweb.run_at'] {

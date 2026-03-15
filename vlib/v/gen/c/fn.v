@@ -2977,6 +2977,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
+	if node.kind == .clone && node.left is ast.IndexExpr && node.left.index is ast.RangeExpr {
+		resolved_return_type := g.unwrap_generic(g.recheck_concrete_type(node.return_type))
+		resolved_return_sym := g.table.final_sym(resolved_return_type)
+		if resolved_return_sym.kind == .array {
+			array_info := resolved_return_sym.info as ast.Array
+			array_depth := g.get_array_depth(array_info.elem_type)
+			g.write('builtin__array_clone_static_to_depth(')
+			g.expr(node.left)
+			g.write(', ${array_depth})')
+			return
+		}
+	}
 	if typ_sym.info is ast.Interface && typ_sym.info.defines_method(method_name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
@@ -3030,7 +3042,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	if final_left_sym.kind == .array
-		&& (!left_sym.has_method(method_name) || use_builtin_array_sort) {
+		&& (!(left_sym.kind == .alias && left_sym.has_method(method_name))
+		|| use_builtin_array_sort) {
 		if !(method_name == 'get' && receiver_type != 0
 			&& g.table.final_sym(g.unwrap_generic(receiver_type)).kind != .array)
 			&& g.gen_array_method_call(node, left_type, final_left_sym) {
@@ -4027,14 +4040,55 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				// Temp fix generate call fn error when the struct type of sumtype
 				// has the fn field and is same to the struct name.
 				mut is_cast_needed := true
+				mut smartcast_types := obj.smartcasts.clone()
+				if obj.orig_type.has_flag(.option) {
+					mut unwrapped_fn_var_type := ast.no_type
+					mut resolved_parent_value_type := ast.no_type
+					if node.scope.parent != unsafe { nil } {
+						if parent_var := node.scope.parent.find_var(node.name) {
+							resolved_parent_value_type = g.unwrap_generic(g.recheck_concrete_type(parent_var.typ)).clear_option_and_result()
+							if resolved_parent_value_type != 0
+								&& g.table.final_sym(resolved_parent_value_type).kind == .function {
+								unwrapped_fn_var_type = resolved_parent_value_type
+							}
+						}
+					}
+					mut resolved_expr_value_type := ast.no_type
+					if unwrapped_fn_var_type == 0 && obj.expr !is ast.EmptyExpr {
+						resolved_expr_value_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(obj.expr,
+							obj.typ))).clear_option_and_result()
+						if resolved_expr_value_type != 0
+							&& g.table.final_sym(resolved_expr_value_type).kind == .function {
+							unwrapped_fn_var_type = resolved_expr_value_type
+						}
+					}
+					resolved_scope_type := g.resolved_scope_var_type(ast.Ident{
+						name:  node.name
+						scope: node.scope
+					})
+					if unwrapped_fn_var_type == 0 && resolved_scope_type != 0 {
+						resolved_scope_value_type := g.unwrap_generic(g.recheck_concrete_type(resolved_scope_type)).clear_option_and_result()
+						if resolved_scope_value_type != 0
+							&& g.table.final_sym(resolved_scope_value_type).kind == .function {
+							unwrapped_fn_var_type = resolved_scope_value_type
+						}
+					}
+					if unwrapped_fn_var_type == 0 {
+						unwrapped_fn_var_type = g.unwrap_generic(g.recheck_concrete_type(obj.typ.clear_option_and_result()))
+					}
+					if unwrapped_fn_var_type != 0
+						&& g.table.final_sym(unwrapped_fn_var_type).kind == .function {
+						smartcast_types = [unwrapped_fn_var_type]
+					}
+				}
 				if node.is_method && node.left_type != 0 {
 					left_sym := g.table.sym(node.left_type)
 					if left_sym.kind == .struct && node.name == obj.name {
 						is_cast_needed = false
 					}
 				}
-				if obj.smartcasts.len > 0 && is_cast_needed {
-					for typ in obj.smartcasts {
+				if smartcast_types.len > 0 && is_cast_needed {
+					for typ in smartcast_types {
 						sym := g.table.sym(g.unwrap_generic(typ))
 						if obj.orig_type.has_flag(.option) && sym.kind == .function {
 							g.write('(*(${sym.cname}*)(')
@@ -4042,7 +4096,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							g.write('(*(${sym.cname})(')
 						}
 					}
-					for i, typ in obj.smartcasts {
+					for i, typ in smartcast_types {
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
@@ -4422,7 +4476,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				} else if arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
-					if orig_sym.kind != .interface && (exp_sym.kind != .sum_type
+					if !expected_types[i].has_option_or_result() && orig_sym.kind != .interface
+						&& (exp_sym.kind != .sum_type
 						&& expected_types[i] != arg.expr.obj.orig_type) {
 						expected_types[i] = g.unwrap_generic(arg.expr.obj.smartcasts.last())
 						cast_sym := g.table.sym(expected_types[i])
@@ -4535,9 +4590,13 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		}
 		if i < expected_types.len {
 			if param := g.call_arg_param(node, i) {
-				if param.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(param.typ) {
-					resolved_expected_type := g.resolved_generic_call_arg_type(effective_arg)
-					if resolved_expected_type != 0 {
+				if (expected_types[i] == 0 || expected_types[i].has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(expected_types[i]))
+					&& (param.typ.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(param.typ)) {
+					resolved_expected_type := g.resolved_call_concrete_type(param.typ)
+					if resolved_expected_type != 0 && !resolved_expected_type.has_flag(.generic)
+						&& !g.type_has_unresolved_generic_parts(resolved_expected_type) {
 						expected_types[i] = g.unwrap_generic(g.recheck_concrete_type(resolved_expected_type))
 					}
 				}
@@ -4745,6 +4804,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 				arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
 			}
 		}
+		if expected_type.has_option_or_result() && !arg_typ.has_option_or_result() {
+			resolved_scope_type := g.resolved_scope_var_type(arg.expr)
+			if resolved_scope_type != 0 && resolved_scope_type.has_option_or_result() {
+				arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_scope_type))
+			}
+		}
 	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
@@ -4759,7 +4824,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 	}
 	exp_sym := g.table.sym(expected_type)
 	if arg.is_mut && exp_sym.kind in [.interface, .sum_type] {
-		expected_wrap_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
+		expected_wrap_type := if expected_type.is_ptr() {
+			expected_type.deref()
+		} else {
+			expected_type
+		}
 		if arg_sym.kind == exp_sym.kind && arg_typ.idx() == expected_wrap_type.idx()
 			&& arg.expr in [ast.Ident, ast.SelectorExpr] {
 			if arg_typ.is_ptr() {
@@ -4775,7 +4844,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		}
 		return
 	}
-	if expected_type.is_ptr() {
+	if expected_type.is_ptr() && !expected_type.has_option_or_result() {
 		expected_ref_inner_type := expected_type.deref()
 		expected_ref_inner_sym := g.table.sym(expected_ref_inner_type)
 		if expected_ref_inner_sym.kind in [.interface, .sum_type] {
@@ -4823,8 +4892,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			g.expr(arg.expr)
 		}
 		return
-	} else if exp_is_ptr && !arg_is_ptr && !(arg_sym.kind == .alias
-		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
+	} else if exp_is_ptr && !expected_type.has_option_or_result() && !arg_is_ptr
+		&& !(arg_sym.kind == .alias && g.table.unaliased_type(arg_typ).is_pointer()
+		&& expected_type.is_pointer()) {
 		if is_auto_heap_ident {
 			write_raw_auto_heap_arg(arg.expr)
 			return
@@ -4950,7 +5020,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type)
 		} else {
 			if arg.expr is ast.Ident && arg.expr.obj is ast.Var {
-				if arg.expr.obj.smartcasts.len > 0 {
+				if arg.expr.obj.smartcasts.len > 0 && !arg_typ.has_option_or_result() {
 					arg_typ = arg.expr.obj.smartcasts.last()
 				}
 			}

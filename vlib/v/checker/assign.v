@@ -32,22 +32,22 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	for i, mut right in node.right {
 		if right in [ast.ArrayInit, ast.CallExpr, ast.ComptimeCall, ast.DumpExpr, ast.IfExpr,
-			ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.ParExpr, ast.SelectorExpr,
-			ast.StructInit] {
+			ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.ParExpr, ast.SelectorExpr, ast.StructInit] {
 			if right in [ast.ArrayInit, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.StructInit]
 				&& node.left.len == node.right.len && !is_decl
-				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
+				&& node.left[i] in [ast.Ident, ast.IndexExpr, ast.SelectorExpr]
+				&& !node.left[i].is_blank_ident() {
 				mut expr := node.left[i]
+				old_is_index_assign := c.is_index_assign
+				if expr is ast.IndexExpr {
+					c.is_index_assign = true
+				}
 				c.expected_type = c.expr(mut expr)
+				c.is_index_assign = old_is_index_assign
 			}
 			mut right_type := c.expr(mut right)
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
-			}
-			right_type_sym := c.table.sym(right_type)
-			// fixed array returns an struct, but when assigning it must be the array type
-			if right_type_sym.info is ast.ArrayFixed {
-				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
 			}
 			if i == 0 {
 				right_first_type = right_type
@@ -55,15 +55,23 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.check_expr_option_or_result_call(right, right_first_type),
 				]
 			}
-			if right_type_sym.kind == .multi_return {
-				if node.right.len > 1 {
-					c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
-						right.pos())
+			if right_type != 0 {
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
 				}
-				node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
-					c.table.sym(it)))
-				right_len = node.right_types.len
-			} else if right_type == ast.void_type {
+				if right_type_sym.kind == .multi_return {
+					if node.right.len > 1 {
+						c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
+							right.pos())
+					}
+					node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
+						c.table.sym(it)))
+					right_len = node.right_types.len
+				}
+			}
+			if right_type == ast.void_type {
 				right_len = 0
 				if mut right is ast.IfExpr {
 					last_branch := right.branches.last()
@@ -83,10 +91,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expected_type = node.right_types[i]
 				}
 				mut right_type := c.expr(mut right)
-				right_type_sym := c.table.sym(right_type)
-				// fixed array returns an struct, but when assigning it must be the array type
-				if right_type_sym.info is ast.ArrayFixed {
-					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				if right_type != 0 {
+					right_type_sym := c.table.sym(right_type)
+					// fixed array returns an struct, but when assigning it must be the array type
+					if right_type_sym.info is ast.ArrayFixed {
+						right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+					}
 				}
 				if i == 0 {
 					right_first_type = right_type
@@ -115,6 +125,32 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 	}
 	if node.left.len != right_len {
+		if right_len == 0 && right_first_type == ast.void_type {
+			match right_first {
+				ast.ArrayInit, ast.MapInit, ast.StructInit {
+					if is_decl {
+						for i, mut left in node.left {
+							node.left_types << ast.void_type
+							if mut left is ast.Ident {
+								if left.info is ast.IdentVar {
+									mut ident_var_info := left.info as ast.IdentVar
+									ident_var_info.typ = ast.void_type
+									left.info = ident_var_info
+									if mut left.obj is ast.Var {
+										left.obj.typ = ast.void_type
+									}
+								}
+							}
+							if i < node.right_types.len && node.right_types[i] == 0 {
+								node.right_types[i] = ast.void_type
+							}
+						}
+					}
+					return
+				}
+				else {}
+			}
+		}
 		if mut right_first is ast.CallExpr {
 			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
