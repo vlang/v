@@ -1091,18 +1091,16 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	mut resolved_left_type := node.left_type
-	match node.left {
-		ast.Ident {
-			if node.left.obj is ast.Var {
-				current_specialized_left_type := w.resolve_current_specialized_var_type(node.left.name)
-				if current_specialized_left_type != 0 {
-					resolved_left_type = current_specialized_left_type
-				} else if node.left.obj.typ.has_flag(.generic) {
-					resolved_left_type = node.left.obj.typ
-				}
+	if node.left is ast.Ident {
+		left_ident := node.left as ast.Ident
+		if left_ident.obj is ast.Var {
+			current_specialized_left_type := w.resolve_current_specialized_var_type(left_ident.name)
+			if current_specialized_left_type != 0 {
+				resolved_left_type = current_specialized_left_type
+			} else if left_ident.obj.typ.has_flag(.generic) {
+				resolved_left_type = left_ident.obj.typ
 			}
 		}
-		else {}
 	}
 	if node.is_method && resolved_left_type != 0 {
 		w.mark_by_type(resolved_left_type)

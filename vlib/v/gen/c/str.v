@@ -77,10 +77,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	use_raw_interface_smartcast_expr := is_ptr && expr is ast.Ident && expr.obj is ast.Var
-		&& expr.obj.smartcasts.len > 0 && expr.obj.smartcasts.last().is_ptr()
-		&& (g.table.final_sym(g.unwrap_generic(expr.obj.typ)).kind == .interface
-		|| (expr.obj.orig_type != 0
-		&& g.table.final_sym(g.unwrap_generic(expr.obj.orig_type)).kind == .interface))
+		&& (expr.obj as ast.Var).smartcasts.len > 0 && (expr.obj as ast.Var).smartcasts.last().is_ptr()
+		&& (g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).typ)).kind == .interface
+		|| ((expr.obj as ast.Var).orig_type != 0
+		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface))
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')

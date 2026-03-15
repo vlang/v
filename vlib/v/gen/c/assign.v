@@ -700,14 +700,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				scope_var.is_unwrapped = false
 			}
 		}
-		if is_decl && val is ast.CallExpr && val.kind == .clone && val.left is ast.IndexExpr
-			&& val.left.index is ast.RangeExpr && g.table.final_sym(var_type).kind == .array {
-			is_auto_heap = false
+		if is_decl && val is ast.CallExpr && val.kind == .clone && val.left is ast.IndexExpr {
+			left_idx := val.left as ast.IndexExpr
+			if left_idx.index is ast.RangeExpr && g.table.final_sym(var_type).kind == .array {
+				is_auto_heap = false
+			}
 		}
 		mut styp := g.styp(var_type)
-		if is_decl && val is ast.CallExpr && val.kind == .clone && val.left is ast.IndexExpr
-			&& val.left.index is ast.RangeExpr && g.table.final_sym(val.return_type).kind == .array {
-			styp = styp.trim('*')
+		if is_decl && val is ast.CallExpr && val.kind == .clone && val.left is ast.IndexExpr {
+			left_idx := val.left as ast.IndexExpr
+			if left_idx.index is ast.RangeExpr && g.table.final_sym(val.return_type).kind == .array {
+				styp = styp.trim('*')
+			}
 		}
 		mut is_fixed_array_init := false
 		mut has_val := false
