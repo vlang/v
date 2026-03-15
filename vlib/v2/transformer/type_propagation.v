@@ -12,7 +12,7 @@ import v2.types
 fn (mut t Transformer) propagate_types(files []ast.File) {
 	for file in files {
 		// Set module scope for Ident resolution
-		if mod_scope := t.env.get_scope(file.mod) {
+		if mod_scope := t.cached_scopes[file.mod] {
 			t.scope = mod_scope
 		}
 		t.cur_module = file.mod
@@ -72,7 +72,7 @@ fn (mut t Transformer) prop_stmt(stmt ast.Stmt) {
 			// Enter function scope for Ident resolution
 			old_scope := t.scope
 			scope_key := t.prop_fn_scope_key(stmt)
-			if fn_scope := t.env.get_fn_scope_by_key(scope_key) {
+			if fn_scope := t.cached_fn_scopes[scope_key] {
 				t.scope = fn_scope
 			}
 			for s in stmt.stmts {

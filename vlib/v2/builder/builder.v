@@ -404,14 +404,10 @@ pub fn (mut b Builder) build(files []string) {
 	if b.pref.skip_type_check {
 		b.env = types.Environment.new()
 	} else {
-		$if parallel ? {
-			b.env = if b.pref.no_parallel {
-				b.type_check_files()
-			} else {
-				b.type_check_files_parallel()
-			}
-		} $else {
-			b.env = b.type_check_files()
+		b.env = if b.pref.no_parallel {
+			b.type_check_files()
+		} else {
+			b.type_check_files_parallel()
 		}
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
@@ -421,7 +417,11 @@ pub fn (mut b Builder) build(files []string) {
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = trans.transform_files(b.files)
+	b.files = if b.pref.no_parallel_transform {
+		trans.transform_files(b.files)
+	} else {
+		b.transform_files_parallel(mut trans)
+	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 
@@ -1501,6 +1501,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
 
+	// Pass markused data for dead code elimination
+	if b.used_fn_keys.len > 0 {
+		ssa_builder.used_fn_keys = b.used_fn_keys.clone()
+	}
+
 	// In hot_fn mode, only build the target function body (skip all others)
 	if b.pref.hot_fn.len > 0 {
 		ssa_builder.hot_fn = b.pref.hot_fn
@@ -1508,7 +1513,16 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	// Build all files together with proper multi-file ordering
 	mut stage_start := native_sw.elapsed()
-	ssa_builder.build_all(b.files)
+	if b.pref.no_parallel || b.pref.hot_fn.len > 0 {
+		ssa_builder.build_all(b.files)
+	} else {
+		// Phases 1-3 sequential, Phase 4 parallel, Phase 5 sequential
+		ssa_builder.skip_fn_bodies = true
+		ssa_builder.build_all(b.files)
+		ssa_builder.skip_fn_bodies = false
+		b.ssa_build_parallel(mut ssa_builder, b.files)
+		ssa_builder.generate_vinit()
+	}
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
@@ -1585,7 +1599,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Use built-in linker for ARM64 macOS
 		stage_start = native_sw.elapsed()
 		mut gen := arm64.Gen.new(&mir_mod)
-		gen.gen()
+		if b.pref.no_parallel {
+			gen.gen()
+		} else {
+			b.gen_arm64_parallel(mut gen)
+		}
 		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
@@ -1609,7 +1627,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 		if arch == .arm64 {
 			mut gen := arm64.Gen.new(&mir_mod)
-			gen.gen()
+			if b.pref.no_parallel {
+				gen.gen()
+			} else {
+				b.gen_arm64_parallel(mut gen)
+			}
 			gen.write_file(obj_file)
 		} else {
 			mut gen := x64.Gen.new(&mir_mod)
