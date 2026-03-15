@@ -46,6 +46,9 @@ jobs:
           ./v -os linux cmd/v
           # TODO: fix this: ./v -os linux examples/2048/2048.v
 
+      - name: Cross-compilation of veb app to Linux with -d use_openssl
+        run: ./v -d use_openssl -os linux examples/veb/veb_example.v
+
       - name: Cross-compilation to Windows
         run: |
           ./v -os windows cmd/v
