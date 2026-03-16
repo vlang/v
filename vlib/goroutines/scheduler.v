@@ -179,7 +179,7 @@ fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 	}
 
 	// Try to steal work from other P's
-	gp3 := steal_work(pp)
+	gp3 := steal_work(mut pp)
 	if gp3 != unsafe { nil } {
 		return gp3, false
 	}
@@ -374,7 +374,7 @@ fn schedule_loop(mut mp Machine) {
 
 // steal_work tries to steal goroutines from other P's run queues.
 // Translated from Go's stealWork() in proc.go.
-fn steal_work(thisp &Processor) &Goroutine {
+fn steal_work(mut thisp Processor) &Goroutine {
 	n := gsched.allp.len
 	if n <= 1 {
 		return unsafe { nil }
@@ -388,7 +388,7 @@ fn steal_work(thisp &Processor) &Goroutine {
 			continue
 		}
 		// Try to steal half of the target's run queue
-		gp := runq_steal(mut unsafe { pp }, thisp)
+		gp := runq_steal(mut unsafe { pp }, mut thisp)
 		if gp != unsafe { nil } {
 			return gp
 		}
@@ -398,7 +398,7 @@ fn steal_work(thisp &Processor) &Goroutine {
 
 // runq_steal steals half of pp's local run queue.
 // Translated from Go's runqgrab/runqsteal in proc.go.
-fn runq_steal(mut pp Processor, thisp &Processor) &Goroutine {
+fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 	t := C.atomic_load(&pp.runq_tail)
 	h := C.atomic_load(&pp.runq_head)
 	n := t - h
@@ -419,6 +419,9 @@ fn runq_steal(mut pp Processor, thisp &Processor) &Goroutine {
 		gp := pp.runq[(h + i) % local_queue_size]
 		if i == 0 {
 			first = gp
+		} else {
+			// Enqueue remaining stolen goroutines into thief's local run queue
+			runq_put(mut thisp, gp, false)
 		}
 	}
 	C.atomic_fetch_add(&pp.runq_head, steal)
