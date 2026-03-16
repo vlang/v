@@ -4780,8 +4780,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			if current_var := node.scope.find_var(node.name) {
 				info_typ = current_var.typ
 				if current_var.smartcasts.len > 0 && !c.prevent_sum_type_unwrapping_once {
-					info_typ = c.exposed_smartcast_type(current_var.orig_type,
-						current_var.smartcasts.last(), current_var.is_mut)
+					info_typ = c.exposed_smartcast_type(current_var.orig_type, current_var.smartcasts.last(),
+						current_var.is_mut)
 				}
 				c.prevent_sum_type_unwrapping_once = false
 				node.info = ast.IdentVar{
