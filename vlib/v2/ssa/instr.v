@@ -80,6 +80,10 @@ pub enum OpCode {
 	assign             // copy for phi elimination
 	inline_string_init // Create string struct by value: (string){str, len, is_lit}
 
+	// Concurrency
+	go_call    // Launch goroutine: go_call fn_ref, args...
+	spawn_call // Launch OS thread: spawn_call fn_ref, args...
+
 	// Aggregate (struct/tuple) operations
 	extractvalue // Extract element from struct/tuple: extractvalue %tuple, index
 	insertvalue  // Insert element into struct/tuple: insertvalue %tuple, %val, index

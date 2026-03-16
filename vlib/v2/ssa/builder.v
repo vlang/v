@@ -6616,10 +6616,51 @@ fn (mut b Builder) build_keyword_operator(kw ast.KeywordOperator) ValueID {
 			// Fallback: sizeof(int) = 4
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '4')
 		}
+		.key_go {
+			// `go expr()` - launch a goroutine via the GMP scheduler.
+			// Build the call expression normally, then wrap it as go_call.
+			if kw.exprs.len > 0 {
+				return b.build_go_or_spawn(kw.exprs[0], .go_call)
+			}
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), '0')
+		}
+		.key_spawn {
+			// `spawn expr()` - launch an OS thread.
+			if kw.exprs.len > 0 {
+				return b.build_go_or_spawn(kw.exprs[0], .spawn_call)
+			}
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), '0')
+		}
 		else {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), '0')
 		}
 	}
+}
+
+// build_go_or_spawn emits an SSA instruction for `go fn_call()` or `spawn fn_call()`.
+// For `go`: emits go_call which the C backend translates to goroutines__goroutine_create().
+// For `spawn`: emits spawn_call which the C backend translates to pthread_create().
+fn (mut b Builder) build_go_or_spawn(expr ast.Expr, opcode OpCode) ValueID {
+	// The expression should be a function call
+	if expr is ast.CallExpr {
+		call := expr as ast.CallExpr
+		mut operands := []ValueID{}
+
+		// First operand: the function reference
+		fn_val := b.build_expr(call.lhs)
+		operands << fn_val
+
+		// Remaining operands: the arguments
+		for arg in call.args {
+			arg_val := b.build_expr(arg)
+			operands << arg_val
+		}
+
+		void_t := b.mod.type_store.get_void()
+		return b.mod.add_instr(opcode, b.cur_block, void_t, operands)
+	}
+	// Fallback: just build the expression (shouldn't happen for well-formed code)
+	return b.build_expr(expr)
 }
 
 fn (b &Builder) sizeof_value(expr ast.Expr) int {
