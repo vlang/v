@@ -96,8 +96,22 @@ fn (t &TypeResolver) error(s string, pos token.Pos) {
 
 // promote_type resolves the final type of different generic/comptime operand types
 pub fn (t &TypeResolver) promote_type(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == right_type {
+		return left_type
+	}
+	// Float types take precedence over integer types in arithmetic.
+	if left_type.is_float() && right_type.is_int() {
+		return left_type
+	}
+	if right_type.is_float() && left_type.is_int() {
+		return right_type
+	}
+	// f64 takes precedence over f32.
 	if left_type == ast.f32_type && right_type == ast.f64_type {
 		return right_type
+	}
+	if left_type == ast.f64_type && right_type == ast.f32_type {
+		return left_type
 	}
 	return left_type
 }

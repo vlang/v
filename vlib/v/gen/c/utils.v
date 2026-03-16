@@ -498,8 +498,11 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				.not_is] {
 				return ast.bool_type
 			}
+			// In generic contexts, promoted_type may be stale from a different
+			// checker instantiation pass. Compute from operand types instead.
 			if expr.promoted_type != 0 && !expr.promoted_type.has_flag(.generic)
-				&& !g.type_has_unresolved_generic_parts(expr.promoted_type) {
+				&& !g.type_has_unresolved_generic_parts(expr.promoted_type)
+				&& (g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0) {
 				return g.unwrap_generic(g.recheck_concrete_type(expr.promoted_type))
 			}
 			left_default := if expr.left_type != 0 { expr.left_type } else { default_typ }

@@ -686,6 +686,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						resolved_val_type = g.table.find_or_register_array(resolved_elem_type)
 					}
 				}
+				// Preserve shared/atomic flags from the original declaration.
+				if var_type.has_flag(.shared_f) {
+					resolved_val_type = resolved_val_type.set_flag(.shared_f)
+				}
+				if var_type.has_flag(.atomic_f) {
+					resolved_val_type = resolved_val_type.set_flag(.atomic_f)
+				}
 				var_type = resolved_val_type
 				val_type = resolved_val_type
 				left.obj.typ = var_type

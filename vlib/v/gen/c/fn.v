@@ -2087,7 +2087,8 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 					}
 				}
 			}
-			return_type_generic := if node.return_type_generic != ast.void_type {
+			return_type_generic := if node.return_type_generic != ast.void_type
+				&& node.return_type_generic != 0 {
 				node.return_type_generic
 			} else if parent_method.params.len > 0 {
 				parent_method.return_type
@@ -2107,7 +2108,8 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			}
 		}
 		if parent_method.params.len > 0 && receiver_concrete_types.len > 0 {
-			parent_return_type_generic := if node.return_type_generic != ast.void_type {
+			parent_return_type_generic := if node.return_type_generic != ast.void_type
+				&& node.return_type_generic != 0 {
 				node.return_type_generic
 			} else {
 				parent_method.return_type
@@ -2529,7 +2531,7 @@ fn (mut g Gen) set_generic_call_concrete_type(generic_names []string, mut concre
 	if idx < 0 || idx >= concrete_types.len {
 		return
 	}
-	resolved_type := g.unwrap_generic(g.recheck_concrete_type(typ))
+	resolved_type := ast.mktyp(g.unwrap_generic(g.recheck_concrete_type(typ)))
 	if resolved_type == 0 || resolved_type == ast.void_type || resolved_type.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(resolved_type) {
 		return
@@ -3484,7 +3486,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 							generic_arg_idx += 2
 							continue
 						}
-						concrete_types[slot] = arg_type
+						concrete_types[slot] = ast.mktyp(arg_type)
 					}
 				}
 				generic_arg_idx++

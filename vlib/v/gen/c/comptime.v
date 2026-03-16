@@ -374,7 +374,11 @@ fn (mut g Gen) recover_specialized_generic_context_for(fn_name string) ([]string
 	}
 	for generic_fn in g.file.generic_fns {
 		if generic_fn.generic_names.len == 0 {
-			continue
+			// Methods on generic structs may have no explicit generic_names
+			// but still have receiver generics.
+			if !(generic_fn.is_method && generic_fn.receiver.typ.has_flag(.generic)) {
+				continue
+			}
 		}
 		for base_name in [generic_fn.name, generic_fn.fkey()] {
 			if !fn_name.starts_with(base_name + '_T_') {
