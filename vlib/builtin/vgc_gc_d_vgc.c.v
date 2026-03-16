@@ -202,21 +202,70 @@ fn vgc_mark_worker() {
 }
 
 // Drain the mark work queue - scan grey objects and mark their referents.
-// Translated from Go's gcDrain() in mgcmark.go.
+// Uses precise pointer maps when available (from vgc_malloc_typed),
+// falls back to conservative scanning otherwise.
 fn vgc_drain_mark_work() {
 	for {
 		obj_addr := vgc_work_get()
 		if obj_addr == 0 {
 			break
 		}
-		// Scan the object for pointers
 		span := vgc_find_span(voidptr(obj_addr))
 		if span == unsafe { nil } || span.noscan {
 			continue // noscan objects don't contain pointers
 		}
-		// Scan the object's memory for heap pointers
-		obj_size := usize(span.elem_size)
-		vgc_scan_range(obj_addr, obj_addr + obj_size)
+		if span.has_ptrmap {
+			// Precise scanning: only check known pointer word offsets
+			vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
+		} else {
+			// Conservative fallback: scan every word
+			obj_size := usize(span.elem_size)
+			vgc_scan_range(obj_addr, obj_addr + obj_size)
+		}
+	}
+}
+
+// Precise pointer scanning: use the pointer bitmap to scan only
+// word offsets known to contain pointers. Much faster than conservative.
+fn vgc_scan_precise(obj_addr usize, ptrmap u64, ptr_words u8) {
+	mut mask := ptrmap
+	word_size := sizeof(usize)
+	for mask != 0 {
+		// Find lowest set bit (next pointer offset)
+		mut bit := u8(0)
+		mut m := mask
+		// Count trailing zeros to find the bit position
+		if m & 0xFFFFFFFF == 0 {
+			bit += 32
+			m >>= 32
+		}
+		if m & 0xFFFF == 0 {
+			bit += 16
+			m >>= 16
+		}
+		if m & 0xFF == 0 {
+			bit += 8
+			m >>= 8
+		}
+		if m & 0xF == 0 {
+			bit += 4
+			m >>= 4
+		}
+		if m & 0x3 == 0 {
+			bit += 2
+			m >>= 2
+		}
+		if m & 0x1 == 0 {
+			bit += 1
+		}
+		// Read the pointer at this offset
+		ptr_addr := obj_addr + usize(bit) * word_size
+		val := unsafe { *(&usize(voidptr(ptr_addr))) }
+		if val != 0 && vgc_is_heap_ptr(val) {
+			vgc_shade(val)
+		}
+		// Clear this bit and continue
+		mask &= mask - 1
 	}
 }
 

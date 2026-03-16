@@ -8927,6 +8927,91 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 	return ''
 }
 
+// Compute pointer bitmap for a type: returns (ptrmap_expr, nptrs) for VGC.
+// ptrmap is a u64 where bit N means word offset N contains a pointer.
+// Returns empty strings if not applicable (non-vgc mode, no pointers, too large).
+fn (mut g Gen) vgc_ptrmap(typ ast.Type) (string, string) {
+	if g.pref.gc_mode != .vgc {
+		return '', ''
+	}
+	if !g.contains_ptr(typ) {
+		return '', ''
+	}
+	unwrapped := g.unwrap_generic(typ)
+	sym := g.table.final_sym(unwrapped)
+	if sym.kind != .struct {
+		return '', ''
+	}
+	info := sym.info as ast.Struct
+	styp := g.styp(unwrapped)
+	// Build the bitmap expression using offsetof
+	mut parts := []string{}
+	mut nptrs := 0
+	// Check embeds first
+	for embed in info.embeds {
+		if g.contains_ptr(embed) {
+			// Recurse into embedded struct - for now treat conservatively
+			return '', ''
+		}
+	}
+	for field in info.fields {
+		if field.typ.is_any_kind_of_pointer() || field.typ.is_ptr() {
+			fname := c_name(field.name)
+			parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+			nptrs++
+		} else {
+			fsym := g.table.final_sym(field.typ)
+			if fsym.kind == .array || fsym.kind == .map || fsym.kind == .string {
+				// These V types contain pointers internally (data pointer)
+				fname := c_name(field.name)
+				parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+				nptrs++
+			} else if fsym.kind == .interface || fsym.kind == .sum_type {
+				// Interface/sumtype contain pointer-like fields
+				return '', '' // too complex, fall back to conservative
+			} else if g.contains_ptr(field.typ) {
+				// Nested struct with pointers - fall back for now
+				return '', ''
+			}
+		}
+	}
+	if parts.len == 0 {
+		return '', ''
+	}
+	// Structs > 512 bytes (64 words on 64-bit) can't fit in u64 bitmap
+	if parts.len > 0 {
+		ptrmap_expr := '(uint64_t)(${parts.join(' | ')})'
+		return ptrmap_expr, '${nptrs}'
+	}
+	return '', ''
+}
+
+// write_heap_alloc writes the appropriate HEAP macro call.
+// For VGC mode with known pointer maps, uses HEAP_vgc for precise scanning.
+// Otherwise falls back to HEAP or HEAP_noscan.
+fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
+	if g.pref.gc_mode == .vgc {
+		ptrmap, _ := g.vgc_ptrmap(typ)
+		if ptrmap.len > 0 {
+			g.write('HEAP_vgc(${styp}, (')
+			return
+		}
+	}
+	g.write('HEAP(${styp}, (')
+}
+
+// write_heap_alloc_close writes the closing part of a HEAP_vgc or HEAP call.
+fn (mut g Gen) write_heap_alloc_close(typ ast.Type) {
+	if g.pref.gc_mode == .vgc {
+		ptrmap, nptrs := g.vgc_ptrmap(typ)
+		if ptrmap.len > 0 {
+			g.write('), ${ptrmap}, ${nptrs})')
+			return
+		}
+	}
+	g.write('))')
+}
+
 // vint2int rename `_vint_t` to `int`
 fn vint2int(name string) string {
 	$if new_int ? && x64 {

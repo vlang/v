@@ -1021,7 +1021,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
-								g.write('HEAP(${styp}, (')
+								ptrmap_o, _ := g.vgc_ptrmap(var_type.set_nr_muls(0))
+								if ptrmap_o.len > 0 {
+									g.write('HEAP_vgc(${styp}, (')
+								} else {
+									g.write('HEAP(${styp}, (')
+								}
 							}
 						}
 						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped {
@@ -1128,7 +1133,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {
-								g.write('))')
+								ptrmap, nptrs := g.vgc_ptrmap(var_type.set_nr_muls(0))
+								if ptrmap.len > 0 {
+									g.write('), ${ptrmap}, ${nptrs})')
+								} else {
+									g.write('))')
+								}
 							}
 						}
 					}

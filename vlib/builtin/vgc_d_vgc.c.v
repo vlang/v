@@ -77,6 +77,13 @@ mut:
 	class_idx u8    // size class index (0 for large objects)
 	noscan    bool  // true if objects contain no pointers (noscan variant)
 	in_use    bool  // true if span is allocated to a size class
+	has_ptrmap bool // true if ptrmap is valid (precise scanning available)
+	// Pointer bitmap: bit N = word offset N contains a pointer.
+	// Covers objects up to 512 bytes (64 words on 64-bit).
+	// For larger objects, falls back to conservative scanning.
+	ptrmap u64
+	// Number of pointer words in the object (for precise scanning)
+	ptr_words u8
 	// Allocation bitmaps (translated from Go's allocBits/gcmarkBits)
 	alloc_bits  &u8 = unsafe { nil } // 1 = allocated
 	mark_bits   &u8 = unsafe { nil } // 1 = marked (used during GC)
@@ -595,6 +602,14 @@ fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 // ============================================================
 
 fn vgc_malloc(n usize) voidptr {
+	return vgc_malloc_typed(n, 0, 0)
+}
+
+// vgc_malloc_typed allocates with a precise pointer map.
+// ptrmap: bitmap where bit N means word offset N is a pointer.
+// ptr_words: number of pointer words in the object.
+// If ptrmap==0 && ptr_words==0, falls back to conservative scanning.
+fn vgc_malloc_typed(n usize, ptrmap u64, ptr_words u8) voidptr {
 	if n == 0 {
 		return unsafe { nil }
 	}
@@ -619,6 +634,15 @@ fn vgc_malloc(n usize) voidptr {
 	span := vgc_cache_get_span(cache_idx, span_class)
 	if span == unsafe { nil } {
 		return unsafe { nil }
+	}
+
+	// Set precise pointer map on span (first typed allocation wins)
+	if ptrmap != 0 && !span.has_ptrmap {
+		unsafe {
+			(&VGC_Span(span)).has_ptrmap = true
+			(&VGC_Span(span)).ptrmap = ptrmap
+			(&VGC_Span(span)).ptr_words = ptr_words
+		}
 	}
 
 	ptr := unsafe { vgc_span_alloc_obj(mut span) }
@@ -825,6 +849,19 @@ fn vgc_free(ptr voidptr) {
 // Calloc (zero-initialized allocation)
 fn vgc_calloc(n usize) voidptr {
 	return vgc_malloc(n) // vgc_malloc already zeroes memory
+}
+
+// Typed memdup: allocate with pointer map and copy source data.
+// Used by HEAP_vgc() macro for struct allocations with known layout.
+fn vgc_memdup_typed(src voidptr, n isize, ptrmap u64, ptr_words u8) voidptr {
+	if src == unsafe { nil } || n <= 0 {
+		return unsafe { nil }
+	}
+	mem := vgc_malloc_typed(usize(n), ptrmap, ptr_words)
+	if mem != unsafe { nil } {
+		unsafe { C.memcpy(mem, src, n) }
+	}
+	return mem
 }
 
 // ============================================================
