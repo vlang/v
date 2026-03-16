@@ -2645,7 +2645,8 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 				if generic_arg_idx < concrete_types.len
 					&& arg_type in [ast.int_literal_type, ast.float_literal_type] {
 					current_type := concrete_types[generic_arg_idx]
-					if current_type != 0 && !current_type.has_flag(.generic)
+					if current_type != 0 && current_type != ast.void_type
+						&& !current_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(current_type) {
 						generic_arg_idx++
 						continue
@@ -3400,7 +3401,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						arg_type = arg_type.deref()
 					}
 					current_type := concrete_types[slot]
-					if current_type != 0 && !current_type.has_flag(.generic)
+					if current_type != 0 && current_type != ast.void_type
+						&& !current_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(current_type)
 						&& arg_type in [ast.int_literal_type, ast.float_literal_type] {
 						generic_arg_idx++
