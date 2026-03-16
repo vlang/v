@@ -51,7 +51,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('\tint cap;')
 	for field in s.fields {
 		c_type := g.types_type_to_c(field.typ)
-		g.sb.writeln('\t${c_type}* ${field.name};')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\t${c_type}* ${fname};')
 	}
 	g.sb.writeln('} ${soa_name};')
 	g.sb.writeln('')
@@ -64,7 +65,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('\tsoa.cap = cap;')
 	for field in s.fields {
 		c_type := g.types_type_to_c(field.typ)
-		g.sb.writeln('\tsoa.${field.name} = (${c_type}*)calloc(cap, sizeof(${c_type}));')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\tsoa.${fname} = (${c_type}*)calloc(cap, sizeof(${c_type}));')
 	}
 	g.sb.writeln('\treturn soa;')
 	g.sb.writeln('}')
@@ -75,7 +77,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('\treturn (${name}){')
 	for i, field in s.fields {
 		comma := if i < s.fields.len - 1 { ',' } else { '' }
-		g.sb.writeln('\t\t.${field.name} = soa.${field.name}[i]${comma}')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\t\t.${fname} = soa.${fname}[i]${comma}')
 	}
 	g.sb.writeln('\t};')
 	g.sb.writeln('}')
@@ -84,7 +87,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	// --- set: set element at index from original struct ---
 	g.sb.writeln('static inline void ${soa_name}_set(${soa_name}* soa, int i, ${name} val) {')
 	for field in s.fields {
-		g.sb.writeln('\tsoa->${field.name}[i] = val.${field.name};')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\tsoa->${fname}[i] = val.${fname};')
 	}
 	g.sb.writeln('}')
 	g.sb.writeln('')
@@ -95,12 +99,14 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('\t\tint new_cap = soa->cap < 8 ? 8 : soa->cap * 2;')
 	for field in s.fields {
 		c_type := g.types_type_to_c(field.typ)
-		g.sb.writeln('\t\tsoa->${field.name} = (${c_type}*)realloc(soa->${field.name}, new_cap * sizeof(${c_type}));')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\t\tsoa->${fname} = (${c_type}*)realloc(soa->${fname}, new_cap * sizeof(${c_type}));')
 	}
 	g.sb.writeln('\t\tsoa->cap = new_cap;')
 	g.sb.writeln('\t}')
 	for field in s.fields {
-		g.sb.writeln('\tsoa->${field.name}[soa->len] = val.${field.name};')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\tsoa->${fname}[soa->len] = val.${fname};')
 	}
 	g.sb.writeln('\tsoa->len++;')
 	g.sb.writeln('}')
@@ -113,7 +119,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('\treturn (${name}){')
 	for i, field in s.fields {
 		comma := if i < s.fields.len - 1 { ',' } else { '' }
-		g.sb.writeln('\t\t.${field.name} = soa->${field.name}[soa->len]${comma}')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\t\t.${fname} = soa->${fname}[soa->len]${comma}')
 	}
 	g.sb.writeln('\t};')
 	g.sb.writeln('}')
@@ -122,7 +129,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	// --- free: deallocate all field arrays ---
 	g.sb.writeln('static inline void ${soa_name}_free(${soa_name}* soa) {')
 	for field in s.fields {
-		g.sb.writeln('\tfree(soa->${field.name});')
+		fname := escape_c_keyword(field.name)
+		g.sb.writeln('\tfree(soa->${fname});')
 	}
 	g.sb.writeln('\tsoa->len = 0;')
 	g.sb.writeln('\tsoa->cap = 0;')
