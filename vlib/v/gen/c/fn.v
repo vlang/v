@@ -3174,6 +3174,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else {
 			m
 		}
+	} else if unwrapped_rec_type != left_type {
+		// Method not found on left_type; try unwrapped_rec_type (e.g. from embed)
+		if m2 := g.table.find_method(g.table.sym(unwrapped_rec_type), method_name) {
+			has_method = true
+			method_for_generics = if parent_generic_method.generic_names.len > m2.generic_names.len {
+				parent_generic_method
+			} else {
+				m2
+			}
+		}
 	}
 	if !has_method && parent_method_generic_names_len > 0 {
 		has_method = true
