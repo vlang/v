@@ -6618,7 +6618,8 @@ fn (mut b Builder) build_keyword_operator(kw ast.KeywordOperator) ValueID {
 		}
 		.key_go {
 			// `go expr()` - launch a goroutine via the GMP scheduler.
-			// Build the call expression normally, then wrap it as go_call.
+			// NOTE: The transformer normally lowers `go` to a regular call to
+			// goroutines__goroutine_create, so this path is a fallback.
 			if kw.exprs.len > 0 {
 				return b.build_go_or_spawn(kw.exprs[0], .go_call)
 			}

@@ -1297,7 +1297,12 @@ fn (mut g Gen) gen_keyword_operator(node ast.KeywordOperator) {
 				g.sb.write_string('0')
 			}
 		}
-		.key_spawn, .key_go {
+		.key_spawn {
+			g.gen_spawn_expr(node)
+		}
+		.key_go {
+			// go calls are lowered by the transformer to goroutines__goroutine_create.
+			// If we reach here, fall back to spawn behavior.
 			g.gen_spawn_expr(node)
 		}
 		else {

@@ -324,6 +324,9 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					}
 				}
 			}
+			if expr.op == .key_go && expr.exprs.len > 0 {
+				return t.lower_go_call(expr)
+			}
 			expr
 		}
 		else {
@@ -2693,6 +2696,120 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 		expr: t.transform_expr(inner)
 		pos:  expr.pos
 	}
+}
+
+// lower_go_call transforms `go foo(a, b)` into a regular call to
+// goroutines__goroutine_create, avoiding backend-specific go handling.
+// For zero-arg calls: goroutines__goroutine_create(voidptr(foo), voidptr(0), 0)
+// For calls with args: generates a wrapper struct + trampoline function,
+// then calls goroutines__goroutine_create(trampoline, packed_args, sizeof).
+fn (mut t Transformer) lower_go_call(expr ast.KeywordOperator) ast.Expr {
+	call := expr.exprs[0]
+	mut call_lhs := ast.empty_expr
+	mut call_args := []ast.Expr{}
+	if call is ast.CallExpr {
+		call_lhs = call.lhs
+		call_args = call.args.clone()
+	} else if call is ast.CallOrCastExpr {
+		call_lhs = call.lhs
+		call_args = [call.expr]
+	} else {
+		// Not a call expression, return as-is
+		return expr
+	}
+	// Resolve the V-level function name for the wrapper
+	fn_name := t.resolve_go_fn_name(call_lhs)
+	if fn_name == '' {
+		// Cannot resolve — fall back to keeping the original expression
+		return expr
+	}
+	// Transform all arguments
+	mut transformed_args := []ast.Expr{cap: call_args.len}
+	for arg in call_args {
+		transformed_args << t.transform_expr(arg)
+	}
+	// Resolve argument type names for struct generation
+	mut arg_type_names := []string{cap: call_args.len}
+	for arg in call_args {
+		if typ := t.get_expr_type(arg) {
+			arg_type_names << t.type_to_c_name(typ)
+		} else {
+			arg_type_names << 'int'
+		}
+	}
+	// Check for method call (receiver needs to be first arg in wrapper)
+	mut is_method := false
+	mut receiver_expr := ast.empty_expr
+	mut receiver_type_name := ''
+	if call_lhs is ast.SelectorExpr {
+		sel_lhs := call_lhs.lhs
+		if !(sel_lhs is ast.Ident && t.is_module_name(sel_lhs.name)) {
+			is_method = true
+			receiver_expr = t.transform_expr(sel_lhs)
+			if recv_type := t.get_expr_type(sel_lhs) {
+				receiver_type_name = t.type_to_c_name(recv_type)
+			} else {
+				receiver_type_name = 'voidptr'
+			}
+		}
+	}
+	wrapper_name := '__go_wrap_${fn_name}'
+	if wrapper_name !in t.needed_go_wrappers {
+		mut param_names := []string{}
+		mut param_types := []string{}
+		if is_method {
+			param_names << '_recv'
+			param_types << receiver_type_name
+		}
+		for i, type_name in arg_type_names {
+			param_names << '_a${i}'
+			param_types << type_name
+		}
+		t.needed_go_wrappers[wrapper_name] = GoWrapperInfo{
+			fn_name:      fn_name
+			wrapper_name: wrapper_name
+			param_names:  param_names
+			param_types:  param_types
+		}
+	}
+	// Build call args: [receiver, args...] for methods, [args...] for functions
+	mut wrapper_args := []ast.Expr{}
+	if is_method {
+		wrapper_args << receiver_expr
+	}
+	for arg in transformed_args {
+		wrapper_args << arg
+	}
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: wrapper_name
+		}
+		args: wrapper_args
+		pos:  expr.pos
+	}
+}
+
+// resolve_go_fn_name extracts the C-mangled function name from a call LHS expression.
+fn (t &Transformer) resolve_go_fn_name(lhs ast.Expr) string {
+	if lhs is ast.Ident {
+		if t.cur_module != '' {
+			return '${t.cur_module}__${lhs.name}'
+		}
+		return lhs.name
+	}
+	if lhs is ast.SelectorExpr {
+		if lhs.lhs is ast.Ident {
+			mod_name := lhs.lhs.name
+			return '${mod_name}__${lhs.rhs.name}'
+		}
+	}
+	return ''
+}
+
+// is_module_name checks if a name refers to a known module.
+fn (t &Transformer) is_module_name(name string) bool {
+	// Check if the name is a known module by looking up its scope
+	return name in t.cached_scopes
 }
 
 // eval_comptime_if evaluates a compile-time $if and returns the selected branch expression
