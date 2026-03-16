@@ -3507,6 +3507,39 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					}
 				}
 			}
+			// When the receiver's generics are part of the method's generic params,
+			// arg-resolved concrete types may be stale (scope var types from a
+			// different checker pass). Validate node.concrete_types against
+			// receiver_concrete_types: if receiver positions match, the checker
+			// processed this instantiation, so trust the method's own positions.
+			if receiver_generics_in_method && !trust_node_concrete_types
+				&& !concrete_types_from_resolved_args
+				&& node.concrete_types.len == full_method_generic_names_len
+				&& rec_len > 0 {
+				mut receiver_validated := true
+				for i in 0 .. rec_len {
+					if i >= node.concrete_types.len {
+						receiver_validated = false
+						break
+					}
+					node_ct := g.unwrap_generic(node.concrete_types[i])
+					if node_ct != receiver_concrete_types[i] {
+						receiver_validated = false
+						break
+					}
+				}
+				if receiver_validated {
+					for i in rec_len .. concrete_types.len {
+						if i < node.concrete_types.len {
+							node_ct := g.unwrap_generic(node.concrete_types[i])
+							if node_ct != 0 && !node_ct.has_flag(.generic)
+								&& !g.type_has_unresolved_generic_parts(node_ct) {
+								concrete_types[i] = node_ct
+							}
+						}
+					}
+				}
+			}
 			concrete_types = concrete_types.filter(it != ast.void_type)
 			mut name_fkey := g.resolve_method_decl_fkey_for_type(left_type, method_name)
 			if name_fkey == '' {
