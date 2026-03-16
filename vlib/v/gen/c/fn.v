@@ -2667,6 +2667,18 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 				}
 			}
 		}
+		// Fallback: use checker's inferred concrete types for any remaining void types
+		// (e.g. when a generic return type R can't be re-inferred from a lambda arg in cgen)
+		for i, ct in concrete_types {
+			if ct == ast.void_type && i < node.concrete_types.len {
+				fallback_type := g.unwrap_generic(node.concrete_types[i])
+				if fallback_type != 0 && fallback_type != ast.void_type
+					&& !fallback_type.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(fallback_type) {
+					concrete_types[i] = fallback_type
+				}
+			}
+		}
 	}
 	return concrete_types.filter(it != ast.void_type)
 }

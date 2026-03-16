@@ -9,6 +9,13 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		}
 		node.is_checked = false
 	}
+	// When re-checking a lambda with concrete types, preserve the original generic_names
+	// so that the cgen can properly suffix the function name per instantiation.
+	prev_generic_names := if node.func != unsafe { nil } {
+		node.func.decl.generic_names.clone()
+	} else {
+		[]string{}
+	}
 	if exp_typ in [0, ast.void_type] {
 		c.fatal('lambda expressions are allowed only in places expecting function callbacks',
 			node.pos)
@@ -57,6 +64,11 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 					generic_names << x
 				}
 			}
+		}
+		// When re-checking with concrete types, the params/return are no longer generic,
+		// so generic_names would be empty. Preserve from the original check.
+		if generic_names.len == 0 && prev_generic_names.len > 0 {
+			generic_names = prev_generic_names.clone()
 		}
 
 		mut stmts := []ast.Stmt{}

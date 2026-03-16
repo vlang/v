@@ -2215,6 +2215,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
+					// When check succeeds (e.g. after lambda re-check with concrete types),
+					// still set call_ctx on lambda args for generic context in cgen:
+					if mut call_arg.expr is ast.LambdaExpr {
+						c.handle_generic_lambda_arg(node, mut call_arg.expr)
+					}
 				}
 			}
 		}

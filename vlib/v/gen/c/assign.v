@@ -1519,7 +1519,10 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.expr(node.right[0])
 	g.writeln(';')
 	raw_mr_types := (ret_sym.info as ast.MultiReturn).types
-	mr_types := if node.right_types.len == raw_mr_types.len {
+	is_generic_context := g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+	mr_types := if is_generic_context {
+		raw_mr_types.map(g.unwrap_generic(g.recheck_concrete_type(it)))
+	} else if node.right_types.len == raw_mr_types.len {
 		node.right_types.clone()
 	} else {
 		raw_mr_types.clone()
