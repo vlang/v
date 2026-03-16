@@ -227,6 +227,7 @@ pub mut:
 	fields []Field
 	// fields	 map[string]Type
 	// methods 	   []Method
+	is_soa bool // @[soa] - Structure of Arrays layout for better cache performance
 }
 
 // TODO:

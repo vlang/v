@@ -740,6 +740,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			obj := Struct{
 				name:           qualified_name
 				generic_params: generic_params
+				is_soa:         decl.attributes.has('soa')
 			}
 			mut typ := Type(obj)
 			// TODO: proper
@@ -2041,12 +2042,32 @@ fn (mut c Checker) process_pending_struct_decls() {
 					pending.decl.pos)
 			}
 		}
+		// Detect @[soa] attribute
+		is_soa := pending.decl.attributes.has('soa')
+		if is_soa {
+			if pending.decl.is_union {
+				c.error_with_pos('`@[soa]` attribute cannot be used with unions', pending.decl.pos)
+			}
+			if pending.decl.embedded.len > 0 {
+				c.error_with_pos('`@[soa]` structs cannot have embedded structs', pending.decl.pos)
+			}
+			for field in fields {
+				match field.typ {
+					Primitive, Char, Rune, ISize, USize {}
+					else {
+						c.error_with_pos('`@[soa]` structs can only contain primitive numeric types, not `${field.typ.name()}`',
+							pending.decl.pos)
+					}
+				}
+			}
+		}
 		mut update_scope := if pending.decl.language == .c { c.c_scope } else { pending.scope }
 		if mut sd := update_scope.lookup(pending.decl.name) {
 			if mut sd is Type {
 				if mut sd is Struct {
 					sd.fields = fields
 					sd.embedded = embedded
+					sd.is_soa = is_soa
 				}
 			}
 		}
