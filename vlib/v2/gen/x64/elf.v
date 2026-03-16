@@ -80,13 +80,23 @@ pub fn ElfObject.new() &ElfObject {
 }
 
 pub fn (mut e ElfObject) add_symbol(name string, value u64, is_func bool, shndx u16) int {
-	idx := e.symbols.len
-	name_off := e.add_string(name)
-
 	// STB_GLOBAL (1) << 4 | STT_FUNC (2) or STT_OBJECT (1) or STT_NOTYPE (0)
 	type_ := if is_func { u8(2) } else { u8(1) } // Func : Object
 	bind := u8(1) // Global
 	info := (bind << 4) | type_
+
+	// Check if an undefined symbol with this name already exists, and upgrade it
+	for i := 1; i < e.symbols.len; i++ {
+		if e.symbols[i].name == name {
+			e.symbols[i].info = info
+			e.symbols[i].shndx = shndx
+			e.symbols[i].value = value
+			return i
+		}
+	}
+
+	idx := e.symbols.len
+	name_off := e.add_string(name)
 
 	e.symbols << ElfSymbol{
 		name:     name
@@ -99,9 +109,9 @@ pub fn (mut e ElfObject) add_symbol(name string, value u64, is_func bool, shndx 
 }
 
 pub fn (mut e ElfObject) add_undefined(name string) int {
-	// Check existing
+	// Check existing (both undefined and defined symbols)
 	for i, s in e.symbols {
-		if s.name == name && s.shndx == 0 && i > 0 {
+		if s.name == name && i > 0 {
 			return i
 		}
 	}

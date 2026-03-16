@@ -43,7 +43,7 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch) bool {
 	size := m.type_size(typ_id)
 	return match arch {
 		.arm64 { size > 16 }
-		.x64 { size > 16 }
+		.x64 { size > 8 }
 		else { size > 16 }
 	}
 }

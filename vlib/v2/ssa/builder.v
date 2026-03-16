@@ -5331,26 +5331,31 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			i64_t := b.mod.type_store.get_int(64)
 			return b.mod.get_or_add_const(i64_t, '0')
 		}
-		// macOS errno: (*__error()) — call __error() which returns int*
+		// errno: call platform-specific function that returns int*
 		if c_name == 'errno' {
 			i32_t := b.mod.type_store.get_int(32)
 			ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-			err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
+			errno_fn_name := $if macos { '__error' } $else { '__errno_location' }
+			err_fn := b.get_or_create_fn_ref(errno_fn_name, ptr_i32)
 			call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
 			return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
 		}
-		// Map C standard I/O streams to macOS-specific symbol names
-		macos_name := match c_name {
-			'stdout' { '__stdoutp' }
-			'stderr' { '__stderrp' }
-			'stdin' { '__stdinp' }
-			else { c_name }
+		// Map C standard I/O streams to platform-specific symbol names
+		platform_name := $if macos {
+			match c_name {
+				'stdout' { '__stdoutp' }
+				'stderr' { '__stderrp' }
+				'stdin' { '__stdinp' }
+				else { c_name }
+			}
+		} $else {
+			c_name
 		}
 		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
-		b.global_refs[macos_name] = glob
+		glob := b.mod.add_value_node(.global, ptr_t, platform_name, 0)
+		b.global_refs[platform_name] = glob
 		return glob
 	}
 

@@ -68,21 +68,6 @@ pub fn (mut g Gen) gen() {
 }
 
 fn (mut g Gen) gen_pre_pass() {
-	// Pre-register global symbols BEFORE generating functions
-	mut data_offset := u64(0)
-	for gvar in g.mod.globals {
-		if gvar.linkage == .external {
-			continue
-		}
-		data_offset = (data_offset + 7) & ~7
-		g.elf.add_symbol(gvar.name, data_offset, false, 2)
-		size := if gvar.initial_data.len > 0 {
-			gvar.initial_data.len
-		} else {
-			g.type_size(gvar.typ)
-		}
-		data_offset += u64(size)
-	}
 	// Build lookup caches
 	for fi, func in g.mod.funcs {
 		g.func_by_name[func.name] = fi
@@ -111,13 +96,7 @@ fn (mut g Gen) gen_post_pass() {
 			g.elf.data_data << 0
 		}
 		addr := u64(g.elf.data_data.len)
-		// Update the symbol address (already registered in pre_pass)
-		for mut sym in g.elf.symbols {
-			if sym.name == gvar.name {
-				sym.value = addr
-				break
-			}
-		}
+		g.elf.add_symbol(gvar.name, addr, false, 2)
 		if gvar.initial_data.len > 0 {
 			for b in gvar.initial_data {
 				g.elf.data_data << b
@@ -156,7 +135,10 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.allocate_registers(func)
 
 	// Calculate Stack Frame
-	mut slot_offset := 8
+	// Start local variables after callee-saved register save area.
+	// Callee-saved regs are pushed after `mov rbp, rsp`, occupying
+	// [rbp-8], [rbp-16], ... [rbp-N*8], so locals start at rbp-(N+1)*8.
+	mut slot_offset := 8 + g.used_regs.len * 8
 
 	// Hidden sret pointer slot (SysV: incoming in RDI)
 	if func.abi_ret_indirect {
@@ -172,9 +154,37 @@ fn (mut g Gen) gen_func(func mir.Function) {
 			slot_offset = (slot_offset + 15) & ~0xF
 			slot_offset += param_size
 			g.stack_map[pid] = -slot_offset
+			// Advance past the indirect data base so the next regular 8-byte
+			// slot (assigned at -slot_offset before +=8) doesn't overlap byte 0
+			// of this indirect area.
+			slot_offset += 8
 		} else {
 			g.stack_map[pid] = -slot_offset
 			slot_offset += 8
+		}
+	}
+
+	// Pre-pass: allocate stack slots for string_literal values used in this function
+	mut seen_str_lits := map[int]bool{}
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			val := g.mod.values[val_id]
+			if val.kind != .instruction {
+				continue
+			}
+			instr := g.mod.instrs[val.index]
+			for op in instr.operands {
+				op_val := g.mod.values[op]
+				if op_val.kind == .string_literal && op !in seen_str_lits {
+					seen_str_lits[op] = true
+					str_size := g.type_size(op_val.typ)
+					actual_size := if str_size > 0 { str_size } else { 24 }
+					slot_offset = (slot_offset + 7) & ~0x7
+					slot_offset += actual_size
+					g.stack_map[op] = -slot_offset
+				}
+			}
 		}
 	}
 
@@ -191,19 +201,15 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				// Calculate allocation size based on the type
 				// The alloca result type is ptr(T), so get the element type
 				ptr_type := g.mod.type_store.types[val.typ]
-				elem_type := g.mod.type_store.types[ptr_type.elem_type]
-
-				// Calculate size based on element type
-				mut alloc_size := 64 // Default for non-array types
-				if elem_type.kind == .array_t {
-					// Get the array element type to determine element size
-					arr_elem_type := g.mod.type_store.types[elem_type.elem_type]
-					elem_size := if arr_elem_type.width > 0 {
-						(arr_elem_type.width + 7) / 8 // bits to bytes, rounded up
-					} else {
-						8 // default to 64-bit
+				elem_size := g.type_size(ptr_type.elem_type)
+				mut alloc_size := if elem_size > 0 { elem_size } else { 8 }
+				// Check for array alloca: operand[0] is element count
+				if instr.operands.len > 0 {
+					count_val := g.mod.values[instr.operands[0]]
+					count := count_val.name.int()
+					if count > 1 {
+						alloc_size = elem_size * count
 					}
-					alloc_size = elem_type.len * elem_size
 				}
 
 				// Align to 16 bytes
@@ -213,6 +219,31 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				slot_offset += 8 // Slot for the pointer
 			}
 
+			if instr.op == .inline_string_init {
+				mut string_size := g.type_size(instr.typ)
+				if string_size <= 0 {
+					string_size = 24
+				}
+				slot_offset = (slot_offset + 15) & ~0xF
+				slot_offset += string_size
+				slot_offset += 8 // pointer slot
+				g.stack_map[val_id] = -slot_offset
+				continue
+			}
+
+			if instr.op == .insertvalue || instr.op == .struct_init {
+				mut tuple_size := g.type_size(instr.typ)
+				if tuple_size <= 0 {
+					tuple_typ := g.mod.type_store.types[instr.typ]
+					tuple_size = tuple_typ.fields.len * 8
+				}
+				slot_offset = (slot_offset + 15) & ~0xF
+				slot_offset += tuple_size
+				g.stack_map[val_id] = -slot_offset
+				slot_offset += 8
+				continue
+			}
+
 			if instr.op == .call_sret {
 				result_typ := g.mod.type_store.types[val.typ]
 				if result_typ.kind == .struct_t {
@@ -220,6 +251,36 @@ fn (mut g Gen) gen_func(func mir.Function) {
 					slot_offset = (slot_offset + 15) & ~0xF
 					slot_offset += result_size
 					g.stack_map[val_id] = -slot_offset
+					slot_offset += 8
+					continue
+				}
+			}
+
+			// Keep full stack storage for struct/array values
+			val_typ := g.mod.type_store.types[val.typ]
+			if val_typ.kind == .struct_t || val_typ.kind == .array_t {
+				mut struct_size := g.type_size(val.typ)
+				if struct_size <= 0 {
+					struct_size = if val_typ.fields.len > 0 { val_typ.fields.len * 8 } else { 8 }
+				}
+				slot_offset = (slot_offset + 15) & ~0xF
+				slot_offset += struct_size
+				g.stack_map[val_id] = -slot_offset
+				slot_offset += 8
+				continue
+			}
+
+			if instr.op == .call {
+				result_typ := g.mod.type_store.types[val.typ]
+				if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
+					mut call_size := g.type_size(val.typ)
+					if call_size <= 0 {
+						call_size = 16
+					}
+					slot_offset = (slot_offset + 15) & ~0xF
+					slot_offset += call_size
+					g.stack_map[val_id] = -slot_offset
+					slot_offset += 8
 					continue
 				}
 			}
@@ -253,6 +314,14 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		} else {
 			asm_sub_rsp_imm32(mut g, u32(g.stack_size))
 		}
+	}
+
+	// The C entry point `main` receives argc in RDI and argv in RSI.
+	// Persist them to builtin globals so `os.args` / `arguments()` work.
+	// Must happen before param spilling overwrites RDI/RSI.
+	if func.name == 'main' {
+		g.store_entry_arg_to_global(int(rdi), 'g_main_argc', 4)
+		g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
@@ -671,7 +740,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 					if !is_array_gep && pointee_typ.kind == .struct_t {
 						is_struct_gep = true
 					}
-					elem_size = g.type_size(base_typ.elem_type)
+					// For array types, use array element size, not total array size
+					if pointee_typ.kind == .array_t {
+						elem_size = g.type_size(pointee_typ.elem_type)
+					} else {
+						elem_size = g.type_size(base_typ.elem_type)
+					}
 					if elem_size <= 0 {
 						elem_size = 8
 					}
@@ -762,7 +836,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.store_reg_to_val(0, val_id)
+				ret_typ := g.mod.type_store.types[g.mod.values[val_id].typ]
+				ret_size := g.type_size(g.mod.values[val_id].typ)
+				if ret_typ.kind == .struct_t && ret_size > 8 && ret_size <= 16 {
+					// Multi-register return: RAX holds lower 8 bytes, RDX holds upper
+					if result_off := g.stack_map[val_id] {
+						asm_store_rbp_disp_reg(mut g, result_off, rax)
+						asm_store_rbp_disp_reg(mut g, result_off + 8, rdx)
+					}
+				} else {
+					g.store_reg_to_val(0, val_id)
+				}
 			}
 		}
 		.call_sret {
@@ -924,8 +1008,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Emit je false_blk (jump if zero/false)
 			asm_je_rel32(mut g)
-			g.record_pending_label(false_blk)
-			g.emit_u32(0)
+			if off := g.block_offsets[false_blk] {
+				// Backward reference: block already emitted, compute displacement.
+				rel := off - (g.elf.text_data.len - g.curr_offset + 4)
+				g.emit_u32(u32(rel))
+			} else {
+				// Forward reference: record pending label for later patching.
+				g.record_pending_label(false_blk)
+				g.emit_u32(0)
+			}
 			// Jump to true block (can't assume it's the next block)
 			g.emit_jmp(true_blk)
 		}
@@ -950,8 +1041,28 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.assign {
 			dest_id := instr.operands[0]
 			src_id := instr.operands[1]
-			g.load_val_to_reg(0, src_id)
-			g.store_reg_to_val(0, dest_id)
+			src_typ := g.mod.values[src_id].typ
+			src_size := g.type_size(src_typ)
+			src_type_info := g.mod.type_store.types[src_typ]
+			// Multi-word copy for structs/strings (e.g. phi-lowered copies).
+			// Both source and dest must have addressable stack slots.
+			src_has_slot := src_id in g.stack_map || src_id in g.alloca_offsets
+				|| g.mod.values[src_id].kind == .string_literal
+			dest_has_slot := dest_id in g.stack_map || dest_id in g.alloca_offsets
+			if src_size > 8 && (src_type_info.kind in [.struct_t, .array_t])
+				&& src_has_slot && dest_has_slot {
+				g.load_address_of_val_to_reg(int(r10), src_id)
+				g.load_address_of_val_to_reg(int(r11), dest_id)
+				num_chunks := (src_size + 7) / 8
+				for ci := 0; ci < num_chunks; ci++ {
+					disp := ci * 8
+					asm_mov_rax_mem_base_disp(mut g, r10, disp)
+					asm_mov_mem_base_disp_rax(mut g, r11, disp)
+				}
+			} else {
+				g.load_val_to_reg(0, src_id)
+				g.store_reg_to_val(0, dest_id)
+			}
 		}
 		.trunc, .zext {
 			if instr.operands.len > 0 {
@@ -1073,6 +1184,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 			idx := idx_val.name.int()
 
 			tuple_val := g.mod.values[tuple_id]
+
+			// String/C-string literals need materialization before field extraction.
+			// load_val_to_reg writes {str, len, is_lit} into the stack slot;
+			// without this, extractvalue reads uninitialized memory.
+			if tuple_val.kind in [.string_literal, .c_string_literal] {
+				g.load_val_to_reg(0, tuple_id)
+			}
+
 			mut field_byte_off := idx * 8
 			mut field_elem_size := 8
 
@@ -1157,7 +1276,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 				} else {
-					asm_load_reg_rbp_disp(mut g, rax, tuple_off + field_byte_off)
+					// Use sized load for struct fields to avoid reading adjacent fields
+					g.emit_sized_load_base_disp(Reg(5), tuple_off + field_byte_off,
+						field_elem_size)
 					g.store_reg_to_val(0, val_id)
 				}
 			} else if tuple_id in g.reg_map {
@@ -1497,6 +1618,77 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 				asm_mov_reg_imm64(mut g, Reg(reg), u64(int_val))
 			}
 		}
+	} else if val.kind == .c_string_literal {
+		// C string literal: raw char* pointer to string data in .rodata
+		raw_bytes := val.name.bytes()
+		str_offset := g.elf.rodata.len
+		mut i := 0
+		for i < raw_bytes.len {
+			if raw_bytes[i] == `\\` && i + 1 < raw_bytes.len {
+				match raw_bytes[i + 1] {
+					`n` { g.elf.rodata << 0x0A }
+					`t` { g.elf.rodata << 0x09 }
+					`r` { g.elf.rodata << 0x0D }
+					`0` { g.elf.rodata << 0x00 }
+					`\\` { g.elf.rodata << 0x5C }
+					`'` { g.elf.rodata << 0x27 }
+					`"` { g.elf.rodata << 0x22 }
+					else { g.elf.rodata << raw_bytes[i + 1] }
+				}
+				i += 2
+			} else {
+				g.elf.rodata << raw_bytes[i]
+				i++
+			}
+		}
+		g.elf.rodata << 0 // null terminator
+		sym_name := 'L_cstr_${str_offset}'
+		sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3) // shndx 3 = .rodata
+		asm_lea_reg_rip(mut g, Reg(reg))
+		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4) // R_X86_64_PC32
+		g.emit_u32(0)
+	} else if val.kind == .string_literal {
+		// V string literal: create { str, len, is_lit } struct on stack
+		str_content := val.name
+		str_len := val.index
+
+		base_offset := g.stack_map[val_id]
+
+		// Put string data in .rodata
+		str_data_offset := g.elf.rodata.len
+		g.elf.rodata << str_content.bytes()
+		g.elf.rodata << 0
+
+		sym_name := 'L_str_${str_data_offset}'
+		sym_idx := g.elf.add_symbol(sym_name, u64(str_data_offset), false, 3)
+
+		// Store str pointer: lea rax, [rip + str_data]; mov [rbp + base], rax
+		asm_lea_reg_rip(mut g, rax)
+		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+		g.emit_u32(0)
+
+		str_off, _ := g.struct_field_offset_and_size(val.typ, 0, 0, 8)
+		len_off, len_size := g.struct_field_offset_and_size(val.typ, 1, 8, 8)
+		is_lit_off, is_lit_size := g.struct_field_offset_and_size(val.typ, 2, 16, 8)
+
+		asm_store_rbp_disp_reg(mut g, base_offset + str_off, rax)
+
+		// Store len
+		asm_mov_reg_imm64(mut g, rax, u64(str_len))
+		g.emit_sized_store_rbp(base_offset + len_off, len_size)
+
+		// Store is_lit = 1
+		asm_mov_reg_imm32(mut g, rax, 1)
+		g.emit_sized_store_rbp(base_offset + is_lit_off, is_lit_size)
+
+		// Load pointer to struct into reg
+		asm_lea_rbp_disp(mut g, Reg(reg), base_offset)
+	} else if val.kind == .func_ref {
+		// Function pointer: load address of the function
+		sym_idx := g.elf.add_undefined(val.name)
+		asm_lea_reg_rip(mut g, Reg(reg))
+		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+		g.emit_u32(0)
 	} else if val.kind == .global {
 		asm_lea_reg_rip(mut g, Reg(reg))
 		sym_idx := g.elf.add_undefined(val.name)
@@ -1522,6 +1714,25 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	} else {
 		offset := g.stack_map[val_id]
 		asm_store_rbp_disp_reg(mut g, offset, Reg(reg))
+	}
+}
+
+// Store entry-point argument register to a named global.
+// `src_reg` is the hardware register index (e.g. rdi=7, rsi=6).
+// `size` is 4 for i32 (argc) or 8 for pointer (argv).
+fn (mut g Gen) store_entry_arg_to_global(src_reg int, global_name string, size int) {
+	// mov rax, <src_reg>
+	asm_mov_reg_reg(mut g, rax, Reg(src_reg))
+	// lea rcx, [rip + global]
+	asm_lea_reg_rip(mut g, rcx)
+	sym_idx := g.elf.add_undefined(global_name)
+	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.emit_u32(0)
+	// Store rax/eax to [rcx]
+	if size == 4 {
+		asm_store_mem_rcx_eax(mut g)
+	} else {
+		asm_mov_mem_rcx_rax(mut g)
 	}
 }
 
@@ -1718,6 +1929,22 @@ fn (mut g Gen) emit_sized_load_base_disp(base Reg, disp int, size int) {
 }
 
 fn (mut g Gen) load_address_of_val_to_reg(reg int, val_id int) {
+	val := g.mod.values[val_id]
+	// string_literal values need full materialization before their address
+	// can be taken — the struct {str, len, is_lit} must be built on stack.
+	if val.kind == .string_literal {
+		g.load_val_to_reg(reg, val_id)
+		return
+	}
+	if val.kind == .instruction {
+		instr := g.mod.instrs[val.index]
+		if instr.op == .alloca {
+			if data_off := g.alloca_offsets[val_id] {
+				asm_lea_rbp_disp(mut g, Reg(reg), data_off)
+				return
+			}
+		}
+	}
 	offset := g.stack_map[val_id]
 	if offset != 0 {
 		if offset >= -128 && offset <= 127 {
@@ -1770,93 +1997,10 @@ pub fn (mut g Gen) write_file(path string) {
 // Register Allocation Logic
 
 fn (mut g Gen) allocate_registers(func mir.Function) {
-	mut intervals := map[int]&Interval{}
-	mut instr_idx := 0
-
-	// Track which values are alloca results - don't register allocate these
-	// as they hold addresses that may be needed across the function
-	mut alloca_vals := map[int]bool{}
-
-	for i, pid in func.params {
-		if i < func.abi_param_class.len && func.abi_param_class[i] == .indirect {
-			alloca_vals[pid] = true
-			continue
-		}
-		intervals[pid] = &Interval{
-			val_id: pid
-			start:  0
-			end:    0
-		}
-	}
-
-	for blk_id in func.blocks {
-		blk := g.mod.blocks[blk_id]
-		for val_id in blk.instrs {
-			val := g.mod.values[val_id]
-			if val.kind == .instruction || val.kind == .argument {
-				if unsafe { intervals[val_id] == nil } {
-					intervals[val_id] = &Interval{
-						val_id: val_id
-						start:  instr_idx
-						end:    instr_idx
-					}
-				}
-			}
-			instr := g.mod.instrs[val.index]
-			// Mark alloca results as non-register-allocatable
-			if instr.op in [.alloca, .call_sret] {
-				alloca_vals[val_id] = true
-			}
-			for op in instr.operands {
-				if g.mod.values[op].kind in [.instruction, .argument] {
-					if mut interval := intervals[op] {
-						if instr_idx > interval.end {
-							interval.end = instr_idx
-						}
-					}
-				}
-			}
-			instr_idx++
-		}
-	}
-
-	mut sorted := []&Interval{}
-	for _, i in intervals {
-		sorted << i
-	}
-	sorted.sort(a.start < b.start)
-
-	mut active := []&Interval{}
-	// Use callee-saved registers: RBX(3), R12(12), R13(13), R14(14), R15(15)
-	regs := [3, 12, 13, 14, 15]
-
-	for i in sorted {
-		// Skip alloca results - they must stay on stack to preserve addresses
-		if alloca_vals[i.val_id] {
-			continue
-		}
-		for j := 0; j < active.len; j++ {
-			if active[j].end < i.start {
-				active.delete(j)
-				j--
-			}
-		}
-		if active.len < regs.len {
-			mut used := []bool{len: 16, init: false}
-			for a in active {
-				used[g.reg_map[a.val_id]] = true
-			}
-			for r in regs {
-				if !used[r] {
-					g.reg_map[i.val_id] = r
-					active << i
-					if r !in g.used_regs {
-						g.used_regs << r
-					}
-					break
-				}
-			}
-		}
-	}
-	g.used_regs.sort()
+	// Register allocation is disabled for correctness — the codegen uses
+	// callee-saved registers (rbx, r12-r15) as temporaries in generated
+	// instruction sequences, which conflicts with values held in those
+	// registers across basic blocks.  All values use stack slots instead.
+	g.reg_map = map[int]int{}
+	g.used_regs = []int{}
 }

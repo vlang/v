@@ -780,6 +780,11 @@ fn asm_lea_reg_rbp_disp32(mut g Gen, reg Reg, disp i32) {
 	}
 }
 
+// lea reg, [rbp + disp] (auto-selects disp8/disp32)
+fn asm_lea_rbp_disp(mut g Gen, reg Reg, disp int) {
+	asm_lea_reg_rbp_disp32(mut g, reg, i32(disp))
+}
+
 // lea reg, [rip + disp32] (for globals/strings)
 fn asm_lea_reg_rip(mut g Gen, reg Reg) {
 	hw_reg := g.map_reg(int(reg))
