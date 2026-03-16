@@ -84,9 +84,14 @@ fn (g &Gen) should_emit_fn_decl(module_name string, decl ast.FnDecl) bool {
 	// Methods on array types ([]T) and other types with unresolvable receivers
 	// may produce 'unknown' receiver in the markused key, causing them to be
 	// incorrectly pruned. Always emit methods whose receiver can't be resolved.
+	// Also always emit methods on array receivers ([]T), since the markused
+	// key for these can differ between the walker and the gen lookup.
 	if decl.is_method {
 		key2 := markused.decl_key(module_name, decl, g.env)
 		if key2.contains('|unknown|') {
+			return true
+		}
+		if decl.receiver.typ is ast.Type && decl.receiver.typ is ast.ArrayType {
 			return true
 		}
 	}

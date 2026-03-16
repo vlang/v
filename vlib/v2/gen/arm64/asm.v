@@ -117,6 +117,26 @@ fn asm_and(rd Reg, rn Reg, rm Reg) u32 {
 	return 0x8A000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
 }
 
+// and rd, rn, #1 — truncate to 1 bit (AND Xd, Xn, #1: N=1, immr=0, imms=0x00)
+fn asm_and_imm_1(rd Reg, rn Reg) u32 {
+	return 0x92400000 | (u32(rn) << 5) | u32(rd)
+}
+
+// and rd, rn, #0xFF — zero-extend u8 (AND Xd, Xn, #0xFF: N=1, immr=0, imms=0x07)
+fn asm_and_imm_0xff(rd Reg, rn Reg) u32 {
+	return 0x92401C00 | (u32(rn) << 5) | u32(rd)
+}
+
+// and rd, rn, #0xFFFF — zero-extend u16 (AND Xd, Xn, #0xFFFF: N=1, immr=0, imms=0x0F)
+fn asm_and_imm_0xffff(rd Reg, rn Reg) u32 {
+	return 0x92403C00 | (u32(rn) << 5) | u32(rd)
+}
+
+// and rd, rn, #0xFFFFFFFF — zero-extend u32 (AND Xd, Xn, #0xFFFFFFFF: N=1, immr=0, imms=0x1F)
+fn asm_and_imm_0xffffffff(rd Reg, rn Reg) u32 {
+	return 0x92407C00 | (u32(rn) << 5) | u32(rd)
+}
+
 // orr rd, rn, rm
 fn asm_orr(rd Reg, rn Reg, rm Reg) u32 {
 	return 0xAA000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
@@ -167,11 +187,31 @@ fn asm_sxtw(rd Reg, rn Reg) u32 {
 	return 0x93407C00 | (u32(rn) << 5) | u32(rd)
 }
 
+// sxth rd, rn — sign-extend 16-bit value to 64-bit (SBFM Xd, Xn, #0, #15)
+fn asm_sxth(rd Reg, rn Reg) u32 {
+	return 0x93403C00 | (u32(rn) << 5) | u32(rd)
+}
+
+// sxtb rd, rn — sign-extend 8-bit value to 64-bit (SBFM Xd, Xn, #0, #7)
+fn asm_sxtb(rd Reg, rn Reg) u32 {
+	return 0x93401C00 | (u32(rn) << 5) | u32(rd)
+}
+
 // === Compare ===
 
 // cmp rn, rm (subs xzr, rn, rm) — 64-bit
 fn asm_cmp_reg(rn Reg, rm Reg) u32 {
 	return 0xEB00001F | (u32(rm) << 16) | (u32(rn) << 5)
+}
+
+// cmp xn, #imm12 (subs xzr, xn, #imm12) — 64-bit immediate compare
+fn asm_cmp_imm(rn Reg, imm12 u32) u32 {
+	return 0xF100001F | (imm12 << 10) | (u32(rn) << 5)
+}
+
+// cmp wn, #imm12 (subs wzr, wn, #imm12) — 32-bit immediate compare
+fn asm_cmp_imm_w(rn Reg, imm12 u32) u32 {
+	return 0x7100001F | (imm12 << 10) | (u32(rn) << 5)
 }
 
 // cmp wn, wm (subs wzr, wn, wm) — 32-bit, sign-aware for i32

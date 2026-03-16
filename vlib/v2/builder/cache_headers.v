@@ -238,6 +238,36 @@ fn (b &Builder) header_stamp_for_modules(modules []string) string {
 	return lines.join('\n')
 }
 
+// can_use_cached_core_headers_for_parse checks whether .vh header files
+// exist, are non-empty, and their stamp matches the current source/compiler
+// file timestamps.  The .o stamp validation is skipped (the gen phase
+// rebuilds stale .o files via ensure_cached_module_object), but the .vh
+// stamp IS validated so that stale headers trigger a full parse — otherwise
+// the gen phase would regenerate .o from incomplete .vh ASTs.
+fn (b &Builder) can_use_cached_core_headers_for_parse() bool {
+	if b.pref.no_cache || b.pref.skip_builtin {
+		return false
+	}
+	if !b.ensure_core_cache_dir() {
+		return false
+	}
+	// Validate .vh header stamp (no cc/cc_flags — only source + compiler timestamps).
+	expected_header_stamp := b.header_stamp_for_modules(core_cached_module_paths)
+	current_header_stamp := os.read_file(b.core_headers_stamp_path()) or { return false }
+	if current_header_stamp != expected_header_stamp {
+		return false
+	}
+	for header_path in b.core_header_paths() {
+		if !os.exists(header_path) {
+			return false
+		}
+		if os.file_size(header_path) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 fn (b &Builder) can_use_cached_core_headers() bool {
 	if b.pref.no_cache || b.pref.skip_builtin {
 		return false

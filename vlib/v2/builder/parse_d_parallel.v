@@ -65,14 +65,9 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	}
 	skip_builtin := b.pref.skip_builtin
 	if !skip_builtin {
-		use_core_headers := false
-		// SSA/C and native backends need full core module bodies (not .vh summaries),
-		// otherwise runtime helpers can be lowered to stubs.
-		use_core_headers2 := if b.pref.backend in [.c, .cleanc, .x64, .arm64] {
-			false
-		} else {
-			use_core_headers
-		}
+		// -prod builds with a valid header cache can use lightweight .vh
+		// summaries instead of fully parsing every core module source file.
+		use_core_headers2 := b.pref.is_prod && b.can_use_cached_core_headers_for_parse()
 		// Parse builtin and its dependencies
 		// Mark them as parsed first to prevent re-parsing via imports
 		for module_path in core_cached_module_paths {

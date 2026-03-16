@@ -93,9 +93,28 @@ pub mut:
 	// so that fp - N = sp + (sp_base_offset - N) for positive sp-relative offsets.
 	sp_base_offset int
 	sp_adjusted    bool // true when sp is temporarily modified (call arg push)
+	sp_adjust_amt  int  // how much SP was decremented (valid when sp_adjusted)
 	// Reverse map: val_id → block_id for block-kind values.
 	// Value.index is unreliable in ARM64-compiled binaries, so use this instead.
 	val_to_block []int
+	// Last-store cache for eliminating redundant store-then-load sequences.
+	// After store_reg_to_val records (reg, val_id), the next load_val_to_reg
+	// for the same val_id can reuse the register instead of loading from stack.
+	// Cleared at block boundaries, function calls, and any register write.
+	last_store_reg int = -1
+	last_store_val int
+	// Current block instruction list and index, for lookahead optimizations.
+	cur_blk_instrs    []int
+	cur_blk_instr_idx int
+	// Function boundaries for dead-stripping.
+	fn_starts  []int    // text offset where each function begins
+	fn_ends    []int    // text offset where each function ends
+	fn_names   []string // symbol name of each function
+	fn_sym_ids []int    // symbol index in macho.symbols
+	// Stats counters for optimization analysis.
+	stats_total_stores   int
+	stats_skipped_stores int
+	stats_cache_hits     int
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
@@ -133,6 +152,69 @@ pub fn Gen.new(mod &mir.Module) &Gen {
 		env_trace_regalloc:    os.getenv('V2_ARM64_TRACE_REGALLOC')
 		env_no_regalloc:       os.getenv('V2_ARM64_NO_REGALLOC').len > 0
 	}
+}
+
+// Clear the last-store cache (block boundary, call, etc.).
+fn (mut g Gen) invalidate_last_store() {
+	g.last_store_reg = -1
+	g.last_store_val = 0
+}
+
+// Check if a store to stack can be skipped for val_id because the value
+// will be consumed from the last-store cache by the very next instruction.
+// Returns: 0 = must store, 1 = skip (consumed as operand[0]),
+//          2 = forward to x10 (consumed as operand[1]).
+fn (mut g Gen) should_skip_store(val_id int) int {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return 0
+	}
+	v := g.mod.values[val_id]
+	if v.uses.len != 1 {
+		return 0
+	}
+	// Check that the next instruction in the block is the single consumer.
+	next_idx := g.cur_blk_instr_idx + 1
+	if next_idx >= g.cur_blk_instrs.len {
+		return 0
+	}
+	next_vid := g.cur_blk_instrs[next_idx]
+	if v.uses[0] != next_vid {
+		return 0
+	}
+	if next_vid <= 0 || next_vid >= g.mod.values.len {
+		return 0
+	}
+	nv := g.mod.values[next_vid]
+	if nv.kind != .instruction {
+		return 0
+	}
+	ni := g.mod.instrs[nv.index]
+	// Only allow pure ops that load operands via get_operand_reg first
+	// and DON'T re-load operands afterwards.
+	is_arith := ni.op in [.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl,
+		.ashr, .lshr]
+	is_int_cmp := ni.op in [.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge] && v.typ > 0
+		&& v.typ < g.mod.type_store.types.len && g.mod.type_store.types[v.typ].kind != .float_t
+	is_mem_or_ptr := ni.op in [.store, .load, .get_element_ptr]
+	is_int_conv := ni.op in [.trunc, .zext] && v.typ > 0 && v.typ < g.mod.type_store.types.len
+		&& g.mod.type_store.types[v.typ].kind != .float_t
+	if !is_arith && !is_int_cmp && !is_mem_or_ptr && !is_int_conv {
+		return 0
+	}
+	if ni.operands.len == 0 {
+		return 0
+	}
+	// Operand[0] match: skip store entirely, value stays in cache register.
+	if ni.operands[0] == val_id {
+		return 1
+	}
+	// Operand[1] match for binary ops: forward to x10 so it survives
+	// operand[0] loading into x8. Only for arithmetic/comparison which
+	// load operand[1] via get_operand_reg(op1, 9).
+	if (is_arith || is_int_cmp) && ni.operands.len >= 2 && ni.operands[1] == val_id {
+		return 2
+	}
+	return 0
 }
 
 pub fn (mut g Gen) gen() {
@@ -193,9 +275,192 @@ pub fn (mut g Gen) gen_pre_pass() {
 	g.pre_populate_type_caches()
 }
 
+// dead_strip_functions removes unreachable functions from the text section.
+// Builds a call graph from relocations, marks reachable functions starting
+// from _main and __v_init_consts_* roots, then compacts the text section.
+fn (mut g Gen) dead_strip_functions() {
+	if g.fn_starts.len == 0 {
+		return
+	}
+	n_fns := g.fn_starts.len
+	// Build sym_idx → fn_idx for resolving relocation targets.
+	mut sym_to_fn := map[int]int{}
+	for fi := 0; fi < n_fns; fi++ {
+		sym_to_fn[g.fn_sym_ids[fi]] = fi
+	}
+	// Build call graph from relocations using binary search on sorted fn_starts.
+	mut callees := [][]int{len: n_fns}
+	for reloc in g.macho.relocs {
+		mut lo := 0
+		mut hi := n_fns - 1
+		mut src_fn := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if reloc.addr < g.fn_starts[mid] {
+				hi = mid - 1
+			} else if reloc.addr >= g.fn_ends[mid] {
+				lo = mid + 1
+			} else {
+				src_fn = mid
+				break
+			}
+		}
+		if src_fn < 0 {
+			continue
+		}
+		if tgt_fn := sym_to_fn[reloc.sym_idx] {
+			callees[src_fn] << tgt_fn
+		}
+	}
+	// Mark reachable functions starting from roots via BFS.
+	mut reachable := []bool{len: n_fns}
+	mut worklist := []int{cap: 256}
+	for fi := 0; fi < n_fns; fi++ {
+		name := g.fn_names[fi]
+		if name == '__main' || name == '_main' || name == '_main__main'
+			|| name.starts_with('___v_init_consts_')
+			|| name.starts_with('_builtin____v_init_consts_') || name == '___unresolved_stub' {
+			if !reachable[fi] {
+				reachable[fi] = true
+				worklist << fi
+			}
+		}
+	}
+	for worklist.len > 0 {
+		fi := worklist.pop()
+		for callee in callees[fi] {
+			if !reachable[callee] {
+				reachable[callee] = true
+				worklist << callee
+			}
+		}
+	}
+	// Force-strip unused backend modules by name prefix.
+	// When compiling for arm64, cleanc/c/eval/x64 functions are never called
+	// at runtime. Their symbols redirect to ___unresolved_stub (returns 0).
+	for fi2 := 0; fi2 < n_fns; fi2++ {
+		if !reachable[fi2] {
+			continue
+		}
+		n2 := g.fn_names[fi2]
+		if n2.len > 1 {
+			sn := n2[1..] // strip leading underscore
+			if sn.starts_with('cleanc__') || sn.starts_with('c__Gen') || sn.starts_with('eval__')
+				|| sn.starts_with('x64__') {
+				reachable[fi2] = false
+			}
+		}
+	}
+	// Compute cumulative shift: how many bytes of dead code precede each function.
+	mut fn_shift := []int{len: n_fns}
+	mut cum_shift := 0
+	mut dead_count := 0
+	mut dead_bytes := 0
+	for fi := 0; fi < n_fns; fi++ {
+		fn_shift[fi] = cum_shift
+		if !reachable[fi] {
+			dead_count++
+			fn_size := g.fn_ends[fi] - g.fn_starts[fi]
+			dead_bytes += fn_size
+			cum_shift += fn_size
+		}
+	}
+	if dead_count == 0 {
+		return
+	}
+	eprintln('ARM64 DEADSTRIP: ${dead_count} dead functions, ${dead_bytes} bytes (${dead_bytes / 1024}KB)')
+	// Build compacted text section: copy prefix, kept functions, suffix.
+	old_text := g.macho.text_data.clone()
+	mut new_text := []u8{cap: old_text.len - dead_bytes}
+	// Copy prefix bytes before first function (if any).
+	for i := 0; i < g.fn_starts[0]; i++ {
+		new_text << old_text[i]
+	}
+	// Copy kept functions in order.
+	for fi := 0; fi < n_fns; fi++ {
+		if !reachable[fi] {
+			continue
+		}
+		for off := g.fn_starts[fi]; off < g.fn_ends[fi]; off++ {
+			new_text << old_text[off]
+		}
+	}
+	// Copy suffix bytes after last function (e.g. unresolved stub added by gen_post_pass).
+	last_end := g.fn_ends[n_fns - 1]
+	for off := last_end; off < old_text.len; off++ {
+		new_text << old_text[off]
+	}
+	// Fix up relocation addresses and drop relocations inside dead functions.
+	mut new_relocs := []RelocationInfo{cap: g.macho.relocs.len}
+	for reloc in g.macho.relocs {
+		// Binary search for source function (using original boundaries).
+		mut lo := 0
+		mut hi := n_fns - 1
+		mut src_fn := -1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if reloc.addr < g.fn_starts[mid] {
+				hi = mid - 1
+			} else if reloc.addr >= g.fn_ends[mid] {
+				lo = mid + 1
+			} else {
+				src_fn = mid
+				break
+			}
+		}
+		if src_fn >= 0 && !reachable[src_fn] {
+			continue // drop relocations in dead functions
+		}
+		mut new_addr := reloc.addr
+		if src_fn >= 0 {
+			new_addr = reloc.addr - fn_shift[src_fn]
+		} else if reloc.addr >= last_end {
+			new_addr = reloc.addr - cum_shift
+		}
+		new_relocs << RelocationInfo{
+			addr:    new_addr
+			sym_idx: reloc.sym_idx
+			pcrel:   reloc.pcrel
+			length:  reloc.length
+			extern:  reloc.extern
+			type_:   reloc.type_
+		}
+	}
+	g.macho.relocs = new_relocs
+	// Fix up symbol addresses.
+	// Dead function symbols redirect to ___unresolved_stub (returns 0).
+	mut stub_new_addr := u64(0)
+	if stub_si := g.macho.sym_by_name['___unresolved_stub'] {
+		// Stub is in suffix region, shift by total dead bytes.
+		stub_new_addr = g.macho.symbols[stub_si].value - u64(cum_shift)
+	}
+	for si := 0; si < g.macho.symbols.len; si++ {
+		old_val := int(g.macho.symbols[si].value)
+		if fi := sym_to_fn[si] {
+			if reachable[fi] {
+				g.macho.symbols[si].value = u64(old_val - fn_shift[fi])
+			} else {
+				g.macho.symbols[si].value = stub_new_addr
+			}
+		} else if old_val >= last_end {
+			// Symbol in suffix region.
+			g.macho.symbols[si].value = u64(old_val - cum_shift)
+		}
+	}
+	// Update function boundaries (for any downstream use).
+	for fi := 0; fi < n_fns; fi++ {
+		if reachable[fi] {
+			g.fn_starts[fi] -= fn_shift[fi]
+			g.fn_ends[fi] -= fn_shift[fi]
+		}
+	}
+	g.macho.text_data = new_text
+}
+
 // gen_post_pass emits the unresolved stub, global data, and patches symbol addresses.
 // Must be called after all gen_func calls.
 pub fn (mut g Gen) gen_post_pass() {
+	eprintln('ARM64 STATS: stores=${g.stats_total_stores} skipped=${g.stats_skipped_stores} cache_hits=${g.stats_cache_hits}')
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
@@ -203,6 +468,9 @@ pub fn (mut g Gen) gen_post_pass() {
 	g.emit(0xD2800000) // mov x0, #0
 	g.emit(0xD2800001) // mov x1, #0
 	g.emit(0xD65F03C0) // ret
+
+	// Dead-strip unreachable functions.
+	g.dead_strip_functions()
 
 	// Globals in __data (Section 3) - emit actual data
 	for gvar in g.mod.globals {
@@ -429,6 +697,17 @@ pub fn (mut g Gen) merge_worker(w &Gen) {
 			type_:   rel.type_
 		}
 	}
+	// Merge function boundary tracking for dead-stripping.
+	for fi := 0; fi < w.fn_starts.len; fi++ {
+		g.fn_starts << w.fn_starts[fi] + text_base
+		g.fn_ends << w.fn_ends[fi] + text_base
+		g.fn_names << w.fn_names[fi]
+		g.fn_sym_ids << sym_remap[w.fn_sym_ids[fi]]
+	}
+	// Merge stats.
+	g.stats_total_stores += w.stats_total_stores
+	g.stats_skipped_stores += w.stats_skipped_stores
+	g.stats_cache_hits += w.stats_cache_hits
 }
 
 pub fn (mut g Gen) gen_func(func mir.Function) {
@@ -439,12 +718,15 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	}
 	if func.blocks.len == 0 {
 		// Emit a minimal stub: just a ret instruction.
-		// This handles functions registered in Phase 3 but not built in Phase 4
-		// (dead code elimination), or functions with empty bodies.
-		g.curr_offset = g.macho.text_data.len
+		fn_start := g.macho.text_data.len
+		g.curr_offset = fn_start
 		sym_name := '_' + func.name
-		g.macho.add_symbol(sym_name, u64(g.curr_offset), false, 1)
+		sym_idx := g.macho.add_symbol(sym_name, u64(fn_start), false, 1)
 		g.emit(0xd65f03c0) // ret
+		g.fn_starts << fn_start
+		g.fn_ends << g.macho.text_data.len
+		g.fn_names << sym_name
+		g.fn_sym_ids << sym_idx
 		return
 	}
 	g.curr_offset = g.macho.text_data.len
@@ -595,13 +877,14 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	for i, blk_id in func.blocks {
 		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
 		blk := g.mod.blocks[blk_id]
-		for val_id in blk.instrs {
+		for pp_idx, val_id in blk.instrs {
 			val := g.mod.values[val_id]
 			if val.kind != .instruction {
 				continue
 			}
 			instr := g.mod.instrs[val.index]
 			opcode := g.selected_opcode(instr)
+			_ = pp_idx
 			// Phi lowering can leave placeholder bitcasts/copies that are fully dead.
 			// Do not reserve stack slots for these values; in large recursive
 			// functions this can cause pathological frame growth and stack overflow.
@@ -746,7 +1029,13 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 				}
 			}
 
-			// Assign slot for result of instruction (or pointer for alloca)
+			// Skip stack slot for callee-saved register values (always in reg_map).
+			if val_id in g.reg_map && g.reg_map[val_id] != 0xFF {
+				continue
+			}
+			// Align to 8 bytes before assigning scalar slot so that
+			// SP-relative scaled-immediate addressing always works.
+			slot_offset = (slot_offset + 7) & ~0x7
 			g.stack_map[val_id] = -slot_offset
 			slot_offset += 8
 		}
@@ -856,7 +1145,9 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 		}
 		eprintln('ARM64 BLOCKS ${func.name} end')
 	}
-	g.macho.add_symbol('_' + func.name, u64(g.curr_offset), true, 1)
+	fn_sym_name := '_' + func.name
+	fn_sym_idx := g.macho.add_symbol(fn_sym_name, u64(g.curr_offset), true, 1)
+	fn_start_off := g.macho.text_data.len
 
 	// Prologue
 	g.emit(asm_stp_fp_lr_pre())
@@ -878,6 +1169,7 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	// sp = fp - callee_saved_size - stack_size, so fp - N = sp + (sp_base_offset + N).
 	g.sp_base_offset = callee_saved_size + g.stack_size
 	g.sp_adjusted = false
+	g.sp_adjust_amt = 0
 
 	// Save x8 if this function returns a large struct
 	// x8 contains the indirect return pointer from the caller
@@ -1010,6 +1302,7 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	}
 
 	for i := 0; i < func.blocks.len; i++ {
+		g.invalidate_last_store()
 		blk_id := int(func.blocks[i])
 		g.next_blk = if i + 1 < func.blocks.len { int(func.blocks[i + 1]) } else { -1 }
 		g.cur_blk_id = blk_id
@@ -1027,22 +1320,24 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			instr := g.read_u32(abs_off)
 
 			mut new_instr := u32(0)
-			// Check for CBNZ (0xB5...) vs B (0x14...) vs B.cond (0x54...)
-			if (instr & 0xFF000000) == 0xB5000000 {
-				// CBNZ
-				new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
+			// Check for CBZ (0xB4...) / CBNZ (0xB5...) vs B (0x14...) vs B.cond (0x54...)
+			if (instr & 0xFE000000) == 0xB4000000 {
+				// CBZ / CBNZ (both use imm19 at bits [23:5])
+				new_instr = (instr & 0xFF00001F) | ((u32(rel) & 0x7FFFF) << 5)
 			} else if (instr & 0xFC000000) == 0x14000000 {
 				// B imm26
 				new_instr = (instr & 0xFC000000) | (u32(rel) & 0x3FFFFFF)
 			} else {
 				// B.cond
-				new_instr = (instr & 0xFF000000) | ((u32(rel) & 0x7FFFF) << 5) | (instr & 0x1F)
+				new_instr = (instr & 0xFF00001F) | ((u32(rel) & 0x7FFFF) << 5)
 			}
 			g.write_u32(abs_off, new_instr)
 			g.total_resolved++
 		}
 
-		for val_id in blk.instrs {
+		g.cur_blk_instrs = blk.instrs
+		for instr_idx, val_id in blk.instrs {
+			g.cur_blk_instr_idx = instr_idx
 			g.gen_instr(val_id)
 		}
 	}
@@ -1050,6 +1345,10 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	if unresolved > 0 {
 		eprintln('BRANCH: fn=${func.name} pending=${g.total_pending} resolved=${g.total_resolved} unresolved=${unresolved} pending_blks_len=${g.pending_label_blks.len}')
 	}
+	g.fn_starts << fn_start_off
+	g.fn_ends << g.macho.text_data.len
+	g.fn_names << fn_sym_name
+	g.fn_sym_ids << fn_sym_idx
 }
 
 fn (mut g Gen) gen_instr(val_id int) {
@@ -1074,6 +1373,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 			is_unsigned = typ.is_unsigned
 		}
 		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} sel=${instr.selected_op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr.operands}')
+	}
+	// Dead value elimination: skip pure operations whose results are never used.
+	if g.mod.values[val_id].uses.len == 0 {
+		match op {
+			.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr,
+			.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge, .fadd, .fsub, .fmul, .fdiv,
+			.frem, .fptosi, .sitofp, .trunc, .zext, .sext, .bitcast, .extractvalue,
+			.get_element_ptr, .insertvalue, .struct_init, .load {
+				return
+			}
+			else {}
+		}
 	}
 	match op {
 		.fadd, .fsub, .fmul, .fdiv, .frem {
@@ -1209,7 +1520,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			mut rhs_reg := 9 // Default scratch for RHS
 
 			op1 := g.mod.values[instr.operands[1]]
-			if op1.kind == .constant && op in [.add, .sub] {
+			if op1.kind == .constant
+				&& op in [.add, .sub, .eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge] {
 				v := g.get_const_int(instr.operands[1])
 				if v >= 0 && v < 4096 {
 					is_imm = true
@@ -1334,7 +1646,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 							use_32bit := lhs_typ > 0 && lhs_typ < g.mod.type_store.types.len
 								&& g.mod.type_store.types[lhs_typ].kind == .int_t
 								&& g.mod.type_store.types[lhs_typ].width == 32
-							if use_32bit {
+							if is_imm {
+								if use_32bit {
+									g.emit(asm_cmp_imm_w(Reg(lhs_reg), u32(imm_val)))
+								} else {
+									g.emit(asm_cmp_imm(Reg(lhs_reg), u32(imm_val)))
+								}
+							} else if use_32bit {
 								g.emit(asm_cmp_reg_w(Reg(lhs_reg), Reg(rhs_reg)))
 							} else {
 								g.emit(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
@@ -1364,11 +1682,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			// Keep narrow integer results (i1/i8/i16/i32) canonical after 64-bit
 			// ALU ops so upper garbage bits do not leak through later uses.
-			result_typ_id := g.mod.values[val_id].typ
-			if result_typ_id > 0 && result_typ_id < g.mod.type_store.types.len {
-				result_typ := g.mod.type_store.types[result_typ_id]
-				if result_typ.kind == .int_t && !emitted_types_sum_is_check {
-					g.canonicalize_narrow_int_result(dest_reg, result_typ_id)
+			// Skip for comparison ops (cset always produces 0 or 1, already canonical).
+			is_cmp := op in [.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge]
+			if !is_cmp {
+				result_typ_id := g.mod.values[val_id].typ
+				if result_typ_id > 0 && result_typ_id < g.mod.type_store.types.len {
+					result_typ := g.mod.type_store.types[result_typ_id]
+					if result_typ.kind == .int_t && !emitted_types_sum_is_check {
+						g.canonicalize_narrow_int_result(dest_reg, result_typ_id)
+					}
 				}
 			}
 			// If dest_reg was not the allocated one (e.g. was 8), move it.
@@ -2120,6 +2442,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.call {
+			g.invalidate_last_store()
 			fn_val := g.mod.values[instr.operands[0]]
 			fn_name := fn_val.name
 			trace_call := g.env_trace_call.len > 0
@@ -2164,6 +2487,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					stack_space := ((num_variadic * 8) + 15) & ~0xF
 					if stack_space > 0 {
 						g.sp_adjusted = true
+						g.sp_adjust_amt = stack_space
 						g.emit_sub_sp(stack_space)
 					}
 
@@ -2201,6 +2525,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit(asm_add_sp_reg(Reg(10)))
 						}
 						g.sp_adjusted = false
+						g.sp_adjust_amt = 0
 					}
 				} else {
 					// Non-variadic call:
@@ -2243,6 +2568,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					stack_space := ((total_stack_slots * 8) + 15) & ~0xF
 					if stack_space > 0 {
 						g.sp_adjusted = true
+						g.sp_adjust_amt = stack_space
 						g.emit_sub_sp(stack_space)
 						mut stack_idx := 0
 						for a in 0 .. num_args {
@@ -2327,6 +2653,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit(asm_add_sp_reg(Reg(10)))
 						}
 						g.sp_adjusted = false
+						g.sp_adjust_amt = 0
 					}
 				}
 
@@ -2395,6 +2722,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.call_indirect {
+			g.invalidate_last_store()
 			// Indirect call through function pointer
 			// operands[0] is the function pointer, rest are arguments
 			num_args := instr.operands.len - 1
@@ -2417,6 +2745,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			stack_space := ((num_stack_slots * 8) + 15) & ~0xF
 			if stack_space > 0 {
 				g.sp_adjusted = true
+				g.sp_adjust_amt = stack_space
 				g.emit_sub_sp(stack_space)
 				mut stack_idx := 0
 				for a in 0 .. num_args {
@@ -2476,6 +2805,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit(asm_add_sp_reg(Reg(10)))
 				}
 				g.sp_adjusted = false
+				g.sp_adjust_amt = 0
 			}
 
 			ci_result_typ_id := g.mod.values[val_id].typ
@@ -2498,6 +2828,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.call_sret {
+			g.invalidate_last_store()
 			// Call with struct return lowered by ABI pass.
 			// operands: [fn, arg1, arg2, ...], destination is val_id's stack slot.
 			num_args := instr.operands.len - 1
@@ -2534,6 +2865,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			stack_space := ((sr_num_stack_slots * 8) + 15) & ~0xF
 			if stack_space > 0 {
 				g.sp_adjusted = true
+				g.sp_adjust_amt = stack_space
 				g.emit_sub_sp(stack_space)
 				mut stack_idx := 0
 				for a in 0 .. num_args {
@@ -2598,6 +2930,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit(asm_add_sp_reg(Reg(10)))
 				}
 				g.sp_adjusted = false
+				g.sp_adjust_amt = 0
 			}
 		}
 		.ret {
@@ -2902,8 +3235,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 				&& g.mod.type_store.types[cond_val.typ].kind == .int_t
 				&& g.mod.type_store.types[cond_val.typ].width == 1
 			if cond_is_i1 {
-				g.emit_mov_imm64(9, 1)
-				g.emit(asm_and(Reg(8), Reg(8), Reg(9)))
+				// Skip AND if condition is from a comparison (cset produces 0/1).
+				mut need_and := true
+				if cond_val.kind == .instruction {
+					cond_instr := g.mod.instrs[cond_val.index]
+					cond_op := g.selected_opcode(cond_instr)
+					if cond_op in [.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge] {
+						need_and = false
+					}
+				}
+				if need_and {
+					g.emit(asm_and_imm_1(Reg(8), Reg(8)))
+				}
 			}
 
 			true_blk := if instr.operands[1] >= 0 && instr.operands[1] < g.val_to_block.len {
@@ -2920,37 +3263,21 @@ fn (mut g Gen) gen_instr(val_id int) {
 			has_phis := g.block_has_phis(true_blk) || g.block_has_phis(false_blk)
 			if has_phis {
 				// When target blocks have phi nodes (e.g. -O0 mode), we must emit
-				// phi copies on each branch path separately. Structure:
-				//   CBZ x8, false_path
-				//   <true phi copies>
-				//   B true_blk
-				//   false_path:
-				//   <false phi copies>
-				//   B false_blk (or fall-through)
-				cbz_off := g.macho.text_data.len - g.curr_offset
-				g.emit(asm_cbz(Reg(8), 0)) // placeholder, will patch
+				// phi copies on each branch path separately.
+				if true_blk == g.next_blk {
+					// Optimize: true_blk is next block (fall-through).
+					// Structure:
+					//   CBNZ x8, true_path
+					//   <false phi copies>
+					//   B false_blk (or fall-through if false_blk == next)
+					//   true_path:
+					//   <true phi copies>
+					//   (fall through to true_blk)
+					cbnz_off := g.macho.text_data.len - g.curr_offset
+					g.emit(asm_cbnz(Reg(8), 0)) // placeholder, will patch
 
-				// True path: emit phi copies then branch to true block
-				g.emit_phi_copies(true_blk)
-				if true_blk >= 0 && true_blk < g.block_offsets.len
-					&& g.block_offsets[true_blk] != -1 {
-					off := g.block_offsets[true_blk]
-					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-					g.emit(asm_b(rel))
-				} else {
-					g.record_pending_label(true_blk)
-					g.emit(asm_b(0))
-				}
-
-				// Patch CBZ to jump here (false path)
-				false_path_off := g.macho.text_data.len - g.curr_offset
-				cbz_rel := (false_path_off - cbz_off) / 4
-				cbz_abs := g.curr_offset + cbz_off
-				g.write_u32(cbz_abs, asm_cbz(Reg(8), cbz_rel))
-
-				// False path: emit phi copies then branch to false block
-				g.emit_phi_copies(false_blk)
-				if false_blk != g.next_blk {
+					// False path: emit phi copies then branch to false block
+					g.emit_phi_copies(false_blk)
 					if false_blk >= 0 && false_blk < g.block_offsets.len
 						&& g.block_offsets[false_blk] != -1 {
 						off := g.block_offsets[false_blk]
@@ -2959,39 +3286,120 @@ fn (mut g Gen) gen_instr(val_id int) {
 					} else {
 						g.record_pending_label(false_blk)
 						g.emit(asm_b(0))
+					}
+
+					// Patch CBNZ to jump here (true path)
+					true_path_off := g.macho.text_data.len - g.curr_offset
+					cbnz_rel := (true_path_off - cbnz_off) / 4
+					cbnz_abs := g.curr_offset + cbnz_off
+					g.write_u32(cbnz_abs, asm_cbnz(Reg(8), cbnz_rel))
+
+					// True path: emit phi copies, then fall through to true_blk (next block)
+					g.emit_phi_copies(true_blk)
+				} else {
+					// Standard structure:
+					//   CBZ x8, false_path
+					//   <true phi copies>
+					//   B true_blk
+					//   false_path:
+					//   <false phi copies>
+					//   B false_blk (or fall-through)
+					cbz_off := g.macho.text_data.len - g.curr_offset
+					g.emit(asm_cbz(Reg(8), 0)) // placeholder, will patch
+
+					// True path: emit phi copies then branch to true block
+					g.emit_phi_copies(true_blk)
+					if true_blk >= 0 && true_blk < g.block_offsets.len
+						&& g.block_offsets[true_blk] != -1 {
+						off := g.block_offsets[true_blk]
+						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+						g.emit(asm_b(rel))
+					} else {
+						g.record_pending_label(true_blk)
+						g.emit(asm_b(0))
+					}
+
+					// Patch CBZ to jump here (false path)
+					false_path_off := g.macho.text_data.len - g.curr_offset
+					cbz_rel := (false_path_off - cbz_off) / 4
+					cbz_abs := g.curr_offset + cbz_off
+					g.write_u32(cbz_abs, asm_cbz(Reg(8), cbz_rel))
+
+					// False path: emit phi copies then branch to false block
+					g.emit_phi_copies(false_blk)
+					if false_blk != g.next_blk {
+						if false_blk >= 0 && false_blk < g.block_offsets.len
+							&& g.block_offsets[false_blk] != -1 {
+							off := g.block_offsets[false_blk]
+							rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+							g.emit(asm_b(rel))
+						} else {
+							g.record_pending_label(false_blk)
+							g.emit(asm_b(0))
+						}
 					}
 				}
 			} else {
-				// No phi nodes — use efficient branch pattern
-				if true_blk >= 0 && true_blk < g.block_offsets.len
-					&& g.block_offsets[true_blk] != -1 {
-					off := g.block_offsets[true_blk]
-					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-					if rel >= -262144 && rel < 262144 {
-						g.emit(asm_cbnz(Reg(8), rel))
-					} else {
-						// Branch target too far for CBNZ (19-bit range).
-						// Use trampoline: CBZ skip; B target; skip:
-						g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-						g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
+				// No phi nodes — use efficient branch pattern.
+				// Optimize: if true_blk is next (fall-through), just CBZ to false_blk.
+				if true_blk == g.next_blk {
+					// Condition true → fall through to next block.
+					// Condition false → branch to false_blk.
+					if false_blk != g.next_blk {
+						if false_blk >= 0 && false_blk < g.block_offsets.len
+							&& g.block_offsets[false_blk] != -1 {
+							off := g.block_offsets[false_blk]
+							rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+							if rel >= -262144 && rel < 262144 {
+								g.emit(asm_cbz(Reg(8), rel))
+							} else {
+								g.emit(asm_cbnz(Reg(8), 2))
+								g.emit(asm_b(rel - 1))
+							}
+						} else {
+							g.record_pending_label(false_blk)
+							g.emit(asm_cbz(Reg(8), 0))
+						}
 					}
+					// else: both true and false are next block — no branch needed
 				} else {
-					// Forward reference: use trampoline pattern to avoid 19-bit overflow.
-					// CBZ x8, skip; B target; skip:
-					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
-					g.record_pending_label(true_blk)
-					g.emit(asm_b(0))
-				}
-
-				if false_blk != g.next_blk {
-					if false_blk >= 0 && false_blk < g.block_offsets.len
-						&& g.block_offsets[false_blk] != -1 {
-						off := g.block_offsets[false_blk]
+					if true_blk >= 0 && true_blk < g.block_offsets.len
+						&& g.block_offsets[true_blk] != -1 {
+						off := g.block_offsets[true_blk]
 						rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-						g.emit(asm_b(rel))
+						if rel >= -262144 && rel < 262144 {
+							g.emit(asm_cbnz(Reg(8), rel))
+						} else {
+							// Branch target too far for CBNZ (19-bit range).
+							// Use trampoline: CBZ skip; B target; skip:
+							g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+							g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
+						}
 					} else {
-						g.record_pending_label(false_blk)
-						g.emit(asm_b(0))
+						// Forward reference — check if false_blk is next (common pattern).
+						// If so, use CBNZ directly to true_blk (1 instruction).
+						if false_blk == g.next_blk {
+							g.record_pending_label(true_blk)
+							g.emit(asm_cbnz(Reg(8), 0))
+						} else {
+							// Neither block is next: use trampoline pattern.
+							// CBZ x8, skip; B true_target; skip:
+							g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+							g.record_pending_label(true_blk)
+							g.emit(asm_b(0))
+						}
+					}
+
+					if false_blk != g.next_blk {
+						if false_blk >= 0 && false_blk < g.block_offsets.len
+							&& g.block_offsets[false_blk] != -1 {
+							off := g.block_offsets[false_blk]
+							rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
+							g.emit(asm_b(rel))
+						} else {
+							g.record_pending_label(false_blk)
+							g.emit(asm_b(0))
+						}
 					}
 				}
 			}
@@ -4862,7 +5270,7 @@ fn (mut g Gen) get_dest_reg(val_id int) int {
 }
 
 fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
-	// If value is in a register, return it
+	// If value is in a callee-saved register, return it
 	if val_id in g.reg_map {
 		r := g.reg_map[val_id]
 		if r != 0xFF {
@@ -5106,6 +5514,21 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.
 	g.load_val_to_reg(reg, val_id)
 }
 
+// val_is_cmp_result returns true if the value is a comparison instruction result (cset).
+// Comparison results are always 0 or 1 and don't need narrow int canonicalization.
+fn (g Gen) val_is_cmp_result(val_id int) bool {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return false
+	}
+	val := g.mod.values[val_id]
+	if val.kind != .instruction {
+		return false
+	}
+	instr := g.mod.instrs[val.index]
+	op := g.selected_opcode(instr)
+	return op in [.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge]
+}
+
 fn (mut g Gen) canonicalize_narrow_int_result(reg int, typ_id ssa.TypeID) {
 	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
 		return
@@ -5116,26 +5539,39 @@ fn (mut g Gen) canonicalize_narrow_int_result(reg int, typ_id ssa.TypeID) {
 	}
 	if typ.width == 1 {
 		// i1 arithmetic is modulo 2; force truncation to the low bit.
-		g.emit_mov_imm64(11, 1)
-		g.emit(asm_and(Reg(reg), Reg(reg), Reg(11)))
+		g.emit(asm_and_imm_1(Reg(reg), Reg(reg)))
 	} else if typ.is_unsigned {
-		// Unsigned narrow integers: zero-extend by masking.
-		if typ.width <= 32 {
+		// Unsigned narrow integers: zero-extend using bitmask immediate AND.
+		if typ.width == 8 {
+			g.emit(asm_and_imm_0xff(Reg(reg), Reg(reg)))
+		} else if typ.width == 16 {
+			g.emit(asm_and_imm_0xffff(Reg(reg), Reg(reg)))
+		} else if typ.width == 32 {
+			g.emit(asm_and_imm_0xffffffff(Reg(reg), Reg(reg)))
+		} else if typ.width < 32 {
 			mask := (u64(1) << typ.width) - 1
 			g.emit_mov_imm64(11, i64(mask))
 			g.emit(asm_and(Reg(reg), Reg(reg), Reg(11)))
 		}
 		// Unsigned 33-63 bit: no action needed (upper bits already zero)
 	} else {
-		// For signed types, sign-extend via LSL + ASR
-		shift := 64 - typ.width
-		mut shreg := 11
-		if reg == shreg {
-			shreg = 12
+		// For signed types, sign-extend using dedicated instructions.
+		if typ.width == 8 {
+			g.emit(asm_sxtb(Reg(reg), Reg(reg)))
+		} else if typ.width == 16 {
+			g.emit(asm_sxth(Reg(reg), Reg(reg)))
+		} else if typ.width == 32 {
+			g.emit(asm_sxtw(Reg(reg), Reg(reg)))
+		} else {
+			shift := 64 - typ.width
+			mut shreg := 11
+			if reg == shreg {
+				shreg = 12
+			}
+			g.emit_mov_imm64(shreg, shift)
+			g.emit(asm_lslv(Reg(reg), Reg(reg), Reg(shreg)))
+			g.emit(asm_asrv(Reg(reg), Reg(reg), Reg(shreg)))
 		}
-		g.emit_mov_imm64(shreg, shift)
-		g.emit(asm_lslv(Reg(reg), Reg(reg), Reg(shreg)))
-		g.emit(asm_asrv(Reg(reg), Reg(reg), Reg(shreg)))
 	}
 }
 
@@ -5450,6 +5886,25 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			return
 		}
 	}
+	// Check scratch register cache for this val_id.
+	if val_id > 0 {
+		if g.last_store_val == val_id && g.last_store_reg >= 0 {
+			g.stats_cache_hits++
+			src := g.last_store_reg
+			// Don't invalidate — the value is still in src register until
+			// something overwrites it (checked at line below: last_store_reg == reg).
+			if src != reg {
+				g.emit(asm_mov_reg(Reg(reg), Reg(src)))
+			}
+			// Must still canonicalize narrow integers (stored value is raw).
+			g.canonicalize_narrow_int_result(reg, g.mod.values[val_id].typ)
+			return
+		}
+	}
+	// Invalidate cache if this load overwrites the cached register.
+	if g.last_store_reg == reg {
+		g.invalidate_last_store()
+	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return
@@ -5742,24 +6197,48 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 				if val_typ.kind in [.struct_t, .array_t] {
 					val_size := g.type_size(val_typ_id)
 					if val_size > 8 && val_size <= 16 {
-						// For 9-16 byte structs, the register holds a pointer to the
-						// stack location containing the struct data. Copy it.
 						if trace_storeval {
 							eprintln('ARM64 STOREVAL ptr-copy fn=${g.cur_func_name} val=${val_id} typ=${val_typ_id}/${val_typ.kind} size=${val_size} reg=${stored_reg} off=${offset}')
 						}
 						g.copy_ptr_to_fp_bytes(stored_reg, offset, val_size)
+						g.invalidate_last_store()
 						return
 					}
 				}
 				if val_typ.kind == .struct_t && g.type_size(val_typ_id) <= 8 {
 					g.emit_str_reg_offset(stored_reg, 29, offset)
+					g.last_store_reg = stored_reg
+					g.last_store_val = val_id
 					return
 				}
 			}
 		}
-		// Always store to stack even when value is register-allocated,
-		// to ensure correctness with the block-local interval approximation.
-		g.emit_str_reg_offset(stored_reg, 29, offset)
+		g.stats_total_stores++
+		skip := g.should_skip_store(val_id)
+		if skip == 1 {
+			// Skip the store — value will be consumed as operand[0] from cache.
+			g.stats_skipped_stores++
+		} else if skip == 2 {
+			// Forward to x9: value will be consumed as operand[1].
+			// MOV x9, stored_reg so it survives operand[0] loading into x8.
+			// x9 is the default register for operand[1] in arithmetic/comparison,
+			// so the cache hit at (9, val_id) gives src==reg with no MOV needed.
+			if stored_reg != 9 {
+				g.emit(asm_mov_reg(Reg(9), Reg(stored_reg)))
+			}
+			g.stats_skipped_stores++
+			// Set cache to (x9, val_id) so get_operand_reg finds it.
+			g.last_store_reg = 9
+			g.last_store_val = val_id
+			return
+		} else {
+			g.emit_str_reg_offset(stored_reg, 29, offset)
+		}
+	}
+	// Record for store-load elimination: stored_reg now holds val_id.
+	if val_id > 0 {
+		g.last_store_reg = stored_reg
+		g.last_store_val = val_id
 	}
 }
 
@@ -5888,10 +6367,10 @@ fn (mut g Gen) emit_phi_copies(target_blk_id int) {
 
 fn (mut g Gen) emit_add_fp_imm(rd int, imm int) {
 	val := -imm // val is the positive distance below FP
-	// SP-relative: fp - val = sp + (sp_base_offset - val)
+	// SP-relative: fp - val = sp + (sp_base_offset + sp_adjust_amt - val)
 	// Only use SP-relative when it produces fewer instructions than FP-relative.
-	if !g.sp_adjusted && g.sp_base_offset > 0 {
-		sp_off := g.sp_base_offset - val
+	if g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset + g.sp_adjust_amt - val
 		if sp_off >= 0 {
 			if sp_off <= 0xFFF {
 				// 1 instruction (vs 1-2 for FP) — always better or equal
@@ -5936,8 +6415,9 @@ fn (mut g Gen) emit_str_reg_offset(rt int, rn int, offset int) {
 
 fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 	// SP-relative addressing: convert fp-relative negative offsets to sp-relative positive.
-	if rn == 29 && offset < -255 && !g.sp_adjusted && g.sp_base_offset > 0 {
-		sp_off := g.sp_base_offset + offset
+	// When sp is adjusted for call args, add the adjustment amount.
+	if rn == 29 && offset < -255 && g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset + offset + g.sp_adjust_amt
 		if sp_off >= 0 {
 			// Try 1-instruction: unsigned scaled immediate
 			scaled := match size {
@@ -5966,7 +6446,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 				}
 				return
 			}
-			// Try 2-instruction: add scratch, sp, #imm; str rt, [scratch]
+			// Try 2-instruction: add scratch, sp, #imm; str rt, [scratch, #off]
 			// Better than 3-instruction FP-relative for large offsets
 			neg := -offset
 			if neg > 0xFFF && sp_off <= 0xFFFFFF {
@@ -5995,6 +6475,36 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 						else { g.emit(asm_stur(Reg(rt), Reg(scratch), sp_low)) }
 					}
 					return
+				}
+				// sp_low > 255: try scaled immediate from the high-aligned base
+				if sp_high > 0 {
+					sp_low_scaled := match size {
+						8 {
+							if sp_low % 8 == 0 && sp_low / 8 < 4096 { sp_low / 8 } else { -1 }
+						}
+						4 {
+							if sp_low % 4 == 0 && sp_low / 4 < 4096 { sp_low / 4 } else { -1 }
+						}
+						2 {
+							if sp_low % 2 == 0 && sp_low / 2 < 4096 { sp_low / 2 } else { -1 }
+						}
+						1 {
+							if sp_low < 4096 { sp_low } else { -1 }
+						}
+						else {
+							-1
+						}
+					}
+					if sp_low_scaled >= 0 {
+						g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+						match size {
+							1 { g.emit(asm_str_imm_b(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							2 { g.emit(asm_str_imm_h(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							4 { g.emit(asm_str_imm_w(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							else { g.emit(asm_str_imm(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+						}
+						return
+					}
 				}
 			}
 		}
@@ -6115,8 +6625,9 @@ fn (mut g Gen) emit_ldr_reg_offset(rt int, rn int, offset int) {
 
 fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 	// SP-relative addressing: convert fp-relative negative offsets to sp-relative positive.
-	if rn == 29 && offset < -255 && !g.sp_adjusted && g.sp_base_offset > 0 {
-		sp_off := g.sp_base_offset + offset
+	// When sp is adjusted for call args, add the adjustment amount.
+	if rn == 29 && offset < -255 && g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset + offset + g.sp_adjust_amt
 		if sp_off >= 0 {
 			// Try 1-instruction: unsigned scaled immediate
 			scaled := match size {
@@ -6174,6 +6685,36 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 						else { g.emit(asm_ldur(Reg(rt), Reg(scratch), sp_low)) }
 					}
 					return
+				}
+				// sp_low > 255: try scaled immediate from the high-aligned base
+				if sp_high > 0 {
+					sp_low_scaled := match size {
+						8 {
+							if sp_low % 8 == 0 && sp_low / 8 < 4096 { sp_low / 8 } else { -1 }
+						}
+						4 {
+							if sp_low % 4 == 0 && sp_low / 4 < 4096 { sp_low / 4 } else { -1 }
+						}
+						2 {
+							if sp_low % 2 == 0 && sp_low / 2 < 4096 { sp_low / 2 } else { -1 }
+						}
+						1 {
+							if sp_low < 4096 { sp_low } else { -1 }
+						}
+						else {
+							-1
+						}
+					}
+					if sp_low_scaled >= 0 {
+						g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+						match size {
+							1 { g.emit(asm_ldr_imm_b(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							2 { g.emit(asm_ldr_imm_h(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							4 { g.emit(asm_ldr_imm_w(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+							else { g.emit(asm_ldr_imm(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
+						}
+						return
+					}
 				}
 			}
 		}
@@ -6701,7 +7242,9 @@ fn (mut g Gen) emit_mov_imm64(rd int, val i64) {
 }
 
 fn (mut g Gen) emit_mov_reg(rd int, rm int) {
-	g.emit(asm_mov_reg(Reg(rd), Reg(rm)))
+	if rd != rm {
+		g.emit(asm_mov_reg(Reg(rd), Reg(rm)))
+	}
 }
 
 struct Interval {

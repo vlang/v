@@ -837,7 +837,7 @@ fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cac
 
 fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool) string {
 	mut gen_files := b.files.clone()
-	if cached_init_calls.len > 0 && b.can_use_cached_core_headers() {
+	if cached_init_calls.len > 0 && b.can_use_cached_core_headers_for_parse() {
 		mut p := parser.Parser.new(b.pref)
 		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
 		gen_files << header_files

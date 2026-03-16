@@ -13,12 +13,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	skip_builtin := b.pref.skip_builtin
 	mut use_core_headers := false
 	if !skip_builtin {
-		use_core_headers = false
-		// SSA/C and native backends need full core module bodies (not .vh summaries),
-		// otherwise runtime helpers can be lowered to stubs.
-		if b.pref.backend in [.c, .cleanc, .x64, .arm64] {
-			use_core_headers = false
-		}
+		// -prod builds with a valid header cache can use lightweight .vh
+		// summaries instead of fully parsing every core module source file.
+		use_core_headers = b.pref.is_prod && b.can_use_cached_core_headers_for_parse()
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
 			parsed_core_files := parser_reused.parse_files(core_files, mut b.file_set)

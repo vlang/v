@@ -2319,7 +2319,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			}
 		}
 		if raw_type is types.Map {
-			g.gen_map_index_fallback(node, raw_type)
+			g.panic_map_index_expr(node)
 			return
 		}
 		if raw_type is types.String {
@@ -2366,7 +2366,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				g.sb.write_string(']')
 				return
 			} else if raw_type.base_type is types.Map {
-				g.gen_map_index_fallback(node, raw_type.base_type)
+				g.panic_map_index_expr(node)
 				return
 			} else if raw_type.base_type is types.Pointer || raw_type.base_type is types.String {
 				// Pointer to pointer (e.g. &&char) or pointer to string (e.g. &string used as array):
@@ -2409,7 +2409,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		// Try to resolve the full Map type for fallback code generation.
 		if map_raw := g.get_raw_type(node.lhs) {
 			if map_raw is types.Map {
-				g.gen_map_index_fallback(node, map_raw)
+				g.panic_map_index_expr(node)
 				return
 			}
 		}
@@ -2535,30 +2535,10 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	g.sb.write_string(']')
 }
 
-// gen_map_index_fallback generates C code for a map read that the transformer
-// failed to lower. Produces:
-//   ({ val_type _mget_key_N = key; val_type _mget_zero_N = {0};
-//      *(val_type*)map__get(&map, (void*)&_mget_key_N, (void*)&_mget_zero_N); })
-fn (mut g Gen) gen_map_index_fallback(node ast.IndexExpr, map_type types.Map) {
-	val_c := g.types_type_to_c(map_type.value_type)
-	key_c := g.types_type_to_c(map_type.key_type)
-	tmp := g.tmp_counter
-	g.tmp_counter++
-	g.sb.write_string('({ ${key_c} _mget_key_${tmp} = ')
-	g.expr(node.expr)
-	g.sb.write_string('; ${val_c} _mget_zero_${tmp} = {0}; *(${val_c}*)map__get(')
-	// map__get expects a pointer to the map.
-	mut lhs_is_ptr := false
-	if lhs_raw := g.get_raw_type(node.lhs) {
-		lhs_is_ptr = lhs_raw is types.Pointer
-	}
-	if lhs_is_ptr {
-		g.expr(node.lhs)
-	} else {
-		g.sb.write_string('&')
-		g.expr(node.lhs)
-	}
-	g.sb.write_string(', (void*)&_mget_key_${tmp}, (void*)&_mget_zero_${tmp}); })')
+fn (mut g Gen) panic_map_index_expr(node ast.IndexExpr) {
+	lhs_type := g.get_expr_type(node.lhs)
+	idx_src := '${node.lhs.name()}[${node.expr.name()}]'
+	panic('bug in v2 compiler: map IndexExpr should have been lowered in v2.transformer (file=${g.cur_file_name} fn=${g.cur_fn_name} pos=${node.pos} idx=${idx_src} lhs=${node.lhs.name()} lhs_type=${lhs_type})')
 }
 
 fn (g &Gen) eval_comptime_flag(name string) bool {
