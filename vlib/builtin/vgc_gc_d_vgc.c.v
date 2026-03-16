@@ -1,6 +1,6 @@
 // vgc_gc_d_vgc.c.v - V Garbage Collector: Mark, sweep, and orchestration
 // Translated from Go's runtime GC (mgc.go, mgcmark.go, mgcsweep.go, mgcwork.go, mgcpacer.go)
-// Concurrent tri-color mark-and-sweep with parallel marking using spawn.
+// Concurrent tri-color mark-and-sweep with parallel marking.
 
 @[has_globals]
 module builtin
@@ -79,8 +79,8 @@ fn vgc_gc_start() {
 	vgc_heap.sweep_idx = 0
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_sweep)
 
-	// Sweep concurrently using spawn
-	spawn vgc_concurrent_sweep()
+	// Sweep concurrently in a background thread
+	C.vgc_start_thread(vgc_concurrent_sweep)
 
 	// Update GC trigger for next cycle (translated from Go's gcController.endCycle)
 	vgc_update_trigger()
@@ -130,14 +130,14 @@ fn vgc_mark_roots() {
 // Translated from Go's scanblock() with conservative pointer finding.
 fn vgc_scan_range(lo usize, hi usize) {
 	// Align to word boundaries
-	start := (lo + @sizeof(usize) - 1) & ~(usize(@sizeof(usize)) - 1)
+	start := (lo + sizeof(usize) - 1) & ~(usize(sizeof(usize)) - 1)
 	mut addr := start
-	for addr + @sizeof(usize) <= hi {
+	for addr + sizeof(usize) <= hi {
 		val := unsafe { *(&usize(voidptr(addr))) }
 		if vgc_is_heap_ptr(val) {
 			vgc_shade(val)
 		}
-		addr += @sizeof(usize)
+		addr += sizeof(usize)
 	}
 }
 
@@ -184,9 +184,9 @@ fn vgc_parallel_mark() {
 		return
 	}
 
-	// Spawn mark workers
+	// Start mark workers as OS threads
 	for _ in 0 .. nworkers {
-		spawn vgc_mark_worker()
+		C.vgc_start_thread(vgc_mark_worker)
 	}
 
 	// Wait for all workers to finish

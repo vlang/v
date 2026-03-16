@@ -36,6 +36,7 @@ fn C.vgc_get_class_nobjs(cls int) u32
 fn C.vgc_init_size_tables()
 fn C.vgc_mutex_lock(lk &u32)
 fn C.vgc_mutex_unlock(lk &u32)
+fn C.vgc_start_thread(f voidptr)
 
 // ============================================================
 // Constants (translated from Go's runtime constants)
@@ -48,8 +49,8 @@ const vgc_num_classes = 68
 const vgc_num_span_classes = 136 // 68 * 2 (scan + noscan variants)
 const vgc_arena_size = usize(64) * 1024 * 1024 // 64MB per arena
 const vgc_pages_per_arena = vgc_arena_size / vgc_page_size
-const vgc_max_arenas = 4096
-const vgc_max_threads = 256
+const vgc_max_arenas = 64
+const vgc_max_threads = 64
 const vgc_tiny_size = 16 // tiny allocator threshold (no-pointer objects < 16 bytes)
 
 // GC phases (translated from Go's _GCoff, _GCmark, _GCmarktermination)
@@ -138,17 +139,17 @@ struct VGC_Heap {
 mut:
 	lock u32 // spinlock
 	// Arenas (memory from OS)
-	arenas  [4096]VGC_Arena
+	arenas  [64]VGC_Arena
 	narenas int
 	// Central free lists (one per span class)
 	central [136]VGC_Central
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
 	// All spans for iteration during GC
-	allspans [65536]&VGC_Span
+	allspans [16384]&VGC_Span
 	nspans   int
 	// Per-thread caches
-	caches     [256]VGC_Cache
+	caches     [64]VGC_Cache
 	ncaches    int
 	cache_lock u32
 	// GC state
@@ -186,7 +187,8 @@ __global vgc_heap = VGC_Heap{}
 // Initialization
 // ============================================================
 
-fn vgc_init() {
+@[markused]
+pub fn vgc_init() {
 	C.vgc_init_size_tables()
 	vgc_heap.gc_enabled = 1
 	vgc_heap.gc_percent = 100
@@ -296,7 +298,7 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 	}
 
 	// Track in allspans
-	if vgc_heap.nspans < 65536 {
+	if vgc_heap.nspans < 16384 {
 		unsafe {
 			vgc_heap.allspans[vgc_heap.nspans] = span
 		}

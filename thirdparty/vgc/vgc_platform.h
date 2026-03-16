@@ -261,4 +261,31 @@ static inline void vgc_mutex_unlock(volatile uint32_t* lock) {
     vgc_atomic_store_u32(lock, 0);
 }
 
+// ============================================================
+// Thread creation (for GC workers - avoids V's spawn which
+// causes import cycles with builtin -> sync.threads -> builtin)
+// ============================================================
+typedef void (*vgc_thread_fn)(void);
+
+#ifdef _WIN32
+static inline void vgc_start_thread(vgc_thread_fn fn) {
+    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fn, NULL, 0, NULL);
+}
+#else
+#include <pthread.h>
+static void* _vgc_thread_trampoline(void* arg) {
+    vgc_thread_fn fn = (vgc_thread_fn)arg;
+    fn();
+    return NULL;
+}
+static inline void vgc_start_thread(vgc_thread_fn fn) {
+    pthread_t tid;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_create(&tid, &attr, _vgc_thread_trampoline, (void*)fn);
+    pthread_attr_destroy(&attr);
+}
+#endif
+
 #endif // VGC_PLATFORM_H
