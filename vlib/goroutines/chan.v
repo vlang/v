@@ -202,7 +202,7 @@ pub fn chan_close(c &Chan) {
 
 	// Wake all waiting receivers
 	for {
-		sg := ch.recvq.dequeue()
+		mut sg := ch.recvq.dequeue()
 		if sg == unsafe { nil } {
 			break
 		}
@@ -215,7 +215,7 @@ pub fn chan_close(c &Chan) {
 
 	// Wake all waiting senders (they will panic)
 	for {
-		sg := ch.sendq.dequeue()
+		mut sg := ch.sendq.dequeue()
 		if sg == unsafe { nil } {
 			break
 		}
