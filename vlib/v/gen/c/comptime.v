@@ -439,6 +439,12 @@ fn (mut g Gen) gen_branch_context_string() string {
 	} else {
 		[]string{}
 	}
+	// For methods on generic structs with no explicit generic params,
+	// extract generic names from the receiver type (mirrors checker's effective_fn_generic_names).
+	if generic_names.len == 0 && g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+		&& g.cur_fn.receiver.typ.has_flag(.generic) {
+		generic_names = g.table.generic_type_names(g.cur_fn.receiver.typ)
+	}
 	mut concrete_types := g.cur_concrete_types.clone()
 	if generic_names.len == 0 || generic_names.len != concrete_types.len {
 		recovered_generic_names, recovered_concrete_types := g.recover_specialized_generic_context_for(if g.cur_fn != unsafe { nil } {
