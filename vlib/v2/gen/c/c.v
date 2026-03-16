@@ -34,6 +34,7 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <stdio.h>')
 	g.sb.writeln('#include <stdlib.h>')
 	g.sb.writeln('#include <string.h>')
+	g.sb.writeln('#include <math.h>')
 	g.sb.writeln('')
 	// Undefine macOS macros that conflict with struct field names
 	g.sb.writeln('#ifdef __APPLE__')
@@ -313,6 +314,24 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 	// Collect all allocas and local variable declarations
 	mut declared_vars := map[int]bool{}
 
+	// Pre-scan for phi nodes and declare phi variables at function start
+	mut phi_vars := map[int]bool{}
+	for block_id in func.blocks {
+		block := g.mod.blocks[block_id]
+		for instr_id in block.instrs {
+			val := g.mod.values[instr_id]
+			if val.kind != .instruction {
+				continue
+			}
+			instr := g.mod.instrs[val.index]
+			if instr.op == .phi {
+				g.write_indent()
+				g.sb.writeln('${g.type_name(instr.typ)} ${val.name};')
+				phi_vars[instr_id] = true
+			}
+		}
+	}
+
 	// Generate blocks
 	for bi, block_id in func.blocks {
 		block := g.mod.blocks[block_id]
@@ -328,6 +347,11 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 				continue
 			}
 			instr := g.mod.instrs[val.index]
+
+			// Before terminators, emit phi assignments for successor blocks
+			if instr.op in [.br, .jmp, .ret, .switch_] && phi_vars.len > 0 {
+				g.emit_phi_assignments(block_id, instr, func)
+			}
 
 			match instr.op {
 				.alloca {
@@ -460,66 +484,37 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						g.sb.writeln('goto ${g.mod.blocks[target_block].name};')
 					}
 				}
-				.call {
-					if instr.operands.len >= 1 {
-						fn_ref := instr.operands[0]
-						fn_val := g.mod.values[fn_ref]
-						fn_name := sanitize_c_ident(fn_val.name)
-
-						// Look up target function to get parameter types
-						mut target_fn_params := []ssa.ValueID{}
-						for f in g.mod.funcs {
-							if sanitize_c_ident(f.name) == fn_name {
-								target_fn_params = f.params.clone()
-								break
+				.switch_ {
+					// Switch: operands[0] = cond, operands[1] = default_block,
+					// then pairs of (case_val, case_block) starting at index 2
+					if instr.operands.len >= 2 {
+						default_block := g.mod.get_block_from_val(instr.operands[1])
+						for si := 2; si + 1 < instr.operands.len; si += 2 {
+							g.write_indent()
+							if si == 2 {
+								g.sb.write_string('if (')
+							} else {
+								g.sb.write_string('else if (')
 							}
+							g.gen_value(instr.operands[0])
+							g.sb.write_string(' == ')
+							g.gen_value(instr.operands[si])
+							target_block := g.mod.get_block_from_val(instr.operands[si + 1])
+							g.sb.writeln(') goto ${g.mod.blocks[target_block].name};')
 						}
-
 						g.write_indent()
-						// Only declare result if used and non-void
-						if val.uses.len > 0 && instr.typ != 0 {
-							g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
+						if instr.operands.len > 2 {
+							g.sb.writeln('else goto ${g.mod.blocks[default_block].name};')
+						} else {
+							g.sb.writeln('goto ${g.mod.blocks[default_block].name};')
 						}
-
-						g.sb.write_string('${fn_name}(')
-						for ai := 1; ai < instr.operands.len; ai++ {
-							if ai > 1 {
-								g.sb.write_string(', ')
-							}
-							arg_val := g.mod.values[instr.operands[ai]]
-							param_idx := ai - 1
-							// Check if arg is an alloca being passed to a pointer param
-							if arg_val.kind == .instruction
-								&& g.mod.instrs[arg_val.index].op == .alloca
-								&& param_idx < target_fn_params.len {
-								param_type := g.mod.values[target_fn_params[param_idx]].typ
-								if param_type < g.mod.type_store.types.len
-									&& g.mod.type_store.types[param_type].kind == .ptr_t {
-									// Parameter expects a pointer - emit &var
-									g.sb.write_string('&')
-									g.gen_value(instr.operands[ai])
-									continue
-								}
-							}
-							// Check if arg is a pointer type but param expects non-pointer (auto-deref)
-							if param_idx < target_fn_params.len {
-								param_type := g.mod.values[target_fn_params[param_idx]].typ
-								arg_type := arg_val.typ
-								if arg_type < g.mod.type_store.types.len
-									&& g.mod.type_store.types[arg_type].kind == .ptr_t
-									&& param_type < g.mod.type_store.types.len
-									&& g.mod.type_store.types[param_type].kind != .ptr_t {
-									// Arg is pointer but param expects value - emit *var
-									g.sb.write_string('*(')
-									g.gen_value(instr.operands[ai])
-									g.sb.write_string(')')
-									continue
-								}
-							}
-							g.gen_value(instr.operands[ai])
-						}
-						g.sb.writeln(');')
 					}
+				}
+				.call {
+					g.gen_call(val, instr, false)
+				}
+				.call_indirect {
+					g.gen_call(val, instr, true)
 				}
 				.add, .sub, .mul, .sdiv, .srem, .fadd, .fsub, .fmul, .fdiv {
 					if instr.operands.len >= 2 {
@@ -539,6 +534,41 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						g.sb.writeln(';')
 					}
 				}
+				.udiv {
+					if instr.operands.len >= 2 {
+						g.write_indent()
+						utn := g.unsigned_type_name(instr.typ)
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = (${g.type_name(instr.typ)})((${utn})')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(' / (${utn})')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(');')
+					}
+				}
+				.urem {
+					if instr.operands.len >= 2 {
+						g.write_indent()
+						utn := g.unsigned_type_name(instr.typ)
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = (${g.type_name(instr.typ)})((${utn})')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(' % (${utn})')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(');')
+					}
+				}
+				.frem {
+					if instr.operands.len >= 2 {
+						g.write_indent()
+						is_f32 := instr.typ < g.mod.type_store.types.len
+							&& g.mod.type_store.types[instr.typ].width == 32
+						fmod_fn := if is_f32 { 'fmodf' } else { 'fmod' }
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ${fmod_fn}(')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(', ')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(');')
+					}
+				}
 				.eq, .ne, .lt, .gt, .le, .ge {
 					if instr.operands.len >= 2 {
 						op_str := match instr.op {
@@ -554,6 +584,26 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						g.sb.write_string('bool ${val.name} = ')
 						g.gen_value(instr.operands[0])
 						g.sb.write_string(' ${op_str} ')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(';')
+					}
+				}
+				.ult, .ugt, .ule, .uge {
+					if instr.operands.len >= 2 {
+						op_str := match instr.op {
+							.ult { '<' }
+							.ugt { '>' }
+							.ule { '<=' }
+							.uge { '>=' }
+							else { '<' }
+						}
+						// Cast operands to unsigned for correct comparison
+						lhs_type := g.mod.values[instr.operands[0]].typ
+						utn := g.unsigned_type_name(lhs_type)
+						g.write_indent()
+						g.sb.write_string('bool ${val.name} = (${utn})')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(' ${op_str} (${utn})')
 						g.gen_value(instr.operands[1])
 						g.sb.writeln(';')
 					}
@@ -609,11 +659,21 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 				.ashr, .lshr {
 					if instr.operands.len >= 2 {
 						g.write_indent()
-						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
-						g.gen_value(instr.operands[0])
-						g.sb.write_string(' >> ')
-						g.gen_value(instr.operands[1])
-						g.sb.writeln(';')
+						if instr.op == .lshr {
+							// Logical shift right: cast to unsigned, shift, cast back
+							utn := g.unsigned_type_name(instr.typ)
+							g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = (${g.type_name(instr.typ)})((${utn})')
+							g.gen_value(instr.operands[0])
+							g.sb.write_string(' >> ')
+							g.gen_value(instr.operands[1])
+							g.sb.writeln(');')
+						} else {
+							g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
+							g.gen_value(instr.operands[0])
+							g.sb.write_string(' >> ')
+							g.gen_value(instr.operands[1])
+							g.sb.writeln(';')
+						}
 					}
 				}
 				.sext, .zext, .trunc, .bitcast {
@@ -639,6 +699,8 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						}
 						g.gen_value(instr.operands[0])
 						g.sb.writeln(';')
+					} else if instr.op == .bitcast {
+						// Placeholder bitcast with no operands (from phi elimination) - skip
 					}
 				}
 				.sitofp, .uitofp {
@@ -710,6 +772,38 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						}
 					}
 				}
+				.insertvalue {
+					// Insert element into struct/tuple: insertvalue %tuple, %val, index
+					if instr.operands.len >= 3 {
+						tuple_id := instr.operands[0]
+						elem_id := instr.operands[1]
+						idx_val := g.mod.values[instr.operands[2]]
+						field_idx := idx_val.name.int()
+						tuple_val := g.mod.values[tuple_id]
+						result_type := g.type_name(instr.typ)
+						g.write_indent()
+						// If base is undef, start with zero-initialized struct
+						if tuple_val.kind == .constant && tuple_val.name == 'undef' {
+							g.sb.writeln('${result_type} ${val.name} = (${result_type}){0};')
+						} else {
+							g.sb.write_string('${result_type} ${val.name} = ')
+							g.gen_value(tuple_id)
+							g.sb.writeln(';')
+						}
+						// Set the specific field
+						typ := g.mod.type_store.types[instr.typ]
+						g.write_indent()
+						if typ.kind == .struct_t && field_idx < typ.field_names.len {
+							g.sb.write_string('${val.name}.${typ.field_names[field_idx]} = ')
+						} else {
+							// Fallback: use array-style access for non-struct tuples
+							g.sb.write_string('/* field ${field_idx} */ ')
+							g.sb.write_string('((void*)&${val.name})[${field_idx}] = ')
+						}
+						g.gen_value(elem_id)
+						g.sb.writeln(';')
+					}
+				}
 				.struct_init {
 					g.write_indent()
 					type_name := g.type_name(instr.typ)
@@ -738,14 +832,68 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						g.sb.writeln('};')
 					}
 				}
+				.phi {
+					// Phi nodes are handled by pre-declared variables and assignments
+					// emitted before terminators in predecessor blocks. Nothing to do here.
+				}
+				.assign {
+					// Copy for phi elimination: assign dest, src
+					if instr.operands.len >= 2 {
+						dest_val := g.mod.values[instr.operands[0]]
+						g.write_indent()
+						g.sb.write_string('${dest_val.name} = ')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(';')
+					}
+				}
+				.select {
+					// Ternary select: select cond, true_val, false_val
+					if instr.operands.len >= 3 {
+						g.write_indent()
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(' ? ')
+						g.gen_value(instr.operands[1])
+						g.sb.write_string(' : ')
+						g.gen_value(instr.operands[2])
+						g.sb.writeln(';')
+					}
+				}
+				.call_sret {
+					// Struct return call - same as regular call but result is by-value struct
+					g.gen_call(val, instr, false)
+				}
 				.unreachable {
 					g.write_indent()
 					g.sb.writeln('__builtin_unreachable();')
 				}
-				else {
-					// Other ops: emit as comment
+				.fence {
 					g.write_indent()
-					g.sb.writeln('/* TODO: ${instr.op} */')
+					g.sb.writeln('__sync_synchronize();')
+				}
+				.cmpxchg {
+					// Compare-and-swap: cmpxchg ptr, expected, desired
+					if instr.operands.len >= 3 {
+						g.write_indent()
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = __sync_val_compare_and_swap(')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(', ')
+						g.gen_value(instr.operands[1])
+						g.sb.write_string(', ')
+						g.gen_value(instr.operands[2])
+						g.sb.writeln(');')
+					}
+				}
+				.atomicrmw {
+					// Atomic read-modify-write
+					if instr.operands.len >= 2 {
+						g.write_indent()
+						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = __sync_fetch_and_add(')
+						g.gen_value(instr.operands[0])
+						g.sb.write_string(', ')
+						g.gen_value(instr.operands[1])
+						g.sb.writeln(');')
+					}
 				}
 			}
 		}
@@ -753,6 +901,152 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 
 	g.sb.writeln('}')
 	g.sb.writeln('')
+}
+
+// emit_phi_assignments emits assignments for phi nodes in successor blocks
+// before the current block's terminator instruction.
+fn (mut g Gen) emit_phi_assignments(current_block_id int, term_instr ssa.Instruction, func ssa.Function) {
+	// Collect successor block IDs from the terminator
+	mut succ_blocks := []int{}
+	match term_instr.op {
+		.br {
+			if term_instr.operands.len >= 3 {
+				succ_blocks << g.mod.get_block_from_val(term_instr.operands[1])
+				succ_blocks << g.mod.get_block_from_val(term_instr.operands[2])
+			}
+		}
+		.jmp {
+			if term_instr.operands.len >= 1 {
+				succ_blocks << g.mod.get_block_from_val(term_instr.operands[0])
+			}
+		}
+		.switch_ {
+			if term_instr.operands.len >= 2 {
+				succ_blocks << g.mod.get_block_from_val(term_instr.operands[1])
+				for si := 2; si + 1 < term_instr.operands.len; si += 2 {
+					succ_blocks << g.mod.get_block_from_val(term_instr.operands[si + 1])
+				}
+			}
+		}
+		else {}
+	}
+
+	// For each successor, find phi nodes and emit the assignment for this predecessor
+	for succ_id in succ_blocks {
+		succ_block := g.mod.blocks[succ_id]
+		for phi_val_id in succ_block.instrs {
+			phi_val := g.mod.values[phi_val_id]
+			if phi_val.kind != .instruction {
+				continue
+			}
+			phi_instr := g.mod.instrs[phi_val.index]
+			if phi_instr.op != .phi {
+				continue
+			}
+			// Phi operands are [value, block, value, block, ...]
+			for pi := 0; pi + 1 < phi_instr.operands.len; pi += 2 {
+				pred_block_id := g.mod.get_block_from_val(phi_instr.operands[pi + 1])
+				if pred_block_id == current_block_id {
+					g.write_indent()
+					g.sb.write_string('${phi_val.name} = ')
+					g.gen_value(phi_instr.operands[pi])
+					g.sb.writeln(';')
+					break
+				}
+			}
+		}
+	}
+}
+
+// gen_call generates a function call (direct or indirect)
+fn (mut g Gen) gen_call(val ssa.Value, instr ssa.Instruction, indirect bool) {
+	if instr.operands.len < 1 {
+		return
+	}
+	fn_ref := instr.operands[0]
+	fn_val := g.mod.values[fn_ref]
+
+	// Look up target function to get parameter types (for direct calls)
+	mut target_fn_params := []ssa.ValueID{}
+	if !indirect {
+		fn_name := sanitize_c_ident(fn_val.name)
+		for f in g.mod.funcs {
+			if sanitize_c_ident(f.name) == fn_name {
+				target_fn_params = f.params.clone()
+				break
+			}
+		}
+	}
+
+	g.write_indent()
+	// Only declare result if used and non-void
+	if val.uses.len > 0 && instr.typ != 0 {
+		g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
+	}
+
+	if indirect {
+		// Indirect call through function pointer - cast and call
+		g.sb.write_string('((')
+		g.sb.write_string(g.type_name(instr.typ))
+		g.sb.write_string('(*)(')
+		// Build parameter type list from actual arguments
+		if instr.operands.len > 1 {
+			for ai := 1; ai < instr.operands.len; ai++ {
+				if ai > 1 {
+					g.sb.write_string(', ')
+				}
+				arg_val := g.mod.values[instr.operands[ai]]
+				g.sb.write_string(g.type_name(arg_val.typ))
+			}
+		} else {
+			g.sb.write_string('void')
+		}
+		g.sb.write_string('))')
+		g.gen_value(fn_ref)
+		g.sb.write_string(')')
+	} else {
+		fn_name := sanitize_c_ident(fn_val.name)
+		g.sb.write_string('${fn_name}')
+	}
+
+	g.sb.write_string('(')
+	for ai := 1; ai < instr.operands.len; ai++ {
+		if ai > 1 {
+			g.sb.write_string(', ')
+		}
+		arg_val := g.mod.values[instr.operands[ai]]
+		param_idx := ai - 1
+		// Check if arg is an alloca being passed to a pointer param
+		if !indirect && arg_val.kind == .instruction
+			&& g.mod.instrs[arg_val.index].op == .alloca
+			&& param_idx < target_fn_params.len {
+			param_type := g.mod.values[target_fn_params[param_idx]].typ
+			if param_type < g.mod.type_store.types.len
+				&& g.mod.type_store.types[param_type].kind == .ptr_t {
+				// Parameter expects a pointer - emit &var
+				g.sb.write_string('&')
+				g.gen_value(instr.operands[ai])
+				continue
+			}
+		}
+		// Check if arg is a pointer type but param expects non-pointer (auto-deref)
+		if !indirect && param_idx < target_fn_params.len {
+			param_type := g.mod.values[target_fn_params[param_idx]].typ
+			arg_type := arg_val.typ
+			if arg_type < g.mod.type_store.types.len
+				&& g.mod.type_store.types[arg_type].kind == .ptr_t
+				&& param_type < g.mod.type_store.types.len
+				&& g.mod.type_store.types[param_type].kind != .ptr_t {
+				// Arg is pointer but param expects value - emit *var
+				g.sb.write_string('*(')
+				g.gen_value(instr.operands[ai])
+				g.sb.write_string(')')
+				continue
+			}
+		}
+		g.gen_value(instr.operands[ai])
+	}
+	g.sb.writeln(');')
 }
 
 fn (mut g Gen) gen_value(id ssa.ValueID) {
@@ -847,6 +1141,26 @@ fn (g &Gen) type_name(id ssa.TypeID) string {
 			return 'void*'
 		}
 	}
+}
+
+// unsigned_type_name returns the unsigned C type corresponding to a given SSA type.
+// Used for unsigned arithmetic and comparison operations.
+fn (g &Gen) unsigned_type_name(id ssa.TypeID) string {
+	if id == 0 || id >= g.mod.type_store.types.len {
+		return 'uint64_t'
+	}
+	typ := g.mod.type_store.types[id]
+	if typ.kind == .int_t {
+		return match typ.width {
+			1 { 'bool' }
+			8 { 'u8' }
+			16 { 'u16' }
+			32 { 'u32' }
+			64 { 'u64' }
+			else { 'u64' }
+		}
+	}
+	return 'u64'
 }
 
 fn (mut g Gen) write_indent() {

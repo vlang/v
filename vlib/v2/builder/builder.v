@@ -663,10 +663,9 @@ fn (mut b Builder) gen_ssa_c() {
 	ssa_builder.build_all(b.files)
 	print_time('SSA Build', time.Duration(sw.elapsed() - stage_start))
 
-	// TODO: re-enable SSA optimization once the new builder is mature
-	// stage_start = sw.elapsed()
-	// optimize.optimize(mut mod)
-	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
+	stage_start = sw.elapsed()
+	ssa_optimize.optimize(mut mod)
+	print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
 	cc := configured_cc(b.pref.vroot)
 	directive_flags := b.collect_cflags_from_sources()
@@ -756,7 +755,7 @@ fn (mut b Builder) gen_ssa_c() {
 		if vlib_obj.len > 0 {
 			link_objects += ' "${vlib_obj}"'
 		}
-		cc_cmd = '${cc} ${cc_flags} -w ${link_objects} -o "${output_name}"'
+		cc_cmd = '${cc} ${cc_flags} -w ${link_objects} -o "${output_name}" -lm'
 		if b.pref.show_cc {
 			println(cc_cmd)
 		}
@@ -773,7 +772,7 @@ fn (mut b Builder) gen_ssa_c() {
 		os.rm(main_obj) or {}
 	} else {
 		// Single-file compilation (no builtin linking)
-		cc_cmd = '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}"${error_limit_flag}'
+		cc_cmd = '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}" -lm${error_limit_flag}'
 		if b.pref.show_cc {
 			println(cc_cmd)
 		} else if os.getenv('V2VERBOSE') != '' {
