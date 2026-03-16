@@ -339,6 +339,10 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
 	}
 	g.sb.writeln('')
+	// Generate SoA (Structure of Arrays) companion struct and helpers for @[soa] structs
+	if env_struct.is_soa && env_struct.fields.len > 0 {
+		g.gen_soa_companion(name, env_struct)
+	}
 }
 
 fn (mut g Gen) gen_sum_type_decl(node ast.TypeDecl) {
