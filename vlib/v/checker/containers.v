@@ -507,7 +507,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 && node.typ != 0
 		&& c.expected_type != ast.void_type {
 		expected_map_type := c.expected_type.clear_option_and_result()
-		if c.table.sym(expected_map_type).kind == .map && node.typ != expected_map_type {
+		if c.table.sym(expected_map_type).kind == .map && node.typ != expected_map_type
+			&& !expected_map_type.has_flag(.generic) {
 			node.typ = expected_map_type
 			node.key_type = 0
 			node.value_type = 0
