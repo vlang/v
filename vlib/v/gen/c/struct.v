@@ -781,8 +781,16 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 	field_type_sym := g.table.sym(sfield.typ)
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
-		if g.gen_clone_assignment(sfield.expected_type, sfield.expr, sfield.typ, false) {
-			cloned = true
+		// array fn args should not be cloned into struct fields: the caller owns and
+		// frees the underlying data, so cloning would break mutation aliasing
+		// (e.g. `for mut x in iter`) and leak the clone. strings are still cloned
+		// since they may be freed before the struct field is used.
+		is_fn_arg := field_type_sym.kind == .array && sfield.expr is ast.Ident
+			&& sfield.expr.obj is ast.Var && (sfield.expr.obj as ast.Var).is_arg
+		if !is_fn_arg {
+			if g.gen_clone_assignment(sfield.expected_type, sfield.expr, sfield.typ, false) {
+				cloned = true
+			}
 		}
 	}
 	if !cloned {

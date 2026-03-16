@@ -498,7 +498,12 @@ fn (mut b Builder) gen_cleanc() {
 		'out'
 	}
 
-	cc := configured_cc(b.pref.vroot)
+	mut cc := configured_cc(b.pref.vroot)
+	// -prod requires a real optimizing compiler — TCC cannot handle -O3/-flto.
+	// Switch to system cc (gcc/clang) when the default compiler is TCC.
+	if b.pref.is_prod && cc.contains('tcc') {
+		cc = 'cc'
+	}
 	directive_flags := b.collect_cflags_from_sources()
 	// Separate directive flags into compile-only and link-only flags.
 	// -framework, -l, -L, .o/.a/.so/.dylib are linker flags and must NOT
@@ -530,14 +535,36 @@ fn (mut b Builder) gen_cleanc() {
 	}
 	cc_flag_parts << '-std=gnu11'
 	cc_flag_parts << '-fwrapv'
+
+	// Detect compiler type for optimization flags and error limit.
+	is_tcc := cc.contains('tcc')
+	mut is_clang := false
+	if !is_tcc {
+		version_res := os.execute('${cc} --version')
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			is_clang = true
+		}
+	}
+
+	// -prod: add -O3, -flto, -DNDEBUG for gcc/clang
+	if b.pref.is_prod {
+		cc_flag_parts << '-O3'
+		cc_flag_parts << '-DNDEBUG'
+		if !b.pref.is_shared_lib {
+			$if !windows {
+				cc_flag_parts << '-flto'
+			}
+		}
+		if !is_clang {
+			cc_flag_parts << '-fno-strict-aliasing'
+		}
+	}
+
 	cc_flags := cc_flag_parts.join(' ')
 	cc_link_flags := cc_link_parts.join(' ')
 	mut error_limit_flag := ''
-	if !cc.contains('tcc') {
-		version_res := os.execute('${cc} --version')
-		if version_res.exit_code == 0 && version_res.output.contains('clang') {
-			error_limit_flag = ' -ferror-limit=0'
-		}
+	if is_clang {
+		error_limit_flag = ' -ferror-limit=0'
 	}
 
 	// If output ends with .c, just write the C file
@@ -608,9 +635,6 @@ fn (b &Builder) should_disable_cleanc_cache() bool {
 		// The arm64 self-hosted compiler still mis-generates cached-core
 		// boundaries for cleanc builds, which drops required runtime helpers.
 		// Force a single translation unit until the cache path is stable there.
-		return true
-	}
-	if b.is_cmd_v2_self_build() {
 		return true
 	}
 	for raw_input in b.user_files {
@@ -880,6 +904,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	// compilation (e.g. due to TCC not supporting certain C constructs),
 	// the cached .o files are Mach-O (from cc) while TCC would produce ELF.
 	// Detect this mismatch and use cc for main compilation and linking too.
+	// Also, -prod builds with -flto require gcc/clang for linking — TCC
+	// cannot link LTO object files.
 	mut main_cc := cc
 	mut main_cc_flags := cc_flags
 	if cc.contains('tcc') && os.exists(builtin_obj) {

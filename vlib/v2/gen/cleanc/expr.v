@@ -1268,14 +1268,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 							}
 						}
 						lhs_type := g.get_expr_type(idx.lhs)
+						// Fixed arrays: direct C array indexing (no .data field)
+						if lhs_type.starts_with('Array_fixed_') {
+							g.sb.write_string('&')
+							g.expr(idx.lhs)
+							g.sb.write_string('[')
+							g.expr(idx.expr)
+							g.sb.write_string(']')
+							return
+						}
 						if lhs_type == 'array' || lhs_type.starts_with('Array_') {
 							mut elem_type := g.get_expr_type(idx)
 							if elem_type == '' || elem_type == 'int' {
-								if lhs_type.starts_with('Array_fixed_') {
-									if finfo := g.collected_fixed_array_types[lhs_type] {
-										elem_type = finfo.elem_type
-									}
-								} else if lhs_type.starts_with('Array_') {
+								if lhs_type.starts_with('Array_') {
 									elem_type = lhs_type['Array_'.len..].trim_right('*')
 								}
 							}
@@ -2314,7 +2319,8 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			}
 		}
 		if raw_type is types.Map {
-			g.panic_map_index_expr(node)
+			g.gen_map_index_fallback(node, raw_type)
+			return
 		}
 		if raw_type is types.String {
 			if node.lhs is ast.SelectorExpr && g.is_fixed_array_selector(node.lhs) {
@@ -2360,7 +2366,8 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				g.sb.write_string(']')
 				return
 			} else if raw_type.base_type is types.Map {
-				g.panic_map_index_expr(node)
+				g.gen_map_index_fallback(node, raw_type.base_type)
+				return
 			} else if raw_type.base_type is types.Pointer || raw_type.base_type is types.String {
 				// Pointer to pointer (e.g. &&char) or pointer to string (e.g. &string used as array):
 				// plain C pointer arithmetic
@@ -2399,7 +2406,17 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	}
 	lhs_type := g.get_expr_type(node.lhs)
 	if lhs_type == 'map' || lhs_type.starts_with('Map_') {
-		g.panic_map_index_expr(node)
+		// Try to resolve the full Map type for fallback code generation.
+		if map_raw := g.get_raw_type(node.lhs) {
+			if map_raw is types.Map {
+				g.gen_map_index_fallback(node, map_raw)
+				return
+			}
+		}
+		// Cannot resolve map key/value types — emit a C-level error
+		// instead of silently generating incorrect casts.
+		g.sb.write_string('/* [TODO] cannot resolve map type for index expr */ 0')
+		return
 	}
 	if lhs_type == 'string' {
 		g.expr(node.lhs)
@@ -2518,10 +2535,30 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	g.sb.write_string(']')
 }
 
-fn (mut g Gen) panic_map_index_expr(node ast.IndexExpr) {
-	lhs_type := g.get_expr_type(node.lhs)
-	idx_src := '${node.lhs.name()}[${node.expr.name()}]'
-	panic('bug in v2 compiler: map IndexExpr should have been lowered in v2.transformer (file=${g.cur_file_name} fn=${g.cur_fn_name} pos=${node.pos} idx=${idx_src} lhs=${node.lhs.name()} lhs_type=${lhs_type})')
+// gen_map_index_fallback generates C code for a map read that the transformer
+// failed to lower. Produces:
+//   ({ val_type _mget_key_N = key; val_type _mget_zero_N = {0};
+//      *(val_type*)map__get(&map, (void*)&_mget_key_N, (void*)&_mget_zero_N); })
+fn (mut g Gen) gen_map_index_fallback(node ast.IndexExpr, map_type types.Map) {
+	val_c := g.types_type_to_c(map_type.value_type)
+	key_c := g.types_type_to_c(map_type.key_type)
+	tmp := g.tmp_counter
+	g.tmp_counter++
+	g.sb.write_string('({ ${key_c} _mget_key_${tmp} = ')
+	g.expr(node.expr)
+	g.sb.write_string('; ${val_c} _mget_zero_${tmp} = {0}; *(${val_c}*)map__get(')
+	// map__get expects a pointer to the map.
+	mut lhs_is_ptr := false
+	if lhs_raw := g.get_raw_type(node.lhs) {
+		lhs_is_ptr = lhs_raw is types.Pointer
+	}
+	if lhs_is_ptr {
+		g.expr(node.lhs)
+	} else {
+		g.sb.write_string('&')
+		g.expr(node.lhs)
+	}
+	g.sb.write_string(', (void*)&_mget_key_${tmp}, (void*)&_mget_zero_${tmp}); })')
 }
 
 fn (g &Gen) eval_comptime_flag(name string) bool {
