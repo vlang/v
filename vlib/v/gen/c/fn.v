@@ -2573,13 +2573,12 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 }
 
 fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []ast.Type {
-	mut concrete_types := if node.raw_concrete_types.len > 0 {
-		node.raw_concrete_types.map(g.unwrap_generic(it))
+	mut concrete_types := []ast.Type{}
+	if node.raw_concrete_types.len > 0 {
+		concrete_types = node.raw_concrete_types.map(g.unwrap_generic(it))
 	} else if node.concrete_types.len == func.generic_names.len && node.concrete_types.all(it != 0
 		&& !it.has_flag(.generic) && !g.type_has_unresolved_generic_parts(it)) {
-		node.concrete_types.map(g.unwrap_generic(it))
-	} else {
-		[]ast.Type{}
+		concrete_types = node.concrete_types.map(g.unwrap_generic(it))
 	}
 	explicit_raw_concrete_types := node.raw_concrete_types.len == func.generic_names.len
 		&& concrete_types.len == func.generic_names.len && concrete_types.all(it != 0
