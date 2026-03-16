@@ -1,7 +1,7 @@
 module datatypes
 
 pub struct Set[T] {
-mut:
+pub mut:
 	elements map[T]u8
 }
 
