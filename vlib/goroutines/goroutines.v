@@ -16,6 +16,9 @@ module goroutines
 import sync
 import runtime
 
+// GoFn is the type for a goroutine function: takes a voidptr argument.
+pub type GoFn = fn (voidptr)
+
 // Default goroutine stack size (8KB, matching Go's minimum)
 const default_stack_size = 8 * 1024
 
@@ -27,38 +30,38 @@ const global_queue_check_interval = 61
 
 // GStatus represents goroutine states (matches Go's runtime2.go)
 pub enum GStatus {
-	idle       // just allocated, not yet initialized
-	runnable   // on a run queue, not currently executing
-	running    // executing user code on an Machine
-	waiting    // blocked (channel, mutex, etc.)
-	dead       // finished execution, available for reuse
-	copystack  // stack is being moved (not used yet)
+	idle      // just allocated, not yet initialized
+	runnable  // on a run queue, not currently executing
+	running   // executing user code on an Machine
+	waiting   // blocked (channel, mutex, etc.)
+	dead      // finished execution, available for reuse
+	copystack // stack is being moved (not used yet)
 }
 
 // PStatus represents processor states
 pub enum PStatus {
-	idle     // not being used, available on idle list
-	running  // owned by an Machine and executing code
-	stopped  // halted
-	dead     // no longer used
+	idle    // not being used, available on idle list
+	running // owned by an Machine and executing code
+	stopped // halted
+	dead    // no longer used
 }
 
 // Goroutine represents a goroutine - the fundamental unit of concurrent execution.
 // Translated from Go's `type g struct` in runtime2.go.
 pub struct Goroutine {
 pub mut:
-	id         u64        // unique goroutine id
-	status     GStatus = .idle // current state
-	stack      voidptr    // stack memory (allocated)
-	stack_size int = goroutines.default_stack_size // stack allocation size
-	context    Context    // saved CPU context for switching (ucontext_t or similar)
-	fn_ptr     voidptr    // function to execute
-	fn_arg     voidptr    // argument to the function
-	sched_link &Goroutine = unsafe { nil } // linked list link for run queues
-	m          &Machine = unsafe { nil } // current Machine executing this Goroutine (nil if not running)
-	parent_id  u64        // goroutine id of creator
-	wait_reason string    // if status==waiting, why
-	preempt    bool       // preemption signal
+	id          u64 // unique goroutine id
+	status      GStatus = .idle // current state
+	stack       voidptr // stack memory (allocated)
+	stack_size  int = default_stack_size // stack allocation size
+	context     Context // saved CPU context for switching (ucontext_t or similar)
+	fn_ptr      voidptr // function to execute
+	fn_arg      voidptr // argument to the function
+	sched_link  &Goroutine = unsafe { nil } // linked list link for run queues
+	m           &Machine   = unsafe { nil } // current Machine executing this Goroutine (nil if not running)
+	parent_id   u64    // goroutine id of creator
+	wait_reason string // if status==waiting, why
+	preempt     bool   // preemption signal
 }
 
 // Machine represents a machine (OS thread) that executes goroutines.
@@ -69,11 +72,11 @@ pub mut:
 	g0         &Goroutine = unsafe { nil } // goroutine with scheduling stack
 	curg       &Goroutine = unsafe { nil } // current running goroutine
 	p          &Processor = unsafe { nil } // attached processor (nil if not executing Go code)
-	spinning   bool       // looking for work
-	blocked    bool       // blocked on a note
+	spinning   bool           // looking for work
+	blocked    bool           // blocked on a note
 	park       sync.Semaphore // for parking/unparking
 	sched_link &Machine = unsafe { nil } // linked list for idle Machine list
-	thread     thread     // underlying OS thread handle
+	thread     thread // underlying OS thread handle
 }
 
 // Processor represents a processor - a resource required to execute goroutines.
@@ -81,15 +84,15 @@ pub mut:
 pub struct Processor {
 pub mut:
 	id         i32
-	status     PStatus = .idle
-	m          &Machine = unsafe { nil }  // back-link to associated Machine
-	sched_tick u32        // incremented on every scheduler call
+	status     PStatus  = .idle
+	m          &Machine = unsafe { nil } // back-link to associated Machine
+	sched_tick u32 // incremented on every scheduler call
 
 	// Local run queue - lock-free SPMC ring buffer (matches Go's design)
-	runq_head u32                                     // consumer index (atomic)
-	runq_tail u32                                     // producer index (atomic)
-	runq      [goroutines.local_queue_size]&Goroutine         // circular buffer
-	runnext   &Goroutine = unsafe { nil }  // next Goroutine to run (fast path, like Go's runnext)
+	runq_head u32 // consumer index (atomic)
+	runq_tail u32 // producer index (atomic)
+	runq      [local_queue_size]&Goroutine // circular buffer
+	runnext   &Goroutine = unsafe { nil } // next Goroutine to run (fast path, like Go's runnext)
 
 	// Free Goroutine list for reuse
 	g_free GoroutineList
@@ -118,19 +121,19 @@ pub mut:
 	npidle i32
 
 	// Global run queue
-	runq      GoroutineQueue
+	runq       GoroutineQueue
 	nmspinning i32 // number of spinning Machine's (atomic)
 
 	// All Processor's (indexed by id)
 	allp []&Processor
 
 	// Total Machine count
-	mnext    i64
+	mnext     i64
 	maxmcount i32 = 10000
 
 	// Global Goroutine free list
-	g_free_mu   sync.Mutex
-	g_free      GoroutineList
+	g_free_mu    sync.Mutex
+	g_free       GoroutineList
 	g_free_count i32
 
 	// Shutdown

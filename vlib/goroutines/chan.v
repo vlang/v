@@ -102,9 +102,9 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 	// Block: enqueue ourselves on the send wait queue
 	gp := get_current_g()
 	mut mysg := &Sudog{
-		g: unsafe { gp }
+		g:    unsafe { gp }
 		elem: ep
-		c: voidptr(ch)
+		c:    voidptr(ch)
 	}
 	ch.sendq.enqueue(mysg)
 	ch.mu.unlock()
@@ -170,9 +170,9 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 	// Block: enqueue ourselves on the recv wait queue
 	gp := get_current_g()
 	mut mysg := &Sudog{
-		g: unsafe { gp }
+		g:    unsafe { gp }
 		elem: ep
-		c: voidptr(ch)
+		c:    voidptr(ch)
 	}
 	ch.recvq.enqueue(mysg)
 	ch.mu.unlock()

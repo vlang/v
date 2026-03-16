@@ -30,11 +30,11 @@ fn init() {
 	gsched.allp = []&Processor{cap: int(gomaxprocs)}
 	for i in 0 .. gomaxprocs {
 		mut pp := &Processor{
-			id: i
+			id:     i
 			status: .idle
 		}
 		// Initialize the local run queue
-		for j in 0 .. goroutines.local_queue_size {
+		for j in 0 .. local_queue_size {
 			pp.runq[j] = unsafe { nil }
 		}
 		gsched.allp << pp
@@ -44,7 +44,7 @@ fn init() {
 	mut m0 := &Machine{
 		id: 0
 		g0: &Goroutine{
-			id: 0
+			id:     0
 			status: .running
 		}
 	}

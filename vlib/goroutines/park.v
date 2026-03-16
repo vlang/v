@@ -90,12 +90,12 @@ pub fn gosched() {
 // Translated from Go's sudog struct in runtime2.go.
 pub struct Sudog {
 pub mut:
-	g       &Goroutine = unsafe { nil }       // the waiting goroutine
-	next    &Sudog = unsafe { nil }    // next in wait list
-	prev    &Sudog = unsafe { nil }    // prev in wait list
-	elem    voidptr                    // data element (may point to stack)
-	success bool                       // true if woken by successful channel op
-	c       voidptr                    // channel pointer
+	g       &Goroutine = unsafe { nil } // the waiting goroutine
+	next    &Sudog     = unsafe { nil } // next in wait list
+	prev    &Sudog     = unsafe { nil } // prev in wait list
+	elem    voidptr // data element (may point to stack)
+	success bool    // true if woken by successful channel op
+	c       voidptr // channel pointer
 }
 
 // WaitQ is a wait queue of Sudogs (used by channels).

@@ -15,7 +15,7 @@ fn C.ConvertFiberToThread()
 
 pub struct Context {
 pub mut:
-	fiber voidptr
+	fiber           voidptr
 	is_thread_fiber bool // true if this was created via ConvertThreadToFiber
 }
 

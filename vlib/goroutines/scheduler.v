@@ -59,7 +59,7 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 
 	// Allocate or reuse stack
 	if gp.stack == unsafe { nil } {
-		stack_size := goroutines.default_stack_size
+		stack_size := default_stack_size
 		gp.stack = unsafe { malloc(stack_size) }
 		gp.stack_size = stack_size
 	}
@@ -91,12 +91,19 @@ fn goroutine_trampoline(arg voidptr) {
 
 	// Call the actual function
 	if gp.fn_ptr != unsafe { nil } {
-		f := unsafe { *(&fn (voidptr)(gp.fn_ptr)) }
-		f(gp.fn_arg)
+		call_goroutine_fn(gp.fn_ptr, gp.fn_arg)
 	}
 
 	// Function returned - goroutine is done
 	goexit0(mut gp)
+}
+
+// call_goroutine_fn calls the goroutine's function pointer with the given argument.
+fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
+	unsafe {
+		cb := GoFn(fn_ptr)
+		cb(arg)
+	}
 }
 
 // goexit0 handles goroutine cleanup after the user function returns.
@@ -152,7 +159,7 @@ pub fn schedule() {
 // Translated from Go's findRunnable() in proc.go.
 fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 	// Check global queue every Nth tick for fairness (Go uses 61)
-	if pp.sched_tick % goroutines.global_queue_check_interval == 0 {
+	if pp.sched_tick % global_queue_check_interval == 0 {
 		gp := glob_runq_get()
 		if gp != unsafe { nil } {
 			return gp, false
@@ -409,7 +416,7 @@ fn runq_steal(mut pp Processor, thisp &Processor) &Goroutine {
 	steal := n - n / 2
 	mut first := unsafe { &Goroutine(nil) }
 	for i := u32(0); i < steal; i++ {
-		gp := pp.runq[(h + i) % goroutines.local_queue_size]
+		gp := pp.runq[(h + i) % local_queue_size]
 		if i == 0 {
 			first = gp
 		}
@@ -453,8 +460,8 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	// Regular path: put on the ring buffer
 	h := C.atomic_load(&pp.runq_head)
 	t := pp.runq_tail
-	if t - h < goroutines.local_queue_size {
-		pp.runq[t % goroutines.local_queue_size] = unsafe { gp }
+	if t - h < local_queue_size {
+		pp.runq[t % local_queue_size] = unsafe { gp }
 		C.atomic_store(&pp.runq_tail, t + 1)
 		return
 	}
@@ -468,7 +475,7 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
 	n := (t - h) / 2
 	mut batch := GoroutineQueue{}
 	for i := u32(0); i < n; i++ {
-		g := pp.runq[(h + i) % goroutines.local_queue_size]
+		g := pp.runq[(h + i) % local_queue_size]
 		batch.push_back(g)
 	}
 	C.atomic_fetch_add(&pp.runq_head, n)
@@ -498,7 +505,7 @@ fn runq_get(mut pp Processor) (&Goroutine, bool) {
 		if t == h {
 			return unsafe { nil }, false
 		}
-		gp := pp.runq[h % goroutines.local_queue_size]
+		gp := pp.runq[h % local_queue_size]
 		if unsafe { C.atomic_compare_exchange_strong(&pp.runq_head, &h, h + 1) } {
 			return gp, false
 		}
@@ -587,17 +594,21 @@ fn proc_yield(count int) {
 	for _ in 0 .. count {
 		// CPU pause instruction to reduce power and contention
 		$if amd64 {
-			unsafe { asm volatile { `pause` } }
+			asm volatile amd64 {
+				pause
+			}
 		}
 		$if arm64 {
-			unsafe { asm volatile { `yield` } }
+			asm volatile arm64 {
+				yield
+			}
 		}
 	}
 }
 
 // get_current_m returns the M for the current OS thread.
 // Uses thread-local storage.
-__global current_m = thread_local &Machine(unsafe { nil })
+__global current_m = thread_local & Machine(unsafe { nil })
 
 fn get_current_m() &Machine {
 	return current_m

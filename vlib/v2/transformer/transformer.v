@@ -115,10 +115,10 @@ struct ArrayMethodInfo {
 // For `go foo(a, b)`, we generate a wrapper that packs args and calls
 // goroutines__goroutine_create, and a trampoline that unpacks args and calls foo.
 struct GoWrapperInfo {
-	fn_name     string     // C-mangled function name (e.g. "main__foo")
-	wrapper_name string    // Wrapper function name (e.g. "__go_wrap_main__foo")
-	param_names []string   // Parameter names
-	param_types []string   // Parameter C type names
+	fn_name      string   // C-mangled function name (e.g. "main__foo")
+	wrapper_name string   // Wrapper function name (e.g. "__go_wrap_main__foo")
+	param_names  []string // Parameter names
+	param_types  []string // Parameter C type names
 }
 
 fn builder_write_string_stmt(sb_ref ast.Expr, s ast.Expr) ast.Stmt {
@@ -8982,16 +8982,22 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			// Simpler: use direct field access with cast.
 			trampoline_stmts << ast.Stmt(ast.AssignStmt{
 				op:  .decl_assign
-				lhs: [ast.Expr(ast.Ident{ name: '_go_args' })]
+				lhs: [ast.Expr(ast.Ident{
+					name: '_go_args'
+				})]
 				rhs: [
 					ast.Expr(ast.PrefixExpr{
 						op:   .mul
 						expr: ast.CastExpr{
 							typ:  ast.PrefixExpr{
 								op:   .amp
-								expr: ast.Ident{ name: struct_name }
+								expr: ast.Ident{
+									name: struct_name
+								}
 							}
-							expr: ast.Ident{ name: 'arg' }
+							expr: ast.Ident{
+								name: 'arg'
+							}
 						}
 					}),
 				]
@@ -9000,13 +9006,19 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			mut call_args := []ast.Expr{}
 			for pname in info.param_names {
 				call_args << ast.Expr(ast.SelectorExpr{
-					lhs: ast.Ident{ name: '_go_args' }
-					rhs: ast.Ident{ name: pname }
+					lhs: ast.Ident{
+						name: '_go_args'
+					}
+					rhs: ast.Ident{
+						name: pname
+					}
 				})
 			}
 			trampoline_stmts << ast.Stmt(ast.ExprStmt{
 				expr: ast.CallExpr{
-					lhs:  ast.Ident{ name: info.fn_name }
+					lhs:  ast.Ident{
+						name: info.fn_name
+					}
 					args: call_args
 				}
 			})
@@ -9014,19 +9026,27 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			trampoline_stmts << ast.Stmt(ast.ExprStmt{
 				expr: ast.CallExpr{
 					lhs:  ast.SelectorExpr{
-						lhs: ast.Ident{ name: 'C' }
-						rhs: ast.Ident{ name: 'free' }
+						lhs: ast.Ident{
+							name: 'C'
+						}
+						rhs: ast.Ident{
+							name: 'free'
+						}
 					}
-					args: [ast.Expr(ast.Ident{ name: 'arg' })]
+					args: [ast.Expr(ast.Ident{
+						name: 'arg'
+					})]
 				}
 			})
 			result << ast.Stmt(ast.FnDecl{
-				name: trampoline_name
-				typ:  ast.FnType{
+				name:  trampoline_name
+				typ:   ast.FnType{
 					params: [
 						ast.Parameter{
 							name: 'arg'
-							typ:  ast.Ident{ name: 'voidptr' }
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
 						},
 					]
 				}
@@ -9039,17 +9059,31 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			// Zero args: goroutines__goroutine_create(voidptr(foo), voidptr(0), 0)
 			dispatch_stmts << ast.Stmt(ast.ExprStmt{
 				expr: ast.CallExpr{
-					lhs:  ast.Ident{ name: 'goroutines__goroutine_create' }
+					lhs:  ast.Ident{
+						name: 'goroutines__goroutine_create'
+					}
 					args: [
 						ast.Expr(ast.CastExpr{
-							typ:  ast.Ident{ name: 'voidptr' }
-							expr: ast.Ident{ name: info.fn_name }
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: info.fn_name
+							}
 						}),
 						ast.Expr(ast.CastExpr{
-							typ:  ast.Ident{ name: 'voidptr' }
-							expr: ast.BasicLiteral{ kind: .number, value: '0' }
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.BasicLiteral{
+								kind:  .number
+								value: '0'
+							}
 						}),
-						ast.Expr(ast.BasicLiteral{ kind: .number, value: '0' }),
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						}),
 					]
 				}
 			})
@@ -9060,17 +9094,25 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			// _args_ptr := C.malloc(sizeof(__GoArgs_foo))
 			dispatch_stmts << ast.Stmt(ast.AssignStmt{
 				op:  .decl_assign
-				lhs: [ast.Expr(ast.Ident{ name: '_args_ptr' })]
+				lhs: [ast.Expr(ast.Ident{
+					name: '_args_ptr'
+				})]
 				rhs: [
 					ast.Expr(ast.CallExpr{
 						lhs:  ast.SelectorExpr{
-							lhs: ast.Ident{ name: 'C' }
-							rhs: ast.Ident{ name: 'malloc' }
+							lhs: ast.Ident{
+								name: 'C'
+							}
+							rhs: ast.Ident{
+								name: 'malloc'
+							}
 						}
 						args: [
 							ast.Expr(ast.KeywordOperator{
 								op:    .key_sizeof
-								exprs: [ast.Expr(ast.Ident{ name: struct_name })]
+								exprs: [ast.Expr(ast.Ident{
+									name: struct_name
+								})]
 							}),
 						]
 					}),
@@ -9079,14 +9121,20 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 			// _args := &__GoArgs_foo(_args_ptr)
 			dispatch_stmts << ast.Stmt(ast.AssignStmt{
 				op:  .decl_assign
-				lhs: [ast.Expr(ast.Ident{ name: '_args' })]
+				lhs: [ast.Expr(ast.Ident{
+					name: '_args'
+				})]
 				rhs: [
 					ast.Expr(ast.CastExpr{
 						typ:  ast.PrefixExpr{
 							op:   .amp
-							expr: ast.Ident{ name: struct_name }
+							expr: ast.Ident{
+								name: struct_name
+							}
 						}
-						expr: ast.Ident{ name: '_args_ptr' }
+						expr: ast.Ident{
+							name: '_args_ptr'
+						}
 					}),
 				]
 			})
@@ -9096,29 +9144,47 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 					op:  .assign
 					lhs: [
 						ast.Expr(ast.SelectorExpr{
-							lhs: ast.Ident{ name: '_args' }
-							rhs: ast.Ident{ name: pname }
+							lhs: ast.Ident{
+								name: '_args'
+							}
+							rhs: ast.Ident{
+								name: pname
+							}
 						}),
 					]
-					rhs: [ast.Expr(ast.Ident{ name: pname })]
+					rhs: [ast.Expr(ast.Ident{
+						name: pname
+					})]
 				})
 			}
 			// goroutines__goroutine_create(voidptr(trampoline), voidptr(_args_ptr), sizeof(__GoArgs_foo))
 			dispatch_stmts << ast.Stmt(ast.ExprStmt{
 				expr: ast.CallExpr{
-					lhs:  ast.Ident{ name: 'goroutines__goroutine_create' }
+					lhs:  ast.Ident{
+						name: 'goroutines__goroutine_create'
+					}
 					args: [
 						ast.Expr(ast.CastExpr{
-							typ:  ast.Ident{ name: 'voidptr' }
-							expr: ast.Ident{ name: trampoline_name }
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: trampoline_name
+							}
 						}),
 						ast.Expr(ast.CastExpr{
-							typ:  ast.Ident{ name: 'voidptr' }
-							expr: ast.Ident{ name: '_args_ptr' }
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: '_args_ptr'
+							}
 						}),
 						ast.Expr(ast.KeywordOperator{
 							op:    .key_sizeof
-							exprs: [ast.Expr(ast.Ident{ name: struct_name })]
+							exprs: [ast.Expr(ast.Ident{
+								name: struct_name
+							})]
 						}),
 					]
 				}
@@ -9129,7 +9195,9 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 		for i, pname in info.param_names {
 			dispatch_params << ast.Parameter{
 				name: pname
-				typ:  ast.Ident{ name: info.param_types[i] }
+				typ:  ast.Ident{
+					name: info.param_types[i]
+				}
 			}
 		}
 		result << ast.Stmt(ast.FnDecl{

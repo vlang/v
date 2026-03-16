@@ -61,9 +61,15 @@ fn test_gqueue() {
 	assert q.empty()
 	assert q.size == 0
 
-	mut g1 := &Goroutine{ id: 1 }
-	mut g2 := &Goroutine{ id: 2 }
-	mut g3 := &Goroutine{ id: 3 }
+	mut g1 := &Goroutine{
+		id: 1
+	}
+	mut g2 := &Goroutine{
+		id: 2
+	}
+	mut g3 := &Goroutine{
+		id: 3
+	}
 
 	q.push_back(g1)
 	assert !q.empty()
@@ -90,8 +96,12 @@ fn test_glist() {
 	mut l := GoroutineList{}
 	assert l.empty()
 
-	mut g1 := &Goroutine{ id: 10 }
-	mut g2 := &Goroutine{ id: 20 }
+	mut g1 := &Goroutine{
+		id: 10
+	}
+	mut g2 := &Goroutine{
+		id: 20
+	}
 
 	l.push(g1)
 	assert !l.empty()
@@ -114,11 +124,19 @@ fn test_waitq() {
 	mut q := WaitQ{}
 	assert q.empty()
 
-	mut g1 := &Goroutine{ id: 1 }
-	mut g2 := &Goroutine{ id: 2 }
+	mut g1 := &Goroutine{
+		id: 1
+	}
+	mut g2 := &Goroutine{
+		id: 2
+	}
 
-	mut s1 := &Sudog{ g: g1 }
-	mut s2 := &Sudog{ g: g2 }
+	mut s1 := &Sudog{
+		g: g1
+	}
+	mut s2 := &Sudog{
+		g: g2
+	}
 
 	q.enqueue(s1)
 	assert !q.empty()
