@@ -2413,12 +2413,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				return
 			}
 		}
-		// Last resort: generate a map__get with int value type.
-		fallback_map := types.Map{
-			key_type:   types.Type(types.string_)
-			value_type: types.Type(types.int_)
-		}
-		g.gen_map_index_fallback(node, fallback_map)
+		// Cannot resolve map key/value types — emit a C-level error
+		// instead of silently generating incorrect casts.
+		g.sb.write_string('/* [TODO] cannot resolve map type for index expr */ 0')
 		return
 	}
 	if lhs_type == 'string' {

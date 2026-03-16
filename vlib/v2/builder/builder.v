@@ -546,10 +546,15 @@ fn (mut b Builder) gen_cleanc() {
 		}
 	}
 
-	// -prod: add -O3, -DNDEBUG for gcc/clang
+	// -prod: add -O3, -flto, -DNDEBUG for gcc/clang
 	if b.pref.is_prod {
 		cc_flag_parts << '-O3'
 		cc_flag_parts << '-DNDEBUG'
+		if !b.pref.is_shared_lib {
+			$if !windows {
+				cc_flag_parts << '-flto'
+			}
+		}
 		if !is_clang {
 			cc_flag_parts << '-fno-strict-aliasing'
 		}
