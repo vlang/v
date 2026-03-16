@@ -433,7 +433,6 @@ fn vgc_update_trigger() {
 // ============================================================
 
 fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
-	heap_size := usize(0)
 	// Calculate total arena size
 	mut total_size := usize(0)
 	mut total_used := usize(0)

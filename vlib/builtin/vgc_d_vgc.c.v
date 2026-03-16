@@ -34,8 +34,8 @@ fn C.vgc_get_class_size(cls int) u32
 fn C.vgc_get_class_npages(cls int) u32
 fn C.vgc_get_class_nobjs(cls int) u32
 fn C.vgc_init_size_tables()
-fn C.vgc_mutex_lock(lock, &u32)
-fn C.vgc_mutex_unlock(lock, &u32)
+fn C.vgc_mutex_lock(lk &u32)
+fn C.vgc_mutex_unlock(lk &u32)
 
 // ============================================================
 // Constants (translated from Go's runtime constants)

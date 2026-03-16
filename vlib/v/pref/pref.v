@@ -32,7 +32,6 @@ pub enum GarbageCollectionMode {
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage collection mode
 	boehm_leak     // leak detection mode (makes `gc_check_leaks()` work)
-	vgc            // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
 }
 
 pub enum OutputMode {
@@ -503,10 +502,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.parse_define('gcboehm')
 						res.parse_define('gcboehm_leak')
 					}
-					'vgc' {
-						res.gc_mode = .vgc
-						res.parse_define('vgc')
-					}
 					else {
 						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
 						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
@@ -515,7 +510,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
-						eprintln('  `-gc vgc` .............. V GC (concurrent tri-color mark-and-sweep)')
 						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}
