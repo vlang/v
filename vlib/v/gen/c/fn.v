@@ -4855,7 +4855,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 				g.write('&')
 				g.expr(arg.expr)
 			} else {
-				g.write('ADDR(${expected_ref_inner_sym.cname}, ')
+				// sumtype conversions call memdup internally, so ADDR is sufficient.
+				// interface conversions don't, so HEAP is needed to ensure the pointer
+				// remains valid after the current scope ends.
+				wrap := if expected_ref_inner_sym.kind == .interface { 'HEAP' } else { 'ADDR' }
+				g.write('${wrap}(${expected_ref_inner_sym.cname}, ')
 				g.expr_with_cast(arg.expr, arg_typ, expected_ref_inner_type)
 				g.write(')')
 			}
