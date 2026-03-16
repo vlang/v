@@ -21,6 +21,15 @@ pub enum Arch {
 	arm64
 }
 
+// GarbageCollectionMode controls which garbage collector is used.
+// Translated from Go's runtime GC, the `vgc` mode provides a concurrent
+// tri-color mark-and-sweep collector written in pure V.
+pub enum GarbageCollectionMode {
+	no_gc    // no garbage collection
+	vgc      // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
+	boehm    // Boehm-Demers-Weiser conservative GC (legacy)
+}
+
 pub struct Preferences {
 pub mut:
 	debug                 bool
@@ -40,6 +49,7 @@ pub mut:
 	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
 	is_shared_lib         bool // Compile to shared library (.dylib/.so) for live reload
 	no_optimize           bool // -O0: skip SSA optimization (mem2reg, phi elimination)
+	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
 	arch                  Arch = .auto
 	output_file           string
@@ -237,6 +247,33 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		hot_fn_str = ''
 	}
 
+	// Parse -gc <mode> for garbage collection
+	gc_mode_str := cmdline.option(args, '-gc', '')
+	mut gc_mode := GarbageCollectionMode.no_gc
+	mut gc_defines := []string{}
+	match gc_mode_str {
+		'', 'none' {
+			gc_mode = .no_gc
+		}
+		'vgc' {
+			gc_mode = .vgc
+			gc_defines << 'vgc'
+		}
+		'boehm' {
+			gc_mode = .boehm
+			gc_defines << 'gcboehm'
+			gc_defines << 'gcboehm_full'
+			gc_defines << 'gcboehm_opt'
+		}
+		else {
+			eprintln('error: unknown garbage collection mode `-gc ${gc_mode_str}`')
+			eprintln('  `-gc vgc` .............. V GC: concurrent tri-color mark-and-sweep (translated from Go)')
+			eprintln('  `-gc boehm` ............ Boehm-Demers-Weiser conservative GC')
+			eprintln('  `-gc none` ............. no garbage collection (default)')
+			exit(1)
+		}
+	}
+
 	options := cmdline.only_options(args)
 
 	// Validate flags: error on unknown options
@@ -293,11 +330,16 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		is_shared_lib:         '-shared' in options || '--shared' in options
 		no_optimize:           '-O0' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
+		gc_mode:               gc_mode
 		backend:               backend
 		arch:                  arch
 		output_file:           output_file
 		printfn_list:          printfn_list
-		user_defines:          user_defines
+		user_defines:          {
+			mut all_defines := user_defines.clone()
+			all_defines << gc_defines
+			all_defines
+		}
 		hot_fn:                hot_fn_str
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()

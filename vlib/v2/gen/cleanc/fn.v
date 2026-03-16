@@ -557,6 +557,13 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 		g.sb.writeln('g_main_argc = ___argc;')
 		g.write_indent()
 		g.sb.writeln('g_main_argv = (void*)___argv;')
+		// GC initialization (translated from Go's runtime GC init)
+		if g.pref != unsafe { nil } && g.pref.gc_mode == .vgc {
+			g.write_indent()
+			g.sb.writeln('// VGC initialization (concurrent tri-color mark-and-sweep)')
+			g.write_indent()
+			g.sb.writeln('builtin__vgc_init();')
+		}
 		for init_call in g.cached_init_calls {
 			g.write_indent()
 			g.sb.writeln('${init_call}();')
