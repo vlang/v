@@ -14,13 +14,14 @@
 module goroutines
 
 import sync
-import runtime
+import runtime as _
 
 // GoFn is the type for a goroutine function: takes a voidptr argument.
 pub type GoFn = fn (voidptr)
 
-// Default goroutine stack size (8KB, matching Go's minimum)
-const default_stack_size = 8 * 1024
+// Default goroutine stack size.
+// Go uses 8KB with growable stacks; V/C needs more since stacks are fixed.
+const default_stack_size = 256 * 1024
 
 // Maximum number of goroutines in a Processor's local run queue (matches Go's 256)
 const local_queue_size = 256
@@ -110,7 +111,7 @@ pub struct Sched {
 pub mut:
 	goid_gen u64 // global goroutine ID generator (atomic)
 
-	mu sync.Mutex // protects idle lists, global queue
+	mu SpinLock // protects idle lists, global queue (spinlock is ucontext-safe)
 
 	// Idle Machine's waiting for work
 	midle  &Machine = unsafe { nil }
@@ -132,7 +133,7 @@ pub mut:
 	maxmcount i32 = 10000
 
 	// Global Goroutine free list
-	g_free_mu    sync.Mutex
+	g_free_mu    SpinLock
 	g_free       GoroutineList
 	g_free_count i32
 
@@ -222,5 +223,5 @@ __global gsched = Sched{}
 __global gomaxprocs = i32(0)
 
 // All goroutines ever created (for debugging)
-__global allgs_mu = sync.Mutex{}
+__global allgs_mu = SpinLock{}
 __global allgs = []&Goroutine{}

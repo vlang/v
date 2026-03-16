@@ -16,24 +16,18 @@
 //   - stealWork()     -> steal_work()
 module goroutines
 
-import sync
-import runtime
+// import sync as _
+// import runtime as _
 
 // goroutine_create creates a new goroutine to run `f` with argument `arg`.
 // This is the equivalent of Go's `newproc` function.
 // Called by the compiler for `go expr()`.
 pub fn goroutine_create(f voidptr, arg voidptr, arg_size int) {
 	gp := newproc1(f, arg, arg_size)
-	// Get the current P and put the new G on its local run queue
-	pp := get_current_p()
-	if pp != unsafe { nil } {
-		runq_put(mut pp, gp, true)
-	} else {
-		// No P available, put on global queue
-		gsched.mu.@lock()
-		gsched.runq.push_back(gp)
-		gsched.mu.unlock()
-	}
+	// Put on global run queue so any M can pick it up.
+	// This is simpler than local queue + work stealing and avoids
+	// visibility issues when the creator is the main (non-scheduler) thread.
+	glob_runq_put(gp)
 	// Try to wake an idle P if needed
 	wake_p()
 }
@@ -42,11 +36,11 @@ pub fn goroutine_create(f voidptr, arg voidptr, arg_size int) {
 // Translated from Go's newproc1 in proc.go.
 fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 	// Try to get a dead G from the local P's free list first
-	pp := get_current_p()
+	mut pp := get_current_p()
 	mut gp := if pp != unsafe { nil } {
 		gfget(mut pp)
 	} else {
-		unsafe { nil }
+		unsafe { &Goroutine(nil) }
 	}
 	if gp == unsafe { nil } {
 		// Try global free list
@@ -76,9 +70,9 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 	context_init(mut &gp.context, gp.stack, gp.stack_size, goroutine_trampoline, voidptr(gp))
 
 	// Track all goroutines
-	allgs_mu.@lock()
+	allgs_mu.acquire()
 	allgs << gp
-	allgs_mu.unlock()
+	allgs_mu.release()
 
 	return gp
 }
@@ -109,6 +103,8 @@ fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
 // goexit0 handles goroutine cleanup after the user function returns.
 // Translated from Go's goexit0 in proc.go.
 fn goexit0(mut gp Goroutine) {
+	mut mp := get_current_m()
+
 	gp.status = .dead
 	gp.m = unsafe { nil }
 	gp.fn_ptr = unsafe { nil }
@@ -116,16 +112,24 @@ fn goexit0(mut gp Goroutine) {
 	gp.wait_reason = ''
 	gp.preempt = false
 
+	// Dissociate G from M
+	if mp != unsafe { nil } {
+		mp.curg = unsafe { nil }
+	}
+
 	// Put the dead G on the free list for reuse
-	pp := get_current_p()
+	mut pp := get_current_p()
 	if pp != unsafe { nil } {
 		gfput(mut pp, gp)
 	} else {
 		gfput_global(gp)
 	}
 
-	// Return to the scheduler to find more work
-	schedule()
+	// Switch back to the scheduler (g0 context).
+	// This returns to schedule_loop via execute's context_switch.
+	if mp != unsafe { nil } && mp.g0 != unsafe { nil } {
+		context_set(&mp.g0.context)
+	}
 }
 
 // schedule is the main scheduler entry point.
@@ -198,7 +202,6 @@ fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 
 	// Switch context to the goroutine
 	context_switch(mut &mp.g0.context, &g.context)
-
 	// When we return here, the goroutine has yielded back to us
 	// The scheduler loop will be re-entered
 }
@@ -207,23 +210,23 @@ fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 // Translated from Go's wakep() in proc.go.
 fn wake_p() {
 	// Check if there's an idle P
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 	if gsched.npidle == 0 {
-		gsched.mu.unlock()
+		gsched.mu.release()
 		return
 	}
 	// Don't wake if there are already spinning M's
 	if gsched.nmspinning > 0 {
-		gsched.mu.unlock()
+		gsched.mu.release()
 		return
 	}
 	// Get an idle P
 	pp := pid_get()
 	if pp == unsafe { nil } {
-		gsched.mu.unlock()
+		gsched.mu.release()
 		return
 	}
-	gsched.mu.unlock()
+	gsched.mu.release()
 
 	// Start a new M for this P (or wake an idle one)
 	start_m(pp)
@@ -231,32 +234,29 @@ fn wake_p() {
 
 // park_m parks the current M - it goes to sleep waiting for work.
 fn park_m(mut mp Machine) {
-	// Release P
+	// Release P and add M to idle list under lock
+	gsched.mu.acquire()
 	if mp.p != unsafe { nil } {
 		pid_put(mp.p)
 		mp.p = unsafe { nil }
 	}
-
-	// Add M to idle list
-	gsched.mu.@lock()
 	mp.sched_link = gsched.midle
 	gsched.midle = mp
 	gsched.nmidle++
-	gsched.mu.unlock()
+	gsched.mu.release()
 
 	// Sleep until woken
 	mp.park.wait()
 
-	// Woken up - acquire a P and continue scheduling
+	// Woken up - acquire a P and return to schedule_loop
 	acquire_p(mut mp)
-	schedule()
 }
 
 // acquire_p tries to get an idle P for the given M.
 fn acquire_p(mut mp Machine) {
-	gsched.mu.@lock()
-	pp := pid_get()
-	gsched.mu.unlock()
+	gsched.mu.acquire()
+	mut pp := pid_get()
+	gsched.mu.release()
 	if pp != unsafe { nil } {
 		wire_p(mut mp, mut pp)
 	}
@@ -272,14 +272,14 @@ fn wire_p(mut mp Machine, mut pp Processor) {
 // start_m starts or wakes an M to run the given P.
 // Translated from Go's startm() in proc.go.
 fn start_m(pp &Processor) {
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 
 	// Try to get an idle M first
 	mut mp := gsched.midle
 	if mp != unsafe { nil } {
 		gsched.midle = mp.sched_link
 		gsched.nmidle--
-		gsched.mu.unlock()
+		gsched.mu.release()
 		// Give it the P and wake it
 		mut p := unsafe { pp }
 		wire_p(mut mp, mut p)
@@ -290,7 +290,7 @@ fn start_m(pp &Processor) {
 	// No idle M available - create a new one
 	id := gsched.mnext
 	gsched.mnext++
-	gsched.mu.unlock()
+	gsched.mu.release()
 
 	new_m(id, pp)
 }
@@ -340,7 +340,7 @@ fn schedule_loop(mut mp Machine) {
 			// No work - try spinning briefly before parking
 			if !mp.spinning {
 				mp.spinning = true
-				C.atomic_fetch_add(&gsched.nmspinning, 1)
+				C.goroutines_atomic_fetch_add_i32(&gsched.nmspinning, 1)
 			}
 			// Spin a bit
 			mut found := false
@@ -348,7 +348,7 @@ fn schedule_loop(mut mp Machine) {
 				gp2, _ := find_runnable(mut mp, mut pp)
 				if gp2 != unsafe { nil } {
 					mp.spinning = false
-					C.atomic_fetch_sub(&gsched.nmspinning, 1)
+					C.goroutines_atomic_fetch_sub_i32(&gsched.nmspinning, 1)
 					execute(mut mp, mut pp, gp2)
 					found = true
 					break
@@ -359,7 +359,7 @@ fn schedule_loop(mut mp Machine) {
 			if !found {
 				if mp.spinning {
 					mp.spinning = false
-					C.atomic_fetch_sub(&gsched.nmspinning, 1)
+					C.goroutines_atomic_fetch_sub_i32(&gsched.nmspinning, 1)
 				}
 				park_m(mut mp)
 			}
@@ -368,7 +368,7 @@ fn schedule_loop(mut mp Machine) {
 
 		if mp.spinning {
 			mp.spinning = false
-			C.atomic_fetch_sub(&gsched.nmspinning, 1)
+			C.goroutines_atomic_fetch_sub_i32(&gsched.nmspinning, 1)
 		}
 
 		execute(mut mp, mut pp, gp)
@@ -387,11 +387,12 @@ fn steal_work(mut thisp Processor) &Goroutine {
 	for i := u32(0); i < u32(n); i++ {
 		idx := (start + i) % u32(n)
 		pp := gsched.allp[idx]
-		if pp == thisp || pp.status != .running {
+		if pp == thisp {
 			continue
 		}
 		// Try to steal half of the target's run queue
-		gp := runq_steal(mut unsafe { pp }, mut thisp)
+		mut target := unsafe { pp }
+		gp := runq_steal(mut target, mut thisp)
 		if gp != unsafe { nil } {
 			return gp
 		}
@@ -402,14 +403,14 @@ fn steal_work(mut thisp Processor) &Goroutine {
 // runq_steal steals half of pp's local run queue.
 // Translated from Go's runqgrab/runqsteal in proc.go.
 fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
-	t := C.atomic_load(&pp.runq_tail)
-	h := C.atomic_load(&pp.runq_head)
+	t := C.goroutines_atomic_load_u32(&pp.runq_tail)
+	h := C.goroutines_atomic_load_u32(&pp.runq_head)
 	n := t - h
 	if n == 0 {
 		// Try runnext
 		next := pp.runnext
 		if next != unsafe { nil } {
-			if unsafe { C.atomic_compare_exchange_strong(&pp.runnext, &next, nil) } {
+			if C.goroutines_atomic_cas_ptr(voidptr(&pp.runnext), voidptr(&next), unsafe { nil }) {
 				return next
 			}
 		}
@@ -419,7 +420,7 @@ fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 	steal := n - n / 2
 	mut first := unsafe { &Goroutine(nil) }
 	for i := u32(0); i < steal; i++ {
-		gp := pp.runq[(h + i) % local_queue_size]
+		mut gp := pp.runq[(h + i) % local_queue_size]
 		if i == 0 {
 			first = gp
 		} else {
@@ -427,21 +428,21 @@ fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 			runq_put(mut thisp, gp, false)
 		}
 	}
-	C.atomic_fetch_add(&pp.runq_head, steal)
+	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, steal)
 	return first
 }
 
 // Global run queue operations (translated from Go's globrunqput/get)
 fn glob_runq_put(gp &Goroutine) {
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 	gsched.runq.push_back(gp)
-	gsched.mu.unlock()
+	gsched.mu.release()
 }
 
 fn glob_runq_get() &Goroutine {
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 	gp := gsched.runq.pop()
-	gsched.mu.unlock()
+	gsched.mu.release()
 	return gp
 }
 
@@ -464,11 +465,11 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	}
 
 	// Regular path: put on the ring buffer
-	h := C.atomic_load(&pp.runq_head)
+	h := C.goroutines_atomic_load_u32(&pp.runq_head)
 	t := pp.runq_tail
 	if t - h < local_queue_size {
 		pp.runq[t % local_queue_size] = unsafe { gp }
-		C.atomic_store(&pp.runq_tail, t + 1)
+		C.goroutines_atomic_store_u32(&pp.runq_tail, t + 1)
 		return
 	}
 	// Queue is full - put half on global queue
@@ -484,14 +485,14 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
 		g := pp.runq[(h + i) % local_queue_size]
 		batch.push_back(g)
 	}
-	C.atomic_fetch_add(&pp.runq_head, n)
+	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, n)
 	batch.push_back(gp)
 
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 	for !batch.empty() {
 		gsched.runq.push_back(batch.pop())
 	}
-	gsched.mu.unlock()
+	gsched.mu.release()
 }
 
 // runq_get gets a G from the local run queue.
@@ -506,13 +507,13 @@ fn runq_get(mut pp Processor) (&Goroutine, bool) {
 
 	// Regular queue
 	for {
-		h := C.atomic_load(&pp.runq_head)
+		h := C.goroutines_atomic_load_u32(&pp.runq_head)
 		t := pp.runq_tail
 		if t == h {
 			return unsafe { nil }, false
 		}
 		gp := pp.runq[h % local_queue_size]
-		if unsafe { C.atomic_compare_exchange_strong(&pp.runq_head, &h, h + 1) } {
+		if C.goroutines_atomic_cas_u32(&pp.runq_head, &h, h + 1) {
 			return gp, false
 		}
 	}
@@ -556,26 +557,26 @@ fn gfget(mut pp Processor) &Goroutine {
 }
 
 fn gfput_global(gp &Goroutine) {
-	gsched.g_free_mu.@lock()
+	gsched.g_free_mu.acquire()
 	gsched.g_free.push(unsafe { gp })
 	gsched.g_free_count++
-	gsched.g_free_mu.unlock()
+	gsched.g_free_mu.release()
 }
 
 fn gfget_global() &Goroutine {
-	gsched.g_free_mu.@lock()
+	gsched.g_free_mu.acquire()
 	gp := gsched.g_free.pop()
 	if gp != unsafe { nil } {
 		gsched.g_free_count--
 	}
-	gsched.g_free_mu.unlock()
+	gsched.g_free_mu.release()
 	return gp
 }
 
 // assign_goid allocates a unique goroutine ID.
 // Uses per-P caching to avoid contention (like Go's goidcache).
 fn assign_goid() u64 {
-	pp := get_current_p()
+	mut pp := get_current_p()
 	if pp != unsafe { nil } && pp.goid_cache < pp.goid_cache_end {
 		id := pp.goid_cache
 		unsafe {
@@ -585,7 +586,7 @@ fn assign_goid() u64 {
 	}
 	// Refill cache from global counter
 	batch := u64(16)
-	id := C.atomic_fetch_add(&gsched.goid_gen, batch)
+	id := C.goroutines_atomic_fetch_add_u64(&gsched.goid_gen, batch)
 	if pp != unsafe { nil } {
 		unsafe {
 			pp.goid_cache = id + 1
@@ -613,15 +614,13 @@ fn proc_yield(count int) {
 }
 
 // get_current_m returns the M for the current OS thread.
-// Uses thread-local storage.
-__global current_m = thread_local & Machine(unsafe { nil })
-
+// Uses thread-local storage via C _Thread_local (see tls.c).
 fn get_current_m() &Machine {
-	return current_m
+	return unsafe { &Machine(C.goroutines_get_current_m()) }
 }
 
 fn set_current_m(mp &Machine) {
-	current_m = unsafe { mp }
+	C.goroutines_set_current_m(voidptr(mp))
 }
 
 // get_current_p returns the P for the current OS thread's M.

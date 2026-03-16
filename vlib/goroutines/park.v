@@ -39,6 +39,9 @@ pub fn gopark(reason string) {
 // goready puts a waiting goroutine back on a run queue.
 // Translated from Go's goready() in proc.go.
 pub fn goready(gp &Goroutine) {
+	if gp == unsafe { nil } {
+		return
+	}
 	mut g := unsafe { gp }
 	if g.status != .waiting {
 		return
@@ -47,7 +50,7 @@ pub fn goready(gp &Goroutine) {
 	g.wait_reason = ''
 
 	// Put it on the current P's local run queue, or global if no P
-	pp := get_current_p()
+	mut pp := get_current_p()
 	if pp != unsafe { nil } {
 		runq_put(mut pp, g, true)
 	} else {

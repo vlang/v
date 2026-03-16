@@ -1,7 +1,7 @@
 // Goroutine benchmark in Go – equivalent to goroutine_benchmark.v.
 //
 // Tests:
-// 1. Goroutine creation + completion (fan-out/fan-in via channel)
+// 1. Goroutine creation + completion (fan-out/fan-in via unbuffered channel)
 // 2. Channel ping-pong between two goroutines
 // 3. Many goroutines contending on a single channel
 //
@@ -14,11 +14,11 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Benchmark 1 – fan-out / fan-in
+// Benchmark 1 – fan-out / fan-in (unbuffered channel)
 // ---------------------------------------------------------------------------
 
 func benchFanOutFanIn(n int) {
-	c := make(chan int, n)
+	c := make(chan int) // unbuffered, matching V benchmark
 
 	start := time.Now()
 
@@ -28,7 +28,6 @@ func benchFanOutFanIn(n int) {
 		}()
 	}
 
-	// Collect all results
 	for i := 0; i < n; i++ {
 		<-c
 	}
@@ -102,17 +101,19 @@ func main() {
 	fmt.Println("=== Go Goroutine Benchmark ===")
 	fmt.Println()
 
-	benchFanOutFanIn(1000)
-	benchFanOutFanIn(10000)
-	benchFanOutFanIn(100000)
+	benchFanOutFanIn(10)
+	benchFanOutFanIn(50)
+	benchFanOutFanIn(100)
+	benchFanOutFanIn(500)
 
 	fmt.Println()
+	benchPingPong(1000)
 	benchPingPong(10000)
 	benchPingPong(100000)
 
 	fmt.Println()
+	benchContendedChannel(4, 1000)
 	benchContendedChannel(10, 1000)
-	benchContendedChannel(100, 1000)
 
 	fmt.Println()
 }

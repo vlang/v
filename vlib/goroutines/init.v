@@ -49,6 +49,14 @@ fn init() {
 		}
 	}
 
+	// Create a "main goroutine" so chan_send/recv work from the main thread
+	mut main_g := &Goroutine{
+		id:     0
+		status: .running
+	}
+	m0.curg = main_g
+	main_g.m = m0
+
 	// Wire M0 to P0
 	mut p0 := gsched.allp[0]
 	wire_p(mut m0, mut p0)
@@ -78,14 +86,14 @@ pub fn set_max_procs(n int) int {
 
 // num_goroutine returns the number of goroutines that currently exist.
 pub fn num_goroutine() int {
-	allgs_mu.@lock()
+	allgs_mu.acquire()
 	mut count := 0
 	for g in allgs {
 		if g.status != .dead {
 			count++
 		}
 	}
-	allgs_mu.unlock()
+	allgs_mu.release()
 	return count
 }
 
@@ -93,11 +101,11 @@ pub fn num_goroutine() int {
 pub fn shutdown() {
 	gsched.stopped = true
 	// Wake all idle M's so they can exit
-	gsched.mu.@lock()
+	gsched.mu.acquire()
 	mut mp := gsched.midle
 	for mp != unsafe { nil } {
 		mp.park.post()
 		mp = mp.sched_link
 	}
-	gsched.mu.unlock()
+	gsched.mu.release()
 }

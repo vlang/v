@@ -15,13 +15,11 @@
 //   - closechan() -> chan_close()
 module goroutines
 
-import sync
-
 // Chan is a goroutine-safe channel for communication between goroutines.
 // Translated from Go's hchan struct in chan.go.
 pub struct Chan {
 pub mut:
-	mu       sync.Mutex // protects all fields
+	mu       SpinLock // protects all fields (spinlock is ucontext-safe)
 	qcount   u32        // total data in the queue
 	dataqsiz u32        // size of the circular buffer
 	buf      voidptr    // circular buffer for buffered channels
@@ -64,10 +62,10 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 	}
 
 	mut ch := unsafe { c }
-	ch.mu.@lock()
+	ch.mu.acquire()
 
 	if ch.closed {
-		ch.mu.unlock()
+		ch.mu.release()
 		panic('send on closed channel')
 	}
 
@@ -75,7 +73,7 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 	sg := ch.recvq.dequeue()
 	if sg != unsafe { nil } {
 		// Found a waiting receiver - send directly
-		ch.mu.unlock()
+		ch.mu.release()
 		send_direct(sg, ep, ch.elemsize)
 		return true
 	}
@@ -90,12 +88,12 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 			ch.sendx = 0
 		}
 		ch.qcount++
-		ch.mu.unlock()
+		ch.mu.release()
 		return true
 	}
 
 	if !block {
-		ch.mu.unlock()
+		ch.mu.release()
 		return false
 	}
 
@@ -107,7 +105,7 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 		c:    voidptr(ch)
 	}
 	ch.sendq.enqueue(mysg)
-	ch.mu.unlock()
+	ch.mu.release()
 
 	// Park the goroutine until a receiver wakes us
 	gopark('chan send')
@@ -129,12 +127,12 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 	}
 
 	mut ch := unsafe { c }
-	ch.mu.@lock()
+	ch.mu.acquire()
 
 	// Fast path: try to find a waiting sender
 	sg := ch.sendq.dequeue()
 	if sg != unsafe { nil } {
-		ch.mu.unlock()
+		ch.mu.release()
 		recv_direct(ch, sg, ep)
 		return true, true
 	}
@@ -150,12 +148,12 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 			ch.recvx = 0
 		}
 		ch.qcount--
-		ch.mu.unlock()
+		ch.mu.release()
 		return true, true
 	}
 
 	if ch.closed {
-		ch.mu.unlock()
+		ch.mu.release()
 		if ep != unsafe { nil } {
 			unsafe { C.memset(ep, 0, ch.elemsize) }
 		}
@@ -163,7 +161,7 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 	}
 
 	if !block {
-		ch.mu.unlock()
+		ch.mu.release()
 		return false, false
 	}
 
@@ -175,7 +173,7 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 		c:    voidptr(ch)
 	}
 	ch.recvq.enqueue(mysg)
-	ch.mu.unlock()
+	ch.mu.release()
 
 	// Park until a sender wakes us
 	gopark('chan receive')
@@ -191,10 +189,10 @@ pub fn chan_close(c &Chan) {
 	}
 
 	mut ch := unsafe { c }
-	ch.mu.@lock()
+	ch.mu.acquire()
 
 	if ch.closed {
-		ch.mu.unlock()
+		ch.mu.release()
 		panic('close of closed channel')
 	}
 
@@ -223,7 +221,7 @@ pub fn chan_close(c &Chan) {
 		goready(sg.g)
 	}
 
-	ch.mu.unlock()
+	ch.mu.release()
 }
 
 // send_direct sends data directly from sender to a waiting receiver.

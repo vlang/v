@@ -12,7 +12,7 @@ module goroutines
 // ucontext_t - POSIX context structure for cooperative context switching
 struct C.ucontext_t {
 mut:
-	uc_link  &C.ucontext_t
+	uc_link  &C.ucontext_t = unsafe { nil }
 	uc_stack C.stack_t
 }
 
