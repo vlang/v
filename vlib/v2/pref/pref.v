@@ -46,6 +46,7 @@ pub mut:
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // User-defined comptime flags via -d <name>
 	hot_fn                string   // Extract raw machine code for this function only (hot reload)
+	single_backend        bool     // Only include the selected backend (strip other backends from binary)
 	eval_runtime_args     []string // Program argv exposed to the eval backend
 pub:
 	vroot         string = detect_vroot()
@@ -245,7 +246,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
-		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0']
+		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
+		'-single-backend']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -290,6 +292,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
 		no_optimize:           '-O0' in options
+		single_backend:        '--single-backend' in options || '-single-backend' in options
 		backend:               backend
 		arch:                  arch
 		output_file:           output_file
@@ -343,6 +346,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
 		no_optimize:           '-O0' in options
+		single_backend:        '--single-backend' in options || '-single-backend' in options
 		backend:               backend
 		arch:                  arch
 	}

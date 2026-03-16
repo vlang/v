@@ -60,6 +60,11 @@ fn asm_add_imm(rd Reg, rn Reg, imm u32) u32 {
 	return 0x91000000 | (imm << 10) | (u32(rn) << 5) | u32(rd)
 }
 
+// add rd, rn, #imm, lsl #12
+fn asm_add_imm_lsl12(rd Reg, rn Reg, imm u32) u32 {
+	return 0x91400000 | (imm << 10) | (u32(rn) << 5) | u32(rd)
+}
+
 // add rd, rn, rm
 fn asm_add_reg(rd Reg, rn Reg, rm Reg) u32 {
 	return 0x8B000000 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
@@ -256,8 +261,39 @@ fn asm_str_b(rt Reg, rn Reg) u32 {
 }
 
 // str rt, [rn, #imm12] (scaled by 8)
+// imm12 is the byte offset divided by 8; range 0..32760 step 8
 fn asm_str_imm(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0xF9000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// str wt, [rn, #imm12] (32-bit store, unsigned offset scaled by 4)
+// imm12 is the byte offset divided by 4; range 0..16380 step 4
+fn asm_str_imm_w(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0xB9000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// strh wt, [rn, #imm12] (16-bit store, unsigned offset scaled by 2)
+// imm12 is the byte offset divided by 2; range 0..8190 step 2
+fn asm_str_imm_h(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0x79000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// strb wt, [rn, #imm12] (8-bit store, unsigned offset)
+// imm12 is the byte offset; range 0..4095
+fn asm_str_imm_b(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0x39000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// stp rt, rt2, [rn, #simm7] (store pair, signed offset scaled by 8)
+// simm7 is byte offset / 8; range -512..504 step 8
+fn asm_stp_offset(rt Reg, rt2 Reg, rn Reg, simm7 i32) u32 {
+	return 0xA9000000 | (u32(simm7 & 0x7F) << 15) | (u32(rt2) << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldp rt, rt2, [rn, #simm7] (load pair, signed offset scaled by 8)
+// simm7 is byte offset / 8; range -512..504 step 8
+fn asm_ldp_offset(rt Reg, rt2 Reg, rn Reg, simm7 i32) u32 {
+	return 0xA9400000 | (u32(simm7 & 0x7F) << 15) | (u32(rt2) << 10) | (u32(rn) << 5) | u32(rt)
 }
 
 // stur xt, [xn, #simm9] (unscaled 64-bit store)
@@ -307,9 +343,32 @@ fn asm_ldr_b(rt Reg, rn Reg) u32 {
 }
 
 // ldr rt, [rn, #imm12] (load 64-bit with unsigned scaled offset)
-// imm12 is the offset divided by 8 (scaled by element size)
+// imm12 is the byte offset divided by 8; range 0..32760 step 8
 fn asm_ldr_imm(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0xF9400000 | ((imm12 & 0xFFF) << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldr wt, [rn, #imm12] (32-bit load, unsigned offset scaled by 4)
+// imm12 is the byte offset divided by 4; range 0..16380 step 4
+fn asm_ldr_imm_w(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0xB9400000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrh wt, [rn, #imm12] (16-bit load, unsigned offset scaled by 2)
+// imm12 is the byte offset divided by 2; range 0..8190 step 2
+fn asm_ldr_imm_h(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0x79400000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrb wt, [rn, #imm12] (8-bit load, unsigned offset)
+// imm12 is the byte offset; range 0..4095
+fn asm_ldr_imm_b(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0x39400000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrsw xt, [rn, #imm12] (32-bit sign-extending load, unsigned offset scaled by 4)
+fn asm_ldrsw_imm(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0xB9800000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
 }
 
 // ldur xt, [xn, #simm9] (unscaled 64-bit load)

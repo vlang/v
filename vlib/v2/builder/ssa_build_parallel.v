@@ -109,11 +109,12 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	seed_instrs := mod.instrs.len
 	seed_blocks := mod.blocks.len
 	seed_types := mod.type_store.types.len
+	seed_funcs := mod.funcs.len
 
 	mut workers := []voidptr{cap: actual_chunks}
 	for ci := 0; ci < actual_chunks; ci++ {
 		mut worker_mod := mod.new_worker_module()
-		mut worker_b := ssa_builder.new_worker_clone(worker_mod)
+		mut worker_b := ssa_builder.new_worker_clone(worker_mod, ci)
 		workers << voidptr(worker_b)
 	}
 
@@ -153,16 +154,25 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	for ci := 0; ci < chunk_idx; ci++ {
 		w := unsafe { &ssa.Builder(workers[ci]) }
 		w_mod := w.mod
-		// Collect func_data from worker's modified funcs[]
+		// Collect func_data from worker's modified funcs[].
+		// Only include functions that were actually built by this worker,
+		// not pre-seeded synthetic functions (array__eq, wyhash*, etc.)
+		// whose blocks already exist in the main module from Phase 3.5.
 		mut func_data := []ssa.FuncSSAData{cap: 512}
 		for fi2 := 0; fi2 < w_mod.funcs.len; fi2++ {
 			wf := w_mod.funcs[fi2]
-			if wf.blocks.len > 0 {
-				func_data << ssa.FuncSSAData{
-					func_idx: fi2
-					blocks:   wf.blocks
-					params:   wf.params
-				}
+			if wf.blocks.len == 0 {
+				continue
+			}
+			// Seeded funcs (fi2 < seed_funcs) that already had blocks before
+			// workers started are not new work — skip them.
+			if fi2 < seed_funcs && wf.blocks[0] < seed_blocks {
+				continue
+			}
+			func_data << ssa.FuncSSAData{
+				func_idx: fi2
+				blocks:   wf.blocks
+				params:   wf.params
 			}
 		}
 		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks,

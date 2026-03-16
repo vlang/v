@@ -1506,6 +1506,24 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		ssa_builder.used_fn_keys = b.used_fn_keys.clone()
 	}
 
+	// --single-backend: strip unused backend modules from the binary
+	if b.pref.single_backend {
+		all_backends := ['cleanc', 'eval', 'c', 'x64', 'arm64']
+		own := match b.pref.backend {
+			.arm64 { 'arm64' }
+			.x64 { 'x64' }
+			.cleanc { 'cleanc' }
+			.c { 'c' }
+			.eval { 'eval' }
+			else { '' }
+		}
+		for backend_mod in all_backends {
+			if backend_mod != own {
+				ssa_builder.skip_modules[backend_mod] = true
+			}
+		}
+	}
+
 	// In hot_fn mode, only build the target function body (skip all others)
 	if b.pref.hot_fn.len > 0 {
 		ssa_builder.hot_fn = b.pref.hot_fn

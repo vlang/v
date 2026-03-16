@@ -89,6 +89,10 @@ pub mut:
 	env_trace_storeval    string
 	env_trace_regalloc    string
 	env_no_regalloc       bool
+	// SP-relative addressing: sp_base_offset = callee_saved_size + stack_size
+	// so that fp - N = sp + (sp_base_offset - N) for positive sp-relative offsets.
+	sp_base_offset int
+	sp_adjusted    bool // true when sp is temporarily modified (call arg push)
 	// Reverse map: val_id → block_id for block-kind values.
 	// Value.index is unreliable in ARM64-compiled binaries, so use this instead.
 	val_to_block []int
@@ -869,6 +873,11 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	}
 
 	g.emit_sub_sp(g.stack_size)
+
+	// Compute sp_base_offset for sp-relative addressing.
+	// sp = fp - callee_saved_size - stack_size, so fp - N = sp + (sp_base_offset + N).
+	g.sp_base_offset = callee_saved_size + g.stack_size
+	g.sp_adjusted = false
 
 	// Save x8 if this function returns a large struct
 	// x8 contains the indirect return pointer from the caller
@@ -1953,6 +1962,23 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				data_off := g.alloca_offsets[val_id]
 				g.emit_add_fp_imm(8, data_off)
+				// Zero-initialize large fixed array allocas.
+				// The SSA builder skips element-by-element zero-init for arrays > 16 elements,
+				// so the codegen must bulk-zero them here.
+				alloca_val := g.mod.values[val_id]
+				if alloca_val.typ > 0 && alloca_val.typ < g.mod.type_store.types.len {
+					alloca_ptr_type := g.mod.type_store.types[alloca_val.typ]
+					if alloca_ptr_type.kind == .ptr_t && alloca_ptr_type.elem_type > 0
+						&& alloca_ptr_type.elem_type < g.mod.type_store.types.len {
+						elem_typ := g.mod.type_store.types[alloca_ptr_type.elem_type]
+						if elem_typ.kind == .array_t && elem_typ.len > 16 {
+							arr_size := g.type_size(alloca_ptr_type.elem_type)
+							if arr_size > 0 {
+								g.zero_ptr_bytes(8, arr_size)
+							}
+						}
+					}
+				}
 				g.store_reg_to_val(8, val_id)
 			}
 		}
@@ -2137,6 +2163,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					// Allocate stack space for variadic args (8 bytes each, 16-byte aligned)
 					stack_space := ((num_variadic * 8) + 15) & ~0xF
 					if stack_space > 0 {
+						g.sp_adjusted = true
 						g.emit_sub_sp(stack_space)
 					}
 
@@ -2173,6 +2200,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit_mov_imm(10, u64(stack_space))
 							g.emit(asm_add_sp_reg(Reg(10)))
 						}
+						g.sp_adjusted = false
 					}
 				} else {
 					// Non-variadic call:
@@ -2214,6 +2242,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					total_stack_slots := num_int_stack + num_float_stack
 					stack_space := ((total_stack_slots * 8) + 15) & ~0xF
 					if stack_space > 0 {
+						g.sp_adjusted = true
 						g.emit_sub_sp(stack_space)
 						mut stack_idx := 0
 						for a in 0 .. num_args {
@@ -2297,6 +2326,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit_mov_imm(10, u64(stack_space))
 							g.emit(asm_add_sp_reg(Reg(10)))
 						}
+						g.sp_adjusted = false
 					}
 				}
 
@@ -2386,6 +2416,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			stack_space := ((num_stack_slots * 8) + 15) & ~0xF
 			if stack_space > 0 {
+				g.sp_adjusted = true
 				g.emit_sub_sp(stack_space)
 				mut stack_idx := 0
 				for a in 0 .. num_args {
@@ -2444,6 +2475,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit_mov_imm(10, u64(stack_space))
 					g.emit(asm_add_sp_reg(Reg(10)))
 				}
+				g.sp_adjusted = false
 			}
 
 			ci_result_typ_id := g.mod.values[val_id].typ
@@ -2501,6 +2533,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			stack_space := ((sr_num_stack_slots * 8) + 15) & ~0xF
 			if stack_space > 0 {
+				g.sp_adjusted = true
 				g.emit_sub_sp(stack_space)
 				mut stack_idx := 0
 				for a in 0 .. num_args {
@@ -2564,6 +2597,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit_mov_imm(10, u64(stack_space))
 					g.emit(asm_add_sp_reg(Reg(10)))
 				}
+				g.sp_adjusted = false
 			}
 		}
 		.ret {
@@ -5853,7 +5887,32 @@ fn (mut g Gen) emit_phi_copies(target_blk_id int) {
 }
 
 fn (mut g Gen) emit_add_fp_imm(rd int, imm int) {
-	val := -imm
+	val := -imm // val is the positive distance below FP
+	// SP-relative: fp - val = sp + (sp_base_offset - val)
+	// Only use SP-relative when it produces fewer instructions than FP-relative.
+	if !g.sp_adjusted && g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset - val
+		if sp_off >= 0 {
+			if sp_off <= 0xFFF {
+				// 1 instruction (vs 1-2 for FP) — always better or equal
+				g.emit(asm_add_imm(Reg(rd), sp, u32(sp_off)))
+				return
+			}
+			// 2-instruction SP path: only use when FP would need 2+ instructions
+			if val > 0xFFF {
+				sp_high := (sp_off >> 12) & 0xFFF
+				sp_low := sp_off & 0xFFF
+				if sp_high > 0 && sp_high <= 0xFFF && sp_low == 0 {
+					// 1 instruction: add rd, sp, #high, lsl #12
+					g.emit(asm_add_imm_lsl12(Reg(rd), sp, u32(sp_high)))
+					return
+				}
+				// FP would need 2 instructions (sub_lsl12 + sub).
+				// SP 2-instruction path (add_lsl12 + add) is equal.
+				// Only bother if sp_off fits cleanly.
+			}
+		}
+	}
 	if val <= 0xFFF {
 		g.emit(asm_sub_imm(Reg(rd), fp, u32(val)))
 	} else if val <= 0xFFFFFF {
@@ -5876,32 +5935,177 @@ fn (mut g Gen) emit_str_reg_offset(rt int, rn int, offset int) {
 }
 
 fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
+	// SP-relative addressing: convert fp-relative negative offsets to sp-relative positive.
+	if rn == 29 && offset < -255 && !g.sp_adjusted && g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset + offset
+		if sp_off >= 0 {
+			// Try 1-instruction: unsigned scaled immediate
+			scaled := match size {
+				8 {
+					if sp_off % 8 == 0 && sp_off / 8 < 4096 { sp_off / 8 } else { -1 }
+				}
+				4 {
+					if sp_off % 4 == 0 && sp_off / 4 < 4096 { sp_off / 4 } else { -1 }
+				}
+				2 {
+					if sp_off % 2 == 0 && sp_off / 2 < 4096 { sp_off / 2 } else { -1 }
+				}
+				1 {
+					if sp_off < 4096 { sp_off } else { -1 }
+				}
+				else {
+					-1
+				}
+			}
+			if scaled >= 0 {
+				match size {
+					1 { g.emit(asm_str_imm_b(Reg(rt), sp, u32(scaled))) }
+					2 { g.emit(asm_str_imm_h(Reg(rt), sp, u32(scaled))) }
+					4 { g.emit(asm_str_imm_w(Reg(rt), sp, u32(scaled))) }
+					else { g.emit(asm_str_imm(Reg(rt), sp, u32(scaled))) }
+				}
+				return
+			}
+			// Try 2-instruction: add scratch, sp, #imm; str rt, [scratch]
+			// Better than 3-instruction FP-relative for large offsets
+			neg := -offset
+			if neg > 0xFFF && sp_off <= 0xFFFFFF {
+				mut scratch := 11
+				if rt == scratch {
+					scratch = 12
+				}
+				sp_high := (sp_off >> 12) & 0xFFF
+				sp_low := sp_off & 0xFFF
+				if sp_low == 0 {
+					g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+					match size {
+						1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+						2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+						4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+						else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
+					}
+					return
+				}
+				if sp_high > 0 && sp_low <= 255 {
+					g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+					match size {
+						1 { g.emit(asm_stur_b(Reg(rt), Reg(scratch), sp_low)) }
+						2 { g.emit(asm_stur_h(Reg(rt), Reg(scratch), sp_low)) }
+						4 { g.emit(asm_stur_w(Reg(rt), Reg(scratch), sp_low)) }
+						else { g.emit(asm_stur(Reg(rt), Reg(scratch), sp_low)) }
+					}
+					return
+				}
+			}
+		}
+	}
 	if offset >= -255 && offset <= 255 {
+		// Case 1: stur with signed 9-bit offset (1 instruction)
 		match size {
 			1 { g.emit(asm_stur_b(Reg(rt), Reg(rn), offset)) }
 			2 { g.emit(asm_stur_h(Reg(rt), Reg(rn), offset)) }
 			4 { g.emit(asm_stur_w(Reg(rt), Reg(rn), offset)) }
 			else { g.emit(asm_stur(Reg(rt), Reg(rn), offset)) }
 		}
+	} else if offset > 0 {
+		// Positive offset: try unsigned scaled immediate (1 instruction)
+		scaled := match size {
+			8 {
+				if offset % 8 == 0 && offset / 8 < 4096 { offset / 8 } else { -1 }
+			}
+			4 {
+				if offset % 4 == 0 && offset / 4 < 4096 { offset / 4 } else { -1 }
+			}
+			2 {
+				if offset % 2 == 0 && offset / 2 < 4096 { offset / 2 } else { -1 }
+			}
+			1 {
+				if offset < 4096 { offset } else { -1 }
+			}
+			else {
+				-1
+			}
+		}
+		if scaled >= 0 {
+			match size {
+				1 { g.emit(asm_str_imm_b(Reg(rt), Reg(rn), u32(scaled))) }
+				2 { g.emit(asm_str_imm_h(Reg(rt), Reg(rn), u32(scaled))) }
+				4 { g.emit(asm_str_imm_w(Reg(rt), Reg(rn), u32(scaled))) }
+				else { g.emit(asm_str_imm(Reg(rt), Reg(rn), u32(scaled))) }
+			}
+		} else {
+			g.emit_str_reg_offset_sized_large(rt, rn, offset, size)
+		}
 	} else {
-		// Large offset: materialize effective address in a non-conflicting scratch register.
+		// Negative offset > 255: use sub_imm + str (2 instructions)
+		neg := -offset
 		mut scratch := 11
 		if rt == scratch || rn == scratch {
 			scratch = 12
 		}
-		if offset < 0 {
-			g.emit_mov_imm64(scratch, i64(-offset))
-			g.emit(asm_sub_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+		if neg <= 0xFFF {
+			// sub scratch, rn, #neg; str rt, [scratch]
+			g.emit(asm_sub_imm(Reg(scratch), Reg(rn), u32(neg)))
+			match size {
+				1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+				2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+				4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+				else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
+			}
+		} else if neg <= 0xFFFFFF {
+			// Split into high (shifted by 12) and low parts
+			// sub scratch, rn, #high, lsl #12; sub scratch, scratch, #low; str rt, [scratch]
+			// Or better: sub scratch, rn, #high, lsl #12; str rt, [scratch, #-low] if low fits stur
+			high := (neg >> 12) & 0xFFF
+			low := neg & 0xFFF
+			g.emit(asm_sub_imm_lsl12(Reg(scratch), Reg(rn), u32(high)))
+			if low == 0 {
+				match size {
+					1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+					2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+					4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+					else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
+				}
+			} else if low <= 255 {
+				// Use stur with small negative offset from scratch
+				match size {
+					1 { g.emit(asm_stur_b(Reg(rt), Reg(scratch), -low)) }
+					2 { g.emit(asm_stur_h(Reg(rt), Reg(scratch), -low)) }
+					4 { g.emit(asm_stur_w(Reg(rt), Reg(scratch), -low)) }
+					else { g.emit(asm_stur(Reg(rt), Reg(scratch), -low)) }
+				}
+			} else {
+				g.emit(asm_sub_imm(Reg(scratch), Reg(scratch), u32(low)))
+				match size {
+					1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+					2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+					4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+					else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
+				}
+			}
 		} else {
-			g.emit_mov_imm64(scratch, i64(offset))
-			g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+			g.emit_str_reg_offset_sized_large(rt, rn, offset, size)
 		}
-		match size {
-			1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
-			2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
-			4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
-			else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
-		}
+	}
+}
+
+fn (mut g Gen) emit_str_reg_offset_sized_large(rt int, rn int, offset int, size int) {
+	mut scratch := 11
+	if rt == scratch || rn == scratch {
+		scratch = 12
+	}
+	if offset < 0 {
+		g.emit_mov_imm64(scratch, i64(-offset))
+		g.emit(asm_sub_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+	} else {
+		g.emit_mov_imm64(scratch, i64(offset))
+		g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+	}
+	match size {
+		1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+		2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+		4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+		else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
 	}
 }
 
@@ -5910,32 +6114,173 @@ fn (mut g Gen) emit_ldr_reg_offset(rt int, rn int, offset int) {
 }
 
 fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
+	// SP-relative addressing: convert fp-relative negative offsets to sp-relative positive.
+	if rn == 29 && offset < -255 && !g.sp_adjusted && g.sp_base_offset > 0 {
+		sp_off := g.sp_base_offset + offset
+		if sp_off >= 0 {
+			// Try 1-instruction: unsigned scaled immediate
+			scaled := match size {
+				8 {
+					if sp_off % 8 == 0 && sp_off / 8 < 4096 { sp_off / 8 } else { -1 }
+				}
+				4 {
+					if sp_off % 4 == 0 && sp_off / 4 < 4096 { sp_off / 4 } else { -1 }
+				}
+				2 {
+					if sp_off % 2 == 0 && sp_off / 2 < 4096 { sp_off / 2 } else { -1 }
+				}
+				1 {
+					if sp_off < 4096 { sp_off } else { -1 }
+				}
+				else {
+					-1
+				}
+			}
+			if scaled >= 0 {
+				match size {
+					1 { g.emit(asm_ldr_imm_b(Reg(rt), sp, u32(scaled))) }
+					2 { g.emit(asm_ldr_imm_h(Reg(rt), sp, u32(scaled))) }
+					4 { g.emit(asm_ldr_imm_w(Reg(rt), sp, u32(scaled))) }
+					else { g.emit(asm_ldr_imm(Reg(rt), sp, u32(scaled))) }
+				}
+				return
+			}
+			// Try 2-instruction: add scratch, sp, #imm; ldr rt, [scratch]
+			// Better than 3-instruction FP-relative for large offsets
+			neg := -offset
+			if neg > 0xFFF && sp_off <= 0xFFFFFF {
+				mut scratch := 11
+				if rt == scratch {
+					scratch = 12
+				}
+				sp_high := (sp_off >> 12) & 0xFFF
+				sp_low := sp_off & 0xFFF
+				if sp_low == 0 {
+					g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+					match size {
+						1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+						2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+						4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+						else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
+					}
+					return
+				}
+				if sp_high > 0 && sp_low <= 255 {
+					g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
+					match size {
+						1 { g.emit(asm_ldur_b(Reg(rt), Reg(scratch), sp_low)) }
+						2 { g.emit(asm_ldur_h(Reg(rt), Reg(scratch), sp_low)) }
+						4 { g.emit(asm_ldur_w(Reg(rt), Reg(scratch), sp_low)) }
+						else { g.emit(asm_ldur(Reg(rt), Reg(scratch), sp_low)) }
+					}
+					return
+				}
+			}
+		}
+	}
 	if offset >= -255 && offset <= 255 {
+		// Case 1: ldur with signed 9-bit offset (1 instruction)
 		match size {
 			1 { g.emit(asm_ldur_b(Reg(rt), Reg(rn), offset)) }
 			2 { g.emit(asm_ldur_h(Reg(rt), Reg(rn), offset)) }
 			4 { g.emit(asm_ldur_w(Reg(rt), Reg(rn), offset)) }
 			else { g.emit(asm_ldur(Reg(rt), Reg(rn), offset)) }
 		}
+	} else if offset > 0 {
+		// Positive offset: try unsigned scaled immediate (1 instruction)
+		scaled := match size {
+			8 {
+				if offset % 8 == 0 && offset / 8 < 4096 { offset / 8 } else { -1 }
+			}
+			4 {
+				if offset % 4 == 0 && offset / 4 < 4096 { offset / 4 } else { -1 }
+			}
+			2 {
+				if offset % 2 == 0 && offset / 2 < 4096 { offset / 2 } else { -1 }
+			}
+			1 {
+				if offset < 4096 { offset } else { -1 }
+			}
+			else {
+				-1
+			}
+		}
+		if scaled >= 0 {
+			match size {
+				1 { g.emit(asm_ldr_imm_b(Reg(rt), Reg(rn), u32(scaled))) }
+				2 { g.emit(asm_ldr_imm_h(Reg(rt), Reg(rn), u32(scaled))) }
+				4 { g.emit(asm_ldr_imm_w(Reg(rt), Reg(rn), u32(scaled))) }
+				else { g.emit(asm_ldr_imm(Reg(rt), Reg(rn), u32(scaled))) }
+			}
+		} else {
+			g.emit_ldr_reg_offset_sized_large(rt, rn, offset, size)
+		}
 	} else {
-		// Large offset: materialize effective address in a non-conflicting scratch register.
+		// Negative offset > 255: use sub_imm + ldr (2 instructions)
+		neg := -offset
 		mut scratch := 11
 		if rt == scratch || rn == scratch {
 			scratch = 12
 		}
-		if offset < 0 {
-			g.emit_mov_imm64(scratch, i64(-offset))
-			g.emit(asm_sub_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+		if neg <= 0xFFF {
+			// sub scratch, rn, #neg; ldr rt, [scratch]
+			g.emit(asm_sub_imm(Reg(scratch), Reg(rn), u32(neg)))
+			match size {
+				1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+				2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+				4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+				else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
+			}
+		} else if neg <= 0xFFFFFF {
+			high := (neg >> 12) & 0xFFF
+			low := neg & 0xFFF
+			g.emit(asm_sub_imm_lsl12(Reg(scratch), Reg(rn), u32(high)))
+			if low == 0 {
+				match size {
+					1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+					2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+					4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+					else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
+				}
+			} else if low <= 255 {
+				match size {
+					1 { g.emit(asm_ldur_b(Reg(rt), Reg(scratch), -low)) }
+					2 { g.emit(asm_ldur_h(Reg(rt), Reg(scratch), -low)) }
+					4 { g.emit(asm_ldur_w(Reg(rt), Reg(scratch), -low)) }
+					else { g.emit(asm_ldur(Reg(rt), Reg(scratch), -low)) }
+				}
+			} else {
+				g.emit(asm_sub_imm(Reg(scratch), Reg(scratch), u32(low)))
+				match size {
+					1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+					2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+					4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+					else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
+				}
+			}
 		} else {
-			g.emit_mov_imm64(scratch, i64(offset))
-			g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+			g.emit_ldr_reg_offset_sized_large(rt, rn, offset, size)
 		}
-		match size {
-			1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
-			2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
-			4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
-			else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
-		}
+	}
+}
+
+fn (mut g Gen) emit_ldr_reg_offset_sized_large(rt int, rn int, offset int, size int) {
+	mut scratch := 11
+	if rt == scratch || rn == scratch {
+		scratch = 12
+	}
+	if offset < 0 {
+		g.emit_mov_imm64(scratch, i64(-offset))
+		g.emit(asm_sub_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+	} else {
+		g.emit_mov_imm64(scratch, i64(offset))
+		g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
+	}
+	match size {
+		1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+		2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+		4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+		else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
 	}
 }
 
@@ -5943,22 +6288,32 @@ fn (mut g Gen) zero_fp_bytes(dst_off int, size int) {
 	if size <= 0 {
 		return
 	}
-	g.emit_mov_reg(10, 31)
+	// Use stp xzr, xzr for 16-byte chunks when offset is stp-compatible
 	mut off := 0
-	for off + 8 <= size {
-		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 8)
+	for off + 16 <= size {
+		simm7 := (dst_off + off) / 8
+		if (dst_off + off) % 8 == 0 && simm7 >= -64 && simm7 < 64 {
+			g.emit(asm_stp_offset(Reg(31), Reg(31), fp, simm7))
+		} else {
+			g.emit_str_reg_offset_sized(31, 29, dst_off + off, 8)
+			g.emit_str_reg_offset_sized(31, 29, dst_off + off + 8, 8)
+		}
+		off += 16
+	}
+	if off + 8 <= size {
+		g.emit_str_reg_offset_sized(31, 29, dst_off + off, 8)
 		off += 8
 	}
 	if off + 4 <= size {
-		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 4)
+		g.emit_str_reg_offset_sized(31, 29, dst_off + off, 4)
 		off += 4
 	}
 	if off + 2 <= size {
-		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 2)
+		g.emit_str_reg_offset_sized(31, 29, dst_off + off, 2)
 		off += 2
 	}
 	if off < size {
-		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 1)
+		g.emit_str_reg_offset_sized(31, 29, dst_off + off, 1)
 	}
 }
 
@@ -5978,7 +6333,23 @@ fn (mut g Gen) copy_ptr_to_fp_bytes(src_reg int, dst_off int, size int) {
 	br_zero_off := g.macho.text_data.len
 	g.emit(asm_b_cond(cond_eq, 0))
 	mut off := 0
-	for off + 8 <= size {
+	// Use ldp/stp pairs for 16-byte chunks
+	for off + 16 <= size {
+		src_simm7 := off / 8
+		dst_simm7 := (dst_off + off) / 8
+		if off % 8 == 0 && src_simm7 >= -64 && src_simm7 < 64 && (dst_off + off) % 8 == 0
+			&& dst_simm7 >= -64 && dst_simm7 < 64 {
+			g.emit(asm_ldp_offset(Reg(10), Reg(14), Reg(sreg), src_simm7))
+			g.emit(asm_stp_offset(Reg(10), Reg(14), fp, dst_simm7))
+		} else {
+			g.emit_ldr_reg_offset_sized(10, sreg, off, 8)
+			g.emit_str_reg_offset_sized(10, 29, dst_off + off, 8)
+			g.emit_ldr_reg_offset_sized(14, sreg, off + 8, 8)
+			g.emit_str_reg_offset_sized(14, 29, dst_off + off + 8, 8)
+		}
+		off += 16
+	}
+	if off + 8 <= size {
 		g.emit_ldr_reg_offset_sized(10, sreg, off, 8)
 		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 8)
 		off += 8
@@ -6023,7 +6394,23 @@ fn (mut g Gen) copy_ptr_offset_to_fp_bytes(src_reg int, src_off int, dst_off int
 	br_zero_off := g.macho.text_data.len
 	g.emit(asm_b_cond(cond_eq, 0))
 	mut off := 0
-	for off + 8 <= size {
+	// Use ldp/stp pairs for 16-byte chunks
+	for off + 16 <= size {
+		src_simm7 := (src_off + off) / 8
+		dst_simm7 := (dst_off + off) / 8
+		if (src_off + off) % 8 == 0 && src_simm7 >= -64 && src_simm7 < 64
+			&& (dst_off + off) % 8 == 0 && dst_simm7 >= -64 && dst_simm7 < 64 {
+			g.emit(asm_ldp_offset(Reg(10), Reg(14), Reg(sreg), src_simm7))
+			g.emit(asm_stp_offset(Reg(10), Reg(14), fp, dst_simm7))
+		} else {
+			g.emit_ldr_reg_offset_sized(10, sreg, src_off + off, 8)
+			g.emit_str_reg_offset_sized(10, 29, dst_off + off, 8)
+			g.emit_ldr_reg_offset_sized(14, sreg, src_off + off + 8, 8)
+			g.emit_str_reg_offset_sized(14, 29, dst_off + off + 8, 8)
+		}
+		off += 16
+	}
+	if off + 8 <= size {
 		g.emit_ldr_reg_offset_sized(10, sreg, src_off + off, 8)
 		g.emit_str_reg_offset_sized(10, 29, dst_off + off, 8)
 		off += 8
@@ -6057,22 +6444,32 @@ fn (mut g Gen) zero_ptr_bytes(dst_reg int, size int) {
 	if size <= 0 {
 		return
 	}
-	g.emit_mov_reg(10, 31)
 	mut off := 0
-	for off + 8 <= size {
-		g.emit_str_reg_offset_sized(10, dst_reg, off, 8)
+	// Use stp xzr, xzr for 16-byte chunks
+	for off + 16 <= size {
+		simm7 := off / 8
+		if off % 8 == 0 && simm7 >= 0 && simm7 < 64 {
+			g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(dst_reg), simm7))
+		} else {
+			g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
+			g.emit_str_reg_offset_sized(31, dst_reg, off + 8, 8)
+		}
+		off += 16
+	}
+	if off + 8 <= size {
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
 		off += 8
 	}
 	if off + 4 <= size {
-		g.emit_str_reg_offset_sized(10, dst_reg, off, 4)
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 4)
 		off += 4
 	}
 	if off + 2 <= size {
-		g.emit_str_reg_offset_sized(10, dst_reg, off, 2)
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 2)
 		off += 2
 	}
 	if off < size {
-		g.emit_str_reg_offset_sized(10, dst_reg, off, 1)
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 1)
 	}
 }
 

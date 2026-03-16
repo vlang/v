@@ -25,6 +25,8 @@ pub mut:
 	skip_fn_bodies bool
 	// When set, only build functions whose decl key is in this map (dead code elimination).
 	used_fn_keys map[string]bool
+	// When set, skip all functions from these modules (dead code elimination for unused backends).
+	skip_modules map[string]bool
 mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
@@ -106,7 +108,8 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 
 // new_worker_clone creates a Builder for parallel SSA building.
 // Shares read-only maps from the main builder, uses a separate worker Module.
-pub fn (mut b Builder) new_worker_clone(worker_mod &Module) &Builder {
+// worker_idx offsets anon_fn_counter so workers don't generate conflicting names.
+pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Builder {
 	// Clone all maps to avoid COW races between threads.
 	// Maps that are read-only in Phase 4 (struct_types, enum_values, const_values, etc.)
 	// still need cloning because V's map read operations can trigger internal COW writes.
@@ -127,6 +130,9 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module) &Builder {
 		const_array_elem_count: b.const_array_elem_count.clone()
 		option_wrapper_types:   b.option_wrapper_types.clone()
 		result_wrapper_types:   b.result_wrapper_types.clone()
+		// Offset anon_fn_counter so each worker generates unique names.
+		// Stride of 100_000 per worker avoids collisions.
+		anon_fn_counter: (worker_idx + 1) * 100_000
 		// Per-function state is reset at start of each build_fn, so empty init is fine
 		fn_refs:        map[string]ValueID{}
 		vars:           map[string]ValueID{}
@@ -2210,6 +2216,10 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 // should_build_fn returns true if the function should be compiled.
 // When used_fn_keys is populated (markused ran), only reachable functions are built.
 pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
+	// Skip entire modules for unused backends (e.g., cleanc/eval/x64 when building arm64-only)
+	if b.skip_modules.len > 0 && b.cur_module in b.skip_modules {
+		return false
+	}
 	if b.used_fn_keys.len == 0 {
 		return true // No markused data — build everything
 	}
@@ -6083,18 +6093,21 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 				arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
 				ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
 				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-				// Zero-initialize each element
-				zero := b.mod.get_or_add_const(elem_type, '0')
-				elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
-				i32_t := b.mod.type_store.get_int(32)
-				for i in 0 .. arr_len {
-					idx := b.mod.get_or_add_const(i32_t, i.str())
-					gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
-						[
-						alloca,
-						idx,
-					])
-					b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
+				// For small arrays (<=16 elements), zero-initialize element by element.
+				// For larger arrays, the codegen will bulk-zero the alloca slot.
+				if arr_len <= 16 {
+					zero := b.mod.get_or_add_const(elem_type, '0')
+					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+					i32_t := b.mod.type_store.get_int(32)
+					for i in 0 .. arr_len {
+						idx := b.mod.get_or_add_const(i32_t, i.str())
+						gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
+							[
+							alloca,
+							idx,
+						])
+						b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
+					}
 				}
 				return alloca
 			}
