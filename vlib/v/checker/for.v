@@ -143,8 +143,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			}
 			if node.cond is ast.Ident {
 				cond_ident := node.cond as ast.Ident
-				if cond_ident.obj is ast.Var
-					&& c.table.is_interface_smartcast(cond_ident.obj) && cond_ident.obj.smartcasts.len > 0
+				if cond_ident.obj is ast.Var && c.table.is_interface_smartcast(cond_ident.obj)
+					&& cond_ident.obj.smartcasts.len > 0
 					&& cond_ident.obj.smartcasts.last().is_ptr()
 					&& sym.kind in [.array, .array_fixed, .map] {
 					node.val_is_ref = true

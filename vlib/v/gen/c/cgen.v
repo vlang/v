@@ -6571,8 +6571,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		resolved_scope_type := g.resolved_scope_var_type(node.expr)
 		if resolved_current_type != 0 {
 			expr_type = resolved_current_type
-		} else if resolved_scope_type != 0
-			&& (node.expr_type.has_option_or_result()
+		} else if resolved_scope_type != 0 && (node.expr_type.has_option_or_result()
 			|| g.table.sym(g.unwrap_generic(node.expr_type)).kind in [.interface, .sum_type, .any]
 			|| sym.kind in [.sum_type, .interface]) {
 			expr_type = resolved_scope_type

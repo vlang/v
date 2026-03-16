@@ -43,8 +43,7 @@ mut:
 
 // DecoderOptions provides options for JSON decoding.
 // By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
-@[params]
-@[markused]
+@[markused; params]
 pub struct DecoderOptions {
 pub:
 	// In strict mode, quoted strings are not accepted as numbers.
@@ -522,7 +521,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										if unsafe {
 											vmemcmp(decoder.json.str +
 												decoder.current_node.next.value.position,
-												'0.0'.str, '0.0'.len) == 0
+												c'0.0', '0.0'.len) == 0
 										} {
 											current_field_info = current_field_info.next
 											continue
@@ -662,8 +661,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str,
-				'true'.len) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, c'true', 'true'.len) == 0
 		}
 	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value

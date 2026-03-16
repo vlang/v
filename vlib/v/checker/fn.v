@@ -2428,8 +2428,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
-		&& (!(left_sym.kind == .alias && left_sym.has_method(method_name))
-		|| use_builtin_array_sort) {
+		&& (!(left_sym.has_method(method_name)) || use_builtin_array_sort) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
 		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias

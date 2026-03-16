@@ -391,7 +391,8 @@ fn (mut g Gen) recover_specialized_generic_context_for(fn_name string) ([]string
 						continue
 					}
 					receiver_generic_names := g.table.generic_type_names(generic_fn.receiver.typ)
-					if receiver_generic_names.len == 0 || concrete_types.len <= receiver_generic_names.len {
+					if receiver_generic_names.len == 0
+						|| concrete_types.len <= receiver_generic_names.len {
 						continue
 					}
 					method_only_concrete_types := concrete_types[receiver_generic_names.len..]

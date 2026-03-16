@@ -1,8 +1,7 @@
 module json2
 
 // increment checks eof and increments checker by one
-@[inline]
-@[markused]
+@[inline; markused]
 fn (mut checker Decoder) increment(message string) ! {
 	if checker.checker_idx + 1 == checker.json.len {
 		if message == '' {
@@ -14,8 +13,7 @@ fn (mut checker Decoder) increment(message string) ! {
 }
 
 // skip_whitespace checks eof and increments checker until next non whitespace character
-@[inline]
-@[markused]
+@[inline; markused]
 fn (mut checker Decoder) skip_whitespace(message string) ! {
 	for checker.json[checker.checker_idx] in whitespace_chars {
 		checker.increment(message)!
@@ -213,7 +211,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, 'true'.str, 'true'.len)
+				vmemcmp(checker.json.str + checker.checker_idx, c'true', 'true'.len)
 			}
 
 			if is_not_ok != 0 {
@@ -228,7 +226,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, 'false'.str, 'false'.len)
+				vmemcmp(checker.json.str + checker.checker_idx, c'false', 'false'.len)
 			}
 
 			if is_not_ok != 0 {
@@ -252,7 +250,7 @@ fn (mut checker Decoder) check_null() ! {
 	}
 
 	is_not_ok := unsafe {
-		vmemcmp(checker.json.str + checker.checker_idx, 'null'.str, 'null'.len)
+		vmemcmp(checker.json.str + checker.checker_idx, c'null', 'null'.len)
 	}
 
 	if is_not_ok != 0 {
