@@ -87,7 +87,8 @@ const core_cache_compiler_dependency_dirs = [
 const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v']
 
 fn (b &Builder) core_cache_dir() string {
-	return cache_path_join(os.temp_dir(), 'v2_cleanc_obj_cache')
+	base := if b.pref.is_prod { 'v2_cleanc_obj_cache_prod' } else { 'v2_cleanc_obj_cache' }
+	return cache_path_join(os.temp_dir(), base)
 }
 
 fn (b &Builder) ensure_core_cache_dir() bool {
@@ -263,6 +264,12 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 		if !os.exists(header_path) {
 			return false
 		}
+		// .vh files must have content — empty headers cause missing
+		// symbol errors during split compilation.
+		header_size := os.file_size(header_path)
+		if header_size == 0 {
+			return false
+		}
 	}
 	return true
 }
@@ -318,6 +325,13 @@ fn (mut b Builder) ensure_core_module_headers() {
 		header_source = repair_missing_struct_field_types(header_source, source_struct_fields)
 		header_source = ensure_ierror_interface_methods(header_source)
 		if header_source.len == 0 {
+			// Empty header would cause missing symbols in split compilation.
+			// Remove any partial headers already written and skip stamp update
+			// so the next build retries generation.
+			for cleanup_name in core_cached_module_names {
+				os.rm(b.core_header_path(cleanup_name)) or {}
+			}
+			os.rm(b.core_headers_stamp_path()) or {}
 			return
 		}
 		if !header_source.ends_with('\n') {

@@ -226,6 +226,10 @@ fn (mut g Gen) emit_live_reload_infrastructure() {
 	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
 		return
 	}
+	// Skip in cached module sources — __v_live_init belongs only in the main module.
+	if g.cache_bundle_name.len > 0 {
+		return
+	}
 	if g.live_fns.len == 0 {
 		// No @[live] functions — emit a no-op __v_live_init
 		g.sb.writeln('')
