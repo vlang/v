@@ -313,6 +313,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define HEAP(type, expr) ((type*)builtin__memdup((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_noscan(type, expr) ((type*)builtin__memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_align(type, expr, align) ((type*)builtin__memdup_align((void*)&((type[]){expr}[0]), sizeof(type), align))
+#define HEAP_vgc(type, expr, ptrmap, nptrs) ((type*)builtin__vgc_memdup_typed((void*)&((type[]){expr}[0]), sizeof(type), (ptrmap), (nptrs)))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many(arr, tmp.data, tmp.len);}
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '

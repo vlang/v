@@ -46,6 +46,10 @@ pub fn malloc(n isize) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_MALLOC(n)
@@ -91,6 +95,10 @@ pub fn malloc_noscan(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	} $else $if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc_noscan(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		$if gcboehm_opt ? {
 			unsafe {
@@ -151,6 +159,10 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_MALLOC_UNCOLLECTABLE(n)
@@ -195,6 +207,8 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 			C.memcpy(new_ptr, b, n)
 		}
 		return new_ptr
+	} $else $if vgc ? {
+		new_ptr = unsafe { &u8(vgc_realloc(b, usize(n))) }
 	} $else $if gcboehm ? {
 		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
@@ -249,7 +263,9 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		}
 	}
 	mut nptr := &u8(unsafe { nil })
-	$if gcboehm ? {
+	$if vgc ? {
+		nptr = unsafe { &u8(vgc_realloc(old_data, usize(new_size))) }
+	} $else $if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
 		$if windows {
@@ -285,6 +301,8 @@ pub fn vcalloc(n isize) &u8 {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if native {
 		return unsafe { C.calloc(1, n) }
+	} $else $if vgc ? {
+		return unsafe { &u8(vgc_calloc(usize(n))) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
@@ -314,6 +332,11 @@ pub fn vcalloc_noscan(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
+	} $else $if vgc ? {
+		if n < 0 {
+			_memory_panic(@FN, n)
+		}
+		return unsafe { &u8(vgc_calloc(usize(n))) }
 	} $else $if gcboehm ? {
 		if n < 0 {
 			_memory_panic(@FN, n)
@@ -352,6 +375,10 @@ pub fn free(ptr voidptr) {
 	}
 	$if prealloc {
 		return
+	} $else $if vgc ? {
+		// VGC: explicit free is optional (GC will collect unreachable objects).
+		// But hint the allocator for faster reuse.
+		vgc_free(ptr)
 	} $else $if gcboehm ? {
 		// It is generally better to leave it to Boehm's gc to free things.
 		// Calling C.GC_FREE(ptr) was tried initially, but does not work
@@ -489,7 +516,16 @@ pub:
 
 // gc_heap_usage returns the info about heap usage.
 pub fn gc_heap_usage() GCHeapUsage {
-	$if gcboehm ? {
+	$if vgc ? {
+		heap_size, free_bytes, total_bytes, unmapped, bytes_since := vgc_heap_usage()
+		return GCHeapUsage{
+			heap_size:      heap_size
+			free_bytes:     free_bytes
+			total_bytes:    total_bytes
+			unmapped_bytes: unmapped
+			bytes_since_gc: bytes_since
+		}
+	} $else $if gcboehm ? {
 		mut res := GCHeapUsage{}
 		C.GC_get_heap_usage_safe(&res.heap_size, &res.free_bytes, &res.unmapped_bytes,
 			&res.bytes_since_gc, &res.total_bytes)
@@ -501,7 +537,9 @@ pub fn gc_heap_usage() GCHeapUsage {
 
 // gc_memory_use returns the total memory use in bytes by all allocated blocks.
 pub fn gc_memory_use() usize {
-	$if gcboehm ? {
+	$if vgc ? {
+		return vgc_memory_use()
+	} $else $if gcboehm ? {
 		return C.GC_get_memory_use()
 	} $else {
 		return 0

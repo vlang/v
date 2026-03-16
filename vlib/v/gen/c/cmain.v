@@ -166,6 +166,9 @@ fn (mut g Gen) gen_c_main_header() {
 		}
 		g.writeln('#endif')
 	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
+	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	}
@@ -219,6 +222,9 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 			g.writeln('\tGC_enable_incremental();')
 		}
 		g.writeln('#endif')
+	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(argc, (voidptr)argv);')

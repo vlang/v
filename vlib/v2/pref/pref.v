@@ -21,6 +21,15 @@ pub enum Arch {
 	arm64
 }
 
+// GarbageCollectionMode controls which garbage collector is used.
+// Translated from Go's runtime GC, the `vgc` mode provides a concurrent
+// tri-color mark-and-sweep collector written in pure V.
+pub enum GarbageCollectionMode {
+	no_gc // no garbage collection
+	vgc   // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
+	boehm // Boehm-Demers-Weiser conservative GC (legacy)
+}
+
 pub struct Preferences {
 pub mut:
 	debug                 bool
@@ -28,19 +37,20 @@ pub mut:
 	skip_genv             bool
 	skip_builtin          bool
 	skip_imports          bool
-	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
-	no_parallel           bool // when true, run type check sequentially (default: parallel)
-	no_parallel_transform bool // when true, run transform sequentially (default: parallel)
-	no_cache              bool // Disable build cache
-	no_markused           bool // Disable markused stage and dead-function pruning
-	show_cc               bool // Print C compiler command(s)
-	stats                 bool // Print extended statistics
-	print_parsed_files    bool // Print all parsed files grouped by full/.vh parse mode
-	keep_c                bool // Keep generated C file after compilation
-	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
-	is_shared_lib         bool // Compile to shared library (.dylib/.so) for live reload
-	no_optimize           bool // -O0: skip SSA optimization (mem2reg, phi elimination)
-	is_prod               bool // -prod: use -O3 optimization for C compiler
+	skip_type_check       bool                  // Skip type checking phase (for backends that don't need it yet)
+	no_parallel           bool                  // when true, run type check sequentially (default: parallel)
+	no_parallel_transform bool                  // when true, run transform sequentially (default: parallel)
+	no_cache              bool                  // Disable build cache
+	no_markused           bool                  // Disable markused stage and dead-function pruning
+	show_cc               bool                  // Print C compiler command(s)
+	stats                 bool                  // Print extended statistics
+	print_parsed_files    bool                  // Print all parsed files grouped by full/.vh parse mode
+	keep_c                bool                  // Keep generated C file after compilation
+	use_context_allocator bool                  // Use context allocator for heap allocations (enables profiling)
+	is_shared_lib         bool                  // Compile to shared library (.dylib/.so) for live reload
+	no_optimize           bool                  // -O0: skip SSA optimization (mem2reg, phi elimination)
+	is_prod               bool                  // -prod: use -O3 optimization for C compiler
+	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
 	arch                  Arch = .auto
 	output_file           string
@@ -238,6 +248,36 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		hot_fn_str = ''
 	}
 
+	// Parse -gc <mode> for garbage collection
+	gc_mode_str := cmdline.option(args, '-gc', '')
+	mut gc_mode := GarbageCollectionMode.no_gc
+	mut gc_defines := []string{}
+	match gc_mode_str {
+		'', 'none' {
+			gc_mode = .no_gc
+		}
+		'vgc' {
+			gc_mode = .vgc
+			gc_defines << 'vgc'
+		}
+		'boehm' {
+			gc_mode = .boehm
+			gc_defines << 'gcboehm'
+			gc_defines << 'gcboehm_full'
+			gc_defines << 'gcboehm_opt'
+		}
+		else {
+			eprintln('error: unknown garbage collection mode `-gc ${gc_mode_str}`')
+			eprintln('  `-gc vgc` .............. V GC: concurrent tri-color mark-and-sweep (translated from Go)')
+			eprintln('  `-gc boehm` ............ Boehm-Demers-Weiser conservative GC')
+			eprintln('  `-gc none` ............. no garbage collection (default)')
+			exit(1)
+		}
+	}
+
+	mut all_defines := user_defines.clone()
+	all_defines << gc_defines
+
 	options := cmdline.only_options(args)
 
 	// Validate flags: error on unknown options
@@ -296,11 +336,12 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		no_optimize:           '-O0' in options
 		is_prod:               '-prod' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
+		gc_mode:               gc_mode
 		backend:               backend
 		arch:                  arch
 		output_file:           output_file
 		printfn_list:          printfn_list
-		user_defines:          user_defines
+		user_defines:          all_defines
 		hot_fn:                hot_fn_str
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()

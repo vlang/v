@@ -24,32 +24,38 @@ fn C.GC_get_memory_use() usize
 fn C.GC_gcollect()
 
 // gc_check_leaks is useful for detecting leaks, but it needs the GC to run.
-// When GC is not used, it is a NOP.
+// When GC is not used, it is a NOP. When VGC is active, delegates to vgc.
 pub fn gc_check_leaks() {}
 
 // gc_is_enabled() returns true, if the GC is enabled at runtime.
-// It will always return false, with `-gc none`.
-// See also gc_disable() and gc_enable().
+// With `-gc none` returns false. With `-gc vgc` delegates to the VGC.
 pub fn gc_is_enabled() bool {
+	$if vgc ? {
+		return C.vgc_atomic_load_u32(unsafe { &vgc_heap.gc_enabled }) != 0
+	}
 	return false
 }
 
 // gc_enable explicitly enables the GC.
-// Note, that garbage collections are done automatically, when needed in most cases,
-// and also that by default the GC is on, so you do not need to enable it.
-// See also gc_disable() and gc_collect().
-// Note that gc_enable() is a NOP with `-gc none`.
-pub fn gc_enable() {}
+pub fn gc_enable() {
+	$if vgc ? {
+		C.vgc_atomic_store_u32(unsafe { &vgc_heap.gc_enabled }, 1)
+	}
+}
 
 // gc_disable explicitly disables the GC.
-// Do not forget to enable it again by calling gc_enable(), when your program is otherwise idle, and can afford it.
-// See also gc_enable() and gc_collect().
-// Note that gc_disable() is a NOP with `-gc none`.
-pub fn gc_disable() {}
+pub fn gc_disable() {
+	$if vgc ? {
+		C.vgc_atomic_store_u32(unsafe { &vgc_heap.gc_enabled }, 0)
+	}
+}
 
 // gc_collect explicitly performs a garbage collection.
-// When the GC is not on, (with `-gc none`), it is a NOP.
-pub fn gc_collect() {}
+pub fn gc_collect() {
+	$if vgc ? {
+		vgc_gc_start()
+	}
+}
 
 pub type FnGC_WarnCB = fn (msg &char, arg usize)
 
