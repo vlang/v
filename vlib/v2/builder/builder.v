@@ -530,14 +530,39 @@ fn (mut b Builder) gen_cleanc() {
 	}
 	cc_flag_parts << '-std=gnu11'
 	cc_flag_parts << '-fwrapv'
+
+	// Detect compiler type for optimization flags and error limit.
+	is_tcc := cc.contains('tcc')
+	mut is_clang := false
+	if !is_tcc {
+		version_res := os.execute('${cc} --version')
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			is_clang = true
+		}
+	}
+
+	// -prod: add -O3, -flto, -DNDEBUG for gcc/clang
+	if b.pref.is_prod {
+		if is_tcc {
+			eprintln('Note: tcc is not recommended for -prod builds')
+		} else {
+			cc_flag_parts << '-O3'
+			if !b.pref.is_shared_lib {
+				cc_flag_parts << '-flto'
+			}
+			cc_flag_parts << '-DNDEBUG'
+			if !is_clang {
+				// GCC > 10.2 bug with -flto + -O3, see https://github.com/vlang/v/issues/26512
+				cc_flag_parts << '-fno-strict-aliasing'
+			}
+		}
+	}
+
 	cc_flags := cc_flag_parts.join(' ')
 	cc_link_flags := cc_link_parts.join(' ')
 	mut error_limit_flag := ''
-	if !cc.contains('tcc') {
-		version_res := os.execute('${cc} --version')
-		if version_res.exit_code == 0 && version_res.output.contains('clang') {
-			error_limit_flag = ' -ferror-limit=0'
-		}
+	if is_clang {
+		error_limit_flag = ' -ferror-limit=0'
 	}
 
 	// If output ends with .c, just write the C file

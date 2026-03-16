@@ -87,7 +87,8 @@ const core_cache_compiler_dependency_dirs = [
 const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v']
 
 fn (b &Builder) core_cache_dir() string {
-	return cache_path_join(os.temp_dir(), 'v2_cleanc_obj_cache')
+	base := if b.pref.is_prod { 'v2_cleanc_obj_cache_prod' } else { 'v2_cleanc_obj_cache' }
+	return cache_path_join(os.temp_dir(), base)
 }
 
 fn (b &Builder) ensure_core_cache_dir() bool {
