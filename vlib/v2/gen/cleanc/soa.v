@@ -108,6 +108,7 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 
 	// --- pop: remove and return last element ---
 	g.sb.writeln('static inline ${name} ${soa_name}_pop(${soa_name}* soa) {')
+	g.sb.writeln('\tif (soa->len == 0) return (${name}){0};')
 	g.sb.writeln('\tsoa->len--;')
 	g.sb.writeln('\treturn (${name}){')
 	for i, field in s.fields {
