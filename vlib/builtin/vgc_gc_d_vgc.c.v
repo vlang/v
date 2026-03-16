@@ -16,7 +16,7 @@ fn vgc_gc_start() {
 	// Only one GC at a time
 	mut expected := vgc_phase_off
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
-		return // GC already running
+		return
 	}
 
 	// === Phase 1: Sweep Termination (STW) ===
@@ -258,7 +258,6 @@ fn vgc_work_put(addr usize) {
 		buf.obj[buf.nobj] = addr
 		buf.nobj++
 	}
-
 	C.vgc_mutex_unlock(&vgc_heap.work_lock)
 }
 

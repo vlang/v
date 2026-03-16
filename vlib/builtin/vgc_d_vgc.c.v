@@ -34,8 +34,8 @@ fn C.vgc_get_class_size(cls int) u32
 fn C.vgc_get_class_npages(cls int) u32
 fn C.vgc_get_class_nobjs(cls int) u32
 fn C.vgc_init_size_tables()
-fn C.vgc_mutex_lock(lock &u32)
-fn C.vgc_mutex_unlock(lock &u32)
+fn C.vgc_mutex_lock(lock, &u32)
+fn C.vgc_mutex_unlock(lock, &u32)
 
 // ============================================================
 // Constants (translated from Go's runtime constants)
@@ -66,48 +66,48 @@ const vgc_phase_sweep = u32(3)
 // Translated from Go's runtime.mspan.
 struct VGC_Span {
 mut:
-	base        usize // start address of the span
-	npages      u32   // number of pages in this span
-	elem_size   u32   // size of each object in bytes
-	nelems      u32   // number of elements (objects) in the span
-	class_idx   u8    // size class index (0 for large objects)
-	noscan      bool  // true if objects contain no pointers (noscan variant)
-	in_use      bool  // true if span is allocated to a size class
+	base      usize // start address of the span
+	npages    u32   // number of pages in this span
+	elem_size u32   // size of each object in bytes
+	nelems    u32   // number of elements (objects) in the span
+	class_idx u8    // size class index (0 for large objects)
+	noscan    bool  // true if objects contain no pointers (noscan variant)
+	in_use    bool  // true if span is allocated to a size class
 	// Allocation bitmaps (translated from Go's allocBits/gcmarkBits)
 	alloc_bits  &u8 = unsafe { nil } // 1 = allocated
 	mark_bits   &u8 = unsafe { nil } // 1 = marked (used during GC)
 	alloc_count u32 // number of currently allocated objects
 	free_index  u32 // hint: scan from here for free slot
 	// Sweep generation (translated from Go's sweepgen)
-	sweep_gen   u32
+	sweep_gen u32
 	// Linked list pointers for central free lists
-	next        &VGC_Span = unsafe { nil }
-	prev        &VGC_Span = unsafe { nil }
+	next &VGC_Span = unsafe { nil }
+	prev &VGC_Span = unsafe { nil }
 }
 
 // VGC_Cache is a per-thread allocation cache.
 // Translated from Go's runtime.mcache - eliminates lock contention on hot path.
 struct VGC_Cache {
 mut:
-	alloc        [136]&VGC_Span // one span per span class (68 scan + 68 noscan)
+	alloc [136]&VGC_Span // one span per span class (68 scan + 68 noscan)
 	// Tiny allocator for objects < 16 bytes without pointers
 	// Translated from Go's mcache.tiny
-	tiny         usize
-	tiny_offset  usize
-	tiny_allocs  usize
+	tiny        usize
+	tiny_offset usize
+	tiny_allocs usize
 	// Thread info
-	registered   bool
-	stack_lo     usize // lowest stack address (for root scanning)
-	stack_hi     usize // highest stack address
-	thread_id    u64
-	stopped      u32 // 1 if stopped for GC
+	registered bool
+	stack_lo   usize // lowest stack address (for root scanning)
+	stack_hi   usize // highest stack address
+	thread_id  u64
+	stopped    u32 // 1 if stopped for GC
 }
 
 // VGC_Central is a central free list for one span class.
 // Translated from Go's runtime.mcentral.
 struct VGC_Central {
 mut:
-	lock    u32       // spinlock
+	lock    u32 // spinlock
 	partial &VGC_Span = unsafe { nil } // spans with free objects (swept)
 	full    &VGC_Span = unsafe { nil } // spans with no free objects
 }
@@ -116,9 +116,9 @@ mut:
 // Translated from Go's heapArena concept.
 struct VGC_Arena {
 mut:
-	base      usize
-	size      usize
-	used      usize
+	base usize
+	size usize
+	used usize
 	// Map from page index to span (for finding which span owns an address)
 	page_span [8192]&VGC_Span // vgc_pages_per_arena entries
 }
@@ -145,38 +145,38 @@ mut:
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
 	// All spans for iteration during GC
-	allspans     [65536]&VGC_Span
-	nspans       int
+	allspans [65536]&VGC_Span
+	nspans   int
 	// Per-thread caches
-	caches       [256]VGC_Cache
-	ncaches      int
-	cache_lock   u32
+	caches     [256]VGC_Cache
+	ncaches    int
+	cache_lock u32
 	// GC state
-	gc_phase     u32 // atomic: current GC phase
-	gc_enabled   u32 // atomic: 1 = GC enabled
-	sweep_gen    u32 // current sweep generation
-	wb_enabled   u32 // atomic: write barrier enabled
+	gc_phase   u32 // atomic: current GC phase
+	gc_enabled u32 // atomic: 1 = GC enabled
+	sweep_gen  u32 // current sweep generation
+	wb_enabled u32 // atomic: write barrier enabled
 	// GC metrics (translated from Go's gcController)
-	heap_live    u64 // atomic: bytes of live heap objects
-	heap_marked  u64 // bytes marked in last cycle
-	next_gc      u64 // trigger next GC at this heap size
-	total_alloc  u64 // atomic: total bytes allocated
-	gc_cycle     u64 // number of completed GC cycles
+	heap_live   u64 // atomic: bytes of live heap objects
+	heap_marked u64 // bytes marked in last cycle
+	next_gc     u64 // trigger next GC at this heap size
+	total_alloc u64 // atomic: total bytes allocated
+	gc_cycle    u64 // number of completed GC cycles
 	// GC work queues
-	work_full    &VGC_WorkBuf = unsafe { nil }
-	work_empty   &VGC_WorkBuf = unsafe { nil }
-	work_lock    u32
+	work_full  &VGC_WorkBuf = unsafe { nil }
+	work_empty &VGC_WorkBuf = unsafe { nil }
+	work_lock  u32
 	// GC worker coordination
-	gc_workers_done u32 // atomic
-	gc_nworkers     int
-	gc_stop_flag    u32 // atomic: tells threads to stop for GC
+	gc_workers_done  u32 // atomic
+	gc_nworkers      int
+	gc_stop_flag     u32 // atomic: tells threads to stop for GC
 	gc_stopped_count u32 // atomic: threads stopped
 	gc_target_stops  u32 // number of threads to stop
 	// Sweep state
-	sweep_idx    int
-	sweep_done   u32 // atomic
+	sweep_idx  int
+	sweep_done u32 // atomic
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
-	gc_percent   int // like Go's GOGC, default 100
+	gc_percent int // like Go's GOGC, default 100
 }
 
 // Global heap instance
@@ -282,7 +282,6 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		span.npages = npages
 		span.in_use = true
 	}
-
 	// Register span in arena's page map
 	if arena_idx >= 0 {
 		page_start := (base - vgc_heap.arenas[arena_idx].base) / vgc_page_size
@@ -379,7 +378,9 @@ fn vgc_central_get_span(span_class int) &VGC_Span {
 			vgc_heap.central[span_class].partial = span.next
 		}
 		if span.next != unsafe { nil } {
-			unsafe { span.next.prev = nil }
+			unsafe {
+				span.next.prev = nil
+			}
 		}
 		unsafe {
 			span.next = nil
@@ -422,7 +423,9 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 			span.prev = nil
 		}
 		if span.next != unsafe { nil } {
-			unsafe { span.next.prev = span }
+			unsafe {
+				span.next.prev = span
+			}
 		}
 		unsafe {
 			vgc_heap.central[span_class].partial = span
@@ -434,7 +437,9 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 			span.prev = nil
 		}
 		if span.next != unsafe { nil } {
-			unsafe { span.next.prev = span }
+			unsafe {
+				span.next.prev = span
+			}
 		}
 		unsafe {
 			vgc_heap.central[span_class].full = span
@@ -629,7 +634,6 @@ fn vgc_alloc_large(n usize, noscan bool) voidptr {
 			span.mark_bits[0] = 0
 		}
 	}
-
 	// Add to large allocation list
 	C.vgc_mutex_lock(&vgc_heap.lock)
 	unsafe {
