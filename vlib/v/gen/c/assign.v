@@ -1103,8 +1103,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								g.write('${styp} ')
 							}
 						}
-						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option))
-							&& !(val is ast.CallExpr && g.table.final_sym(var_type).kind == .array) {
+						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
 							g.write('*')
 						}
 					}
