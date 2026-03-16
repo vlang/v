@@ -291,6 +291,15 @@ fn type_name_candidates_from_type(mod_name string, typ types.Type) []string {
 		} else if mod_name != '' && mod_name != 'main' {
 			add_unique_string(mut out, '${mod_name}__${name}')
 		}
+		// For array types like []Attribute, also add Array_Attribute form.
+		if name.starts_with('[]') {
+			elem := name[2..]
+			add_unique_string(mut out, 'Array_${elem}')
+			add_unique_string(mut out, maybe_trim_module_prefix(mod_name, 'Array_${elem}'))
+			if mod_name != '' && mod_name != 'main' {
+				add_unique_string(mut out, 'Array_${mod_name}__${elem}')
+			}
+		}
 	}
 	return out
 }
@@ -317,6 +326,20 @@ fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environ
 			}
 		}
 		else {}
+	}
+	// Method on []ElemType — receiver name is Array_ElemType.
+	// Use the string name which includes [] prefix for array types.
+	recv_name := decl.receiver.typ.name()
+	if recv_name.starts_with('[]') {
+		elem_name := recv_name[2..]
+		if elem_name.len > 0 {
+			arr_name := 'Array_${elem_name}'
+			add_unique_string(mut out, arr_name)
+			add_unique_string(mut out, maybe_trim_module_prefix(mod_name, arr_name))
+			if mod_name != '' && mod_name != 'main' {
+				add_unique_string(mut out, 'Array_${mod_name}__${elem_name}')
+			}
+		}
 	}
 	pos := decl.receiver.typ.pos()
 	if env != unsafe { nil } && pos.is_valid() {

@@ -498,7 +498,12 @@ fn (mut b Builder) gen_cleanc() {
 		'out'
 	}
 
-	cc := configured_cc(b.pref.vroot)
+	mut cc := configured_cc(b.pref.vroot)
+	// -prod requires a real optimizing compiler — TCC cannot handle -O3/-flto.
+	// Switch to system cc (gcc/clang) when the default compiler is TCC.
+	if b.pref.is_prod && cc.contains('tcc') {
+		cc = 'cc'
+	}
 	directive_flags := b.collect_cflags_from_sources()
 	// Separate directive flags into compile-only and link-only flags.
 	// -framework, -l, -L, .o/.a/.so/.dylib are linker flags and must NOT
@@ -541,20 +546,12 @@ fn (mut b Builder) gen_cleanc() {
 		}
 	}
 
-	// -prod: add -O3, -flto, -DNDEBUG for gcc/clang
+	// -prod: add -O3, -DNDEBUG for gcc/clang
 	if b.pref.is_prod {
-		if is_tcc {
-			eprintln('Note: tcc is not recommended for -prod builds')
-		} else {
-			cc_flag_parts << '-O3'
-			if !b.pref.is_shared_lib {
-				cc_flag_parts << '-flto'
-			}
-			cc_flag_parts << '-DNDEBUG'
-			if !is_clang {
-				// GCC > 10.2 bug with -flto + -O3, see https://github.com/vlang/v/issues/26512
-				cc_flag_parts << '-fno-strict-aliasing'
-			}
+		cc_flag_parts << '-O3'
+		cc_flag_parts << '-DNDEBUG'
+		if !is_clang {
+			cc_flag_parts << '-fno-strict-aliasing'
 		}
 	}
 
@@ -902,6 +899,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	// compilation (e.g. due to TCC not supporting certain C constructs),
 	// the cached .o files are Mach-O (from cc) while TCC would produce ELF.
 	// Detect this mismatch and use cc for main compilation and linking too.
+	// Also, -prod builds with -flto require gcc/clang for linking — TCC
+	// cannot link LTO object files.
 	mut main_cc := cc
 	mut main_cc_flags := cc_flags
 	if cc.contains('tcc') && os.exists(builtin_obj) {
