@@ -1,6 +1,5 @@
 // vgc_platform.h - Platform abstractions for V Garbage Collector
 // Translated from Go's runtime GC (golang/go src/runtime/mgc*.go, malloc.go, mheap.go)
-// Copyright (c) 2024 V Software Foundation. MIT License.
 
 #ifndef VGC_PLATFORM_H
 #define VGC_PLATFORM_H
@@ -137,6 +136,13 @@ static inline int vgc_bitmap_test_and_set(uint8_t* bits, uint32_t idx) {
     return 0;
 }
 
+// Popcount on a byte - count number of set bits
+static inline int vgc_popcount8(uint8_t x) {
+    x = x - ((x >> 1) & 0x55);
+    x = (x & 0x33) + ((x >> 2) & 0x33);
+    return (x + (x >> 4)) & 0x0f;
+}
+
 // ============================================================
 // Size class tables (translated from Go's runtime/sizeclasses.go)
 // 68 classes (0 = unused, 1-67 = actual size classes)
@@ -259,6 +265,32 @@ static inline void vgc_mutex_lock(volatile uint32_t* lock) {
 
 static inline void vgc_mutex_unlock(volatile uint32_t* lock) {
     vgc_atomic_store_u32(lock, 0);
+}
+
+// ============================================================
+// Arena address index for O(1) pointer-to-arena lookup
+// Divides address space into 1GB chunks, maps to arena index.
+// ============================================================
+#define VGC_ADDR_SHIFT 30  // 1GB chunks
+#define VGC_ADDR_MAP_SIZE 4096
+
+// Maps (address >> 30) -> arena_index+1 (0 = not mapped)
+static uint16_t vgc_addr_map[VGC_ADDR_MAP_SIZE];
+
+static inline void vgc_addr_map_register(uintptr_t base, size_t size, int arena_idx) {
+    uintptr_t lo = base >> VGC_ADDR_SHIFT;
+    uintptr_t hi = (base + size - 1) >> VGC_ADDR_SHIFT;
+    for (uintptr_t i = lo; i <= hi && i < VGC_ADDR_MAP_SIZE; i++) {
+        vgc_addr_map[i] = (uint16_t)(arena_idx + 1);
+    }
+}
+
+// Returns arena index or -1
+static inline int vgc_addr_to_arena(uintptr_t addr) {
+    uintptr_t idx = addr >> VGC_ADDR_SHIFT;
+    if (idx >= VGC_ADDR_MAP_SIZE) return -1;
+    int v = vgc_addr_map[idx];
+    return v ? v - 1 : -1;
 }
 
 // ============================================================

@@ -30,7 +30,6 @@ fn vgc_gc_start() {
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 1)
 
 	// Wait for threads to stop (with timeout to avoid deadlock)
-	// In practice, threads stop at their next allocation safepoint
 	mut wait_iters := 0
 	for C.vgc_atomic_load_u32(&vgc_heap.gc_stopped_count) < vgc_heap.gc_target_stops {
 		C.vgc_atomic_fence()
@@ -43,7 +42,7 @@ fn vgc_gc_start() {
 	// Clear mark bits on all spans (prepare for new cycle)
 	vgc_clear_mark_bits()
 
-	// === Phase 2: Mark (parallel using spawn) ===
+	// === Phase 2: Mark (parallel) ===
 	// Enable write barrier (for concurrent correctness)
 	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 1)
 
@@ -54,14 +53,11 @@ fn vgc_gc_start() {
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0)
 	C.vgc_atomic_fence()
 
-	// Parallel mark: drain the work queue using spawn workers
+	// Parallel mark: drain the work queue
 	vgc_parallel_mark()
 
 	// === Phase 3: Mark Termination (brief STW) ===
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_mark_term)
-
-	// Process any remaining write barrier buffer entries
-	vgc_drain_wb_buf()
 
 	// Final drain of work queue
 	vgc_drain_mark_work()
@@ -69,18 +65,20 @@ fn vgc_gc_start() {
 	// Disable write barrier
 	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 0)
 
-	// Count marked bytes for pacer
+	// Compute live bytes from mark bits
 	marked := vgc_count_marked()
 	C.vgc_atomic_store_u64(&vgc_heap.heap_marked, marked)
+	// Reset heap_live to match what we actually found alive
+	C.vgc_atomic_store_u64(&vgc_heap.heap_live, marked)
 
-	// === Phase 4: Sweep (concurrent) ===
+	// === Phase 4: Sweep ===
 	vgc_heap.sweep_gen++
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 0)
 	vgc_heap.sweep_idx = 0
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_sweep)
 
-	// Sweep concurrently in a background thread
-	C.vgc_start_thread(vgc_concurrent_sweep)
+	// Sweep synchronously - it's fast and avoids race conditions
+	vgc_do_sweep()
 
 	// Update GC trigger for next cycle (translated from Go's gcController.endCycle)
 	vgc_update_trigger()
@@ -121,8 +119,6 @@ fn vgc_mark_roots() {
 			vgc_scan_range(cache.stack_lo, cache.stack_hi)
 		}
 	}
-	// Scan global data/BSS segments would go here
-	// For now, conservative scanning of stacks catches most roots
 }
 
 // Scan a memory range conservatively, looking for pointers into the GC heap.
@@ -163,14 +159,16 @@ fn vgc_shade(addr usize) {
 	// Mark it (grey -> will be scanned)
 	if span.mark_bits != unsafe { nil } {
 		if C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx) == 0 {
-			// Newly marked - add to work queue for scanning
-			obj_addr := span.base + usize(obj_idx) * usize(span.elem_size)
-			vgc_work_put(obj_addr)
+			// Newly marked - add to work queue for scanning (only if it may contain pointers)
+			if !span.noscan {
+				obj_addr := span.base + usize(obj_idx) * usize(span.elem_size)
+				vgc_work_put(obj_addr)
+			}
 		}
 	}
 }
 
-// Parallel mark using spawn (V threads).
+// Parallel mark using OS threads.
 // Translated from Go's gcDrain() with multiple workers.
 fn vgc_parallel_mark() {
 	// Use up to 4 workers (like Go's dedicated mark workers)
@@ -211,7 +209,7 @@ fn vgc_drain_mark_work() {
 		if obj_addr == 0 {
 			break
 		}
-		// Scan the object conservatively for pointers
+		// Scan the object for pointers
 		span := vgc_find_span(voidptr(obj_addr))
 		if span == unsafe { nil } || span.noscan {
 			continue // noscan objects don't contain pointers
@@ -293,8 +291,6 @@ fn vgc_work_get() usize {
 
 // Write barrier: called when a pointer field is written during mark phase.
 // Uses Dijkstra-style insertion barrier - shade the new pointer.
-// In a full implementation, this would be compiler-inserted.
-// For now, it's called explicitly and buffered.
 fn vgc_write_barrier(new_val voidptr) {
 	if C.vgc_atomic_load_u32(&vgc_heap.wb_enabled) == 0 {
 		return
@@ -310,27 +306,14 @@ fn vgc_write_barrier(new_val voidptr) {
 	vgc_shade(addr)
 }
 
-// Drain buffered write barrier entries
-fn vgc_drain_wb_buf() {
-	// In this implementation, write barrier calls shade() directly,
-	// so there's nothing buffered to drain.
-}
-
 // ============================================================
 // Sweep phase (translated from Go's mgcsweep.go)
 // ============================================================
 
-// Sweep all spans concurrently.
-// Translated from Go's bgsweep() goroutine.
-fn vgc_concurrent_sweep() {
-	for {
-		span_idx := vgc_heap.sweep_idx
-		if span_idx >= vgc_heap.nspans {
-			break
-		}
-		vgc_heap.sweep_idx = span_idx + 1
-
-		span := unsafe { vgc_heap.allspans[span_idx] }
+// Sweep all spans synchronously.
+fn vgc_do_sweep() {
+	for i in 0 .. vgc_heap.nspans {
+		span := unsafe { vgc_heap.allspans[i] }
 		if span == unsafe { nil } || !span.in_use {
 			continue
 		}
@@ -346,20 +329,26 @@ fn vgc_sweep_span(span &VGC_Span) {
 		return
 	}
 
+	// Sweep using byte-level operations for speed
+	nbytes := (span.nelems + 7) / 8
 	mut freed := u32(0)
-	for i in 0 .. span.nelems {
-		if C.vgc_bitmap_get(span.alloc_bits, i) != 0 {
-			// Object is allocated
-			if C.vgc_bitmap_get(span.mark_bits, i) == 0 {
-				// Not marked - free it
-				C.vgc_bitmap_clear(span.alloc_bits, i)
-				freed++
-				// Update free_index hint
-				if i < span.free_index {
-					unsafe {
-						(&VGC_Span(span)).free_index = i
-					}
-				}
+	mut new_free_index := span.nelems // will be set to lowest freed index
+
+	for b in 0 .. nbytes {
+		alloc_byte := unsafe { span.alloc_bits[b] }
+		mark_byte := unsafe { span.mark_bits[b] }
+		// allocated but not marked = garbage
+		garbage := alloc_byte & ~mark_byte
+		if garbage != 0 {
+			freed += u32(C.vgc_popcount8(garbage))
+			// Clear the garbage bits from alloc bitmap
+			unsafe {
+				span.alloc_bits[b] = alloc_byte & mark_byte
+			}
+			// Track lowest freed index for free_index hint
+			base_idx := b * 8
+			if u32(base_idx) < new_free_index {
+				new_free_index = u32(base_idx)
 			}
 		}
 	}
@@ -367,10 +356,16 @@ fn vgc_sweep_span(span &VGC_Span) {
 	if freed > 0 {
 		unsafe {
 			(&VGC_Span(span)).alloc_count -= freed
+			if new_free_index < span.free_index {
+				(&VGC_Span(span)).free_index = new_free_index
+			}
 		}
-		// Return freed memory to heap accounting
-		freed_bytes := u64(freed) * u64(span.elem_size)
-		C.vgc_atomic_sub_u64(&vgc_heap.heap_live, freed_bytes)
+	}
+
+	// If span is completely empty, recycle it to the free span pool
+	if span.alloc_count == 0 && span.npages > 0 {
+		mut mspan := unsafe { &VGC_Span(span) }
+		vgc_put_free_span(mut mspan)
 	}
 }
 
@@ -394,7 +389,7 @@ fn vgc_sweep_finish() {
 // GC Pacer (translated from Go's mgcpacer.go gcController)
 // ============================================================
 
-// Count total marked bytes across all spans
+// Count total marked bytes across all spans using byte-level popcount
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
 	for i in 0 .. vgc_heap.nspans {
@@ -402,11 +397,14 @@ fn vgc_count_marked() u64 {
 		if span == unsafe { nil } || !span.in_use || span.mark_bits == unsafe { nil } {
 			continue
 		}
+		nbytes := (span.nelems + 7) / 8
 		mut count := u32(0)
-		for j in 0 .. span.nelems {
-			if C.vgc_bitmap_get(span.mark_bits, j) != 0 {
-				count++
-			}
+		for b in 0 .. nbytes {
+			count += u32(C.vgc_popcount8(unsafe { span.mark_bits[b] }))
+		}
+		// Clamp to nelems (last byte may have extra bits)
+		if count > span.nelems {
+			count = span.nelems
 		}
 		total += u64(count) * u64(span.elem_size)
 	}
@@ -433,18 +431,18 @@ fn vgc_update_trigger() {
 // ============================================================
 
 fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
-	// Calculate total arena size
-	mut total_size := usize(0)
-	mut total_used := usize(0)
-	for i in 0 .. vgc_heap.narenas {
-		a := unsafe { &vgc_heap.arenas[i] }
-		total_size += a.size
-		total_used += a.used
-	}
-	free_bytes := total_size - total_used
 	live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
 	total_alloc := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
-	return total_size, usize(free_bytes), usize(live), usize(total_alloc), usize(vgc_heap.gc_cycle)
+	// Count actual in-use span pages as heap size
+	mut in_use_bytes := usize(0)
+	for i in 0 .. vgc_heap.nspans {
+		span := unsafe { vgc_heap.allspans[i] }
+		if span != unsafe { nil } && span.in_use {
+			in_use_bytes += usize(span.npages) * vgc_page_size
+		}
+	}
+	free_bytes := if in_use_bytes > usize(live) { in_use_bytes - usize(live) } else { usize(0) }
+	return in_use_bytes, free_bytes, usize(live), usize(total_alloc), usize(vgc_heap.gc_cycle)
 }
 
 fn vgc_memory_use() usize {
