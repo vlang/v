@@ -28,6 +28,17 @@ mut:
 	cur_func_ret_type         int
 	cur_func_abi_ret_indirect bool
 	sret_save_offset          int
+
+	// Type layout caches
+	type_size_cache  []int
+	type_align_cache []int
+
+	// Cache for struct field offset calculations (key: typ_id << 16 | field_idx)
+	struct_field_offset_cache map[int]int
+
+	// Lookup caches for O(1) name resolution
+	func_by_name   map[string]int
+	global_by_name map[string]int
 }
 
 struct Interval {
@@ -39,34 +50,88 @@ mut:
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
+	n_types := mod.type_store.types.len
 	return &Gen{
-		mod: mod
-		elf: ElfObject.new()
+		mod:              mod
+		elf:              ElfObject.new()
+		type_size_cache:  []int{len: n_types}
+		type_align_cache: []int{len: n_types}
 	}
 }
 
 pub fn (mut g Gen) gen() {
+	g.gen_pre_pass()
 	for func in g.mod.funcs {
 		g.gen_func(func)
 	}
+	g.gen_post_pass()
+}
 
+fn (mut g Gen) gen_pre_pass() {
+	// Pre-register global symbols BEFORE generating functions
+	mut data_offset := u64(0)
+	for gvar in g.mod.globals {
+		if gvar.linkage == .external {
+			continue
+		}
+		data_offset = (data_offset + 7) & ~7
+		g.elf.add_symbol(gvar.name, data_offset, false, 2)
+		size := if gvar.initial_data.len > 0 {
+			gvar.initial_data.len
+		} else {
+			g.type_size(gvar.typ)
+		}
+		data_offset += u64(size)
+	}
+	// Build lookup caches
+	for fi, func in g.mod.funcs {
+		g.func_by_name[func.name] = fi
+	}
+	for gi, gvar in g.mod.globals {
+		g.global_by_name[gvar.name] = gi
+	}
+	// Pre-populate type size/align caches
+	for tid in 0 .. g.mod.type_store.types.len {
+		if g.type_size_cache[tid] == 0 {
+			sz := g.type_size(tid)
+			if sz > 0 {
+				g.type_size_cache[tid] = sz
+			}
+		}
+	}
+}
+
+fn (mut g Gen) gen_post_pass() {
 	// Generate Globals in .data
 	for gvar in g.mod.globals {
+		if gvar.linkage == .external {
+			continue
+		}
 		for g.elf.data_data.len % 8 != 0 {
 			g.elf.data_data << 0
 		}
 		addr := u64(g.elf.data_data.len)
-		g.elf.add_symbol(gvar.name, addr, false, 2)
-		if gvar.is_constant {
-			// For constants, write the initial value
+		// Update the symbol address (already registered in pre_pass)
+		for mut sym in g.elf.symbols {
+			if sym.name == gvar.name {
+				sym.value = addr
+				break
+			}
+		}
+		if gvar.initial_data.len > 0 {
+			for b in gvar.initial_data {
+				g.elf.data_data << b
+			}
+		} else if gvar.is_constant {
 			mut bytes := []u8{len: 8}
 			binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
 			for b in bytes {
 				g.elf.data_data << b
 			}
 		} else {
-			// For regular globals, initialize with zeros
-			for _ in 0 .. 8 {
+			size := g.type_size(gvar.typ)
+			actual_size := if size > 0 { size } else { 8 }
+			for _ in 0 .. actual_size {
 				g.elf.data_data << 0
 			}
 		}
@@ -74,6 +139,9 @@ pub fn (mut g Gen) gen() {
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
+	if func.is_c_extern {
+		return
+	}
 	g.curr_offset = g.elf.text_data.len
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
@@ -249,88 +317,301 @@ fn (mut g Gen) gen_instr(val_id int) {
 	// Temps: 0=RAX, 1=RCX
 
 	match op {
-		.add, .sub, .mul, .sdiv, .srem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq, .ne, .lt, .gt,
-		.le, .ge {
-			g.load_val_to_reg(0, instr.operands[0]) // RAX
-			g.load_val_to_reg(1, instr.operands[1]) // RCX
+		.fadd, .fsub, .fmul, .fdiv, .frem {
+			// Float operations using SSE2
+			// Load LHS f64 bits to xmm0, RHS to xmm1
+			g.load_val_to_reg(0, instr.operands[0]) // RAX = f64 bits
+			asm_movq_xmm0_rax(mut g)
+			g.load_val_to_reg(1, instr.operands[1]) // RCX = f64 bits
+			asm_movq_xmm1_rcx(mut g)
 
 			match op {
-				.add {
-					asm_add_rax_rcx(mut g)
-				}
-				.sub {
-					asm_sub_rax_rcx(mut g)
-				}
-				.mul {
-					asm_imul_rax_rcx(mut g)
-				}
-				.sdiv {
-					asm_cqo(mut g)
-					asm_idiv_rcx(mut g)
-				}
-				.srem {
-					asm_cqo(mut g)
-					asm_idiv_rcx(mut g)
-					asm_mov_rax_rdx(mut g)
-				}
-				.and_ {
-					asm_and_rax_rcx(mut g)
-				}
-				.or_ {
-					asm_or_rax_rcx(mut g)
-				}
-				.xor {
-					asm_xor_rax_rcx(mut g)
-				}
-				.shl {
-					asm_shl_rax_cl(mut g)
-				}
-				.ashr {
-					asm_sar_rax_cl(mut g)
-				}
-				.lshr {
-					asm_shr_rax_cl(mut g)
-				}
-				.eq, .ne, .lt, .gt, .le, .ge {
-					asm_cmp_rax_rcx(mut g)
-					cc := match op {
-						.eq { cc_e }
-						.ne { cc_ne }
-						.lt { cc_l }
-						.gt { cc_g }
-						.le { cc_le }
-						.ge { cc_ge }
-						else { cc_e }
-					}
-					asm_setcc_al_movzx(mut g, cc)
+				.fadd { asm_addsd_xmm0_xmm1(mut g) }
+				.fsub { asm_subsd_xmm0_xmm1(mut g) }
+				.fmul { asm_mulsd_xmm0_xmm1(mut g) }
+				.fdiv { asm_divsd_xmm0_xmm1(mut g) }
+				.frem {
+					// xmm0 = xmm0 - trunc(xmm0/xmm1) * xmm1
+					asm_movsd_xmm2_xmm0(mut g)
+					asm_divsd_xmm2_xmm1(mut g)
+					asm_roundsd_xmm2_trunc(mut g)
+					asm_mulsd_xmm2_xmm1(mut g)
+					asm_subsd_xmm0_xmm2(mut g)
 				}
 				else {}
+			}
+			// Move result bits back to RAX
+			asm_movq_rax_xmm0(mut g)
+			g.store_reg_to_val(0, val_id)
+		}
+		.fptosi {
+			// Float to signed integer conversion
+			g.load_val_to_reg(0, instr.operands[0])
+			asm_movq_xmm0_rax(mut g)
+			asm_cvttsd2si_rax_xmm0(mut g)
+			g.store_reg_to_val(0, val_id)
+		}
+		.fptoui {
+			// Float to unsigned integer conversion (same as fptosi for most cases)
+			g.load_val_to_reg(0, instr.operands[0])
+			asm_movq_xmm0_rax(mut g)
+			asm_cvttsd2si_rax_xmm0(mut g)
+			g.store_reg_to_val(0, val_id)
+		}
+		.sitofp {
+			// Signed integer to float conversion
+			g.load_val_to_reg(0, instr.operands[0])
+			asm_cvtsi2sd_xmm0_rax(mut g)
+			// Check if result is f32
+			result_is_f32 := g.mod.values[val_id].typ > 0
+				&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].width == 32
+			if result_is_f32 {
+				asm_cvtsd2ss_xmm0(mut g)
+				asm_movd_eax_xmm0(mut g)
+			} else {
+				asm_movq_rax_xmm0(mut g)
+			}
+			g.store_reg_to_val(0, val_id)
+		}
+		.uitofp {
+			// Unsigned integer to float conversion
+			// For unsigned, we use the same cvtsi2sd but the value is already positive
+			g.load_val_to_reg(0, instr.operands[0])
+			asm_cvtsi2sd_xmm0_rax(mut g)
+			result_is_f32 := g.mod.values[val_id].typ > 0
+				&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+				&& g.mod.type_store.types[g.mod.values[val_id].typ].width == 32
+			if result_is_f32 {
+				asm_cvtsd2ss_xmm0(mut g)
+				asm_movd_eax_xmm0(mut g)
+			} else {
+				asm_movq_rax_xmm0(mut g)
+			}
+			g.store_reg_to_val(0, val_id)
+		}
+		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr,
+		.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
+			// Check if this is a float comparison
+			lhs_typ := g.mod.values[instr.operands[0]].typ
+			is_float_cmp := op in [.eq, .ne, .lt, .gt, .le, .ge] && lhs_typ > 0
+				&& lhs_typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[lhs_typ].kind == .float_t
+
+			if is_float_cmp {
+				// Float comparison using SSE2
+				g.load_val_to_reg(0, instr.operands[0])
+				asm_movq_xmm0_rax(mut g)
+				g.load_val_to_reg(1, instr.operands[1])
+				asm_movq_xmm1_rcx(mut g)
+				asm_ucomisd_xmm0_xmm1(mut g)
+				// ucomisd sets ZF/PF/CF flags (unsigned-style)
+				cc := match op {
+					.eq { cc_e }
+					.ne { cc_ne }
+					.lt { cc_b } // below (CF=1)
+					.gt { cc_a } // above (CF=0, ZF=0)
+					.le { cc_be } // below or equal
+					.ge { cc_ae } // above or equal
+					else { cc_e }
+				}
+				asm_setcc_al_movzx(mut g, cc)
+			} else {
+				g.load_val_to_reg(0, instr.operands[0]) // RAX
+				g.load_val_to_reg(1, instr.operands[1]) // RCX
+
+				match op {
+					.add { asm_add_rax_rcx(mut g) }
+					.sub { asm_sub_rax_rcx(mut g) }
+					.mul { asm_imul_rax_rcx(mut g) }
+					.sdiv {
+						asm_cqo(mut g)
+						asm_idiv_rcx(mut g)
+					}
+					.udiv {
+						asm_xor_rdx_rdx(mut g)
+						asm_div_rcx(mut g)
+					}
+					.srem {
+						asm_cqo(mut g)
+						asm_idiv_rcx(mut g)
+						asm_mov_rax_rdx(mut g)
+					}
+					.urem {
+						asm_xor_rdx_rdx(mut g)
+						asm_div_rcx(mut g)
+						asm_mov_rax_rdx(mut g)
+					}
+					.and_ { asm_and_rax_rcx(mut g) }
+					.or_ { asm_or_rax_rcx(mut g) }
+					.xor { asm_xor_rax_rcx(mut g) }
+					.shl { asm_shl_rax_cl(mut g) }
+					.ashr { asm_sar_rax_cl(mut g) }
+					.lshr { asm_shr_rax_cl(mut g) }
+					.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
+						asm_cmp_rax_rcx(mut g)
+						cc := match op {
+							.eq { cc_e }
+							.ne { cc_ne }
+							.lt { cc_l }
+							.gt { cc_g }
+							.le { cc_le }
+							.ge { cc_ge }
+							.ult { cc_b }
+							.ugt { cc_a }
+							.ule { cc_be }
+							.uge { cc_ae }
+							else { cc_e }
+						}
+						asm_setcc_al_movzx(mut g, cc)
+					}
+					else {}
+				}
+			}
+			// Narrow integer canonicalization
+			result_typ_id := g.mod.values[val_id].typ
+			if result_typ_id > 0 && result_typ_id < g.mod.type_store.types.len {
+				result_typ := g.mod.type_store.types[result_typ_id]
+				if result_typ.kind == .int_t && result_typ.width > 0 && result_typ.width < 64 {
+					g.canonicalize_narrow_int(result_typ)
+				}
 			}
 			g.store_reg_to_val(0, val_id)
 		}
 		.store {
 			src_id := instr.operands[0]
+			ptr_id := instr.operands[1]
 			src_typ := g.mod.values[src_id].typ
 			src_type_info := g.mod.type_store.types[src_typ]
 			src_size := g.type_size(src_typ)
-			if src_type_info.kind == .struct_t && src_size > 16 {
+
+			// Determine destination element type and size from pointer type
+			mut dst_elem_size := 0
+			mut dst_is_struct := false
+			ptr_val := g.mod.values[ptr_id]
+			if ptr_val.typ > 0 && ptr_val.typ < g.mod.type_store.types.len {
+				ptr_typ := g.mod.type_store.types[ptr_val.typ]
+				if ptr_typ.kind == .ptr_t && ptr_typ.elem_type > 0
+					&& ptr_typ.elem_type < g.mod.type_store.types.len {
+					elem_typ := g.mod.type_store.types[ptr_typ.elem_type]
+					dst_elem_size = g.type_size(ptr_typ.elem_type)
+					dst_is_struct = elem_typ.kind in [.struct_t, .array_t]
+				}
+			}
+
+			if (src_type_info.kind in [.struct_t, .array_t] && src_size > 16)
+				|| (dst_is_struct && dst_elem_size > 16) {
+				// Large struct copy
+				copy_size := if dst_elem_size > 16 { dst_elem_size } else { src_size }
 				g.load_struct_src_address_to_reg(int(r10), src_id, src_typ)
-				g.load_val_to_reg(int(r11), instr.operands[1])
-				num_chunks := (src_size + 7) / 8
+				g.load_val_to_reg(int(r11), ptr_id)
+				num_chunks := (copy_size + 7) / 8
 				for i := 0; i < num_chunks; i++ {
 					disp := i * 8
 					asm_mov_rax_mem_base_disp(mut g, r10, disp)
 					asm_mov_mem_base_disp_rax(mut g, r11, disp)
 				}
+			} else if dst_is_struct && dst_elem_size > 0 && dst_elem_size <= 16 {
+				// Small struct copy (2 words or less)
+				num_chunks := (dst_elem_size + 7) / 8
+				src_has_storage := src_id in g.reg_map || src_id in g.stack_map
+				if src_has_storage && num_chunks > 1 {
+					g.load_address_of_val_to_reg(int(r10), src_id)
+					g.load_val_to_reg(int(r11), ptr_id)
+					for i := 0; i < num_chunks; i++ {
+						disp := i * 8
+						asm_mov_rax_mem_base_disp(mut g, r10, disp)
+						asm_mov_mem_base_disp_rax(mut g, r11, disp)
+					}
+				} else {
+					g.load_val_to_reg(0, src_id)
+					g.load_val_to_reg(1, ptr_id)
+					asm_mov_mem_rcx_rax(mut g)
+				}
 			} else {
+				// Sized scalar store
+				store_size := if dst_elem_size > 0 { dst_elem_size } else { src_size }
 				g.load_val_to_reg(0, src_id) // Val -> RAX
-				g.load_val_to_reg(1, instr.operands[1]) // Ptr -> RCX
-				asm_mov_mem_rcx_rax(mut g)
+				g.load_val_to_reg(1, ptr_id) // Ptr -> RCX
+				match store_size {
+					1 { asm_store_mem_rcx_al(mut g) }
+					2 { asm_store_mem_rcx_ax(mut g) }
+					4 { asm_store_mem_rcx_eax(mut g) }
+					else { asm_mov_mem_rcx_rax(mut g) }
+				}
 			}
 		}
 		.load {
-			g.load_val_to_reg(1, instr.operands[0]) // Ptr -> RCX
-			asm_mov_rax_mem_rcx(mut g)
+			ptr_id := instr.operands[0]
+			// Determine load size from pointer element type
+			mut load_size := 8
+			mut is_signed := false
+			ptr_val := g.mod.values[ptr_id]
+			if ptr_val.typ > 0 && ptr_val.typ < g.mod.type_store.types.len {
+				ptr_typ := g.mod.type_store.types[ptr_val.typ]
+				if ptr_typ.kind == .ptr_t && ptr_typ.elem_type > 0
+					&& ptr_typ.elem_type < g.mod.type_store.types.len {
+					elem_typ := g.mod.type_store.types[ptr_typ.elem_type]
+					elem_size := g.type_size(ptr_typ.elem_type)
+					if elem_typ.kind == .int_t && elem_size in [1, 2, 4] {
+						load_size = elem_size
+						is_signed = !elem_typ.is_unsigned
+					} else if elem_typ.kind in [.struct_t, .array_t] && elem_size > 8 {
+						// Large struct load: copy bytes to stack slot
+						g.load_val_to_reg(int(r10), ptr_id)
+						if result_off := g.stack_map[val_id] {
+							num_chunks := (elem_size + 7) / 8
+							for i := 0; i < num_chunks; i++ {
+								disp := i * 8
+								asm_mov_rax_mem_base_disp(mut g, r10, disp)
+								asm_store_rbp_disp_reg(mut g, result_off + disp, rax)
+							}
+						} else {
+							// Single qword fallback
+							asm_mov_rax_mem_base_disp(mut g, r10, 0)
+							g.store_reg_to_val(0, val_id)
+						}
+						return
+					}
+				}
+			}
+			g.load_val_to_reg(1, ptr_id) // Ptr -> RCX
+			match load_size {
+				1 {
+					if is_signed {
+						// movsx rax, byte [rcx]
+						g.emit(0x48)
+						g.emit(0x0F)
+						g.emit(0xBE)
+						g.emit(0x01)
+					} else {
+						asm_load_byte_mem_rcx(mut g)
+					}
+				}
+				2 {
+					if is_signed {
+						// movsx rax, word [rcx]
+						g.emit(0x48)
+						g.emit(0x0F)
+						g.emit(0xBF)
+						g.emit(0x01)
+					} else {
+						asm_load_word_mem_rcx(mut g)
+					}
+				}
+				4 {
+					if is_signed {
+						asm_load_dword_sx_mem_rcx(mut g)
+					} else {
+						asm_load_dword_mem_rcx(mut g)
+					}
+				}
+				else {
+					asm_mov_rax_mem_rcx(mut g)
+				}
+			}
 			g.store_reg_to_val(0, val_id)
 		}
 		.alloca {
@@ -343,12 +624,89 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			g.store_reg_to_val(0, val_id)
 		}
+		.heap_alloc {
+			// Heap-allocate memory: calloc(1, sizeof(T))
+			mut alloc_size := 8
+			ha_val := g.mod.values[val_id]
+			if ha_val.typ > 0 && ha_val.typ < g.mod.type_store.types.len {
+				ptr_typ := g.mod.type_store.types[ha_val.typ]
+				if ptr_typ.kind == .ptr_t && ptr_typ.elem_type > 0 {
+					alloc_size = g.type_size(ptr_typ.elem_type)
+					if alloc_size <= 0 {
+						alloc_size = 8
+					}
+				}
+			}
+			// SysV: rdi=1, rsi=size
+			asm_mov_reg_imm32(mut g, rdi, 1)
+			asm_mov_reg_imm32(mut g, rsi, u32(alloc_size))
+			asm_xor_eax_eax(mut g)
+			asm_call_rel32(mut g)
+			sym_idx := g.elf.add_undefined('calloc')
+			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+			g.emit_u32(0)
+			g.store_reg_to_val(0, val_id)
+		}
 		.get_element_ptr {
-			g.load_val_to_reg(0, instr.operands[0]) // Base -> RAX
-			g.load_val_to_reg(1, instr.operands[1]) // Index -> RCX
-			// add rax, (rcx << 3)
-			asm_shl_rcx_3(mut g)
-			asm_add_rax_rcx(mut g)
+			// GEP: Base + scaled index
+			idx_id := instr.operands[1]
+			base_typ_id := g.mod.values[instr.operands[0]].typ
+
+			// Determine element size from base pointer type
+			mut elem_size := 8
+			mut is_struct_gep := false
+			mut is_array_gep := false
+
+			// If result type == base pointer type, it's array indexing
+			base_val_typ := g.mod.values[instr.operands[0]].typ
+			if instr.typ == base_val_typ {
+				is_array_gep = true
+			}
+
+			if base_typ_id > 0 && base_typ_id < g.mod.type_store.types.len {
+				base_typ := g.mod.type_store.types[base_typ_id]
+				if base_typ.kind == .ptr_t && base_typ.elem_type > 0
+					&& base_typ.elem_type < g.mod.type_store.types.len {
+					pointee_typ := g.mod.type_store.types[base_typ.elem_type]
+					if !is_array_gep && pointee_typ.kind == .struct_t {
+						is_struct_gep = true
+					}
+					elem_size = g.type_size(base_typ.elem_type)
+					if elem_size <= 0 {
+						elem_size = 8
+					}
+				}
+			}
+
+			// Struct field GEP with constant index
+			idx_val := g.mod.values[idx_id]
+			if is_struct_gep && idx_val.kind == .constant {
+				field_idx := idx_val.name.int()
+				// Get real struct field byte offset
+				mut pointee_typ_id := ssa.TypeID(0)
+				if base_typ_id > 0 && base_typ_id < g.mod.type_store.types.len {
+					pointee_typ_id = g.mod.type_store.types[base_typ_id].elem_type
+				}
+				field_off := g.struct_field_offset_bytes(pointee_typ_id, field_idx)
+				g.load_val_to_reg(0, instr.operands[0])
+				if field_off != 0 {
+					asm_mov_reg_imm32(mut g, rcx, u32(field_off))
+					asm_add_rax_rcx(mut g)
+				}
+			} else if elem_size == 8 {
+				g.load_val_to_reg(0, instr.operands[0]) // Base -> RAX
+				g.load_val_to_reg(1, idx_id) // Index -> RCX
+				asm_shl_rcx_3(mut g) // rcx *= 8
+				asm_add_rax_rcx(mut g)
+			} else {
+				// Generic: base + index * elem_size
+				g.load_val_to_reg(0, idx_id) // RAX = index
+				asm_mov_reg_imm32(mut g, rcx, u32(elem_size))
+				asm_imul_rax_rcx(mut g) // RAX = index * elem_size
+				asm_mov_reg_reg(mut g, rcx, rax) // RCX = scaled offset
+				g.load_val_to_reg(0, instr.operands[0]) // RAX = base
+				asm_add_rax_rcx(mut g) // RAX = base + offset
+			}
 			g.store_reg_to_val(0, val_id)
 		}
 		.call {
@@ -595,18 +953,412 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_val_to_reg(0, src_id)
 			g.store_reg_to_val(0, dest_id)
 		}
-		.bitcast {
+		.trunc, .zext {
 			if instr.operands.len > 0 {
-				g.load_val_to_reg(0, instr.operands[0])
+				// Check if float-to-float conversion
+				src_val := g.mod.values[instr.operands[0]]
+				src_is_float := src_val.typ > 0 && src_val.typ < g.mod.type_store.types.len
+					&& g.mod.type_store.types[src_val.typ].kind == .float_t
+				dst_is_float := g.mod.values[val_id].typ > 0
+					&& g.mod.values[val_id].typ < g.mod.type_store.types.len
+					&& g.mod.type_store.types[g.mod.values[val_id].typ].kind == .float_t
+
+				if src_is_float && dst_is_float {
+					g.load_val_to_reg(0, instr.operands[0])
+					asm_movq_xmm0_rax(mut g)
+					if op == .trunc {
+						// f64 -> f32
+						asm_cvtsd2ss_xmm0(mut g)
+						asm_movd_eax_xmm0(mut g)
+					} else {
+						// f32 -> f64: load as f32 bits, convert
+						asm_movd_xmm0_eax(mut g)
+						asm_cvtss2sd_xmm0(mut g)
+						asm_movq_rax_xmm0(mut g)
+					}
+				} else {
+					// Integer trunc/zext: just copy (64-bit regs)
+					g.load_val_to_reg(0, instr.operands[0])
+					if op == .zext {
+						// Zero-extend narrow source
+						src_typ_id := src_val.typ
+						if src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
+							src_typ := g.mod.type_store.types[src_typ_id]
+							if src_typ.kind == .int_t && src_typ.width > 0
+								&& src_typ.width < 64 {
+								if src_typ.width <= 8 {
+									asm_movzx_rax_al(mut g)
+								} else if src_typ.width <= 16 {
+									asm_movzx_rax_ax(mut g)
+								} else if src_typ.width <= 32 {
+									// mov eax, eax (zero-extends to 64-bit)
+									g.emit(0x89)
+									g.emit(0xC0)
+								}
+							}
+						}
+					} else if op == .trunc {
+						// Truncation: mask to target width
+						dst_typ_id := g.mod.values[val_id].typ
+						if dst_typ_id > 0 && dst_typ_id < g.mod.type_store.types.len {
+							dst_typ := g.mod.type_store.types[dst_typ_id]
+							if dst_typ.kind == .int_t && dst_typ.width > 0
+								&& dst_typ.width < 64 {
+								if dst_typ.width == 1 {
+									asm_and_rax_imm32(mut g, 1)
+								} else if dst_typ.width <= 8 {
+									asm_movzx_rax_al(mut g)
+								} else if dst_typ.width <= 16 {
+									asm_movzx_rax_ax(mut g)
+								} else if dst_typ.width <= 32 {
+									g.emit(0x89)
+									g.emit(0xC0)
+								}
+							}
+						}
+					}
+				}
 				g.store_reg_to_val(0, val_id)
 			}
 		}
+		.bitcast, .sext {
+			if instr.operands.len > 0 {
+				src_id := instr.operands[0]
+				// Check for aggregate bitcast that needs byte copy
+				dest_typ_id := g.mod.values[val_id].typ
+				mut copied_aggregate := false
+				if dest_typ_id > 0 && dest_typ_id < g.mod.type_store.types.len {
+					dest_typ := g.mod.type_store.types[dest_typ_id]
+					dest_size := g.type_size(dest_typ_id)
+					if dest_typ.kind in [.struct_t, .array_t] && dest_size > 8 {
+						if dest_off := g.stack_map[val_id] {
+							if src_off := g.stack_map[src_id] {
+								num_chunks := (dest_size + 7) / 8
+								for i := 0; i < num_chunks; i++ {
+									asm_load_reg_rbp_disp(mut g, rax, src_off + i * 8)
+									asm_store_rbp_disp_reg(mut g, dest_off + i * 8, rax)
+								}
+								copied_aggregate = true
+							}
+						}
+					}
+				}
+				if !copied_aggregate {
+					g.load_val_to_reg(0, src_id)
+					// For sext, sign-extend narrow source
+					if op == .sext {
+						src_typ_id := g.mod.values[src_id].typ
+						if src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
+							src_typ := g.mod.type_store.types[src_typ_id]
+							if src_typ.kind == .int_t && src_typ.width > 0
+								&& src_typ.width < 64 {
+								if src_typ.width <= 8 {
+									asm_movsx_rax_al(mut g)
+								} else if src_typ.width <= 16 {
+									asm_movsx_rax_ax(mut g)
+								} else if src_typ.width <= 32 {
+									asm_movsxd_rax_eax(mut g)
+								}
+							}
+						}
+					}
+					g.store_reg_to_val(0, val_id)
+				}
+			}
+		}
+		.extractvalue {
+			// Extract element from tuple/struct
+			tuple_id := instr.operands[0]
+			idx_val := g.mod.values[instr.operands[1]]
+			idx := idx_val.name.int()
+
+			tuple_val := g.mod.values[tuple_id]
+			mut field_byte_off := idx * 8
+			mut field_elem_size := 8
+
+			if tuple_val.typ > 0 && tuple_val.typ < g.mod.type_store.types.len {
+				tuple_typ := g.mod.type_store.types[tuple_val.typ]
+				if tuple_typ.kind == .struct_t && idx >= 0 {
+					field_byte_off = g.struct_field_offset_bytes(tuple_val.typ, idx)
+					if idx < tuple_typ.fields.len {
+						field_elem_size = g.type_size(tuple_typ.fields[idx])
+						if field_elem_size <= 0 {
+							field_elem_size = 8
+						}
+					}
+				}
+			}
+
+			// Also check if tuple is a load from a struct pointer
+			mut scalar_load_agg_src_ptr_id := 0
+			if tuple_val.kind == .instruction {
+				tuple_ins := g.mod.instrs[tuple_val.index]
+				if g.selected_opcode(tuple_ins) == .load && tuple_ins.operands.len > 0 {
+					load_ptr_id := tuple_ins.operands[0]
+					if load_ptr_id > 0 && load_ptr_id < g.mod.values.len {
+						load_ptr_val := g.mod.values[load_ptr_id]
+						if load_ptr_val.typ > 0
+							&& load_ptr_val.typ < g.mod.type_store.types.len {
+							load_ptr_typ := g.mod.type_store.types[load_ptr_val.typ]
+							if load_ptr_typ.kind == .ptr_t && load_ptr_typ.elem_type > 0
+								&& load_ptr_typ.elem_type < g.mod.type_store.types.len {
+								load_elem_typ := g.mod.type_store.types[load_ptr_typ.elem_type]
+								if load_elem_typ.kind in [.struct_t, .array_t] {
+									scalar_load_agg_src_ptr_id = load_ptr_id
+									if load_elem_typ.kind == .struct_t && idx >= 0 {
+										field_byte_off = g.struct_field_offset_bytes(load_ptr_typ.elem_type,
+											idx)
+										if idx < load_elem_typ.fields.len {
+											field_elem_size = g.type_size(load_elem_typ.fields[idx])
+											if field_elem_size <= 0 {
+												field_elem_size = 8
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Check if result is aggregate
+			mut result_is_agg := false
+			mut result_size := 0
+			if instr.typ > 0 && instr.typ < g.mod.type_store.types.len {
+				result_typ := g.mod.type_store.types[instr.typ]
+				result_size = g.type_size(instr.typ)
+				result_is_agg = result_typ.kind in [.struct_t, .array_t]
+			}
+
+			if scalar_load_agg_src_ptr_id > 0 {
+				// Load from struct pointer + field offset
+				g.load_val_to_reg(int(r10), scalar_load_agg_src_ptr_id)
+				if result_is_agg && result_size > 8 {
+					if result_off := g.stack_map[val_id] {
+						num_chunks := (result_size + 7) / 8
+						for i := 0; i < num_chunks; i++ {
+							asm_mov_rax_mem_base_disp(mut g, r10, field_byte_off + i * 8)
+							asm_store_rbp_disp_reg(mut g, result_off + i * 8, rax)
+						}
+					}
+				} else {
+					g.emit_sized_load_base_disp(r10, field_byte_off, field_elem_size)
+					g.store_reg_to_val(0, val_id)
+				}
+			} else if tuple_off := g.stack_map[tuple_id] {
+				// Load from stack slot + field offset
+				if result_is_agg && result_size > 8 {
+					if result_off := g.stack_map[val_id] {
+						num_chunks := (result_size + 7) / 8
+						for i := 0; i < num_chunks; i++ {
+							asm_load_reg_rbp_disp(mut g, rax, tuple_off + field_byte_off + i * 8)
+							asm_store_rbp_disp_reg(mut g, result_off + i * 8, rax)
+						}
+					}
+				} else {
+					asm_load_reg_rbp_disp(mut g, rax, tuple_off + field_byte_off)
+					g.store_reg_to_val(0, val_id)
+				}
+			} else if tuple_id in g.reg_map {
+				// Tuple in register - treat as pointer to struct
+				tuple_reg := g.reg_map[tuple_id]
+				g.emit_sized_load_base_disp(Reg(tuple_reg), field_byte_off, field_elem_size)
+				g.store_reg_to_val(0, val_id)
+			} else {
+				// Fallback
+				g.load_val_to_reg(0, tuple_id)
+				g.store_reg_to_val(0, val_id)
+			}
+		}
+		.insertvalue {
+			// Insert element into tuple/struct
+			tuple_id := instr.operands[0]
+			elem_id := instr.operands[1]
+			idx_val := g.mod.values[instr.operands[2]]
+			idx := idx_val.name.int()
+
+			result_offset := g.stack_map[val_id]
+			tuple_typ := g.mod.type_store.types[instr.typ]
+			tuple_size := g.type_size(instr.typ)
+			num_chunks := if tuple_size > 0 { (tuple_size + 7) / 8 } else { 1 }
+			mut elem_off := idx * 8
+			if tuple_typ.kind == .struct_t && idx >= 0 && idx < tuple_typ.fields.len {
+				elem_off = g.struct_field_offset_bytes(instr.typ, idx)
+			}
+
+			// Copy existing tuple data
+			tuple_val := g.mod.values[tuple_id]
+			if !(tuple_val.kind == .constant && tuple_val.name == 'undef') {
+				if tuple_offset := g.stack_map[tuple_id] {
+					for i in 0 .. num_chunks {
+						asm_load_reg_rbp_disp(mut g, rax, tuple_offset + i * 8)
+						asm_store_rbp_disp_reg(mut g, result_offset + i * 8, rax)
+					}
+				} else {
+					// Zero-init
+					asm_xor_reg_reg(mut g, rax)
+					for i in 0 .. num_chunks {
+						asm_store_rbp_disp_reg(mut g, result_offset + i * 8, rax)
+					}
+				}
+			} else {
+				// Zero-init for undef
+				asm_xor_reg_reg(mut g, rax)
+				for i in 0 .. num_chunks {
+					asm_store_rbp_disp_reg(mut g, result_offset + i * 8, rax)
+				}
+			}
+
+			// Store the new element
+			mut elem_typ_id := ssa.TypeID(0)
+			if tuple_typ.kind == .struct_t && idx >= 0 && idx < tuple_typ.fields.len {
+				elem_typ_id = tuple_typ.fields[idx]
+			} else if elem_id > 0 && elem_id < g.mod.values.len {
+				elem_typ_id = g.mod.values[elem_id].typ
+			}
+			mut elem_size := if elem_typ_id > 0 { g.type_size(elem_typ_id) } else { 8 }
+			if elem_size <= 0 {
+				elem_size = 8
+			}
+			if elem_size <= 8 {
+				g.load_val_to_reg(0, elem_id)
+				store_off := result_offset + elem_off
+				match elem_size {
+					1 { asm_store_rbp_disp8_reg8(mut g, store_off, rax) }
+					2 { asm_store_rbp_disp16_reg16(mut g, store_off, rax) }
+					4 { asm_store_rbp_disp32_reg32(mut g, store_off, rax) }
+					else { asm_store_rbp_disp_reg(mut g, store_off, rax) }
+				}
+			} else {
+				// Multi-word element
+				elem_chunks := (elem_size + 7) / 8
+				if elem_offset := g.stack_map[elem_id] {
+					for i in 0 .. elem_chunks {
+						asm_load_reg_rbp_disp(mut g, rax, elem_offset + i * 8)
+						asm_store_rbp_disp_reg(mut g, result_offset + elem_off + i * 8,
+							rax)
+					}
+				} else {
+					g.load_val_to_reg(0, elem_id)
+					asm_store_rbp_disp_reg(mut g, result_offset + elem_off, rax)
+					if elem_chunks > 1 {
+						asm_xor_reg_reg(mut g, rax)
+						for i in 1 .. elem_chunks {
+							asm_store_rbp_disp_reg(mut g, result_offset + elem_off + i * 8,
+								rax)
+						}
+					}
+				}
+			}
+		}
+		.struct_init {
+			// Create struct from field values
+			result_offset := g.stack_map[val_id]
+			struct_typ := g.mod.type_store.types[instr.typ]
+			struct_size := g.type_size(instr.typ)
+			zero_size := if struct_size > 0 { struct_size } else { 8 }
+
+			// Zero-initialize the entire struct first
+			asm_xor_reg_reg(mut g, rax)
+			mut off := 0
+			for off + 8 <= zero_size {
+				asm_store_rbp_disp_reg(mut g, result_offset + off, rax)
+				off += 8
+			}
+			if off < zero_size {
+				// Store remaining bytes
+				asm_store_rbp_disp_reg(mut g, result_offset + off, rax)
+			}
+
+			// Store each field value at its proper offset
+			for fi, field_id in instr.operands {
+				mut field_off := fi * 8
+				if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
+					field_off = g.struct_field_offset_bytes(instr.typ, fi)
+				}
+
+				mut field_typ_id := ssa.TypeID(0)
+				if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
+					field_typ_id = struct_typ.fields[fi]
+				} else if field_id > 0 && field_id < g.mod.values.len {
+					field_typ_id = g.mod.values[field_id].typ
+				}
+				mut field_size := if field_typ_id > 0 { g.type_size(field_typ_id) } else { 8 }
+				if field_size <= 0 {
+					field_size = 8
+				}
+
+				// Skip zero constants (already zeroed)
+				field_val := g.mod.values[field_id]
+				if field_val.kind == .constant && field_val.name == '0' {
+					continue
+				}
+
+				if field_size <= 8 {
+					g.load_val_to_reg(0, field_id)
+					store_off := result_offset + field_off
+					match field_size {
+						1 { asm_store_rbp_disp8_reg8(mut g, store_off, rax) }
+						2 { asm_store_rbp_disp16_reg16(mut g, store_off, rax) }
+						4 { asm_store_rbp_disp32_reg32(mut g, store_off, rax) }
+						else { asm_store_rbp_disp_reg(mut g, store_off, rax) }
+					}
+				} else {
+					// Multi-word field (nested struct)
+					field_chunks := (field_size + 7) / 8
+					if field_offset := g.stack_map[field_id] {
+						for w in 0 .. field_chunks {
+							asm_load_reg_rbp_disp(mut g, rax, field_offset + w * 8)
+							asm_store_rbp_disp_reg(mut g, result_offset + field_off + w * 8,
+								rax)
+						}
+					} else {
+						g.load_val_to_reg(0, field_id)
+						asm_store_rbp_disp_reg(mut g, result_offset + field_off, rax)
+						if field_chunks > 1 {
+							asm_xor_reg_reg(mut g, rax)
+							for w in 1 .. field_chunks {
+								asm_store_rbp_disp_reg(mut g, result_offset + field_off + w * 8,
+									rax)
+							}
+						}
+					}
+				}
+			}
+		}
+		.inline_string_init {
+			// Create string struct by value: { str, len, is_lit }
+			str_ptr_id := instr.operands[0]
+			len_id := instr.operands[1]
+			is_lit_id := instr.operands[2]
+
+			base_offset := g.stack_map[val_id]
+			struct_offset := base_offset + 8 // string data lives above pointer slot
+			str_off, _ := g.struct_field_offset_and_size(instr.typ, 0, 0, 8)
+			len_off, len_size := g.struct_field_offset_and_size(instr.typ, 1, 8, 8)
+			is_lit_off, is_lit_size := g.struct_field_offset_and_size(instr.typ, 2, 16, 8)
+
+			// Store str field
+			g.load_val_to_reg(0, str_ptr_id)
+			asm_store_rbp_disp_reg(mut g, struct_offset + str_off, rax)
+
+			// Store len field
+			g.load_val_to_reg(0, len_id)
+			g.emit_sized_store_rbp(struct_offset + len_off, len_size)
+
+			// Store is_lit field
+			g.load_val_to_reg(0, is_lit_id)
+			g.emit_sized_store_rbp(struct_offset + is_lit_off, is_lit_size)
+
+			// Return pointer to struct
+			asm_lea_rax_rbp_disp32(mut g, struct_offset)
+			g.store_reg_to_val(0, val_id)
+		}
 		.phi {
 			// Phi nodes are eliminated by optimization (converted to assignments)
-			// but the instructions remain in the block. We ignore them here.
 		}
 		.unreachable {
-			// Emit UD2 instruction (undefined trap)
 			asm_ud2(mut g)
 		}
 		else {
@@ -773,49 +1525,195 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	}
 }
 
-fn (g Gen) type_size(typ_id ssa.TypeID) int {
-	if typ_id == 0 {
+fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
+	if typ_id <= 0 {
 		return 0
 	}
-	if typ_id < 0 || typ_id >= g.mod.type_store.types.len {
+	if typ_id >= g.mod.type_store.types.len {
 		return 8
 	}
+	if typ_id < g.type_size_cache.len && g.type_size_cache[typ_id] != 0 {
+		return g.type_size_cache[typ_id]
+	}
 	typ := g.mod.type_store.types[typ_id]
-	match typ.kind {
-		.void_t {
-			return 0
-		}
-		.int_t {
-			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
-		}
-		.float_t {
-			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
-		}
-		.ptr_t {
-			return 8
-		}
-		.array_t {
-			return typ.len * g.type_size(typ.elem_type)
-		}
+	size := match typ.kind {
+		.void_t { 0 }
+		.int_t { if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
+		.float_t { if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
+		.ptr_t { 8 }
+		.array_t { typ.len * g.type_size(typ.elem_type) }
 		.struct_t {
 			mut total := 0
+			mut max_align := 1
 			for field_typ in typ.fields {
-				if total % 8 != 0 {
-					total = (total + 7) & ~7
+				align := g.type_align(field_typ)
+				if align > max_align {
+					max_align = align
+				}
+				if align > 1 && total % align != 0 {
+					total = (total + align - 1) & ~(align - 1)
 				}
 				total += g.type_size(field_typ)
 			}
-			if total % 8 != 0 {
-				total = (total + 7) & ~7
+			if max_align > 1 && total % max_align != 0 {
+				total = (total + max_align - 1) & ~(max_align - 1)
 			}
-			return if total > 0 { total } else { 8 }
+			if total > 0 { total } else { 8 }
 		}
-		.func_t {
-			return 8
+		.func_t { 8 }
+		.label_t, .metadata_t { 0 }
+	}
+	if typ_id < g.type_size_cache.len && size > 0 {
+		g.type_size_cache[typ_id] = size
+	}
+	return size
+}
+
+fn (mut g Gen) type_align(typ_id ssa.TypeID) int {
+	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
+		return if typ_id == 0 { 1 } else { 8 }
+	}
+	if typ_id < g.type_align_cache.len && g.type_align_cache[typ_id] != 0 {
+		return g.type_align_cache[typ_id] - 1
+	}
+	typ := g.mod.type_store.types[typ_id]
+	mut align := 1
+	if typ.kind == .array_t {
+		align = g.type_align(typ.elem_type)
+	} else {
+		size := g.type_size(typ_id)
+		if size >= 8 {
+			align = 8
+		} else if size >= 4 {
+			align = 4
+		} else if size >= 2 {
+			align = 2
 		}
-		.label_t, .metadata_t {
-			return 0
+	}
+	if typ_id < g.type_align_cache.len {
+		g.type_align_cache[typ_id] = align + 1
+	}
+	return align
+}
+
+fn (mut g Gen) struct_field_offset_bytes(struct_typ_id ssa.TypeID, field_idx int) int {
+	if struct_typ_id <= 0 || struct_typ_id >= g.mod.type_store.types.len {
+		return field_idx * 8
+	}
+	cache_key := (struct_typ_id << 16) | field_idx
+	if cache_key in g.struct_field_offset_cache {
+		return g.struct_field_offset_cache[cache_key]
+	}
+	typ := g.mod.type_store.types[struct_typ_id]
+	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
+		return field_idx * 8
+	}
+	if typ.is_union {
+		return 0
+	}
+	mut offset := 0
+	for i, field_typ in typ.fields {
+		align := g.type_align(field_typ)
+		if align > 1 && offset % align != 0 {
+			offset = (offset + align - 1) & ~(align - 1)
 		}
+		if i == field_idx {
+			g.struct_field_offset_cache[cache_key] = offset
+			return offset
+		}
+		field_size := g.type_size(field_typ)
+		offset += if field_size > 0 { field_size } else { 8 }
+	}
+	return field_idx * 8
+}
+
+fn (mut g Gen) struct_field_offset_and_size(struct_typ_id ssa.TypeID, field_idx int, default_off int, default_size int) (int, int) {
+	mut off := default_off
+	mut size := default_size
+	if struct_typ_id > 0 && struct_typ_id < g.mod.type_store.types.len {
+		typ := g.mod.type_store.types[struct_typ_id]
+		if typ.kind == .struct_t && field_idx >= 0 && field_idx < typ.fields.len {
+			off = g.struct_field_offset_bytes(struct_typ_id, field_idx)
+			field_size := g.type_size(typ.fields[field_idx])
+			if field_size > 0 {
+				size = field_size
+			}
+		}
+	}
+	if size !in [1, 2, 4, 8] {
+		size = 8
+	}
+	return off, size
+}
+
+fn (mut g Gen) canonicalize_narrow_int(typ ssa.Type) {
+	if typ.width == 1 {
+		asm_and_rax_imm32(mut g, 1)
+	} else if typ.is_unsigned {
+		if typ.width <= 8 {
+			asm_movzx_rax_al(mut g)
+		} else if typ.width <= 16 {
+			asm_movzx_rax_ax(mut g)
+		} else if typ.width <= 32 {
+			// mov eax, eax (zero-extends)
+			g.emit(0x89)
+			g.emit(0xC0)
+		}
+	} else {
+		if typ.width <= 8 {
+			asm_movsx_rax_al(mut g)
+		} else if typ.width <= 16 {
+			asm_movsx_rax_ax(mut g)
+		} else if typ.width <= 32 {
+			asm_movsxd_rax_eax(mut g)
+		}
+	}
+}
+
+// Emit sized store from rax to [rbp + disp]
+fn (mut g Gen) emit_sized_store_rbp(disp int, size int) {
+	match size {
+		1 { asm_store_rbp_disp8_reg8(mut g, disp, rax) }
+		2 { asm_store_rbp_disp16_reg16(mut g, disp, rax) }
+		4 { asm_store_rbp_disp32_reg32(mut g, disp, rax) }
+		else { asm_store_rbp_disp_reg(mut g, disp, rax) }
+	}
+}
+
+// Emit sized load from [base + disp] to rax
+fn (mut g Gen) emit_sized_load_base_disp(base Reg, disp int, size int) {
+	match size {
+		1 { asm_load_byte_base_disp(mut g, base, disp) }
+		2 { asm_load_word_base_disp(mut g, base, disp) }
+		4 {
+			// mov eax, [base + disp] (zero-extend 32-bit)
+			base_hw := g.map_reg(int(base))
+			if base_hw >= 8 {
+				g.emit(0x41)
+			}
+			g.emit(0x8B)
+			rm := base_hw & 7
+			needs_sib := rm == 4
+			if disp == 0 && rm != 5 {
+				g.emit(rm)
+				if needs_sib {
+					g.emit(0x24)
+				}
+			} else if disp >= -128 && disp <= 127 {
+				g.emit(0x40 | rm)
+				if needs_sib {
+					g.emit(0x24)
+				}
+				g.emit(u8(disp))
+			} else {
+				g.emit(0x80 | rm)
+				if needs_sib {
+					g.emit(0x24)
+				}
+				g.emit_u32(u32(disp))
+			}
+		}
+		else { asm_mov_rax_mem_base_disp(mut g, base, disp) }
 	}
 }
 
