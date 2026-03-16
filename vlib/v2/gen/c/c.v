@@ -34,6 +34,7 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <stdio.h>')
 	g.sb.writeln('#include <stdlib.h>')
 	g.sb.writeln('#include <string.h>')
+	g.sb.writeln('#include <pthread.h>')
 	g.sb.writeln('')
 	// Undefine macOS macros that conflict with struct field names
 	g.sb.writeln('#ifdef __APPLE__')
@@ -76,6 +77,9 @@ pub fn (mut g Gen) gen() string {
 	// Function forward declarations for all functions
 	g.gen_fn_forward_decls()
 
+	// Spawn wrapper functions (pre-scanned from all spawn_call instructions)
+	g.gen_spawn_wrappers()
+
 	// Function bodies (skip stub functions - they'll come from builtin.o)
 	for i, func in g.mod.funcs {
 		if func.blocks.len == 0 {
@@ -89,6 +93,55 @@ pub fn (mut g Gen) gen() string {
 	}
 
 	return g.sb.str()
+}
+
+// gen_spawn_wrappers pre-scans all functions for spawn_call instructions with
+// arguments and emits wrapper functions that unpack the args struct and call the
+// original function. These must be emitted before function bodies so that the
+// wrappers are visible at each pthread_create call site.
+fn (mut g Gen) gen_spawn_wrappers() {
+	for func in g.mod.funcs {
+		for blk_id in func.blocks {
+			block := g.mod.blocks[blk_id]
+			for instr_id in block.instrs {
+				val := g.mod.values[instr_id]
+				if val.kind != .instruction {
+					continue
+				}
+				instr := g.mod.instrs[val.index]
+				if instr.op !in [.spawn_call, .go_call] || instr.operands.len < 2 {
+					continue
+				}
+				fn_ref := instr.operands[0]
+				fn_val := g.mod.values[fn_ref]
+				fn_name := sanitize_c_ident(fn_val.name)
+				prefix := if instr.op == .spawn_call { '_spawn' } else { '_go' }
+				wrapper_id := '${fn_name}_${val.name}'
+				arg_count := instr.operands.len - 1
+
+				g.sb.write_string('struct ${prefix}_args_${wrapper_id} { ')
+				for ai in 0 .. arg_count {
+					arg_type := g.type_name(g.mod.values[instr.operands[ai + 1]].typ)
+					g.sb.write_string('${arg_type} a${ai}; ')
+				}
+				g.sb.writeln('};')
+				g.sb.writeln('static void* ${prefix}_wrapper_${wrapper_id}(void* _arg) {')
+				g.sb.writeln('\tstruct ${prefix}_args_${wrapper_id}* _args = (struct ${prefix}_args_${wrapper_id}*)_arg;')
+				g.sb.write_string('\t${fn_name}(')
+				for ai in 0 .. arg_count {
+					if ai > 0 {
+						g.sb.write_string(', ')
+					}
+					g.sb.write_string('_args->a${ai}')
+				}
+				g.sb.writeln(');')
+				g.sb.writeln('\tfree(_arg);')
+				g.sb.writeln('\treturn NULL;')
+				g.sb.writeln('}')
+				g.sb.writeln('')
+			}
+		}
+	}
 }
 
 fn (mut g Gen) gen_runtime_helpers() {
@@ -741,6 +794,106 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 				.unreachable {
 					g.write_indent()
 					g.sb.writeln('__builtin_unreachable();')
+				}
+				.go_call {
+					// go fn(args...) -> goroutines__goroutine_create(fn, args)
+					if instr.operands.len >= 1 {
+						fn_ref := instr.operands[0]
+						fn_val := g.mod.values[fn_ref]
+						fn_name := sanitize_c_ident(fn_val.name)
+						arg_count := instr.operands.len - 1
+
+						if arg_count == 0 {
+							// No arguments: pass function directly with NULL arg
+							g.write_indent()
+							g.sb.writeln('goroutines__goroutine_create((void*)(void(*)())${fn_name}, NULL, 0);')
+						} else {
+							wrapper_id := '${fn_name}_${val.name}'
+
+							g.write_indent()
+							g.sb.writeln('{')
+							g.indent++
+
+							// Declare args struct on heap
+							g.write_indent()
+							g.sb.write_string('struct _go_args_${wrapper_id} { ')
+							for ai in 0 .. arg_count {
+								arg_type := g.type_name(g.mod.values[instr.operands[ai + 1]].typ)
+								g.sb.write_string('${arg_type} a${ai}; ')
+							}
+							g.sb.writeln('};')
+
+							g.write_indent()
+							g.sb.writeln('struct _go_args_${wrapper_id}* _args = (struct _go_args_${wrapper_id}*)malloc(sizeof(struct _go_args_${wrapper_id}));')
+
+							// Pack arguments
+							for ai in 0 .. arg_count {
+								g.write_indent()
+								g.sb.write_string('_args->a${ai} = ')
+								g.gen_value(instr.operands[ai + 1])
+								g.sb.writeln(';')
+							}
+
+							// Call goroutine_create with the unpacking wrapper
+							g.write_indent()
+							g.sb.writeln('goroutines__goroutine_create((void*)(void(*)())_go_wrapper_${wrapper_id}, _args, sizeof(struct _go_args_${wrapper_id}));')
+
+							g.indent--
+							g.write_indent()
+							g.sb.writeln('}')
+						}
+					}
+				}
+				.spawn_call {
+					// spawn fn(args...) -> launch OS thread via pthread_create
+					if instr.operands.len >= 1 {
+						fn_ref := instr.operands[0]
+						fn_val := g.mod.values[fn_ref]
+						fn_name := sanitize_c_ident(fn_val.name)
+						arg_count := instr.operands.len - 1
+
+						g.write_indent()
+						g.sb.writeln('{')
+						g.indent++
+
+						g.write_indent()
+						g.sb.writeln('pthread_t _spawn_thread;')
+
+						if arg_count == 0 {
+							g.write_indent()
+							g.sb.writeln('pthread_create(&_spawn_thread, NULL, (void*(*)(void*))${fn_name}, NULL);')
+						} else {
+							wrapper_id := '${fn_name}_${val.name}'
+
+							g.write_indent()
+							g.sb.write_string('struct _spawn_args_${wrapper_id} { ')
+							for ai in 0 .. arg_count {
+								arg_type := g.type_name(g.mod.values[instr.operands[ai + 1]].typ)
+								g.sb.write_string('${arg_type} a${ai}; ')
+							}
+							g.sb.writeln('};')
+
+							g.write_indent()
+							g.sb.writeln('struct _spawn_args_${wrapper_id}* _args = (struct _spawn_args_${wrapper_id}*)malloc(sizeof(struct _spawn_args_${wrapper_id}));')
+
+							for ai in 0 .. arg_count {
+								g.write_indent()
+								g.sb.write_string('_args->a${ai} = ')
+								g.gen_value(instr.operands[ai + 1])
+								g.sb.writeln(';')
+							}
+
+							g.write_indent()
+							g.sb.writeln('pthread_create(&_spawn_thread, NULL, _spawn_wrapper_${wrapper_id}, _args);')
+						}
+
+						g.write_indent()
+						g.sb.writeln('pthread_detach(_spawn_thread);')
+
+						g.indent--
+						g.write_indent()
+						g.sb.writeln('}')
+					}
 				}
 				else {
 					// Other ops: emit as comment

@@ -65,6 +65,8 @@ mut:
 	// Track needed auto-generated sort comparator functions
 	needed_sort_fns     map[string]SortComparatorInfo
 	needed_enum_str_fns map[string]types.Enum
+	// Track needed go wrapper functions (go call -> goroutine_create lowering)
+	needed_go_wrappers map[string]GoWrapperInfo
 	// Override array element types for variables whose checker-inferred type is wrong
 	// (e.g. .map(fn_name) typed as []voidptr instead of []ReturnType)
 	array_elem_type_overrides map[string]string
@@ -109,6 +111,16 @@ struct ArrayMethodInfo {
 	fixed_len  int
 }
 
+// GoWrapperInfo tracks information needed to synthesize a go-wrapper function.
+// For `go foo(a, b)`, we generate a wrapper that packs args and calls
+// goroutines__goroutine_create, and a trampoline that unpacks args and calls foo.
+struct GoWrapperInfo {
+	fn_name      string   // C-mangled function name (e.g. "main__foo")
+	wrapper_name string   // Wrapper function name (e.g. "__go_wrap_main__foo")
+	param_names  []string // Parameter names
+	param_types  []string // Parameter C type names
+}
+
 fn builder_write_string_stmt(sb_ref ast.Expr, s ast.Expr) ast.Stmt {
 	return ast.Stmt(ast.ExprStmt{
 		expr: ast.Expr(ast.CallExpr{
@@ -149,6 +161,7 @@ pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pr
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
 		needed_sort_fns:             map[string]SortComparatorInfo{}
+		needed_go_wrappers:          map[string]GoWrapperInfo{}
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
@@ -180,6 +193,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
 		needed_sort_fns:             map[string]SortComparatorInfo{}
+		needed_go_wrappers:          map[string]GoWrapperInfo{}
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
@@ -204,6 +218,9 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	}
 	for k, v in w.needed_enum_str_fns {
 		t.needed_enum_str_fns[k] = v
+	}
+	for k, v in w.needed_go_wrappers {
+		t.needed_go_wrappers[k] = v
 	}
 	for k, v in w.interface_concrete_types {
 		t.interface_concrete_types[k] = v
@@ -581,6 +598,9 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if t.needed_array_contains_fns.len > 0 || t.needed_array_index_fns.len > 0
 		|| t.needed_array_last_index_fns.len > 0 {
 		generated_fns << t.generate_array_method_functions()
+	}
+	if t.needed_go_wrappers.len > 0 {
+		generated_fns << t.generate_go_wrapper_functions()
 	}
 	if generated_fns.len > 0 {
 		// Split into core (builtin types), module-specific, and user (main) functions
@@ -8923,4 +8943,270 @@ fn (mut t Transformer) generate_sort_comparator_fn(fn_name string, info SortComp
 		}
 		stmts:      body_stmts
 	})
+}
+
+// generate_go_wrapper_functions generates synthesized functions for lowering
+// `go foo(args)` to goroutine creation via goroutines__goroutine_create.
+//
+// For each go-called function foo(a int, b string), generates:
+// 1. struct __GoArgs_foo { a0 int; a1 string }
+// 2. fn __go_trampoline_foo(arg voidptr) { args := *(&__GoArgs_foo(arg)); foo(args.a0, args.a1); C.free(arg) }
+// 3. fn __go_wrap_foo(a int, b string) { args := C.malloc(sizeof(__GoArgs_foo)); ...; goroutines__goroutine_create(trampoline, args, sizeof) }
+fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
+	mut result := []ast.Stmt{}
+	for _, info in t.needed_go_wrappers {
+		struct_name := '__GoArgs_${info.fn_name}'
+		trampoline_name := '__go_trampoline_${info.fn_name}'
+		// 1. Generate the args struct
+		if info.param_names.len > 0 {
+			mut fields := []ast.FieldDecl{}
+			for i, pname in info.param_names {
+				fields << ast.FieldDecl{
+					name: pname
+					typ:  ast.Ident{
+						name: info.param_types[i]
+					}
+				}
+			}
+			result << ast.Stmt(ast.StructDecl{
+				name:   struct_name
+				fields: fields
+			})
+		}
+		// 2. Generate the trampoline function
+		if info.param_names.len > 0 {
+			mut trampoline_stmts := []ast.Stmt{}
+			// args := unsafe { *(&__GoArgs_foo(arg)) }
+			// We use a cast + dereference at the C level.
+			// At AST level: args := *voidptr(arg) cast to struct pointer, then deref.
+			// Simpler: use direct field access with cast.
+			trampoline_stmts << ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(ast.Ident{
+					name: '_go_args'
+				})]
+				rhs: [
+					ast.Expr(ast.PrefixExpr{
+						op:   .mul
+						expr: ast.CastExpr{
+							typ:  ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Ident{
+									name: struct_name
+								}
+							}
+							expr: ast.Ident{
+								name: 'arg'
+							}
+						}
+					}),
+				]
+			})
+			// foo(_go_args.a0, _go_args.a1, ...)
+			mut call_args := []ast.Expr{}
+			for pname in info.param_names {
+				call_args << ast.Expr(ast.SelectorExpr{
+					lhs: ast.Ident{
+						name: '_go_args'
+					}
+					rhs: ast.Ident{
+						name: pname
+					}
+				})
+			}
+			trampoline_stmts << ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.Ident{
+						name: info.fn_name
+					}
+					args: call_args
+				}
+			})
+			// C.free(arg)
+			trampoline_stmts << ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.SelectorExpr{
+						lhs: ast.Ident{
+							name: 'C'
+						}
+						rhs: ast.Ident{
+							name: 'free'
+						}
+					}
+					args: [ast.Expr(ast.Ident{
+						name: 'arg'
+					})]
+				}
+			})
+			result << ast.Stmt(ast.FnDecl{
+				name:  trampoline_name
+				typ:   ast.FnType{
+					params: [
+						ast.Parameter{
+							name: 'arg'
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+						},
+					]
+				}
+				stmts: trampoline_stmts
+			})
+		}
+		// 3. Generate the dispatch wrapper function
+		mut dispatch_stmts := []ast.Stmt{}
+		if info.param_names.len == 0 {
+			// Zero args: goroutines__goroutine_create(voidptr(foo), voidptr(0), 0)
+			dispatch_stmts << ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'goroutines__goroutine_create'
+					}
+					args: [
+						ast.Expr(ast.CastExpr{
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: info.fn_name
+							}
+						}),
+						ast.Expr(ast.CastExpr{
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.BasicLiteral{
+								kind:  .number
+								value: '0'
+							}
+						}),
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						}),
+					]
+				}
+			})
+		} else {
+			// Allocate args struct on heap
+			// mut _args := &__GoArgs_foo{ a0: param0, a1: param1, ... }
+			// We use C.malloc + field assignment for simplicity
+			// _args_ptr := C.malloc(sizeof(__GoArgs_foo))
+			dispatch_stmts << ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(ast.Ident{
+					name: '_args_ptr'
+				})]
+				rhs: [
+					ast.Expr(ast.CallExpr{
+						lhs:  ast.SelectorExpr{
+							lhs: ast.Ident{
+								name: 'C'
+							}
+							rhs: ast.Ident{
+								name: 'malloc'
+							}
+						}
+						args: [
+							ast.Expr(ast.KeywordOperator{
+								op:    .key_sizeof
+								exprs: [ast.Expr(ast.Ident{
+									name: struct_name
+								})]
+							}),
+						]
+					}),
+				]
+			})
+			// _args := &__GoArgs_foo(_args_ptr)
+			dispatch_stmts << ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(ast.Ident{
+					name: '_args'
+				})]
+				rhs: [
+					ast.Expr(ast.CastExpr{
+						typ:  ast.PrefixExpr{
+							op:   .amp
+							expr: ast.Ident{
+								name: struct_name
+							}
+						}
+						expr: ast.Ident{
+							name: '_args_ptr'
+						}
+					}),
+				]
+			})
+			// _args.field = param for each field
+			for i, pname in info.param_names {
+				dispatch_stmts << ast.Stmt(ast.AssignStmt{
+					op:  .assign
+					lhs: [
+						ast.Expr(ast.SelectorExpr{
+							lhs: ast.Ident{
+								name: '_args'
+							}
+							rhs: ast.Ident{
+								name: pname
+							}
+						}),
+					]
+					rhs: [ast.Expr(ast.Ident{
+						name: pname
+					})]
+				})
+			}
+			// goroutines__goroutine_create(voidptr(trampoline), voidptr(_args_ptr), sizeof(__GoArgs_foo))
+			dispatch_stmts << ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'goroutines__goroutine_create'
+					}
+					args: [
+						ast.Expr(ast.CastExpr{
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: trampoline_name
+							}
+						}),
+						ast.Expr(ast.CastExpr{
+							typ:  ast.Ident{
+								name: 'voidptr'
+							}
+							expr: ast.Ident{
+								name: '_args_ptr'
+							}
+						}),
+						ast.Expr(ast.KeywordOperator{
+							op:    .key_sizeof
+							exprs: [ast.Expr(ast.Ident{
+								name: struct_name
+							})]
+						}),
+					]
+				}
+			})
+		}
+		// Build params for the dispatch function (same as original function)
+		mut dispatch_params := []ast.Parameter{}
+		for i, pname in info.param_names {
+			dispatch_params << ast.Parameter{
+				name: pname
+				typ:  ast.Ident{
+					name: info.param_types[i]
+				}
+			}
+		}
+		result << ast.Stmt(ast.FnDecl{
+			name:  info.wrapper_name
+			typ:   ast.FnType{
+				params: dispatch_params
+			}
+			stmts: dispatch_stmts
+		})
+	}
+	return result
 }
