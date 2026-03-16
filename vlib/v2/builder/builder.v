@@ -635,9 +635,6 @@ fn (b &Builder) should_disable_cleanc_cache() bool {
 		// Force a single translation unit until the cache path is stable there.
 		return true
 	}
-	if b.is_cmd_v2_self_build() {
-		return true
-	}
 	for raw_input in b.user_files {
 		input := raw_input.trim_right('/\\')
 		if input.len == 0 {
