@@ -980,7 +980,7 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 // See also .sort_with_compare()
 pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
 	mut r := a.clone()
-	unsafe { C.qsort(r.data, usize(r.len), usize(r.element_size), voidptr(callback)) }
+	unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
 	return r
 }
 

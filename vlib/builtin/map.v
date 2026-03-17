@@ -228,7 +228,7 @@ fn map_map_eq(a map, b map) bool {
 		}
 		va := a.key_values.value(i)
 		vb := b.get(k, va)
-		if unsafe { C.memcmp(va, vb, a.value_bytes) } != 0 {
+		if unsafe { vmemcmp(va, vb, a.value_bytes) } != 0 {
 			return false
 		}
 	}
@@ -242,7 +242,7 @@ fn map_clone_string(dest voidptr, pkey voidptr) {
 		cloned := s.clone()
 		// Use memcpy for native backend compatibility
 		// (*&string(dest)) = cloned doesn't reliably store full struct
-		C.memcpy(dest, voidptr(&cloned), sizeof(string))
+		vmemcpy(dest, voidptr(&cloned), sizeof(string))
 	}
 }
 
