@@ -118,6 +118,16 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, fn_by_name map[string]int) {
 				arg_typ = fallback_arg_type(m, arg_id)
 			}
 			if needs_indirect(m, arg_typ, arch) {
+				// Cross-check: if the signature says indirect (e.g. variadic
+				// param lowered to []T struct) but the actual argument is a
+				// scalar, trust the actual argument type.  This prevents
+				// passing an integer by pointer to C variadic functions like
+				// snprintf where the V declaration uses `...voidptr`.
+				arg_id := instr.operands[arg_idx + 1]
+				actual_typ := fallback_arg_type(m, arg_id)
+				if actual_typ != arg_typ && !needs_indirect(m, actual_typ, arch) {
+					continue
+				}
 				instr.abi_arg_class[arg_idx] = .indirect
 			}
 		}
