@@ -1,10 +1,14 @@
 # goroutines
 
-Go-style goroutine runtime for V, implementing the GMP (Goroutine-Machine-Processor) scheduling model translated from the Go runtime (`src/runtime/proc.go`, `runtime2.go`, `chan.go`).
+Go-style goroutine runtime for V, implementing the GMP
+(Goroutine-Machine-Processor) scheduling model translated
+from the Go runtime (`src/runtime/proc.go`, `runtime2.go`,
+`chan.go`).
 
 ## Overview
 
-This module provides lightweight goroutines for V's `go` keyword, as opposed to `spawn` which creates OS threads.
+This module provides lightweight goroutines for V's `go`
+keyword, as opposed to `spawn` which creates OS threads.
 
 ### GMP Model
 
@@ -22,7 +26,7 @@ This module provides lightweight goroutines for V's `go` keyword, as opposed to 
 
 ## Usage
 
-```v
+```v ignore
 // `go` launches a goroutine (lightweight, scheduled by GMP)
 go expensive_computation()
 
