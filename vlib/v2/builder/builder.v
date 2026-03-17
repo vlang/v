@@ -1011,6 +1011,28 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 	if decls == '' {
 		return source
 	}
+	// Collect names already defined in the main source (typedefs and macros)
+	// to avoid duplicate/conflicting injected declarations.
+	mut existing_names := map[string]bool{}
+	for src_line in source.split_into_lines() {
+		trimmed := src_line.trim_space()
+		if trimmed.starts_with('typedef ') && trimmed.ends_with(';') {
+			name := extract_typedef_name(trimmed)
+			if name.len > 0 {
+				existing_names[name] = true
+			}
+		} else if trimmed.starts_with('#define ') {
+			// Extract macro name: "#define NAME" or "#define NAME(..."
+			rest := trimmed[8..]
+			mut end := 0
+			for end < rest.len && rest[end] != `(` && !rest[end].is_space() {
+				end++
+			}
+			if end > 0 {
+				existing_names[rest[..end]] = true
+			}
+		}
+	}
 	mut lines := source.split_into_lines()
 	mut out := []string{cap: lines.len + decls.count('\n') + 2}
 	mut saw_cached_decl := false
@@ -1023,9 +1045,24 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 		}
 		if saw_cached_decl && line == '' && !inserted {
 			for decl_line in decls.split_into_lines() {
-				if decl_line != '' {
-					out << decl_line
+				if decl_line == '' {
+					continue
 				}
+				// Skip declarations whose name conflicts with main source.
+				if decl_line.starts_with('typedef ') {
+					name := extract_typedef_name(decl_line)
+					if name.len > 0 && name in existing_names {
+						continue
+					}
+				} else {
+					// Function forward declaration — extract fn name and skip
+					// if it conflicts with a #define macro in the main source.
+					fn_name := extract_fn_decl_name(decl_line)
+					if fn_name.len > 0 && fn_name in existing_names {
+						continue
+					}
+				}
+				out << decl_line
 			}
 			out << ''
 			inserted = true
@@ -1037,53 +1074,109 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 	return out.join('\n')
 }
 
+fn extract_typedef_name(line string) string {
+	// For "typedef <something> Name;" or "typedef struct Name { ... } Name;"
+	// extract the name just before the final ';'.
+	trimmed := line.trim_right('; ')
+	// The typedef name is the last space-separated token, but handle
+	// attribute suffixes like __attribute__((...))).
+	if trimmed.ends_with(')') {
+		// Typedef with attribute — find name before __attribute__
+		attr_idx := trimmed.index('__attribute__') or { return '' }
+		before_attr := trimmed[..attr_idx].trim_space()
+		last_space := before_attr.last_index(' ') or { return before_attr }
+		return before_attr[last_space + 1..]
+	}
+	if trimmed.ends_with('}') {
+		// "typedef struct X { ... } X" — find name after '}'
+		brace_end := trimmed.last_index('}') or { return '' }
+		return trimmed[brace_end + 1..].trim_space()
+	}
+	last_space := trimmed.last_index(' ') or { return trimmed }
+	return trimmed[last_space + 1..]
+}
+
+fn extract_fn_decl_name(line string) string {
+	// Extract function name from a C forward declaration like:
+	// "string time__FormatTime__str(time__FormatTime e);"
+	// The name is the token before '('.
+	paren_idx := line.index_u8(`(`)
+	if paren_idx <= 0 {
+		return ''
+	}
+	before_paren := line[..paren_idx].trim_space()
+	last_space := before_paren.last_index(' ') or { return before_paren }
+	name := before_paren[last_space + 1..]
+	// Skip pointer prefixes
+	if name.len > 0 && name[0] == `*` {
+		return name[1..]
+	}
+	return name
+}
+
 fn (b &Builder) cached_core_forward_decls() string {
 	cache_dir := b.core_cache_dir()
 	mut seen := map[string]bool{}
-	mut decls := []string{}
+	mut typedefs := []string{}
+	mut fn_decls := []string{}
 	for cache_name in [builtin_cache_name, vlib_cache_name] {
 		c_path := os.join_path(cache_dir, '${cache_name}.c')
 		if !os.exists(c_path) {
 			continue
 		}
-		for decl in top_level_c_forward_decls(c_path) {
-			if decl in seen {
+		tds, fds := top_level_c_decls(c_path)
+		for td in tds {
+			if td in seen {
 				continue
 			}
-			seen[decl] = true
-			decls << decl
+			seen[td] = true
+			typedefs << td
+		}
+		for fd in fds {
+			if fd in seen {
+				continue
+			}
+			seen[fd] = true
+			fn_decls << fd
 		}
 	}
-	return decls.join('\n')
+	mut all := []string{cap: typedefs.len + fn_decls.len}
+	all << typedefs
+	all << fn_decls
+	return all.join('\n')
 }
 
-fn top_level_c_forward_decls(c_path string) []string {
-	lines := os.read_lines(c_path) or { return []string{} }
-	mut decls := []string{}
+// top_level_c_decls extracts typedef declarations and function forward
+// declarations from a cached C source file.  Returns (typedefs, fn_decls).
+fn top_level_c_decls(c_path string) ([]string, []string) {
+	lines := os.read_lines(c_path) or { return []string{}, []string{} }
+	mut typedefs := []string{}
+	mut fn_decls := []string{}
 	for raw_line in lines {
 		if raw_line.len == 0 || raw_line[0].is_space() {
 			continue
 		}
 		line := raw_line.trim_space()
+		// Collect typedef lines (struct/union/array/map forward typedefs).
+		if line.starts_with('typedef ') && line.ends_with(';') {
+			typedefs << line
+			continue
+		}
+		// Collect function forward declarations.
 		if !line.ends_with(');') || !line.contains('(') {
 			continue
 		}
-		if line.starts_with('#') || line.starts_with('typedef ') || line.starts_with('struct ')
-			|| line.starts_with('union ') || line.starts_with('enum ')
-			|| line.starts_with('return ') || line.starts_with('if ') || line.starts_with('for ')
-			|| line.starts_with('while ') || line.starts_with('switch ') {
+		if line.starts_with('#') || line.starts_with('struct ') || line.starts_with('union ')
+			|| line.starts_with('enum ') || line.starts_with('return ') || line.starts_with('if ')
+			|| line.starts_with('for ') || line.starts_with('while ') || line.starts_with('switch ') {
 			continue
 		}
-		// Skip expression fragments that start with '(' or '*'
 		if line[0] == `(` || line[0] == `*` {
 			continue
 		}
-		// Skip global variable definitions (contain '=') - only extract function declarations.
 		if line.contains('=') {
 			continue
 		}
-		// A forward declaration has at least a return type and function name before '('.
-		// Reject bare function calls like 'memset(...)' or 'tos(...)'.
 		paren_idx := line.index_u8(`(`)
 		if paren_idx > 0 {
 			before_paren := line[..paren_idx].trim_space()
@@ -1091,9 +1184,9 @@ fn top_level_c_forward_decls(c_path string) []string {
 				continue
 			}
 		}
-		decls << line
+		fn_decls << line
 	}
-	return decls
+	return typedefs, fn_decls
 }
 
 fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name string, module_paths []string, emit_modules []string, cc string, cc_flags string, error_limit_flag string) !string {
@@ -1305,11 +1398,34 @@ fn flag_references_missing_file(flag string) bool {
 fn (b &Builder) collect_cflags_from_sources() string {
 	mut flags := []string{}
 	mut seen := map[string]bool{}
+	mut scanned_files := map[string]bool{}
+	// Collect source file paths to scan.  When .vh headers were used for
+	// parsing, b.files references the .vh summaries which lack #flag
+	// directives.  Always include the original core module source files
+	// so that directive flags (e.g. -I paths) are never lost.
+	mut scan_paths := []string{}
 	for file in b.files {
-		if file.name == '' {
+		if file.name != '' {
+			scan_paths << file.name
+		}
+	}
+	if !b.pref.skip_builtin {
+		for module_path in core_cached_module_paths {
+			vlib_path := b.pref.get_vlib_module_path(module_path)
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines)
+			for mf in module_files {
+				if mf !in scanned_files {
+					scan_paths << mf
+				}
+			}
+		}
+	}
+	for scan_path in scan_paths {
+		if scan_path == '' || scan_path in scanned_files {
 			continue
 		}
-		lines := os.read_lines(file.name) or { continue }
+		scanned_files[scan_path] = true
+		lines := os.read_lines(scan_path) or { continue }
 		// Track $if nesting to skip flags inside non-matching comptime blocks.
 		// skip_depth > 0 means we are inside a non-matching $if block.
 		mut skip_depth := 0
@@ -1340,7 +1456,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			if skip_depth > 0 {
 				continue
 			}
-			mut flag := parse_flag_directive_line(line, file.name) or { continue }
+			mut flag := parse_flag_directive_line(line, scan_path) or { continue }
 			flag = flag.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT', b.pref.vroot)
 			if flag_references_missing_file(flag) {
 				continue
