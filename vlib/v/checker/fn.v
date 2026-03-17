@@ -941,13 +941,13 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	if c.table.cur_concrete_types.len > 0 && node.decl.generic_names.len > 0
 		&& node.decl.generic_names.len == c.table.cur_concrete_types.len {
 		for param in node.decl.params {
-			param_type := if resolved := c.table.convert_generic_type(param.typ,
-				node.decl.generic_names, c.table.cur_concrete_types)
+			param_type := if resolved := c.table.convert_generic_type(param.typ, node.decl.generic_names,
+				c.table.cur_concrete_types)
 			{
 				c.unwrap_generic(resolved)
 			} else {
-				c.table.unwrap_generic_type_ex(param.typ, node.decl.generic_names,
-					c.table.cur_concrete_types, true)
+				c.table.unwrap_generic_type_ex(param.typ, node.decl.generic_names, c.table.cur_concrete_types,
+					true)
 			}
 			if mut param_var := node.decl.scope.find_var(param.name) {
 				param_var.typ = param_type

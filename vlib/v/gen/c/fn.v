@@ -1153,7 +1153,8 @@ fn (mut g Gen) closure_inherited_var_type(node ast.AnonFn, var ast.Param) ast.Ty
 			// For non-generic types, scope_var.typ is already correct and
 			// resolved_expr_type can produce wrong pointer levels (e.g. adding
 			// an extra ref() for &receiver expressions).
-			if scope_var.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(scope_var.typ) {
+			if scope_var.typ.has_flag(.generic)
+				|| g.type_has_unresolved_generic_parts(scope_var.typ) {
 				if scope_var.expr !is ast.EmptyExpr {
 					resolved_expr_typ := g.resolved_expr_type(scope_var.expr, scope_var.typ)
 					if resolved_expr_typ != 0 {
