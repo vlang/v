@@ -52,7 +52,8 @@ fn bench_fan_out_fan_in(n int) {
 	elapsed := sw.elapsed()
 	us := elapsed.microseconds()
 	ns_per := elapsed.nanoseconds() / n
-	C.printf(c'fan-out/fan-in  %d goroutines: %lld us  (%lld ns/goroutine)\n', n, us, ns_per)
+	C.printf(c'fan-out/fan-in  %d goroutines: %lld us  (%lld ns/goroutine)\n', n, us,
+		ns_per)
 }
 
 // --- ping-pong ---
@@ -90,7 +91,8 @@ fn bench_ping_pong(n int) {
 	elapsed := sw.elapsed()
 	us := elapsed.microseconds()
 	ns_per := elapsed.nanoseconds() / n
-	C.printf(c'ping-pong       %d round-trips: %lld us  (%lld ns/round-trip)\n', n, us, ns_per)
+	C.printf(c'ping-pong       %d round-trips: %lld us  (%lld ns/round-trip)\n', n, us,
+		ns_per)
 }
 
 // --- contended channel ---
@@ -131,8 +133,8 @@ fn bench_contended_channel(num_producers int, msgs_per_producer int) {
 	elapsed := sw.elapsed()
 	us := elapsed.microseconds()
 	ns_per := elapsed.nanoseconds() / total
-	C.printf(c'contended chan  %d producers x %d msgs: %lld us  (%lld ns/msg)\n',
-		num_producers, msgs_per_producer, us, ns_per)
+	C.printf(c'contended chan  %d producers x %d msgs: %lld us  (%lld ns/msg)\n', num_producers,
+		msgs_per_producer, us, ns_per)
 }
 
 fn main() {

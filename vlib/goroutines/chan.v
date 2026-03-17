@@ -20,11 +20,11 @@ module goroutines
 pub struct Chan {
 pub mut:
 	mu       SpinLock // protects all fields (spinlock is ucontext-safe)
-	qcount   u32        // total data in the queue
-	dataqsiz u32        // size of the circular buffer
-	buf      voidptr    // circular buffer for buffered channels
-	elemsize u16        // size of each element
-	closed   bool       // true if channel is closed
+	qcount   u32      // total data in the queue
+	dataqsiz u32      // size of the circular buffer
+	buf      voidptr  // circular buffer for buffered channels
+	elemsize u16      // size of each element
+	closed   bool     // true if channel is closed
 
 	sendx u32 // send index into circular buffer
 	recvx u32 // receive index into circular buffer

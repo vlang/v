@@ -9110,9 +9110,11 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 						args: [
 							ast.Expr(ast.KeywordOperator{
 								op:    .key_sizeof
-								exprs: [ast.Expr(ast.Ident{
-									name: struct_name
-								})]
+								exprs: [
+									ast.Expr(ast.Ident{
+										name: struct_name
+									}),
+								]
 							}),
 						]
 					}),
@@ -9182,9 +9184,11 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 						}),
 						ast.Expr(ast.KeywordOperator{
 							op:    .key_sizeof
-							exprs: [ast.Expr(ast.Ident{
-								name: struct_name
-							})]
+							exprs: [
+								ast.Expr(ast.Ident{
+									name: struct_name
+								}),
+							]
 						}),
 					]
 				}

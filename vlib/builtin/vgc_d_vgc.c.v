@@ -70,14 +70,14 @@ const vgc_phase_sweep = u32(3)
 // Translated from Go's runtime.mspan.
 struct VGC_Span {
 mut:
-	base      usize // start address of the span
-	npages    u32   // number of pages in this span
-	elem_size u32   // size of each object in bytes
-	nelems    u32   // number of elements (objects) in the span
-	class_idx u8    // size class index (0 for large objects)
-	noscan    bool  // true if objects contain no pointers (noscan variant)
-	in_use    bool  // true if span is allocated to a size class
-	has_ptrmap bool // true if ptrmap is valid (precise scanning available)
+	base       usize // start address of the span
+	npages     u32   // number of pages in this span
+	elem_size  u32   // size of each object in bytes
+	nelems     u32   // number of elements (objects) in the span
+	class_idx  u8    // size class index (0 for large objects)
+	noscan     bool  // true if objects contain no pointers (noscan variant)
+	in_use     bool  // true if span is allocated to a size class
+	has_ptrmap bool  // true if ptrmap is valid (precise scanning available)
 	// Pointer bitmap: bit N = word offset N contains a pointer.
 	// Covers objects up to 512 bytes (64 words on 64-bit).
 	// For larger objects, falls back to conservative scanning.
