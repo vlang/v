@@ -334,10 +334,11 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	fp := $if windows {
-		C._wfopen(path.to_wide(), mode.to_wide())
+	mut fp := &C.FILE(unsafe { nil })
+	$if windows {
+		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		C.fopen(&char(path.str), &char(mode.str))
+		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(voidptr(fp)) {
 		return error_posix(msg: 'failed to open file "${path}"')

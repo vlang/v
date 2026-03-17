@@ -16,6 +16,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		// -prod builds with a valid header cache can use lightweight .vh
 		// summaries instead of fully parsing every core module source file.
 		use_core_headers = b.pref.is_prod && b.can_use_cached_core_headers_for_parse()
+		b.used_vh_for_parse = use_core_headers
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
 			parsed_core_files := parser_reused.parse_files(core_files, mut b.file_set)

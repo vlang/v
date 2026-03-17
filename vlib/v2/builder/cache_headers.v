@@ -68,20 +68,83 @@ const vlib_cached_module_names = [
 	'textscanner',
 ]
 
-const core_cache_format = 'cc7'
+const v2compiler_cache_name = 'v2compiler'
 
-const core_headers_format = 'vh45'
+const v2compiler_cached_module_paths = [
+	'v2.ast',
+	'v2.abi',
+	'v2.builder',
+	'v2.errors',
+	'v2.eval',
+	'v2.gen.arm64',
+	'v2.gen.c',
+	'v2.gen.cleanc',
+	'v2.gen.v',
+	'v2.gen.x64',
+	'v2.insel',
+	'v2.markused',
+	'v2.mir',
+	'v2.parser',
+	'v2.pref',
+	'v2.scanner',
+	'v2.ssa',
+	'v2.ssa.optimize',
+	'v2.token',
+	'v2.transformer',
+	'v2.types',
+]
+
+const v2compiler_cached_module_names = [
+	'ast',
+	'abi',
+	'builder',
+	'errors',
+	'eval',
+	'arm64',
+	'c',
+	'cleanc',
+	'v',
+	'x64',
+	'insel',
+	'markused',
+	'mir',
+	'parser',
+	'pref',
+	'scanner',
+	'ssa',
+	'optimize',
+	'token',
+	'transformer',
+	'types',
+]
+
+const core_cache_format = 'cc8'
+
+const core_headers_format = 'vh48'
 
 const core_cache_compiler_dependency_dirs = [
+	'vlib/v2/abi',
 	'vlib/v2/ast',
 	'vlib/v2/builder',
+	'vlib/v2/errors',
+	'vlib/v2/eval',
+	'vlib/v2/gen/arm64',
+	'vlib/v2/gen/c',
 	'vlib/v2/gen/cleanc',
+	'vlib/v2/gen/v',
+	'vlib/v2/gen/x64',
+	'vlib/v2/insel',
 	'vlib/v2/markused',
+	'vlib/v2/mir',
 	'vlib/v2/parser',
 	'vlib/v2/pref',
+	'vlib/v2/scanner',
+	'vlib/v2/ssa',
+	'vlib/v2/ssa/optimize',
 	'vlib/v2/token',
 	'vlib/v2/transformer',
 	'vlib/v2/types',
+	'vlib/v2/util',
 ]
 
 const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v']
@@ -139,6 +202,20 @@ fn (b &Builder) core_header_paths() []string {
 
 fn (b &Builder) core_cached_parse_paths() []string {
 	return b.core_header_paths()
+}
+
+// vlib_only_header_paths returns .vh paths for only the builtin+vlib modules
+// (not v2compiler modules). Used when generating the main .c file to avoid
+// type/function conflicts with the v2compiler.o cached object.
+fn (b &Builder) vlib_only_header_paths() []string {
+	mut paths := []string{cap: builtin_cached_module_names.len + vlib_cached_module_names.len}
+	for module_name in builtin_cached_module_names {
+		paths << b.core_header_path(module_name)
+	}
+	for module_name in vlib_cached_module_names {
+		paths << b.core_header_path(module_name)
+	}
+	return paths
 }
 
 fn (b &Builder) use_builtin_header_for_parse() bool {
@@ -449,6 +526,9 @@ fn (b &Builder) source_fn_decls_for_module(module_name string) map[string]string
 					continue
 				}
 				in_interface = true
+				continue
+			}
+			if !line.starts_with('fn ') && !line.starts_with('pub fn ') {
 				continue
 			}
 			info := parse_fn_signature_and_return(line) or { continue }
@@ -917,6 +997,27 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 		'sha256' { 'crypto.sha256' }
 		'textscanner' { 'strings.textscanner' }
 		'termios' { 'term.termios' }
+		'ast' { 'v2.ast' }
+		'abi' { 'v2.abi' }
+		'builder' { 'v2.builder' }
+		'errors' { 'v2.errors' }
+		'eval' { 'v2.eval' }
+		'arm64' { 'v2.gen.arm64' }
+		'c' { 'v2.gen.c' }
+		'cleanc' { 'v2.gen.cleanc' }
+		'v' { 'v2.gen.v' }
+		'x64' { 'v2.gen.x64' }
+		'insel' { 'v2.insel' }
+		'markused' { 'v2.markused' }
+		'mir' { 'v2.mir' }
+		'parser' { 'v2.parser' }
+		'pref' { 'v2.pref' }
+		'scanner' { 'v2.scanner' }
+		'ssa' { 'v2.ssa' }
+		'optimize' { 'v2.ssa.optimize' }
+		'token' { 'v2.token' }
+		'transformer' { 'v2.transformer' }
+		'types' { 'v2.types' }
 		else { module_name }
 	}
 }
@@ -1052,9 +1153,16 @@ fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool
 	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		content := os.read_file(file) or { continue }
 		for pattern in patterns {
-			if content.contains(pattern) {
-				return true
+			idx := content.index(pattern) or { continue }
+			// Ensure whole-word match: char after pattern must not be alphanumeric or '_'.
+			end := idx + pattern.len
+			if end < content.len {
+				c := content[end]
+				if c == `_` || c.is_alnum() {
+					continue
+				}
 			}
+			return true
 		}
 	}
 	return false
@@ -1504,6 +1612,7 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 	mut global_start_line := ''
 	mut global_body_lines := []string{}
 	mut in_type_block := false
+	mut in_enum_block := false
 	for source_line in lines {
 		mut line := source_line
 		line = restore_fn_return_type_from_source(line, source_fn_returns)
@@ -1511,16 +1620,18 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 		if !in_global_block {
 			if header_starts_type_block(trimmed) {
 				in_type_block = true
+				in_enum_block = trimmed.starts_with('enum ') || trimmed.starts_with('pub enum ')
 				out << line
 				continue
 			}
 			if in_type_block {
 				if trimmed == '}' {
 					in_type_block = false
+					in_enum_block = false
 					out << line
 					continue
 				}
-				if header_type_block_line_is_malformed(trimmed) {
+				if !in_enum_block && header_type_block_line_is_malformed(trimmed) {
 					continue
 				}
 			}
@@ -1559,9 +1670,37 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 			&& header_const_decl_line_is_malformed(trimmed) {
 			continue
 		}
+		// Drop stray code lines that are not valid module-level declarations.
+		// These can leak from the V gen output for complex modules.
+		if !in_type_block && !in_global_block && trimmed.len > 0
+			&& !header_is_module_level_line(trimmed) {
+			continue
+		}
 		out << line
 	}
 	return out.join('\n')
+}
+
+fn header_is_module_level_line(trimmed string) bool {
+	if trimmed.len == 0 {
+		return true
+	}
+	if trimmed.starts_with('//') || trimmed.starts_with('[') || trimmed.starts_with('@[') {
+		return true
+	}
+	if trimmed == '}' || trimmed == ')' || trimmed == 'mut:' || trimmed == 'pub:'
+		|| trimmed == 'pub mut:' {
+		return true
+	}
+	return trimmed.starts_with('module ') || trimmed.starts_with('import ')
+		|| trimmed.starts_with('fn ') || trimmed.starts_with('pub fn ')
+		|| trimmed.starts_with('struct ') || trimmed.starts_with('pub struct ')
+		|| trimmed.starts_with('enum ') || trimmed.starts_with('pub enum ')
+		|| trimmed.starts_with('type ') || trimmed.starts_with('pub type ')
+		|| trimmed.starts_with('const ') || trimmed.starts_with('pub const ')
+		|| trimmed.starts_with('interface ') || trimmed.starts_with('pub interface ')
+		|| trimmed.starts_with('union ') || trimmed.starts_with('pub union ')
+		|| trimmed.starts_with('__global')
 }
 
 fn header_starts_type_block(trimmed string) bool {
@@ -1571,6 +1710,7 @@ fn header_starts_type_block(trimmed string) bool {
 	return trimmed.starts_with('struct ') || trimmed.starts_with('pub struct ')
 		|| trimmed.starts_with('union ') || trimmed.starts_with('pub union ')
 		|| trimmed.starts_with('interface ') || trimmed.starts_with('pub interface ')
+		|| trimmed.starts_with('enum ') || trimmed.starts_with('pub enum ')
 }
 
 fn header_is_c_fn_decl_line(trimmed string) bool {

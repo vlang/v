@@ -382,6 +382,38 @@ fn (mut g Gen) collect_fn_signatures() {
 	}
 }
 
+// register_builder_methods ensures strings__Builder methods are known to
+// fn_param_is_ptr so call sites emit &sb for the receiver.  The Builder
+// is a typedef for array and its methods take a mutable (pointer) receiver.
+fn (mut g Gen) register_builder_methods() {
+	builder_methods := [
+		// name, has_extra_param, return_type
+		['strings__Builder__write_rune', 'true', 'void'],
+		['strings__Builder__write_u8', 'true', 'void'],
+		['strings__Builder__write_string', 'true', 'void'],
+		['strings__Builder__write_ptr', 'true', 'void'],
+		['strings__Builder__write_repeated_rune', 'true', 'void'],
+		['strings__Builder__spart', 'false', 'string'],
+		['strings__Builder__cut_last', 'true', 'void'],
+		['strings__Builder__str', 'false', 'string'],
+	]
+	for entry in builder_methods {
+		name := entry[0]
+		has_extra := entry[1] == 'true'
+		ret := entry[2]
+		if name !in g.fn_param_is_ptr {
+			if has_extra {
+				g.fn_param_is_ptr[name] = [true, false]
+				g.fn_param_types[name] = ['strings__Builder*', 'int']
+			} else {
+				g.fn_param_is_ptr[name] = [true]
+				g.fn_param_types[name] = ['strings__Builder*']
+			}
+			g.fn_return_types[name] = ret
+		}
+	}
+}
+
 fn (mut g Gen) emit_fixed_array_return_wrappers() {
 	mut fixed_types := g.fixed_array_ret_wrappers.keys()
 	fixed_types.sort()
@@ -2077,14 +2109,8 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	if name == 'os__exit' {
 		name = 'exit'
 	}
-	if name.starts_with('strings__Builder__') && name !in g.fn_param_is_ptr
-		&& name !in g.fn_return_types {
-		method_name := name.all_after_last('__')
-		array_name := 'array__${method_name}'
-		if array_name in g.fn_param_is_ptr || array_name in g.fn_return_types {
-			name = array_name
-		}
-	}
+	// strings__Builder methods are emitted directly by cheaders.v;
+	// do NOT fall back to array__ methods which have different signatures.
 	if name.starts_with('array__') && call_args.len > 0 {
 		method_name := name['array__'.len..]
 		elem_type := g.infer_array_elem_type_from_expr(call_args[0]).trim_right('*')
@@ -2992,12 +3018,15 @@ fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
 				|| stub_ret.starts_with('Array_fixed_') {
 				stub_ret = 'array'
 			}
-			// Keep generic stubs permissive: an old-style C declaration avoids
-			// over-constraining unresolved generic/C-interop/function-pointer params.
-			g.sb.writeln('/* generic stub */ ${stub_ret} ${fn_name}() {')
-			if stub_ret == 'void' {
-				g.sb.writeln('\treturn;')
-			} else {
+			// Emit a stub that aborts at runtime with a clear message instead
+			// of silently returning a zero value.  This surfaces missing
+			// generic specialization bugs immediately rather than hiding them.
+			g.sb.writeln('/* unresolved generic */ ${stub_ret} ${fn_name}() {')
+			g.sb.writeln('\tfputs("v2: unresolved generic call: ${fn_name}\\n", stderr);')
+			g.sb.writeln('\tabort();')
+			if stub_ret != 'void' {
+				// Unreachable, but keeps compilers that warn about missing
+				// return values happy.
 				g.sb.writeln('\treturn ${zero_value_for_type(stub_ret)};')
 			}
 			g.sb.writeln('}')

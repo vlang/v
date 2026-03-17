@@ -41,6 +41,7 @@ mut:
 	parsed_full_files   []string
 	parsed_vh_files     []string
 	used_fn_keys        map[string]bool
+	used_vh_for_parse   bool
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -64,20 +65,14 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 
 fn sanitize_staged_c_source(c_source string) string {
 	mut source := c_source
-	source = source.replace('struct IError {\n\tvoid* _object;\n\tint _type_id;\n\tstring (*type_name)(void*);\n\tvoid* msg;\n\tvoid* code;\n};',
-		'struct IError {\n\tvoid* _object;\n\tint _type_id;\n\tstring (*type_name)(void*);\n\tstring (*msg)(void*);\n\tint (*code)(void*);\n};')
-	source = source.replace('((u8)(ary_clone.data))', '((u8*)(ary_clone.data))')
-	source = source.replace('((u8)(a.data))', '((u8*)(a.data))')
-	source = source.replace('((u8)(arr.data))', '((u8*)(arr.data))')
-	source = source.replace('((u8)(dst->data))', '((u8*)(dst->data))')
-	source = source.replace('((u8)(const_s))', '((u8*)(const_s))')
-	source = source.replace('((u8)(m->metas))', '((u8*)(m->metas))')
-	source = source.replace('((u8)(pvalue))', '((u8*)(pvalue))')
+	// Remaining patches for codegen issues not yet fixed at the backend level.
+	// Pointer dereference for pass-by-pointer array params:
 	source = source.replace('(_idx_s < ((a)).len)', '(_idx_s < (*(a)).len)')
 	source = source.replace('&((string*)((a)).data)', '&((string*)(*(a)).data)')
-	source = source.replace('return err.msg(err._object);', 'return ((string (*)(void*))err.msg)(err._object);')
+	// Result struct declarations that the backend may omit:
 	source = ensure_result_struct_decl(source, '_result_int', 'int')
 	source = ensure_result_struct_decl(source, '_result_rune', 'rune')
+	// Builtin function body replacements (V source doesn't lower correctly yet):
 	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)', sanitized_u64_to_hex_fn())
 	source = replace_generated_c_fn(source, 'string u64_to_hex_no_leading_zeros(u64 nn, u8 len)',
 		sanitized_u64_to_hex_no_leading_zeros_fn())
@@ -90,26 +85,9 @@ fn sanitize_staged_c_source(c_source string) string {
 	source = replace_generated_c_fn(source, 'rune impl_utf8_to_utf32(u8* _bytes, int _bytes_len)',
 		sanitized_impl_utf8_to_utf32_fn())
 	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)', sanitized_utf8_str_visible_length_fn())
-	source = source.replace('array__write_rune(', 'strings__Builder__write_rune(')
-	source = source.replace('array__write_u8(', 'strings__Builder__write_u8(')
-	source = source.replace('array__write_string(', 'strings__Builder__write_string(')
-	source = source.replace('array__write_ptr(', 'strings__Builder__write_ptr(')
-	source = source.replace('array__write_repeated_rune(', 'strings__Builder__write_repeated_rune(')
-	source = source.replace('array__spart(', 'strings__Builder__spart(')
-	source = source.replace('array__cut_last(', 'strings__Builder__cut_last(')
-	source = source.replace('array__str(sb)', 'strings__Builder__str(&sb)')
-	source = source.replace('strings__Builder__write_rune(sb,', 'strings__Builder__write_rune(&sb,')
+	// Array_u8_contains call convention:
 	source = source.replace("Array_u8_contains(res, '.')", "array__contains(res, &(u8[1]){'.'})")
-	source = source.replace('(state ? strings__IndentState__normal)', '(state == strings__IndentState__normal)')
-	source = source.replace('(state ? strings__IndentState__in_string)', '(state == strings__IndentState__in_string)')
-	source = source.replace('(c ? \'"\')', '(c == \'"\')')
-	source = source.replace("(c ? '\\'')", "(c == '\\'')")
-	source = source.replace('(c ? param.block_start)', '(c == param.block_start)')
-	source = source.replace('(c ? param.block_end)', '(c == param.block_end)')
-	source = source.replace("(c ? ' ')", "(c == ' ')")
-	source = source.replace("(c ? '\\t')", "(c == '\\t')")
-	source = source.replace("(c ? '\\r')", "(c == '\\r')")
-	source = source.replace("(c ? '\\n')", "(c == '\\n')")
+	// tos() buffer pointer cast:
 	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);', 'return tos(&((u8*)buf.data)[((int)(0))], i);')
 	source = ensure_string_eq_impl(source)
 	return source
@@ -631,12 +609,10 @@ fn (b &Builder) is_cmd_v2_self_build() bool {
 }
 
 fn (b &Builder) should_disable_cleanc_cache() bool {
-	$if @BACKEND == 'arm64' {
-		// The arm64 self-hosted compiler still mis-generates cached-core
-		// boundaries for cleanc builds, which drops required runtime helpers.
-		// Force a single translation unit until the cache path is stable there.
-		return true
-	}
+	// ARM64 cache previously disabled due to runtime helpers being emitted
+	// as static inline, which dropped them at cached-core boundaries.
+	// Fixed: __v2_array_eq is now a regular function with its body in the
+	// builtin cache unit and a forward declaration in the main TU.
 	for raw_input in b.user_files {
 		input := raw_input.trim_right('/\\')
 		if input.len == 0 {
@@ -794,7 +770,9 @@ fn (mut b Builder) gen_ssa_c() {
 			}
 			exit(1)
 		}
-		os.rm(main_obj) or {}
+		if !b.pref.keep_c {
+			os.rm(main_obj) or {}
+		}
 	} else {
 		// Single-file compilation (no builtin linking)
 		cc_cmd = '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}"${error_limit_flag}'
@@ -837,7 +815,7 @@ fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cac
 
 fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool) string {
 	mut gen_files := b.files.clone()
-	if cached_init_calls.len > 0 && b.can_use_cached_core_headers_for_parse() {
+	if cached_init_calls.len > 0 && b.used_vh_for_parse {
 		mut p := parser.Parser.new(b.pref)
 		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
 		gen_files << header_files
@@ -856,6 +834,16 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 	if cached_init_calls.len > 0 {
 		gen.set_cached_init_calls(cached_init_calls)
 	}
+	use_parallel := b.pref != unsafe { nil } && !b.pref.no_parallel
+	if use_parallel {
+		gen.gen_passes_1_to_4()
+		b.gen_cleanc_parallel(mut gen)
+		source := gen.gen_finalize()
+		if os.getenv('V2TRACE_CLEANC') != '' {
+			eprintln('TRACE_CLEANC builder_files=${b.files.len} gen_files=${gen_files.len} source_len=${source.len}')
+		}
+		return source
+	}
 	source := gen.gen()
 	if os.getenv('V2TRACE_CLEANC') != '' {
 		eprintln('TRACE_CLEANC builder_files=${b.files.len} gen_files=${gen_files.len} source_len=${source.len}')
@@ -864,7 +852,11 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 }
 
 fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) bool {
-	main_modules := b.collect_modules_excluding(core_cached_module_names)
+	mut excluded := core_cached_module_names.clone()
+	if b.is_cmd_v2_self_build() {
+		excluded << v2compiler_cached_module_names
+	}
+	main_modules := b.collect_modules_excluding(excluded)
 	if main_modules.len == 0 {
 		if os.getenv('V2_TRACE_CACHE') != '' {
 			eprintln('TRACE_CACHE cached_core=false reason=no_main_modules')
@@ -894,6 +886,17 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 			vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
 			if os.getenv('V2_TRACE_CACHE') != '' {
 				eprintln('TRACE_CACHE cached_core=false reason=vlib_obj_failed')
+			}
+			return false
+		}
+	}
+	mut v2compiler_obj := ''
+	if v2compiler_cached_module_paths.len > 0 && b.is_cmd_v2_self_build() {
+		v2compiler_obj = b.ensure_cached_module_object(cache_dir, v2compiler_cache_name,
+			v2compiler_cached_module_paths, v2compiler_cached_module_names, cc, cc_flags,
+			error_limit_flag) or {
+			if os.getenv('V2_TRACE_CACHE') != '' {
+				eprintln('TRACE_CACHE cached_core=false reason=v2compiler_obj_failed')
 			}
 			return false
 		}
@@ -952,6 +955,9 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	if vlib_obj.len > 0 {
 		cached_init_calls << '__v2_cached_init_${vlib_cache_name}'
 	}
+	if v2compiler_obj.len > 0 {
+		cached_init_calls << '__v2_cached_init_${v2compiler_cache_name}'
+	}
 	mut main_source := b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
 	main_source = b.inject_cached_core_forward_decls(main_source)
 	print_time('C Gen', sw.elapsed())
@@ -988,6 +994,9 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	if vlib_obj.len > 0 {
 		link_cmd += ' "${vlib_obj}"'
 	}
+	if v2compiler_obj.len > 0 {
+		link_cmd += ' "${v2compiler_obj}"'
+	}
 	link_cmd += ' -o "${output_name}"'
 	if cc_link_flags.len > 0 {
 		link_cmd += ' ${cc_link_flags}'
@@ -995,8 +1004,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	run_cc_cmd_or_exit(link_cmd, 'Linking', b.pref.show_cc)
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
-	os.rm(main_obj) or {}
 	if !b.pref.keep_c {
+		os.rm(main_obj) or {}
 		os.rm(main_c_file) or {}
 	}
 	if os.getenv('V2_TRACE_CACHE') != '' {
@@ -1011,10 +1020,10 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 	if decls == '' {
 		return source
 	}
-	// Collect names already defined in the main source (typedefs and macros)
-	// to avoid duplicate/conflicting injected declarations.
+	// Split source into lines once, then collect existing names and inject.
+	mut lines := source.split_into_lines()
 	mut existing_names := map[string]bool{}
-	for src_line in source.split_into_lines() {
+	for src_line in lines {
 		trimmed := src_line.trim_space()
 		if trimmed.starts_with('typedef ') && trimmed.ends_with(';') {
 			name := extract_typedef_name(trimmed)
@@ -1033,7 +1042,6 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 			}
 		}
 	}
-	mut lines := source.split_into_lines()
 	mut out := []string{cap: lines.len + decls.count('\n') + 2}
 	mut saw_cached_decl := false
 	mut inserted := false
@@ -1119,6 +1127,9 @@ fn (b &Builder) cached_core_forward_decls() string {
 	mut seen := map[string]bool{}
 	mut typedefs := []string{}
 	mut fn_decls := []string{}
+	// Only inject forward declarations from builtin and vlib caches.
+	// v2compiler types and function forward declarations are already
+	// emitted by the cleanc gen from the v2 module .vh headers.
 	for cache_name in [builtin_cache_name, vlib_cache_name] {
 		c_path := os.join_path(cache_dir, '${cache_name}.c')
 		if !os.exists(c_path) {
@@ -1830,7 +1841,9 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		}
 
 		// Clean up object file
-		os.rm(obj_file) or {}
+		if !b.pref.keep_c {
+			os.rm(obj_file) or {}
+		}
 	}
 }
 

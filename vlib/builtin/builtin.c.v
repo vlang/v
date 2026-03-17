@@ -29,6 +29,7 @@ fn C._vcleanup()
 @[noreturn]
 pub fn exit(code int) {
 	C.exit(code)
+	for {}
 }
 
 // at_exit registers a fn callback, that will be called at normal process termination.

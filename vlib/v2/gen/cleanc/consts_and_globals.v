@@ -55,12 +55,16 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if name in g.fn_return_types {
 			continue
 		}
+		// Skip constants already emitted as either extern or #define
+		// (can happen when both .vh and full source files are parsed).
+		extern_key := 'extern_const_${name}'
+		macro_key := 'extern_const_macro_${name}'
+		if extern_key in g.emitted_types || macro_key in g.emitted_types {
+			continue
+		}
 		is_type_only := is_header_type_only_const_expr(field.value)
 		if is_type_only {
-			key := 'extern_const_${name}'
-			if key in g.emitted_types {
-				continue
-			}
+			key := extern_key
 			typ := g.expr_type_to_c(field.value)
 			if typ == '' || typ == 'void' {
 				continue
@@ -71,10 +75,6 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 			}
 			g.emitted_types[key] = true
 			g.sb.writeln('extern ${typ} ${name};')
-			continue
-		}
-		macro_key := 'extern_const_macro_${name}'
-		if macro_key in g.emitted_types {
 			continue
 		}
 		value_expr := g.expr_to_string(field.value)
@@ -284,7 +284,24 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			continue
 		}
 		g.emitted_types[const_key] = true
-		if !g.should_emit_module(g.cur_module) && is_header_type_only_const_expr(field.value) {
+		is_type_only := is_header_type_only_const_expr(field.value)
+		if !g.should_emit_module(g.cur_module) && is_type_only {
+			continue
+		}
+		// Type-only consts from .vh headers have no value — emit as zero-initialized globals
+		// for simple scalar types only. Complex types (fixed arrays, structs) are skipped
+		// because they need typedefs/initializer-lists that aren't available from .vh data.
+		if is_type_only {
+			typ := g.expr_type_to_c(field.value)
+			if typ == '' || typ == 'void' || typ.starts_with('Array_fixed_') || typ.contains(' ')
+				|| typ.contains('literal') {
+				continue
+			}
+			if typ == 'string' {
+				g.sb.writeln('string ${name} = {0};')
+			} else {
+				g.sb.writeln('${typ} ${name} = 0;')
+			}
 			continue
 		}
 		mut is_fixed_array_const := false

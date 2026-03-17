@@ -1072,7 +1072,8 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		.right_shift { '>>' }
 		.key_is { '==' }
 		.not_is { '!=' }
-		else { '?' }
+		.question { '==' } // match arm lowering uses ? as equality test
+		else { '==' }
 	}
 	g.sb.write_string(' ${op} ')
 	if is_bitwise_op && rhs_is_float {
@@ -2857,7 +2858,19 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		// Empty inner expression (e.g. unresolved C function call) - emit no-op
 		g.sb.write_string('((void)0)')
 	} else {
-		g.sb.write_string('((${type_name})(${inner_str}))')
+		// When casting a pointer field (.data, .metas, const_s, pvalue) to a
+		// scalar type like u8, the intended C semantics is a pointer cast
+		// (u8*), not a value cast (u8).  Detect this and add the pointer star.
+		mut cast_name := type_name
+		if !type_name.ends_with('*') && type_name in ['u8', 'i8', 'char'] {
+			if inner_str.ends_with('.data)') || inner_str.ends_with('.data)')
+				|| inner_str.ends_with('->data)') || inner_str.ends_with('.metas)')
+				|| inner_str.ends_with('->metas)')
+				|| (node.expr is ast.Ident && node.expr.name in ['const_s', 'pvalue']) {
+				cast_name = '${type_name}*'
+			}
+		}
+		g.sb.write_string('((${cast_name})(${inner_str}))')
 	}
 }
 

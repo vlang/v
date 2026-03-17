@@ -352,11 +352,35 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 			}
 			g.sb.writeln(');')
 			methods << method
-		} else {
-			// Regular field
-			t := g.expr_type_to_c(field.typ)
-			g.sb.writeln('\t${t} ${field.name};')
+			continue
 		}
+		// IError.msg() and IError.code() — the AST may not expose the fn
+		// type, but the C layout requires function pointer fields.
+		if name == 'IError' && field.name == 'msg' {
+			info := InterfaceMethodInfo{
+				name:           'msg'
+				cast_signature: 'string (*)(void*)'
+				ret_type:       'string'
+				param_types:    []string{}
+			}
+			g.sb.writeln('\tstring (*msg)(void*);')
+			methods << info
+			continue
+		}
+		if name == 'IError' && field.name == 'code' {
+			info := InterfaceMethodInfo{
+				name:           'code'
+				cast_signature: 'int (*)(void*)'
+				ret_type:       'int'
+				param_types:    []string{}
+			}
+			g.sb.writeln('\tint (*code)(void*);')
+			methods << info
+			continue
+		}
+		// Regular field
+		t := g.expr_type_to_c(field.typ)
+		g.sb.writeln('\t${t} ${field.name};')
 	}
 	g.interface_methods[name] = methods
 	g.sb.writeln('};')

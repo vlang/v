@@ -81,8 +81,11 @@ mut:
 	spawned_fns         map[string]bool // spawn wrapper names already emitted
 	spawn_wrapper_defs  []string        // spawn wrapper struct + function definitions
 	// @[live] hot code reloading
-	live_fns         []LiveFnInfo // @[live] functions detected during code generation
-	live_source_file string       // source file containing @[live] functions
+	live_fns         []LiveFnInfo   // @[live] functions detected during code generation
+	live_source_file string         // source file containing @[live] functions
+	test_fn_names    []string       // test function names collected in Pass 4
+	has_main         bool           // whether a main() function was found in Pass 4
+	fn_owner_file    map[string]int // fn_key -> first file index (for parallel dedup)
 }
 
 struct LiveFnInfo {
@@ -443,8 +446,15 @@ fn (g &Gen) mark_cgen_step(stats_enabled bool, scope string, mut sw time.StopWat
 	return now
 }
 
-// gen generates C source from the transformed AST files.
+// gen generates C source from the transformed AST files (sequential).
 pub fn (mut g Gen) gen() string {
+	g.gen_passes_1_to_4()
+	g.gen_pass5()
+	return g.gen_finalize()
+}
+
+// gen_passes_1_to_4 runs setup and passes 1-4 (types, structs, constants, forward declarations).
+pub fn (mut g Gen) gen_passes_1_to_4() {
 	stats_enabled := g.cgen_stats_enabled()
 	stats_scope := g.cgen_stats_scope_label()
 	mut stats_sw := time.new_stopwatch()
@@ -454,6 +464,7 @@ pub fn (mut g Gen) gen() string {
 	g.collect_module_type_names()
 	g.collect_runtime_aliases()
 	g.collect_fn_signatures()
+	g.register_builder_methods()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup')
 
@@ -666,34 +677,38 @@ pub fn (mut g Gen) gen() string {
 		}
 	}
 	g.sb.writeln('')
-	// Recursive array equality helper for nested arrays and string arrays
+	// Recursive array equality helper for nested arrays and string arrays.
+	// In cached-core builds, the body lives in the builtin cache unit and is
+	// forward-declared (by top_level_c_decls) in the main TU.  In single-TU
+	// builds, the body is emitted here directly.
 	g.sb.writeln('bool string__eq(string a, string b);')
-	g.sb.writeln('static inline bool __v2_array_eq(array a, array b) {')
-	g.sb.writeln('	if (a.len != b.len) return false;')
-	g.sb.writeln('	if (a.len == 0) return true;')
-	g.sb.writeln('	if (a.element_size != b.element_size) return false;')
-	g.sb.writeln('	if (a.element_size == sizeof(array)) {')
-	g.sb.writeln('		for (int i = 0; i < a.len; i++) {')
-	g.sb.writeln('			if (!__v2_array_eq(((array*)a.data)[i], ((array*)b.data)[i])) return false;')
-	g.sb.writeln('		}')
-	g.sb.writeln('		return true;')
-	g.sb.writeln('	}')
-	g.sb.writeln('	if (a.element_size == sizeof(string)) {')
-	g.sb.writeln('		for (int i = 0; i < a.len; i++) {')
-	g.sb.writeln('			if (!string__eq(((string*)a.data)[i], ((string*)b.data)[i])) return false;')
-	g.sb.writeln('		}')
-	g.sb.writeln('		return true;')
-	g.sb.writeln('	}')
-	g.sb.writeln('	return memcmp(a.data, b.data, a.len * a.element_size) == 0;')
-	g.sb.writeln('}')
+	g.sb.writeln('bool __v2_array_eq(array a, array b);')
+	if g.should_emit_module('builtin') {
+		g.sb.writeln('bool __v2_array_eq(array a, array b) {')
+		g.sb.writeln('	if (a.len != b.len) return false;')
+		g.sb.writeln('	if (a.len == 0) return true;')
+		g.sb.writeln('	if (a.element_size != b.element_size) return false;')
+		g.sb.writeln('	if (a.element_size == sizeof(array)) {')
+		g.sb.writeln('		for (int i = 0; i < a.len; i++) {')
+		g.sb.writeln('			if (!__v2_array_eq(((array*)a.data)[i], ((array*)b.data)[i])) return false;')
+		g.sb.writeln('		}')
+		g.sb.writeln('		return true;')
+		g.sb.writeln('	}')
+		g.sb.writeln('	if (a.element_size == sizeof(string)) {')
+		g.sb.writeln('		for (int i = 0; i < a.len; i++) {')
+		g.sb.writeln('			if (!string__eq(((string*)a.data)[i], ((string*)b.data)[i])) return false;')
+		g.sb.writeln('		}')
+		g.sb.writeln('		return true;')
+		g.sb.writeln('	}')
+		g.sb.writeln('	return memcmp(a.data, b.data, a.len * a.element_size) == 0;')
+		g.sb.writeln('}')
+	}
 	g.sb.writeln('')
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 3.5 const declarations')
 
 	// Pass 4: Function forward declarations
-	mut test_fn_names := []string{}
-	mut has_main := false
-	for file in g.files {
+	for fi, file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
 			if !stmt_has_valid_data(stmt) {
@@ -722,10 +737,15 @@ pub fn (mut g Gen) gen() string {
 					continue
 				}
 				if fn_name == 'main' {
-					has_main = true
+					g.has_main = true
 				}
 				if stmt.name.starts_with('test_') && !stmt.is_method && stmt.typ.params.len == 0 {
-					test_fn_names << fn_name
+					g.test_fn_names << fn_name
+				}
+				// Record first file index for each function (for parallel dedup)
+				fn_key := 'fn_${fn_name}'
+				if fn_key !in g.fn_owner_file {
+					g.fn_owner_file[fn_key] = fi
 				}
 				if g.env != unsafe { nil } {
 					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
@@ -752,42 +772,13 @@ pub fn (mut g Gen) gen() string {
 
 	// Emit deferred Objective-C .m includes now that all types are defined.
 	g.emit_deferred_m_includes()
+}
 
-	// Pass 5: Everything else (function bodies, consts, globals, etc.)
-	g.pass5_start_pos = g.sb.len
-	// Collect str function names needed by generated map/array str functions,
-	// so they get emitted even if mark_used didn't trace them.
-	g.collect_force_emit_str_fns()
-	// Pre-pass: emit extern forward declarations for all globals across all modules
-	// to avoid ordering issues (e.g. rand__default_rng used before its definition).
-	for file in g.files {
-		g.set_file_module(file)
-		g.gen_file_extern_globals(file)
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		if !g.should_emit_module(g.cur_module) {
-			g.gen_file_extern_consts(file)
-			continue
-		}
-		g.gen_file(file)
-	}
-	g.emit_needed_ierror_wrappers()
-	g.emit_needed_interface_method_wrappers()
-	g.emit_live_reload_infrastructure()
-	// Map str/eq functions are type-specific (Map_int_int_str, Map_string_int_map_eq, etc.)
-	// and depend on which concrete map types the user program uses. They must be emitted
-	// in the main compilation unit, NOT in the cache (which is shared across programs).
-	if g.cache_bundle_name.len == 0 {
-		g.emit_map_str_functions()
-		g.emit_map_eq_functions()
-	}
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'pass 5 file bodies')
-
+// gen_finalize runs post-pass-5 finalization and returns the complete C source string.
+pub fn (mut g Gen) gen_finalize() string {
 	// Generate test runner main if this is a test file (has test_ functions but no main)
 	// Skip when generating cached module sources (cache_bundle_name is set) - main belongs only in the main module source
-	if !has_main && test_fn_names.len > 0 && g.cache_bundle_name.len == 0 {
+	if !g.has_main && g.test_fn_names.len > 0 && g.cache_bundle_name.len == 0 {
 		g.sb.writeln('')
 		g.sb.writeln('int main(int ___argc, char** ___argv) {')
 		g.sb.writeln('\tg_main_argc = ___argc;')
@@ -819,26 +810,22 @@ pub fn (mut g Gen) gen() string {
 				g.sb.writeln('\t${fn_name}();')
 			}
 		}
-		for test_fn in test_fn_names {
+		for test_fn in g.test_fn_names {
 			msg_run := 'Running test: ${test_fn}...'
 			msg_ok := '  OK'
 			g.sb.writeln('\tprintln(${c_static_v_string_expr(msg_run)});')
 			g.sb.writeln('\t${test_fn}();')
 			g.sb.writeln('\tprintln(${c_static_v_string_expr(msg_ok)});')
 		}
-		msg_all := 'All ${test_fn_names.len} tests passed.'
+		msg_all := 'All ${g.test_fn_names.len} tests passed.'
 		g.sb.writeln('\tprintln(${c_static_v_string_expr(msg_all)});')
 		g.sb.writeln('\treturn 0;')
 		g.sb.writeln('}')
 	}
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'test main synthesis')
 
 	g.emit_missing_array_contains_fallbacks()
 	g.emit_cached_module_init_function()
 	g.emit_exported_const_symbols()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'final helper emission')
 
 	mut out := ''
 	if g.anon_fn_defs.len > 0 || g.spawn_wrapper_defs.len > 0 {
@@ -861,11 +848,172 @@ pub fn (mut g Gen) gen() string {
 	if os.getenv('V2TRACE_CLEANC') != '' {
 		eprintln('TRACE_CLEANC sb_len=${g.sb.len} out_len=${out.len} files=${g.files.len}')
 	}
-	if stats_enabled {
-		g.print_cgen_step_time(true, stats_scope, 'string materialization', time.Duration(stats_sw.elapsed() - stage_start))
-		g.print_cgen_step_time(true, stats_scope, 'total', stats_sw.elapsed())
-	}
 	return out
+}
+
+// gen_pass5 generates Pass 5 (function bodies, globals, etc.) sequentially.
+fn (mut g Gen) gen_pass5() {
+	g.pass5_start_pos = g.sb.len
+	g.collect_force_emit_str_fns()
+	// Pre-pass: emit extern forward declarations for all globals across all modules
+	for file in g.files {
+		g.set_file_module(file)
+		g.gen_file_extern_globals(file)
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		if !g.should_emit_module(g.cur_module) {
+			g.gen_file_extern_consts(file)
+			continue
+		}
+		g.gen_file(file)
+	}
+	g.gen_pass5_post()
+}
+
+// gen_pass5_pre runs Pass 5 sequential pre-work: extern globals and extern consts
+// for non-emitted modules. Returns the list of file indices that need gen_file().
+pub fn (mut g Gen) gen_pass5_pre() []int {
+	g.pass5_start_pos = g.sb.len
+	g.collect_force_emit_str_fns()
+	for file in g.files {
+		g.set_file_module(file)
+		g.gen_file_extern_globals(file)
+	}
+	// Emit extern consts for non-emitted modules, collect emittable file indices.
+	mut emit_indices := []int{cap: g.files.len}
+	for fi, file in g.files {
+		g.set_file_module(file)
+		if !g.should_emit_module(g.cur_module) {
+			g.gen_file_extern_consts(file)
+		} else {
+			emit_indices << fi
+		}
+	}
+	return emit_indices
+}
+
+// gen_pass5_post runs post-Pass-5 finalization (interface wrappers, live reload, map helpers).
+pub fn (mut g Gen) gen_pass5_post() {
+	g.emit_needed_ierror_wrappers()
+	g.emit_needed_interface_method_wrappers()
+	g.emit_live_reload_infrastructure()
+	if g.cache_bundle_name.len == 0 {
+		g.emit_map_str_functions()
+		g.emit_map_eq_functions()
+	}
+}
+
+// gen_pass5_files generates function bodies for a range of file indices.
+// Used by parallel dispatch — each worker calls this with its assigned chunk.
+pub fn (mut g Gen) gen_pass5_files(file_indices []int) {
+	for fi in file_indices {
+		g.gen_file(g.files[fi])
+	}
+}
+
+// new_pass5_worker creates a worker Gen for parallel Pass 5.
+// file_indices specifies which files this worker will process.
+// Functions owned by files outside this range are pre-marked as emitted
+// to prevent duplicate emission across workers.
+pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
+	// Build a set of file indices this worker owns
+	mut owned_files := map[int]bool{}
+	for fi in file_indices {
+		owned_files[fi] = true
+	}
+	// Clone emitted_types and pre-mark functions owned by other workers
+	mut worker_emitted := g.emitted_types.clone()
+	for fn_key, owner_fi in g.fn_owner_file {
+		if owner_fi !in owned_files {
+			worker_emitted[fn_key] = true
+		}
+	}
+	return &Gen{
+		files: g.files
+		env:   unsafe { g.env }
+		pref:  unsafe { g.pref }
+		sb:    strings.new_builder(64_000)
+		// Read-only lookup maps — clone to avoid COW data races
+		fn_param_is_ptr:             g.fn_param_is_ptr.clone()
+		fn_param_types:              g.fn_param_types.clone()
+		fn_return_types:             g.fn_return_types.clone()
+		struct_field_types:          g.struct_field_types.clone()
+		enum_value_to_enum:          g.enum_value_to_enum.clone()
+		enum_type_fields:            g.enum_type_fields.clone()
+		array_aliases:               g.array_aliases.clone()
+		map_aliases:                 g.map_aliases.clone()
+		result_aliases:              g.result_aliases.clone()
+		option_aliases:              g.option_aliases.clone()
+		fixed_array_fields:          g.fixed_array_fields.clone()
+		fixed_array_field_elem:      g.fixed_array_field_elem.clone()
+		fixed_array_globals:         g.fixed_array_globals.clone()
+		fixed_array_ret_wrappers:    g.fixed_array_ret_wrappers.clone()
+		tuple_aliases:               g.tuple_aliases.clone()
+		sum_type_variants:           g.sum_type_variants.clone()
+		embedded_field_owner:        g.embedded_field_owner.clone()
+		primitive_type_aliases:      g.primitive_type_aliases.clone()
+		emit_modules:                g.emit_modules.clone()
+		emitted_result_structs:      g.emitted_result_structs.clone()
+		emitted_option_structs:      g.emitted_option_structs.clone()
+		interface_methods:           g.interface_methods.clone()
+		interface_wrapper_specs:     g.interface_wrapper_specs.clone()
+		ierror_wrapper_bases:        g.ierror_wrapper_bases.clone()
+		collected_fixed_array_types: g.collected_fixed_array_types.clone()
+		collected_map_types:         g.collected_map_types.clone()
+		global_var_modules:          g.global_var_modules.clone()
+		const_exprs:                 g.const_exprs.clone()
+		used_fn_keys:                g.used_fn_keys.clone()
+		force_emit_fn_names:         g.force_emit_fn_names.clone()
+		export_fn_names:             g.export_fn_names.clone()
+		called_fn_names:             g.called_fn_names.clone()
+		// Per-worker mutable state (starts fresh)
+		emitted_types:               worker_emitted
+		runtime_local_types:         map[string]string{}
+		cur_fn_returned_idents:      map[string]bool{}
+		is_module_ident_cache:       map[string]bool{}
+		not_local_var_cache:         map[string]bool{}
+		resolved_module_names:       map[string]string{}
+		cur_fn_mut_params:           map[string]bool{}
+		cached_env_scopes:           map[string]voidptr{}
+		needed_interface_wrappers:   map[string]bool{}
+		needed_ierror_wrapper_bases: map[string]bool{}
+		spawned_fns:                 map[string]bool{}
+		exported_const_seen:         map[string]bool{}
+		exported_const_symbols:      []ExportedConstSymbol{}
+	}
+}
+
+// merge_pass5_worker merges a parallel worker's output into the main Gen.
+pub fn (mut g Gen) merge_pass5_worker(w &Gen) {
+	// Append worker's generated C code
+	mut ww := unsafe { w }
+	worker_output := ww.sb.str()
+	if worker_output.len > 0 {
+		g.sb.write_string(worker_output)
+	}
+	// Merge accumulator arrays
+	g.anon_fn_defs << w.anon_fn_defs
+	g.live_fns << w.live_fns
+	if w.live_source_file.len > 0 {
+		g.live_source_file = w.live_source_file
+	}
+	g.spawn_wrapper_defs << w.spawn_wrapper_defs
+	g.exported_const_symbols << w.exported_const_symbols
+	// Merge accumulator maps
+	for k, v in w.needed_interface_wrappers {
+		g.needed_interface_wrappers[k] = v
+	}
+	for k, v in w.needed_ierror_wrapper_bases {
+		g.needed_ierror_wrapper_bases[k] = v
+	}
+	for k, v in w.called_fn_names {
+		g.called_fn_names[k] = v
+	}
+	// Merge emitted_types so post-pass dedup (e.g. array_contains fallbacks) works
+	for k, v in w.emitted_types {
+		g.emitted_types[k] = v
+	}
 }
 
 fn is_c_identifier_like(name string) bool {
