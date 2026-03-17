@@ -106,7 +106,7 @@ const c_common_macros = '
        #undef __V_architecture
        #define __V_architecture 10
 #endif
-#if defined(__PPC64__)
+#if defined(__powerpc64__) && defined(__BIG_ENDIAN__)
        #define __V_ppc64  1
        #undef __V_architecture
        #define __V_architecture 11
@@ -484,7 +484,7 @@ void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)) || defined(__loongarch64) || defined(__sparc__) || defined(__PPC64__)
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)) || defined(__loongarch64) || defined(__sparc__) || (defined(__powerpc64__) && defined(__BIG_ENDIAN__))
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;
