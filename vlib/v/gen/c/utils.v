@@ -342,9 +342,16 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					}
 				}
 				scope_type := g.resolved_scope_var_type(expr)
-				if scope_type != 0 && !expr.obj.is_arg && !scope_type.has_flag(.generic)
+				if scope_type != 0 && !scope_type.has_flag(.generic)
 					&& !g.type_has_unresolved_generic_parts(scope_type) {
-					return scope_type
+					// For fn args in generic contexts, the scope var was refreshed
+					// by refresh_current_generic_fn_scope_vars with correct concrete
+					// types, so we can trust it. Without this, stale AST obj.typ
+					// from a different checker generic pass could be used instead.
+					if !expr.obj.is_arg
+						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
+						return scope_type
+					}
 				}
 				if expr.obj.expr !is ast.EmptyExpr && (expr.obj.ct_type_var == .generic_var
 					|| ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)

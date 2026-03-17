@@ -935,6 +935,25 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.error('generic closure fn must specify type parameter, e.g. fn [foo] [T]()',
 			node.decl.pos)
 	}
+	// Refresh param scope vars before checking stmts, so that generic params
+	// resolve to the current concrete types (not stale types from a previous
+	// generic instantiation pass).
+	if c.table.cur_concrete_types.len > 0 && node.decl.generic_names.len > 0
+		&& node.decl.generic_names.len == c.table.cur_concrete_types.len {
+		for param in node.decl.params {
+			param_type := if resolved := c.table.convert_generic_type(param.typ,
+				node.decl.generic_names, c.table.cur_concrete_types)
+			{
+				c.unwrap_generic(resolved)
+			} else {
+				c.table.unwrap_generic_type_ex(param.typ, node.decl.generic_names,
+					c.table.cur_concrete_types, true)
+			}
+			if mut param_var := node.decl.scope.find_var(param.name) {
+				param_var.typ = param_type
+			}
+		}
+	}
 	c.stmts(mut node.decl.stmts)
 	c.fn_decl(mut node.decl)
 	return node.typ
