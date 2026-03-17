@@ -9141,7 +9141,7 @@ fn (mut t Transformer) generate_go_wrapper_functions() []ast.Stmt {
 				]
 			})
 			// _args.field = param for each field
-			for i, pname in info.param_names {
+			for _, pname in info.param_names {
 				dispatch_stmts << ast.Stmt(ast.AssignStmt{
 					op:  .assign
 					lhs: [

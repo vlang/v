@@ -6657,8 +6657,7 @@ fn (mut b Builder) build_go_or_spawn(expr ast.Expr, opcode OpCode) ValueID {
 			operands << arg_val
 		}
 
-		void_t := b.mod.type_store.get_void()
-		return b.mod.add_instr(opcode, b.cur_block, void_t, operands)
+		return b.mod.add_instr(opcode, b.cur_block, TypeID(0), operands)
 	}
 	// Fallback: just build the expression (shouldn't happen for well-formed code)
 	return b.build_expr(expr)

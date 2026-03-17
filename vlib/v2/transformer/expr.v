@@ -2742,8 +2742,9 @@ fn (mut t Transformer) lower_go_call(expr ast.KeywordOperator) ast.Expr {
 	mut receiver_expr := ast.empty_expr
 	mut receiver_type_name := ''
 	if call_lhs is ast.SelectorExpr {
-		sel_lhs := call_lhs.lhs
-		if !(sel_lhs is ast.Ident && t.is_module_name(sel_lhs.name)) {
+		sel := call_lhs as ast.SelectorExpr
+		sel_lhs := sel.lhs
+		if !(sel_lhs is ast.Ident && t.is_module_name((sel_lhs as ast.Ident).name)) {
 			is_method = true
 			receiver_expr = t.transform_expr(sel_lhs)
 			if recv_type := t.get_expr_type(sel_lhs) {
