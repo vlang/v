@@ -3515,8 +3515,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			// processed this instantiation, so trust the method's own positions.
 			if receiver_generics_in_method && !trust_node_concrete_types
 				&& !concrete_types_from_resolved_args
-				&& node.concrete_types.len == full_method_generic_names_len
-				&& rec_len > 0 {
+				&& node.concrete_types.len == full_method_generic_names_len && rec_len > 0 {
 				mut receiver_validated := true
 				for i in 0 .. rec_len {
 					if i >= node.concrete_types.len {

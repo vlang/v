@@ -7089,7 +7089,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	exprs_len := node.exprs.len
 	expr0 := if exprs_len > 0 { node.exprs[0] } else { ast.empty_expr }
 	type0_default := if exprs_len > 0 && node.types.len > 0 { node.types[0] } else { ast.void_type }
-	mut type0 := if exprs_len > 0 { g.resolved_expr_type(expr0, type0_default) } else { ast.void_type }
+	mut type0 := if exprs_len > 0 {
+		g.resolved_expr_type(expr0, type0_default)
+	} else {
+		ast.void_type
+	}
 	// When the expression uses `?` or `!` propagation, the evaluated type is
 	// unwrapped (the option/result flag should be stripped).
 	if exprs_len > 0 {
