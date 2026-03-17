@@ -7,7 +7,7 @@ pub const valid_comptime_if_os = ['windows', 'ios', 'macos', 'mach', 'darwin', '
 	'haiku', 'serenity', 'vinix', 'plan9', 'wasm32_emscripten']
 pub const valid_comptime_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 pub const valid_comptime_if_platforms = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64',
-	'rv32', 's390x', 'ppc64le', 'loongarch64', 'sparc64']
+	'rv32', 's390x', 'ppc64le', 'loongarch64', 'sparc64', 'ppc64']
 pub const valid_comptime_if_cpu_features = ['x64', 'x32', 'little_endian', 'big_endian']
 pub const valid_comptime_if_other = ['apk', 'js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 	'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
@@ -69,6 +69,9 @@ pub fn eval_comptime_not_user_defined_ident(ident string, the_pref &pref.Prefere
 			}
 			'sparc64' {
 				is_true = the_pref.arch == .sparc64
+			}
+			'ppc64' {
+				is_true = the_pref.arch == .ppc64
 			}
 			else {
 				return error('invalid \$if condition: unknown platforms `${ident}`')
