@@ -301,7 +301,7 @@ pub mut:
 pub type Event = C.sapp_event
 
 pub fn (e &Event) str() string {
-	return 'evt: frame_count=${e.frame_count}, type=${e.type}'
+	return 'evt: frame_count=${e.frame_count}, type=${EventType(e.type)}'
 }
 
 @[typedef]
