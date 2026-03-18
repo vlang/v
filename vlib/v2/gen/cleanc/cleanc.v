@@ -81,11 +81,11 @@ mut:
 	spawned_fns         map[string]bool // spawn wrapper names already emitted
 	spawn_wrapper_defs  []string        // spawn wrapper struct + function definitions
 	// @[live] hot code reloading
-	live_fns         []LiveFnInfo   // @[live] functions detected during code generation
-	live_source_file string         // source file containing @[live] functions
-	test_fn_names    []string       // test function names collected in Pass 4
-	has_main         bool           // whether a main() function was found in Pass 4
-	fn_owner_file    map[string]int // fn_key -> first file index (for parallel dedup)
+	live_fns         []LiveFnInfo    // @[live] functions detected during code generation
+	live_source_file string          // source file containing @[live] functions
+	test_fn_names    []string        // test function names collected in Pass 4
+	has_main         bool            // whether a main() function was found in Pass 4
+	fn_owner_file    map[string]int  // fn_key -> first file index (for parallel dedup)
 	typedef_c_types  map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 }
 
