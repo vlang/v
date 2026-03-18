@@ -15,27 +15,27 @@ fn C.ConvertFiberToThread()
 
 pub struct Context {
 pub mut:
-	fiber           voidptr
-	is_thread_fiber bool // true if this was created via ConvertThreadToFiber
+	uctx            voidptr // fiber handle on Windows
+	is_thread_fiber bool    // true if this was created via ConvertThreadToFiber
 }
 
 pub fn context_init(mut ctx Context, stack voidptr, stack_size int, entry_fn fn (voidptr), arg voidptr) {
 	// Windows fibers manage their own stack, so we ignore the stack param
-	ctx.fiber = C.CreateFiber(usize(stack_size), voidptr(entry_fn), arg)
+	ctx.uctx = C.CreateFiber(usize(stack_size), voidptr(entry_fn), arg)
 }
 
 pub fn context_switch(mut from Context, to &Context) {
-	C.SwitchToFiber(to.fiber)
+	C.SwitchToFiber(to.uctx)
 }
 
 pub fn context_set(to &Context) {
-	C.SwitchToFiber(to.fiber)
+	C.SwitchToFiber(to.uctx)
 }
 
 // convert_thread_to_fiber must be called once per OS thread before using fibers.
 pub fn convert_thread_to_fiber() Context {
 	mut ctx := Context{}
-	ctx.fiber = C.ConvertThreadToFiber(unsafe { nil })
+	ctx.uctx = C.ConvertThreadToFiber(unsafe { nil })
 	ctx.is_thread_fiber = true
 	return ctx
 }

@@ -109,6 +109,21 @@ fn (mut g Gen) ensure_map_type_info(map_name string) ?MapTypeInfo {
 	return g.infer_map_type_info_from_alias_name(map_name)
 }
 
+// collect_typedef_c_types scans all files for @[typedef] C struct declarations
+// and records their names. This must run before any type resolution so that
+// expr_type_to_c can emit these types without a 'struct' prefix.
+fn (mut g Gen) collect_typedef_c_types() {
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				if stmt.language == .c && stmt.attributes.has('typedef') {
+					g.typedef_c_types[stmt.name] = true
+				}
+			}
+		}
+	}
+}
+
 fn (mut g Gen) collect_module_type_names() {
 	for file in g.files {
 		g.set_file_module(file)
@@ -1900,6 +1915,10 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 						'mach_timebase_info_data_t'] {
 						return name
 					}
+					// @[typedef] C structs are typedefs, not raw structs
+					if name in g.typedef_c_types {
+						return name
+					}
 					return 'struct ' + name
 				}
 				mut qualified := e.lhs.name + '__' + e.rhs.name
@@ -2010,6 +2029,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 
 // is_c_type_name checks if a name refers to a C type (struct, typedef) vs a C function.
 fn (g &Gen) is_c_type_name(name string) bool {
+	if name in g.typedef_c_types {
+		return true
+	}
 	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
 		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
 		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un', 'fd_set',

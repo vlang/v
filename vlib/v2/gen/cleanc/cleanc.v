@@ -86,6 +86,7 @@ mut:
 	test_fn_names    []string       // test function names collected in Pass 4
 	has_main         bool           // whether a main() function was found in Pass 4
 	fn_owner_file    map[string]int // fn_key -> first file index (for parallel dedup)
+	typedef_c_types  map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 }
 
 struct LiveFnInfo {
@@ -461,6 +462,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	mut stage_start := stats_sw.elapsed()
 
 	g.write_preamble()
+	g.collect_typedef_c_types()
 	g.collect_module_type_names()
 	g.collect_runtime_aliases()
 	g.collect_fn_signatures()
@@ -967,6 +969,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
 		force_emit_fn_names:         g.force_emit_fn_names.clone()
 		export_fn_names:             g.export_fn_names.clone()
 		called_fn_names:             g.called_fn_names.clone()
+		typedef_c_types:             g.typedef_c_types.clone()
 		// Per-worker mutable state (starts fresh)
 		emitted_types:               worker_emitted
 		runtime_local_types:         map[string]string{}

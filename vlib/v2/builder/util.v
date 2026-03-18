@@ -16,6 +16,7 @@ pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 	}
 	mod_files := list_dir_entries(dir)
 	mut v_files := []string{}
+	mut defaults := []string{}
 	for file in mod_files {
 		if file == '' {
 			continue
@@ -54,9 +55,51 @@ pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 		if path == '' {
 			continue
 		}
-		v_files << path
+		// Collect _default.c.v files separately; they are only included when
+		// no platform-specific variant exists (e.g. _darwin.c.v, _linux.c.v).
+		if file.contains('default.c.v') {
+			defaults << path
+		} else {
+			v_files << path
+		}
+	}
+	// Add _default.c.v files only when no platform-specific variant was selected.
+	for dfile in defaults {
+		no_postfix := fname_without_platform_postfix(dfile)
+		mut has_specialized := false
+		for vf in v_files {
+			if fname_without_platform_postfix(vf) == no_postfix {
+				has_specialized = true
+				break
+			}
+		}
+		if !has_specialized {
+			v_files << dfile
+		}
 	}
 	return v_files
+}
+
+// fname_without_platform_postfix strips the platform-specific suffix from a file path,
+// so that e.g. "free_memory_impl_darwin.c.v" and "free_memory_impl_default.c.v" both
+// map to the same key, allowing detection of specialized vs default variants.
+fn fname_without_platform_postfix(file string) string {
+	return file.replace_each([
+		'default.c.v', '_',
+		'nix.c.v', '_',
+		'windows.c.v', '_',
+		'linux.c.v', '_',
+		'darwin.c.v', '_',
+		'macos.c.v', '_',
+		'android.c.v', '_',
+		'termux.c.v', '_',
+		'android_outside_termux.c.v', '_',
+		'freebsd.c.v', '_',
+		'openbsd.c.v', '_',
+		'netbsd.c.v', '_',
+		'dragonfly.c.v', '_',
+		'solaris.c.v', '_',
+	])
 }
 
 // extract_define_feature extracts the feature name from a _d_ or _notd_ filename.
