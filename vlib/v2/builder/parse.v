@@ -13,9 +13,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	skip_builtin := b.pref.skip_builtin
 	mut use_core_headers := false
 	if !skip_builtin {
-		// -prod builds with a valid header cache can use lightweight .vh
-		// summaries instead of fully parsing every core module source file.
-		use_core_headers = b.pref.is_prod && b.can_use_cached_core_headers_for_parse()
+		// When a valid header cache exists, use lightweight .vh summaries
+		// instead of fully parsing every core module source file.
+		use_core_headers = b.can_use_cached_core_headers_for_parse()
 		b.used_vh_for_parse = use_core_headers
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
