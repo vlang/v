@@ -8,11 +8,12 @@ fn (mut c Create) set_web_project_files() {
 	// v source code
 
 	c.files << ProjectFiles{
-		path: os.join_path(base, "main.v")
+		path:    os.join_path(base, 'main.v')
 		content: "module main
 
 import veb
 import db.sqlite
+import os
 
 struct Context {
 	veb.Context
@@ -29,28 +30,30 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 }
 
 fn main() {
-	mut db := sqlite.connect('app.db')!
+	mut db := sqlite.connect(os.resource_abs_path('app.db'))!
 	sql db {
 		create table User
 		create table Product
 	}!
 	defer { db.close() or { panic(err) } }
 
-	mut app := &App{ db: db }
-	app.handle_static('static', true)!
+	mut app := &App{
+		db: db
+	}
+	app.handle_static(os.resource_abs_path('static'), true)!
 	veb.run[App, Context](mut app, 8082)
 }
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "user_model.v")
+		path:    os.join_path(base, 'user_model.v')
 		content: "module main
 
 @[table: 'users']
 pub struct User {
-	mut:
-	id       int       @[primary; sql: serial]
-	username string    @[unique]
+mut:
+	id       int    @[primary; sql: serial]
+	username string @[unique]
 	password string
 	active   bool
 	products []Product @[fkey: 'user_id']
@@ -58,7 +61,7 @@ pub struct User {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "user_view.v")
+		path:    os.join_path(base, 'user_view.v')
 		content: "module main
 
 import veb
@@ -113,7 +116,7 @@ pub fn (app &App) controller_create_user(mut ctx Context) veb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "user_controller.v")
+		path:    os.join_path(base, 'user_controller.v')
 		content: "module main
 
 import crypto.bcrypt
@@ -123,7 +126,7 @@ fn (app &App) add_user(username string, password string) ! {
 	user_model := User{
 		username: username
 		password: hashed_password
-		active: true
+		active:   true
 	}
 	sql app.db {
 		insert user_model into User
@@ -148,7 +151,7 @@ fn (app &App) get_user(id int) !User {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "auth_model.v")
+		path:    os.join_path(base, 'auth_model.v')
 		content: "module main
 
 import time
@@ -177,9 +180,9 @@ fn make_token(user User) string {
 	secret := 'SECRET_KEY' // os.getenv('SECRET_KEY')
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
-		sub: '\${user.id}'
+		sub:  '\${user.id}'
 		name: '\${user.username}'
-		iat: time.now()
+		iat:  time.now()
 	}
 	header := base64.url_encode(json.encode(jwt_header).bytes())
 	payload := base64.url_encode(json.encode(jwt_payload).bytes())
@@ -191,7 +194,7 @@ fn make_token(user User) string {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "auth_view.v")
+		path:    os.join_path(base, 'auth_view.v')
 		content: "module main
 
 import veb
@@ -209,7 +212,7 @@ pub fn (app &App) api_auth(mut ctx Context) veb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "auth_controller.v")
+		path:    os.join_path(base, 'auth_controller.v')
 		content: "module main
 
 import crypto.bcrypt
@@ -249,23 +252,21 @@ fn (app &App) verify_auth(token string) bool {
 
 fn (app &App) user_auth(token string) !int {
 	if !app.verify_auth(token) {
-		return error(\"Invalid token\")
+		return error('Invalid token')
 	}
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
-	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
-		return err
-	}
+	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or { return err }
 	return jwt_payload.sub.int()
 }
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "product_model.v")
+		path:    os.join_path(base, 'product_model.v')
 		content: "module main
 
 @[table: 'products']
 struct Product {
-	id         int    @[primary; sql: serial]
+	id         int @[primary; sql: serial]
 	user_id    int
 	name       string @[sql_type: 'TEXT']
 	created_at string @[default: 'CURRENT_TIMESTAMP']
@@ -273,7 +274,7 @@ struct Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "product_view.v")
+		path:    os.join_path(base, 'product_view.v')
 		content: "module main
 
 import veb
@@ -331,12 +332,12 @@ pub fn (app &App) api_create_product(mut ctx Context) veb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "product_controller.v")
-		content: "module main
+		path:    os.join_path(base, 'product_controller.v')
+		content: 'module main
 
 fn (app &App) add_product(product_name string, user_id int) ! {
 	product_model := Product{
-		name: product_name
+		name:    product_name
 		user_id: user_id
 	}
 	sql app.db {
@@ -349,13 +350,13 @@ fn (app &App) get_user_products(user_id int) ![]Product {
 		select from Product where user_id == user_id
 	}!
 }
-"
+'
 	}
 
 	// html content
 
 	c.files << ProjectFiles{
-		path: os.join_path(base, "templates", "index.html")
+		path:    os.join_path(base, 'templates', 'index.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -434,7 +435,7 @@ fn (app &App) get_user_products(user_id int) ![]Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "templates", "products.html")
+		path:    os.join_path(base, 'templates', 'products.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -498,7 +499,7 @@ fn (app &App) get_user_products(user_id int) ![]Product {
 				return await response.text()
 			})
 			.then((data) => {
-				//  alert('User created successfully')
+				//  alert('Product created successfully')
 				document.location.reload()
 			})
 			.catch((error) => {
@@ -531,7 +532,7 @@ fn (app &App) get_user_products(user_id int) ![]Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "templates", "layout", "header.html")
+		path:    os.join_path(base, 'templates', 'layout', 'header.html')
 		content: "<nav>
 	<div class='nav-wrapper'>
 		<a href='javascript:window.history.back();' class='left'>
@@ -550,8 +551,8 @@ fn (app &App) get_user_products(user_id int) ![]Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(base, "static", "css", "products.css")
-		content: "h1.title {
+		path:    os.join_path(base, 'static', 'css', 'products.css')
+		content: 'h1.title {
 	font-family: Arial, Helvetica, sans-serif;
 	color: #3b7bbf;
 }
@@ -562,6 +563,6 @@ div.products-table {
 	padding: 10px;
 	margin: 10px;
 }
-"
+'
 	}
 }
