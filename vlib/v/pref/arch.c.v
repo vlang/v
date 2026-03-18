@@ -12,6 +12,7 @@ pub enum Arch {
 	ppc64le
 	loongarch64
 	sparc64
+	ppc64
 	js_node
 	js_browser
 	js_freestanding
@@ -63,6 +64,9 @@ pub fn arch_from_string(arch_str string) !Arch {
 		}
 		'sparc64' {
 			return .sparc64
+		}
+		'ppc64' {
+			return .ppc64
 		}
 		'js', 'js_node' {
 			return .js_node
