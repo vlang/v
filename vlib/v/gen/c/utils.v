@@ -116,12 +116,10 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
-	mut scope := expr.scope
-	if g.file.scope != unsafe { nil } {
-		current_scope := g.file.scope.innermost(expr.pos.pos)
-		if current_scope != unsafe { nil } {
-			scope = current_scope
-		}
+	scope := if g.file.scope != unsafe { nil } {
+		g.file.scope.innermost(expr.pos.pos)
+	} else {
+		expr.scope
 	}
 	if scope == unsafe { nil } {
 		return 0
