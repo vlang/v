@@ -44,6 +44,11 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// ~/.vmodules
 	vmodules_path := module_path_join(p.vmodules_path, mod_path)
 	if dir_exists(vmodules_path) {
+		// V convention: if a module dir has a src/ subdirectory, use that
+		src_path := module_path_join(vmodules_path, 'src')
+		if dir_exists(src_path) {
+			return src_path
+		}
 		return vmodules_path
 	}
 	// relative to file importing it

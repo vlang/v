@@ -38,6 +38,11 @@ pub fn new_scope(parent &Scope) &Scope {
 	}
 }
 
+// same_scope_ptr compares scope identity by address instead of structural equality.
+pub fn same_scope_ptr(a &Scope, b &Scope) bool {
+	return voidptr(a) == voidptr(b)
+}
+
 // TODO: try implement the alternate method I was experimenting with (SmartCastSelector)
 // i'm not sure if it is actually possible though. need to explore it.
 pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
@@ -109,6 +114,12 @@ pub fn (mut s Scope) insert(name string, obj Object) {
 		}
 		return
 	}
+	s.objects[name] = obj
+}
+
+// insert_or_update always overwrites an existing entry. Used for fn_root_scope
+// where variables from nested scopes must be updated when re-declared.
+pub fn (mut s Scope) insert_or_update(name string, obj Object) {
 	s.objects[name] = obj
 }
 

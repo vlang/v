@@ -30,62 +30,62 @@ fn (mut checker Decoder) check_json_format() ! {
 
 	match checker.json[checker.checker_idx] {
 		`"` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .string
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_string()!
 		}
 		`-`, `0`...`9` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .number
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_number()!
 		}
 		`t`, `f` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .boolean
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_boolean()!
 		}
 		`n` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .null
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_null()!
 		}
 		`[` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .array
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_array()!
 		}
 		`{` {
-			checker.values_info.push(ValueInfo{
+			value_info_list_push(mut checker.values_info, ValueInfo{
 				position:   checker.checker_idx
 				value_kind: .object
 			})
 
-			actual_value_info_pointer = checker.values_info.last()
+			actual_value_info_pointer = value_info_list_last(checker.values_info)
 
 			checker.check_object()!
 		}

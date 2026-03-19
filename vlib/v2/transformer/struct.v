@@ -1120,13 +1120,23 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 				// Transform array elements with sumtype wrapping if needed.
 				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name,
 					field.name)
+				elem_interface_typ := t.get_field_array_elem_interface_type(struct_type_name,
+					field.name)
 				mut new_exprs := []ast.Expr{cap: arr_value.exprs.len}
 				for e in arr_value.exprs {
-					transformed := t.transform_expr(e)
+					mut transformed := t.transform_expr(e)
 					if elem_sumtype != '' {
 						if wrapped := t.wrap_sumtype_value_transformed(transformed, elem_sumtype) {
 							new_exprs << wrapped
 							continue
+						}
+					}
+					if iface_typ := elem_interface_typ {
+						if !t.is_interface_cast(transformed) {
+							transformed = ast.Expr(ast.CallOrCastExpr{
+								lhs:  t.type_to_ast_type_expr(iface_typ)
+								expr: transformed
+							})
 						}
 					}
 					new_exprs << transformed
@@ -1748,6 +1758,34 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 		}
 	}
 	return ''
+}
+
+fn (t &Transformer) get_field_array_elem_interface_type(struct_name string, field_name string) ?types.Type {
+	field_typ := t.lookup_struct_field_type(struct_name, field_name) or { return none }
+	match field_typ {
+		types.Array {
+			if field_typ.elem_type is types.Interface {
+				return field_typ.elem_type
+			}
+			if field_typ.elem_type is types.Alias
+				&& field_typ.elem_type.base_type is types.Interface {
+				return field_typ.elem_type
+			}
+		}
+		types.Alias {
+			if field_typ.base_type is types.Array {
+				if field_typ.base_type.elem_type is types.Interface {
+					return field_typ.base_type.elem_type
+				}
+				if field_typ.base_type.elem_type is types.Alias
+					&& field_typ.base_type.elem_type.base_type is types.Interface {
+					return field_typ.base_type.elem_type
+				}
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 // get_field_array_elem_c_name returns the C type name for the element type of an array field

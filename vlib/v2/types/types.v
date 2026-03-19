@@ -175,6 +175,15 @@ pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
 }
 
+// get_generic_types returns the concrete generic instantiations inferred for this function.
+pub fn (f &FnType) get_generic_types() []map[string]Type {
+	mut out := []map[string]Type{cap: f.generic_types.len}
+	for generic_types in f.generic_types {
+		out << generic_types.clone()
+	}
+	return out
+}
+
 pub struct Interface {
 pub:
 	name string
@@ -382,6 +391,9 @@ fn value_type_with_depth(t Type, depth int) Type {
 			}
 			return value_type_with_depth(t.base_type, depth + 1)
 		}
+		Struct {
+			return Type(t)
+		}
 		String {
 			return u8_
 		}
@@ -467,6 +479,9 @@ fn (t Type) is_float() bool {
 }
 
 fn (t Type) is_integer() bool {
+	if t is Char || t is Rune || t is ISize || t is USize {
+		return true
+	}
 	if t is Primitive {
 		return t.is_integer()
 	}
@@ -474,7 +489,7 @@ fn (t Type) is_integer() bool {
 }
 
 fn (t Type) is_number() bool {
-	if t is ISize {
+	if t is Char || t is Rune || t is ISize || t is USize {
 		return true
 	}
 	if t is Primitive {

@@ -24,3 +24,8 @@ fn test_c_string_literal_content_to_c_preserves_percent_placeholders() {
 	out := c_string_literal_content_to_c('"%s"')
 	assert out == '"\\"%s\\""'
 }
+
+fn test_c_string_literal_content_to_c_splits_hex_escape_before_hex_digit() {
+	out := c_string_literal_content_to_c(r'\x0c8')
+	assert out == '"\\x0c""8"'
+}

@@ -1192,8 +1192,11 @@ fn (mut l Linker) write_stubs() {
 }
 
 fn read_u32_le(data []u8, off int) u32 {
-	return u32(data[off]) | (u32(data[off + 1]) << 8) | (u32(data[off + 2]) << 16) | (u32(data[
-		off + 3]) << 24)
+	b0 := u32(data[off]) & u32(0xff)
+	b1 := (u32(data[off + 1]) & u32(0xff)) << 8
+	b2 := (u32(data[off + 2]) & u32(0xff)) << 16
+	b3 := (u32(data[off + 3]) & u32(0xff)) << 24
+	return b0 | b1 | b2 | b3
 }
 
 fn write_u32_le_at_arr(mut data []u8, off int, v u32) {

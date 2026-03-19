@@ -19,6 +19,21 @@ pub enum ValueKind {
 	func_ref
 }
 
+// str returns the symbolic name for a MIR value kind.
+pub fn (k ValueKind) str() string {
+	return match k {
+		.unknown { 'unknown' }
+		.constant { 'constant' }
+		.argument { 'argument' }
+		.global { 'global' }
+		.instruction { 'instruction' }
+		.basic_block { 'basic_block' }
+		.string_literal { 'string_literal' }
+		.c_string_literal { 'c_string_literal' }
+		.func_ref { 'func_ref' }
+	}
+}
+
 pub enum AbiArgClass {
 	in_reg
 	indirect

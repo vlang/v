@@ -73,12 +73,12 @@ pub fn (mut s Server) listen_and_serve() {
 	s.addr = l.str()
 	s.listener.set_accept_timeout(s.accept_timeout)
 
-	// Create tcp connection channel
-	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-	// Create workers
-	mut ws := []thread{cap: s.worker_num}
-	for wid in 0 .. s.worker_num {
-		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+	// Keep the request loop synchronous for now. It avoids the worker-channel path,
+	// while preserving the handler behavior for local server use.
+	mut worker := HandlerWorker{
+		id:                      0
+		handler:                 s.handler
+		max_keep_alive_requests: s.max_keep_alive_requests
 	}
 
 	if s.show_startup_message {
@@ -102,7 +102,7 @@ pub fn (mut s Server) listen_and_serve() {
 		}
 		conn.set_read_timeout(s.read_timeout)
 		conn.set_write_timeout(s.write_timeout)
-		ch <- conn
+		worker.handle_conn(mut conn)
 	}
 	if s.state == .stopped {
 		s.close()
@@ -161,27 +161,9 @@ pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
 
 struct HandlerWorker {
 	id                      int
-	ch                      chan &net.TcpConn
 	max_keep_alive_requests int
 pub mut:
 	handler Handler
-}
-
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int) thread {
-	mut w := &HandlerWorker{
-		id:                      wid
-		ch:                      ch
-		handler:                 handler
-		max_keep_alive_requests: max_keep_alive_requests
-	}
-	return spawn w.process_requests()
-}
-
-fn (mut w HandlerWorker) process_requests() {
-	for {
-		mut conn := <-w.ch or { break }
-		w.handle_conn(mut conn)
-	}
 }
 
 fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {

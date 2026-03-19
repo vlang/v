@@ -57,6 +57,29 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.src = src
 }
 
+fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
+	s.offset++
+	for s.offset < s.src.len {
+		c2 := s.src[s.offset]
+		if c2 == quote {
+			break
+		}
+		if c2 == `\\` && s.offset + 1 < s.src.len {
+			s.offset += 2
+			continue
+		}
+		s.offset++
+	}
+	mut end := s.offset
+	if s.offset < s.src.len && s.src[s.offset] == quote {
+		end = s.offset
+		s.offset++
+	}
+	s.lit = s.src[s.pos + 1..end]
+	s.insert_semi = true
+	return .char
+}
+
 // current_file returns the scanner's current source file handle.
 pub fn (s &Scanner) current_file() &token.File {
 	return unsafe { s.file }
@@ -166,23 +189,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	}
 	// byte (char) `a`
 	else if c == `\`` {
-		s.offset++
-		// NOTE: if there is more than one char still scan it
-		// we can error at a later stage. should we error now?
-		for {
-			c2 := s.src[s.offset]
-			if c2 == c {
-				break
-			} else if c2 == `\\` {
-				s.offset += 2
-				continue
-			}
-			s.offset++
-		}
-		s.offset++
-		s.lit = s.src[s.pos + 1..s.offset - 1]
-		s.insert_semi = true
-		return .char
+		return s.scan_char_literal(c)
 	}
 	// s.lit not set, as tokens below get converted directly to string
 	// s.lit = c

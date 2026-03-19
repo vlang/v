@@ -10,10 +10,14 @@ import v2.types
 fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 	lhs := node.lhs[0]
 	rhs := node.rhs[0]
+	if rhs is ast.OrExpr && rhs.pos.id == 235054 {
+		panic('debug gen_assign or lhs=${lhs.name()} stmt_pos=${node.pos} rhs_pos=${rhs.pos} file=${g.cur_file_name} fn=${g.cur_fn_name}')
+	}
 
 	// Multi-assignment with parallel RHS values (non-declaration):
 	// `p, q = q, p` needs temp variables for correct swap semantics.
 	if node.op != .decl_assign && node.lhs.len > 1 && node.rhs.len == node.lhs.len {
+		swap_id := g.tmp_counter
 		// First, evaluate all RHS values into temporaries
 		for i, rhs_expr in node.rhs {
 			mut typ := g.get_expr_type(rhs_expr)
@@ -24,7 +28,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				typ = 'f64'
 			}
 			g.write_indent()
-			g.sb.write_string('${typ} _swap_${g.tmp_counter}_${i} = ')
+			g.sb.write_string('${typ} _swap_${swap_id}_${i} = ')
 			g.expr(rhs_expr)
 			g.sb.writeln(';')
 		}
@@ -32,7 +36,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		for i, lhs_expr in node.lhs {
 			g.write_indent()
 			g.expr(lhs_expr)
-			g.sb.writeln(' = _swap_${g.tmp_counter}_${i};')
+			g.sb.writeln(' = _swap_${swap_id}_${i};')
 		}
 		g.tmp_counter++
 		return
@@ -87,7 +91,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		// For tuple-LHS assignments, prefer explicit call return metadata even when
 		// positional inference produced a scalar type.
 		if rhs is ast.CallExpr {
-			if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+			if ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				if ret != '' && ret != 'int' {
 					tuple_type = ret
 				}
@@ -103,7 +107,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					inner_rhs := stmt_inner.rhs[0]
 					mut inner_ret := ''
 					if inner_rhs is ast.CallExpr {
-						if ret := g.get_call_return_type(inner_rhs.lhs, inner_rhs.args.len) {
+						if ret := g.get_call_return_type(inner_rhs.lhs, inner_rhs.args) {
 							inner_ret = ret
 						}
 					}
@@ -371,7 +375,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		if !elem_type_from_array && rhs is ast.CallExpr {
-			if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+			if ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				if ret != ''
 					&& (ret != 'int' || typ in ['', 'void*', 'voidptr'] || typ.starts_with('Array_')
 					|| typ.starts_with('Map_')) {
@@ -387,7 +391,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		mut rhs_type := g.get_expr_type(rhs)
 		if rhs_type == 'int' {
 			if rhs is ast.CallExpr {
-				if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+				if ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 					rhs_type = ret
 				}
 			}
@@ -543,7 +547,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			return
 		}
 		if typ.starts_with('Array_fixed_') && rhs is ast.CallExpr {
-			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				if call_ret == typ {
 					wrapper_type := g.c_fn_return_type_from_v(typ)
 					g.sb.writeln('${typ} ${name};')
@@ -607,7 +611,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if lhs_fixed_type.starts_with('Array_fixed_') && lhs !is ast.IndexExpr
 			&& rhs is ast.CallExpr {
-			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
+			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				if call_ret == lhs_fixed_type {
 					wrapper_type := g.c_fn_return_type_from_v(lhs_fixed_type)
 					g.write_indent()

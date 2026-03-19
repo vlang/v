@@ -22,6 +22,21 @@ pub enum ValueKind {
 	func_ref         // Function pointer reference (for map hash/eq/clone/free functions)
 }
 
+// str returns the symbolic name for an SSA value kind.
+pub fn (k ValueKind) str() string {
+	return match k {
+		.unknown { 'unknown' }
+		.constant { 'constant' }
+		.argument { 'argument' }
+		.global { 'global' }
+		.instruction { 'instruction' }
+		.basic_block { 'basic_block' }
+		.string_literal { 'string_literal' }
+		.c_string_literal { 'c_string_literal' }
+		.func_ref { 'func_ref' }
+	}
+}
+
 pub struct Value {
 pub:
 	id  ValueID

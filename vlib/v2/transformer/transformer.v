@@ -4,10 +4,18 @@
 module transformer
 
 import os
+import strings
 import v2.ast
 import v2.pref
 import v2.token
 import v2.types
+
+const embed_file_helper_type_name = '__V2EmbedFileData'
+const c_keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 'double',
+	'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long', 'register',
+	'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch', 'typedef',
+	'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary', 'unix',
+	'linux']
 
 // Transformer performs AST-level transformations to simplify
 // and normalize code before codegen. This avoids duplicating
@@ -67,6 +75,8 @@ mut:
 	needed_enum_str_fns map[string]types.Enum
 	// Track needed go wrapper functions (go call -> goroutine_create lowering)
 	needed_go_wrappers map[string]GoWrapperInfo
+	// Track whether post-pass should inject the synthetic embed_file helper type.
+	needed_embed_file_helper bool
 	// Override array element types for variables whose checker-inferred type is wrong
 	// (e.g. .map(fn_name) typed as []voidptr instead of []ReturnType)
 	array_elem_type_overrides map[string]string
@@ -87,6 +97,18 @@ mut:
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
 	synth_types map[int]types.Type
+}
+
+fn escape_c_keyword(name string) string {
+	n := if name.len > 0 && name[0] == `@` { name[1..] } else { name }
+	if n in c_keywords {
+		return '_${n}'
+	}
+	return n
+}
+
+fn enum_member_ident(enum_type string, field_name string) string {
+	return '${enum_type}__${escape_c_keyword(field_name)}'
 }
 
 struct LiveFn {
@@ -222,6 +244,9 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	for k, v in w.needed_go_wrappers {
 		t.needed_go_wrappers[k] = v
 	}
+	if w.needed_embed_file_helper {
+		t.needed_embed_file_helper = true
+	}
 	for k, v in w.interface_concrete_types {
 		t.interface_concrete_types[k] = v
 	}
@@ -300,11 +325,163 @@ fn quote_v_string_literal(raw string) string {
 	return "'${escaped}'"
 }
 
+fn quote_v_bytes_literal(raw []u8) string {
+	hex_digits := '0123456789abcdef'
+	mut sb := strings.new_builder(raw.len * 4 + 2)
+	sb.write_u8(`'`)
+	for b in raw {
+		if b >= ` ` && b <= `~` && b !in [`\\`, `'`] {
+			sb.write_u8(b)
+			continue
+		}
+		match b {
+			`\n` {
+				sb.write_string('\\n')
+			}
+			`\r` {
+				sb.write_string('\\r')
+			}
+			`\t` {
+				sb.write_string('\\t')
+			}
+			`\\` {
+				sb.write_string('\\\\')
+			}
+			`'` {
+				sb.write_string("\\'")
+			}
+			else {
+				sb.write_string('\\x')
+				sb.write_u8(hex_digits[b >> 4])
+				sb.write_u8(hex_digits[b & 0x0f])
+			}
+		}
+	}
+	sb.write_u8(`'`)
+	return sb.str()
+}
+
+fn embed_file_helper_type_expr(pos token.Pos) ast.Expr {
+	return ast.Expr(ast.Ident{
+		name: embed_file_helper_type_name
+		pos:  pos
+	})
+}
+
+fn is_embed_file_helper_type(typ types.Type) bool {
+	return typ.name() == embed_file_helper_type_name
+}
+
 fn (t &Transformer) vmodroot_string_literal(pos token.Pos) ast.StringLiteral {
 	return ast.StringLiteral{
 		kind:  .v
 		value: quote_v_string_literal(t.comptime_vmodroot)
 		pos:   pos
+	}
+}
+
+fn embed_file_string_arg(expr ast.Expr) ?string {
+	match expr {
+		ast.StringLiteral {
+			if expr.value.len >= 2 {
+				return expr.value[1..expr.value.len - 1]
+			}
+			return ''
+		}
+		ast.BasicLiteral {
+			if expr.kind == .string {
+				if expr.value.len >= 2 {
+					return expr.value[1..expr.value.len - 1]
+				}
+				return ''
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut t Transformer) current_file_path(pos token.Pos) string {
+	if !pos.is_valid() || t.file_set == unsafe { nil } {
+		return t.cur_file_name
+	}
+	file := t.file_set.file(pos)
+	position := file.position(pos)
+	return position.filename
+}
+
+fn (mut t Transformer) resolve_embed_file_paths(raw_path string, pos token.Pos) (string, string) {
+	mut rel_path := raw_path
+	if rel_path.contains('@VMODROOT') {
+		rel_path = rel_path.replace('@VMODROOT', t.comptime_vmodroot)
+	}
+	if rel_path.contains('@VEXEROOT') {
+		mut vexeroot := ''
+		if os.args.len > 0 && os.args[0].len > 0 {
+			vexeroot = os.dir(os.real_path(os.args[0]))
+		}
+		if vexeroot == '' && t.pref != unsafe { nil } && t.pref.vroot.len > 0 {
+			vexeroot = os.join_path(t.pref.vroot, 'cmd', 'v2')
+		}
+		if vexeroot != '' {
+			rel_path = rel_path.replace('@VEXEROOT', vexeroot)
+		}
+	}
+	if os.is_abs_path(rel_path) {
+		return raw_path, os.real_path(rel_path)
+	}
+	source_path := t.current_file_path(pos)
+	base_dir := if source_path != '' { os.dir(source_path) } else { os.getwd() }
+	return raw_path, os.real_path(os.join_path_single(base_dir, rel_path))
+}
+
+fn (mut t Transformer) transform_embed_file_comptime_expr(expr ast.ComptimeExpr, args []ast.Expr) ast.Expr {
+	if args.len == 0 {
+		return expr
+	}
+	raw_path := embed_file_string_arg(args[0]) or { return expr }
+	rpath, apath := t.resolve_embed_file_paths(raw_path, expr.pos)
+	file_bytes := os.read_bytes(apath) or { panic('embed_file: failed to read `${apath}`: ${err}') }
+	t.needed_embed_file_helper = true
+	return ast.InitExpr{
+		typ:    embed_file_helper_type_expr(expr.pos)
+		fields: [
+			ast.FieldInit{
+				name:  '_data'
+				value: ast.Expr(ast.StringLiteral{
+					kind:  .v
+					value: quote_v_bytes_literal(file_bytes)
+					pos:   expr.pos
+				})
+			},
+			ast.FieldInit{
+				name:  'len'
+				value: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: file_bytes.len.str()
+					pos:   expr.pos
+				})
+			},
+			ast.FieldInit{
+				name:  'path'
+				value: ast.Expr(ast.StringLiteral{
+					kind:  .v
+					value: quote_v_string_literal(rpath)
+					pos:   expr.pos
+				})
+			},
+			ast.FieldInit{
+				name:  'apath'
+				value: ast.Expr(ast.StringLiteral{
+					kind:  .v
+					value: quote_v_string_literal(apath)
+					pos:   expr.pos
+				})
+			},
+		]
+		pos:    expr.pos
 	}
 }
 
@@ -581,6 +758,9 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if !t.is_eval_backend() {
 		t.inject_runtime_const_init_fns(mut result)
 	}
+	if t.needed_embed_file_helper {
+		t.inject_embed_file_helper(mut result)
+	}
 	// Generate auto helper functions. Split into two groups:
 	// 1. Core functions (for standard types like string, int, etc.) go in the builtin
 	//    module file because cached builtin.o/vlib.o reference them. They must always
@@ -735,7 +915,9 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 			}
 		}
 	}
-	t.inject_test_main(mut result)
+	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
+		t.inject_test_main(mut result)
+	}
 	if !t.is_eval_backend() {
 		t.inject_main_runtime_const_init_calls(mut result)
 	}
@@ -756,6 +938,157 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 		}
 	}
 	t.propagate_types(result)
+}
+
+fn embed_file_helper_receiver() ast.Parameter {
+	return ast.Parameter{
+		name: 'ed'
+		typ:  embed_file_helper_type_expr(token.Pos{})
+	}
+}
+
+fn embed_file_helper_selector(field_name string) ast.Expr {
+	return ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'ed'
+		})
+		rhs: ast.Ident{
+			name: field_name
+		}
+	})
+}
+
+fn embed_file_helper_method(name string, return_type ast.Expr, body []ast.Stmt) ast.Stmt {
+	return ast.Stmt(ast.FnDecl{
+		is_public: true
+		is_method: true
+		receiver:  embed_file_helper_receiver()
+		name:      name
+		typ:       ast.FnType{
+			return_type: return_type
+		}
+		stmts:     body
+	})
+}
+
+fn embed_file_helper_stmts() []ast.Stmt {
+	return [
+		ast.Stmt(ast.StructDecl{
+			is_public: true
+			name:      embed_file_helper_type_name
+			fields:    [
+				ast.FieldDecl{
+					name: '_data'
+					typ:  ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				},
+				ast.FieldDecl{
+					name: 'len'
+					typ:  ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				},
+				ast.FieldDecl{
+					name: 'path'
+					typ:  ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				},
+				ast.FieldDecl{
+					name: 'apath'
+					typ:  ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				},
+			]
+		}),
+		embed_file_helper_method('to_string', ast.Expr(ast.Ident{
+			name: 'string'
+		}), [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [embed_file_helper_selector('_data')]
+			}),
+		]),
+		embed_file_helper_method('to_bytes', ast.Expr(ast.Type(ast.ArrayType{
+			elem_type: ast.Expr(ast.Ident{
+				name: 'u8'
+			})
+		})), [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.CallExpr{
+						lhs: ast.Expr(ast.SelectorExpr{
+							lhs: embed_file_helper_selector('_data')
+							rhs: ast.Ident{
+								name: 'bytes'
+							}
+						})
+					}),
+				]
+			}),
+		]),
+		embed_file_helper_method('data', ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Expr(ast.Ident{
+				name: 'u8'
+			})
+		}), [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.SelectorExpr{
+						lhs: embed_file_helper_selector('_data')
+						rhs: ast.Ident{
+							name: 'str'
+						}
+					}),
+				]
+			}),
+		]),
+		embed_file_helper_method('free', ast.empty_expr, []ast.Stmt{}),
+		embed_file_helper_method('str', ast.Expr(ast.Ident{
+			name: 'string'
+		}), [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					embed_file_helper_selector('path'),
+				]
+			}),
+		]),
+	]
+}
+
+fn (mut t Transformer) inject_embed_file_helper(mut result []ast.File) {
+	mut builtin_idx := -1
+	for i, file in result {
+		if file.mod == 'builtin' {
+			builtin_idx = i
+			break
+		}
+	}
+	if builtin_idx < 0 {
+		return
+	}
+	file := result[builtin_idx]
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl && stmt.name == embed_file_helper_type_name {
+			return
+		}
+	}
+	mut new_stmts := []ast.Stmt{cap: file.stmts.len + 6}
+	for stmt in file.stmts {
+		new_stmts << stmt
+	}
+	for stmt in embed_file_helper_stmts() {
+		new_stmts << stmt
+	}
+	result[builtin_idx] = ast.File{
+		attributes: file.attributes
+		mod:        file.mod
+		name:       file.name
+		stmts:      new_stmts
+		imports:    file.imports
+	}
 }
 
 // transform_files transforms all files and returns transformed copies
@@ -782,9 +1115,147 @@ fn runtime_const_init_call_name(mod string, fn_name string) string {
 	return fn_name
 }
 
+fn (mut t Transformer) record_runtime_const_init(mod string, name string, expr ast.Expr, mut known map[string]map[string]bool) {
+	if name == '' {
+		return
+	}
+	mut mod_names := if mod in known {
+		known[mod].clone()
+	} else {
+		map[string]bool{}
+	}
+	if name in mod_names {
+		return
+	}
+	mod_names[name] = true
+	known[mod] = mod_names.clone()
+	if mod !in t.runtime_const_inits_by_mod {
+		t.runtime_const_modules << mod
+	}
+	mut inits := t.runtime_const_inits_by_mod[mod] or { []RuntimeConstInit{} }
+	inits << RuntimeConstInit{
+		name: name
+		expr: expr
+	}
+	t.runtime_const_inits_by_mod[mod] = inits
+}
+
+fn (t &Transformer) expr_depends_on_runtime_const(expr ast.Expr, mod string, known map[string]map[string]bool) bool {
+	match expr {
+		ast.Ident {
+			if mod_names := known[mod] {
+				return expr.name in mod_names
+			}
+			return false
+		}
+		ast.SelectorExpr {
+			if t.expr_depends_on_runtime_const(expr.lhs, mod, known) {
+				return true
+			}
+			if expr.lhs is ast.Ident {
+				if mod_names := known[expr.lhs.name] {
+					return expr.rhs.name in mod_names
+				}
+			}
+			return false
+		}
+		ast.CallExpr {
+			if t.expr_depends_on_runtime_const(expr.lhs, mod, known) {
+				return true
+			}
+			for arg in expr.args {
+				if t.expr_depends_on_runtime_const(arg, mod, known) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.CallOrCastExpr {
+			return t.expr_depends_on_runtime_const(expr.lhs, mod, known)
+				|| t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.CastExpr {
+			return t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.ParenExpr {
+			return t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.PrefixExpr {
+			return t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.PostfixExpr {
+			return t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.ModifierExpr {
+			return t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.IndexExpr {
+			return t.expr_depends_on_runtime_const(expr.lhs, mod, known)
+				|| t.expr_depends_on_runtime_const(expr.expr, mod, known)
+		}
+		ast.InfixExpr {
+			return t.expr_depends_on_runtime_const(expr.lhs, mod, known)
+				|| t.expr_depends_on_runtime_const(expr.rhs, mod, known)
+		}
+		ast.IfExpr {
+			if t.expr_depends_on_runtime_const(expr.cond, mod, known)
+				|| t.expr_depends_on_runtime_const(expr.else_expr, mod, known) {
+				return true
+			}
+			for stmt in expr.stmts {
+				if stmt is ast.ExprStmt && t.expr_depends_on_runtime_const(stmt.expr, mod, known) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.ArrayInitExpr {
+			for e in expr.exprs {
+				if t.expr_depends_on_runtime_const(e, mod, known) {
+					return true
+				}
+			}
+			return (expr.init !is ast.EmptyExpr
+				&& t.expr_depends_on_runtime_const(expr.init, mod, known))
+				|| (expr.len !is ast.EmptyExpr
+				&& t.expr_depends_on_runtime_const(expr.len, mod, known))
+				|| (expr.cap !is ast.EmptyExpr
+				&& t.expr_depends_on_runtime_const(expr.cap, mod, known))
+		}
+		ast.InitExpr {
+			for field in expr.fields {
+				if t.expr_depends_on_runtime_const(field.value, mod, known) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.MapInitExpr {
+			for key in expr.keys {
+				if t.expr_depends_on_runtime_const(key, mod, known) {
+					return true
+				}
+			}
+			for val in expr.vals {
+				if t.expr_depends_on_runtime_const(val, mod, known) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 	is_native := t.pref != unsafe { nil }
 		&& (t.pref.backend == .arm64 || t.pref.backend == .x64 || t.pref.backend == .c)
+	t.runtime_const_inits_by_mod.clear()
+	t.runtime_const_modules.clear()
+	t.runtime_const_init_fn_name.clear()
+	mut known := map[string]map[string]bool{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.ConstDecl {
@@ -792,15 +1263,31 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 					if !t.needs_runtime_const_init(field.value, is_native) {
 						continue
 					}
-					if file.mod !in t.runtime_const_inits_by_mod {
-						t.runtime_const_modules << file.mod
+					t.record_runtime_const_init(file.mod, field.name, field.value, mut
+						known)
+				}
+			}
+		}
+	}
+	mut changed := true
+	for changed {
+		changed = false
+		for file in files {
+			for stmt in file.stmts {
+				if stmt is ast.ConstDecl {
+					for field in stmt.fields {
+						if mod_names := known[file.mod] {
+							if field.name in mod_names {
+								continue
+							}
+						}
+						if !t.expr_depends_on_runtime_const(field.value, file.mod, known) {
+							continue
+						}
+						t.record_runtime_const_init(file.mod, field.name, field.value, mut
+							known)
+						changed = true
 					}
-					mut inits := t.runtime_const_inits_by_mod[file.mod] or { []RuntimeConstInit{} }
-					inits << RuntimeConstInit{
-						name: field.name
-						expr: field.value
-					}
-					t.runtime_const_inits_by_mod[file.mod] = inits
 				}
 			}
 		}
@@ -808,12 +1295,16 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 }
 
 // needs_runtime_const_init checks whether a const initializer requires runtime
-// initialization.  For C/cleanc backends only call-expressions need it (the C
-// compiler can handle static array/struct initializers).  For SSA-based backends
-// (arm64, x64, c) array and map literals also need runtime init because the SSA
-// builder cannot embed them in the data segment.
+// initialization. For C/cleanc backends, direct calls and value-position if
+// expressions need it because they cannot be emitted as C compile-time
+// constants. For SSA-based backends (arm64, x64, c), array and map literals
+// also need runtime init because the SSA builder cannot embed them in the data
+// segment.
 fn (t &Transformer) needs_runtime_const_init(expr ast.Expr, is_native bool) bool {
 	if t.contains_call_expr(expr) {
+		return true
+	}
+	if expr is ast.IfExpr {
 		return true
 	}
 	if is_native {
@@ -851,12 +1342,23 @@ fn (mut t Transformer) transform_expr_in_module(mod string, expr ast.Expr) ast.E
 fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, inits []RuntimeConstInit) ast.Stmt {
 	mut stmts := []ast.Stmt{cap: inits.len}
 	for item in inits {
+		saved_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		old_skip_if := t.skip_if_value_lowering
+		t.skip_if_value_lowering = true
+		transformed_expr := t.transform_expr_in_module(mod, item.expr)
+		t.skip_if_value_lowering = old_skip_if
+		generated_pending := t.pending_stmts.clone()
+		t.pending_stmts = saved_pending
+		for pending_stmt in generated_pending {
+			stmts << pending_stmt
+		}
 		stmts << ast.AssignStmt{
 			op:  .assign
 			lhs: [ast.Expr(ast.Ident{
 				name: item.name
 			})]
-			rhs: [t.transform_expr_in_module(mod, item.expr)]
+			rhs: [transformed_expr]
 		}
 	}
 	return ast.Stmt(ast.FnDecl{
@@ -1312,6 +1814,12 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 		ast.ForInStmt {
 			t.transform_for_in_stmt(stmt)
 		}
+		ast.LabelStmt {
+			ast.LabelStmt{
+				name: stmt.name
+				stmt: t.transform_stmt(stmt.stmt)
+			}
+		}
 		ast.ReturnStmt {
 			t.transform_return_stmt(stmt)
 		}
@@ -1594,6 +2102,310 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 		}
 	}
 	return result
+}
+
+fn find_target_or_expr_path_in_stmts(stmts []ast.Stmt, target_id int, prefix string) ?string {
+	for i, stmt in stmts {
+		stmt_prefix := '${prefix}/stmt[${i}]:${stmt.type_name()}'
+		if path := find_target_or_expr_path_in_stmt(stmt, target_id, stmt_prefix) {
+			return path
+		}
+	}
+	return none
+}
+
+fn find_target_or_expr_path_in_stmt(stmt ast.Stmt, target_id int, prefix string) ?string {
+	match stmt {
+		ast.AssignStmt {
+			for i, lhs in stmt.lhs {
+				if path := find_target_or_expr_path_in_expr(lhs, target_id, '${prefix}/lhs[${i}]') {
+					return path
+				}
+			}
+			for i, rhs in stmt.rhs {
+				if path := find_target_or_expr_path_in_expr(rhs, target_id, '${prefix}/rhs[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.BlockStmt {
+			return find_target_or_expr_path_in_stmts(stmt.stmts, target_id, prefix)
+		}
+		ast.ComptimeStmt {
+			return find_target_or_expr_path_in_stmt(stmt.stmt, target_id, prefix)
+		}
+		ast.DeferStmt {
+			return find_target_or_expr_path_in_stmts(stmt.stmts, target_id, prefix)
+		}
+		ast.ExprStmt {
+			return find_target_or_expr_path_in_expr(stmt.expr, target_id, '${prefix}/expr')
+		}
+		ast.ForStmt {
+			if path := find_target_or_expr_path_in_stmt(stmt.init, target_id, '${prefix}/init') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_expr(stmt.cond, target_id, '${prefix}/cond') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_stmt(stmt.post, target_id, '${prefix}/post') {
+				return path
+			}
+			return find_target_or_expr_path_in_stmts(stmt.stmts, target_id, prefix)
+		}
+		ast.ForInStmt {
+			if path := find_target_or_expr_path_in_expr(stmt.key, target_id, '${prefix}/key') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_expr(stmt.value, target_id, '${prefix}/value') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_expr(stmt.expr, target_id, '${prefix}/expr') {
+				return path
+			}
+		}
+		ast.ReturnStmt {
+			for i, expr in stmt.exprs {
+				if path := find_target_or_expr_path_in_expr(expr, target_id, '${prefix}/expr[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.AssertStmt {
+			return find_target_or_expr_path_in_expr(stmt.expr, target_id, '${prefix}/expr')
+		}
+		else {}
+	}
+	return none
+}
+
+fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string) ?string {
+	if !expr_has_valid_data(expr) {
+		return none
+	}
+	if expr is ast.OrExpr {
+		if expr.pos.id == target_id {
+			return '${prefix}/OrExpr'
+		}
+		if path := find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/inner') {
+			return path
+		}
+		return find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix)
+	}
+	match expr {
+		ast.ArrayInitExpr {
+			if path := find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ') {
+				return path
+			}
+			for i, inner in expr.exprs {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+					return path
+				}
+			}
+			if path := find_target_or_expr_path_in_expr(expr.init, target_id, '${prefix}/init') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_expr(expr.len, target_id, '${prefix}/len') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.cap, target_id, '${prefix}/cap')
+		}
+		ast.AsCastExpr {
+			if path := find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ')
+		}
+		ast.AssocExpr {
+			if path := find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr') {
+				return path
+			}
+			for i, field in expr.fields {
+				if path := find_target_or_expr_path_in_expr(field.value, target_id, '${prefix}/field[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.CallExpr {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			for i, arg in expr.args {
+				if path := find_target_or_expr_path_in_expr(arg, target_id, '${prefix}/arg[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.CallOrCastExpr {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.CastExpr {
+			if path := find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.ComptimeExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.FieldInit {
+			return find_target_or_expr_path_in_expr(expr.value, target_id, '${prefix}/value')
+		}
+		ast.FnLiteral {
+			return find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix)
+		}
+		ast.GenericArgs {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			for i, arg in expr.args {
+				if path := find_target_or_expr_path_in_expr(arg, target_id, '${prefix}/arg[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.IfExpr {
+			if path := find_target_or_expr_path_in_expr(expr.cond, target_id, '${prefix}/cond') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix) {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.else_expr, target_id, '${prefix}/else')
+		}
+		ast.IfGuardExpr {
+			return find_target_or_expr_path_in_stmt(ast.Stmt(expr.stmt), target_id, prefix)
+		}
+		ast.IndexExpr {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.InfixExpr {
+			if path := find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs') {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.rhs, target_id, '${prefix}/rhs')
+		}
+		ast.InitExpr {
+			if path := find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ') {
+				return path
+			}
+			for i, field in expr.fields {
+				if path := find_target_or_expr_path_in_expr(field.value, target_id, '${prefix}/field[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.KeywordOperator {
+			for i, inner in expr.exprs {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.LambdaExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.LockExpr {
+			for i, inner in expr.lock_exprs {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/lock[${i}]') {
+					return path
+				}
+			}
+			for i, inner in expr.rlock_exprs {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/rlock[${i}]') {
+					return path
+				}
+			}
+			return find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix)
+		}
+		ast.MapInitExpr {
+			if path := find_target_or_expr_path_in_expr(expr.typ, target_id, '${prefix}/typ') {
+				return path
+			}
+			for i, inner in expr.keys {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/key[${i}]') {
+					return path
+				}
+			}
+			for i, inner in expr.vals {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/val[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.MatchExpr {
+			if path := find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr') {
+				return path
+			}
+			for i, branch in expr.branches {
+				if path := find_target_or_expr_path_in_stmts(branch.stmts, target_id,
+					'${prefix}/branch[${i}]')
+				{
+					return path
+				}
+			}
+		}
+		ast.ModifierExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.ParenExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.PostfixExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.PrefixExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.SelectExpr {
+			if path := find_target_or_expr_path_in_stmt(expr.stmt, target_id, '${prefix}/stmt') {
+				return path
+			}
+			if path := find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix) {
+				return path
+			}
+			return find_target_or_expr_path_in_expr(expr.next, target_id, '${prefix}/next')
+		}
+		ast.SelectorExpr {
+			return find_target_or_expr_path_in_expr(expr.lhs, target_id, '${prefix}/lhs')
+		}
+		ast.SqlExpr {
+			return find_target_or_expr_path_in_expr(expr.expr, target_id, '${prefix}/expr')
+		}
+		ast.StringInterLiteral {
+			for i, inter in expr.inters {
+				if path := find_target_or_expr_path_in_expr(inter.expr, target_id, '${prefix}/expr[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.Tuple {
+			for i, inner in expr.exprs {
+				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+					return path
+				}
+			}
+		}
+		ast.UnsafeExpr {
+			return find_target_or_expr_path_in_stmts(expr.stmts, target_id, prefix)
+		}
+		else {}
+	}
+	return none
 }
 
 fn (mut t Transformer) transform_const_decl(decl ast.ConstDecl) ast.ConstDecl {
@@ -2374,6 +3186,13 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		if is_string_range_or {
 			is_result = true
 		} else {
+			if t.cur_fn_name_str == 'fetch_msgs_for' && or_expr.pos.id == 235054 {
+				mut call_type_name := '<none>'
+				if call_type := t.get_expr_type(call_expr) {
+					call_type_name = call_type.name()
+				}
+				panic('debug expand_direct_or_expr_assign: file=${t.cur_file_name} fn=${t.cur_fn_name_str} stmt_pos=${stmt.pos} or_pos=${or_expr.pos} call=${call_expr.type_name()} fn_name=${fn_name} call_type=${call_type_name} is_result=${is_result} is_option=${is_option}')
+			}
 			return none
 		}
 	}
@@ -6217,7 +7036,7 @@ fn (t &Transformer) resolve_enum_shorthand(expr ast.Expr, enum_type string) ast.
 		if sel.lhs is ast.EmptyExpr {
 			// Resolve to EnumType__member as an Ident (C-mangled name)
 			return ast.Ident{
-				name: '${enum_type}__${sel.rhs.name}'
+				name: enum_member_ident(enum_type, sel.rhs.name)
 				pos:  sel.pos
 			}
 		}

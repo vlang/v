@@ -101,8 +101,10 @@ pub mut:
 	// After store_reg_to_val records (reg, val_id), the next load_val_to_reg
 	// for the same val_id can reuse the register instead of loading from stack.
 	// Cleared at block boundaries, function calls, and any register write.
-	last_store_reg int = -1
-	last_store_val int
+	last_store_reg            int = -1
+	last_store_val            int
+	last_store_blk            int = -1
+	last_store_next_instr_idx int = -1
 	// Current block instruction list and index, for lookahead optimizations.
 	cur_blk_instrs    []int
 	cur_blk_instr_idx int
@@ -158,13 +160,25 @@ pub fn Gen.new(mod &mir.Module) &Gen {
 fn (mut g Gen) invalidate_last_store() {
 	g.last_store_reg = -1
 	g.last_store_val = 0
+	g.last_store_blk = -1
+	g.last_store_next_instr_idx = -1
+}
+
+fn (g &Gen) last_store_cache_enabled() bool {
+	return true
+}
+
+fn (g &Gen) is_cacheable_last_store_reg(reg int) bool {
+	return reg >= 0 && reg != 8 && reg != 9
 }
 
 // Check if a store to stack can be skipped for val_id because the value
 // will be consumed from the last-store cache by the very next instruction.
-// Returns: 0 = must store, 1 = skip (consumed as operand[0]),
-//          2 = forward to x10 (consumed as operand[1]).
+// Returns: 0 = must store, 1 = skip (consumed as operand[0]).
 fn (mut g Gen) should_skip_store(val_id int) int {
+	if !g.last_store_cache_enabled() {
+		return 0
+	}
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		return 0
 	}
@@ -207,12 +221,6 @@ fn (mut g Gen) should_skip_store(val_id int) int {
 	// Operand[0] match: skip store entirely, value stays in cache register.
 	if ni.operands[0] == val_id {
 		return 1
-	}
-	// Operand[1] match for binary ops: forward to x10 so it survives
-	// operand[0] loading into x8. Only for arithmetic/comparison which
-	// load operand[1] via get_operand_reg(op1, 9).
-	if (is_arith || is_int_cmp) && ni.operands.len >= 2 && ni.operands[1] == val_id {
-		return 2
 	}
 	return 0
 }
@@ -913,7 +921,7 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 					// Check for array alloca: operand[0] is element count
 					if instr.operands.len > 0 {
 						count_val := g.mod.values[instr.operands[0]]
-						count := count_val.name.int()
+						count := int(parse_const_int_literal(count_val.name))
 						if count > 1 {
 							alloc_size = elem_size * count
 						}
@@ -2268,7 +2276,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					count_id := instr.operands[0]
 					if count_id > 0 && count_id < g.mod.values.len {
 						count_val := g.mod.values[count_id]
-						count := count_val.name.int()
+						count := int(parse_const_int_literal(count_val.name))
 						if count > 1 {
 							alloc_size *= count
 						}
@@ -2386,7 +2394,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				idx_val := g.mod.values[idx_id]
 				pointee_typ := g.mod.type_store.types[pointee_typ_id]
 				if idx_val.kind == .constant && pointee_typ.kind == .struct_t {
-					field_idx := idx_val.name.int()
+					field_idx := int(parse_const_int_literal(idx_val.name))
 					field_off := g.struct_field_offset_bytes(pointee_typ_id, field_idx)
 					if field_off <= 0xFFF {
 						g.emit(asm_add_imm(Reg(8), Reg(base_reg), u32(field_off)))
@@ -3901,7 +3909,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// operands: [tuple_val, index]
 			tuple_id := instr.operands[0]
 			idx_val := g.mod.values[instr.operands[1]]
-			idx := idx_val.name.int()
+			idx := int(parse_const_int_literal(idx_val.name))
 			trace_extract := g.env_trace_extract.len > 0
 				&& (g.env_trace_extract == '*' || g.cur_func_name == g.env_trace_extract)
 			tuple_val := g.mod.values[tuple_id]
@@ -4661,7 +4669,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			tuple_id := instr.operands[0]
 			elem_id := instr.operands[1]
 			idx_val := g.mod.values[instr.operands[2]]
-			idx := idx_val.name.int()
+			idx := int(parse_const_int_literal(idx_val.name))
 			trace_insert := g.env_trace_insert.len > 0
 				&& (g.env_trace_insert == '*' || g.cur_func_name == g.env_trace_insert)
 
@@ -5183,7 +5191,7 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 				return false
 			}
 			idx_val := g.mod.values[idx_id]
-			idx := idx_val.name.int()
+			idx := int(parse_const_int_literal(idx_val.name))
 			if idx < 0 || idx >= src_typ.field_names.len {
 				return false
 			}
@@ -5204,7 +5212,7 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 			if idx_val.kind != .constant {
 				return false
 			}
-			idx := idx_val.name.int()
+			idx := int(parse_const_int_literal(idx_val.name))
 			if idx == 0 {
 				// Preserve classification through no-op GEP hops.
 				return g.scalar_value_is_pointer_payload(base_id, depth + 1)
@@ -5828,6 +5836,9 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 		&& g.mod.type_store.types[val.typ].width == 32
 	if val.kind == .constant {
 		// Parse float constant and load into float register
+		if g.last_store_reg == 8 {
+			g.invalidate_last_store()
+		}
 		if is_f32 {
 			// f32 constant: parse as f64, convert to f32, load via s-register
 			f_val := f32(val.name.f64())
@@ -5857,21 +5868,72 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 }
 
 // Get constant integer value with caching to avoid repeated string parsing
+fn parse_const_int_literal(name string) i64 {
+	if name.len == 0 {
+		return 0
+	}
+	if name == 'true' {
+		return 1
+	}
+	if name == 'false' {
+		return 0
+	}
+	mut idx := 0
+	mut neg := false
+	if name[idx] == `-` {
+		neg = true
+		idx++
+	} else if name[idx] == `+` {
+		idx++
+	}
+	mut base := u64(10)
+	if idx + 1 < name.len && name[idx] == `0` {
+		match name[idx + 1] {
+			`x`, `X` {
+				base = 16
+				idx += 2
+			}
+			`o`, `O` {
+				base = 8
+				idx += 2
+			}
+			`b`, `B` {
+				base = 2
+				idx += 2
+			}
+			else {}
+		}
+	}
+	mut val := u64(0)
+	for idx < name.len {
+		ch := name[idx]
+		if ch == `_` {
+			idx++
+			continue
+		}
+		digit := match true {
+			ch >= `0` && ch <= `9` { u64(ch - `0`) }
+			base == 16 && ch >= `a` && ch <= `f` { u64(ch - `a` + 10) }
+			base == 16 && ch >= `A` && ch <= `F` { u64(ch - `A` + 10) }
+			else { break }
+		}
+		if digit >= base {
+			break
+		}
+		val = val * base + digit
+		idx++
+	}
+	if neg {
+		return i64(u64(0) - val)
+	}
+	return i64(val)
+}
+
 fn (mut g Gen) get_const_int(val_id int) i64 {
 	if cached := g.const_cache[val_id] {
 		return cached
 	}
-	// Parse as u64 first to handle values with bit 63 set that would overflow i64 parsing.
-	// Then reinterpret as i64 to preserve the bit pattern.
-	name := g.mod.values[val_id].name
-	int_val := if name.len > 2 && name[0] == `0` && (name[1] == `x` || name[1] == `X`) {
-		i64(name.u64())
-	} else if name.len > 0 && name[0] != `-` {
-		// Parse unsigned to handle values > i64.max (e.g., 14695981039346656037)
-		i64(name.u64())
-	} else {
-		name.i64()
-	}
+	int_val := parse_const_int_literal(g.mod.values[val_id].name)
 	g.const_cache[val_id] = int_val
 	return int_val
 }
@@ -5887,7 +5949,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		}
 	}
 	// Check scratch register cache for this val_id.
-	if val_id > 0 {
+	if g.last_store_cache_enabled() && val_id > 0 && g.is_cacheable_last_store_reg(g.last_store_reg)
+		&& g.last_store_blk == g.cur_blk_id && g.last_store_next_instr_idx == g.cur_blk_instr_idx {
 		if g.last_store_val == val_id && g.last_store_reg >= 0 {
 			g.stats_cache_hits++
 			src := g.last_store_reg
@@ -6178,6 +6241,7 @@ fn (mut g Gen) load_fnptr_to_reg(reg int, val_id int) {
 
 fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	mut stored_reg := reg
+	mut cached_store := false
 	trace_storeval := g.env_trace_storeval.len > 0
 		&& (g.env_trace_storeval == '*' || g.cur_func_name == g.env_trace_storeval)
 	if val_id in g.reg_map {
@@ -6207,38 +6271,33 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 				}
 				if val_typ.kind == .struct_t && g.type_size(val_typ_id) <= 8 {
 					g.emit_str_reg_offset(stored_reg, 29, offset)
-					g.last_store_reg = stored_reg
-					g.last_store_val = val_id
+					g.invalidate_last_store()
 					return
 				}
 			}
 		}
 		g.stats_total_stores++
-		skip := g.should_skip_store(val_id)
+		skip := if g.is_cacheable_last_store_reg(stored_reg) {
+			g.should_skip_store(val_id)
+		} else {
+			0
+		}
 		if skip == 1 {
 			// Skip the store — value will be consumed as operand[0] from cache.
 			g.stats_skipped_stores++
-		} else if skip == 2 {
-			// Forward to x9: value will be consumed as operand[1].
-			// MOV x9, stored_reg so it survives operand[0] loading into x8.
-			// x9 is the default register for operand[1] in arithmetic/comparison,
-			// so the cache hit at (9, val_id) gives src==reg with no MOV needed.
-			if stored_reg != 9 {
-				g.emit(asm_mov_reg(Reg(9), Reg(stored_reg)))
-			}
-			g.stats_skipped_stores++
-			// Set cache to (x9, val_id) so get_operand_reg finds it.
-			g.last_store_reg = 9
-			g.last_store_val = val_id
-			return
+			cached_store = val_id > 0 && g.is_cacheable_last_store_reg(stored_reg)
 		} else {
 			g.emit_str_reg_offset(stored_reg, 29, offset)
 		}
 	}
-	// Record for store-load elimination: stored_reg now holds val_id.
-	if val_id > 0 {
+	// Record only skipped stores. Regular stores can always be reloaded from stack.
+	if cached_store {
 		g.last_store_reg = stored_reg
 		g.last_store_val = val_id
+		g.last_store_blk = g.cur_blk_id
+		g.last_store_next_instr_idx = g.cur_blk_instr_idx + 1
+	} else {
+		g.invalidate_last_store()
 	}
 }
 
@@ -6829,6 +6888,11 @@ fn (mut g Gen) zero_fp_bytes(dst_off int, size int) {
 	if size <= 0 {
 		return
 	}
+	if size >= 256 {
+		g.emit_add_fp_imm(13, dst_off)
+		g.zero_ptr_bytes(13, size)
+		return
+	}
 	// Use stp xzr, xzr for 16-byte chunks when offset is stp-compatible
 	mut off := 0
 	for off + 16 <= size {
@@ -6855,6 +6919,36 @@ fn (mut g Gen) zero_fp_bytes(dst_off int, size int) {
 	}
 	if off < size {
 		g.emit_str_reg_offset_sized(31, 29, dst_off + off, 1)
+	}
+}
+
+fn (mut g Gen) zero_ptr_bytes_unrolled(dst_reg int, size int) {
+	mut off := 0
+	// Use stp xzr, xzr for 16-byte chunks
+	for off + 16 <= size {
+		simm7 := off / 8
+		if off % 8 == 0 && simm7 >= 0 && simm7 < 64 {
+			g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(dst_reg), simm7))
+		} else {
+			g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
+			g.emit_str_reg_offset_sized(31, dst_reg, off + 8, 8)
+		}
+		off += 16
+	}
+	if off + 8 <= size {
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
+		off += 8
+	}
+	if off + 4 <= size {
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 4)
+		off += 4
+	}
+	if off + 2 <= size {
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 2)
+		off += 2
+	}
+	if off < size {
+		g.emit_str_reg_offset_sized(31, dst_reg, off, 1)
 	}
 }
 
@@ -6985,32 +7079,35 @@ fn (mut g Gen) zero_ptr_bytes(dst_reg int, size int) {
 	if size <= 0 {
 		return
 	}
-	mut off := 0
-	// Use stp xzr, xzr for 16-byte chunks
-	for off + 16 <= size {
-		simm7 := off / 8
-		if off % 8 == 0 && simm7 >= 0 && simm7 < 64 {
-			g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(dst_reg), simm7))
-		} else {
-			g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
-			g.emit_str_reg_offset_sized(31, dst_reg, off + 8, 8)
-		}
-		off += 16
+	if size < 256 {
+		g.zero_ptr_bytes_unrolled(dst_reg, size)
+		return
 	}
-	if off + 8 <= size {
-		g.emit_str_reg_offset_sized(31, dst_reg, off, 8)
-		off += 8
+	mut ptr_reg := 13
+	if ptr_reg == dst_reg {
+		ptr_reg = 14
 	}
-	if off + 4 <= size {
-		g.emit_str_reg_offset_sized(31, dst_reg, off, 4)
-		off += 4
+	mut count_reg := 14
+	if count_reg == dst_reg || count_reg == ptr_reg {
+		count_reg = 15
 	}
-	if off + 2 <= size {
-		g.emit_str_reg_offset_sized(31, dst_reg, off, 2)
-		off += 2
+	g.emit_mov_reg(ptr_reg, dst_reg)
+	loop_count := size / 64
+	if loop_count > 0 {
+		g.emit_mov_imm(count_reg, u64(loop_count))
+		loop_off := g.macho.text_data.len
+		g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(ptr_reg), 0))
+		g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(ptr_reg), 2))
+		g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(ptr_reg), 4))
+		g.emit(asm_stp_offset(Reg(31), Reg(31), Reg(ptr_reg), 6))
+		g.emit(asm_add_imm(Reg(ptr_reg), Reg(ptr_reg), 64))
+		g.emit(asm_sub_imm(Reg(count_reg), Reg(count_reg), 1))
+		loop_rel := (loop_off - g.macho.text_data.len) / 4
+		g.emit(asm_cbnz(Reg(count_reg), loop_rel))
 	}
-	if off < size {
-		g.emit_str_reg_offset_sized(31, dst_reg, off, 1)
+	tail_size := size % 64
+	if tail_size > 0 {
+		g.zero_ptr_bytes_unrolled(ptr_reg, tail_size)
 	}
 }
 
@@ -7122,8 +7219,11 @@ fn (mut g Gen) record_pending_label(blk int) {
 }
 
 fn (g Gen) read_u32(off int) u32 {
-	return u32(g.macho.text_data[off]) | (u32(g.macho.text_data[off + 1]) << 8) | (u32(g.macho.text_data[
-		off + 2]) << 16) | (u32(g.macho.text_data[off + 3]) << 24)
+	b0 := u32(g.macho.text_data[off]) & u32(0xff)
+	b1 := (u32(g.macho.text_data[off + 1]) & u32(0xff)) << 8
+	b2 := (u32(g.macho.text_data[off + 2]) & u32(0xff)) << 16
+	b3 := (u32(g.macho.text_data[off + 3]) & u32(0xff)) << 24
+	return b0 | b1 | b2 | b3
 }
 
 fn (mut g Gen) write_u32(off int, v u32) {
@@ -7220,7 +7320,9 @@ fn (mut g Gen) emit_mov_imm64(rd int, val i64) {
 	// For -1: MOVN xd, #0 -> ~0 = -1
 	// For -42: MOVN xd, #41 -> ~41 = -42
 	if val >= -65536 && val < 0 {
-		not_val := u32(~val) // ~(-42) = 41
+		// Keep the immediate calculation arithmetic-only. The self-hosted chain can
+		// mis-lower signed bitwise-not here and collapse all small negatives to -1.
+		not_val := u32((-val) - 1) // -(-42) - 1 = 41
 		g.emit(asm_movn(Reg(rd), not_val))
 		return
 	}
@@ -7352,7 +7454,7 @@ fn (mut g Gen) pointer_carried_aggregate_size_bytes(ptr_id int, depth int, mut s
 						&& base_id < g.mod.values.len {
 						idx_val := g.mod.values[idx_id]
 						if idx_val.kind == .constant {
-							idx := idx_val.name.int()
+							idx := int(parse_const_int_literal(idx_val.name))
 							base_typ_id := g.mod.values[base_id].typ
 							if base_typ_id > 0 && base_typ_id < g.mod.type_store.types.len {
 								base_typ := g.mod.type_store.types[base_typ_id]
@@ -7426,7 +7528,7 @@ fn (mut g Gen) extractvalue_carried_field_size_bytes(instr mir.Instruction, dept
 	if idx_val.kind != .constant {
 		return 0
 	}
-	idx := idx_val.name.int()
+	idx := int(parse_const_int_literal(idx_val.name))
 	if idx < 0 {
 		return 0
 	}
@@ -7961,7 +8063,7 @@ fn (g &Gen) is_sumtype_data_extract_value(val_id int) bool {
 	if idx_val.kind != .constant {
 		return false
 	}
-	idx := idx_val.name.int()
+	idx := int(parse_const_int_literal(idx_val.name))
 	wrapper_typ := g.mod.type_store.types[tuple_typ_id]
 	if idx < 0 || idx >= wrapper_typ.field_names.len {
 		return false
@@ -8002,7 +8104,7 @@ fn (g &Gen) ptr_originates_from_sumtype_data_word(ptr_id int, depth int) bool {
 			if idx_val.kind != .constant {
 				return false
 			}
-			idx := idx_val.name.int()
+			idx := int(parse_const_int_literal(idx_val.name))
 			if base_id <= 0 || base_id >= g.mod.values.len {
 				return false
 			}
@@ -8090,7 +8192,7 @@ fn (g &Gen) sumtype_data_word_load_source(ptr_id int, result_typ_id ssa.TypeID) 
 		return none
 	}
 	wrapper_typ := g.mod.type_store.types[tuple_typ_id]
-	idx := idx_val.name.int()
+	idx := int(parse_const_int_literal(idx_val.name))
 	if idx < 0 || idx >= wrapper_typ.field_names.len {
 		return none
 	}
@@ -8176,7 +8278,7 @@ fn (g &Gen) sumtype_extractvalue_tag_tuple_id(val_id int, expected_wrapper_typ s
 	if idx_val.kind != .constant {
 		return none
 	}
-	idx := idx_val.name.int()
+	idx := int(parse_const_int_literal(idx_val.name))
 	tuple_id := instr.operands[0]
 	if tuple_id <= 0 || tuple_id >= g.mod.values.len {
 		return none
@@ -8502,7 +8604,7 @@ fn (g &Gen) forwarded_optiontype_wrapper_return_source(ret_val_id int, expected_
 		return none
 	}
 	tag_val := g.mod.values[tag_id]
-	if tag_val.kind != .constant || tag_val.name.int() != tag_idx {
+	if tag_val.kind != .constant || int(parse_const_int_literal(tag_val.name)) != tag_idx {
 		return none
 	}
 	data_id := ret_instr.operands[1]

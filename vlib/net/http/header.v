@@ -4,7 +4,6 @@
 module http
 
 import strings
-import arrays
 
 struct HeaderKV {
 	key   string
@@ -609,14 +608,19 @@ pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
 // keys gets all header keys as strings
 pub fn (h Header) keys() []string {
 	mut res := []string{cap: h.cur_pos}
+	mut seen := map[string]bool{}
 	for i := 0; i < h.cur_pos; i++ {
 		if h.data[i].value == '' {
 			continue
 		}
-		res << h.data[i].key
+		key := h.data[i].key
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		res << key
 	}
-	// Make sure keys are lower case and unique
-	return arrays.uniq(res)
+	return res
 }
 
 @[params]
@@ -694,7 +698,7 @@ pub fn (h Header) join(other Header) Header {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: ' + err.str())
+				panic('unexpected header merge error')
 			}
 		}
 	}

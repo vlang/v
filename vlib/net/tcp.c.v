@@ -14,7 +14,8 @@ pub struct TCPDialer {}
 // dial will try to create a new abstract connection to the given address.
 // It will return an error, if that is not possible.
 pub fn (t TCPDialer) dial(address string) !Connection {
-	return dial_tcp(address)!
+	conn := dial_tcp(address)!
+	return Connection(conn)
 }
 
 // default_tcp_dialer will give you an instance of Dialer, that is suitable for making new tcp connections.

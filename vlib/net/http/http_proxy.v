@@ -2,8 +2,8 @@ module http
 
 import encoding.base64
 import net
+import net.mbedtls
 import net.urllib
-import net.ssl
 import net.socks
 
 @[heap]
@@ -52,9 +52,9 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 		return error('Unknown port')
 	}
 
-	if u := url.user {
-		username = u.username
-		password = u.password
+	if url.user.username != '' || url.user.password != '' {
+		username = url.user.username
+		password = url.user.password
 	}
 
 	return &HttpProxy{
@@ -149,7 +149,7 @@ fn (pr &HttpProxy) dial(host string) !&net.TcpConn {
 	}
 }
 
-fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
+fn (pr &HttpProxy) ssl_dial(host string) !&mbedtls.SSLConn {
 	if pr.scheme in ['http', 'https'] {
 		mut tcp := net.dial_tcp(pr.host)!
 		tcp.write(pr.build_proxy_headers(host).bytes())!
@@ -159,17 +159,14 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 			return error('ssl dial error: ${bf.bytestr()}')
 		}
 
-		mut ssl_conn := ssl.new_ssl_conn(
-			verify:                 ''
-			cert:                   ''
-			cert_key:               ''
-			validate:               false
-			in_memory_verification: false
-		)!
+		mut ssl_conn := mbedtls.new_ssl_conn_with_values('', '', '', false, false)!
 		ssl_conn.connect(mut tcp, host.all_before_last(':'))!
 		return ssl_conn
 	} else if pr.scheme == 'socks5' {
-		return socks.socks5_ssl_dial(pr.host, host, pr.username, pr.password)!
+		mut tcp := socks.socks5_dial(pr.host, host, pr.username, pr.password)!
+		mut ssl_conn := mbedtls.new_ssl_conn_with_values('', '', '', false, false)!
+		ssl_conn.connect(mut tcp, host.all_before_last(':'))!
+		return ssl_conn
 	} else {
 		return error('http_proxy ssl_dial: invalid proxy scheme')
 	}

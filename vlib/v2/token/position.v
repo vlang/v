@@ -14,6 +14,11 @@ pub:
 	id     int
 }
 
+// str returns a readable summary of the position key fields.
+pub fn (p Pos) str() string {
+	return '{ offset: ${p.offset}, id: ${p.id} }'
+}
+
 pub fn (p Pos) is_valid() bool {
 	return p.id > 0
 }

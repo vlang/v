@@ -4,8 +4,8 @@ import time
 
 // TerminalStreamingDownloader is the same as http.SilentStreamingDownloader, but produces a progress line on stdout.
 pub struct TerminalStreamingDownloader {
-	SilentStreamingDownloader
 mut:
+	silent        SilentStreamingDownloader
 	start_time    time.Time
 	past_time     time.Time
 	past_received u64
@@ -13,7 +13,7 @@ mut:
 
 // on_start is called once at the start of the download.
 pub fn (mut d TerminalStreamingDownloader) on_start(mut request Request, path string) ! {
-	d.SilentStreamingDownloader.on_start(mut request, path)!
+	d.silent.on_start(mut request, path)!
 	d.start_time = time.now()
 	d.past_time = time.now()
 }
@@ -38,14 +38,14 @@ pub fn (mut d TerminalStreamingDownloader) on_chunk(request &Request, chunk []u8
 	estimated_s := estimated.seconds()
 	eta_s := f64_max(estimated_s - elapsed_s, 0.0)
 
-	d.SilentStreamingDownloader.on_chunk(request, chunk, already_received, expected)!
-	print('\rDownloading to `${d.path}` ${100.0 * ratio:6.2f}%, ${f64(already_received) / (1024 * 1024):7.3f}/${f64(expected) / (1024 * 1024):-7.3f}MB, ${speed:6.0f}KB/s, elapsed: ${elapsed_s:6.0f}s, eta: ${eta_s:6.0f}s')
+	d.silent.on_chunk(request, chunk, already_received, expected)!
+	print('\rDownloading to `${d.silent.path}` ${100.0 * ratio:6.2f}%, ${f64(already_received) / (1024 * 1024):7.3f}/${f64(expected) / (1024 * 1024):-7.3f}MB, ${speed:6.0f}KB/s, elapsed: ${elapsed_s:6.0f}s, eta: ${eta_s:6.0f}s')
 	flush_stdout()
 }
 
 // on_finish is called once at the end of the download.
 pub fn (mut d TerminalStreamingDownloader) on_finish(request &Request, response &Response) ! {
-	d.SilentStreamingDownloader.on_finish(request, response)!
+	d.silent.on_finish(request, response)!
 	println('')
 	flush_stdout()
 }

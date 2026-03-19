@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+repo_root="$(CDPATH= cd -- "${script_dir}/../.." && pwd)"
+
+cd "${script_dir}"
+
+v1_compiler="${V:-${repo_root}/v}"
+if [ ! -x "${v1_compiler}" ]; then
+  echo "FAIL: v1 compiler not found: ${v1_compiler}"
+  exit 1
+fi
 
 # V1's formatter may clobber v2 source files during rebuild.
 # Back up the entire v2 tree and restore after each V1 build.
@@ -21,27 +30,31 @@ KNOWN_FAILURES=0
 
 echo "=== 1/14: ARM64 self-host hello world ==="
 backup_v2_src
-v -skip-unused -cc cc -o v2 v2.v
+"${v1_compiler}" -skip-unused -cc cc -o v2 v2.v
 restore_v2_src
-./v2 -backend arm64 -nocache -o v3 v2.v && ./v3 -o hello_arm hello.v && ./hello_arm
+./v2 -backend arm64 -gc none -nocache -o v3 v2.v
+./v3 -backend arm64 -o hello_arm hello.v
+./hello_arm
 
 echo ""
-echo "=== 2/14: ARM64 self-host chain (v2->v3->v4->v5, parallel) ==="
+echo "=== 2/14: ARM64 self-host chain (v2->v3->v4->v5->v6) ==="
 echo "  Building v3 from v2..."
-./v2 -nocache -backend arm64 -o v3_chain v2.v
+./v2 -nocache -gc none -backend arm64 -o v3_chain v2.v
 echo "  Building v4 from v3..."
 ./v3_chain -nocache -gc none -backend arm64 -o v4_chain v2.v
 echo "  Building v5 from v4..."
 ./v4_chain -nocache -gc none -backend arm64 -o v5_chain v2.v
-V4_SIZE=$(wc -c < v4_chain)
+echo "  Building v6 from v5..."
+./v5_chain -nocache -gc none -backend arm64 -o v6_chain v2.v
 V5_SIZE=$(wc -c < v5_chain)
-if [ "$V4_SIZE" -eq "$V5_SIZE" ]; then
-  echo "  v4=v5 ($V4_SIZE bytes) — chain converged"
+V6_SIZE=$(wc -c < v6_chain)
+if [ "$V5_SIZE" -eq "$V6_SIZE" ]; then
+  echo "  v5=v6 ($V5_SIZE bytes) — chain converged"
 else
-  echo "  FAIL: v4 ($V4_SIZE) != v5 ($V5_SIZE)"
+  echo "  FAIL: v5 ($V5_SIZE) != v6 ($V6_SIZE)"
   exit 1
 fi
-rm -f v3_chain v4_chain v5_chain
+rm -f v3_chain v4_chain v5_chain v6_chain
 
 echo ""
 echo "=== 3/14: Self-host test ==="
@@ -96,23 +109,23 @@ echo "=== 9/14: Sumtype tests (arm64) ==="
 
 echo ""
 echo "=== 10/14: SSA backends test (arm64) ==="
-v -gc none run test_ssa_backends.v arm64
+"${v1_compiler}" -gc none run test_ssa_backends.v arm64
 
 echo ""
 echo "=== 11/14: SSA backends test (cleanc) ==="
-v -gc none run test_ssa_backends.v cleanc
+"${v1_compiler}" -gc none run test_ssa_backends.v cleanc
 
 echo ""
 echo "=== 12/14: Transformer unit tests ==="
-v ../../vlib/v2/transformer/transformer_test.v
+"${v1_compiler}" ../../vlib/v2/transformer/transformer_test.v
 
 echo ""
 echo "=== 13/14: Transformer integration test ==="
-v ../../vlib/v2/transformer/transformer_v2_darwin_test.v
+"${v1_compiler}" ../../vlib/v2/transformer/transformer_v2_darwin_test.v
 
 echo ""
 echo "=== 14/14: Cleanc runtime tests ==="
-v -gc none run ../../vlib/v2/gen/cleanc/tests/run_tests.v
+"${v1_compiler}" -gc none run ../../vlib/v2/gen/cleanc/tests/run_tests.v
 
 echo ""
 if [ "$KNOWN_FAILURES" -gt 0 ]; then

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-import net.ssl
+import net.mbedtls
 import strings
 
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
@@ -18,13 +18,8 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 }
 
 fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
-	mut ssl_conn := ssl.new_ssl_conn(
-		verify:                 req.verify
-		cert:                   req.cert
-		cert_key:               req.cert_key
-		validate:               req.validate
-		in_memory_verification: req.in_memory_verification
-	)!
+	mut ssl_conn := mbedtls.new_ssl_conn_with_values(req.verify, req.cert, req.cert_key,
+		req.validate, req.in_memory_verification)!
 	mut retries := 0
 	for {
 		ssl_conn.dial(host_name, port) or {
@@ -48,11 +43,11 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 }
 
 fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
-	mut ssl_conn := unsafe { &ssl.SSLConn(con) }
+	mut ssl_conn := unsafe { &mbedtls.SSLConn(con) }
 	return ssl_conn.socket_read_into_ptr(buf, bufsize)
 }
 
-fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
+fn (req &Request) do_request(req_headers string, mut ssl_conn mbedtls.SSLConn) !Response {
 	ssl_conn.write_string(req_headers) or { return err }
 	mut content := strings.new_builder(4096)
 	req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn), read_from_ssl_connection_cb)!

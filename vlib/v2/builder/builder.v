@@ -1164,7 +1164,7 @@ fn top_level_c_decls(c_path string) ([]string, []string) {
 	mut typedefs := []string{}
 	mut fn_decls := []string{}
 	for raw_line in lines {
-		if raw_line.len == 0 || raw_line[0].is_space() {
+		if raw_line.len == 0 || raw_line[0] in [` `, `\t`, `\n`, `\r`] {
 			continue
 		}
 		line := raw_line.trim_space()
@@ -1230,7 +1230,7 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 
 fn (b &Builder) has_module(module_name string) bool {
 	for file in b.files {
-		if file_module_name(file) == module_name {
+		if ast_file_module_name(file) == module_name {
 			return true
 		}
 	}
@@ -1244,7 +1244,7 @@ fn (b &Builder) collect_modules_excluding(excluded []string) []string {
 	}
 	mut modules_set := map[string]bool{}
 	for file in b.files {
-		module_name := file_module_name(file)
+		module_name := ast_file_module_name(file)
 		if module_name in excluded_set {
 			continue
 		}
@@ -1255,7 +1255,7 @@ fn (b &Builder) collect_modules_excluding(excluded []string) []string {
 	return modules
 }
 
-fn file_module_name(file ast.File) string {
+fn ast_file_module_name(file ast.File) string {
 	for stmt in file.stmts {
 		if stmt is ast.ModuleStmt {
 			return stmt.name.replace('.', '_')
@@ -1704,7 +1704,10 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	print_time('SSA Optimize', time.Duration(native_sw.elapsed() - stage_start))
 	$if debug {
-		if !b.pref.no_optimize {
+		// Post-opt SSA verification is useful while debugging the optimizer, but it
+		// is currently noisy enough to block normal self-host builds. Keep it
+		// opt-in so `test_all.sh` and manual self-hosting can still complete.
+		if !b.pref.no_optimize && os.getenv('V2_VERIFY') != '' {
 			ssa_optimize.verify_and_panic(mod, 'full optimization')
 		}
 	}

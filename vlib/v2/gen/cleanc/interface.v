@@ -20,6 +20,11 @@ struct InterfaceWrapperSpec {
 	method        InterfaceMethodInfo
 }
 
+struct InterfaceDataFieldInfo {
+	name   string
+	c_type string
+}
+
 fn (mut g Gen) interface_method_info_from_ast(name string, fn_type ast.FnType) InterfaceMethodInfo {
 	mut ret := 'void'
 	if fn_type.return_type !is ast.EmptyExpr {
@@ -247,9 +252,11 @@ fn (mut g Gen) mark_needed_ierror_wrapper_from_ident(name string) {
 }
 
 fn (g &Gen) should_emit_ierror_wrappers() bool {
-	body_ierror_key := 'body_IError'
-	body_builtin_ierror_key := 'body_builtin__IError'
-	return body_ierror_key in g.emitted_types || body_builtin_ierror_key in g.emitted_types
+	return g.has_emitted_ierror_body()
+}
+
+fn (g &Gen) has_emitted_ierror_body() bool {
+	return 'IError' in g.emitted_interface_bodies || 'builtin__IError' in g.emitted_interface_bodies
 }
 
 fn (mut g Gen) emit_ierror_wrapper_decls() {
@@ -321,6 +328,108 @@ fn (mut g Gen) get_interface_name(node ast.InterfaceDecl) string {
 	return node.name
 }
 
+fn (g &Gen) lookup_interface_data_field(iface_name string, field_name string) ?InterfaceDataFieldInfo {
+	mut candidates := []string{cap: 3}
+	candidates << iface_name
+	if iface_name.contains('__') {
+		candidates << iface_name.all_after_last('__')
+	}
+	for candidate in candidates {
+		if fields := g.interface_data_fields[candidate] {
+			for field in fields {
+				if field.name == field_name {
+					return field
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) selector_interface_data_field(sel ast.SelectorExpr) ?InterfaceDataFieldInfo {
+	if raw_type := g.get_raw_type(sel.lhs) {
+		match raw_type {
+			types.Interface {
+				return g.lookup_interface_data_field(g.types_type_to_c(raw_type), sel.rhs.name)
+			}
+			types.Pointer {
+				if raw_type.base_type is types.Interface {
+					return g.lookup_interface_data_field(g.types_type_to_c(raw_type.base_type),
+						sel.rhs.name)
+				}
+			}
+			else {}
+		}
+	}
+	lhs_type := g.get_expr_type(sel.lhs)
+	if lhs_type != '' {
+		if field := g.lookup_interface_data_field(lhs_type, sel.rhs.name) {
+			return field
+		}
+	}
+	return none
+}
+
+fn (g &Gen) interface_type_ready(type_name string) bool {
+	typ := type_name.trim_space()
+	if typ == '' || typ == 'void' {
+		return true
+	}
+	if typ in primitive_types {
+		return true
+	}
+	if g.is_c_type_name(typ) {
+		return true
+	}
+	if typ.ends_with('*') || typ.ends_with('ptr') {
+		return true
+	}
+	if typ == 'string' || typ == 'builtin__string' {
+		return 'body_string' in g.emitted_types || 'body_builtin__string' in g.emitted_types
+	}
+	if typ.starts_with('_option_') {
+		return typ in g.emitted_option_structs
+	}
+	if typ.starts_with('_result_') {
+		return typ in g.emitted_result_structs
+	}
+	if typ.starts_with('Array_fixed_') {
+		return 'body_${typ}' in g.emitted_types || 'alias_${typ}' in g.emitted_types
+	}
+	if typ == 'array' || typ.starts_with('Array_') || typ in g.array_aliases {
+		return 'body_array' in g.emitted_types
+	}
+	if typ == 'map' || typ.starts_with('Map_') || typ in g.map_aliases {
+		return 'body_map' in g.emitted_types
+	}
+	return 'body_${typ}' in g.emitted_types || 'enum_${typ}' in g.emitted_types
+		|| 'alias_${typ}' in g.emitted_types
+}
+
+fn (mut g Gen) interface_fields_resolved(node ast.InterfaceDecl) bool {
+	if !g.interface_type_ready('string') {
+		return false
+	}
+	for field in node.fields {
+		if method := g.interface_method_info(field) {
+			if !g.interface_type_ready(method.ret_type) {
+				return false
+			}
+			for param_type in method.param_types {
+				if !g.interface_type_ready(param_type) {
+					return false
+				}
+			}
+			continue
+		}
+		field_type := g.field_type_name(field.typ)
+		if !g.interface_type_ready(field_type) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	name := g.get_interface_name(node)
 	body_key := 'body_${name}'
@@ -344,6 +453,7 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	}
 	// Generate function pointers for each method
 	mut methods := []InterfaceMethodInfo{}
+	mut data_fields := []InterfaceDataFieldInfo{}
 	for field in node.fields {
 		if method := g.interface_method_info(field) {
 			g.sb.write_string('\t${method.ret_type} (*${method.name})(void*')
@@ -380,9 +490,18 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 		}
 		// Regular field
 		t := g.expr_type_to_c(field.typ)
-		g.sb.writeln('\t${t} ${field.name};')
+		// Match the v1 C layout for interface data fields: store pointers to the
+		// concrete value's fields instead of embedding copies by value. This avoids
+		// impossible recursive layouts like `?Interface` inside the interface itself.
+		g.sb.writeln('\t${t}* ${field.name};')
+		data_fields << InterfaceDataFieldInfo{
+			name:   field.name
+			c_type: t
+		}
 	}
 	g.interface_methods[name] = methods
+	g.interface_data_fields[name] = data_fields
 	g.sb.writeln('};')
 	g.sb.writeln('')
+	g.emitted_interface_bodies[name] = true
 }

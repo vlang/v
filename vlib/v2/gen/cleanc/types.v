@@ -6,6 +6,7 @@ module cleanc
 
 import v2.ast
 import v2.types
+import strings
 
 fn (g &Gen) result_value_type(result_type string) string {
 	if !result_type.starts_with('_result_') {
@@ -19,6 +20,123 @@ fn option_value_type(option_type string) string {
 		return ''
 	}
 	return unmangle_c_ptr_type(option_type['_option_'.len..])
+}
+
+fn (g &Gen) resolve_active_generic_type(name string) ?types.Type {
+	if name == '' || g.active_generic_types.len == 0 {
+		return none
+	}
+	if concrete := g.active_generic_types[name] {
+		if concrete.name() == name || type_contains_generic_placeholder(concrete) {
+			return none
+		}
+		return concrete
+	}
+	return none
+}
+
+fn type_contains_generic_placeholder(typ types.Type) bool {
+	match typ {
+		types.NamedType {
+			return is_generic_placeholder_type_name(string(typ))
+		}
+		types.Array {
+			return type_contains_generic_placeholder(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return type_contains_generic_placeholder(typ.elem_type)
+		}
+		types.Map {
+			return type_contains_generic_placeholder(typ.key_type)
+				|| type_contains_generic_placeholder(typ.value_type)
+		}
+		types.OptionType {
+			return type_contains_generic_placeholder(typ.base_type)
+		}
+		types.ResultType {
+			return type_contains_generic_placeholder(typ.base_type)
+		}
+		types.Pointer {
+			return type_contains_generic_placeholder(typ.base_type)
+		}
+		types.Alias {
+			return type_contains_generic_placeholder(typ.base_type)
+		}
+		types.FnType {
+			for param_type in typ.get_param_types() {
+				if type_contains_generic_placeholder(param_type) {
+					return true
+				}
+			}
+			if ret := typ.get_return_type() {
+				return type_contains_generic_placeholder(ret)
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn sanitize_generic_token_part(name string) string {
+	if name == '' {
+		return 'Type'
+	}
+	mut out := strings.new_builder(name.len)
+	mut wrote_sep := false
+	for ch in name {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
+			out.write_u8(ch)
+			wrote_sep = false
+		} else if !wrote_sep {
+			out.write_u8(`_`)
+			wrote_sep = true
+		}
+	}
+	mut tok := out.str().trim('_')
+	if tok == '' {
+		tok = 'Type'
+	}
+	return tok
+}
+
+fn (g &Gen) generic_specialization_token_from_type(typ types.Type) string {
+	match typ {
+		types.Array {
+			return 'Array_' + g.generic_specialization_token_from_type(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return 'Array_fixed_' + g.generic_specialization_token_from_type(typ.elem_type) + '_' +
+				typ.len.str()
+		}
+		types.Map {
+			return 'Map_' + g.generic_specialization_token_from_type(typ.key_type) + '_' +
+				g.generic_specialization_token_from_type(typ.value_type)
+		}
+		types.OptionType {
+			return 'Option_' + g.generic_specialization_token_from_type(typ.base_type)
+		}
+		types.ResultType {
+			return 'Result_' + g.generic_specialization_token_from_type(typ.base_type)
+		}
+		types.Pointer {
+			return g.generic_specialization_token_from_type(typ.base_type) + 'ptr'
+		}
+		types.Alias {
+			if typ.name != '' {
+				return sanitize_generic_token_part(typ.name)
+			}
+			return g.generic_specialization_token_from_type(typ.base_type)
+		}
+		else {
+			type_name := typ.name()
+			if type_name == '' {
+				return 'Type'
+			}
+			return sanitize_generic_token_part(type_name)
+		}
+	}
 }
 
 // unmangle_c_ptr_type converts mangled pointer type names back to C pointer types.
@@ -36,8 +154,8 @@ fn unmangle_c_ptr_type(name string) string {
 	}
 	if name.len > 3 && name.ends_with('ptr') {
 		// Don't unmangle composite type names - they are typedef'd aliases
-		if name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('_option_')
-			|| name.starts_with('_result_') {
+		if name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('Tuple_')
+			|| name.starts_with('_option_') || name.starts_with('_result_') {
 			return name
 		}
 		base := name[..name.len - 3]
@@ -388,9 +506,7 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if g.option_result_payload_invalid(val_type) || val_type == 'void' {
 		return false
 	}
-	ierror_body_key := 'body_IError'
-	ierror_builtin_body_key := 'body_builtin__IError'
-	if ierror_body_key !in g.emitted_types && ierror_builtin_body_key !in g.emitted_types {
+	if !g.has_emitted_ierror_body() {
 		return false
 	}
 	if val_type in primitive_types || val_type in ['bool', 'char', 'void*', 'u8*', 'char*'] {
@@ -641,6 +757,14 @@ fn (g &Gen) normalize_enum_name(name string) string {
 	return name
 }
 
+fn (g &Gen) enum_member_c_name(enum_name string, field_name string) string {
+	mut actual_field_name := field_name
+	if !actual_field_name.starts_with('@') && g.enum_has_field(enum_name, '@${actual_field_name}') {
+		actual_field_name = '@${actual_field_name}'
+	}
+	return '${g.normalize_enum_name(enum_name)}__${escape_c_keyword(mangle_alias_component(actual_field_name))}'
+}
+
 fn (g &Gen) enum_has_field(enum_name string, field_name string) bool {
 	if enum_name in g.enum_type_fields {
 		return field_name in g.enum_type_fields[enum_name]
@@ -731,6 +855,33 @@ fn (g &Gen) is_tuple_alias(t string) bool {
 	return t in g.tuple_aliases
 }
 
+fn (g &Gen) tuple_field_type_ready(field_type string) bool {
+	typ := field_type.trim_space()
+	if typ == '' || typ == 'void' {
+		return false
+	}
+	if typ in primitive_types || typ in ['bool', 'char', 'void*', 'u8*', 'char*'] {
+		return true
+	}
+	if typ == 'string' || typ == 'builtin__string' {
+		return 'body_string' in g.emitted_types || 'body_builtin__string' in g.emitted_types
+	}
+	if typ.ends_with('*') || typ.ends_with('ptr') {
+		return true
+	}
+	if typ.starts_with('Array_fixed_') {
+		return 'body_${typ}' in g.emitted_types || 'alias_${typ}' in g.emitted_types
+	}
+	if typ == 'array' || typ.starts_with('Array_') || typ in g.array_aliases {
+		return 'body_array' in g.emitted_types
+	}
+	if typ == 'map' || typ.starts_with('Map_') || typ in g.map_aliases {
+		return 'body_map' in g.emitted_types
+	}
+	return 'body_${typ}' in g.emitted_types || 'enum_${typ}' in g.emitted_types
+		|| 'alias_${typ}' in g.emitted_types
+}
+
 fn (mut g Gen) emit_tuple_aliases() {
 	mut names := g.tuple_aliases.keys()
 	names.sort()
@@ -739,8 +890,18 @@ fn (mut g Gen) emit_tuple_aliases() {
 		if body_key in g.emitted_types {
 			continue
 		}
-		g.emitted_types[body_key] = true
 		field_types := g.tuple_aliases[name]
+		mut ready := true
+		for field_type in field_types {
+			if !g.tuple_field_type_ready(field_type) {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			continue
+		}
+		g.emitted_types[body_key] = true
 		g.sb.writeln('typedef struct ${name} {')
 		for i, field_type in field_types {
 			g.sb.writeln('\t${field_type} arg${i};')
@@ -968,6 +1129,9 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 				return '${g.cur_module}__${name}'
 			}
 			if is_generic_placeholder_type_name(name) {
+				if concrete := g.resolve_active_generic_type(name) {
+					return g.types_type_to_c(concrete)
+				}
 				return 'f64'
 			}
 			if g.is_module_local_type(name) {
@@ -1453,9 +1617,27 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 					return elem_type
 				}
 			}
-			if ret := g.get_call_return_type(node.lhs, node.args.len) {
+			if ret := g.get_call_return_type(node.lhs, node.args) {
 				if ret != '' {
 					return ret
+				}
+			}
+		} else if node is ast.CallOrCastExpr {
+			if node.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(node.lhs) {
+				cast_t := g.expr_type_to_c(node.lhs)
+				if cast_t != '' && cast_t != 'int' {
+					return cast_t
+				}
+			} else {
+				call_args := if node.expr is ast.EmptyExpr {
+					[]ast.Expr{}
+				} else {
+					[node.expr]
+				}
+				if ret := g.get_call_return_type(node.lhs, call_args) {
+					if ret != '' {
+						return ret
+					}
 				}
 			}
 		}
@@ -1768,7 +1950,21 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 					return elem_type
 				}
 			}
-			if ret := g.get_call_return_type(node.lhs, node.args.len) {
+			if ret := g.get_call_return_type(node.lhs, node.args) {
+				return ret
+			}
+			return 'int'
+		}
+		ast.CallOrCastExpr {
+			if node.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(node.lhs) {
+				return g.expr_type_to_c(node.lhs)
+			}
+			call_args := if node.expr is ast.EmptyExpr {
+				[]ast.Expr{}
+			} else {
+				[node.expr]
+			}
+			if ret := g.get_call_return_type(node.lhs, call_args) {
 				return ret
 			}
 			return 'int'
@@ -1881,6 +2077,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				return '${g.cur_module}__${name}'
 			}
 			if is_generic_placeholder_type_name(name) {
+				if concrete := g.resolve_active_generic_type(name) {
+					return g.types_type_to_c(concrete)
+				}
 				return 'f64'
 			}
 			if g.is_module_local_type(name) {
@@ -1921,7 +2120,8 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 					}
 					return 'struct ' + name
 				}
-				mut qualified := e.lhs.name + '__' + e.rhs.name
+				mod_name := g.resolve_module_name(e.lhs.name)
+				mut qualified := mod_name + '__' + e.rhs.name
 				if qualified.ends_with('Vec4') {
 					qualified = qualified[..qualified.len - 'Vec4'.len] + 'SimdFloat4'
 				} else if qualified.ends_with('Vec2') {
@@ -2021,6 +2221,20 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			// Handle shared/mut modifiers: unwrap and use the inner type
 			return g.expr_type_to_c(e.expr)
 		}
+		ast.CallOrCastExpr {
+			if e.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(e.lhs) {
+				return g.expr_type_to_c(e.lhs)
+			}
+			call_args := if e.expr is ast.EmptyExpr {
+				[]ast.Expr{}
+			} else {
+				[e.expr]
+			}
+			if ret := g.get_call_return_type(e.lhs, call_args) {
+				return ret
+			}
+			return 'int'
+		}
 		else {
 			return 'int'
 		}
@@ -2033,8 +2247,8 @@ fn (g &Gen) is_c_type_name(name string) bool {
 		return true
 	}
 	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
-		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
-		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un', 'fd_set',
+		'pthread_rwlock_t', 'pthread_attr_t', 'atomic_uintptr_t', 'stat', 'tm', 'timespec', 'timeval',
+		'dirent', 'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un', 'fd_set',
 		'mach_timebase_info_data_t', 'FONScontext', 'FONSparams']
 }
 
@@ -2547,7 +2761,7 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 	unwrapped := strip_expr_wrappers(expr)
 	match unwrapped {
 		ast.CallExpr {
-			if ret := g.get_call_return_type(unwrapped.lhs, unwrapped.args.len) {
+			if ret := g.get_call_return_type(unwrapped.lhs, unwrapped.args) {
 				return ret
 			}
 		}

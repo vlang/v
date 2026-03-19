@@ -261,7 +261,15 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	if !g.is_interface_type(type_name) {
 		return false
 	}
-	concrete_type := g.get_expr_type(value_expr)
+	mut concrete_type := g.get_expr_type(value_expr)
+	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
+		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
+	}
+	if concrete_type == '' || concrete_type == 'int' {
+		if raw := g.get_raw_type(value_expr) {
+			concrete_type = g.types_type_to_c(raw)
+		}
+	}
 	if concrete_type == '' || concrete_type == 'int' {
 		return false
 	}
@@ -318,7 +326,15 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	// Get the concrete type name
-	concrete_type := g.get_expr_type(value_expr)
+	mut concrete_type := g.get_expr_type(value_expr)
+	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
+		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
+	}
+	if concrete_type == '' || concrete_type == 'int' {
+		if raw := g.get_raw_type(value_expr) {
+			concrete_type = g.types_type_to_c(raw)
+		}
+	}
 	if concrete_type == '' || concrete_type == 'int' {
 		return false
 	}
@@ -952,21 +968,56 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		g.sb.write_string(')')
 		return
 	}
+	mut lhs_is_string_ptr := false
+	lhs_local_type := g.local_var_c_type_for_expr(node.lhs) or { '' }
+	if raw_type := g.get_raw_type(node.lhs) {
+		if raw_type is types.Pointer && raw_type.base_type is types.String {
+			lhs_is_string_ptr = true
+		}
+	}
+	if lhs_type in ['string*', 'stringptr'] || lhs_local_type in ['string*', 'stringptr'] {
+		lhs_is_string_ptr = true
+	}
+	mut rhs_is_string_ptr := false
+	rhs_local_type := g.local_var_c_type_for_expr(node.rhs) or { '' }
+	if raw_type := g.get_raw_type(node.rhs) {
+		if raw_type is types.Pointer && raw_type.base_type is types.String {
+			rhs_is_string_ptr = true
+		}
+	}
+	if rhs_type in ['string*', 'stringptr'] || rhs_local_type in ['string*', 'stringptr'] {
+		rhs_is_string_ptr = true
+	}
 	is_string_cmp := if node.lhs is ast.StringLiteral || node.rhs is ast.StringLiteral {
 		true
 	} else {
-		lhs_type == 'string' && rhs_type == 'string' && !g.is_enum_type(lhs_type)
-			&& !g.is_enum_type(rhs_type)
+		(lhs_type == 'string' || lhs_is_string_ptr) && (rhs_type == 'string' || rhs_is_string_ptr)
+			&& !g.is_enum_type(lhs_type) && !g.is_enum_type(rhs_type)
 	}
 	if node.op in [.eq, .ne] && is_string_cmp {
 		if node.op == .ne {
 			g.sb.write_string('!')
 		}
 		g.sb.write_string('string__eq(')
-		g.expr(node.lhs)
+		g.gen_string_cmp_operand(node.lhs, lhs_is_string_ptr)
 		g.sb.write_string(', ')
-		g.expr(node.rhs)
+		g.gen_string_cmp_operand(node.rhs, rhs_is_string_ptr)
 		g.sb.write_string(')')
+		return
+	}
+	if node.op in [.lt, .le, .gt, .ge] && is_string_cmp {
+		op := match node.op {
+			.gt { '>' }
+			.lt { '<' }
+			.ge { '>=' }
+			.le { '<=' }
+			else { '==' }
+		}
+		g.sb.write_string('(string__compare(')
+		g.gen_string_cmp_operand(node.lhs, lhs_is_string_ptr)
+		g.sb.write_string(', ')
+		g.gen_string_cmp_operand(node.rhs, rhs_is_string_ptr)
+		g.sb.write_string(') ${op} 0)')
 		return
 	}
 	mut cmp_type := ''
@@ -1095,6 +1146,16 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	g.sb.write_string(')')
 }
 
+fn (mut g Gen) gen_string_cmp_operand(expr ast.Expr, is_string_ptr bool) {
+	if is_string_ptr {
+		g.sb.write_string('(*')
+		g.expr(expr)
+		g.sb.write_string(')')
+		return
+	}
+	g.expr(expr)
+}
+
 // Helper to extract FnType from an Expr (handles ast.Type wrapping)
 fn (mut g Gen) expr(node ast.Expr) {
 	if !expr_has_valid_data(node) {
@@ -1112,17 +1173,18 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else if node.kind == .key_false {
 				g.sb.write_string('false')
 			} else if node.kind == .char {
-				raw := strip_literal_quotes(node.value)
-				if raw.len > 1 && raw[0] != `\\` {
+				mut raw_value := ''
+				raw_value = strip_literal_quotes(node.value)
+				if raw_value.len > 1 && raw_value[0] != `\\` {
 					// Multi-byte UTF-8 character: emit as numeric codepoint
-					runes := raw.runes()
+					runes := raw_value.runes()
 					if runes.len > 0 {
 						g.sb.write_string(int(runes[0]).str())
 					} else {
-						g.sb.write_string("'${raw}'")
+						g.sb.write_string("'${raw_value}'")
 					}
 				} else {
-					escaped := escape_char_literal_content(raw)
+					escaped := escape_char_literal_content(raw_value)
 					g.sb.write_u8(`'`)
 					g.sb.write_string(escaped)
 					g.sb.write_u8(`'`)
@@ -1521,7 +1583,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if lhs_name in ['bool', 'string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
 					'u32', 'u64', 'f32', 'f64', 'byte', 'rune'] {
 					if enum_name := g.enum_value_to_enum[rhs_name] {
-						g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+						g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 						return
 					}
 				}
@@ -1529,14 +1591,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if !is_known_var && !g.is_module_ident(lhs_name) {
 					if enum_name := g.get_expr_type_from_env(sel_expr) {
 						if enum_name != '' && g.is_enum_type(enum_name) {
-							g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
 					if lhs_name in ['bool', 'string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
 						'u32', 'u64', 'f32', 'f64', 'byte', 'rune'] {
 						if enum_name := g.enum_value_to_enum[rhs_name] {
-							g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
@@ -1568,7 +1630,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 						}
 						if emit_enum_value {
 							enum_name := g.types_type_to_c(raw_type)
-							g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
@@ -1668,7 +1730,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					if raw_type is types.Enum {
 						enum_name := g.types_type_to_c(raw_type)
 						if g.enum_has_field(enum_name, rhs_name) {
-							g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
@@ -1676,19 +1738,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if enum_name := g.get_expr_type_from_env(sel_expr) {
 					if enum_name != '' && enum_name != 'int' && g.is_enum_type(enum_name) {
 						if g.enum_has_field(enum_name, rhs_name) {
-							g.sb.write_string('${g.normalize_enum_name(enum_name)}__${rhs_name}')
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
 				}
 				// Use the definitive enum field mapping
 				if known_enum != '' {
-					g.sb.write_string('${g.normalize_enum_name(known_enum)}__${rhs_name}')
+					g.sb.write_string(g.enum_member_c_name(known_enum, rhs_name))
 					return
 				}
 				// Last resort: use function return type as context
 				if g.cur_fn_ret_type != '' && g.is_enum_type(g.cur_fn_ret_type) {
-					g.sb.write_string('${g.normalize_enum_name(g.cur_fn_ret_type)}__${rhs_name}')
+					g.sb.write_string(g.enum_member_c_name(g.cur_fn_ret_type, rhs_name))
 					return
 				}
 			}
@@ -1732,13 +1794,34 @@ fn (mut g Gen) expr(node ast.Expr) {
 					return
 				}
 			}
+			if _ := g.selector_interface_data_field(sel) {
+				mut use_ptr := g.selector_use_ptr(lhs_expr)
+				if lhs_name in g.cur_fn_mut_params {
+					use_ptr = true
+				} else if local_type := g.local_var_c_type_for_expr(lhs_expr) {
+					use_ptr = local_type.ends_with('*')
+				}
+				lhs_struct := g.selector_struct_name(lhs_expr)
+				owner := g.embedded_owner_for(lhs_struct, rhs_name)
+				field_name := escape_c_keyword(rhs_name)
+				selector := if use_ptr { '->' } else { '.' }
+				g.sb.write_string('(*(')
+				g.expr(lhs_expr)
+				if owner != '' {
+					g.sb.write_string('${selector}${escape_c_keyword(owner)}.${field_name}')
+				} else {
+					g.sb.write_string('${selector}${field_name}')
+				}
+				g.sb.write_string('))')
+				return
+			}
 			// Check if LHS is an enum type name -> emit EnumName__field
 			if lhs_expr is ast.Ident {
 				is_local_var := g.local_var_c_type_for_expr(lhs_expr) != none
 					|| lhs_name in g.cur_fn_mut_params
 				if !is_local_var && g.is_enum_type(lhs_name) {
 					enum_name := g.get_qualified_name(lhs_name)
-					g.sb.write_string('${enum_name}__${rhs_name}')
+					g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 				} else {
 					mut use_ptr := g.selector_use_ptr(lhs_expr)
 					if lhs_name in g.cur_fn_mut_params {
@@ -1809,7 +1892,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_unsafe_expr(node)
 		}
 		ast.OrExpr {
-			panic('bug in v2 compiler: OrExpr should have been expanded in v2.transformer')
+			panic('bug in v2 compiler: OrExpr should have been expanded in v2.transformer (${g.cur_file_name}:${g.cur_fn_name} pos=${node.pos} expr=${node.expr.name()})')
 		}
 		ast.AsCastExpr {
 			g.gen_as_cast_expr(node)
@@ -1837,7 +1920,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_keyword_operator(node)
 		}
 		ast.RangeExpr {
-			panic('bug in v2 compiler: RangeExpr should have been lowered in v2.transformer')
+			panic('bug in v2 compiler: RangeExpr should have been lowered in v2.transformer (${g.cur_file_name}:${g.cur_fn_name} pos=${node.pos})')
 		}
 		ast.SelectExpr {
 			g.sb.write_string('/* [TODO] SelectExpr */ 0')
@@ -1865,7 +1948,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.sb.write_string('})')
 		}
 		ast.FieldInit {
-			panic('bug in v2 compiler: FieldInit in expression position should have been lowered in v2.transformer')
+			panic('bug in v2 compiler: FieldInit in expression position should have been lowered in v2.transformer (${g.cur_file_name}:${g.cur_fn_name} field=${node.name})')
 		}
 		ast.IfGuardExpr {
 			panic('bug in v2 compiler: IfGuardExpr should have been expanded in v2.transformer')
@@ -1956,7 +2039,7 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 		if inner_type == '' || inner_type == 'int' {
 			match expr {
 				ast.CallExpr {
-					if ret := g.get_call_return_type(expr.lhs, expr.args.len) {
+					if ret := g.get_call_return_type(expr.lhs, expr.args) {
 						if ret != '' {
 							inner_type = ret
 						}

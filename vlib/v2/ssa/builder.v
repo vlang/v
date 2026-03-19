@@ -393,6 +393,39 @@ fn (mut b Builder) get_array_type() TypeID {
 	return b.struct_types['array'] or { 0 }
 }
 
+fn (b &Builder) is_string_like_ssa_type(typ_id TypeID) bool {
+	if typ_id == 0 || int(typ_id) >= b.mod.type_store.types.len {
+		return false
+	}
+	str_type := b.struct_types['string'] or { TypeID(0) }
+	if str_type != 0 && typ_id == str_type {
+		return true
+	}
+	typ := b.mod.type_store.types[typ_id]
+	return typ.kind == .ptr_t && typ.elem_type == str_type
+}
+
+fn (mut b Builder) load_string_like_value(val_id ValueID) ValueID {
+	if val_id <= 0 || int(val_id) >= b.mod.values.len {
+		return val_id
+	}
+	str_type := b.get_string_type()
+	if str_type == 0 {
+		return val_id
+	}
+	typ_id := b.mod.values[val_id].typ
+	if typ_id == str_type {
+		return val_id
+	}
+	if typ_id > 0 && int(typ_id) < b.mod.type_store.types.len {
+		typ := b.mod.type_store.types[typ_id]
+		if typ.kind == .ptr_t && typ.elem_type == str_type {
+			return b.mod.add_instr(.load, b.cur_block, str_type, [val_id])
+		}
+	}
+	return val_id
+}
+
 fn (mut b Builder) get_ierror_storage_type() TypeID {
 	if 'IError' in b.struct_types {
 		return b.struct_types['IError']
@@ -1578,6 +1611,68 @@ fn (mut b Builder) try_eval_computed_float(expr ast.Expr) ?f64 {
 	}
 }
 
+fn parse_const_uint_literal(lit string) u64 {
+	if lit.len == 0 {
+		return 0
+	}
+	mut idx := 0
+	if lit[idx] == `+` || lit[idx] == `-` {
+		idx++
+	}
+	mut base := u64(10)
+	if idx + 1 < lit.len && lit[idx] == `0` {
+		match lit[idx + 1] {
+			`x`, `X` {
+				base = 16
+				idx += 2
+			}
+			`o`, `O` {
+				base = 8
+				idx += 2
+			}
+			`b`, `B` {
+				base = 2
+				idx += 2
+			}
+			else {}
+		}
+	}
+	mut val := u64(0)
+	for idx < lit.len {
+		ch := lit[idx]
+		if ch == `_` {
+			idx++
+			continue
+		}
+		digit := match true {
+			ch >= `0` && ch <= `9` { u64(ch - `0`) }
+			base == 16 && ch >= `a` && ch <= `f` { u64(ch - `a` + 10) }
+			base == 16 && ch >= `A` && ch <= `F` { u64(ch - `A` + 10) }
+			else { break }
+		}
+		if digit >= base {
+			break
+		}
+		val = val * base + digit
+		idx++
+	}
+	return val
+}
+
+fn parse_const_int_literal(lit string) i64 {
+	if lit.len == 0 {
+		return 0
+	}
+	neg := lit[0] == `-`
+	val := parse_const_uint_literal(lit)
+	if neg {
+		// Keep the conversion in unsigned space so `-9223372036854775808` stays intact
+		// even in self-hosted ARM64 builds where string.i64()/u64() are unreliable.
+		return i64(u64(0) - val)
+	}
+	return i64(val)
+}
+
 fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 	match expr {
 		ast.BasicLiteral {
@@ -1589,16 +1684,7 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 					|| expr.value.contains('.')) {
 					return i64(expr.value.f64())
 				}
-				// Parse as u64 first for hex values and large unsigned decimals
-				// to handle values with bit 63 set (e.g., 0x800fffffffffffff, 14695981039346656037).
-				// i64() clamps to i64 max for large unsigned values, u64() preserves the bits.
-				// But u64() returns 0 for negative values, so use i64() for those.
-				if expr.value.starts_with('0x') || expr.value.starts_with('0X')
-					|| (expr.value.len > 0 && expr.value[0] != `-`
-					&& expr.value.u64() > u64(9223372036854775807)) {
-					return i64(expr.value.u64())
-				}
-				return expr.value.i64()
+				return parse_const_int_literal(expr.value)
 			}
 			if expr.kind == .key_true {
 				return 1
@@ -1892,7 +1978,7 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 			// [N]T → SSA array type with N elements of T
 			elem_type := b.ast_type_to_ssa(typ.elem_type)
 			arr_len := if typ.len is ast.BasicLiteral {
-				typ.len.value.int()
+				int(parse_const_int_literal(typ.len.value))
 			} else if typ.len is ast.Ident {
 				b.resolve_const_int(typ.len.name)
 			} else {
@@ -3861,28 +3947,43 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 			}
 		}
 	}
-	// Check for string comparison: if either operand is a string type,
-	// emit string__eq/string__+ call instead of integer comparison/add.
+	// Check for string comparison: if either operand is a string-like type
+	// (string or &string), emit string calls instead of integer comparisons.
 	// This handles match-on-string expressions where the transformer creates
 	// InfixExpr{.eq, ...} that bypasses the normal string comparison lowering.
 	str_type := b.get_string_type()
 	if str_type != 0 {
 		lhs_type := b.mod.values[lhs].typ
 		rhs_type := b.mod.values[rhs].typ
-		if lhs_type == str_type || rhs_type == str_type {
-			if expr.op == .eq || expr.op == .ne {
+		if b.is_string_like_ssa_type(lhs_type) || b.is_string_like_ssa_type(rhs_type) {
+			string_lhs := b.load_string_like_value(lhs)
+			string_rhs := b.load_string_like_value(rhs)
+			if expr.op in [.eq, .ne] {
 				bool_type := b.mod.type_store.get_int(1)
 				fn_ref := b.get_or_create_fn_ref('builtin__string__==', bool_type)
-				eq_result := b.mod.add_instr(.call, b.cur_block, bool_type, [fn_ref, lhs, rhs])
+				eq_result := b.mod.add_instr(.call, b.cur_block, bool_type, [fn_ref, string_lhs,
+					string_rhs])
 				if expr.op == .ne {
 					return b.mod.add_instr(.xor, b.cur_block, bool_type, [eq_result,
 						b.mod.get_or_add_const(bool_type, '1')])
 				}
 				return eq_result
 			}
+			if expr.op in [.lt, .gt, .le, .ge] {
+				bool_type := b.mod.type_store.get_int(1)
+				fn_ref := b.get_or_create_fn_ref('builtin__string__<', bool_type)
+				lt_lhs := if expr.op in [.gt, .le] { string_rhs } else { string_lhs }
+				lt_rhs := if expr.op in [.gt, .le] { string_lhs } else { string_rhs }
+				lt_result := b.mod.add_instr(.call, b.cur_block, bool_type, [fn_ref, lt_lhs, lt_rhs])
+				if expr.op in [.le, .ge] {
+					return b.mod.add_instr(.xor, b.cur_block, bool_type, [lt_result,
+						b.mod.get_or_add_const(bool_type, '1')])
+				}
+				return lt_result
+			}
 			if expr.op == .plus {
 				fn_ref := b.get_or_create_fn_ref('builtin__string__+', str_type)
-				return b.mod.add_instr(.call, b.cur_block, str_type, [fn_ref, lhs, rhs])
+				return b.mod.add_instr(.call, b.cur_block, str_type, [fn_ref, string_lhs, string_rhs])
 			}
 		}
 	}
@@ -4823,6 +4924,24 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					}
 				}
 			}
+			// Self-hosted ARM64 builds can lower byte helper calls through the
+			// signed 8-bit prefix even though the builtin methods live on `u8`.
+			if name.starts_with('i8__') {
+				byte_name := 'u8__${name['i8__'.len..]}'
+				if byte_name in b.fn_index {
+					return byte_name
+				}
+				builtin_byte_name := 'builtin__${byte_name}'
+				if builtin_byte_name in b.fn_index {
+					return builtin_byte_name
+				}
+			}
+			if name.starts_with('builtin__i8__') {
+				byte_name := 'builtin__u8__${name['builtin__i8__'.len..]}'
+				if byte_name in b.fn_index {
+					return byte_name
+				}
+			}
 			// C functions: strip C__ prefix for direct C interop
 			if name.starts_with('C__') {
 				return name[3..]
@@ -4964,6 +5083,29 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					if ast_method in b.fn_index {
 						return ast_method
 					}
+				}
+			}
+			// Self-hosted ARM64 builds can infer byte-oriented receivers as `i8`
+			// instead of `u8`; fall back to the existing byte helper methods only
+			// after the direct `i8`/`Array_i8` lookup path failed.
+			if receiver_type == 'i8' {
+				byte_method := 'u8__${sel.rhs.name}'
+				if byte_method in b.fn_index {
+					return byte_method
+				}
+				builtin_byte_method := 'builtin__${byte_method}'
+				if builtin_byte_method in b.fn_index {
+					return builtin_byte_method
+				}
+			}
+			if receiver_type == 'Array_i8' {
+				byte_array_method := 'Array_u8__${sel.rhs.name}'
+				if byte_array_method in b.fn_index {
+					return byte_array_method
+				}
+				builtin_byte_array_method := 'builtin__${byte_array_method}'
+				if builtin_byte_array_method in b.fn_index {
+					return builtin_byte_array_method
 				}
 			}
 			// i64 aliases: time.Duration = i64
@@ -6083,7 +6225,7 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 			fixed_typ := expr.typ as ast.ArrayFixedType
 			elem_type := b.ast_type_to_ssa(fixed_typ.elem_type)
 			arr_len := if fixed_typ.len is ast.BasicLiteral {
-				fixed_typ.len.value.int()
+				int(parse_const_int_literal(fixed_typ.len.value))
 			} else if fixed_typ.len is ast.Ident {
 				b.resolve_const_int(fixed_typ.len.name)
 			} else {

@@ -94,6 +94,180 @@ fn test_basic_literal_string() {
 	assert has_type(env, 'string'), 'string literal should have string type'
 }
 
+fn test_or_expr_accepts_int_literal_fallback() {
+	env := check_code('fn may_fail() !int { return 1 }
+fn main() { x := may_fail() or { 0 } }')
+	assert has_type(env, 'int'), 'or { 0 } should be accepted for !int'
+}
+
+fn test_or_expr_accepts_float_literal_fallback() {
+	env := check_code('fn may_fail() !f64 { return 1.0 }
+fn main() { x := may_fail() or { 0 } }')
+	assert has_type(env, 'f64'), 'or { 0 } should be accepted for !f64'
+}
+
+fn test_comptime_embed_file_type_and_methods() {
+	code := 'fn main() { x := ' + '$' + 'embed_file("asset.txt"); y := x.to_string(); z := x.len }'
+	env := check_code(code)
+	assert has_type(env, embed_file_helper_type_name), 'embed_file helper type should be recorded'
+	assert has_type(env, 'string'), 'embed_file.to_string() should type as string'
+	assert has_type(env, 'int'), 'embed_file.len should type as int'
+}
+
+fn test_comptime_embed_file_chained_method_type() {
+	code := 'fn main() { x := ' + '$' + 'embed_file("asset.txt").to_bytes() }'
+	env := check_code(code)
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Array && t.elem_type.name() == 'u8'
+	}), 'chained embed_file.to_bytes() should type as []u8'
+}
+
+fn test_union_embedded_alias_fields_resolve() {
+	code := '
+struct Rect {
+	x int
+}
+
+type GgRect = Rect
+
+union Box {
+	GgRect
+}
+
+fn main() {
+	b := Box{}
+	x := b.x
+}
+'
+	env := check_code(code)
+	assert has_type(env, 'int'), 'embedded union alias field access should resolve to int'
+}
+
+fn test_embedded_interface_fields_resolve() {
+	code := '
+interface ClippingWidget {
+	x int
+	y int
+}
+
+interface ScrollableWidget {
+	ClippingWidget
+}
+
+fn pos(w ScrollableWidget) int {
+	return w.x + w.y
+}
+'
+	env := check_code(code)
+	assert has_type(env, 'int'), 'embedded interface fields should resolve through the parent interface'
+}
+
+fn test_generic_body_field_lookup_uses_active_concrete_type() {
+	code := '
+struct ScrollView {
+	children_to_update bool
+}
+
+struct Canvas {
+	scrollview &ScrollView = unsafe { nil }
+}
+
+fn has_children_to_update[T](mut w T) bool {
+	mut sv := w.scrollview
+	return sv.children_to_update
+}
+
+fn main() {
+	mut c := Canvas{
+		scrollview: &ScrollView{
+			children_to_update: true
+		}
+	}
+	_ = has_children_to_update(mut c)
+}
+'
+	env := check_code(code)
+	assert has_type(env, 'bool'), 'generic body field lookup should use the active concrete type'
+}
+
+fn test_interface_field_alias_to_function_type_resolves() {
+	code := '
+type Handler = fn ()
+
+interface ScrollableWidget {
+	on_scroll_change Handler
+}
+
+fn call_handler(sw ScrollableWidget) {
+	sw.on_scroll_change()
+}
+'
+	env := check_code(code)
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is FnType
+	}), 'interface fields aliased to fn types should resolve as callable'
+}
+
+fn test_top_level_comptime_c_fn_decl_is_preregistered() {
+	code := [
+		'type Handler = fn (voidptr)',
+		'',
+		'$' + 'if !windows {',
+		'\tfn C.foo(title &char, user_data voidptr, on_open Handler, on_refresh Handler, on_quit Handler)',
+		'}',
+		'',
+		'fn main() {',
+		'\ts := "hi"',
+		'\tcb := unsafe { Handler(0) }',
+		'\t' + '$' + 'if !windows {',
+		'\t\tC.foo(&char(s.str), voidptr(0), cb, cb, cb)',
+		'\t}',
+		'}',
+	].join('\n')
+	env := check_code(code)
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is FnType && t.params.len == 5
+	}), 'top-level comptime C fn decl should be preregistered as a callable fn type'
+}
+
+fn test_if_expr_tuple_destructuring_types_follow_trailing_empty_stmt() {
+	code := '
+struct SpinLock {}
+
+fn (s &SpinLock) lock() {}
+
+struct Subscription {}
+
+struct Channel {
+	write_sub_mtx    &SpinLock     = unsafe { nil }
+	read_sub_mtx     &SpinLock     = unsafe { nil }
+	write_subscriber &Subscription = unsafe { nil }
+	read_subscriber  &Subscription = unsafe { nil }
+}
+
+enum Direction {
+	push
+	pop
+}
+
+fn main() {
+	ch := Channel{}
+	dir := Direction.push
+	sub_mtx, subscriber := if dir == .push {
+		ch.write_sub_mtx, &ch.write_subscriber
+	} else {
+		ch.read_sub_mtx, &ch.read_subscriber
+	}
+	sub_mtx.lock()
+	_ = subscriber
+}
+'
+	env := check_code(code)
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Pointer && t.base_type.name().ends_with('SpinLock')
+	}), 'tuple destructuring from if-expr should keep the pointer type for sub_mtx'
+}
+
 // === Infix Expression Tests ===
 
 fn test_infix_expr_arithmetic() {
@@ -140,6 +314,13 @@ fn test_fixed_array_init() {
 	assert has_type_matching(env, fn (t Type) bool {
 		return t is ArrayFixed
 	}), 'fixed array init should produce ArrayFixed type'
+}
+
+fn test_fixed_array_slice_returns_array() {
+	env := check_code('fn main() { x := [1, 2, 3]!; y := x[0..2] }')
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Array
+	}), 'fixed array slicing should produce Array type'
 }
 
 fn test_array_element_type() {
@@ -250,6 +431,18 @@ fn main() { p := Point{x: 1, y: 2} }
 	}), 'init expr should produce struct type'
 }
 
+fn test_struct_auto_str_method_returns_string() {
+	code := '
+struct Point { x int; y int }
+fn main() {
+	p := Point{x: 1, y: 2}
+	s := p.str()
+}
+'
+	env := check_code(code)
+	assert has_type(env, 'string'), 'struct .str() should resolve to string'
+}
+
 fn test_generic_struct_alias_fields_are_instantiated() {
 	code := '
 struct Vec4[T] {
@@ -278,6 +471,45 @@ fn main() {
 	assert fields.len == 4
 	assert fields[0].name == 'x'
 	assert fields[0].typ.name() == 'f32'
+}
+
+fn test_generic_method_receiver_instantiation_handles_self_referential_nodes() {
+	code := '
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+}
+
+fn (mut list LinkedList[T]) push(value T) {}
+'
+	env := check_code(code)
+	method := env.lookup_method('LinkedList', 'push') or { panic('missing LinkedList.push') }
+	assert method.params.len == 2
+	assert method.params[1].typ.name() == 'T'
+}
+
+fn test_nested_scope_updates_use_scope_identity_for_recursive_interfaces() {
+	code := '
+interface Node {
+	children() []Node
+}
+
+fn main() {
+	nodes := []Node{}
+	for node in nodes {
+		copy := node
+		_ = copy
+	}
+}
+'
+	env := check_code(code)
+	assert has_type(env, 'Node'), 'recursive interface in nested scope should type check'
 }
 
 // === Index Expression Tests ===

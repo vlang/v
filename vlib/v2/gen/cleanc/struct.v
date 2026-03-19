@@ -149,6 +149,23 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		if typ_name == '' {
 			continue
 		}
+		if raw_type := g.get_raw_type(field.typ) {
+			match raw_type {
+				types.Interface {
+					if typ_name !in g.emitted_interface_bodies {
+						return false
+					}
+					continue
+				}
+				types.Alias {
+					if raw_type.base_type is types.Interface
+						&& typ_name !in g.emitted_interface_bodies {
+						return false
+					}
+				}
+				else {}
+			}
+		}
 		if field.typ is ast.Type {
 			if field.typ is ast.OptionType {
 				opt_typ := field.typ as ast.OptionType
@@ -190,6 +207,9 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		}
 		// Primitive types are always resolved
 		if typ_name in primitive_types {
+			continue
+		}
+		if g.is_c_type_name(typ_name) {
 			continue
 		}
 		if typ_name == 'string' || typ_name == 'builtin__string' {
@@ -244,9 +264,17 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if node.language == .c {
 		return
 	}
-	// Skip generic struct declarations (unresolved type parameters)
+	// Generic structs are emitted using the first concrete binding seen for each
+	// placeholder in the current compile.
 	if node.generic_params.len > 0 {
-		return
+		bindings := g.fallback_generic_bindings_for_names(generic_param_names(node.generic_params)) or {
+			return
+		}
+		prev_generic_types := g.active_generic_types.clone()
+		g.active_generic_types = bindings.clone()
+		defer {
+			g.active_generic_types = prev_generic_types.clone()
+		}
 	}
 
 	name := g.get_struct_name(node)
@@ -264,17 +292,22 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Embedded structs as fields
 	for i, emb in node.embedded {
 		emb_type := g.expr_type_to_c(emb)
-		g.sb.writeln('\t${emb_type} ${emb_type};')
+		emb_field_name := if emb_type.contains('__') {
+			emb_type.all_after_last('__')
+		} else {
+			emb_type
+		}
+		g.sb.writeln('\t${emb_type} ${emb_field_name};')
 		if i < env_struct.embedded.len {
 			embedded := env_struct.embedded[i]
 			for ef in embedded.fields {
 				key := name + '.' + ef.name
-				g.embedded_field_owner[key] = emb_type
+				g.embedded_field_owner[key] = emb_field_name
 				embedded_field_type := g.types_type_to_c(ef.typ)
 				g.struct_field_types[key] = embedded_field_type
 				if name.contains('__') {
 					short_key := name.all_after_last('__') + '.' + ef.name
-					g.embedded_field_owner[short_key] = emb_type
+					g.embedded_field_owner[short_key] = emb_field_name
 					g.struct_field_types[short_key] = embedded_field_type
 				}
 			}
@@ -283,12 +316,20 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Regular fields
 	mut has_shared_fields := false
 	for field in node.fields {
-		field_name := escape_c_keyword(field.name)
 		field_lookup_type := g.expr_type_to_c(field.typ)
-		field_key := '${name}.${field.name}'
+		field_v_name := if node.is_union && field_lookup_type.contains('__')
+			&& (field.name == '' || field.name.contains('__')
+			|| field.name == field_lookup_type
+			|| field.name.all_after_last('__') == field_lookup_type.all_after_last('__')) {
+			field_lookup_type.all_after_last('__')
+		} else {
+			field.name
+		}
+		field_name := escape_c_keyword(field_v_name)
+		field_key := '${name}.${field_v_name}'
 		g.struct_field_types[field_key] = field_lookup_type
 		if name.contains('__') {
-			short_field_key := '${name.all_after_last('__')}.${field.name}'
+			short_field_key := '${name.all_after_last('__')}.${field_v_name}'
 			g.struct_field_types[short_field_key] = field_lookup_type
 		}
 		if field.typ is ast.Type && field.typ is ast.ArrayFixedType {
@@ -297,7 +338,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			// Use the resolved array size from the Environment if available
 			mut resolved_len := -1
 			for ef in env_struct.fields {
-				if ef.name == field.name {
+				if ef.name == field.name || ef.name == field_v_name {
 					if ef.typ is types.ArrayFixed {
 						resolved_len = ef.typ.len
 					}
@@ -1051,7 +1092,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			if sel.lhs is ast.EmptyExpr {
 				expected_enum := expected_field_type
 				if expected_enum != '' && g.is_enum_type(expected_enum) {
-					g.sb.write_string('${g.normalize_enum_name(expected_enum)}__${sel.rhs.name}')
+					g.sb.write_string(g.enum_member_c_name(expected_enum, sel.rhs.name))
 					continue
 				}
 			}

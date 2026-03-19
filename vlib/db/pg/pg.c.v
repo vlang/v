@@ -210,13 +210,57 @@ fn C.PQsocket(conn &C.PGconn) i32
 
 fn C.PQescapeLiteral(conn &C.PGconn, str &char, length usize) &char
 
+fn conninfo_needs_quotes(value string) bool {
+	for ch in value {
+		if ch.is_space() || ch == `'` || ch == `\\` {
+			return true
+		}
+	}
+	return false
+}
+
+fn escape_conninfo_value(value string) string {
+	if !conninfo_needs_quotes(value) {
+		return value
+	}
+	mut escaped := []u8{cap: value.len + 2}
+	escaped << `'`
+	for ch in value {
+		if ch == `\\` || ch == `'` {
+			escaped << `\\`
+		}
+		escaped << ch
+	}
+	escaped << `'`
+	return escaped.bytestr()
+}
+
+fn (config Config) conninfo() string {
+	mut parts := []string{cap: 5}
+	if config.host != '' {
+		parts << 'host=${escape_conninfo_value(config.host)}'
+	}
+	if config.port > 0 {
+		parts << 'port=${config.port}'
+	}
+	if config.user != '' {
+		parts << 'user=${escape_conninfo_value(config.user)}'
+	}
+	if config.dbname != '' {
+		parts << 'dbname=${escape_conninfo_value(config.dbname)}'
+	}
+	if config.password != '' {
+		parts << 'password=${escape_conninfo_value(config.password)}'
+	}
+	return parts.join(' ')
+}
+
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
-// a connection error when something goes wrong
+// a connection error when something goes wrong.
+// Empty fields are omitted so libpq defaults can still apply.
 pub fn connect(config Config) !DB {
-	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
-
-	return connect_with_conninfo(conninfo)!
+	return connect_with_conninfo(config.conninfo())!
 }
 
 // connect_with_conninfo makes a new connection to the database server using

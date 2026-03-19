@@ -33,6 +33,10 @@ brew install postgresql
 brew services start postgresql
 ```
 
+On newer Homebrew setups the formula and service name may be versioned
+instead, for example `postgresql@18`. Use the exact name reported by
+`brew info postgresql`.
+
 ### MacOSX (MacPorts)
 
 ```
@@ -115,6 +119,10 @@ Read this section to learn how to install and connect to PostgreSQL
 [*Windows*](https://www.postgresqltutorial.com/install-postgresql);
 [*Linux*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-linux);
 [*macOS*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-macos).
+
+When you use `pg.connect(pg.Config{ ... })`, empty `Config` fields are omitted from the
+generated libpq connection string. That lets libpq defaults, `PGPASSWORD`, and `.pgpass`
+apply when you do not set those fields in code.
 
 ## Using Parameterized Queries
 

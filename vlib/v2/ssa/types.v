@@ -22,6 +22,21 @@ pub enum TypeKind {
 	metadata_t
 }
 
+// str returns the symbolic name for an SSA type kind.
+pub fn (k TypeKind) str() string {
+	return match k {
+		.void_t { 'void_t' }
+		.int_t { 'int_t' }
+		.float_t { 'float_t' }
+		.ptr_t { 'ptr_t' }
+		.array_t { 'array_t' }
+		.struct_t { 'struct_t' }
+		.func_t { 'func_t' }
+		.label_t { 'label_t' }
+		.metadata_t { 'metadata_t' }
+	}
+}
+
 pub struct Type {
 pub:
 	kind        TypeKind

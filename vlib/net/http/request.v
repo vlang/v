@@ -174,8 +174,7 @@ pub fn (req &Request) do() !Response {
 		if !req.allow_redirect {
 			break
 		}
-		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
-			.permanent_redirect] {
+		if resp.status_code !in [301, 302, 303, 307, 308] {
 			break
 		}
 		// follow any redirects
@@ -400,7 +399,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if headers_end < 0 {
 			unsafe { header_buf.write_ptr(bp, len) }
 			if header_buf.len >= headers_body_boundary.len {
-				header_str := header_buf.bytestr()
+				header_str := header_buf.spart(0, header_buf.len)
 				hidx := header_str.index_(headers_body_boundary)
 				if hidx >= 0 {
 					headers_end = hidx + headers_body_boundary.len
@@ -506,7 +505,10 @@ pub fn parse_request(mut reader io.BufferedReader) !Request {
 pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	// request line
 	mut line := reader.read_line()!
-	method, target, version := parse_request_line(line)!
+	request_line := parse_request_line(line)!
+	method := request_line.method
+	target := request_line.target
+	version := request_line.version
 
 	// headers
 	mut header := new_header()
@@ -521,7 +523,6 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		}
 		if pos + 1 < line.len {
 			value := line[pos + 1..]
-			_, _ = key, value
 			// println('key,value=${key},${value}')
 			header.add_custom(key, value)!
 		}
@@ -551,7 +552,10 @@ pub fn parse_request_head_str(s string) !Request {
 		return error('malformed request: no request line found')
 	}
 	line0 := s[..pos0].trim_space()
-	method, target, version := parse_request_line(line0)!
+	request_line := parse_request_line(line0)!
+	method := request_line.method
+	target := request_line.target
+	version := request_line.version
 
 	// headers
 	mut header := new_header()
@@ -613,7 +617,13 @@ pub fn parse_request_str(s string) !Request {
 	return request
 }
 
-fn parse_request_line(line string) !(Method, urllib.URL, Version) {
+struct ParsedRequestLine {
+	method  Method
+	target  urllib.URL
+	version Version
+}
+
+fn parse_request_line(line string) !ParsedRequestLine {
 	// println('S=${s}')
 	words := line.split(' ')
 	// println('words=')
@@ -645,7 +655,11 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	if version == .unknown {
 		return error('unsupported version')
 	}
-	return method, target, version
+	return ParsedRequestLine{
+		method:  method
+		target:  target
+		version: version
+	}
 }
 
 // Parse URL encoded key=value&key=value forms

@@ -612,7 +612,7 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 	mut type_decl_seen := map[string]bool{}
 	mut decl_stmts := []ast.Stmt{}
 	for file in source_files {
-		if file_module_name(file) != module_name {
+		if ast_file_module_name(file) != module_name {
 			continue
 		}
 		for stmt in file.stmts {

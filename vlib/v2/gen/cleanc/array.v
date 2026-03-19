@@ -234,6 +234,12 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 		if rhs_type != '' && rhs_type !in ['int_literal', 'float_literal'] {
 			elem_type = rhs_type.trim_right('*')
 		}
+		if elem_type == '' || elem_type == 'int' {
+			rhs_c_type := g.expr_type_to_c(rhs)
+			if rhs_c_type != '' && rhs_c_type !in ['int', 'int_literal', 'float_literal'] {
+				elem_type = rhs_c_type.trim_right('*')
+			}
+		}
 	}
 	// When raw_type gives a module-qualified name (e.g. term__Coord) but the rhs
 	// is a local struct (e.g. Coord), prefer the rhs type to match the actual typedef.

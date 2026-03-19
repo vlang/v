@@ -112,7 +112,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				expr := node.exprs[0]
 				g.sb.write_string('return ({ ${g.cur_fn_c_ret_type} _ret = (${g.cur_fn_c_ret_type}){0}; ')
 				if expr is ast.CallExpr {
-					if call_ret := g.get_call_return_type(expr.lhs, expr.args.len) {
+					if call_ret := g.get_call_return_type(expr.lhs, expr.args) {
 						if call_ret == g.cur_fn_ret_type {
 							g.sb.write_string('${g.cur_fn_c_ret_type} _tmp = ')
 							g.expr(expr)
@@ -260,7 +260,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				// For CallExpr in result-returning function, check if the called
 				// function also returns the same result type (passthrough).
 				if expr is ast.CallExpr {
-					if call_ret := g.get_call_return_type(expr.lhs, expr.args.len) {
+					if call_ret := g.get_call_return_type(expr.lhs, expr.args) {
 						if call_ret == g.cur_fn_ret_type {
 							g.sb.write_string('return ')
 							g.expr(expr)

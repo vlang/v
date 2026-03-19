@@ -185,11 +185,11 @@ fn (mut p Parser) fn_type() ast.FnType {
 }
 
 // `ident` | `map[type]type | `(`chan`|`chan type`) | (`thread`|`thread type`)
-@[direct_array_access]
 fn (mut p Parser) ident_or_named_type() ast.Expr {
 	pos := p.pos
+	lit := p.lit
 	// `map[type]type`
-	if p.lit.len == 3 && p.lit[0] == `m` && p.lit[1] == `a` && p.lit[2] == `p` {
+	if lit == 'map' {
 		p.next()
 		if p.tok == .lsbr {
 			p.next()
@@ -207,7 +207,7 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 		}
 	}
 	// `chan` | `chan type`
-	if p.lit.len == 4 && p.lit[0] == `c` && p.lit[1] == `h` && p.lit[2] == `a` && p.lit[3] == `n` {
+	if lit == 'chan' {
 		p.next()
 		elem_type := if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
 		if elem_type !is ast.EmptyExpr {
@@ -222,8 +222,7 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 		}
 	}
 	// `thread` | `thread type`
-	else if p.lit.len == 6 && p.lit[0] == `t` && p.lit[1] == `h` && p.lit[2] == `r`
-		&& p.lit[3] == `e` && p.lit[4] == `a` && p.lit[5] == `d` {
+	else if lit == 'thread' {
 		p.next()
 		return ast.Type(ast.ThreadType{
 			elem_type: if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }

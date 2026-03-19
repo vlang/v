@@ -158,80 +158,17 @@ pub fn status_from_int(code int) Status {
 
 // str returns the string representation of Status `code`.
 pub fn (code Status) str() string {
-	return match code {
-		.cont { 'Continue' }
-		.switching_protocols { 'Switching Protocols' }
-		.processing { 'Processing' }
-		.checkpoint_draft { 'Checkpoint Draft' }
-		.ok { 'OK' }
-		.created { 'Created' }
-		.accepted { 'Accepted' }
-		.non_authoritative_information { 'Non Authoritative Information' }
-		.no_content { 'No Content' }
-		.reset_content { 'Reset Content' }
-		.partial_content { 'Partial Content' }
-		.multi_status { 'Multi Status' }
-		.already_reported { 'Already Reported' }
-		.im_used { 'IM Used' }
-		.multiple_choices { 'Multiple Choices' }
-		.moved_permanently { 'Moved Permanently' }
-		.found { 'Found' }
-		.see_other { 'See Other' }
-		.not_modified { 'Not Modified' }
-		.use_proxy { 'Use Proxy' }
-		.switch_proxy { 'Switch Proxy' }
-		.temporary_redirect { 'Temporary Redirect' }
-		.permanent_redirect { 'Permanent Redirect' }
-		.bad_request { 'Bad Request' }
-		.unauthorized { 'Unauthorized' }
-		.payment_required { 'Payment Required' }
-		.forbidden { 'Forbidden' }
-		.not_found { 'Not Found' }
-		.method_not_allowed { 'Method Not Allowed' }
-		.not_acceptable { 'Not Acceptable' }
-		.proxy_authentication_required { 'Proxy Authentication Required' }
-		.request_timeout { 'Request Timeout' }
-		.conflict { 'Conflict' }
-		.gone { 'Gone' }
-		.length_required { 'Length Required' }
-		.precondition_failed { 'Precondition Failed' }
-		.request_entity_too_large { 'Request Entity Too Large' }
-		.request_uri_too_long { 'Request URI Too Long' }
-		.unsupported_media_type { 'Unsupported Media Type' }
-		.requested_range_not_satisfiable { 'Requested Range Not Satisfiable' }
-		.expectation_failed { 'Expectation Failed' }
-		.im_a_teapot { 'Im a teapot' }
-		.misdirected_request { 'Misdirected Request' }
-		.unprocessable_entity { 'Unprocessable Entity' }
-		.locked { 'Locked' }
-		.failed_dependency { 'Failed Dependency' }
-		.unordered_collection { 'Unordered Collection' }
-		.upgrade_required { 'Upgrade Required' }
-		.precondition_required { 'Precondition Required' }
-		.too_many_requests { 'Too Many Requests' }
-		.request_header_fields_too_large { 'Request Header Fields Too Large' }
-		.unavailable_for_legal_reasons { 'Unavailable For Legal Reasons' }
-		.internal_server_error { 'Internal Server Error' }
-		.not_implemented { 'Not Implemented' }
-		.bad_gateway { 'Bad Gateway' }
-		.service_unavailable { 'Service Unavailable' }
-		.gateway_timeout { 'Gateway Timeout' }
-		.http_version_not_supported { 'HTTP Version Not Supported' }
-		.variant_also_negotiates { 'Variant Also Negotiates' }
-		.insufficient_storage { 'Insufficient Storage' }
-		.loop_detected { 'Loop Detected' }
-		.bandwidth_limit_exceeded { 'Bandwidth Limit Exceeded' }
-		.not_extended { 'Not Extended' }
-		.network_authentication_required { 'Network Authentication Required' }
-		.unassigned { 'Unassigned' }
-		else { 'Unknown' }
+	code_i := int(code)
+	if code_i <= 0 {
+		return 'Unknown'
 	}
+	return code_i.str()
 }
 
 // int converts an assigned and known Status to its integral equivalent.
 // if a Status is unknown or unassigned, this method will return zero
 pub fn (code Status) int() int {
-	if code in [.unknown, .unassigned] {
+	if int(code) <= 0 {
 		return 0
 	}
 	return int(code)

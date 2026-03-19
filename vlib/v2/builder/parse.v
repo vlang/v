@@ -7,15 +7,41 @@ import os
 import v2.ast
 import v2.parser
 
+fn should_expand_single_file_input(input string) bool {
+	if os.file_name(input).ends_with('_test.v') {
+		return true
+	}
+	module_name := file_module_name(input) or { return false }
+	return module_name != 'main'
+}
+
+fn file_module_name(path string) ?string {
+	content := os.read_file(path) or { return none }
+	for raw_line in content.split_into_lines() {
+		line := raw_line.trim_space()
+		if line == '' || line.starts_with('//') {
+			continue
+		}
+		if line.starts_with('module ') {
+			return line['module '.len..].trim_space().all_before(' ')
+		}
+		break
+	}
+	return none
+}
+
 fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
 	mut use_core_headers := false
 	if !skip_builtin {
-		// When a valid header cache exists, use lightweight .vh summaries
-		// instead of fully parsing every core module source file.
-		use_core_headers = b.can_use_cached_core_headers_for_parse()
+		// TODO: restore .vh-based core parsing once the header summaries retain
+		// enough const/global initializer detail for downstream codegen.
+		// The current summaries lose information needed for builds like
+		// `v2 vlib/builtin/string_test.v`, producing invalid C for values such as
+		// `os.args` and `time.Duration` constants.
+		use_core_headers = false
 		b.used_vh_for_parse = use_core_headers
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
@@ -47,26 +73,29 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			}
 			continue
 		}
+		if should_expand_single_file_input(input) {
+			if input !in seen_user_files {
+				expanded_user_files << input
+				seen_user_files[input] = true
+			}
+			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines)
+			for dir_file in dir_files {
+				if dir_file != '' && dir_file !in seen_user_files {
+					expanded_user_files << dir_file
+					seen_user_files[dir_file] = true
+				}
+			}
+			continue
+		}
 		if input !in seen_user_files {
 			expanded_user_files << input
 			seen_user_files[input] = true
 		}
 	}
-	// For test files, include all non-test sibling module files from the same directory
-	mut all_user_files := expanded_user_files.clone()
-	for file in expanded_user_files {
-		if file.contains('_test.') && file.ends_with('.v') {
-			dir := os.dir(file)
-			sibling_files := get_v_files_from_dir(dir, b.pref.user_defines)
-			for sf in sibling_files {
-				if sf != '' && sf !in all_user_files {
-					all_user_files << sf
-				}
-			}
-		}
-	}
-	// parse user files
-	parsed_user_files := parser_reused.parse_files(all_user_files, mut b.file_set)
+	// Directory inputs and non-main module files were expanded above. Single-file
+	// `main` programs stay isolated, so `v2 hello.v` parses only `hello.v`,
+	// while `v2 .` and `v2 vlib/math/math_test.v` still parse their module files.
+	parsed_user_files := parser_reused.parse_files(expanded_user_files, mut b.file_set)
 	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
 	if skip_imports {

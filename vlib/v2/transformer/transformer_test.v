@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module transformer
 
+import os
 import v2.ast
 import v2.pref as vpref
 import v2.types
@@ -47,6 +48,135 @@ fn rune_type() types.Type {
 	return types.Alias{
 		name: 'rune'
 	}
+}
+
+fn test_transform_comptime_embed_file_call_or_cast_expr_to_init_expr() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	asset_path := os.join_path(tmp_dir, 'asset.txt')
+	os.write_file(source_path, 'fn main() {}') or { panic(err) }
+	os.write_file(asset_path, 'hello') or { panic(err) }
+
+	mut t := create_test_transformer()
+	t.cur_file_name = source_path
+
+	result := t.transform_comptime_expr(ast.ComptimeExpr{
+		expr: ast.Expr(ast.CallOrCastExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'embed_file'
+			})
+			expr: ast.Expr(ast.StringLiteral{
+				kind:  .v
+				value: "'asset.txt'"
+			})
+		})
+	})
+
+	assert t.needed_embed_file_helper
+	assert result is ast.InitExpr, 'expected InitExpr, got ${result.type_name()}'
+	init := result as ast.InitExpr
+	assert init.typ is ast.Ident
+	assert (init.typ as ast.Ident).name == embed_file_helper_type_name
+	assert init.fields.len == 4
+	assert init.fields[0].name == '_data'
+	assert init.fields[0].value is ast.StringLiteral
+	assert (init.fields[0].value as ast.StringLiteral).value == "'hello'"
+	assert init.fields[1].name == 'len'
+	assert init.fields[1].value is ast.BasicLiteral
+	assert (init.fields[1].value as ast.BasicLiteral).value == '5'
+	assert init.fields[2].name == 'path'
+	assert init.fields[3].name == 'apath'
+	assert init.fields[3].value is ast.StringLiteral
+	assert (init.fields[3].value as ast.StringLiteral).value == quote_v_string_literal(asset_path)
+}
+
+fn test_transform_comptime_embed_file_chained_method_call() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_chain_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	asset_path := os.join_path(tmp_dir, 'asset.txt')
+	os.write_file(source_path, 'fn main() {}') or { panic(err) }
+	os.write_file(asset_path, 'hello') or { panic(err) }
+
+	mut t := create_test_transformer()
+	t.cur_file_name = source_path
+
+	result := t.transform_comptime_expr(ast.ComptimeExpr{
+		expr: ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.CallOrCastExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'embed_file'
+					})
+					expr: ast.Expr(ast.StringLiteral{
+						kind:  .v
+						value: "'asset.txt'"
+					})
+				})
+				rhs: ast.Expr(ast.Ident{
+					name: 'to_bytes'
+				})
+			})
+			args: []
+		})
+	})
+
+	assert t.needed_embed_file_helper
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.SelectorExpr
+	sel := call.lhs as ast.SelectorExpr
+	assert sel.lhs is ast.InitExpr
+	init := sel.lhs as ast.InitExpr
+	assert init.typ is ast.Ident
+	assert (init.typ as ast.Ident).name == embed_file_helper_type_name
+	assert sel.rhs is ast.Ident
+	assert (sel.rhs as ast.Ident).name == 'to_bytes'
+	assert init.fields.len == 4
+	assert init.fields[0].value is ast.StringLiteral
+	assert (init.fields[0].value as ast.StringLiteral).value == "'hello'"
+	assert init.fields[3].value is ast.StringLiteral
+	assert (init.fields[3].value as ast.StringLiteral).value == quote_v_string_literal(asset_path)
+}
+
+fn test_inject_embed_file_helper_adds_builtin_helper_once() {
+	mut t := create_test_transformer()
+	mut files := [
+		ast.File{
+			mod:   'builtin'
+			name:  'builtin.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name: 'Existing'
+				}),
+			]
+		},
+		ast.File{
+			mod:  'main'
+			name: 'main.v'
+		},
+	]
+
+	t.inject_embed_file_helper(mut files)
+	t.inject_embed_file_helper(mut files)
+
+	assert files[0].stmts.len == 7
+	assert files[0].stmts[1] is ast.StructDecl
+	assert (files[0].stmts[1] as ast.StructDecl).name == embed_file_helper_type_name
+	mut helper_count := 0
+	for stmt in files[0].stmts {
+		if stmt is ast.StructDecl && stmt.name == embed_file_helper_type_name {
+			helper_count++
+		}
+	}
+	assert helper_count == 1
 }
 
 fn test_transform_ident_vmodroot_to_string_literal() {

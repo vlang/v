@@ -29,6 +29,7 @@ mut:
 	fn_return_types        map[string]string
 	runtime_local_types    map[string]string
 	cur_fn_returned_idents map[string]bool
+	active_generic_types   map[string]types.Type
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -50,6 +51,8 @@ mut:
 	sum_type_variants           map[string][]string
 	// Interface method signatures: interface_name -> [(method_name, cast_signature), ...]
 	interface_methods           map[string][]InterfaceMethodInfo
+	interface_data_fields       map[string][]InterfaceDataFieldInfo
+	emitted_interface_bodies    map[string]bool
 	interface_wrapper_specs     map[string]InterfaceWrapperSpec
 	needed_interface_wrappers   map[string]bool
 	ierror_wrapper_bases        map[string]bool
@@ -70,22 +73,24 @@ mut:
 	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
 	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
 
-	const_exprs         map[string]string // const name → C expression string (for inlining)
-	used_fn_keys        map[string]bool
-	force_emit_fn_names map[string]bool   // function C names that must be emitted regardless of mark_used
-	export_fn_names     map[string]string // V-qualified name → export name (from @[export:] attribute)
-	called_fn_names     map[string]bool
-	anon_fn_defs        []string        // lifted anonymous function definitions
-	pass5_start_pos     int             // position in sb where pass 5 starts
-	deferred_m_includes []string        // Objective-C .m file #include lines deferred until after type definitions
-	spawned_fns         map[string]bool // spawn wrapper names already emitted
-	spawn_wrapper_defs  []string        // spawn wrapper struct + function definitions
+	const_exprs           map[string]string // const name → C expression string (for inlining)
+	runtime_const_targets map[string]bool   // module-scoped consts initialized in __v_init_consts_*
+	used_fn_keys          map[string]bool
+	force_emit_fn_names   map[string]bool   // function C names that must be emitted regardless of mark_used
+	export_fn_names       map[string]string // V-qualified name → export name (from @[export:] attribute)
+	called_fn_names       map[string]bool
+	anon_fn_defs          []string        // lifted anonymous function definitions
+	pass5_start_pos       int             // position in sb where pass 5 starts
+	deferred_m_includes   []string        // Objective-C .m file #include lines deferred until after type definitions
+	spawned_fns           map[string]bool // spawn wrapper names already emitted
+	spawn_wrapper_defs    []string        // spawn wrapper struct + function definitions
 	// @[live] hot code reloading
 	live_fns         []LiveFnInfo    // @[live] functions detected during code generation
 	live_source_file string          // source file containing @[live] functions
 	test_fn_names    []string        // test function names collected in Pass 4
 	has_main         bool            // whether a main() function was found in Pass 4
 	fn_owner_file    map[string]int  // fn_key -> first file index (for parallel dedup)
+	c_file_fn_keys   map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
 	typedef_c_types  map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 }
 
@@ -108,9 +113,19 @@ struct StructDeclInfo {
 	mod  string
 }
 
+struct InterfaceDeclInfo {
+	decl ast.InterfaceDecl
+	mod  string
+}
+
 struct FixedArrayInfo {
 	elem_type string
 	size      int
+}
+
+struct GenericFnSpecialization {
+	name          string
+	generic_types map[string]types.Type
 }
 
 struct MapTypeInfo {
@@ -157,6 +172,7 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		fn_return_types:        map[string]string{}
 		runtime_local_types:    map[string]string{}
 		cur_fn_returned_idents: map[string]bool{}
+		active_generic_types:   map[string]types.Type{}
 
 		fixed_array_fields:          map[string]bool{}
 		fixed_array_field_elem:      map[string]string{}
@@ -176,10 +192,14 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		emit_modules:                map[string]bool{}
 		exported_const_seen:         map[string]bool{}
 		exported_const_symbols:      []ExportedConstSymbol{}
+		emitted_interface_bodies:    map[string]bool{}
+		interface_data_fields:       map[string][]InterfaceDataFieldInfo{}
 		interface_wrapper_specs:     map[string]InterfaceWrapperSpec{}
 		needed_interface_wrappers:   map[string]bool{}
 		ierror_wrapper_bases:        map[string]bool{}
 		needed_ierror_wrapper_bases: map[string]bool{}
+		c_file_fn_keys:              map[string]bool{}
+		runtime_const_targets:       map[string]bool{}
 		used_fn_keys:                map[string]bool{}
 		called_fn_names:             map[string]bool{}
 	}
@@ -466,6 +486,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.collect_module_type_names()
 	g.collect_runtime_aliases()
 	g.collect_fn_signatures()
+	g.collect_c_file_fn_keys()
+	g.collect_runtime_const_targets()
 	g.register_builder_methods()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup')
@@ -532,9 +554,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'pass 1 forward decls')
 
 	// Pass 2: Emit type declarations in dependency-safe buckets.
-	// Emit enums first, then type aliases/sum types, then interfaces.
-	// This avoids source-order issues where an interface field references an enum
-	// declared later in the same module.
+	// Emit enums first, then type aliases/sum types.
+	// Interface bodies are emitted later, after structs/tuple aliases are available.
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -545,6 +566,29 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				g.gen_enum_decl(stmt)
 			}
 		}
+	}
+	// Pre-scan type aliases and interfaces so tuple aliases used in function-pointer
+	// typedefs (for example `fn () (int, int)`) are registered before we emit them.
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.TypeDecl {
+				if stmt.base_type !is ast.EmptyExpr {
+					_ = g.expr_type_to_c(stmt.base_type)
+				}
+			} else if stmt is ast.InterfaceDecl {
+				for field in stmt.fields {
+					_ = g.interface_method_info(field)
+				}
+			}
+		}
+	}
+	g.emit_tuple_aliases()
+	if g.tuple_aliases.len > 0 {
+		g.sb.writeln('')
 	}
 	for file in g.files {
 		g.set_file_module(file)
@@ -561,23 +605,13 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			}
 		}
 	}
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.InterfaceDecl {
-				g.gen_interface_decl(stmt)
-			}
-		}
-	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 2 type declarations')
 
 	// Pass 3: Full struct definitions (use named struct/union to match forward decls)
 	// Collect all struct decls, then emit in dependency order
 	mut all_structs := []StructDeclInfo{}
+	mut all_interfaces := []InterfaceDeclInfo{}
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -589,6 +623,14 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					continue
 				}
 				all_structs << StructDeclInfo{
+					decl: stmt
+					mod:  g.cur_module
+				}
+			} else if stmt is ast.InterfaceDecl {
+				for field in stmt.fields {
+					_ = g.interface_method_info(field)
+				}
+				all_interfaces << InterfaceDeclInfo{
 					decl: stmt
 					mod:  g.cur_module
 				}
@@ -631,12 +673,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			break
 		}
 	}
-	// Emit any remaining structs (circular deps - just emit them)
-	for info in all_structs {
-		g.cur_module = info.mod
-		g.gen_struct_decl(info.decl)
-	}
-	_ = g.emit_ready_option_result_structs()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 3 struct definitions')
 
@@ -653,32 +689,82 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 3.25 tuple aliases')
 
-	// Pass 3.3: Emit option/result struct definitions (needs IError + tuple types defined)
-	g.emit_option_result_structs()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'pass 3.3 option/result structs')
-
-	// Pass 3.4: Wrapper structs for functions returning fixed arrays.
-	g.emit_fixed_array_return_wrappers()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'pass 3.4 fixed-array return wrappers')
-
-	// Pass 3.5: Emit constants before function declarations/bodies, so macros are available.
-	for file in g.files {
-		g.set_file_module(file)
-		if !g.should_emit_module(g.cur_module) {
-			continue
-		}
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
+	// Pass 3.3: Emit interface bodies after structs and tuple aliases.
+	for _ in 0 .. (all_interfaces.len * 2) {
+		mut progressed := false
+		for info in all_interfaces {
+			g.cur_module = info.mod
+			name := g.get_interface_name(info.decl)
+			body_key := 'body_${name}'
+			if body_key in g.emitted_types {
 				continue
 			}
-			if stmt is ast.ConstDecl {
-				g.gen_const_decl(stmt)
+			if g.interface_fields_resolved(info.decl) {
+				g.gen_interface_decl(info.decl)
+				progressed = true
 			}
 		}
+		if !progressed {
+			break
+		}
 	}
-	g.sb.writeln('')
+	// Emit any remaining interfaces before retrying structs/wrappers. This keeps
+	// option/result wrappers for interface payloads available before by-value users.
+	for info in all_interfaces {
+		g.cur_module = info.mod
+		g.gen_interface_decl(info.decl)
+	}
+	// Retry any structs that were waiting on interface bodies.
+	for _ in 0 .. all_structs.len {
+		mut progressed := false
+		for info in all_structs {
+			g.cur_module = info.mod
+			name := g.get_struct_name(info.decl)
+			body_key := 'body_${name}'
+			if body_key in g.emitted_types {
+				continue
+			}
+			if g.struct_fields_resolved(info.decl) {
+				g.gen_struct_decl(info.decl)
+				progressed = true
+			}
+		}
+		if g.emit_ready_option_result_structs() {
+			progressed = true
+		}
+		g.emit_deferred_fixed_array_aliases()
+		if !progressed {
+			break
+		}
+	}
+	// Emit any remaining structs as a last resort for cyclic declarations.
+	for info in all_structs {
+		g.cur_module = info.mod
+		g.gen_struct_decl(info.decl)
+	}
+	_ = g.emit_ready_option_result_structs()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 3.3 interfaces')
+
+	// Pass 3.4: Emit option/result struct definitions (needs IError + tuple types defined)
+	g.emit_option_result_structs()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 3.4 option/result structs')
+
+	// Pass 3.45: Retry tuple aliases now that interface bodies and wrapper
+	// payload types have been emitted.
+	g.emit_tuple_aliases()
+	if g.tuple_aliases.len > 0 {
+		g.sb.writeln('')
+	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 3.45 late tuple aliases')
+
+	// Pass 3.5: Wrapper structs for functions returning fixed arrays.
+	g.emit_fixed_array_return_wrappers()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 3.5 fixed-array return wrappers')
+
 	// Recursive array equality helper for nested arrays and string arrays.
 	// In cached-core builds, the body lives in the builtin cache unit and is
 	// forward-declared (by top_level_c_decls) in the main TU.  In single-TU
@@ -707,7 +793,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	}
 	g.sb.writeln('')
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'pass 3.5 const declarations')
+		'pass 3.6 array helpers')
 
 	// Pass 4: Function forward declarations
 	for fi, file in g.files {
@@ -728,14 +814,29 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				// Generic functions: emit as macros for known simple functions
 				if stmt.typ.generic_params.len > 0 {
-					gfn_name := g.get_fn_name(stmt)
-					if gfn_name != '' {
-						g.emit_generic_fn_macro(gfn_name, stmt)
+					specs := g.generic_fn_specializations(stmt)
+					if specs.len > 0 {
+						prev_generic_types := g.active_generic_types.clone()
+						for spec in specs {
+							g.active_generic_types = spec.generic_types.clone()
+							g.gen_fn_head_with_name(stmt, spec.name)
+							g.sb.writeln(';')
+						}
+						g.active_generic_types = prev_generic_types.clone()
+					} else {
+						gfn_name := g.get_fn_name(stmt)
+						if gfn_name != '' {
+							g.emit_generic_fn_macro(gfn_name, stmt)
+						}
 					}
 					continue
 				}
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
+					continue
+				}
+				fn_key := 'fn_${fn_name}'
+				if g.should_skip_plain_v_fallback_fn(fn_key) {
 					continue
 				}
 				if fn_name == 'main' {
@@ -745,7 +846,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					g.test_fn_names << fn_name
 				}
 				// Record first file index for each function (for parallel dedup)
-				fn_key := 'fn_${fn_name}'
 				if fn_key !in g.fn_owner_file {
 					g.fn_owner_file[fn_key] = fi
 				}
@@ -772,8 +872,63 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
+	// Pass 4.5: Emit constants after function forward declarations so const
+	// initializers can reference functions by name (for example function-pointer
+	// tables).
+	for file in g.files {
+		g.set_file_module(file)
+		if !g.should_emit_module(g.cur_module) {
+			continue
+		}
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.ConstDecl {
+				g.gen_const_decl(stmt)
+			}
+		}
+	}
+	g.sb.writeln('')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 4.5 const declarations')
+
 	// Emit deferred Objective-C .m includes now that all types are defined.
 	g.emit_deferred_m_includes()
+}
+
+fn (mut g Gen) collect_c_file_fn_keys() {
+	g.c_file_fn_keys = map[string]bool{}
+	for file in g.files {
+		if !file.name.ends_with('.c.v') {
+			continue
+		}
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
+				if decl.language == .js {
+					continue
+				}
+				if decl.language == .c && decl.stmts.len == 0 {
+					continue
+				}
+				if decl.typ.generic_params.len > 0 {
+					continue
+				}
+				fn_name := g.get_fn_name(decl)
+				if fn_name == '' {
+					continue
+				}
+				g.c_file_fn_keys['fn_${fn_name}'] = true
+			}
+		}
+	}
+}
+
+fn (g &Gen) should_skip_plain_v_fallback_fn(fn_key string) bool {
+	return g.cur_file_name.ends_with('.v') && !g.cur_file_name.ends_with('.c.v')
+		&& fn_key in g.c_file_fn_keys
 }
 
 // gen_finalize runs post-pass-5 finalization and returns the complete C source string.
@@ -834,7 +989,12 @@ pub fn (mut g Gen) gen_finalize() string {
 		full := g.sb.str()
 		mut out_sb := strings.new_builder(full.len + 4096)
 		unsafe { out_sb.write_ptr(full.str, g.pass5_start_pos) }
+		mut seen_spawn_defs := map[string]bool{}
 		for def in g.spawn_wrapper_defs {
+			if def in seen_spawn_defs {
+				continue
+			}
+			seen_spawn_defs[def] = true
 			out_sb.write_string(def)
 		}
 		for def in g.anon_fn_defs {
@@ -959,12 +1119,16 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
 		emitted_result_structs:      g.emitted_result_structs.clone()
 		emitted_option_structs:      g.emitted_option_structs.clone()
 		interface_methods:           g.interface_methods.clone()
+		interface_data_fields:       g.interface_data_fields.clone()
+		emitted_interface_bodies:    g.emitted_interface_bodies.clone()
 		interface_wrapper_specs:     g.interface_wrapper_specs.clone()
 		ierror_wrapper_bases:        g.ierror_wrapper_bases.clone()
 		collected_fixed_array_types: g.collected_fixed_array_types.clone()
 		collected_map_types:         g.collected_map_types.clone()
+		c_file_fn_keys:              g.c_file_fn_keys.clone()
 		global_var_modules:          g.global_var_modules.clone()
 		const_exprs:                 g.const_exprs.clone()
+		runtime_const_targets:       g.runtime_const_targets.clone()
 		used_fn_keys:                g.used_fn_keys.clone()
 		force_emit_fn_names:         g.force_emit_fn_names.clone()
 		export_fn_names:             g.export_fn_names.clone()
@@ -974,6 +1138,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
 		emitted_types:               worker_emitted
 		runtime_local_types:         map[string]string{}
 		cur_fn_returned_idents:      map[string]bool{}
+		active_generic_types:        map[string]types.Type{}
 		is_module_ident_cache:       map[string]bool{}
 		not_local_var_cache:         map[string]bool{}
 		resolved_module_names:       map[string]string{}
@@ -1210,6 +1375,10 @@ fn escape_char_literal_content(raw string) string {
 	return sb.str()
 }
 
+fn is_c_hex_digit(ch u8) bool {
+	return (ch >= `0` && ch <= `9`) || (ch >= `a` && ch <= `f`) || (ch >= `A` && ch <= `F`)
+}
+
 fn escape_c_string_literal_segment(raw string) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	mut i := 0
@@ -1224,6 +1393,17 @@ fn escape_c_string_literal_segment(raw string) string {
 				sb.write_u8(`\\`)
 				sb.write_u8(`"`)
 				i += 2
+				continue
+			}
+			if next == `x` && i + 3 < raw.len && is_c_hex_digit(raw[i + 2])
+				&& is_c_hex_digit(raw[i + 3]) {
+				sb.write_string(raw[i..i + 4])
+				i += 4
+				// C hex escapes are greedy, so split adjacent literals before the
+				// next hex digit to keep the escape length fixed at two digits.
+				if i < raw.len && is_c_hex_digit(raw[i]) {
+					sb.write_string('""')
+				}
 				continue
 			}
 			// All other V escapes (\n, \t, \\, \0, etc.) → pass through as-is
@@ -1292,6 +1472,7 @@ fn c_static_v_string_expr_from_c_literal(c_lit string) string {
 fn mangle_alias_component(name string) string {
 	mut s := name.replace('*', 'ptr')
 	s = s.replace('&', 'ref')
+	s = s.replace('@', 'at_')
 	s = s.replace(' ', '_')
 	s = s.replace('.', '__')
 	return s

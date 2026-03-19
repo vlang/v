@@ -254,21 +254,9 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					}
 				}
 			}
-			// Resolve generic specialization token: Foo[int] -> Foo_int
-			lhs_name := expr.lhs.name()
-			mut parts := []string{cap: expr.args.len}
-			for arg in expr.args {
-				parts << arg.name()
-			}
-			concrete_name := if parts.len > 0 {
-				'${lhs_name}_${parts.join('_')}'
-			} else {
-				lhs_name
-			}
-			ast.Expr(ast.Ident{
-				name: concrete_name
-				pos:  expr.pos
-			})
+			// Keep selectors as selectors so module and method calls still lower
+			// through the normal call paths after specialization.
+			t.specialize_generic_callable_expr(expr.lhs, expr.args, expr.pos)
 		}
 		ast.GenericArgOrIndexExpr {
 			// Disambiguate parser ambiguity `x[y]`:
@@ -276,12 +264,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			// - otherwise => normal index expression
 			if lhs_type := t.get_expr_type(expr.lhs) {
 				if t.is_callable_type(lhs_type) {
-					lhs_name := expr.lhs.name()
-					arg_name := expr.expr.name()
-					return ast.Expr(ast.Ident{
-						name: '${lhs_name}_${arg_name}'
-						pos:  expr.pos
-					})
+					return t.specialize_generic_callable_expr(expr.lhs, [expr.expr], expr.pos)
 				}
 			}
 			return t.transform_index_expr(ast.IndexExpr{
@@ -670,7 +653,7 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			if typ := t.lookup_type(qualified) {
 				if typ is types.Enum {
 					return ast.Ident{
-						name: '${qualified}__${expr.rhs.name}'
+						name: enum_member_ident(qualified, expr.rhs.name)
 						pos:  expr.pos
 					}
 				}
@@ -1907,6 +1890,45 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	}
 	// Check for 'in' operator with arrays: elem in arr => Array_T_contains(arr, elem)
 	if expr.op in [.key_in, .not_in] {
+		// Range membership: x in a..b -> x >= a && x < b
+		if expr.rhs is ast.RangeExpr {
+			range := expr.rhs as ast.RangeExpr
+			lhs_trans := t.transform_expr(expr.lhs)
+			lower_bound := ast.Expr(ast.InfixExpr{
+				op:  .ge
+				lhs: lhs_trans
+				rhs: t.transform_expr(range.start)
+				pos: expr.pos
+			})
+			mut range_check := lower_bound
+			if range.end !is ast.EmptyExpr {
+				upper_op := if range.op == .dotdot {
+					token.Token.lt
+				} else {
+					token.Token.le
+				}
+				upper_bound := ast.Expr(ast.InfixExpr{
+					op:  upper_op
+					lhs: lhs_trans
+					rhs: t.transform_expr(range.end)
+					pos: expr.pos
+				})
+				range_check = ast.Expr(ast.InfixExpr{
+					op:  .and
+					lhs: lower_bound
+					rhs: upper_bound
+					pos: expr.pos
+				})
+			}
+			if expr.op == .not_in {
+				return ast.PrefixExpr{
+					op:   .not
+					expr: range_check
+					pos:  expr.pos
+				}
+			}
+			return range_check
+		}
 		// Map membership: key in map -> map__exists(&map, &key)
 		if rhs_type := t.get_expr_type(expr.rhs) {
 			if map_typ := t.unwrap_map_type(rhs_type) {
@@ -2686,16 +2708,93 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 	if inner is ast.IfExpr {
 		return t.eval_comptime_if(inner)
 	}
+	if inner is ast.CallExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
+			return t.transform_embed_file_comptime_expr(expr, inner.args)
+		}
+	}
+	if inner is ast.CallOrCastExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
+			return t.transform_embed_file_comptime_expr(expr, [inner.expr])
+		}
+	}
 	if inner is ast.Ident {
 		if inner.name in ['VMODROOT', '@VMODROOT'] {
 			return ast.Expr(t.vmodroot_string_literal(expr.pos))
 		}
+	}
+	if transformed := t.transform_embed_file_comptime_chain(inner, expr.pos) {
+		return transformed
 	}
 	// For other comptime expressions, just return them transformed
 	return ast.ComptimeExpr{
 		expr: t.transform_expr(inner)
 		pos:  expr.pos
 	}
+}
+
+fn (mut t Transformer) transform_embed_file_comptime_chain(expr ast.Expr, comptime_pos token.Pos) ?ast.Expr {
+	match expr {
+		ast.SelectorExpr {
+			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
+				return ast.Expr(ast.SelectorExpr{
+					lhs: transformed_lhs
+					rhs: expr.rhs
+					pos: expr.pos
+				})
+			}
+		}
+		ast.CallExpr {
+			mut transformed_lhs := ast.empty_expr
+			if expr.lhs is ast.SelectorExpr {
+				if transformed_base := t.transform_embed_file_chain_lhs(expr.lhs.lhs,
+					comptime_pos)
+				{
+					transformed_lhs = ast.Expr(ast.SelectorExpr{
+						lhs: transformed_base
+						rhs: expr.lhs.rhs
+						pos: expr.lhs.pos
+					})
+				}
+			}
+			if transformed_lhs !is ast.EmptyExpr {
+				mut args := []ast.Expr{cap: expr.args.len}
+				for arg in expr.args {
+					args << t.transform_expr(arg)
+				}
+				return ast.Expr(ast.CallExpr{
+					lhs:  transformed_lhs
+					args: args
+					pos:  expr.pos
+				})
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_pos token.Pos) ?ast.Expr {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'embed_file' {
+				return t.transform_embed_file_comptime_expr(ast.ComptimeExpr{
+					expr: ast.Expr(expr)
+					pos:  comptime_pos
+				}, expr.args)
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'embed_file' {
+				return t.transform_embed_file_comptime_expr(ast.ComptimeExpr{
+					expr: ast.Expr(expr)
+					pos:  comptime_pos
+				}, [expr.expr])
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 // lower_go_call transforms `go foo(a, b)` into a regular call to
