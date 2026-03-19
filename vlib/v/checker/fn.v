@@ -62,8 +62,8 @@ fn (c &Checker) struct_embeds_type(got ast.Type, expected ast.Type) bool {
 	expected_unaliased := c.table.unaliased_type(expected)
 	for embed in got_info.embeds {
 		embed_unaliased := c.table.unaliased_type(embed)
-		if embed_unaliased == expected_unaliased || c.struct_embeds_type(embed_unaliased,
-			expected_unaliased) {
+		if embed_unaliased == expected_unaliased
+			|| c.struct_embeds_type(embed_unaliased, expected_unaliased) {
 			return true
 		}
 	}
