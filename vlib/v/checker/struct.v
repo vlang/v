@@ -517,7 +517,16 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			node.typ = c.expected_type
 		}
 	}
-	struct_sym := c.table.sym(node.typ)
+	original_node_typ := node.typ
+	concrete_node_typ := c.recheck_concrete_type(node.typ)
+	$if trace_ci_fixes ? {
+		if c.table.cur_fn != unsafe { nil }
+			&& (c.table.cur_fn.name.contains('do') || c.table.cur_fn.name.contains('insert')
+			|| c.table.cur_fn.name.contains('delete')) {
+			eprintln('struct_init enter fn=${c.table.cur_fn.name} gen=${c.table.cur_fn.generic_names} node.typ=${c.table.type_to_str(concrete_node_typ)} original=${c.table.type_to_str(original_node_typ)} rechecked=${c.table.type_to_str(c.recheck_concrete_type(original_node_typ))} cur=${c.table.cur_concrete_types.map(c.table.type_to_str(it))} update=${node.has_update_expr}')
+		}
+	}
+	struct_sym := c.table.sym(concrete_node_typ)
 	mut old_inside_generic_struct_init := false
 	mut old_cur_struct_generic_types := []ast.Type{}
 	mut old_cur_struct_concrete_types := []ast.Type{}
@@ -589,9 +598,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		}
 	}
 	if !is_field_zero_struct_init {
-		c.ensure_type_exists(node.typ, node.pos)
+		c.ensure_type_exists(concrete_node_typ, node.pos)
 	}
-	type_sym := c.table.sym(node.typ)
+	type_sym := c.table.sym(concrete_node_typ)
+	is_generic_zero_struct_init := original_node_typ.has_flag(.generic) && node.init_fields.len == 0
+		&& !node.has_update_expr
+	if is_generic_zero_struct_init {
+		return concrete_node_typ
+	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
@@ -617,7 +631,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	// allow init structs from generic if they're private except the type is from builtin module
 	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
-		&& type_sym.language != .c && (type_sym.mod != c.mod && !(node.typ.has_flag(.generic)
+		&& type_sym.language != .c
+		&& (type_sym.mod != c.mod && !(concrete_node_typ.has_flag(.generic)
 		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
@@ -761,13 +776,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						exp_type = unwrapped
 					}
 				}
-				if exp_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
-					&& c.table.cur_fn.generic_names.len > 0
-					&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-					if unwrapped := c.table.convert_generic_type(exp_type, c.table.cur_fn.generic_names,
-						c.table.cur_concrete_types)
-					{
-						exp_type = unwrapped
+				exp_type = c.recheck_concrete_type(exp_type)
+				$if trace_ci_fixes ? {
+					if c.table.cur_fn != unsafe { nil } && (c.table.cur_fn.name.contains('do')
+						|| c.table.cur_fn.name.contains('insert')
+						|| c.table.cur_fn.name.contains('delete')) {
+						eprintln('struct_init field fn=${c.table.cur_fn.name} field=${field_name} exp=${c.table.type_to_str(exp_type)} raw=${c.table.type_to_str(field_info.typ)}')
 					}
 				}
 				exp_type_sym := c.table.sym(exp_type)
@@ -778,6 +792,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				c.expected_type = exp_type
 				got_type = c.expr(mut init_field.expr)
+				$if trace_ci_fixes ? {
+					if c.table.cur_fn != unsafe { nil } && (c.table.cur_fn.name.contains('do')
+						|| c.table.cur_fn.name.contains('insert')
+						|| c.table.cur_fn.name.contains('delete')) {
+						eprintln('struct_init got fn=${c.table.cur_fn.name} field=${field_name} got=${c.table.type_to_str(got_type)} expr=${init_field.expr}')
+					}
+				}
 				got_type_sym := c.table.sym(got_type)
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
@@ -1026,17 +1047,24 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		else {}
 	}
 	if node.has_update_expr {
-		update_type := c.expr(mut node.update_expr)
+		update_type := c.recheck_concrete_type(c.expr(mut node.update_expr))
 		node.update_expr_type = update_type
+		$if trace_ci_fixes ? {
+			if c.table.cur_fn != unsafe { nil }
+				&& (c.table.cur_fn.name.contains('do') || c.table.cur_fn.name.contains('insert')
+				|| c.table.cur_fn.name.contains('delete')) {
+				eprintln('struct_init update fn=${c.table.cur_fn.name} update=${c.table.type_to_str(update_type)} node=${c.table.type_to_str(concrete_node_typ)} expr=${node.update_expr}')
+			}
+		}
 		expr_sym := c.table.final_sym(c.unwrap_generic(update_type))
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
 		} else if expr_sym.kind != .struct {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
-		} else if update_type != node.typ {
+		} else if update_type != concrete_node_typ {
 			from_sym := c.table.final_sym(update_type)
-			to_sym := c.table.final_sym(node.typ)
+			to_sym := c.table.final_sym(concrete_node_typ)
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO: this check is too strict

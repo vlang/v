@@ -894,6 +894,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+				if left.is_auto_deref_arg() {
+					left_deref := left_type.deref()
+					right_deref := if right.is_pure_literal() {
+						right.get_pure_type()
+					} else if right.is_auto_deref_var() {
+						right_type.deref()
+					} else {
+						right_type
+					}
+					if left_deref.is_number() && right_deref.is_number() {
+						continue
+					}
+				}
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
 				if left.is_auto_deref_var() || right.is_auto_deref_var() {
 					left_deref := if left.is_auto_deref_var() {
@@ -908,7 +921,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					} else {
 						right_type
 					}
-					if c.check_types(left_deref, right_deref) {
+					if c.check_types(right_deref, left_deref) {
 						continue
 					}
 				}

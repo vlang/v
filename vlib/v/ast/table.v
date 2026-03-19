@@ -798,6 +798,10 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 	}
 	info.found_fields = true
 	sym.info = info
+	if sym.idx > 0 {
+		mut mut_table := unsafe { &Table(t) }
+		mut_table.type_symbols[sym.idx].info = info
+	}
 }
 
 // find_single_field_variant returns a field that exists in exactly one aggregate or sumtype variant.
@@ -3019,16 +3023,24 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			mut idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
 				if recheck_concrete_types {
+					// Rechecking an already-registered concrete generic can revisit the same
+					// self-referential type through one of its fields.
+					if nrt in t.unwrap_generic_type_in_depth {
+						if idx <= 0 {
+							return typ
+						}
+						return new_type(idx).derive(typ).clear_flag(.generic)
+					}
+					t.unwrap_generic_type_in_depth[nrt] = 1
+					defer {
+						t.unwrap_generic_type_in_depth.delete(nrt)
+					}
 					fields = ts.info.fields.clone()
 					for i in 0 .. fields.len {
-						if !fields[i].typ.has_flag(.generic) {
-							continue
-						}
-						// Map[T], []Type[T]
-						if t.type_kind(fields[i].typ) in [.array, .array_fixed, .map]
-							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-							t.unwrap_generic_type_ex(fields[i].typ, t_generic_names, t_concrete_types,
-								recheck_concrete_types)
+						resolved_field_typ := t.unwrap_generic_type_ex(fields[i].typ,
+							t_generic_names, t_concrete_types, recheck_concrete_types)
+						if resolved_field_typ != fields[i].typ {
+							fields[i].typ = resolved_field_typ
 						}
 					}
 					// update concrete types
@@ -3066,25 +3078,11 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			// fields type translate to concrete type
 			fields = ts.info.fields.clone()
 			for i in 0 .. fields.len {
-				if fields[i].typ.has_flag(.generic) {
-					orig_type := fields[i].typ
-					sym := t.sym(fields[i].typ)
-					if sym.kind == .struct && fields[i].typ.idx() != typ.idx() {
-						fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-							t_concrete_types)
-					} else {
-						if t_typ := t.convert_generic_type(fields[i].typ, t_generic_names,
-							t_concrete_types)
-						{
-							fields[i].typ = t_typ
-						}
-						if fields[i].typ.has_flag(.generic)
-							&& sym.kind in [.array, .array_fixed, .map]
-							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-								t_concrete_types)
-						}
-					}
+				orig_type := fields[i].typ
+				resolved_field_typ := t.unwrap_generic_type_ex(orig_type, t_generic_names,
+					t_concrete_types, recheck_concrete_types)
+				if resolved_field_typ != orig_type {
+					fields[i].typ = resolved_field_typ
 					// Update type in `info.embeds`, if it's embed
 					if fields[i].is_embed {
 						mut parent_sym := t.sym(typ)

@@ -2045,13 +2045,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return node.expr_type
 	}
 	node.expr_type = typ
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len
-		&& c.type_has_unresolved_generic_parts(typ) {
-		typ = c.table.unwrap_generic_type_ex(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
-			true)
-		node.expr_type = typ
-	}
+	typ = c.recheck_concrete_type(typ)
+	node.expr_type = typ
 	if !(node.expr is ast.Ident && node.expr.kind == .constant) {
 		if node.expr_type.has_flag(.option) {
 			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
@@ -3472,27 +3467,61 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 }
 
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
-	if typ.has_flag(.generic) {
-		if c.table.cur_fn != unsafe { nil } {
-			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
-			{
-				return t_typ
-			}
-			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {
-				if t_typ := c.table.convert_generic_type(typ, c.table.cur_lambda.func.decl.generic_names,
-					c.table.cur_lambda.call_ctx.concrete_types)
-				{
-					return t_typ
-				}
-			}
+	concrete_typ := c.recheck_concrete_type(typ)
+	if concrete_typ != typ {
+		return concrete_typ
+	}
+	if c.table.cur_fn != unsafe { nil } && c.inside_lambda
+		&& c.table.cur_lambda.call_ctx != unsafe { nil } {
+		if t_typ := c.table.convert_generic_type(typ, c.table.cur_lambda.func.decl.generic_names,
+			c.table.cur_lambda.call_ctx.concrete_types)
+		{
+			return t_typ
 		}
+	}
+	if typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
 		if c.inside_generic_struct_init {
 			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
 			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
 				return t_typ
 			}
 		}
+	}
+	return typ
+}
+
+fn (mut c Checker) recheck_concrete_type(typ ast.Type) ast.Type {
+	if typ == 0 || c.table.cur_fn == unsafe { nil } || c.table.cur_concrete_types.len == 0 {
+		return typ
+	}
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if sym.info.concrete_types.len > 0 {
+				return typ
+			}
+		}
+		ast.GenericInst {
+			if sym.info.concrete_types.len > 0 {
+				return typ
+			}
+		}
+		else {}
+	}
+	if !typ.has_flag(.generic) && !c.type_has_unresolved_generic_parts(typ) {
+		return typ
+	}
+	generic_names := c.effective_fn_generic_names(c.table.cur_fn)
+	if generic_names.len == 0 || generic_names.len != c.table.cur_concrete_types.len {
+		return typ
+	}
+	unwrapped_typ := c.table.unwrap_generic_type_ex(typ, generic_names, c.table.cur_concrete_types,
+		true)
+	if unwrapped_typ != typ {
+		return unwrapped_typ
+	}
+	if resolved_typ := c.table.convert_generic_type(typ, generic_names, c.table.cur_concrete_types) {
+		return resolved_typ
 	}
 	return typ
 }

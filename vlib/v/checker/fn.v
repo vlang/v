@@ -34,14 +34,7 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 		return
 	}
 	if node.is_method {
-		receiver_type := if resolved := c.table.convert_generic_type(node.receiver.typ,
-			generic_names, c.table.cur_concrete_types)
-		{
-			c.unwrap_generic(resolved)
-		} else {
-			c.table.unwrap_generic_type_ex(node.receiver.typ, generic_names, c.table.cur_concrete_types,
-				true)
-		}
+		receiver_type := c.recheck_concrete_type(node.receiver.typ)
 		if mut receiver_var := c.fn_scope.find_var(node.receiver.name) {
 			receiver_var.typ = receiver_type
 			receiver_var.orig_type = ast.no_type
@@ -50,14 +43,7 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 		}
 	}
 	for param in node.params {
-		param_type := if resolved := c.table.convert_generic_type(param.typ, generic_names,
-			c.table.cur_concrete_types)
-		{
-			c.unwrap_generic(resolved)
-		} else {
-			c.table.unwrap_generic_type_ex(param.typ, generic_names, c.table.cur_concrete_types,
-				true)
-		}
+		param_type := c.recheck_concrete_type(param.typ)
 		if mut param_var := c.fn_scope.find_var(param.name) {
 			param_var.typ = param_type
 			param_var.orig_type = ast.no_type
@@ -65,6 +51,39 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 			param_var.is_unwrapped = false
 		}
 	}
+}
+
+fn (c &Checker) struct_embeds_type(got ast.Type, expected ast.Type) bool {
+	got_sym := c.table.final_sym(got)
+	if got_sym.info !is ast.Struct {
+		return false
+	}
+	got_info := got_sym.info as ast.Struct
+	expected_unaliased := c.table.unaliased_type(expected)
+	for embed in got_info.embeds {
+		embed_unaliased := c.table.unaliased_type(embed)
+		if embed_unaliased == expected_unaliased || c.struct_embeds_type(embed_unaliased,
+			expected_unaliased) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (c &Checker) embeds_expected_call_arg_type(got ast.Type, expected ast.Type) bool {
+	if got == 0 || expected == 0 {
+		return false
+	}
+	got_base := if got.is_ptr() { got.deref() } else { got }
+	expected_base := if expected.is_ptr() { expected.deref() } else { expected }
+	if got_base == expected_base {
+		return false
+	}
+	got_sym := c.table.final_sym(got_base)
+	if got_sym.info !is ast.Struct {
+		return false
+	}
+	return c.struct_embeds_type(got_base, expected_base)
 }
 
 fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
@@ -2042,6 +2061,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if c.is_anon_struct_compatible(param_typ_sym.info, arg_typ_sym.info) {
 					continue
 				}
+			} else if c.embeds_expected_call_arg_type(arg_typ, final_param_typ) {
+				continue
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks
@@ -3253,6 +3274,30 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			mut concrete_fn := c.file.generic_fns[i]
+			original_generic_names := concrete_fn.generic_names.clone()
+			if concrete_fn.is_method && concrete_types.len > original_generic_names.len {
+				receiver_generic_names := c.table.generic_type_names(concrete_fn.receiver.typ)
+				if receiver_generic_names.len > 0 {
+					mut effective_generic_names := []string{cap: receiver_generic_names.len +
+						original_generic_names.len}
+					for name in receiver_generic_names {
+						if name !in effective_generic_names {
+							effective_generic_names << name
+						}
+					}
+					for name in original_generic_names {
+						if name !in effective_generic_names {
+							effective_generic_names << name
+						}
+					}
+					if effective_generic_names.len == concrete_types.len {
+						concrete_fn = &ast.FnDecl{
+							...*concrete_fn
+							generic_names: effective_generic_names
+						}
+					}
+				}
+			}
 			c.fn_decl(mut concrete_fn)
 			if concrete_fn.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
 				'vweb.run', 'vweb.run_at'] {

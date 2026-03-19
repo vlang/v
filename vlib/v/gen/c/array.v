@@ -61,9 +61,10 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 }
 
 fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
-	array_type := g.unwrap(node.typ)
+	mut array_type := g.unwrap(node.typ)
 	mut array_styp := ''
 	elem_type := g.unwrap(node.elem_type)
+	mut expr_types := node.expr_types.clone()
 	mut shared_styp := '' // only needed for shared &[]{...}
 	is_amp := g.is_amp
 	g.is_amp = false
@@ -89,7 +90,56 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		}
 	}
 	len := node.exprs.len
-	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
+	mut resolved_elem_type := elem_type
+	if g.cur_concrete_types.len > 0 && len > 0 && !node.is_fixed {
+		expr_types = []ast.Type{cap: len}
+		mut inferred_elem_type := ast.void_type
+		for expr in node.exprs {
+			default_expr_type := if inferred_elem_type != ast.void_type {
+				inferred_elem_type
+			} else {
+				node.elem_type
+			}
+			mut resolved_expr_type := ast.void_type
+			if expr is ast.Ident {
+				resolved_expr_type = g.resolved_scope_var_type(expr)
+			}
+			if resolved_expr_type == ast.void_type {
+				resolved_expr_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(expr,
+					default_expr_type)))
+			}
+			expr_types << resolved_expr_type
+			if inferred_elem_type == ast.void_type && resolved_expr_type != 0 {
+				inferred_elem_type = if expr.is_auto_deref_var() && resolved_expr_type.is_ptr() {
+					ast.mktyp(resolved_expr_type.deref())
+				} else {
+					ast.mktyp(resolved_expr_type)
+				}
+			}
+		}
+		if inferred_elem_type != ast.void_type {
+			resolved_elem_type = g.unwrap(inferred_elem_type)
+		}
+	}
+	if g.cur_concrete_types.len > 0 && array_type.unaliased_sym.kind == .array
+		&& resolved_elem_type.typ != 0 {
+		current_elem_type := g.unwrap_generic(g.recheck_concrete_type(g.table.value_type(array_type.typ)))
+		if current_elem_type != resolved_elem_type.typ {
+			resolved_array_type := g.table.find_or_register_array(resolved_elem_type.typ)
+			array_type = g.unwrap(resolved_array_type)
+			if g.is_shared {
+				shared_styp = g.styp(array_type.typ.set_flag(.shared_f))
+			} else if is_amp {
+				array_styp = g.styp(array_type.typ)
+			}
+		}
+	}
+	$if trace_ci_fixes ? {
+		if g.cur_fn != unsafe { nil } && g.cur_fn.name == 'arrays.group_by' && len > 0 {
+			eprintln('cgen array ${g.cur_fn.name} elem=${g.table.type_to_str(resolved_elem_type.typ)} exprs=${expr_types.map(g.table.type_to_str(it))} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
+		}
+	}
+	elem_sym := g.table.sym(g.unwrap_generic(resolved_elem_type.typ))
 	if node.is_fixed || array_type.unaliased_sym.kind == .array_fixed {
 		if !(is_amp && !g.inside_global_decl) {
 			g.fixed_array_init(node, array_type, var_name, is_amp)
@@ -102,10 +152,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
 	} else {
 		// `[1, 2, 3]`
-		elem_styp := g.styp(elem_type.typ)
-		noscan := g.check_noscan(elem_type.typ)
-		prepared_exprs := g.prepare_array_init_exprs(node.exprs, node.expr_types, node.elem_type)
-		if elem_type.unaliased_sym.kind == .function {
+		elem_styp := g.styp(resolved_elem_type.typ)
+		noscan := g.check_noscan(resolved_elem_type.typ)
+		prepared_exprs := g.prepare_array_init_exprs(node.exprs, expr_types, resolved_elem_type.typ)
+		if resolved_elem_type.unaliased_sym.kind == .function {
 			g.write('builtin__new_array_from_c_array(${len}, ${len}, sizeof(voidptr), _MOV((voidptr[${len}]){')
 		} else {
 			g.write('builtin__new_array_from_c_array${noscan}(${len}, ${len}, sizeof(${elem_styp}), _MOV((${elem_styp}[${len}]){')
@@ -117,26 +167,27 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
 		for i, expr in prepared_exprs {
 			actual_expr := array_init_orig_expr(expr)
-			expr_type := if node.expr_types.len > i { node.expr_types[i] } else { node.elem_type }
+			expr_type := if expr_types.len > i { expr_types[i] } else { resolved_elem_type.typ }
 			if expr_type == ast.string_type
 				&& actual_expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
 				if is_iface_or_sumtype {
-					g.expr_with_cast(expr, expr_type, node.elem_type)
+					g.expr_with_cast(expr, expr_type, resolved_elem_type.typ)
 				} else {
 					g.write('builtin__string_clone(')
 					g.expr(expr)
 					g.write(')')
 				}
 			} else {
-				if node.elem_type.has_flag(.option) {
-					g.expr_with_opt(expr, expr_type, node.elem_type)
-				} else if elem_type.unaliased_sym.kind == .array_fixed && (expr is ast.CTempVar
+				if resolved_elem_type.typ.has_flag(.option) {
+					g.expr_with_opt(expr, expr_type, resolved_elem_type.typ)
+				} else if resolved_elem_type.unaliased_sym.kind == .array_fixed
+					&& (expr is ast.CTempVar
 					|| actual_expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr]) {
-					info := elem_type.unaliased_sym.info as ast.ArrayFixed
+					info := resolved_elem_type.unaliased_sym.info as ast.ArrayFixed
 					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 						info.elem_type, info.size)
 				} else {
-					g.expr_with_cast(expr, expr_type, node.elem_type)
+					g.expr_with_cast(expr, expr_type, resolved_elem_type.typ)
 				}
 			}
 			if i != len - 1 {

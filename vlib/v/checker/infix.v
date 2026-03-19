@@ -757,6 +757,25 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if typ != ast.no_type {
+				$if trace_ci_fixes ? {
+					source_path := if node.pos.file_idx >= 0
+						&& node.pos.file_idx < c.table.filelist.len {
+						c.table.filelist[node.pos.file_idx]
+					} else {
+						c.file.path
+					}
+					if source_path.contains('decode_sumtype.v')
+						&& node.pos.line_nr + 1 in [12, 111, 138, 215] {
+						right_kind := match right_expr {
+							ast.Ident { 'ident:${right_expr.name}' }
+							ast.TypeNode { 'typenode:${c.table.type_to_str(right_expr.typ)}' }
+							ast.None { 'none' }
+							else { typeof(right_expr).name }
+						}
+						eprintln('infix is left=${node.left} left_type=${c.table.type_to_str(left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(typ)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
+							node.pos.line_nr + 1}')
+					}
+				}
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if left_type.has_flag(.option) && !c.inside_sql {
@@ -781,7 +800,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants
 						&& c.unwrap_generic(typ) !in left_sym.info.variants {
-						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',
+						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`',
 							right_pos)
 					}
 				} else if left_sym.info is ast.Interface {

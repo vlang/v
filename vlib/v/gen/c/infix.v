@@ -1067,6 +1067,14 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left_type := g.resolved_expr_type(node.left, node.left_type)
 	right_type := g.resolved_expr_type(node.right, node.right_type)
+	$if trace_ci_fixes ? {
+		left_str := g.table.type_to_str(left_type)
+		right_str := g.table.type_to_str(right_type)
+		if left_str.contains('MyStruct') || left_str.contains('MyAlias')
+			|| right_str.contains('MyStruct') || right_str.contains('MyAlias') {
+			eprintln('cgen infix sum left=${g.table.type_to_str(left_type)} right=${g.table.type_to_str(right_type)} node_left=${g.table.type_to_str(node.left_type)} node_right=${g.table.type_to_str(node.right_type)} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
+		}
+	}
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
@@ -1155,7 +1163,10 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	} else {
 		g.recheck_concrete_type(node.left_type)
 	}
-	if left_type == 0 || left_type.has_flag(.generic)
+	resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
+	if resolved_left_type != 0 {
+		left_type = g.unwrap_generic(g.recheck_concrete_type(resolved_left_type))
+	} else if left_type == 0 || left_type.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(left_type) {
 		left_type = g.resolved_expr_type(node.left, node.left_type)
 	}
@@ -1166,6 +1177,16 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		g.type_resolver.get_type(node.right)
 	} else {
 		node.right_type
+	}
+	resolved_node_right_type := g.resolved_expr_type(node.right, node.right_type)
+	if resolved_node_right_type != 0 {
+		right_type = g.unwrap_generic(g.recheck_concrete_type(resolved_node_right_type))
+	} else if right_type == 0 || right_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(right_type) {
+		right_type = g.resolved_expr_type(node.right, node.right_type)
+	}
+	if right_type == 0 {
+		right_type = node.right_type
 	}
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
@@ -1470,6 +1491,13 @@ struct VSafeArithmeticOp {
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
 	resolved_right_type := g.resolved_expr_type(node.right, node.right_type)
+	$if trace_ci_fixes ? {
+		if g.file.path.contains('binary_search_tree.v') && node.right is ast.SelectorExpr {
+			if node.right.expr is ast.Ident && node.right.expr.name == 'tree' {
+				eprintln('plain infix op=${node.op} left=${g.table.type_to_str(resolved_left_type)} right=${g.table.type_to_str(resolved_right_type)} right_ptr=${resolved_right_type.is_ptr()} right_muls=${resolved_right_type.nr_muls()} node_left=${g.table.type_to_str(node.left_type)} node_right=${g.table.type_to_str(node.right_type)} expr=${node.right.expr.name}.${node.right.field_name}')
+			}
+		}
+	}
 	needs_cast := resolved_left_type.is_number() && resolved_right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)

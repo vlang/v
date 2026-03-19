@@ -336,7 +336,10 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 }
 
 fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
-	typ := if node.typ != ast.void_type {
+	typ := if node.expr !is ast.EmptyExpr {
+		node.typ = c.expr(mut node.expr)
+		c.unwrap_generic(node.typ)
+	} else if node.typ != ast.void_type {
 		c.unwrap_generic(node.typ)
 	} else {
 		node.typ = c.expr(mut node.expr)
@@ -517,6 +520,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_variant_var = node.val_var
 			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
 			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
+			$if trace_ci_fixes ? {
+				if c.file.path.contains('decode_sumtype.v') {
+					eprintln('comptime variants val_var=${node.val_var} variant=${c.table.type_to_str(variant)} sumtype=${c.table.type_to_str(typ)}')
+				}
+			}
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}

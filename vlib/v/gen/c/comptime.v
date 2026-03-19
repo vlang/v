@@ -759,7 +759,9 @@ fn (mut g Gen) pop_comptime_info() {
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	for_typ := if node.typ != g.field_data_type {
+	for_typ := if node.expr !is ast.EmptyExpr {
+		g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr, node.typ)))
+	} else if node.typ != g.field_data_type {
 		g.unwrap_generic(node.typ)
 	} else {
 		g.comptime.comptime_for_field_type

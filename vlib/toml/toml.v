@@ -510,7 +510,7 @@ pub fn ast_to_any(value ast.Value) Any {
 			return Any(value.i64())
 		}
 		ast.Bool {
-			str := (value as ast.Bool).text
+			str := value.text
 			if str == 'true' {
 				return Any(true)
 			}

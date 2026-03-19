@@ -418,7 +418,12 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 				return node !is ast.Import
 			}
 			ast.ConstDecl {
-				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
+				mut is_comment_expr_stmt := false
+				if node is ast.ExprStmt {
+					expr_stmt := node
+					is_comment_expr_stmt = expr_stmt.expr is ast.Comment
+				}
+				if node !is ast.ConstDecl && !is_comment_expr_stmt {
 					return true
 				}
 			}

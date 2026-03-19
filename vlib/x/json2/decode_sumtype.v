@@ -8,6 +8,7 @@ fn copy_type[T](_t T) T {
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+		resolved_sumtype := initialized_sumtype
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype !is $option {
@@ -17,7 +18,7 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 				} $else {
 					if decoder.current_node.value.value_kind == .null {
 						decoder.current_node = decoder.current_node.next
-						return T(initialized_sumtype)
+						return resolved_sumtype
 					} else {
 						decoder.decode_error('sumtype option only support decoding null->none (for now)')!
 					}

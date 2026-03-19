@@ -487,11 +487,12 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
 	mut map_left_type := g.recheck_concrete_type(node.left_type)
-	if map_left_type == 0 || map_left_type.has_flag(.generic)
-		|| g.type_has_unresolved_generic_parts(map_left_type) {
-		resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
-			node.left_type))
-		map_left_type = if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+	resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type))
+	if resolved_left_type != 0
+		&& (g.cur_concrete_types.len > 0 || map_left_type == 0 || map_left_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(map_left_type)
+		|| g.unwrap_generic(resolved_left_type) != g.unwrap_generic(map_left_type)) {
+		map_left_type = resolved_left_type
 	}
 	left_is_ptr := map_left_type.is_ptr()
 	left_sym := if map_left_type != 0 {

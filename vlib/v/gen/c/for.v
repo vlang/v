@@ -158,20 +158,42 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut is_comptime := false
 	mut param_key_type := ast.Type(0)
 	mut param_val_type := ast.Type(0)
+	mut scope_cond_type := ast.Type(0)
+	mut resolved_cond_expr := node.cond
 	if node.cond is ast.Ident {
-		cond_ident := node.cond as ast.Ident
+		mut cond_ident := node.cond as ast.Ident
+		if node.scope != unsafe { nil } {
+			cond_ident.scope = node.scope
+		} else if g.file.scope != unsafe { nil } {
+			cond_ident.scope = g.file.scope.innermost(node.pos.pos)
+		}
+		if cond_ident.scope != unsafe { nil } {
+			if scope_var := cond_ident.scope.find_var(cond_ident.name) {
+				cond_ident.obj = *scope_var
+			}
+		}
+		resolved_cond_expr = cond_ident
 		param_cond_type := g.resolve_current_fn_generic_param_type(cond_ident.name)
-		if param_cond_type != 0 {
+		scope_cond_type = g.resolved_scope_var_type(cond_ident)
+		if scope_cond_type != 0 {
+			node.cond_type = scope_cond_type
+		} else if param_cond_type != 0 {
 			node.cond_type = param_cond_type
 		}
 		param_key_type = g.resolve_current_fn_generic_param_key_type(cond_ident.name)
 		param_val_type = g.resolve_current_fn_generic_param_value_type(cond_ident.name)
 	}
-	resolved_cond_type := g.resolved_expr_type(node.cond, node.cond_type)
+	resolved_cond_type := g.resolved_expr_type(resolved_cond_expr, node.cond_type)
 	if resolved_cond_type != 0 {
 		node.cond_type = resolved_cond_type
 	}
+	if scope_cond_type != 0 {
+		node.cond_type = scope_cond_type
+	}
 	node.cond_type = g.recheck_concrete_type(node.cond_type)
+	if scope_cond_type != 0 {
+		node.cond_type = scope_cond_type
+	}
 	if node.cond_type != 0 {
 		resolved_cond_sym := g.table.final_sym(g.unwrap_generic(node.cond_type))
 		if resolved_cond_sym.kind in [.array, .array_fixed, .map, .string, .aggregate, .alias] {
@@ -190,7 +212,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				}
 				node.scope.update_var_type(node.key_var, node.key_type)
 			}
-			base_val_type := if param_val_type != 0 {
+			base_val_type := if scope_cond_type != 0 {
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
+			} else if param_val_type != 0 {
 				param_val_type
 			} else {
 				g.recheck_concrete_type(g.table.value_type(unwrapped_cond_type))
@@ -249,7 +273,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 
 	if node.kind == .any && !is_comptime {
-		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		mut unwrapped_typ := if scope_cond_type != 0 {
+			g.unwrap_generic(scope_cond_type)
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		}
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
@@ -269,7 +297,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else if node.kind == .alias {
-		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		mut unwrapped_typ := if scope_cond_type != 0 {
+			g.unwrap_generic(scope_cond_type)
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		}
 		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
@@ -315,7 +347,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
 		if node.cond_type != 0 {
-			resolved_val_type := if param_val_type != 0 {
+			resolved_val_type := if scope_cond_type != 0 {
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
+			} else if param_val_type != 0 {
 				param_val_type
 			} else {
 				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(g.recheck_concrete_type(node.cond_type))))
@@ -323,6 +357,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			if resolved_val_type != 0 {
 				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
 				node.scope.update_var_type(node.val_var, node.val_type)
+			}
+		}
+		$if trace_ci_fixes ? {
+			if g.cur_fn != unsafe { nil } && g.cur_fn.name in ['arrays.flatten', 'arrays.group_by'] {
+				trace_scope_cond_type := if node.cond is ast.Ident {
+					g.resolved_scope_var_type(node.cond as ast.Ident)
+				} else {
+					ast.no_type
+				}
+				eprintln('cgen for ${g.cur_fn.name} val=${node.val_var} val_type=${g.table.type_to_str(node.val_type)} cond_type=${g.table.type_to_str(node.cond_type)} scope_cond=${if trace_scope_cond_type != 0 {
+					g.table.type_to_str(trace_scope_cond_type)
+				} else {
+					'<none>'
+				}} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
 			}
 		}
 		mut styp := g.styp(node.val_type)

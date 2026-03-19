@@ -67,7 +67,24 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	} $else $if T.unaliased_typ is $map {
 		encoder.encode_map(val)
 	} $else $if T.unaliased_typ is $enum {
-		encoder.encode_enum[T](val)
+		if encoder.enum_as_int {
+			encoder.encode_number(int(val))
+		} else {
+			mut enum_val := 'unknown enum value'
+			$for member in T.values {
+				if member.value == val {
+					enum_val = member.name
+					for attr in member.attrs {
+						if json_attr := json_attr_value(attr) {
+							enum_val = json_attr
+						}
+					}
+				}
+			}
+			encoder.output << `"`
+			unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
+			encoder.output << `"`
+		}
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
@@ -315,27 +332,16 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 	if encoder.enum_as_int {
 		encoder.encode_number(int(val))
 	} else {
-		mut enum_val := val.str()
-		$if val is $alias {
-			mut i := enum_val.len - 3
-			for enum_val[i] != `(` {
-				i--
-			}
-
-			enum_val = enum_val[i + 1..enum_val.len - 1]
-		}
-		mut attr_value := ''
+		mut enum_val := 'unknown enum value'
 		$for member in T.values {
 			if member.value == val {
+				enum_val = member.name
 				for attr in member.attrs {
 					if json_attr := json_attr_value(attr) {
-						attr_value = json_attr
+						enum_val = json_attr
 					}
 				}
 			}
-		}
-		if attr_value != '' {
-			enum_val = attr_value
 		}
 		encoder.output << `"`
 		unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
@@ -364,6 +370,10 @@ struct EncoderFieldInfo {
 	is_skip      bool
 	is_omitempty bool
 	is_required  bool
+}
+
+fn get_value_from_optional[T](val ?T) T {
+	return val or { T{} }
 }
 
 fn check_not_empty[T](val T) ?bool {
@@ -478,19 +488,17 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 			if field_info.is_skip {
 				write_field = false
 			} else {
-				value := val.$(field.name)
-
 				if field_info.is_omitempty {
-					$if value is $option {
-						write_field = check_not_empty(value) or { false }
+					$if field.typ is $option {
+						write_field = check_not_empty(val.$(field.name)) or { false }
 					} $else {
-						write_field = check_not_empty(value) or { false }
+						write_field = check_not_empty(val.$(field.name)) or { false }
 					}
 				}
 
 				if !field_info.is_required {
-					$if value is $option {
-						if value == none {
+					$if field.typ is $option {
+						if val.$(field.name) == none {
 							write_field = false
 						}
 					}
@@ -532,7 +540,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					if val.$(field.name) == none {
 						unsafe { encoder.output.push_many(null_string.str, null_string.len) }
 					} else {
-						encoder.encode_value(val.$(field.name))
+						encoder.encode_value(get_value_from_optional(val.$(field.name)))
 					}
 				} $else $if field.indirections == 1 {
 					encoder.encode_value(*val.$(field.name))

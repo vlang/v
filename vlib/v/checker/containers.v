@@ -6,6 +6,25 @@ import v.ast
 import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
+	$if trace_ci_fixes ? {
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
+			&& c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
+			eprintln('array_init ${c.table.cur_fn.name} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} elem_pos=${node.elem_type_pos} exprs=${node.exprs.len} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+		}
+	}
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 && node.exprs.len > 0
+		&& !node.is_fixed {
+		node.typ = ast.void_type
+		node.elem_type = ast.void_type
+		node.expr_types = []
+		node.init_type = ast.void_type
+		node.has_callexpr = false
+		$if trace_ci_fixes ? {
+			if c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
+				eprintln('array_init reset ${c.table.cur_fn.name} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+			}
+		}
+	}
 	mut elem_type := ast.void_type
 	unwrap_elem_type := c.unwrap_generic(node.elem_type)
 	if node.typ.has_flag(.generic) {

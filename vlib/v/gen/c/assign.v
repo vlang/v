@@ -403,8 +403,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		is_safe_add_assign := node.op == .plus_assign && consider_int_overflow
 		is_safe_sub_assign := node.op == .minus_assign && consider_int_overflow
 		is_safe_mul_assign := node.op == .mult_assign && consider_int_overflow
-		left_sym := g.table.sym(g.unwrap_generic(var_type))
-		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
+		initial_left_sym := g.table.sym(g.unwrap_generic(var_type))
+		is_va_list = initial_left_sym.language == .c && initial_left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
 			ident = left
 			g.curr_var_name << ident.name
@@ -780,6 +780,25 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			else {}
 		}
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			resolved_left_type := g.resolved_expr_type(left, var_type)
+			if resolved_left_type != 0 {
+				var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_left_type))
+			}
+			resolved_val_type := g.resolved_expr_type(val, val_type)
+			if resolved_val_type != 0 {
+				val_type = g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+			}
+		}
+		styp = g.styp(var_type)
+		if is_decl && val is ast.CallExpr && val.kind == .clone && val.left is ast.IndexExpr {
+			left_idx := val.left as ast.IndexExpr
+			if left_idx.index is ast.RangeExpr && g.table.final_sym(val.return_type).kind == .array {
+				styp = styp.trim('*')
+			}
+		}
+		left_sym := g.table.sym(g.unwrap_generic(var_type))
+		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		unwrapped_val_type := g.unwrap_generic(val_type)
 		right_sym := g.table.sym(unwrapped_val_type)
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
@@ -799,6 +818,24 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		defer(fn) {
 			g.left_is_opt = false
 			g.right_is_opt = false
+		}
+		if !is_decl && node.op == .assign && var_type.has_flag(.option_mut_param_t) {
+			mut target_option_type := g.resolve_current_fn_generic_param_type(left.str())
+			if target_option_type == 0 || !target_option_type.has_flag(.option) {
+				target_option_type = var_type.clear_flag(.option_mut_param_t)
+			}
+			if target_option_type.has_flag(.option) {
+				target_inner_type := target_option_type.clear_option_and_result()
+				if target_inner_type.is_ptr() {
+					target_option_type = target_inner_type.deref().set_flag(.option)
+				}
+			}
+			target_option_type = g.unwrap_generic(g.recheck_concrete_type(target_option_type))
+			tmp_var := g.new_tmp_var()
+			g.expr_with_tmp_var(val, val_type, target_option_type, tmp_var, false)
+			g.expr(left)
+			g.writeln(' = ${tmp_var};')
+			continue
 		}
 
 		if blank_assign {
@@ -955,6 +992,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					.mod_assign { '%' }
 					.mult_assign { '*' }
 					else { 'unknown op' }
+				}
+				$if trace_ci_fixes ? {
+					if left is ast.Ident && left.name == 'head' {
+						eprintln('assign overload left=${g.table.type_to_str(var_type)} left_sym=${left_sym.name} right=${g.table.type_to_str(unwrapped_val_type)} right_sym=${right_sym.name} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
+					}
 				}
 				pos := g.out.len
 				g.expr(left)
@@ -1128,21 +1170,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							&& (!var_type.has_flag(.option) || is_auto_heap) {
 							g.write('*')
 						}
-						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
-							if val is ast.CastExpr {
-								g.expr(left)
-								g.write('->state = ')
-								g.expr(val)
-								g.writeln('.state;')
-							}
-							g.write('memcpy(&')
-							g.expr(left)
-							if val is ast.CastExpr {
-								g.write('->data, ')
-							} else {
-								g.write('->data, *(${g.styp(val_type)}**)&')
-							}
-						} else if var_type.has_flag(.option_mut_param_t) {
+						if var_type.has_flag(.option_mut_param_t) {
 							g.expr(left)
 							g.write(' = ')
 						} else {

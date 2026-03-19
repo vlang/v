@@ -633,6 +633,25 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				}
 			}
 			if right_type != ast.no_type {
+				$if trace_ci_fixes ? {
+					source_path := if node.pos.file_idx >= 0
+						&& node.pos.file_idx < c.table.filelist.len {
+						c.table.filelist[node.pos.file_idx]
+					} else {
+						c.file.path
+					}
+					if source_path.contains('decode_sumtype.v')
+						&& node.pos.line_nr + 1 in [12, 111, 138, 215] {
+						right_kind := match right_expr {
+							ast.Ident { 'ident:${right_expr.name}' }
+							ast.TypeNode { 'typenode:${c.table.type_to_str(right_expr.typ)}' }
+							ast.None { 'none' }
+							else { typeof(right_expr).name }
+						}
+						eprintln('if is left=${node.left} left_type=${c.table.type_to_str(node.left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(right_type)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
+							node.pos.line_nr + 1}')
+					}
+				}
 				right_sym := c.table.sym(right_type)
 				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)

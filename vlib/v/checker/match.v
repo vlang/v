@@ -694,8 +694,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
-					key = c.table.type_to_str(expr.typ)
-					expr_types << expr
+					expr_typ := c.recheck_concrete_type(expr.typ)
+					key = c.table.type_to_str(expr_typ)
+					expr_types << ast.TypeNode{
+						...expr
+						typ: expr_typ
+					}
 				}
 				ast.EnumVal {
 					key = expr.val
