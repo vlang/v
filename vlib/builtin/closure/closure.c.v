@@ -248,8 +248,10 @@ fn closure_init() {
 	// Setup global closure handler pointer
 	$if ppc64 {
 		mut desc := unsafe { &voidptr(&u8(g_closure.closure_ptr) - assumed_page_size) }
-		desc[0] = g_closure.closure_ptr
-		desc[1] = nil
+		unsafe {
+			desc[0] = g_closure.closure_ptr
+			desc[1] = nil
+		}
 		g_closure.closure_get_data = desc
 	} $else {
 		g_closure.closure_get_data = g_closure.closure_ptr
