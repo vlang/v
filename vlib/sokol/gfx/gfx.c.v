@@ -179,7 +179,9 @@ pub fn query_desc() Desc {
 
 @[inline]
 pub fn query_backend() Backend {
-	return C.sg_query_backend()
+	unsafe {
+		return Backend(C.sg_query_backend())
+	}
 }
 
 @[inline]
