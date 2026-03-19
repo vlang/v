@@ -14,7 +14,7 @@ pub:
 }
 
 struct Encoder {
-	options EncoderOptions
+	EncoderOptions
 mut:
 	level  int
 	prefix string
@@ -25,10 +25,10 @@ mut:
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
-		options: config
+		EncoderOptions: config
 	}
 
-	encoder.encode_value[T](val)
+	encoder.encode_value(val)
 
 	return encoder.output.bytestr()
 }
@@ -149,7 +149,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 					continue
 				}
-				if encoder.options.escape_unicode {
+				if encoder.escape_unicode {
 					if character >= 0b1111_0000 { // four bytes
 						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 						unicode_point_low := val[buffer_end..buffer_end + 4].bytes().byterune() or {
@@ -230,7 +230,7 @@ fn (mut encoder Encoder) encode_null() {
 
 fn (mut encoder Encoder) encode_array[T](val []T) {
 	encoder.output << `[`
-	if encoder.options.prettify {
+	if encoder.prettify {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -239,11 +239,11 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 		encoder.encode_value(item)
 		if i < val.len - 1 {
 			encoder.output << `,`
-			if encoder.options.prettify {
+			if encoder.prettify {
 				encoder.add_indent()
 			}
 		} else {
-			if encoder.options.prettify {
+			if encoder.prettify {
 				encoder.decrement_level()
 				encoder.add_indent()
 			}
@@ -255,7 +255,7 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 
 fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 	encoder.output << `{`
-	if encoder.options.prettify {
+	if encoder.prettify {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -264,17 +264,17 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 	for key, value in val {
 		encoder.encode_string(key)
 		encoder.output << `:`
-		if encoder.options.prettify {
+		if encoder.prettify {
 			encoder.output << ` `
 		}
 		encoder.encode_value(value)
 		if i < val.len - 1 {
 			encoder.output << `,`
-			if encoder.options.prettify {
+			if encoder.prettify {
 				encoder.add_indent()
 			}
 		} else {
-			if encoder.options.prettify {
+			if encoder.prettify {
 				encoder.decrement_level()
 				encoder.add_indent()
 			}
@@ -287,7 +287,7 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 }
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
-	if encoder.options.enum_as_int {
+	if encoder.enum_as_int {
 		encoder.encode_number(int(val))
 	} else {
 		mut enum_val := val.str()
@@ -404,7 +404,7 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 
 	is_first := encoder.encode_struct_fields(val, true, [], '')
 
-	if encoder.options.prettify && !is_first {
+	if encoder.prettify && !is_first {
 		encoder.decrement_level()
 		encoder.add_indent()
 	}
@@ -455,14 +455,14 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 			if write_field {
 				if is_first {
-					if encoder.options.prettify {
+					if encoder.prettify {
 						encoder.increment_level()
 					}
 					is_first = false
 				} else {
 					encoder.output << `,`
 				}
-				if encoder.options.prettify {
+				if encoder.prettify {
 					encoder.add_indent()
 				}
 
@@ -474,7 +474,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 				}
 
 				encoder.output << `:`
-				if encoder.options.prettify {
+				if encoder.prettify {
 					encoder.output << ` `
 				}
 
@@ -519,14 +519,12 @@ fn (mut encoder Encoder) encode_custom2[T](val T) {
 
 fn (mut encoder Encoder) increment_level() {
 	encoder.level++
-	encoder.prefix = encoder.options.newline_string +
-		encoder.options.indent_string.repeat(encoder.level)
+	encoder.prefix = encoder.newline_string + encoder.indent_string.repeat(encoder.level)
 }
 
 fn (mut encoder Encoder) decrement_level() {
 	encoder.level--
-	encoder.prefix = encoder.options.newline_string +
-		encoder.options.indent_string.repeat(encoder.level)
+	encoder.prefix = encoder.newline_string + encoder.indent_string.repeat(encoder.level)
 }
 
 fn (mut encoder Encoder) add_indent() {

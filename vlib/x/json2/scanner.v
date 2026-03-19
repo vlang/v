@@ -46,6 +46,13 @@ pub fn (t Token) full_col() int {
 const char_list = [`{`, `}`, `[`, `]`, `,`, `:`]!
 // list of newlines to check when moving to a new position.
 const newlines = [`\r`, `\n`, `\t`]!
+// list of escapable that needs to be escaped inside a JSON string.
+// double quotes and forward slashes are excluded intentionally since
+// they have their own separate checks for it in order to pass the
+// JSON test suite (https://github.com/nst/JSONTestSuite/).
+const important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]!
+// list of valid unicode escapes aside from \u{4-hex digits}
+const valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]!
 // used for transforming escapes into valid unicode (eg. n => \n)
 const unicode_transform_escapes = {
 	98:  `\b`
@@ -58,34 +65,6 @@ const unicode_transform_escapes = {
 	47:  `/`
 }
 const exp_signs = [u8(`-`), `+`]!
-
-@[inline]
-fn is_important_escapable_char(ch u8) bool {
-	return match ch {
-		`\b`, `\f`, `\n`, `\r`, `\t` { true }
-		else { false }
-	}
-}
-
-@[inline]
-fn important_escapable_escape(ch u8) u8 {
-	return match ch {
-		`\b` { `b` }
-		`\f` { `f` }
-		`\n` { `n` }
-		`\r` { `r` }
-		`\t` { `t` }
-		else { ch }
-	}
-}
-
-@[inline]
-fn is_valid_unicode_escape(ch u8) bool {
-	return match ch {
-		`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/` { true }
-		else { false }
-	}
-}
 
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {
@@ -151,8 +130,8 @@ fn (mut s Scanner) text_scan() Token {
 		if ch == `"` {
 			has_closed = true
 			break
-		} else if is_important_escapable_char(ch) {
-			return s.error('character must be escaped with a backslash, replace with: \\${important_escapable_escape(ch).ascii_str()}')
+		} else if ch in important_escapable_chars {
+			return s.error('character must be escaped with a backslash, replace with: \\${valid_unicode_escapes[important_escapable_chars.index(ch)]}')
 		} else if ch < 0x20 {
 			return s.error('character must be escaped with a unicode escape, replace with: \\u${ch:04x}')
 		} else if ch == `\\` {
@@ -161,7 +140,7 @@ fn (mut s Scanner) text_scan() Token {
 			}
 
 			peek := s.text[s.pos + 1]
-			if is_valid_unicode_escape(peek) {
+			if peek in valid_unicode_escapes {
 				chrs << unicode_transform_escapes[int(peek)]
 				s.pos++
 				s.col++

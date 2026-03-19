@@ -1,7 +1,5 @@
 module http
 
-import os
-
 // Downloader is the interface that you have to implement, if you need to customise
 // how download_file_with_progress works, and what output it produces while a file
 // is downloaded.
@@ -47,20 +45,38 @@ pub mut:
 // fail, despite saving all the data in the file before that. The default is 65536 bytes.
 pub fn download_file_with_progress(url string, path string, params DownloaderParams) !Response {
 	mut d := unsafe { params.downloader }
-	mut req := Request{
-		method:   .get
-		url:      url
-		user_ptr: voidptr(d)
+	mut config := params.FetchConfig
+	config.url = url
+	config.user_ptr = voidptr(d)
+	config.on_progress_body = download_progres_cb
+	if config.stop_copying_limit == -1 {
+		// leave more than enough space for potential redirect headers
+		config.stop_copying_limit = 65536
 	}
+	mut req := prepare(config)!
 	d.on_start(mut req, path)!
 	response := req.do()!
-	if response.status_code != 200 {
-		return error_with_code(response.body, response.status_code)
+	$if windows && !no_vschannel ? {
+		// TODO: remove this, when windows supports streaming properly through vschannel
+		// For now though, just ensure that the complete body is "received" in one big chunk:
+		d.on_chunk(req, response.body.bytes(), 0, u64(response.body.len))!
 	}
-	if response.body.len > 0 {
-		d.on_chunk(&req, response.body.bytes(), 0, u64(response.body.len))!
-	}
-	os.write_file(path, response.body)!
-	d.on_finish(&req, &response)!
+	d.on_finish(req, response)!
 	return response
+}
+
+const zz = &Downloader(unsafe { nil })
+
+fn download_progres_cb(request &Request, chunk []u8, body_so_far u64, expected_size u64, status_code int) ! {
+	// TODO: remove this hack, when `unsafe { &Downloader( request.user_ptr ) }` works reliably,
+	// by just casting, without trying to promote the argument to the heap at all.
+	mut d := unsafe { zz }
+	pd := unsafe { &voidptr(&d) }
+	unsafe {
+		*pd = request.user_ptr
+	}
+	if status_code == 200 {
+		// ignore redirects, we are interested in the chunks of the final file:
+		d.on_chunk(request, chunk, body_so_far, expected_size)!
+	}
 }

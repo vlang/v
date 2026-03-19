@@ -5151,13 +5151,47 @@ fn (mut t Transformer) expand_lock_expr(expr ast.LockExpr) []ast.Stmt {
 // lower_defer_stmts collects DeferStmts from the function body (at any nesting level),
 // removes them, and injects their bodies before every return statement (and at the end
 // of the function). Defers execute in LIFO order (last defer first).
-fn (mut t Transformer) lower_defer_stmts(stmts []ast.Stmt, has_return_type bool) []ast.Stmt {
+fn defer_return_uses_fn_return_type(expr ast.Expr, fn_return_type types.Type) bool {
+	if fn_return_type is types.Void {
+		return false
+	}
+	match expr {
+		ast.BasicLiteral {
+			return expr.value == '0'
+				&& (fn_return_type is types.OptionType || fn_return_type is types.ResultType)
+		}
+		ast.Keyword {
+			return expr.tok == .key_none && fn_return_type is types.OptionType
+		}
+		ast.Ident {
+			return expr.name == 'none' && fn_return_type is types.OptionType
+		}
+		ast.Type {
+			return expr is ast.NoneType && fn_return_type is types.OptionType
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut t Transformer) register_defer_return_temp(name string, expr ast.Expr, fn_return_type types.Type) {
+	if expr_type := t.get_expr_type(expr) {
+		t.register_temp_var(name, expr_type)
+		return
+	}
+	if defer_return_uses_fn_return_type(expr, fn_return_type) {
+		t.register_temp_var(name, fn_return_type)
+	}
+}
+
+fn (mut t Transformer) lower_defer_stmts(stmts []ast.Stmt, has_return_type bool, fn_return_type types.Type) []ast.Stmt {
 	if !t.has_defer_stmt(stmts) {
 		return stmts
 	}
 	// Lower defers in source order so returns before a defer do not run it.
 	mut active_defers := [][]ast.Stmt{}
-	mut lowered := t.lower_defer_block(stmts, mut active_defers, has_return_type)
+	mut lowered := t.lower_defer_block(stmts, mut active_defers, has_return_type, fn_return_type)
 	if lowered.len == 0 || !t.stmt_ends_with_return(lowered[lowered.len - 1]) {
 		t.append_defer_bodies(mut lowered, active_defers)
 	}
@@ -5226,19 +5260,21 @@ fn (t &Transformer) copy_defer_stack(active_defers [][]ast.Stmt) [][]ast.Stmt {
 	return copied
 }
 
-fn (mut t Transformer) lower_defer_else(else_expr ast.Expr, active_defers [][]ast.Stmt, has_return_type bool) ast.Expr {
+fn (mut t Transformer) lower_defer_else(else_expr ast.Expr, active_defers [][]ast.Stmt, has_return_type bool, fn_return_type types.Type) ast.Expr {
 	if else_expr is ast.IfExpr {
 		mut branch_defers := t.copy_defer_stack(active_defers)
 		return ast.IfExpr{
 			cond:      else_expr.cond
-			stmts:     t.lower_defer_block(else_expr.stmts, mut branch_defers, has_return_type)
-			else_expr: t.lower_defer_else(else_expr.else_expr, active_defers, has_return_type)
+			stmts:     t.lower_defer_block(else_expr.stmts, mut branch_defers, has_return_type,
+				fn_return_type)
+			else_expr: t.lower_defer_else(else_expr.else_expr, active_defers, has_return_type,
+				fn_return_type)
 		}
 	}
 	return else_expr
 }
 
-fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][]ast.Stmt, has_return_type bool) []ast.Stmt {
+fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][]ast.Stmt, has_return_type bool, fn_return_type types.Type) []ast.Stmt {
 	mut result := []ast.Stmt{cap: stmts.len}
 	for stmt in stmts {
 		match stmt {
@@ -5251,9 +5287,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 				} else if has_return_type && stmt.exprs.len > 0 {
 					t.temp_counter++
 					temp_name := '_defer_t${t.temp_counter}'
-					if expr_type := t.get_expr_type(stmt.exprs[0]) {
-						t.register_temp_var(temp_name, expr_type)
-					}
+					t.register_defer_return_temp(temp_name, stmt.exprs[0], fn_return_type)
 					ret_expr := ast.Expr(stmt.exprs[0])
 					result << ast.Stmt(ast.AssignStmt{
 						op:  .decl_assign
@@ -5280,9 +5314,9 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 						expr: ast.IfExpr{
 							cond:      stmt.expr.cond
 							stmts:     t.lower_defer_block(stmt.expr.stmts, mut then_defers,
-								has_return_type)
+								has_return_type, fn_return_type)
 							else_expr: t.lower_defer_else(stmt.expr.else_expr, active_defers,
-								has_return_type)
+								has_return_type, fn_return_type)
 						}
 					})
 				} else if stmt.expr is ast.UnsafeExpr {
@@ -5290,7 +5324,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 					result << ast.Stmt(ast.ExprStmt{
 						expr: ast.UnsafeExpr{
 							stmts: t.lower_defer_block(stmt.expr.stmts, mut unsafe_defers,
-								has_return_type)
+								has_return_type, fn_return_type)
 						}
 					})
 				} else {
@@ -5303,13 +5337,15 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 					init:  stmt.init
 					cond:  stmt.cond
 					post:  stmt.post
-					stmts: t.lower_defer_block(stmt.stmts, mut loop_defers, has_return_type)
+					stmts: t.lower_defer_block(stmt.stmts, mut loop_defers, has_return_type,
+						fn_return_type)
 				})
 			}
 			ast.BlockStmt {
 				mut block_defers := t.copy_defer_stack(active_defers)
 				result << ast.Stmt(ast.BlockStmt{
-					stmts: t.lower_defer_block(stmt.stmts, mut block_defers, has_return_type)
+					stmts: t.lower_defer_block(stmt.stmts, mut block_defers, has_return_type,
+						fn_return_type)
 				})
 			}
 			else {

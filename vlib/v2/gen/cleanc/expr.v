@@ -255,21 +255,31 @@ fn vector_elem_type_for_name(type_name string) string {
 	return ''
 }
 
+fn (mut g Gen) concrete_type_for_interface_value(type_name string, value_expr ast.Expr) string {
+	mut concrete_type := g.get_expr_type(value_expr)
+	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
+		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
+	}
+	mut raw_concrete := ''
+	if raw := g.get_raw_type(value_expr) {
+		raw_concrete = g.types_type_to_c(raw)
+	}
+	raw_base := raw_concrete.trim_right('*')
+	current_base := concrete_type.trim_right('*')
+	if raw_base != '' && raw_base != 'int'
+		&& (current_base == '' || current_base == 'int' || current_base == type_name) {
+		concrete_type = raw_concrete
+	}
+	return concrete_type
+}
+
 // gen_heap_interface_cast generates a heap-allocated interface struct for &InterfaceType(value) patterns.
 // Returns true if the type is an interface and the cast was generated.
 fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bool {
 	if !g.is_interface_type(type_name) {
 		return false
 	}
-	mut concrete_type := g.get_expr_type(value_expr)
-	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
-		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
-	}
-	if concrete_type == '' || concrete_type == 'int' {
-		if raw := g.get_raw_type(value_expr) {
-			concrete_type = g.types_type_to_c(raw)
-		}
-	}
+	mut concrete_type := g.concrete_type_for_interface_value(type_name, value_expr)
 	if concrete_type == '' || concrete_type == 'int' {
 		return false
 	}
@@ -326,15 +336,7 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	// Get the concrete type name
-	mut concrete_type := g.get_expr_type(value_expr)
-	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
-		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
-	}
-	if concrete_type == '' || concrete_type == 'int' {
-		if raw := g.get_raw_type(value_expr) {
-			concrete_type = g.types_type_to_c(raw)
-		}
-	}
+	mut concrete_type := g.concrete_type_for_interface_value(type_name, value_expr)
 	if concrete_type == '' || concrete_type == 'int' {
 		return false
 	}

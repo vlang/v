@@ -40,9 +40,7 @@ pub:
 pub fn new_raw_socket(config RawSocketConfig) !&RawConn {
 	sockfd := socket_error(C.socket(config.family, SocketType.raw, int(config.protocol)))!
 	mut s := &RawSocket{
-		Socket:   Socket{
-			handle: sockfd
-		}
+		handle:   sockfd
 		protocol: config.protocol
 		l:        Addr{
 			addr: AddrData{

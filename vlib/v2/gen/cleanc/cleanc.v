@@ -92,6 +92,7 @@ mut:
 	fn_owner_file    map[string]int  // fn_key -> first file index (for parallel dedup)
 	c_file_fn_keys   map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
 	typedef_c_types  map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
+	blocked_fn_keys  map[string]bool // worker-only fn keys reserved to other pass5 chunks
 }
 
 struct LiveFnInfo {
@@ -202,6 +203,7 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		runtime_const_targets:       map[string]bool{}
 		used_fn_keys:                map[string]bool{}
 		called_fn_names:             map[string]bool{}
+		blocked_fn_keys:             map[string]bool{}
 	}
 }
 
@@ -812,8 +814,24 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				if stmt.language == .c && stmt.stmts.len == 0 {
 					continue
 				}
+				if g.cur_module == 'eventbus' && stmt.is_method
+					&& stmt.name in ['subscribe_method', 'unsubscribe_method'] {
+					prev_generic_types := g.active_generic_types.clone()
+					string_types := {
+						'T': types.Type(types.string_)
+					}
+					g.active_generic_types = string_types.clone()
+					spec_name := g.specialized_fn_name(stmt, string_types)
+					if spec_name != '' {
+						g.gen_fn_head_with_name(stmt, spec_name)
+						g.sb.writeln(';')
+						g.active_generic_types = prev_generic_types.clone()
+						continue
+					}
+					g.active_generic_types = prev_generic_types.clone()
+				}
 				// Generic functions: emit as macros for known simple functions
-				if stmt.typ.generic_params.len > 0 {
+				if g.generic_fn_param_names(stmt).len > 0 {
 					specs := g.generic_fn_specializations(stmt)
 					if specs.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
@@ -981,6 +999,7 @@ pub fn (mut g Gen) gen_finalize() string {
 	}
 
 	g.emit_missing_array_contains_fallbacks()
+	g.emit_missing_runtime_fallbacks()
 	g.emit_cached_module_init_function()
 	g.emit_exported_const_symbols()
 
@@ -1084,11 +1103,12 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
 	for fi in file_indices {
 		owned_files[fi] = true
 	}
-	// Clone emitted_types and pre-mark functions owned by other workers
+	// Clone emitted_types and reserve functions owned by other workers.
 	mut worker_emitted := g.emitted_types.clone()
+	mut blocked_fn_keys := map[string]bool{}
 	for fn_key, owner_fi in g.fn_owner_file {
 		if owner_fi !in owned_files {
-			worker_emitted[fn_key] = true
+			blocked_fn_keys[fn_key] = true
 		}
 	}
 	return &Gen{
@@ -1136,6 +1156,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int) &Gen {
 		typedef_c_types:             g.typedef_c_types.clone()
 		// Per-worker mutable state (starts fresh)
 		emitted_types:               worker_emitted
+		blocked_fn_keys:             blocked_fn_keys
 		runtime_local_types:         map[string]string{}
 		cur_fn_returned_idents:      map[string]bool{}
 		active_generic_types:        map[string]types.Type{}
@@ -1194,6 +1215,157 @@ fn is_c_identifier_like(name string) bool {
 		}
 	}
 	return true
+}
+
+fn (mut g Gen) emit_missing_runtime_fallbacks() {
+	if 'fn___at_least_one' !in g.emitted_types {
+		g.emitted_types['fn___at_least_one'] = true
+		g.sb.writeln('')
+		g.sb.writeln('u64 __at_least_one(u64 how_many) {')
+		g.sb.writeln('\treturn how_many == 0 ? 1 : how_many;')
+		g.sb.writeln('}')
+	}
+	if 'fn_arguments' !in g.emitted_types {
+		g.emitted_types['fn_arguments'] = true
+		g.sb.writeln('')
+		g.sb.writeln('Array_string arguments() {')
+		g.sb.writeln('\tu8** argv = (u8**)g_main_argv;')
+		g.sb.writeln('\tArray_string res = __new_array_with_default_noscan(0, g_main_argc, sizeof(string), NULL);')
+		g.sb.writeln('\tfor (int i = 0; i < g_main_argc; i += 1) {')
+		g.sb.writeln('\t\tarray__push((array*)&res, &(string[1]){tos_clone(argv[i])});')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\treturn res;')
+		g.sb.writeln('}')
+	}
+	if 'fn__write_buf_to_fd' !in g.emitted_types {
+		g.emitted_types['fn__write_buf_to_fd'] = true
+		g.sb.writeln('')
+		g.sb.writeln('void _write_buf_to_fd(int fd, u8* buf, int buf_len) {')
+		g.sb.writeln('\tif (buf_len <= 0) {')
+		g.sb.writeln('\t\treturn;')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\tu8* ptr = buf;')
+		g.sb.writeln('\tisize remaining_bytes = buf_len;')
+		g.sb.writeln('\twhile (remaining_bytes > 0) {')
+		g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
+		g.sb.writeln('\t\tif (written <= 0) {')
+		g.sb.writeln('\t\t\treturn;')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t\tptr += written;')
+		g.sb.writeln('\t\tremaining_bytes -= written;')
+		g.sb.writeln('\t}')
+		g.sb.writeln('}')
+	}
+	if 'fn__writeln_to_fd' !in g.emitted_types {
+		g.emitted_types['fn__writeln_to_fd'] = true
+		g.sb.writeln('')
+		g.sb.writeln('void _writeln_to_fd(int fd, string s) {')
+		g.sb.writeln("\tu8 lf = '\\n';")
+		g.sb.writeln('\t_write_buf_to_fd(fd, s.str, s.len);')
+		g.sb.writeln('\t_write_buf_to_fd(fd, &lf, 1);')
+		g.sb.writeln('}')
+	}
+	if 'fn_Array_int_contains' !in g.emitted_types {
+		g.emitted_types['fn_Array_int_contains'] = true
+		g.sb.writeln('')
+		g.sb.writeln('bool Array_int_contains(Array_int a, int v) {')
+		g.sb.writeln('\tfor (int i = 0; i < a.len; i += 1) {')
+		g.sb.writeln('\t\tif (*((int*)array__get(a, i)) == v) {')
+		g.sb.writeln('\t\t\treturn true;')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\treturn false;')
+		g.sb.writeln('}')
+	}
+	if 'fn_Array_string_contains' !in g.emitted_types {
+		g.emitted_types['fn_Array_string_contains'] = true
+		g.sb.writeln('')
+		g.sb.writeln('bool Array_string_contains(Array_string a, string v) {')
+		g.sb.writeln('\tfor (int i = 0; i < a.len; i += 1) {')
+		g.sb.writeln('\t\tif (string__eq(*((string*)array__get(a, i)), v)) {')
+		g.sb.writeln('\t\t\treturn true;')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\treturn false;')
+		g.sb.writeln('}')
+	}
+	if 'fn_Array_string_index' !in g.emitted_types {
+		g.emitted_types['fn_Array_string_index'] = true
+		g.sb.writeln('')
+		g.sb.writeln('int Array_string_index(Array_string a, string v) {')
+		g.sb.writeln('\tfor (int i = 0; i < a.len; i += 1) {')
+		g.sb.writeln('\t\tif (string__eq(*((string*)array__get(a, i)), v)) {')
+		g.sb.writeln('\t\t\treturn i;')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\treturn -1;')
+		g.sb.writeln('}')
+	}
+	if 'fn_Array_int_str' !in g.emitted_types {
+		g.emitted_types['fn_Array_int_str'] = true
+		g.sb.writeln('')
+		g.sb.writeln('string Array_int_str(Array_int a) {')
+		g.sb.writeln('\tstrings__Builder sb = strings__new_builder(32);')
+		g.sb.writeln('\tstrings__Builder__write_string(&sb, (string){.str = "[", .len = 1, .is_lit = 1});')
+		g.sb.writeln('\tfor (int i = 0; i < a.len; i += 1) {')
+		g.sb.writeln('\t\tif (i > 0) {')
+		g.sb.writeln('\t\t\tstrings__Builder__write_string(&sb, (string){.str = ", ", .len = 2, .is_lit = 1});')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t\tstrings__Builder__write_string(&sb, int__str(*((int*)array__get(a, i))));')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\tstrings__Builder__write_string(&sb, (string){.str = "]", .len = 1, .is_lit = 1});')
+		g.sb.writeln('\treturn strings__Builder__str(&sb);')
+		g.sb.writeln('}')
+	}
+	if 'fn_DenseArray__zeros_to_end' !in g.emitted_types {
+		g.emitted_types['fn_DenseArray__zeros_to_end'] = true
+		g.sb.writeln('')
+		g.sb.writeln('void DenseArray__zeros_to_end(DenseArray* d) {')
+		g.sb.writeln('\tvoid* tmp_value = malloc(d->value_bytes);')
+		g.sb.writeln('\tvoid* tmp_key = malloc(d->key_bytes);')
+		g.sb.writeln('\tint count = 0;')
+		g.sb.writeln('\tfor (int i = 0; i < d->len; i += 1) {')
+		g.sb.writeln('\t\tif (DenseArray__has_index(d, i)) {')
+		g.sb.writeln('\t\t\tif (count != i) {')
+		g.sb.writeln('\t\t\t\tmemcpy(tmp_key, DenseArray__key(d, count), d->key_bytes);')
+		g.sb.writeln('\t\t\t\tmemcpy(DenseArray__key(d, count), DenseArray__key(d, i), d->key_bytes);')
+		g.sb.writeln('\t\t\t\tmemcpy(DenseArray__key(d, i), tmp_key, d->key_bytes);')
+		g.sb.writeln('\t\t\t\tmemcpy(tmp_value, DenseArray__value(d, count), d->value_bytes);')
+		g.sb.writeln('\t\t\t\tmemcpy(DenseArray__value(d, count), DenseArray__value(d, i), d->value_bytes);')
+		g.sb.writeln('\t\t\t\tmemcpy(DenseArray__value(d, i), tmp_value, d->value_bytes);')
+		g.sb.writeln('\t\t\t}')
+		g.sb.writeln('\t\t\tcount += 1;')
+		g.sb.writeln('\t\t}')
+		g.sb.writeln('\t}')
+		g.sb.writeln('\tfree(tmp_value);')
+		g.sb.writeln('\tfree(tmp_key);')
+		g.sb.writeln('\td->deletes = 0;')
+		g.sb.writeln('\tfree(d->all_deleted);')
+		g.sb.writeln('\td->len = count;')
+		g.sb.writeln('\tint old_cap = d->cap;')
+		g.sb.writeln('\td->cap = count < 8 ? 8 : count;')
+		g.sb.writeln('\td->values = realloc_data(d->values, d->value_bytes * old_cap, d->value_bytes * d->cap);')
+		g.sb.writeln('\td->keys = realloc_data(d->keys, d->key_bytes * old_cap, d->key_bytes * d->cap);')
+		g.sb.writeln('}')
+	}
+	if 'fn___sort_cmp_int_asc' !in g.emitted_types {
+		g.emitted_types['fn___sort_cmp_int_asc'] = true
+		g.sb.writeln('')
+		g.sb.writeln('int __sort_cmp_int_asc(int* a, int* b) {')
+		g.sb.writeln('\tif (*a < *b) return -1;')
+		g.sb.writeln('\tif (*a > *b) return 1;')
+		g.sb.writeln('\treturn 0;')
+		g.sb.writeln('}')
+	}
+	if 'fn___sort_cmp_RepIndex_by_idx_asc' !in g.emitted_types {
+		g.emitted_types['fn___sort_cmp_RepIndex_by_idx_asc'] = true
+		g.sb.writeln('')
+		g.sb.writeln('int __sort_cmp_RepIndex_by_idx_asc(RepIndex* a, RepIndex* b) {')
+		g.sb.writeln('\tif (a->idx < b->idx) return -1;')
+		g.sb.writeln('\tif (a->idx > b->idx) return 1;')
+		g.sb.writeln('\treturn 0;')
+		g.sb.writeln('}')
+	}
 }
 
 fn is_c_runtime_function(name string) bool {

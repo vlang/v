@@ -146,7 +146,10 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln('return (${g.cur_fn_ret_type}){ .state = 2 };')
 					return
 				}
-				expr_type := g.get_expr_type(expr)
+				mut expr_type := g.get_expr_type(expr)
+				if (expr_type == '' || expr_type == 'int') && expr is ast.Ident {
+					expr_type = g.get_local_var_c_type(expr.name) or { expr_type }
+				}
 				if expr is ast.Ident && expr.name == 'err' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
@@ -250,7 +253,10 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 						return
 					}
 				}
-				expr_type := g.get_expr_type(expr)
+				mut expr_type := g.get_expr_type(expr)
+				if (expr_type == '' || expr_type == 'int') && expr is ast.Ident {
+					expr_type = g.get_local_var_c_type(expr.name) or { expr_type }
+				}
 				if expr_type == g.cur_fn_ret_type {
 					g.sb.write_string('return ')
 					g.expr(expr)

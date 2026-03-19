@@ -12,7 +12,7 @@ pub fn download_file(url string, out_file_path string) ! {
 		println('http.download_file url=${url} out_file_path=${out_file_path}')
 	}
 	s := get(url) or { return err }
-	if s.status_code != 200 {
+	if s.status() != .ok {
 		return error_with_code(s.body, s.status_code)
 	}
 	$if debug_http ? {
@@ -26,7 +26,7 @@ pub fn download_file_with_cookies(url string, out_file_path string, cookies map[
 		println('http.download_file url=${url} out_file_path=${out_file_path}')
 	}
 	s := fetch(method: .get, url: url, cookies: cookies) or { return err }
-	if s.status_code != 200 {
+	if s.status() != .ok {
 		return error('received http code ${s.status_code}')
 	}
 	$if debug_http ? {

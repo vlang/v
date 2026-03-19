@@ -747,7 +747,10 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	// Lower defer statements: collect defers, remove them from body,
 	// inject defer body before every return and at end of function
 	has_return_type := decl.typ.return_type !is ast.EmptyExpr
-	final_stmts := t.lower_defer_stmts(transformed_stmts, has_return_type)
+	fn_return_type := t.get_fn_return_type(scope_fn_name) or {
+		t.get_fn_return_type(fn_scope_key) or { types.Type(types.void_) }
+	}
+	final_stmts := t.lower_defer_stmts(transformed_stmts, has_return_type, fn_return_type)
 	if t.cur_file_name == './discord.v' && decl.name == 'fetch_msgs_for' {
 		if path := find_target_or_expr_path_in_stmts(final_stmts, 235054, decl.name) {
 			panic('debug final or path: ${path}')

@@ -1,6 +1,7 @@
 module json2
 
 import strconv
+import strings
 
 const null_in_string = 'null'
 
@@ -11,6 +12,13 @@ const false_in_string = 'false'
 const float_zero_in_string = '0.0'
 
 const whitespace_chars = [` `, `\t`, `\n`, `\r`]!
+
+// Node represents a node in a linked list to store ValueInfo.
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil } // next is the next node in the linked list.
+}
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
 struct ValueInfo {
@@ -33,32 +41,6 @@ mut:
 	is_decoded bool
 }
 
-struct ValueInfoNode {
-mut:
-	value ValueInfo
-	next  &ValueInfoNode = unsafe { nil }
-}
-
-struct ValueInfoList {
-mut:
-	head &ValueInfoNode = unsafe { nil }
-	tail &ValueInfoNode = unsafe { nil }
-	len  int
-}
-
-struct StructFieldInfoNode {
-mut:
-	value StructFieldInfo
-	next  &StructFieldInfoNode = unsafe { nil }
-}
-
-struct StructFieldInfoList {
-mut:
-	head &StructFieldInfoNode = unsafe { nil }
-	tail &StructFieldInfoNode = unsafe { nil }
-	len  int
-}
-
 // DecoderOptions provides options for JSON decoding.
 // By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
 @[params]
@@ -75,13 +57,22 @@ struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
 mut:
-	values_info  ValueInfoList // A linked list to store ValueInfo.
-	checker_idx  int           // checker_idx is the current index of the decoder.
-	current_node &ValueInfoNode = unsafe { nil } // The current node in the linked list.
+	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
+	checker_idx  int                   // checker_idx is the current index of the decoder.
+	current_node &Node[ValueInfo] = unsafe { nil } // The current node in the linked list.
 }
 
-fn value_info_list_push(mut list ValueInfoList, value ValueInfo) {
-	new_node := &ValueInfoNode{
+// LinkedList represents a linked list to store ValueInfo.
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil } // head is the first node in the linked list.
+	tail &Node[T] = unsafe { nil } // tail is the last node in the linked list.
+	len  int // len is the length of the linked list.
+}
+
+// push adds a new element to the linked list.
+fn (mut list LinkedList[T]) push(value T) {
+	new_node := &Node[T]{
 		value: value
 	}
 	if list.head == unsafe { nil } {
@@ -94,40 +85,43 @@ fn value_info_list_push(mut list ValueInfoList, value ValueInfo) {
 	list.len++
 }
 
-fn value_info_list_last(list &ValueInfoList) &ValueInfo {
+// last returns the last element added to the linked list.
+fn (list &LinkedList[T]) last() &T {
 	return &list.tail.value
 }
 
-@[unsafe]
-fn value_info_list_free(mut list ValueInfoList) {
+// str returns a string representation of the linked list.
+fn (list &LinkedList[ValueInfo]) str() string {
+	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
-		mut next := current.next
-		current.next = unsafe { nil }
-		unsafe { free(current) }
-		current = next
+		value_kind_as_string := current.value.value_kind.str()
+		unsafe { result_buffer.push_many(value_kind_as_string.str, value_kind_as_string.len) }
+		result_buffer << u8(` `)
+
+		current = current.next
 	}
-	list.head = unsafe { nil }
-	list.tail = unsafe { nil }
-	list.len = 0
+	return result_buffer.bytestr()
 }
 
-fn struct_field_info_list_push(mut list StructFieldInfoList, value StructFieldInfo) {
-	new_node := &StructFieldInfoNode{
-		value: value
+@[manualfree]
+fn (list &LinkedList[T]) str() string {
+	mut sb := strings.new_builder(128)
+	defer {
+		unsafe { sb.free() }
 	}
-	if list.head == unsafe { nil } {
-		list.head = new_node
-		list.tail = new_node
-	} else {
-		list.tail.next = new_node
-		list.tail = new_node
+	mut current := list.head
+	for current != unsafe { nil } {
+		value_as_string := current.value.str()
+		sb.write_string(value_as_string)
+		sb.write_u8(u8(` `))
+		current = current.next
 	}
-	list.len++
+	return sb.str()
 }
 
 @[unsafe]
-fn struct_field_info_list_free(mut list StructFieldInfoList) {
+fn (list &LinkedList[T]) free() {
 	mut current := list.head
 	for current != unsafe { nil } {
 		mut next := current.next
@@ -308,9 +302,9 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
-	decode_value[T](mut decoder, mut result)!
+	decoder.decode_value(mut result)!
 	unsafe {
-		value_info_list_free(mut decoder.values_info)
+		decoder.values_info.free()
 	}
 	return result
 }
@@ -321,7 +315,7 @@ fn get_dynamic_from_element[T](_t T) []T {
 
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
-fn decode_value[T](mut decoder Decoder, mut val T) ! {
+fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	// Custom Decoders
 	$if val is StringDecoder {
 		struct_info := decoder.current_node.value
@@ -378,16 +372,16 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 		}
 	}
 	$if T.unaliased_typ is string {
-		decode_string(mut decoder, mut val)!
+		decoder.decode_string(mut val)!
 	} $else $if T.unaliased_typ is $sumtype {
-		decode_sumtype(mut decoder, mut val)!
+		decoder.decode_sumtype(mut val)!
 		return
 	} $else $if T.unaliased_typ is $map {
-		decode_map(mut decoder, mut val)!
+		decoder.decode_map(mut val)!
 		return
 	} $else $if T.unaliased_typ is $array_dynamic {
 		val.clear()
-		decode_array(mut decoder, mut val)!
+		decoder.decode_array(mut val)!
 		// return to avoid the next increment of the current node
 		// this is because the current node is already incremented in the decode_array function
 		// remove this line will cause the current node to be incremented twice
@@ -402,7 +396,7 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 			dynamic_val.cap = val.len // ensures data wont reallocate
 			dynamic_val.data = &val
 		}
-		decode_array(mut decoder, mut dynamic_val)!
+		decoder.decode_array(mut dynamic_val)!
 
 		if dynamic_val.len != val.len {
 			decoder.decode_error('Fixed size array expected ${val.len} elements but got ${dynamic_val.len} elements')!
@@ -412,7 +406,7 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 		struct_info := decoder.current_node.value
 
 		// struct field info linked list
-		mut struct_fields_info := StructFieldInfoList{}
+		mut struct_fields_info := LinkedList[StructFieldInfo]{}
 
 		$for field in T.fields {
 			mut json_name_str := field.name.str
@@ -434,7 +428,7 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 				continue
 			}
 
-			struct_field_info_list_push(mut struct_fields_info, StructFieldInfo{
+			struct_fields_info.push(StructFieldInfo{
 				field_name_str: voidptr(field.name.str)
 				field_name_len: field.name.len
 				json_name_ptr:  voidptr(json_name_str)
@@ -611,11 +605,11 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
 														return
 													}
-													decode_value(mut decoder, mut unwrapped_val)!
+													decoder.decode_value(mut unwrapped_val)!
 													val.$(field.name) = unwrapped_val
 												}
 											} $else {
-												decode_value(mut decoder, mut val.$(field.name))!
+												decoder.decode_value(mut val.$(field.name))!
 											}
 										}
 										current_field_info.value.is_decoded = true
@@ -652,7 +646,7 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 			decoder.decode_error('Expected object, but got ${struct_info.value_kind}')!
 		}
 		unsafe {
-			struct_field_info_list_free(mut struct_fields_info)
+			struct_fields_info.free()
 		}
 		return
 	} $else $if T.unaliased_typ is bool {
@@ -670,15 +664,15 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
-			unsafe { decode_number(mut decoder, &val)! }
+			unsafe { decoder.decode_number(&val)! }
 		} else if value_info.value_kind == .string && !decoder.strict {
 			// In default mode, try to parse quoted strings as numbers
-			val = decode_number_from_string[T](decoder)!
+			val = decoder.decode_number_from_string[T]()!
 		} else {
 			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
 	} $else $if T.unaliased_typ is $enum {
-		decode_enum(mut decoder, mut val)!
+		decoder.decode_enum(mut val)!
 	} $else {
 		decoder.decode_error('cannot decode value with ${typeof(val).name} type')!
 	}
@@ -688,7 +682,7 @@ fn decode_value[T](mut decoder Decoder, mut val T) ! {
 	}
 }
 
-fn decode_string[T](mut decoder Decoder, mut val T) ! {
+fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -790,7 +784,7 @@ fn decode_string[T](mut decoder Decoder, mut val T) ! {
 	}
 }
 
-fn decode_array[T](mut decoder Decoder, mut val []T) ! {
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	array_info := decoder.current_node.value
 
 	if array_info.value_kind == .array {
@@ -807,7 +801,7 @@ fn decode_array[T](mut decoder Decoder, mut val []T) ! {
 
 			mut array_element := T{}
 
-			decode_value(mut decoder, mut array_element)!
+			decoder.decode_value(mut array_element)!
 
 			val << array_element
 		}
@@ -816,7 +810,7 @@ fn decode_array[T](mut decoder Decoder, mut val []T) ! {
 	}
 }
 
-fn decode_map[K, V](mut decoder Decoder, mut val map[K]V) ! {
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -848,7 +842,7 @@ fn decode_map[K, V](mut decoder Decoder, mut val map[K]V) ! {
 
 			mut map_value := V{}
 
-			decode_value(mut decoder, mut map_value)!
+			decoder.decode_value(mut map_value)!
 
 			$if V is $map {
 				val[key] = map_value.move()
@@ -865,12 +859,12 @@ fn create_value_from_optional[T](_val ?T) ?T {
 	return T{}
 }
 
-fn decode_enum[T](mut decoder Decoder, mut val T) ! {
+fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	enum_info := decoder.current_node.value
 
 	if enum_info.value_kind == .number {
 		mut result := 0
-		unsafe { decode_number[int](mut decoder, &result)! }
+		unsafe { decoder.decode_number(&result)! }
 
 		$for value in T.values {
 			if int(value.value) == result {
@@ -881,7 +875,7 @@ fn decode_enum[T](mut decoder Decoder, mut val T) ! {
 		decoder.decode_error('Number value: `${result}` does not match any field in enum: ${typeof(val).name}')!
 	} else if enum_info.value_kind == .string {
 		mut result := ''
-		decode_string[string](mut decoder, mut result)!
+		decoder.decode_string(mut result)!
 
 		$for value in T.values {
 			for attr in value.attrs {
@@ -905,7 +899,7 @@ fn decode_enum[T](mut decoder Decoder, mut val T) ! {
 
 // use pointer instead of mut so enum cast works
 @[unsafe]
-fn decode_number[T](mut decoder Decoder, val &T) ! {
+fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {
@@ -928,7 +922,7 @@ fn decode_number[T](mut decoder Decoder, val &T) ! {
 
 // decode_number_from_string parses a number from a JSON string value (default mode).
 // This extracts the content between quotes and parses it as a number.
-fn decode_number_from_string[T](decoder Decoder) !T {
+fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	string_info := decoder.current_node.value
 	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
 	if string_info.length < 2 {

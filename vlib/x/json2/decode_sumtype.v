@@ -6,13 +6,13 @@ fn copy_type[T](_t T) T {
 	return T{}
 }
 
-fn get_decoded_sumtype_workaround[T](mut decoder Decoder, initialized_sumtype T) !T {
+fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype !is $option {
 					mut val := copy_type(initialized_sumtype)
-					decode_value(mut decoder, mut val)!
+					decoder.decode_value(mut val)!
 					return T(val)
 				} $else {
 					if decoder.current_node.value.value_kind == .null {
@@ -29,7 +29,7 @@ fn get_decoded_sumtype_workaround[T](mut decoder Decoder, initialized_sumtype T)
 	return initialized_sumtype // suppress compiler error
 }
 
-fn check_element_type_valid[T](mut decoder Decoder, element T, current_node &ValueInfoNode) bool {
+fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &Node[ValueInfo]) bool {
 	if current_node == unsafe { nil } {
 		$if element is $array || element is $map {
 			return false
@@ -78,18 +78,18 @@ fn check_element_type_valid[T](mut decoder Decoder, element T, current_node &Val
 		}
 		.array {
 			$if element is $array {
-				return check_array_type_valid(mut decoder, element, current_node.next)
+				return decoder.check_array_type_valid(element, current_node.next)
 			}
 		}
 		.object {
 			$if element is $map {
 				if current_node.next != unsafe { nil } {
-					return check_map_type_valid(mut decoder, element, current_node.next.next)
+					return decoder.check_map_type_valid(element, current_node.next.next)
 				} else {
-					return check_map_type_valid(mut decoder, element, unsafe { nil })
+					return decoder.check_map_type_valid(element, unsafe { nil })
 				}
 			} $else $if element is $struct {
-				return check_struct_type_valid(mut decoder, element, current_node)
+				return decoder.check_struct_type_valid(element, current_node)
 			}
 		}
 	}
@@ -101,17 +101,16 @@ fn get_array_element_type[T](_arr []T) T {
 	return T{}
 }
 
-fn check_array_type_valid[T](mut decoder Decoder, arr []T, current_node &ValueInfoNode) bool {
-	return check_element_type_valid(mut decoder, get_array_element_type(arr), current_node)
+fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &Node[ValueInfo]) bool {
+	return decoder.check_element_type_valid(get_array_element_type(arr), current_node)
 }
 
-fn get_array_type_workaround[T](mut decoder Decoder, initialized_sumtype T) bool {
+fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $array {
-					return check_element_type_valid(mut decoder, initialized_sumtype,
-						decoder.current_node)
+					return decoder.check_element_type_valid(initialized_sumtype, decoder.current_node)
 				}
 			}
 		}
@@ -123,26 +122,26 @@ fn get_map_element_type[U, V](_m map[U]V) V {
 	return V{}
 }
 
-fn check_map_type_valid[T](mut decoder Decoder, m T, current_node &ValueInfoNode) bool {
+fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node &Node[ValueInfo]) bool {
 	element := get_map_element_type(m)
-	return check_element_type_valid(mut decoder, element, current_node)
+	return decoder.check_element_type_valid(element, current_node)
 }
 
-fn check_map_empty_valid[T](mut decoder Decoder, m T) bool {
+fn (mut decoder Decoder) check_map_empty_valid[T](m T) bool {
 	element := get_map_element_type(m)
-	return check_element_type_valid(mut decoder, element, unsafe { nil })
+	return decoder.check_element_type_valid(element, current_node)
 }
 
-fn get_map_type_workaround[T](mut decoder Decoder, initialized_sumtype T) bool {
+fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool {
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $map {
 					val := copy_type(initialized_sumtype)
 					if decoder.current_node.next != unsafe { nil } {
-						return check_map_type_valid(mut decoder, val, decoder.current_node.next.next)
+						return decoder.check_map_type_valid(val, decoder.current_node.next.next)
 					} else {
-						return check_map_type_valid(mut decoder, val, unsafe { nil })
+						return decoder.check_map_type_valid(val, unsafe { nil })
 					}
 				}
 			}
@@ -151,7 +150,7 @@ fn get_map_type_workaround[T](mut decoder Decoder, initialized_sumtype T) bool {
 	return false
 }
 
-fn (decoder &Decoder) get_sumtype_type_field_node(current_node &ValueInfoNode) &ValueInfoNode {
+fn (decoder &Decoder) get_sumtype_type_field_node(current_node &Node[ValueInfo]) &Node[ValueInfo] {
 	if current_node == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -189,7 +188,7 @@ fn (decoder &Decoder) get_sumtype_type_field_node(current_node &ValueInfoNode) &
 	return unsafe { nil }
 }
 
-fn check_struct_type_valid[T](mut decoder Decoder, s T, current_node &ValueInfoNode) bool {
+fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &Node[ValueInfo]) bool {
 	type_field_node := decoder.get_sumtype_type_field_node(current_node)
 	if type_field_node == unsafe { nil } {
 		return false
@@ -210,13 +209,13 @@ fn check_struct_type_valid[T](mut decoder Decoder, s T, current_node &ValueInfoN
 	return false
 }
 
-fn get_struct_type_workaround[T](mut decoder Decoder, initialized_sumtype T) bool {
+fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bool {
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $struct {
 					val := copy_type(initialized_sumtype)
-					return check_struct_type_valid(mut decoder, val, decoder.current_node)
+					return decoder.check_struct_type_valid(val, decoder.current_node)
 				}
 			}
 		}
@@ -224,7 +223,7 @@ fn get_struct_type_workaround[T](mut decoder Decoder, initialized_sumtype T) boo
 	return false
 }
 
-fn init_sumtype_by_value_kind[T](mut decoder Decoder, mut val T, value_info ValueInfo) ! {
+fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info ValueInfo) ! {
 	mut failed_struct := false
 	mut struct_variant_count := 0
 
@@ -287,7 +286,7 @@ fn init_sumtype_by_value_kind[T](mut decoder Decoder, mut val T, value_info Valu
 				$if v.typ is $array {
 					val = T(v)
 
-					if get_array_type_workaround(mut decoder, val) {
+					if decoder.get_array_type_workaround(val) {
 						return
 					}
 				}
@@ -298,14 +297,14 @@ fn init_sumtype_by_value_kind[T](mut decoder Decoder, mut val T, value_info Valu
 				$if v.typ is $map {
 					val = T(v)
 
-					if get_map_type_workaround(mut decoder, val) {
+					if decoder.get_map_type_workaround(val) {
 						return
 					}
 				} $else $if v.typ is $struct {
 					struct_variant_count++
 					val = T(v)
 
-					if get_struct_type_workaround(mut decoder, val) {
+					if decoder.get_struct_type_workaround(val) {
 						return
 					}
 
@@ -328,15 +327,15 @@ fn init_sumtype_by_value_kind[T](mut decoder Decoder, mut val T, value_info Valu
 	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
-fn decode_sumtype[T](mut decoder Decoder, mut val T) ! {
+fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 	$if T is $alias {
 		$if T.unaliased_typ is Any {
 			mut unaliased_val := Any{}
 			value_info := decoder.current_node.value
 
-			init_sumtype_by_value_kind(mut decoder, mut unaliased_val, value_info)!
+			decoder.init_sumtype_by_value_kind(mut unaliased_val, value_info)!
 
-			unaliased_val = get_decoded_sumtype_workaround(mut decoder, unaliased_val)!
+			unaliased_val = decoder.get_decoded_sumtype_workaround(unaliased_val)!
 			val = T(unaliased_val)
 		} $else {
 			decoder.decode_error('Type aliased sumtypes not supported.')!
@@ -344,8 +343,8 @@ fn decode_sumtype[T](mut decoder Decoder, mut val T) ! {
 	} $else {
 		value_info := decoder.current_node.value
 
-		init_sumtype_by_value_kind(mut decoder, mut val, value_info)!
+		decoder.init_sumtype_by_value_kind(mut val, value_info)!
 
-		val = get_decoded_sumtype_workaround(mut decoder, val)!
+		val = decoder.get_decoded_sumtype_workaround(val)!
 	}
 }

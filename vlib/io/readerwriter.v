@@ -17,8 +17,7 @@ mut:
 // read reads up to `buf.len` bytes into `buf`. It returns
 // the number of bytes read or any error encountered.
 pub fn (mut r ReaderWriterImpl) read(mut buf []u8) !int {
-	mut local_buf := unsafe { buf[0..buf.len] }
-	return r.r.read(mut local_buf)
+	return r.r.read(mut buf)
 }
 
 // write writes `buf.len` bytes from `buf` to the underlying

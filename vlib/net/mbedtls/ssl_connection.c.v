@@ -134,12 +134,11 @@ pub struct SSLListener {
 	saddr  string
 	config SSLConnectConfig
 mut:
-	server_fd           C.mbedtls_net_context
-	ssl                 C.mbedtls_ssl_context
-	conf                C.mbedtls_ssl_config
-	certs               &SSLCerts = unsafe { nil }
-	opened              bool
-	sni_get_certificate ?fn (mut SSLListener, string) !&SSLCerts
+	server_fd C.mbedtls_net_context
+	ssl       C.mbedtls_ssl_context
+	conf      C.mbedtls_ssl_config
+	certs     &SSLCerts = unsafe { nil }
+	opened    bool
 	// handle		int
 	// duration	time.Duration
 }
@@ -252,27 +251,19 @@ fn (mut l SSLListener) init() ! {
 	}
 }
 
-fn ssl_listener_sni_callback(p_info voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
-	if p_info == unsafe { nil } {
-		return -1
-	}
-	mut l := unsafe { &SSLListener(p_info) }
-	host := unsafe { name.vstring_literal_with_len(lng) }
-	if get_cert_callback := l.sni_get_certificate {
-		if certs := get_cert_callback(mut l, host) {
-			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
-		}
-	}
-	return -1
-}
-
 // setup SNI callback
 fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !&SSLCerts) {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	l.sni_get_certificate = get_cert_callback
-	C.mbedtls_ssl_conf_sni(&l.conf, ssl_listener_sni_callback, l)
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
+		host := unsafe { name.vstring_literal_with_len(lng) }
+		if certs := get_cert_callback(mut l, host) {
+			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
+		} else {
+			return -1
+		}
+	}, &l.conf)
 }
 
 // accepts a new connection and returns a SSLConn of the connected client
@@ -347,19 +338,6 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	}
 	conn.init()!
 	return conn
-}
-
-// new_ssl_conn_with_values builds an SSLConnectConfig inside the mbedtls module,
-// which avoids cross-module field lowering issues in callers.
-pub fn new_ssl_conn_with_values(verify string, cert string, cert_key string, validate bool, in_memory_verification bool) !&SSLConn {
-	cfg := SSLConnectConfig{
-		verify:                 verify
-		cert:                   cert
-		cert_key:               cert_key
-		validate:               validate
-		in_memory_verification: in_memory_verification
-	}
-	return new_ssl_conn(cfg)
 }
 
 // Select operation

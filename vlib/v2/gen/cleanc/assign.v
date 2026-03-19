@@ -268,7 +268,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		// For temp variables registered by the transformer with a specific type,
 		// prefer the scope-registered type over the RHS expression type.
-		if name.starts_with('_or_t') || name.starts_with('_tmp_') {
+		if name.starts_with('_or_t') || name.starts_with('_tmp_') || name.starts_with('_defer_t') {
 			if raw_type := g.get_raw_type(lhs) {
 				scope_type := g.types_type_to_c(raw_type)
 				if scope_type != '' && scope_type != 'int' {
@@ -306,6 +306,20 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					typ = pop_elem
 					elem_type_from_array = true
 				}
+			}
+		}
+		if typ == 'array' {
+			mut elem_type := g.infer_array_elem_type_from_expr(rhs)
+			if elem_type == '' && rhs is ast.CallExpr {
+				call_name := g.resolve_call_name(rhs.lhs, rhs.args.len)
+				if call_name in ['new_array_from_c_array', 'builtin__new_array_from_c_array', 'builtin__new_array_from_c_array_noscan']
+					&& rhs.args.len > 3 {
+					elem_type = g.infer_array_elem_type_from_expr(rhs.args[3])
+				}
+			}
+			if elem_type != '' && elem_type != 'array' && elem_type != 'void' {
+				typ = 'Array_' + mangle_alias_component(elem_type)
+				g.register_alias_type(typ)
 			}
 		}
 		if typ in ['void*', 'voidptr'] {
@@ -354,8 +368,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					obj_type := obj.typ()
 					if obj_type !is types.Alias {
 						scoped_type := g.types_type_to_c(obj_type)
+						generic_container_fallback :=
+							(typ == 'array' && scoped_type.starts_with('Array_'))
+							|| (typ == 'map' && scoped_type.starts_with('Map_'))
 						if (typ == '' || typ == 'int' || typ == 'int_literal' || typ == 'void*'
-							|| typ == 'voidptr') && scoped_type != ''
+							|| typ == 'voidptr' || generic_container_fallback) && scoped_type != ''
 							&& scoped_type !in ['int', 'void', 'void*', 'voidptr'] {
 							typ = scoped_type
 						}
@@ -580,6 +597,23 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					typ = 'int'
 				}
 			}
+		}
+		rhs_is_none := is_none_expr(rhs) || (rhs is ast.Type && rhs is ast.NoneType)
+		rhs_is_option_zero := rhs is ast.BasicLiteral && rhs.value == '0'
+			&& typ.starts_with('_option_')
+		if (typ == '' || typ == 'int' || typ == 'int_literal') && name.starts_with('_defer_t')
+			&& g.cur_fn_ret_type != '' && g.cur_fn_ret_type != 'void'
+			&& (rhs_is_none || rhs_is_option_zero) {
+			typ = g.cur_fn_ret_type
+		}
+		can_emit_none := typ.starts_with('_option_') || typ in ['IError', 'builtin__IError']
+			|| is_type_name_pointer_like(typ) || typ in ['void*', 'voidptr', 'byteptr', 'charptr']
+		if name != '' && (rhs_is_none || rhs_is_option_zero) && can_emit_none {
+			g.sb.write_string('${typ} ${name} = ')
+			g.gen_none_literal_for_type(typ)
+			g.sb.writeln(';')
+			g.remember_runtime_local_type(name, typ)
+			return
 		}
 		if typ == '' || typ == 'void' {
 			typ = 'int'

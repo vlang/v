@@ -246,17 +246,49 @@ pub fn (f Any) arr() []Any {
 
 // as_array uses `Any` as an array.
 pub fn (f Any) as_array() []Any {
+	if f is []Any {
+		return f
+	} else if f is map[string]Any {
+		mut arr := []Any{}
+		for _, v in f {
+			arr << v
+		}
+		return arr
+	}
 	return [f]
 }
 
 // as_map uses `Any` as a map.
 pub fn (f Any) as_map() map[string]Any {
+	if f is map[string]Any {
+		return f
+	} else if f is []Any {
+		mut mp := map[string]Any{}
+		for i, fi in f {
+			mp['${i}'] = fi
+		}
+		return mp
+	}
 	return {
 		'0': f
 	}
 }
 
 pub fn (f Any) as_map_of_strings() map[string]string {
+	if f is map[string]Any {
+		mut ms := map[string]string{}
+		for k, v in f {
+			ms[k] = v.str()
+		}
+		return ms
+	}
+	if f is []Any {
+		mut ms := map[string]string{}
+		for i, fi in f {
+			ms['${i}'] = fi.str()
+		}
+		return ms
+	}
 	return {
 		'0': f.str()
 	}
@@ -265,6 +297,9 @@ pub fn (f Any) as_map_of_strings() map[string]string {
 // to_time uses `Any` as a time.Time.
 pub fn (f Any) to_time() !time.Time {
 	match f {
+		time.Time {
+			return f
+		}
 		i64 {
 			return time.unix(f)
 		}
