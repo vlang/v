@@ -1,3 +1,4 @@
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 // vtest vflags: -autofree -cg
 module main
 

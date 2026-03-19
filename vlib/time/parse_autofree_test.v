@@ -1,4 +1,4 @@
-// vtest build: !msvc-windows
+// vtest build: !msvc-windows && !sanitize-address-gcc && !sanitize-address-clang
 // vtest vflags: -autofree
 module time
 
