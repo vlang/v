@@ -44,7 +44,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.out.write_string(util.tabs(g.indent))
 				opt_elem_type := g.styp(ast.u8_type.set_flag(.option))
 				g.write('${opt_elem_type} ${tmp_opt} = builtin__string_at_with_check(')
-				g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 				g.write(', ')
 				g.expr(node.index)
 				g.writeln(');')
@@ -55,13 +55,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else {
 				is_direct_array_access := g.is_direct_array_access || node.is_direct
 				if is_direct_array_access {
-					g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 					g.write('.str[ ')
 					g.expr(node.index)
 					g.write(']')
 				} else {
 					g.write('builtin__string_at(')
-					g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 					g.write(', ')
 					g.expr(node.index)
 					g.write(')')
@@ -73,7 +73,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			unwrapped_got_type := sym.info.types[g.aggregate_type_idx]
 			g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
 		} else {
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.write('[')
 			g.expr(node.index)
 			g.write(']')
@@ -122,7 +122,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if resolved_left_type.is_ptr() {
 			g.write('*')
 		}
-		g.expr(node.left)
+		g.expr(ast.Expr(node.left))
 	} else if sym.kind == .array {
 		if node.is_gated {
 			g.write('builtin__array_slice_ni(')
@@ -135,7 +135,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if resolved_left_type.is_ptr() {
 			g.write('*')
 		}
-		g.expr(node.left)
+		g.expr(ast.Expr(node.left))
 		if left_is_shared {
 			g.write(').val')
 		}
@@ -162,18 +162,18 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			styp := g.styp(node.left_type)
 			g.empty_line = true
 			g.write('${styp} ${var} = ')
-			g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 			g.writeln(';')
 			g.write2(line, ' ${var}')
 		} else {
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 		}
 		if left_is_shared {
 			g.write(').val')
 		}
 		g.write(')')
 	} else {
-		g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 	}
 	g.write(', ')
 	if range.has_low {
@@ -260,10 +260,10 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if node.left is ast.IndexExpr {
 			g.inside_array_index = true
-			g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 			g.inside_array_index = false
 		} else {
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 		}
 
 		if left_is_shared {
@@ -357,7 +357,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				}
 			}
 		}
-		g.expr(node.left)
+		g.expr(ast.Expr(node.left))
 		// TODO: test direct_array_access when 'shared' is implemented
 		if left_is_shared {
 			if left_is_ptr {
@@ -439,7 +439,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		past := g.past_tmp_var_new()
 		styp := g.styp(node.left_type)
 		g.write('${styp} ${past.tmp_var} = ')
-		g.expr(node.left)
+		g.expr(ast.Expr(node.left))
 		g.writeln(';')
 		g.past_tmp_var_done(past)
 	} else if node.left is ast.IndexExpr && node.left.is_setter {
@@ -448,7 +448,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		tmp_var := g.new_tmp_var()
 		styp := g.styp(node.left_type)
 		g.write('${styp}* ${tmp_var} = &')
-		g.expr(node.left)
+		g.expr(ast.Expr(node.left))
 		g.writeln(';')
 		g.write(line)
 		g.write('(*')
@@ -460,10 +460,10 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if node.left_type.is_ptr() {
 			g.write('(*')
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.write(')')
 		} else {
-			g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 		}
 		if node.left_type.has_flag(.shared_f) {
 			g.write('.val')
@@ -570,7 +570,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if node.left is ast.IndexExpr {
 			g.inside_map_index = true
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.inside_map_index = false
 		} else {
 			g.expr(node.left)

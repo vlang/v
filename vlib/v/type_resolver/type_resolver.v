@@ -250,13 +250,13 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			return t.get_type_from_comptime_var(node.expr as ast.Ident)
 		}
 		if node.expr is ast.Ident && node.expr.ct_expr {
-			struct_typ := t.resolver.unwrap_generic(t.get_type(node.expr))
+			struct_typ := t.resolver.unwrap_generic(t.get_type(ast.Expr(node.expr)))
 			struct_sym := t.table.final_sym(struct_typ)
 			// Struct[T] can have field with generic type
 			if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
 				if field := t.table.find_field(struct_sym, node.field_name) {
 					f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
-						t.get_type_or_default(node.expr, node.expr_type), node.field_name)
+						t.get_type_or_default(ast.Expr(node.expr), node.expr_type), node.field_name)
 					if f_unwrap != unsafe { nil } {
 						return f_unwrap.smartcasts.last()
 					}

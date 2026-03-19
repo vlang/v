@@ -88,7 +88,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		}
 		ast.ParExpr {
 			if expr.expr is ast.CallExpr {
-				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+				return g.new_ctemp_var_then_gen(ast.Expr(expr.expr), expr_type)
 			}
 		}
 		ast.PostfixExpr {

@@ -147,14 +147,14 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.right.val == '' {
 			// `str == ''` -> `str.len == 0` optimization
 			g.write('(')
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.write(')')
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			g.write('${arrow}len ${node.op} 0')
 		} else if node.left is ast.Ident {
 			// vmemcmp(left, "str", sizeof("str")) optimization
 			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
-			var := g.expr_string(node.left)
+			var := g.expr_string(ast.Expr(node.left))
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			if node.op == .eq {
 				g.write('_SLIT_EQ(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
@@ -170,7 +170,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			}
 			g.expr(node.left)
 			g.write(', ')
-			g.expr(node.right)
+			g.expr(ast.Expr(node.right))
 			g.write(')')
 		}
 	} else if has_defined_eq_operator {
@@ -203,7 +203,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.left is ast.ArrayInit && g.table.sym(node.left_type).kind == .array_fixed {
 			g.fixed_array_init_with_cast(node.left, node.left_type)
 		} else {
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 		}
 		g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 		if eq_operator_expects_ptr {
@@ -278,7 +278,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
 				}
-				g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 				if left.typ.has_flag(.shared_f) {
 					g.write('->val')
 				}
@@ -288,7 +288,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
 				}
-				g.expr(node.right)
+				g.expr(ast.Expr(node.right))
 				if right.typ.has_flag(.shared_f) {
 					g.write('->val')
 				}
@@ -325,7 +325,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					s := g.styp(right.unaliased)
 					g.write('(${s})')
 				}
-				g.expr(node.right)
+				g.expr(ast.Expr(node.right))
 				g.write(')')
 			}
 			.map {
@@ -337,12 +337,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				if left.typ.is_ptr() {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
-				g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 				g.write(', ')
 				if right.typ.is_ptr() {
 					g.write('*'.repeat(right.typ.nr_muls()))
 				}
-				g.expr(node.right)
+				g.expr(ast.Expr(node.right))
 				g.write(')')
 			}
 			.struct {
@@ -371,7 +371,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				if left.typ.is_ptr() {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
-				g.expr(node.left)
+				g.expr(ast.Expr(node.left))
 				g.write(', ')
 				if right.typ.is_ptr() {
 					g.write('*'.repeat(right.typ.nr_muls()))
@@ -561,7 +561,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 			if operator_expects_ptr {
 				g.write('&')
 			}
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
@@ -840,7 +840,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.empty_line = true
 			tmp_var := g.new_tmp_var()
 			g.write('${g.styp(node.left.return_type)} ${tmp_var} = ')
-			g.expr(node.left)
+			g.expr(ast.Expr(node.left))
 			g.writeln(';')
 			g.write(line)
 			g.write('(')
@@ -1133,7 +1133,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			cur_line := g.go_before_last_stmt().trim_space()
 			right_var = g.new_tmp_var()
 			g.write('${g.styp(right.typ)} ${right_var} = ')
-			g.op_arg(node.right, method.params[1].typ, right.typ)
+				g.op_arg(ast.Expr(node.right), method.params[1].typ, right.typ)
 			g.writeln(';')
 			g.write(cur_line)
 		}
@@ -1159,7 +1159,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 // This can either be a value pushed into an array or a bit shift
 fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	mut left_type := if node.left is ast.ComptimeSelector {
-		g.type_resolver.get_type(node.left)
+		g.type_resolver.get_type(ast.Expr(node.left))
 	} else {
 		g.recheck_concrete_type(node.left_type)
 	}
@@ -1173,9 +1173,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 	if left_type == 0 {
 		left_type = node.left_type
 	}
-	mut right_type := if node.right is ast.ComptimeSelector {
-		g.type_resolver.get_type(node.right)
-	} else {
+		mut right_type := if node.right is ast.ComptimeSelector {
+			g.type_resolver.get_type(ast.Expr(node.right))
+		} else {
 		node.right_type
 	}
 	resolved_node_right_type := g.resolved_expr_type(node.right, node.right_type)
@@ -1248,8 +1248,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		}
 		mut elem_sym := g.table.final_sym(elem_type)
 		if node.right is ast.StructInit && elem_sym.kind !in [.interface, .sum_type] {
-			resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.right,
-				right.typ)))
+				resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(ast.Expr(node.right),
+					right.typ)))
 			if resolved_right_type != 0
 				&& g.table.final_sym(resolved_right_type).kind == elem_sym.kind
 				&& g.table.type_to_str(resolved_right_type) == g.table.type_to_str(elem_type) {

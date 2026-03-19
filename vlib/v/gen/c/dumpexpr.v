@@ -9,7 +9,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	fpath := cestring(g.file.path)
 	line := node.pos.line_nr + 1
 	if 'nop_dump' in g.pref.compile_defines {
-		g.expr(node.expr)
+		g.expr(ast.Expr(node.expr))
 		return
 	}
 	mut name := node.cname
@@ -57,7 +57,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				if current_fn_ident_type != 0 {
 					expr_type = current_fn_ident_type
 				} else {
-					resolved_ident_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
+					resolved_ident_type := g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 						expr_type))
 					if resolved_ident_type != 0 {
 						expr_type = resolved_ident_type
@@ -72,7 +72,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 				'')
 		} else {
-			expr_type = g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
+			expr_type = g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 				expr_type))
 			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 		}
@@ -100,7 +100,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 					break
 				}
 			}
-			expr_type = g.type_resolver.get_type(node.expr)
+				expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
 			break
 		}
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
@@ -127,13 +127,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
-		g.expr(node.expr)
+		g.expr(ast.Expr(node.expr))
 		g.write('->val')
 	} else if expr_type.has_flag(.result) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.write('(*(${name}*)')
-		g.expr(node.expr)
+			g.expr(ast.Expr(node.expr))
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
@@ -143,7 +143,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				g.write('(${s})')
 			}
 		}
-		g.expr(node.expr)
+			g.expr(ast.Expr(node.expr))
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
@@ -166,7 +166,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 					}
 				}
 			}
-			g.expr(node.expr)
+			g.expr(ast.Expr(node.expr))
 			break
 		}
 		g.inside_opt_or_res = old_inside_opt_or_res

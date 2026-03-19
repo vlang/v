@@ -258,7 +258,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				mut d_count := 0
 				for d_i in i .. m.params.len {
 					g.write('*(${g.styp(m.params[i].typ)}*)builtin__array_get(')
-					g.expr(node.args[i - 1].expr)
+					g.expr(ast.Expr(node.args[i - 1].expr))
 					g.write(', ${d_count})')
 
 					if d_i < m.params.len - 1 {

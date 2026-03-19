@@ -1471,7 +1471,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 								ast.IntegerLiteral {
 									if cond.left.field_name == 'indirections' {
 										// field.indirections, T.indirections
-										left_type := c.get_expr_type(cond.left)
+										left_type := c.get_expr_type(ast.Expr(cond.left))
 										left_muls := left_type.nr_muls()
 										match cond.op {
 											.eq {
@@ -1543,7 +1543,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 								}
 								ast.BoolLiteral {
 									// field.is_pub == true
-									l, _ := c.comptime_if_cond(mut cond.left, mut sb)
+									mut left := ast.Expr(cond.left)
+									l, _ := c.comptime_if_cond(mut left, mut sb)
 									sb.write_string(' ${cond.op} ')
 									r := (cond.right as ast.BoolLiteral).val
 									sb.write_string('${r}')

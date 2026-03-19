@@ -52,7 +52,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					&& g.pref.build_mode != .build_module
 					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
 					styp := g.styp(field.expr.typ)
-					val := g.expr_string(field.expr)
+					val := g.expr_string(ast.Expr(field.expr))
 					// eprintln('> const_name: ${const_name} | name: ${name} | styp: ${styp} | val: ${val}')
 					g.global_const_defs[name] = GlobalConstDef{
 						mod:       field.mod
@@ -65,12 +65,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, const_name,
 						field.expr, field.typ)
 				} else {
-					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+					g.const_decl_init_later(field.mod, name, const_name, ast.Expr(field.expr), field.typ,
 						false)
 				}
 			}
 			ast.StringLiteral {
-				val := g.expr_string(field.expr)
+					val := g.expr_string(ast.Expr(field.expr))
 				typ := if field.expr.language == .c { 'char*' } else { 'string' }
 				g.global_const_defs[name] = GlobalConstDef{
 					mod:   field.mod
@@ -85,11 +85,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					old_inside_const_opt_or_res := g.inside_const_opt_or_res
 					g.inside_const_opt_or_res = true
 					unwrap_opt_res := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+					g.const_decl_init_later(field.mod, name, const_name, ast.Expr(field.expr), field.typ,
 						unwrap_opt_res)
 					g.inside_const_opt_or_res = old_inside_const_opt_or_res
 				} else {
-					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+					g.const_decl_init_later(field.mod, name, const_name, ast.Expr(field.expr), field.typ,
 						false)
 				}
 			}
@@ -133,7 +133,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					}
 					should_surround := field.expr.expr is ast.CallExpr
 						&& field.expr.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+					g.const_decl_init_later(field.mod, name, const_name, ast.Expr(field.expr), field.typ,
 						should_surround)
 				} else if field.expr is ast.InfixExpr {
 					mut has_unwrap_opt_res := false
@@ -142,7 +142,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					} else if field.expr.right is ast.CallExpr {
 						has_unwrap_opt_res = field.expr.right.or_block.kind != .absent
 					}
-					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+					g.const_decl_init_later(field.mod, name, const_name, ast.Expr(field.expr), field.typ,
 						has_unwrap_opt_res)
 				} else {
 					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,

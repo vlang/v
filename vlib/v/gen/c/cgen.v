@@ -2579,7 +2579,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							ret_typ := g.fn_decl.return_type.clear_flag(.result)
 							styp = g.base_type(ret_typ)
 							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
-								g.expr(stmt.expr)
+								g.expr(ast.Expr(stmt.expr))
 								g.writeln(';')
 							} else {
 								g.write('builtin___result_ok(&(${styp}[]) { ')
@@ -4554,10 +4554,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						&& g.comptime.is_comptime_selector_field_name(node.expr.field_expr, 'name') {
 						expr_type = g.unwrap_generic(g.comptime.comptime_for_field_type)
 					}
-				} else if mut node.expr is ast.Ident && node.expr.ct_expr {
-					expr_type = g.get_comptime_for_var_type(node.expr, g.type_resolver.get_type_or_default(node.expr,
-						ast.void_type))
-				}
+					} else if mut node.expr is ast.Ident && node.expr.ct_expr {
+						expr_type = g.get_comptime_for_var_type(node.expr, g.type_resolver.get_type_or_default(ast.Expr(node.expr),
+							ast.void_type))
+					}
 				if expr_type != ast.void_type {
 					if !expr_type.has_flag(.option) {
 						g.error('cannot use `?` on non-option expression', node.pos)
@@ -6694,9 +6694,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			return
 		}
 		if node_typ_is_option && node.expr is ast.None {
-			g.gen_option_error(node_typ, node.expr)
+			g.gen_option_error(node_typ, ast.Expr(node.expr))
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
-			g.expr_with_cast(node.expr, g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+			g.expr_with_cast(ast.Expr(node.expr), g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 				ast.void_type), node_typ)
 		} else if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node_typ)
@@ -6774,9 +6774,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				cast_label = '(${styp})'
 			}
 		}
-		if node_typ_is_option && node.expr is ast.None {
-			g.gen_option_error(node_typ, node.expr)
-		} else if node_typ_is_option {
+			if node_typ_is_option && node.expr is ast.None {
+				g.gen_option_error(node_typ, ast.Expr(node.expr))
+			} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
 					cur_stmt := g.go_before_last_stmt()
@@ -7033,10 +7033,12 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 					for stmt in branch.stmts {
 						if stmt is ast.ExprStmt {
 							if stmt.expr is ast.IfExpr && (stmt.expr as ast.IfExpr).is_comptime {
-								g.gen_hash_stmts(mut sb, stmt.expr, section)
+								mut hash_node := ast.HashStmtNode(stmt.expr)
+								g.gen_hash_stmts(mut sb, &hash_node, section)
 							}
 						} else if stmt is ast.HashStmt {
-							g.gen_hash_stmts(mut sb, stmt, section)
+							mut hash_node := ast.HashStmtNode(stmt)
+							g.gen_hash_stmts(mut sb, &hash_node, section)
 						}
 					}
 				}
@@ -7606,7 +7608,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 						}
 					} else if expr0 in [ast.ArrayInit, ast.StructInit] {
 						if expr0 is ast.ArrayInit && expr0.is_fixed && expr0.has_init {
-							if (expr0 as ast.ArrayInit).init_expr.is_literal() {
+							if expr0.init_expr.is_literal() {
 								g.write('{.ret_arr=')
 								g.expr_with_cast(expr0, type0, ret_type)
 								g.writeln('};')
@@ -8449,7 +8451,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
 						&& return_is_option {
-						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type)
+						g.expr_with_cast(ast.Expr(expr_stmt.expr), expr_stmt.typ, return_type)
 					} else {
 						old_inside_opt_data := g.inside_opt_data
 						g.inside_opt_data = true
@@ -8806,7 +8808,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 										ret_typ := g.styp(field.default_expr.return_type)
 										tmp_var := g.new_tmp_var()
 										g.type_default_vars.writeln('${ret_typ} ${tmp_var} = {0};')
-										g.type_default_vars.writeln('memcpy(${tmp_var}, ${g.expr_string(field.default_expr)}, sizeof(${ret_typ}));')
+										g.type_default_vars.writeln('memcpy(${tmp_var}, ${g.expr_string(ast.Expr(field.default_expr))}, sizeof(${ret_typ}));')
 										expr_str += '{'
 										for i in 0 .. array_info.size {
 											expr_str += '${tmp_var}[${i}]'
@@ -8819,7 +8821,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 									ast.ArrayInit {
 										ret_typ := g.styp(field.default_expr.typ)
 										tmp_var := g.new_tmp_var()
-										g.type_default_vars.writeln('${ret_typ} ${tmp_var} = ${g.expr_string(field.default_expr)};')
+										g.type_default_vars.writeln('${ret_typ} ${tmp_var} = ${g.expr_string(ast.Expr(field.default_expr))};')
 										expr_str += '{'
 										for i in 0 .. array_info.size {
 											expr_str += '${tmp_var}[${i}]'

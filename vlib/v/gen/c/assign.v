@@ -55,13 +55,13 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			last_stmt := stmts.last()
 			// handles stmt block which returns something
 			// e.g. { return none }
-			if stmts.len > 0 && last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
-				var_expr_name := c_name(var_expr.str())
-				if last_stmt.expr is ast.Ident && last_stmt.expr.or_expr.kind != .absent {
-					g.write('${var_expr_name} = ')
-					g.expr_with_opt_or_block(last_stmt.expr, last_stmt.typ, var_expr,
-						ret_typ, in_heap)
-				} else {
+				if stmts.len > 0 && last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
+					var_expr_name := c_name(var_expr.str())
+					if last_stmt.expr is ast.Ident && last_stmt.expr.or_expr.kind != .absent {
+						g.write('${var_expr_name} = ')
+						g.expr_with_opt_or_block(ast.Expr(last_stmt.expr), last_stmt.typ, var_expr,
+							ret_typ, in_heap)
+					} else {
 					g.gen_or_block_stmts(var_expr_name, '', stmts, ret_typ, false, scope,
 						expr.pos())
 				}
@@ -452,10 +452,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 						left.obj.typ = var_type
 						g.assign_ct_type[val.pos.pos] = var_type
-					} else if val is ast.Ident && val.info is ast.IdentVar {
-						val_info := (val as ast.Ident).info as ast.IdentVar
-						gen_or = val.or_expr.kind != .absent
-						if val_info.is_option && gen_or {
+						} else if val is ast.Ident && val.info is ast.IdentVar {
+							val_info := val.info as ast.IdentVar
+							gen_or = val.or_expr.kind != .absent
+							if val_info.is_option && gen_or {
 							var_type = val_type.clear_flag(.option)
 							left.obj.typ = var_type
 						}
@@ -1452,14 +1452,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							if val is ast.PrefixExpr && val.op == .amp && val.right is ast.Ident
-								&& ((val.right as ast.Ident).is_auto_heap()
-								|| g.resolved_ident_is_auto_heap(val.right as ast.Ident)) {
-								old_inside_assign_fn_var := g.inside_assign_fn_var
-								g.inside_assign_fn_var = true
-								g.expr(val.right)
-								g.inside_assign_fn_var = old_inside_assign_fn_var
-							} else {
+								if val is ast.PrefixExpr && val.op == .amp && val.right is ast.Ident
+									&& ((val.right as ast.Ident).is_auto_heap()
+									|| g.resolved_ident_is_auto_heap(val.right as ast.Ident)) {
+									old_inside_assign_fn_var := g.inside_assign_fn_var
+									g.inside_assign_fn_var = true
+									g.expr(ast.Expr(val.right))
+									g.inside_assign_fn_var = old_inside_assign_fn_var
+								} else {
 								g.expr_with_cast(val, val_type, exp_type)
 							}
 						}

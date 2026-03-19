@@ -2610,8 +2610,10 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					}
 				}
 				ast.CallExpr {
-					c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
-					if comptime_value := c.eval_comptime_const_expr(field.expr, 0) {
+					call_ret_type := c.expr(mut field.expr)
+					call_expr := ast.Expr(field.expr)
+					c.check_expr_option_or_result_call(call_expr, call_ret_type)
+					if comptime_value := c.eval_comptime_const_expr(call_expr, 0) {
 						comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
 							field.expr.pos) or {
 							c.error('the default value for an enum has to be an integer',
@@ -2913,9 +2915,20 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 
 fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
 	c.inside_defer = true
-	if node.idx_in_fn < 0 && c.table.cur_fn != unsafe { nil } {
-		node.idx_in_fn = c.table.cur_fn.defer_stmts.len
-		c.table.cur_fn.defer_stmts << unsafe { &node }
+	if c.table.cur_fn != unsafe { nil } {
+		if node.idx_in_fn < 0 {
+			node.idx_in_fn = c.table.cur_fn.defer_stmts.len
+		}
+		mut is_registered := false
+		for defer_stmt in c.table.cur_fn.defer_stmts {
+			if defer_stmt.idx_in_fn == node.idx_in_fn {
+				is_registered = true
+				break
+			}
+		}
+		if !is_registered {
+			c.table.cur_fn.defer_stmts << unsafe { &node }
+		}
 	}
 	if node.mode == .function {
 		if !isnil(c.fn_scope) && node.scope == c.fn_scope {
