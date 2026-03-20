@@ -108,6 +108,20 @@ pub const closure_thunk = $if ppc64le {
         0x81, 0xc0, 0x40, 0x00,  // jmp  %g1
         0x01, 0x00, 0x00, 0x00   // nop
     ]!
+} $else $if ppc64 {
+    [
+    u8(0x7C), 0x08, 0x02, 0xA6,  // mflr   %r0
+        0x48, 0x00, 0x00, 0x05,  // bl     here
+        0x7D, 0xC8, 0x02, 0xA6,  // here:  mflr %r14
+        0x39, 0xCE, 0xC0, 0x08,  // addi   %r14, %r14, -16376
+        0xC9, 0xCE, 0x00, 0x00,  // lfd    %f14, 0(%r14)      // userdata
+        0xE9, 0xCE, 0x00, 0x08,  // ld     %r14, 8(%r14)      // func descriptor ptr
+        0xE9, 0x8E, 0x00, 0x00,  // ld     %r12, 0(%r14)      // code addr from descriptor
+        0xE8, 0x4E, 0x00, 0x08,  // ld     %r2,  8(%r14)      // TOC from descriptor
+        0x7C, 0x08, 0x03, 0xA6,  // mtlr   %r0
+        0x7D, 0x89, 0x03, 0xA6,  // mtctr  %r12
+        0x4E, 0x80, 0x04, 0x20,  // bctr
+    ]!
 } $else {
     [u8(0)]!
 }
@@ -167,6 +181,11 @@ const closure_get_data_bytes = $if arm32 {
         0x81, 0xc3, 0xe0, 0x08,  // retl
         0x01, 0x00, 0x00, 0x00   // nop
     ]!
+} $else $if ppc64 {
+    [
+    u8(0x7d), 0xc3, 0x00, 0x66,  // mfvsrd %r3, %f14
+        0x4e, 0x80, 0x00, 0x20   // blr
+    ]!
 } $else {
     [u8(0)]!
 }
@@ -223,11 +242,20 @@ fn closure_init() {
 		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_write)
 		// Copy closure entry stub code
 		vmemcpy(g_closure.closure_ptr, &closure_get_data_bytes[0], closure_get_data_bytes.len)
-		// Re-enormalize execution protection
+		// Re-normalize execution protection
 		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_exec)
 	}
 	// Setup global closure handler pointer
-	g_closure.closure_get_data = g_closure.closure_ptr
+	$if ppc64 {
+		mut desc := unsafe { &voidptr(&u8(g_closure.closure_ptr) - assumed_page_size) }
+		unsafe {
+			desc[0] = g_closure.closure_ptr
+			desc[1] = nil
+		}
+		g_closure.closure_get_data = desc
+	} $else {
+		g_closure.closure_get_data = g_closure.closure_ptr
+	}
 
 	// Advance allocation pointer past header
 	unsafe {
@@ -248,18 +276,35 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	g_closure.closure_cap-- // Decrement slot counter
 
 	// Claim current closure slot
-	mut curr_closure := g_closure.closure_ptr
+	curr_closure := g_closure.closure_ptr
 	unsafe {
 		// Move to next available slot
 		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
 
 		// Write closure metadata (data + function pointer)
 		mut p := &voidptr(&u8(curr_closure) - assumed_page_size)
-		p[0] = data // Stored closure context
-		p[1] = func // Target function to execute
+		$if ppc64 {
+			// ELFv1: guard page layout per slot:
+			//   [0] desc[0] = thunk code address  <- returned as ELFv1 function pointer
+			//   [1] desc[1] = nil (TOC unused; thunk loads real TOC from func descriptor)
+			//   [2] userdata
+			//   [3] func (V function descriptor pointer into .opd)
+			p[0] = curr_closure
+			p[1] = nil
+			p[2] = data
+			p[3] = func
+		} $else {
+			p[0] = data // Stored closure context
+			p[1] = func // Target function to execute
+		}
 	}
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
-	return curr_closure
+	$if ppc64 {
+		// ELFv1: return descriptor address (guard page), not raw code address
+		return unsafe { &u8(curr_closure) - assumed_page_size }
+	} $else {
+		return curr_closure
+	}
 }

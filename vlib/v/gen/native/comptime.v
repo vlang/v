@@ -170,7 +170,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'x86', 'x32', 'i386', 'arm32', 'rv32' {
 			false // native only supports 64-bit systems
 		}
-		'rv64', 's390x', 'ppc64le', 'loongarch64', 'sparc64' {
+		'rv64', 's390x', 'ppc64le', 'loongarch64', 'sparc64', 'ppc64' {
 			false // not support yet
 		}
 		'little_endian' {
