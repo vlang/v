@@ -204,7 +204,13 @@ fn call_handler(sw ScrollableWidget) {
 '
 	env := check_code(code)
 	assert has_type_matching(env, fn (t Type) bool {
-		return t is FnType
+		if t is FnType {
+			return true
+		}
+		if t is Alias && t.base_type is FnType {
+			return true
+		}
+		return false
 	}), 'interface fields aliased to fn types should resolve as callable'
 }
 

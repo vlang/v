@@ -120,9 +120,9 @@ fn test_transform_comptime_embed_file_chained_method_call() {
 						value: "'asset.txt'"
 					})
 				})
-				rhs: ast.Expr(ast.Ident{
+				rhs: ast.Ident{
 					name: 'to_bytes'
-				})
+				}
 			})
 			args: []
 		})
@@ -137,8 +137,7 @@ fn test_transform_comptime_embed_file_chained_method_call() {
 	init := sel.lhs as ast.InitExpr
 	assert init.typ is ast.Ident
 	assert (init.typ as ast.Ident).name == embed_file_helper_type_name
-	assert sel.rhs is ast.Ident
-	assert (sel.rhs as ast.Ident).name == 'to_bytes'
+	assert sel.rhs.name == 'to_bytes'
 	assert init.fields.len == 4
 	assert init.fields[0].value is ast.StringLiteral
 	assert (init.fields[0].value as ast.StringLiteral).value == "'hello'"
