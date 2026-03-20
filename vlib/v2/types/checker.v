@@ -661,9 +661,9 @@ fn (mut c Checker) preregister_all_types(files []ast.File) {
 	for file in files {
 		c.preregister_types(file)
 	}
+	c.process_pending_struct_decls()
 	c.process_pending_type_decls()
 	c.process_pending_interface_decls()
-	c.process_pending_struct_decls()
 }
 
 // preregister_all_fn_signatures registers all function/method signatures
@@ -2613,9 +2613,9 @@ pub fn (mut c Checker) add_deferred(items []Deferred) {
 
 // process_struct_deferred is kept for compatibility with parallel type-checking plumbing.
 pub fn (mut c Checker) process_struct_deferred() {
+	c.process_pending_struct_decls()
 	c.process_pending_type_decls()
 	c.process_pending_interface_decls()
-	c.process_pending_struct_decls()
 }
 
 // process_all_deferred is kept for compatibility with parallel type-checking plumbing.
