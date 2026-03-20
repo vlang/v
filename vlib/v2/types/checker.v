@@ -4634,7 +4634,9 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				return int_
 			}
 			if name == 'str' {
-				return Pointer{base_type: u8_}
+				return Pointer{
+					base_type: u8_
+				}
 			}
 			if o := c.scope.lookup_parent('string', 0) {
 				otyp := o.typ()
