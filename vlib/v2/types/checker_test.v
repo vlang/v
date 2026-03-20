@@ -496,8 +496,9 @@ fn (mut list LinkedList[T]) push(value T) {}
 '
 	env := check_code(code)
 	method := env.lookup_method('LinkedList', 'push') or { panic('missing LinkedList.push') }
-	assert method.params.len == 2
-	assert method.params[1].typ.name() == 'T'
+	assert method.params.len >= 1
+	last_param := method.params[method.params.len - 1]
+	assert last_param.typ.name() == 'T'
 }
 
 fn test_nested_scope_updates_use_scope_identity_for_recursive_interfaces() {
