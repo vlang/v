@@ -12,7 +12,7 @@ import math.bits
 
 // mixing function g
 @[direct_array_access; inline]
-fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
+fn g(mut v [16]u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 	v[a] = v[a] + v[b] + x
 	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr1)
 	v[c] = v[c] + v[d]
@@ -25,7 +25,7 @@ fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 
 // one complete mixing round with the function g
 @[direct_array_access; inline]
-fn (d Digest) mixing_round(mut v []u32, s []u8) {
+fn (d Digest) mixing_round(mut v [16]u32, s [16]u8) {
 	g(mut v, 0, 4, 8, 12, d.m[s[0]], d.m[s[1]])
 	g(mut v, 1, 5, 9, 13, d.m[s[2]], d.m[s[3]])
 	g(mut v, 2, 6, 10, 14, d.m[s[4]], d.m[s[5]])
@@ -41,9 +41,13 @@ fn (d Digest) mixing_round(mut v []u32, s []u8) {
 @[direct_array_access]
 fn (mut d Digest) f(f bool) {
 	// initialize the working vector
-	mut v := []u32{len: 0, cap: 16}
-	v << d.h[..8]
-	v << iv[..8]
+	mut v := [16]u32{}
+	for i in 0 .. 8 {
+		v[i] = d.h[i]
+	}
+	for i in 0 .. 8 {
+		v[i + 8] = iv[i]
+	}
 
 	v[12] ^= u32(d.t & 0x00000000ffffffff)
 	v[13] ^= u32(d.t >> 32)
