@@ -68,9 +68,11 @@ fn test_mixing_function_g() {
 	f := true
 
 	// initialize the working vector from the digest and IV values
-	mut v := []u32{len: 0, cap: 16}
-	v << d.h[..8]
-	v << iv[..8]
+	mut v := [16]u32{}
+	for i in 0 .. 8 {
+		v[i] = d.h[i]
+		v[i + 8] = iv[i]
+	}
 
 	// fold in the 64-bit message length
 	v[12] ^= u32(d.t & 0x00000000ffffffff)
