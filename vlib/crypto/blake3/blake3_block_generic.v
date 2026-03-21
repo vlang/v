@@ -8,12 +8,11 @@
 
 module blake3
 
-import arrays
 import math.bits
 
 // mixing function g
 @[direct_array_access; inline]
-fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
+fn g(mut v [16]u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 	v[a] = v[a] + v[b] + x
 	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr1)
 	v[c] = v[c] + v[d]
@@ -26,7 +25,7 @@ fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 
 // one complete mixing round with the function g
 @[direct_array_access; inline]
-fn mixing_round(mut v []u32, m []u32, s []u8) {
+fn mixing_round(mut v [16]u32, m []u32, s [16]u8) {
 	g(mut v, 0, 4, 8, 12, m[s[0]], m[s[1]])
 	g(mut v, 1, 5, 9, 13, m[s[2]], m[s[3]])
 	g(mut v, 2, 6, 10, 14, m[s[4]], m[s[5]])
@@ -41,11 +40,15 @@ fn mixing_round(mut v []u32, m []u32, s []u8) {
 // compression function f
 @[direct_array_access]
 fn f(h []u32, m []u32, counter u64, input_bytes u32, flags u32) []u32 {
-	mut v := []u32{len: 16}
+	mut v := [16]u32{}
 
 	// initialize the working vector
-	arrays.copy[u32](mut v, h[..8])
-	arrays.copy[u32](mut v[8..], iv[..4])
+	for i in 0 .. 8 {
+		v[i] = h[i]
+	}
+	for i in 0 .. 4 {
+		v[i + 8] = iv[i]
+	}
 	v[12] = u32(counter)
 	v[13] = u32(counter >> 32)
 	v[14] = input_bytes
@@ -70,5 +73,5 @@ fn f(h []u32, m []u32, counter u64, input_bytes u32, flags u32) []u32 {
 		v[i + 8] ^= h[i]
 	}
 
-	return v
+	return v[..]
 }
