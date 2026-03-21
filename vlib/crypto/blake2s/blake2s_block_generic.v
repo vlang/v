@@ -44,8 +44,6 @@ fn (mut d Digest) f(f bool) {
 	mut v := [16]u32{}
 	for i in 0 .. 8 {
 		v[i] = d.h[i]
-	}
-	for i in 0 .. 8 {
 		v[i + 8] = iv[i]
 	}
 

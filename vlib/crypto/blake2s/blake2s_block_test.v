@@ -71,8 +71,6 @@ fn test_mixing_function_g() {
 	mut v := [16]u32{}
 	for i in 0 .. 8 {
 		v[i] = d.h[i]
-	}
-	for i in 0 .. 8 {
 		v[i + 8] = iv[i]
 	}
 
