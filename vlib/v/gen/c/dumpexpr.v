@@ -100,7 +100,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 					break
 				}
 			}
-				expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
+			expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
 			break
 		}
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
@@ -133,7 +133,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.write('(*(${name}*)')
-			g.expr(ast.Expr(node.expr))
+		g.expr(ast.Expr(node.expr))
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
@@ -143,7 +143,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				g.write('(${s})')
 			}
 		}
-			g.expr(ast.Expr(node.expr))
+		g.expr(ast.Expr(node.expr))
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true

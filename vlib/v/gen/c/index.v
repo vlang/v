@@ -55,13 +55,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else {
 				is_direct_array_access := g.is_direct_array_access || node.is_direct
 				if is_direct_array_access {
-				g.expr(ast.Expr(node.left))
+					g.expr(ast.Expr(node.left))
 					g.write('.str[ ')
 					g.expr(node.index)
 					g.write(']')
 				} else {
 					g.write('builtin__string_at(')
-				g.expr(ast.Expr(node.left))
+					g.expr(ast.Expr(node.left))
 					g.write(', ')
 					g.expr(node.index)
 					g.write(')')
@@ -162,7 +162,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			styp := g.styp(node.left_type)
 			g.empty_line = true
 			g.write('${styp} ${var} = ')
-				g.expr(ast.Expr(node.left))
+			g.expr(ast.Expr(node.left))
 			g.writeln(';')
 			g.write2(line, ' ${var}')
 		} else {
@@ -173,7 +173,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		}
 		g.write(')')
 	} else {
-				g.expr(ast.Expr(node.left))
+		g.expr(ast.Expr(node.left))
 	}
 	g.write(', ')
 	if range.has_low {
@@ -260,7 +260,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if node.left is ast.IndexExpr {
 			g.inside_array_index = true
-				g.expr(ast.Expr(node.left))
+			g.expr(ast.Expr(node.left))
 			g.inside_array_index = false
 		} else {
 			g.expr(ast.Expr(node.left))
@@ -463,7 +463,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.expr(ast.Expr(node.left))
 			g.write(')')
 		} else {
-				g.expr(ast.Expr(node.left))
+			g.expr(ast.Expr(node.left))
 		}
 		if node.left_type.has_flag(.shared_f) {
 			g.write('.val')

@@ -3883,9 +3883,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else if node_args_len == 1 {
 			if mut arg0.expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut arg0.expr)
-				} else if mut arg0.expr is ast.InfixExpr {
-					c.check_sort_external_variable_access(ast.Expr(arg0.expr))
-					if arg0.expr.op !in [.gt, .lt] {
+			} else if mut arg0.expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(ast.Expr(arg0.expr))
+				if arg0.expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)
 				}
@@ -4279,9 +4279,9 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		} else if node_args_len == 1 {
 			if mut arg0.expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut arg0.expr)
-				} else if mut arg0.expr is ast.InfixExpr {
-					c.check_sort_external_variable_access(ast.Expr(arg0.expr))
-					if arg0.expr.op !in [.gt, .lt] {
+			} else if mut arg0.expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(ast.Expr(arg0.expr))
+				if arg0.expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)
 				}

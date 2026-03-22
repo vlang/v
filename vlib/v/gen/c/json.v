@@ -177,7 +177,8 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-					g.gen_struct_enc_dec(utyp, ast.TypeInfo(psym.info), ret_styp, mut enc, mut dec, '')
+				g.gen_struct_enc_dec(utyp, ast.TypeInfo(psym.info), ret_styp, mut enc, mut
+					dec, '')
 			} else if psym.kind == .enum {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {

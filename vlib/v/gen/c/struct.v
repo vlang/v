@@ -876,18 +876,20 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
 				ast.CastExpr, ast.CallExpr {
-						tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type, false)
-						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
-							field_unwrap_sym.info.size)
+					tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type,
+						false)
+					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
+						field_unwrap_sym.info.size)
 				}
 				ast.ArrayInit {
 					if sfield.expr.has_index {
-							tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type,
-								false)
+						tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type,
+							false)
 						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 							field_unwrap_sym.info.size)
 					} else if sfield.expr.has_callexpr {
-							tmp_var := g.expr_with_fixed_array(ast.Expr(sfield.expr), sfield.typ, sfield.expected_type)
+						tmp_var := g.expr_with_fixed_array(ast.Expr(sfield.expr), sfield.typ,
+							sfield.expected_type)
 						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 							field_unwrap_sym.info.size)
 					} else {
@@ -917,7 +919,7 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
 		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
-			g.expr_opt_with_cast(ast.Expr(sfield.expr), field_unwrap_typ, sfield.expected_type)
+		g.expr_opt_with_cast(ast.Expr(sfield.expr), field_unwrap_typ, sfield.expected_type)
 	} else if field_unwrap_sym.kind == .function && sfield.expected_type.has_flag(.option) {
 		tmp_out_var := g.new_tmp_var()
 		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var,

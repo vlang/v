@@ -347,7 +347,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			}
 		} else if mut call_arg.expr is ast.SelectorExpr
 			&& call_arg.expr.expr_type.has_flag(.generic) && call_arg.expr.expr is ast.Ident {
-				mut ctyp := t.typeof_type(ast.Expr(call_arg.expr), call_arg.expr.typ)
+			mut ctyp := t.typeof_type(ast.Expr(call_arg.expr), call_arg.expr.typ)
 			param_typ_sym := t.table.sym(param_typ)
 			cparam_type_sym := t.table.sym(ctyp)
 			if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {

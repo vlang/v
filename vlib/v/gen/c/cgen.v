@@ -4576,10 +4576,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						&& g.comptime.is_comptime_selector_field_name(node.expr.field_expr, 'name') {
 						expr_type = g.unwrap_generic(g.comptime.comptime_for_field_type)
 					}
-					} else if mut node.expr is ast.Ident && node.expr.ct_expr {
-						expr_type = g.get_comptime_for_var_type(node.expr, g.type_resolver.get_type_or_default(ast.Expr(node.expr),
-							ast.void_type))
-					}
+				} else if mut node.expr is ast.Ident && node.expr.ct_expr {
+					expr_type = g.get_comptime_for_var_type(node.expr, g.type_resolver.get_type_or_default(ast.Expr(node.expr),
+						ast.void_type))
+				}
 				if expr_type != ast.void_type {
 					if !expr_type.has_flag(.option) {
 						g.error('cannot use `?` on non-option expression', node.pos)
@@ -6796,9 +6796,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				cast_label = '(${styp})'
 			}
 		}
-			if node_typ_is_option && node.expr is ast.None {
-				g.gen_option_error(node_typ, ast.Expr(node.expr))
-			} else if node_typ_is_option {
+		if node_typ_is_option && node.expr is ast.None {
+			g.gen_option_error(node_typ, ast.Expr(node.expr))
+		} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
 					cur_stmt := g.go_before_last_stmt()
