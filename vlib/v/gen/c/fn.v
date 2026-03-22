@@ -5169,6 +5169,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		}
 		if arg_sym.kind == exp_sym.kind && arg_typ.idx() == expected_wrap_type.idx()
 			&& arg.expr in [ast.Ident, ast.SelectorExpr] {
+			g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+				expected_wrap_type)
 			if arg_typ.is_ptr() {
 				g.expr(arg.expr)
 			} else {
@@ -5187,10 +5189,14 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		expected_ref_inner_sym := g.table.sym(expected_ref_inner_type)
 		if expected_ref_inner_sym.kind in [.interface, .sum_type] {
 			if arg_typ.is_ptr() && arg_typ.deref() == expected_ref_inner_type {
+				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+					expected_ref_inner_type)
 				g.expr(arg.expr)
 			} else if arg_sym.kind == expected_ref_inner_sym.kind
 				&& arg_typ.idx() == expected_ref_inner_type.idx()
 				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
+				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+					expected_ref_inner_type)
 				g.write('&')
 				g.expr(arg.expr)
 			} else {
@@ -5400,6 +5406,14 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 	}
 	// check if the argument must be dereferenced or not
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
+	// When a smartcast selector/ident is passed to a function expecting the original sumtype,
+	// the type resolution above resolves arg_typ to the sumtype (matching expected_type),
+	// so expr_with_cast won't handle the sumtype wrapping. We need to prevent the smartcast
+	// unwrapping in g.expr() since the value is already the correct sumtype at runtime.
+	if !arg_typ.has_flag(.option) && exp_sym.kind == .sum_type && arg_typ == expected_type {
+		g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+			expected_type)
+	}
 	if arg_typ.has_flag(.option) {
 		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
 	} else {

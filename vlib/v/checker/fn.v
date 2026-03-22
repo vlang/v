@@ -3600,10 +3600,10 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 						return
 					}
 				}
-				// NOTE: bug accessing typ field on sumtype variant (not cast properly).
-				// leaving this here as the resulting issue is notoriously hard to debug.
-				// if !is_map && arg_expr.info.typ != ast.bool_type {
-				if !is_map && arg_expr.var_info().typ != ast.bool_type {
+				// NOTE: using a local copy to avoid a cgen issue with mut match
+				// and method calls on smartcast variants (double pointer).
+				ident := arg_expr
+				if !is_map && ident.var_info().typ != ast.bool_type {
 					c.error('type mismatch, should be bool', arg_expr.pos)
 				}
 			}

@@ -2927,7 +2927,7 @@ fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
 			}
 		}
 		if !is_registered {
-			c.table.cur_fn.defer_stmts << unsafe { &node }
+			c.table.cur_fn.defer_stmts << node
 		}
 	}
 	if node.mode == .function {

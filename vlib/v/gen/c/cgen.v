@@ -115,6 +115,7 @@ mut:
 	results                    map[string]string // to avoid duplicates
 	done_options               shared []string   // to avoid duplicates
 	done_results               shared []string   // to avoid duplicates
+	array_typedefs             []string          // to avoid duplicate array typedefs
 	late_chan_types            shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types         map[string]bool   // concrete channel typedefs/helpers already emitted
 	chan_pop_options           map[string]string // types for `x := <-ch or {...}`
@@ -1618,6 +1619,7 @@ fn (mut g Gen) write_options() {
 		}
 		done << base
 		g.typedefs.writeln('typedef struct ${styp} ${styp};')
+		g.ensure_array_typedef(base)
 		if base in g.options_forward {
 			g.out_options_forward.write_string(g.option_type_text(styp, base) + ';\n\n')
 		} else {
@@ -1637,6 +1639,7 @@ fn (mut g Gen) write_results() {
 		}
 		done << base
 		g.typedefs.writeln('typedef struct ${styp} ${styp};')
+		g.ensure_array_typedef(base)
 		if base in g.results_forward {
 			g.out_results_forward.write_string(g.result_type_text(styp, base) + ';\n\n')
 		} else {
@@ -2046,6 +2049,25 @@ fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Typ
 		}
 	}
 	return smartcast_type
+}
+
+// ensure_array_typedef emits a `typedef array <cname>;` if the base type
+// name looks like an array type that might not have been typedef'd yet.
+// This is needed because option/result wrapper structs reference the base
+// type in sizeof(), but the array typedef might have been skipped
+// (e.g. for builtin nested array types like Array_Array_string).
+fn (mut g Gen) ensure_array_typedef(base string) {
+	if base.starts_with('Array_') && !base.starts_with('Array_fixed_') {
+		if base !in g.array_typedefs {
+			for sym in g.table.type_symbols {
+				if sym.kind == .array && sym.cname == base {
+					g.type_definitions.writeln('typedef array ${base};')
+					g.array_typedefs << base
+					return
+				}
+			}
+		}
+	}
 }
 
 pub fn (mut g Gen) write_typedef_types() {

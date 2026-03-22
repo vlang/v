@@ -115,6 +115,27 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	return typ
 }
 
+// is_expr_smartcast_to_sumtype checks if expr is a smartcast variable/field
+// whose original type is the given sumtype. This is used to prevent sumtype
+// variant unwrapping when passing a smartcast expression to a function
+// that expects the original sumtype.
+fn (mut g Gen) is_expr_smartcast_to_sumtype(expr ast.Expr, expected_sumtype ast.Type) bool {
+	scope := g.file.scope.innermost(expr.pos().pos)
+	if expr is ast.SelectorExpr {
+		v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name)
+		if v != unsafe { nil } && v.smartcasts.len > 0 {
+			return true
+		}
+	} else if expr is ast.Ident {
+		if v := scope.find_var(expr.name) {
+			if v.smartcasts.len > 0 && v.orig_type == expected_sumtype {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	scope := if g.file.scope != unsafe { nil } {
 		g.file.scope.innermost(expr.pos.pos)
