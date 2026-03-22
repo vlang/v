@@ -262,8 +262,9 @@ pub mut:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
 	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls             bool
-	json_errors        bool // -json-errors, for VLS and other tools
+	is_vls                    bool
+	is_vls_completions_json   bool // -vls-completions-json, output keywords+builtins as JSON for VLS
+	json_errors               bool // -json-errors, for VLS and other tools
 	new_transform      bool // temporary for the new transformer
 	new_generic_solver bool
 }
@@ -559,6 +560,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-json-errors' {
 				res.json_errors = true
+			}
+			'-vls-completions-json' {
+				res.is_vls_completions_json = true
 			}
 			'-live' {
 				res.is_livemain = true

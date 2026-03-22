@@ -11,6 +11,8 @@ import v.util
 import v.util.version
 import v.builder
 import v.builder.cbuilder
+import v.token
+import json
 
 @[markused]
 const external_tools = [
@@ -120,6 +122,15 @@ fn main() {
 		exit(1)
 	}
 	timers.show('v parsing CLI args')
+
+	if prefs.is_vls_completions_json {
+		mut keywords := token.keywords.keys()
+		keywords.sort()
+		mut builtins := builtin_pub_fn_names.clone()
+		builtins.sort()
+		println('{"keywords":${json.encode(keywords)},"builtins":${json.encode(builtins)}}')
+		return
+	}
 
 	setup_vbuild_env_vars(prefs)
 
