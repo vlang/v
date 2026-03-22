@@ -12,6 +12,11 @@ fn array_alias_elem_type(arr_type string) string {
 	if base.starts_with('Array_') {
 		return unmangle_c_ptr_type(base['Array_'.len..])
 	}
+	if base.starts_with('Array_fixed_') {
+		without_prefix := base['Array_fixed_'.len..]
+		last_underscore := without_prefix.last_index('_') or { return '' }
+		return unmangle_c_ptr_type(without_prefix[..last_underscore])
+	}
 	if base in ['strings__Builder', 'Builder'] {
 		return 'u8'
 	}
@@ -111,15 +116,28 @@ fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 		}
 		g.emitted_types[fn_key] = true
 		g.sb.writeln('')
-		g.sb.writeln('__attribute__((weak)) bool ${fn_name}(${arr_type} a, ${elem_type} v) {')
-		g.sb.writeln('\tfor (int i = 0; (i < a.len); i += 1) {')
-		if elem_type == 'string' {
-			g.sb.writeln('\t\tif (string__eq(*((string*)(array__get(a, i))), v)) {')
+		// Fixed arrays are C arrays (e.g., voidptr[20]), not structs — use direct indexing.
+		is_fixed := arr_type.starts_with('Array_fixed_')
+		if is_fixed {
+			_, fixed_len := g.parse_fixed_array_type(arr_type)
+			g.sb.writeln('__attribute__((weak)) bool ${fn_name}(${arr_type} a, ${elem_type} v) {')
+			g.sb.writeln('\tfor (int i = 0; i < ${fixed_len}; i++) {')
+			if elem_type == 'string' {
+				g.sb.writeln('\t\tif (string__eq(a[i], v)) {')
+			} else {
+				g.sb.writeln('\t\tif (memcmp(&a[i], &v, sizeof(${elem_type})) == 0) {')
+			}
 		} else {
-			left_cmp := '_cmp_l_${g.tmp_counter}'
-			right_cmp := '_cmp_r_${g.tmp_counter + 1}'
-			g.tmp_counter += 2
-			g.sb.writeln('\t\tif (({ ${elem_type} ${left_cmp} = *((${elem_type}*)(array__get(a, i))); ${elem_type} ${right_cmp} = v; memcmp(&${left_cmp}, &${right_cmp}, sizeof(${elem_type})) == 0; })) {')
+			g.sb.writeln('__attribute__((weak)) bool ${fn_name}(${arr_type} a, ${elem_type} v) {')
+			g.sb.writeln('\tfor (int i = 0; (i < a.len); i += 1) {')
+			if elem_type == 'string' {
+				g.sb.writeln('\t\tif (string__eq(*((string*)(array__get(a, i))), v)) {')
+			} else {
+				left_cmp := '_cmp_l_${g.tmp_counter}'
+				right_cmp := '_cmp_r_${g.tmp_counter + 1}'
+				g.tmp_counter += 2
+				g.sb.writeln('\t\tif (({ ${elem_type} ${left_cmp} = *((${elem_type}*)(array__get(a, i))); ${elem_type} ${right_cmp} = v; memcmp(&${left_cmp}, &${right_cmp}, sizeof(${elem_type})) == 0; })) {')
+			}
 		}
 		g.sb.writeln('\t\t\treturn true;')
 		g.sb.writeln('\t\t}')
@@ -269,6 +287,16 @@ fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
 		return true
 	}
+	// Or-data-access: _or_tN.data where _or_tN has type _result_Array_X or _option_Array_X
+	if expr is ast.SelectorExpr && expr.rhs.name == 'data' {
+		if expr.lhs is ast.Ident {
+			lhs_type := g.get_expr_type(expr.lhs)
+			if (lhs_type.starts_with('_result_Array_') || lhs_type.starts_with('_result_array'))
+				|| (lhs_type.starts_with('_option_Array_') || lhs_type.starts_with('_option_array')) {
+				return true
+			}
+		}
+	}
 	if raw_type := g.get_raw_type(expr) {
 		match raw_type {
 			types.Array {
@@ -313,6 +341,16 @@ fn (mut g Gen) expr_array_runtime_type(expr ast.Expr) string {
 			return inner_type[..inner_type.len - 1]
 		}
 	}
+	// Or-data-access: _or_tN.data — extract array type from result/option wrapper
+	if expr is ast.SelectorExpr && expr.rhs.name == 'data' && expr.lhs is ast.Ident {
+		lhs_type := g.get_expr_type(expr.lhs)
+		if lhs_type.starts_with('_result_') {
+			return lhs_type['_result_'.len..]
+		}
+		if lhs_type.starts_with('_option_') {
+			return lhs_type['_option_'.len..]
+		}
+	}
 	mut typ := g.get_expr_type(expr)
 	if typ != '' && typ != 'int_literal' && typ != 'float_literal' {
 		return typ
@@ -329,10 +367,59 @@ fn (mut g Gen) expr_array_runtime_type(expr ast.Expr) string {
 // array_elem_type_from_expr resolves the element type of an array expression
 // using the types.Environment.
 fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
+	match arr_expr {
+		ast.ModifierExpr {
+			return g.infer_array_elem_type_from_expr(arr_expr.expr)
+		}
+		ast.ParenExpr {
+			return g.infer_array_elem_type_from_expr(arr_expr.expr)
+		}
+		ast.PrefixExpr {
+			if arr_expr.op in [.amp, .mul] {
+				return g.infer_array_elem_type_from_expr(arr_expr.expr)
+			}
+		}
+		ast.CastExpr {
+			return g.infer_array_elem_type_from_expr(arr_expr.expr)
+		}
+		ast.AsCastExpr {
+			return g.infer_array_elem_type_from_expr(arr_expr.expr)
+		}
+		else {}
+	}
+	if arr_expr is ast.ArrayInitExpr {
+		elem_type := g.extract_array_elem_type(arr_expr.typ)
+		if elem_type != '' {
+			return elem_type
+		}
+		if arr_expr.exprs.len > 0 {
+			first_expr_type := g.get_expr_type(arr_expr.exprs[0])
+			if first_expr_type != '' && first_expr_type != 'int' && first_expr_type != 'int_literal' {
+				return first_expr_type
+			}
+		}
+	}
 	// For slice calls, the return type is generic `array`; resolve from the source array.
 	if arr_expr is ast.CallExpr {
 		if arr_expr.lhs is ast.Ident {
 			fn_name := sanitize_fn_ident(arr_expr.lhs.name)
+			if fn_name in ['new_array_from_c_array', 'builtin__new_array_from_c_array', 'builtin__new_array_from_c_array_noscan']
+				&& arr_expr.args.len > 3 {
+				return g.infer_array_elem_type_from_expr(arr_expr.args[3])
+			}
+			// __new_array_with_default_noscan(len, cap, sizeof(T), default)
+			// arg[2] is sizeof(T) — extract T from the KeywordOperator
+			if fn_name in ['__new_array_with_default_noscan', '__new_array_with_default', 'builtin____new_array_with_default_noscan', 'builtin____new_array_with_default']
+				&& arr_expr.args.len >= 3 {
+				sizeof_arg := arr_expr.args[2]
+				if sizeof_arg is ast.KeywordOperator && sizeof_arg.op == .key_sizeof
+					&& sizeof_arg.exprs.len > 0 {
+					t := g.expr_type_to_c(sizeof_arg.exprs[0])
+					if t != '' && t != 'int' {
+						return t
+					}
+				}
+			}
 			if fn_name in ['array__slice', 'array__slice_ni']
 				|| (fn_name.starts_with('Array_') && (fn_name.ends_with('__slice')
 				|| fn_name.ends_with('__slice_ni'))) {
@@ -506,12 +593,17 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 		if final_elem != '' && is_dyn {
 			// Dynamic array compound literal: (elem_type[N]){e1, e2, ...}
 			g.sb.write_string('(${final_elem}[${node.exprs.len}]){')
+			is_iface_elem := g.is_interface_type(final_elem)
 			for i in 0 .. node.exprs.len {
 				e := node.exprs[i]
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				g.expr(e)
+				if is_iface_elem && g.gen_interface_cast(final_elem, e) {
+					// interface wrapping handled
+				} else {
+					g.expr(e)
+				}
 			}
 			g.sb.write_string('}')
 			return

@@ -66,6 +66,17 @@ const unicode_transform_escapes = {
 }
 const exp_signs = [u8(`-`), `+`]!
 
+fn important_escapable_char(ch u8) ?u8 {
+	return match ch {
+		`\b` { `b` }
+		`\f` { `f` }
+		`\n` { `n` }
+		`\r` { `r` }
+		`\t` { `t` }
+		else { none }
+	}
+}
+
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {
 	s.move_pos(true, true)
@@ -130,8 +141,8 @@ fn (mut s Scanner) text_scan() Token {
 		if ch == `"` {
 			has_closed = true
 			break
-		} else if ch in important_escapable_chars {
-			return s.error('character must be escaped with a backslash, replace with: \\${valid_unicode_escapes[important_escapable_chars.index(ch)]}')
+		} else if escaped := important_escapable_char(ch) {
+			return s.error('character must be escaped with a backslash, replace with: \\${escaped.ascii_str()}')
 		} else if ch < 0x20 {
 			return s.error('character must be escaped with a unicode escape, replace with: \\u${ch:04x}')
 		} else if ch == `\\` {

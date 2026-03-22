@@ -95,6 +95,16 @@ fn (g &Gen) should_emit_fn_decl(module_name string, decl ast.FnDecl) bool {
 			return true
 		}
 	}
+	if g.force_emit_fn_names.len > 0 && !decl.is_method {
+		c_name := if module_name.len > 0 && module_name != 'builtin' && module_name != 'main' {
+			'${module_name}__${sanitize_fn_ident(decl.name)}'
+		} else {
+			sanitize_fn_ident(decl.name)
+		}
+		if c_name in g.force_emit_fn_names {
+			return true
+		}
+	}
 	// Check if this function was force-requested by generated code (e.g. map str functions).
 	if g.force_emit_fn_names.len > 0 && decl.name == 'str' && decl.is_method {
 		// Build the C function name for method str: ReceiverType__str
@@ -326,21 +336,31 @@ fn (mut g Gen) collect_fn_signatures() {
 						continue
 					}
 					if g.cur_module == 'eventbus' && stmt.is_method
-						&& stmt.name in ['subscribe_method', 'unsubscribe_method'] {
+						&& receiver_generic_param_names(stmt).len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
 						string_types := {
 							'T': types.Type(types.string_)
 						}
 						g.active_generic_types = string_types.clone()
-						spec_name := g.specialized_fn_name(stmt, string_types)
-						g.active_generic_types = prev_generic_types.clone()
-						if spec_name != '' {
-							prev_generic_types2 := g.active_generic_types.clone()
-							g.active_generic_types = string_types.clone()
-							g.register_fn_signature(stmt, spec_name)
-							g.active_generic_types = prev_generic_types2.clone()
-							continue
+						if stmt.name in ['subscribe_method', 'unsubscribe_method'] {
+							spec_name := g.specialized_fn_name(stmt, string_types)
+							g.active_generic_types = prev_generic_types.clone()
+							if spec_name != '' {
+								prev_generic_types2 := g.active_generic_types.clone()
+								g.active_generic_types = string_types.clone()
+								g.register_fn_signature(stmt, spec_name)
+								g.active_generic_types = prev_generic_types2.clone()
+								continue
+							}
+						} else {
+							eb_fn_name := g.get_fn_name(stmt)
+							if eb_fn_name != '' {
+								g.register_fn_signature(stmt, eb_fn_name)
+								g.active_generic_types = prev_generic_types.clone()
+								continue
+							}
 						}
+						g.active_generic_types = prev_generic_types.clone()
 					}
 					if g.generic_fn_param_names(stmt).len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
@@ -350,6 +370,21 @@ fn (mut g Gen) collect_fn_signatures() {
 						}
 						g.active_generic_types = prev_generic_types.clone()
 						continue
+					}
+					// For methods on generic structs, resolve receiver generic
+					// params so the signature has correct concrete types.
+					recv_gp := receiver_generic_param_names(stmt)
+					if recv_gp.len > 0 {
+						if bindings := g.get_receiver_generic_bindings(stmt) {
+							prev_gt := g.active_generic_types.clone()
+							g.active_generic_types = bindings.clone()
+							gfn := g.get_fn_name(stmt)
+							if gfn != '' {
+								g.register_fn_signature(stmt, gfn)
+							}
+							g.active_generic_types = prev_gt.clone()
+							continue
+						}
 					}
 					mut fn_name := ''
 					if stmt.stmts.len == 0 && stmt.language == .c {
@@ -510,6 +545,13 @@ fn collect_generic_placeholder_names_from_expr(expr ast.Expr, mut seen map[strin
 							seen, mut out)
 					}
 				}
+				ast.GenericType {
+					// Recurse into params (e.g. LinkedList[T] → extract T)
+					for param in expr.params {
+						collect_generic_placeholder_names_from_expr(param, mut seen, mut
+							out)
+					}
+				}
 				else {}
 			}
 		}
@@ -538,6 +580,44 @@ fn (g &Gen) generic_fn_param_names(node ast.FnDecl) []string {
 	return names
 }
 
+// receiver_generic_param_names collects generic placeholder names from a
+// method's receiver type (e.g. LinkedList[T] → ['T']). These params are
+// inherited from the struct definition, not the function's own generic_params.
+fn receiver_generic_param_names(node ast.FnDecl) []string {
+	if !node.is_method {
+		return []string{}
+	}
+	mut seen := map[string]bool{}
+	mut names := []string{}
+	if node.receiver.typ !is ast.EmptyExpr {
+		collect_generic_placeholder_names_from_expr(node.receiver.typ, mut seen, mut names)
+	}
+	return names
+}
+
+// get_receiver_generic_bindings returns the concrete type bindings for a method
+// on a generic struct by looking up the struct's recorded bindings from
+// GenericType instantiations (e.g. LinkedList[ValueInfo] → {T: ValueInfo}).
+fn (mut g Gen) get_receiver_generic_bindings(node ast.FnDecl) ?map[string]types.Type {
+	if !node.is_method {
+		return none
+	}
+	// Get the receiver's C type name (e.g. json2__LinkedList)
+	recv_c_name := g.expr_type_to_c(node.receiver.typ)
+	if recv_c_name in g.generic_struct_bindings {
+		return g.generic_struct_bindings[recv_c_name]
+	}
+	// Also try with current module prefix
+	if !recv_c_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+		&& g.cur_module != 'builtin' {
+		qualified := '${g.cur_module}__${recv_c_name}'
+		if qualified in g.generic_struct_bindings {
+			return g.generic_struct_bindings[qualified]
+		}
+	}
+	return none
+}
+
 fn (mut g Gen) specialized_fn_name(node ast.FnDecl, generic_types map[string]types.Type) string {
 	generic_params := g.generic_fn_param_names(node)
 	if generic_params.len == 0 {
@@ -563,7 +643,34 @@ fn (mut g Gen) specialized_fn_name(node ast.FnDecl, generic_types map[string]typ
 }
 
 fn (g &Gen) generic_key_matches_decl(node ast.FnDecl, key string) bool {
-	return key.starts_with('${node.name}[') || key.contains('.${node.name}[')
+	return key == node.name || key.starts_with('${node.name}[') || key.contains('.${node.name}[')
+}
+
+// build_generic_spec_index precomputes a reverse index from function names
+// to matching keys in env.generic_types. This avoids O(n*m) iteration
+// in generic_fn_specializations (called per generic fn per file).
+fn (mut g Gen) build_generic_spec_index() {
+	if g.env == unsafe { nil } {
+		return
+	}
+	for key, _ in g.env.generic_types {
+		// Extract the base function name from the key.
+		// Keys can be: "fn_name", "fn_name[T]", "module.fn_name[T]"
+		mut fn_name := key
+		bracket_idx := key.index_u8(`[`)
+		if bracket_idx > 0 {
+			fn_name = key[..bracket_idx]
+		}
+		// If qualified (contains '.'), also index by the short name
+		dot_idx := fn_name.last_index_u8(`.`)
+		if dot_idx > 0 && dot_idx < fn_name.len - 1 {
+			short_name := fn_name[dot_idx + 1..]
+			if short_name.len > 0 {
+				g.generic_spec_index[short_name] << key
+			}
+		}
+		g.generic_spec_index[fn_name] << key
+	}
 }
 
 fn generic_param_names(params []ast.Expr) []string {
@@ -610,10 +717,13 @@ fn (mut g Gen) generic_fn_specializations(node ast.FnDecl) []GenericFnSpecializa
 	}
 	mut specs := []GenericFnSpecialization{}
 	mut seen := map[string]bool{}
-	for key, generic_maps in g.env.generic_types {
+	// Use precomputed index for O(1) lookup instead of iterating all generic types.
+	matching_keys := g.generic_spec_index[node.name]
+	for key in matching_keys {
 		if !g.generic_key_matches_decl(node, key) {
 			continue
 		}
+		generic_maps := g.env.generic_types[key]
 		for generic_types in generic_maps {
 			mut skip_spec := false
 			for param_name in generic_params {
@@ -791,10 +901,12 @@ fn (g &Gen) qualify_local_call_name(name string) string {
 
 fn (mut g Gen) find_generic_fn_decl_by_base_name(name string) ?ast.FnDecl {
 	prev_module := g.cur_module
+	prev_file_name := g.cur_file_name
 	prev_active_generic_types := g.active_generic_types.clone()
 	g.active_generic_types = map[string]types.Type{}
 	defer {
 		g.cur_module = prev_module
+		g.cur_file_name = prev_file_name
 		g.active_generic_types = prev_active_generic_types.clone()
 	}
 	for file in g.files {
@@ -804,7 +916,12 @@ fn (mut g Gen) find_generic_fn_decl_by_base_name(name string) ?ast.FnDecl {
 				if g.generic_fn_param_names(stmt).len == 0 {
 					continue
 				}
-				if g.get_fn_name(stmt) == name {
+				qualified := g.get_fn_name(stmt)
+				if qualified == name {
+					return stmt
+				}
+				// Also match unqualified names: 'encode' matches 'json2__encode'
+				if !name.contains('__') && !stmt.is_method && stmt.name == name {
 					return stmt
 				}
 			}
@@ -1023,6 +1140,21 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 	if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
 		return candidate
 	}
+	// specialized_fn_name uses g.cur_module (caller's module) which may differ
+	// from the generic function's module. Fall back to constructing the name
+	// from the original `name` (which already has the correct module prefix).
+	mut suffixes := []string{}
+	for param_name in generic_params {
+		if concrete := bindings[param_name] {
+			suffixes << g.generic_specialization_token_from_type(concrete)
+		}
+	}
+	if suffixes.len > 0 {
+		alt_candidate := '${name}_${suffixes.join('_')}'
+		if alt_candidate in g.fn_param_is_ptr || alt_candidate in g.fn_return_types {
+			return alt_candidate
+		}
+	}
 	return none
 }
 
@@ -1078,10 +1210,13 @@ fn (mut g Gen) emit_fixed_array_return_wrappers() {
 }
 
 fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
-	if !g.should_emit_fn_decl(g.cur_module, node) {
+	g.gen_fn_decl_ptr(&node)
+}
+
+fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
+	if !g.should_emit_fn_decl(g.cur_module, *node) {
 		return
 	}
-	// In shared library mode, only emit @[live] function bodies.
 	// All other functions are resolved from the host executable.
 	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
 		if !node.attributes.has('live') {
@@ -1099,39 +1234,74 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	if node.language == .c && node.stmts.len == 0 {
 		return
 	}
-	if g.cur_module == 'eventbus' && node.is_method
-		&& node.name in ['subscribe_method', 'unsubscribe_method'] {
+	// eventbus module: all generic struct methods use T = string.
+	// For subscribe_method/unsubscribe_method, the specialized name (_string suffix) is used.
+	// For other methods (publish, has_subscriber, etc.), keep the base name but resolve T = string.
+	if g.cur_module == 'eventbus' && node.is_method && receiver_generic_param_names(*node).len > 0 {
 		prev_generic_types := g.active_generic_types.clone()
 		string_types := {
 			'T': types.Type(types.string_)
 		}
 		g.active_generic_types = string_types.clone()
-		spec_name := g.specialized_fn_name(node, string_types)
-		if spec_name != '' {
-			g.gen_fn_decl_with_name(node, spec_name)
+		if node.name in ['subscribe_method', 'unsubscribe_method'] {
+			spec_name := g.specialized_fn_name(*node, string_types)
+			if spec_name != '' {
+				g.gen_fn_decl_with_name_ptr(node, spec_name)
+				g.active_generic_types = prev_generic_types.clone()
+				return
+			}
+		} else {
+			fn_name := g.get_fn_name(*node)
+			if fn_name != '' {
+				g.gen_fn_decl_with_name_ptr(node, fn_name)
+				g.active_generic_types = prev_generic_types.clone()
+				return
+			}
+		}
+		g.active_generic_types = prev_generic_types.clone()
+	}
+	if g.generic_fn_param_names(*node).len > 0 {
+		prev_generic_types := g.active_generic_types.clone()
+		for spec in g.generic_fn_specializations(*node) {
+			g.active_generic_types = spec.generic_types.clone()
+			g.gen_fn_decl_with_name_ptr(node, spec.name)
+		}
+		g.active_generic_types = prev_generic_types.clone()
+		return
+	}
+
+	// For methods on generic structs (e.g. LinkedList[T].push), resolve the
+	// generic params from the receiver type using recorded struct bindings.
+	// This ensures T resolves to the concrete type (e.g. ValueInfo) instead
+	// of the default fallback (f64).
+	recv_generic_params := receiver_generic_param_names(*node)
+	if recv_generic_params.len > 0 {
+		if bindings := g.get_receiver_generic_bindings(*node) {
+			prev_generic_types := g.active_generic_types.clone()
+			g.active_generic_types = bindings.clone()
+			fn_name := g.get_fn_name(*node)
+			if fn_name != '' {
+				g.gen_fn_decl_with_name_ptr(node, fn_name)
+			}
 			g.active_generic_types = prev_generic_types.clone()
 			return
 		}
-		g.active_generic_types = prev_generic_types.clone()
-	}
-	if g.generic_fn_param_names(node).len > 0 {
-		prev_generic_types := g.active_generic_types.clone()
-		for spec in g.generic_fn_specializations(node) {
-			g.active_generic_types = spec.generic_types.clone()
-			g.gen_fn_decl_with_name(node, spec.name)
-		}
-		g.active_generic_types = prev_generic_types.clone()
-		return
 	}
 
-	fn_name := g.get_fn_name(node)
+	fn_name := g.get_fn_name(*node)
 	if fn_name == '' {
 		return
 	}
-	g.gen_fn_decl_with_name(node, fn_name)
+	g.gen_fn_decl_with_name_ptr(node, fn_name)
 }
 
 fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
+	g.gen_fn_decl_with_name_ptr(&node, fn_name)
+}
+
+// Keep pass 5 on pointer-based FnDecl access; large by-value copies here
+// corrupt the self-hosted cleanc caller after the first emitted body.
+fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	fn_key := 'fn_${fn_name}'
 	if fn_key in g.blocked_fn_keys {
 		return
@@ -1256,6 +1426,11 @@ fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
 				param_type
 			}
 			g.runtime_local_types[param.name] = ptype
+			// Also register under the C-renamed name (e.g. 'array' → '_v_array')
+			// so that body references using the renamed identifier can find the type.
+			if param.name == 'array' {
+				g.runtime_local_types['_v_array'] = ptype
+			}
 		}
 	}
 
@@ -1264,9 +1439,9 @@ fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
 
 	// Generate function header (with impl_live_ prefix for @[live] functions)
 	if is_live_fn {
-		g.gen_fn_head_live(node, fn_name)
+		g.gen_fn_head_live_ptr(node, fn_name)
 	} else {
-		g.gen_fn_head_with_name(node, fn_name)
+		g.gen_fn_head_with_name_ptr(node, fn_name)
 	}
 	g.sb.writeln(' {')
 	g.indent++
@@ -1439,10 +1614,14 @@ fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 	if fn_name == '' {
 		return
 	}
-	g.gen_fn_head_with_name(node, fn_name)
+	g.gen_fn_head_with_name_ptr(&node, fn_name)
 }
 
 fn (mut g Gen) gen_fn_head_with_name(node ast.FnDecl, fn_name string) {
+	g.gen_fn_head_with_name_ptr(&node, fn_name)
+}
+
+fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	mut ret := if fn_ret := g.fn_return_types[fn_name] {
 		fn_ret
 	} else if node.typ.return_type !is ast.EmptyExpr {
@@ -1514,15 +1693,88 @@ fn (mut g Gen) gen_fn_head_with_name(node ast.FnDecl, fn_name string) {
 		}
 		g.sb.write_string(t)
 		g.sb.write_string(' ')
-		g.sb.write_string(param.name)
+		// Rename V variables that clash with C type names (matches expr.v Ident handler)
+		pname := if param.name == 'array' { '_v_array' } else { param.name }
+		g.sb.write_string(pname)
 		sig_idx++
 	}
 	g.sb.write_string(')')
 }
 
+// gen_c_extern_forward_decl emits a forward declaration for a C extern function.
+// e.g., `fn C.macos_objc_msg_void1(obj Id, selector Sel, a0 voidptr)` emits:
+//   `void macos_objc_msg_void1(void* obj, void* selector, void* a0);`
+fn (mut g Gen) gen_c_extern_forward_decl(node ast.FnDecl) {
+	// Extract C function name: strip 'C.' prefix if present
+	mut c_name := node.name
+	if c_name.starts_with('C.') {
+		c_name = c_name[2..]
+	}
+	if c_name == '' {
+		return
+	}
+	// Skip C stdlib functions — they're already declared by system headers.
+	if c_name in c_stdlib_fns || is_c_runtime_function(c_name) {
+		return
+	}
+	// Only emit C extern forward declarations for user/third-party modules
+	// (from .vmodules/ or the project directory). Skip all vlib modules since
+	// they wrap system functions already declared by system headers.
+	if !g.cur_file_name.contains('.vmodules/') && g.cur_module != 'main' {
+		return
+	}
+	// Skip already-emitted declarations
+	decl_key := 'c_extern_${c_name}'
+	if decl_key in g.emitted_types {
+		return
+	}
+	g.emitted_types[decl_key] = true
+
+	// Return type
+	mut ret := if node.typ.return_type !is ast.EmptyExpr {
+		g.expr_type_to_c(node.typ.return_type)
+	} else {
+		'void'
+	}
+	ret = normalize_signature_type_name(ret, 'void')
+	c_ret := g.c_fn_return_type_from_v(ret)
+
+	g.sb.write_string(c_ret)
+	g.sb.write_string(' ')
+	g.sb.write_string(c_name)
+	g.sb.write_string('(')
+
+	mut first := true
+	for param in node.typ.params {
+		if !first {
+			g.sb.write_string(', ')
+		}
+		first = false
+		mut t := normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
+		if param.is_mut && !t.ends_with('*') {
+			t = t + '*'
+		}
+		g.sb.write_string(t)
+		if param.name != '' {
+			pname := if param.name == 'array' { '_v_array' } else { param.name }
+			g.sb.write_string(' ')
+			g.sb.write_string(pname)
+		}
+	}
+	if first {
+		g.sb.write_string('void')
+	}
+	g.sb.writeln(');')
+}
+
 // gen_fn_head_live generates the function signature with `impl_live_` prefix for @[live]
 // functions, and records the function info for generating wrappers and dlsym binding.
 fn (mut g Gen) gen_fn_head_live(node ast.FnDecl, fn_name string) {
+	g.gen_fn_head_live_ptr(&node, fn_name)
+}
+
+// gen_fn_head_live_ptr mirrors gen_fn_head_live without copying ast.FnDecl in pass 5.
+fn (mut g Gen) gen_fn_head_live_ptr(node &ast.FnDecl, fn_name string) {
 	sig_param_types := g.fn_param_types[fn_name] or { []string{} }
 
 	mut c_ret := g.cur_fn_c_ret_type
@@ -1718,7 +1970,24 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 		ast.CastExpr {
 			// The result type of a cast is determined by the target type, not the source.
 			// e.g. u8(ptr) produces u8, not a pointer, even though ptr is a pointer.
-			return g.expr_type_to_c(arg.typ).ends_with('*')
+			target_type := g.expr_type_to_c(arg.typ)
+			if target_type.ends_with('*') {
+				return true
+			}
+			// For C typedef struct casts like C.log__Logger(ptr), if the source is a pointer,
+			// the result is also a pointer (type pun cast). The cast doesn't unwrap the pointer.
+			if target_type.contains('__') && g.expr_is_pointer(arg.expr) {
+				return true
+			}
+			return false
+		}
+		ast.CallOrCastExpr {
+			// When the LHS is a type (not a function), this is a type cast.
+			// In V, C.Type(ptr) where ptr is a pointer means "treat as Type*",
+			// so the result is still a pointer.
+			if g.call_or_cast_lhs_is_type(arg.lhs) {
+				return g.expr_is_pointer(arg.expr)
+			}
 		}
 		ast.Ident {
 			if arg.name == 'nil' {
@@ -1730,7 +1999,8 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 				if arg.name in g.cur_fn_mut_params {
 					return true
 				}
-				return local_type.ends_with('*') || local_type in ['voidptr', 'charptr', 'byteptr']
+				return local_type.ends_with('*')
+					|| local_type in ['voidptr', 'charptr', 'byteptr', 'chan']
 			}
 			if arg.name in g.cur_fn_mut_params {
 				return true
@@ -1838,6 +2108,22 @@ fn (mut g Gen) can_take_address(arg ast.Expr) bool {
 	}
 }
 
+// is_simple_addressable returns true if the expression is cheap to re-evaluate
+// (e.g., an identifier or field access), unlike a function call which has side effects
+// and generates significant code.
+fn (g &Gen) is_simple_addressable(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		return true
+	}
+	if expr is ast.SelectorExpr {
+		return g.is_simple_addressable(expr.lhs)
+	}
+	if expr is ast.ParenExpr {
+		return g.is_simple_addressable(expr.expr)
+	}
+	return false
+}
+
 fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	if g.can_take_address(base_arg) {
@@ -1903,14 +2189,14 @@ fn (mut g Gen) fn_pointer_return_type(expr ast.Expr) string {
 		match raw_type {
 			types.FnType {
 				if rt := raw_type.get_return_type() {
-					return g.types_type_to_c(rt)
+					return g.fn_return_type_to_c(rt)
 				}
 				return 'void'
 			}
 			types.Alias {
 				if raw_type.base_type is types.FnType {
 					if rt := raw_type.base_type.get_return_type() {
-						return g.types_type_to_c(rt)
+						return g.fn_return_type_to_c(rt)
 					}
 					return 'void'
 				}
@@ -1918,13 +2204,13 @@ fn (mut g Gen) fn_pointer_return_type(expr ast.Expr) string {
 			types.Pointer {
 				if raw_type.base_type is types.FnType {
 					if rt := raw_type.base_type.get_return_type() {
-						return g.types_type_to_c(rt)
+						return g.fn_return_type_to_c(rt)
 					}
 					return 'void'
 				}
 				if raw_type.base_type is types.Alias && raw_type.base_type.base_type is types.FnType {
 					if rt := raw_type.base_type.base_type.get_return_type() {
-						return g.types_type_to_c(rt)
+						return g.fn_return_type_to_c(rt)
 					}
 					return 'void'
 				}
@@ -1935,8 +2221,60 @@ fn (mut g Gen) fn_pointer_return_type(expr ast.Expr) string {
 	return ''
 }
 
+// fn_return_type_to_c converts a function return type to its C representation,
+// handling Tuple types by registering the appropriate tuple alias.
+fn (mut g Gen) fn_return_type_to_c(t types.Type) string {
+	if t is types.Tuple {
+		elem_types := t.get_types()
+		mut c_types := []string{cap: elem_types.len}
+		for et in elem_types {
+			c_types << g.types_type_to_c(et)
+		}
+		return g.register_tuple_alias(c_types)
+	}
+	return g.types_type_to_c(t)
+}
+
 fn (mut g Gen) is_fn_pointer_expr(expr ast.Expr) bool {
 	return g.fn_pointer_return_type(expr) != ''
+}
+
+// fn_pointer_param_is_ptr extracts parameter pointer-ness from a fn-pointer type.
+// Returns an array of bools (true = param expects pointer, false = by value).
+fn (mut g Gen) fn_pointer_param_is_ptr(expr ast.Expr) []bool {
+	raw_type := g.get_raw_type(expr) or { return []bool{} }
+	fn_type := match raw_type {
+		types.FnType {
+			raw_type
+		}
+		types.Alias {
+			if raw_type.base_type is types.FnType {
+				raw_type.base_type as types.FnType
+			} else {
+				return []bool{}
+			}
+		}
+		types.Pointer {
+			if raw_type.base_type is types.FnType {
+				raw_type.base_type as types.FnType
+			} else if raw_type.base_type is types.Alias
+				&& raw_type.base_type.base_type is types.FnType {
+				raw_type.base_type.base_type as types.FnType
+			} else {
+				return []bool{}
+			}
+		}
+		else {
+			return []bool{}
+		}
+	}
+	param_types := fn_type.get_param_types()
+	mut result := []bool{cap: param_types.len}
+	for pt in param_types {
+		c_name := g.types_type_to_c(pt)
+		result << (c_name.ends_with('*') || pt is types.Pointer)
+	}
+	return result
 }
 
 fn (mut g Gen) should_auto_deref(arg ast.Expr) bool {
@@ -2041,7 +2379,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				g.gen_addr_of_expr(base_arg, 'int')
 				return
 			}
-			if !want_ptr && got_ptr && g.should_auto_deref(base_arg) {
+			should_deref := g.should_auto_deref(base_arg)
+				|| (base_arg is ast.Ident && base_arg.name in g.cur_fn_mut_params)
+			if !want_ptr && got_ptr && should_deref {
 				// Don't auto-deref when the param type is a pointer alias (e.g. Coordptr = Coord*)
 				if param_types := g.fn_param_types[fn_name] {
 					if idx < param_types.len {
@@ -2061,6 +2401,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 								}
 							}
 							if arg_type.trim_right('*') != param_base {
+								if g.gen_interface_cast(param_base, base_arg) {
+									return
+								}
 								g.expr(base_arg)
 								return
 							}
@@ -2218,6 +2561,70 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			}
 		}
 	}
+	// Detect bound method references: b.method_name passed as a fn pointer arg.
+	// Generate a static trampoline function + __thread capture variable.
+	// Only applies when the expected parameter is a function pointer type.
+	if base_arg is ast.SelectorExpr {
+		receiver_type := g.get_expr_type(base_arg.lhs).trim_right('*')
+		if receiver_type != '' && base_arg.rhs.name != '' {
+			// Check if the expected parameter type is a function pointer.
+			// If not, this is a struct field access (e.g., s.str, w.id), not a method value.
+			mut param_is_fn_ptr := false
+			if param_types := g.fn_param_types[fn_name] {
+				if idx < param_types.len {
+					pt := param_types[idx]
+					param_is_fn_ptr = pt.contains('(*)') || g.is_fn_pointer_alias_type(pt)
+				}
+			}
+			method_c_name := '${receiver_type}__${base_arg.rhs.name}'
+			if param_is_fn_ptr
+				&& (method_c_name in g.fn_param_is_ptr || method_c_name in g.fn_return_types) {
+				tramp_name := '__bound_method_${receiver_type}__${base_arg.rhs.name}'
+				if tramp_name !in g.emitted_trampolines {
+					g.emitted_trampolines[tramp_name] = true
+					// Build trampoline function as a string and add to deferred defs
+					ret_type := g.fn_return_types[method_c_name] or { 'void' }
+					param_is_ptr := g.fn_param_is_ptr[method_c_name] or { []bool{} }
+					param_types := g.fn_param_types[method_c_name] or { []string{} }
+					recv_is_ptr := if param_is_ptr.len > 0 { param_is_ptr[0] } else { false }
+					recv_var := '__bound_recv_${receiver_type}__${base_arg.rhs.name}'
+					mut def := 'static __thread ${receiver_type}* ${recv_var};\n'
+					def += 'static ${ret_type} ${tramp_name}('
+					for pi in 1 .. param_types.len {
+						if pi > 1 {
+							def += ', '
+						}
+						def += '${param_types[pi]} _p${pi}'
+					}
+					def += ') {\n\t'
+					if ret_type != 'void' {
+						def += 'return '
+					}
+					if recv_is_ptr {
+						def += '${method_c_name}(${recv_var}'
+					} else {
+						def += '${method_c_name}(*${recv_var}'
+					}
+					for pi in 1 .. param_types.len {
+						def += ', _p${pi}'
+					}
+					def += ');\n}\n'
+					g.trampoline_defs << def
+				}
+				// Set capture variable and pass trampoline
+				recv_var := '__bound_recv_${receiver_type}__${base_arg.rhs.name}'
+				g.sb.write_string('(${recv_var} = ')
+				if g.expr_is_pointer(base_arg.lhs) {
+					g.expr(base_arg.lhs)
+				} else {
+					g.sb.write_string('&')
+					g.expr(base_arg.lhs)
+				}
+				g.sb.write_string(', ${tramp_name})')
+				return
+			}
+		}
+	}
 	g.expr(base_arg)
 }
 
@@ -2321,6 +2728,14 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 			method_name := sanitize_fn_ident(lhs.rhs.name)
 			base_type := g.method_receiver_base_type(lhs.lhs)
 			name = '${base_type}__${method_name}'
+			if name !in g.fn_return_types && name !in g.fn_param_is_ptr {
+				if alias_base := g.alias_base_c_type(base_type) {
+					alias_name := '${alias_base}__${method_name}'
+					if alias_name in g.fn_return_types || alias_name in g.fn_param_is_ptr {
+						name = alias_name
+					}
+				}
+			}
 		}
 	}
 	if name == 'builtin__new_array_from_c_array_noscan' {
@@ -2392,6 +2807,29 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, call_args []ast.Expr) ?string 
 			return ret
 		}
 	}
+	if lhs is ast.SelectorExpr {
+		mut is_static_selector := false
+		if lhs.lhs is ast.Ident {
+			is_static_selector = g.is_module_ident(lhs.lhs.name) || g.is_type_name(lhs.lhs.name)
+		}
+		if !is_static_selector {
+			base_type := g.method_receiver_base_type(lhs.lhs)
+			if embedded := g.resolve_method_on_embedded_receiver(base_type, lhs.rhs.name) {
+				if ret := g.fn_return_types[embedded.method_c_name] {
+					return ret
+				}
+			}
+			// For interface vtable method calls (e.g., w.size() where w is Widget),
+			// look up the method's return type from interface_methods.
+			if g.is_interface_type(base_type) {
+				if method := g.interface_method_by_name(base_type, lhs.rhs.name) {
+					if method.ret_type != '' {
+						return method.ret_type
+					}
+				}
+			}
+		}
+	}
 	if lhs !is ast.Ident {
 		mut allow_fn_ptr_lookup := true
 		if lhs is ast.SelectorExpr {
@@ -2450,6 +2888,100 @@ fn (g &Gen) resolve_method_on_concrete_type(receiver_type string, method_name st
 	return none
 }
 
+struct EmbeddedMethodResolution {
+	owner         string
+	method_c_name string
+}
+
+fn (mut g Gen) resolve_method_on_embedded_decl(info StructDeclInfo, method_name string) ?EmbeddedMethodResolution {
+	saved_module := g.cur_module
+	defer {
+		g.cur_module = saved_module
+	}
+	g.cur_module = info.mod
+	for emb in info.decl.embedded {
+		embedded_c_type := g.expr_type_to_c(emb)
+		owner := embedded_owner_field_name(embedded_c_type)
+		if method_c_name := g.resolve_method_on_concrete_type(embedded_c_type, method_name) {
+			return EmbeddedMethodResolution{
+				owner:         owner
+				method_c_name: method_c_name
+			}
+		}
+		if embedded_info := g.find_struct_decl_info_by_c_name(embedded_c_type) {
+			if nested := g.resolve_method_on_embedded_decl(embedded_info, method_name) {
+				return EmbeddedMethodResolution{
+					owner:         owner
+					method_c_name: nested.method_c_name
+				}
+			}
+			g.cur_module = info.mod
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) resolve_method_on_embedded_receiver(receiver_type string, method_name string) ?EmbeddedMethodResolution {
+	clean_type := strip_pointer_type_name(unmangle_c_ptr_type(receiver_type))
+	if clean_type == '' || method_name == '' {
+		return none
+	}
+	mut lookup_name := clean_type
+	mut struct_type := g.lookup_struct_type_by_c_name(lookup_name)
+	if struct_type.fields.len == 0 && struct_type.embedded.len == 0 {
+		if alias_base := g.alias_base_c_type(clean_type) {
+			lookup_name = alias_base
+			struct_type = g.lookup_struct_type_by_c_name(alias_base)
+		}
+	}
+	if struct_type.fields.len == 0 && struct_type.embedded.len == 0 {
+		if decl_info := g.find_struct_decl_info_by_c_name(lookup_name) {
+			return g.resolve_method_on_embedded_decl(decl_info, method_name)
+		}
+		return none
+	}
+	for embedded in struct_type.embedded {
+		embedded_c_type := g.types_type_to_c(embedded)
+		owner := embedded_owner_field_name(embedded_c_type)
+		if method_c_name := g.resolve_method_on_concrete_type(embedded_c_type, method_name) {
+			return EmbeddedMethodResolution{
+				owner:         owner
+				method_c_name: method_c_name
+			}
+		}
+		if nested := g.resolve_method_on_embedded_receiver(embedded_c_type, method_name) {
+			return EmbeddedMethodResolution{
+				owner:         owner
+				method_c_name: nested.method_c_name
+			}
+		}
+	}
+	if decl_info := g.find_struct_decl_info_by_c_name(lookup_name) {
+		return g.resolve_method_on_embedded_decl(decl_info, method_name)
+	}
+	return none
+}
+
+fn (mut g Gen) gen_embedded_receiver_arg(receiver ast.Expr, owner string, callee_name string) {
+	mut expect_ptr := false
+	if ptr_params := g.fn_param_is_ptr[callee_name] {
+		if ptr_params.len > 0 && ptr_params[0] {
+			expect_ptr = true
+		}
+	}
+	if expect_ptr {
+		g.sb.write_string('&')
+	}
+	mut use_ptr := g.expr_is_pointer(receiver)
+	if !use_ptr {
+		receiver_type := g.get_expr_type(receiver)
+		use_ptr = receiver_type.ends_with('*')
+	}
+	g.expr(receiver)
+	sep := if use_ptr { '->' } else { '.' }
+	g.sb.write_string('${sep}${escape_c_keyword(owner)}')
+}
+
 fn (mut g Gen) is_iface_object_arg_for_receiver(arg ast.Expr, receiver ast.Expr) bool {
 	if arg !is ast.SelectorExpr {
 		return false
@@ -2477,10 +3009,38 @@ fn (mut g Gen) interface_call_args_without_object(receiver ast.Expr, args []ast.
 fn (mut g Gen) gen_interface_call_arg(expected_type string, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	mut arg_type := g.get_expr_type(base_arg).trim_space()
+
 	if (arg_type == '' || arg_type == 'int') && base_arg is ast.Ident {
 		arg_type = (g.get_local_var_c_type(base_arg.name) or { '' }).trim_space()
 	}
+	// For Ident args, check if the local var C type includes pointer info (e.g. from mut params)
+	// that get_expr_type doesn't provide
+	if base_arg is ast.Ident && !arg_type.ends_with('*') {
+		if local_c := g.get_local_var_c_type(base_arg.name) {
+			if local_c.ends_with('*') {
+				arg_type = local_c
+			}
+		}
+	}
 	is_pointer_arg := g.expr_is_pointer(base_arg) || arg_type.ends_with('*')
+	// Check interface conversion FIRST before auto-deref/address-of, since
+	// derefing a Stack* to Stack doesn't help when Layout is expected.
+	expected_base := expected_type.trim_right('*')
+	arg_base := arg_type.trim_right('*')
+	if g.is_interface_type(expected_base) && arg_base != '' && arg_base != 'int'
+		&& arg_base != expected_base && !g.is_interface_type(arg_base)
+		&& !arg_base.starts_with('Array_') && arg_base != 'array' && !arg_base.starts_with('Map_')
+		&& arg_base != 'map' {
+		if expected_type.ends_with('*') {
+			if g.gen_heap_interface_cast(expected_base, base_arg) {
+				return
+			}
+		} else {
+			if g.gen_interface_cast(expected_base, base_arg) {
+				return
+			}
+		}
+	}
 	if !expected_type.ends_with('*') && expected_type.starts_with('Array_')
 		&& arg_type.ends_with('*') {
 		g.sb.write_string('(*')
@@ -2494,9 +3054,8 @@ fn (mut g Gen) gen_interface_call_arg(expected_type string, arg ast.Expr) {
 		g.sb.write_string(')')
 		return
 	}
-	if expected_type.ends_with('*') && !is_pointer_arg && g.can_take_address(base_arg) {
-		g.sb.write_string('&')
-		g.expr(base_arg)
+	if expected_type.ends_with('*') && !is_pointer_arg {
+		g.gen_addr_of_expr(base_arg, expected_type.trim_right('*'))
 		return
 	}
 	g.expr(arg)
@@ -2568,18 +3127,23 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				g.expr(lhs.lhs)
 				g.sb.write_string('${sep}${method_name}(')
 				mut emitted_args := 0
+				mut param_offset := 0
 				if args.len < expected_total_params {
 					g.expr(lhs.lhs)
 					g.sb.write_string('${sep}_object')
 					emitted_args++
+				} else {
+					// Object is already in args — param_types start at args[1]
+					param_offset = 1
 				}
 				for i in 0 .. args.len {
 					arg := args[i]
 					if emitted_args > 0 {
 						g.sb.write_string(', ')
 					}
-					if has_method_info && i < method_info.param_types.len {
-						g.gen_interface_call_arg(method_info.param_types[i], arg)
+					pi := i - param_offset
+					if has_method_info && pi >= 0 && pi < method_info.param_types.len {
+						g.gen_interface_call_arg(method_info.param_types[pi], arg)
 					} else {
 						g.expr(arg)
 					}
@@ -2595,8 +3159,12 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				call_args := g.interface_call_args_without_object(lhs.lhs, args)
 				g.sb.write_string('${default_fn}(')
 				ptr_params := g.fn_param_is_ptr[default_fn] or { []bool{} }
-				if ptr_params.len > 0 && ptr_params[0] {
+				recv_wants_ptr := ptr_params.len > 0 && ptr_params[0]
+				recv_is_ptr := receiver_type.ends_with('*')
+				if recv_wants_ptr && !recv_is_ptr {
 					g.sb.write_string('&')
+				} else if !recv_wants_ptr && recv_is_ptr {
+					g.sb.write_string('*')
 				}
 				g.expr(lhs.lhs)
 				for i in 0 .. call_args.len {
@@ -2613,6 +3181,40 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				}
 				g.sb.write_string(')')
 				return
+			}
+			// Interface-to-interface: method not on current interface but exists on
+			// another interface (e.g., Widget variable inside `if w is Layout`).
+			// Find a concrete type that has this method and call it directly via _object.
+			if method_info := g.find_method_on_any_interface(method_name) {
+				suffix := '__${method_name}'
+				// Find a concrete function that ends with __method_name
+				mut concrete_fn := ''
+				for fn_name, _ in g.fn_return_types {
+					if fn_name.ends_with(suffix) && fn_name != default_fn {
+						// Verify it has the right number of params
+						if fn_params := g.fn_param_types[fn_name] {
+							if fn_params.len == method_info.param_types.len + 1 {
+								concrete_fn = fn_name
+								break
+							}
+						}
+					}
+				}
+				if concrete_fn != '' {
+					// Generate: ((ret_type (*)(void*, ...))(concrete_fn))(w->_object, args...)
+					// Actually, emit a cast call through the method signature
+					sep := if receiver_type.ends_with('*') { '->' } else { '.' }
+					g.sb.write_string('((${method_info.cast_signature})(${concrete_fn}))(')
+					g.expr(lhs.lhs)
+					g.sb.write_string('${sep}_object')
+					call_args2 := g.interface_call_args_without_object(lhs.lhs, args)
+					for i in 0 .. call_args2.len {
+						g.sb.write_string(', ')
+						g.expr(call_args2[i])
+					}
+					g.sb.write_string(')')
+					return
+				}
 			}
 		}
 		if lhs.lhs is ast.Ident {
@@ -2664,6 +3266,20 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			alt := '${lhs.lhs.name}__${sanitize_fn_ident(lhs.rhs.name)}'
 			if alt in g.fn_param_is_ptr || alt in g.fn_return_types {
 				g.sb.write_string('${alt}(')
+				for i in 0 .. args.len {
+					arg := args[i]
+					if i > 0 {
+						g.sb.write_string(', ')
+					}
+					g.expr(arg)
+				}
+				g.sb.write_string(')')
+				return
+			}
+			// Generic function call: arrays.uniq(res) where arrays__uniq is generic.
+			// Try specializing the name (e.g. arrays__uniq -> arrays__uniq_string).
+			if specialized := g.try_specialize_generic_call_name(alt, args) {
+				g.sb.write_string('${specialized}(')
 				for i in 0 .. args.len {
 					arg := args[i]
 					if i > 0 {
@@ -2763,14 +3379,19 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						g.sb.write_string('${sep}_object')
 						emitted_args++
 					}
+					// When prepend_object is false, args[0] is _object (already provided
+					// by the transformer), so param_types indices start at args[1].
+					param_offset := if prepend_object { 0 } else { 1 }
 					for i in 0 .. args.len {
 						arg := args[i]
 						if emitted_args > 0 {
 							g.sb.write_string(', ')
 						}
+						param_idx := i - param_offset
 						if method := g.interface_method_by_name(base_receiver, method_name) {
-							if i < method.param_types.len {
-								g.gen_interface_call_arg(method.param_types[i], arg)
+							if param_idx >= 0 && param_idx < method.param_types.len {
+								g.gen_interface_call_arg(method.param_types[param_idx],
+									arg)
 							} else {
 								g.expr(arg)
 							}
@@ -2854,6 +3475,77 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						g.sb.write_string(')')
 						return
 					}
+					// Try embedded struct method resolution
+					if emb := g.resolve_method_on_embedded_receiver(narrowed_receiver,
+						method_name)
+					{
+						call_args := g.interface_call_args_without_object(lhs.lhs, args)
+						g.sb.write_string('${emb.method_c_name}(')
+						ptr_params := g.fn_param_is_ptr[emb.method_c_name] or { []bool{} }
+						receiver_as_ptr := ptr_params.len > 0 && ptr_params[0]
+						if receiver_as_ptr {
+							g.sb.write_string('&((${narrowed_receiver}*)(')
+							g.expr(lhs.lhs)
+							g.sb.write_string('${sep}_object))->${emb.owner}')
+						} else {
+							g.sb.write_string('((${narrowed_receiver}*)(')
+							g.expr(lhs.lhs)
+							g.sb.write_string('${sep}_object))->${emb.owner}')
+						}
+						for i in 0 .. call_args.len {
+							arg := call_args[i]
+							g.sb.write_string(', ')
+							g.gen_call_arg(emb.method_c_name, i + 1, arg)
+						}
+						g.sb.write_string(')')
+						return
+					}
+				}
+			}
+			// When receiver is a concrete (non-interface) type from smartcast,
+			// resolve the method on the concrete type or its embedded structs.
+			if !is_iface_receiver && base_receiver != '' && base_receiver != 'int'
+				&& !g.is_interface_type(base_receiver) {
+				method_name := lhs.rhs.name
+				if concrete_method := g.resolve_method_on_concrete_type(base_receiver,
+					method_name)
+				{
+					ptr_params := g.fn_param_is_ptr[concrete_method] or { []bool{} }
+					receiver_as_ptr := ptr_params.len > 0 && ptr_params[0]
+					g.sb.write_string('${concrete_method}(')
+					if receiver_as_ptr {
+						g.sb.write_string('&(')
+						g.expr(lhs.lhs)
+						g.sb.write_string(')')
+					} else {
+						g.expr(lhs.lhs)
+					}
+					for i in 0 .. args.len {
+						g.sb.write_string(', ')
+						g.gen_call_arg(concrete_method, i + 1, args[i])
+					}
+					g.sb.write_string(')')
+					return
+				}
+				if emb := g.resolve_method_on_embedded_receiver(base_receiver, method_name) {
+					ptr_params := g.fn_param_is_ptr[emb.method_c_name] or { []bool{} }
+					receiver_as_ptr := ptr_params.len > 0 && ptr_params[0]
+					g.sb.write_string('${emb.method_c_name}(')
+					if receiver_as_ptr {
+						g.sb.write_string('&(')
+						g.expr(lhs.lhs)
+						g.sb.write_string(').${emb.owner}')
+					} else {
+						g.sb.write_string('(')
+						g.expr(lhs.lhs)
+						g.sb.write_string(').${emb.owner}')
+					}
+					for i in 0 .. args.len {
+						g.sb.write_string(', ')
+						g.gen_call_arg(emb.method_c_name, i + 1, args[i])
+					}
+					g.sb.write_string(')')
+					return
 				}
 			}
 			g.sb.write_string('((${c_ret}(*)())')
@@ -2872,6 +3564,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	mut name := ''
 	mut call_args := []ast.Expr{}
+	mut embedded_receiver_owner := ''
 	call_args << args
 	if lhs is ast.Ident {
 		name = sanitize_fn_ident(lhs.name)
@@ -2916,14 +3609,19 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		} else {
 			// value.method(args...) => ReceiverType__method(value, args...)
 			name = g.resolve_call_name(lhs, args.len)
-			if name == '' {
-				method_name := sanitize_fn_ident(lhs.rhs.name)
-				mut base_type := g.method_receiver_base_type(lhs.lhs)
-				if base_type == '' {
-					// Fall back to checker/inferred receiver type when selector base
-					// typing is incomplete (common with interface values).
-					base_type = g.get_expr_type(lhs.lhs).trim_space().trim_right('*')
+			method_name := sanitize_fn_ident(lhs.rhs.name)
+			mut base_type := g.method_receiver_base_type(lhs.lhs)
+			if base_type == '' {
+				base_type = g.get_expr_type(lhs.lhs).trim_space().trim_right('*')
+			}
+			if (name == '' || (name !in g.fn_param_is_ptr && name !in g.fn_return_types))
+				&& base_type != '' {
+				if embedded := g.resolve_method_on_embedded_receiver(base_type, method_name) {
+					name = embedded.method_c_name
+					embedded_receiver_owner = embedded.owner
 				}
+			}
+			if name == '' {
 				name = '${base_type}__${method_name}'
 			}
 			call_args = []ast.Expr{cap: args.len + 1}
@@ -2949,6 +3647,10 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	if name == 'os__exit' {
 		name = 'exit'
+	}
+	// chan type methods map to sync__Channel__ methods
+	if name.starts_with('chan__') {
+		name = 'sync__Channel__' + name['chan__'.len..]
 	}
 	// strings__Builder methods are emitted directly by cheaders.v;
 	// do NOT fall back to array__ methods which have different signatures.
@@ -3345,16 +4047,44 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			total_args = params.len
 		}
 	}
+	// For fn-pointer local variable calls, pre-compute param pointer info
+	// so we can auto-deref mut params when the fn type expects by-value.
+	mut fnptr_param_is_ptr := []bool{}
+	if is_local_call && c_name !in g.fn_param_is_ptr {
+		fnptr_param_is_ptr = g.fn_pointer_param_is_ptr(lhs)
+	}
 	for i in 0 .. total_args {
 		if i > 0 {
 			g.sb.write_string(', ')
 		}
 		if i < call_args.len {
+			if i == 0 && embedded_receiver_owner != '' && lhs is ast.SelectorExpr {
+				g.gen_embedded_receiver_arg(lhs.lhs, embedded_receiver_owner, c_name)
+				continue
+			}
 			if c_name == 'signal' && i == 1 {
 				g.sb.write_string('((void (*)(int))')
 				g.expr(call_args[i])
 				g.sb.write_string(')')
 				continue
+			}
+			// For fn-pointer calls, auto-deref mut params when the fn type expects by-value
+			if fnptr_param_is_ptr.len > 0 && i < fnptr_param_is_ptr.len && !fnptr_param_is_ptr[i] {
+				arg := call_args[i]
+				mut arg_ident_name := ''
+				if arg is ast.ModifierExpr {
+					if arg.expr is ast.Ident {
+						arg_ident_name = arg.expr.name
+					}
+				} else if arg is ast.Ident {
+					arg_ident_name = arg.name
+				}
+				if arg_ident_name != '' && arg_ident_name in g.cur_fn_mut_params {
+					g.sb.write_string('(*')
+					g.sb.write_string(arg_ident_name)
+					g.sb.write_string(')')
+					continue
+				}
 			}
 			g.gen_call_arg(c_name, i, call_args[i])
 		} else {
@@ -3596,10 +4326,37 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 }
 
 fn (g &Gen) alias_base_c_type(type_name string) ?string {
-	if type_name == '' || g.env == unsafe { nil } {
+	if type_name == '' {
 		return none
 	}
+	if base_name := g.alias_base_types[type_name] {
+		if base_name != '' && base_name != type_name {
+			return base_name
+		}
+	}
 	short_name := type_name.all_after_last('__')
+	for file in g.files {
+		mod_name := file.mod.replace('.', '_')
+		for stmt in file.stmts {
+			if stmt is ast.TypeDecl {
+				candidate := if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+					'${mod_name}__${stmt.name}'
+				} else {
+					stmt.name
+				}
+				if candidate != type_name && stmt.name != short_name {
+					continue
+				}
+				base_name := stmt.base_type.name().replace('.', '__')
+				if base_name != '' && base_name != type_name {
+					return base_name
+				}
+			}
+		}
+	}
+	if g.env == unsafe { nil } {
+		return none
+	}
 	mut modules := []string{}
 	if type_name.contains('__') {
 		modules << type_name.all_before_last('__')

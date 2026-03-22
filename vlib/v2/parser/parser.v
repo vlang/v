@@ -39,6 +39,9 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 
 fn (mut p Parser) init(filename string, src string, mut file_set token.FileSet) {
 	// reset since parser instance may be reused
+	p.exp_lcbr = false
+	p.exp_pt = false
+	p.in_top_level = false
 	p.line = 0
 	p.lit = ''
 	p.pos = token.Pos{}

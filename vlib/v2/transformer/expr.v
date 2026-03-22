@@ -50,6 +50,18 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					return t.lower_assoc_expr(assoc, true)
 				}
 			}
+			if expr.op == .arrow && expr.expr is ast.OrExpr {
+				or_expr := expr.expr as ast.OrExpr
+				return t.transform_expr(ast.Expr(ast.OrExpr{
+					expr:  ast.Expr(ast.PrefixExpr{
+						op:   .arrow
+						expr: or_expr.expr
+						pos:  expr.pos
+					})
+					stmts: or_expr.stmts
+					pos:   or_expr.pos
+				}))
+			}
 			ast.Expr(ast.PrefixExpr{
 				op:   expr.op
 				expr: t.transform_expr(expr.expr)
@@ -682,6 +694,25 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			}
 		}
 	}
+	// Handle same-module enum access: Op.identify -> discord__Op__identify
+	if expr.lhs is ast.Ident {
+		lhs_name := expr.lhs.name
+		// Check if LHS is an enum type in the current module
+		qualified := if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& !lhs_name.contains('__') {
+			'${t.cur_module}__${lhs_name}'
+		} else {
+			lhs_name
+		}
+		if typ := t.lookup_type(qualified) {
+			if typ is types.Enum {
+				return ast.Ident{
+					name: enum_member_ident(qualified, expr.rhs.name)
+					pos:  expr.pos
+				}
+			}
+		}
+	}
 	// Default transformation
 	return ast.SelectorExpr{
 		lhs: t.transform_expr(expr.lhs)
@@ -1249,58 +1280,36 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							}
 						}
 					}
-					// Fallback: Even without tag info, we need to handle smartcast correctly.
-					// The outer condition (lhs_infix) is an is-check that should push smartcast.
-					// Transform else_expr FIRST without smartcast, use pre-transformed version.
-					transformed_else_fallback := t.transform_expr(expr.else_expr)
-					// For the outer condition, transform LHS (for nested smartcasts)
-					transformed_outer_lhs := t.transform_expr(lhs_infix.lhs)
-					// We can't generate tag check without knowing the tag, so just keep the is-check
-					// (cleanc will handle it), but we need smartcast for body/inner condition
-					smartcast_expr := t.expr_to_string(lhs_infix.lhs)
-					// Get variant name for smartcast context
-					mut fallback_variant := variant_name
-					if variant_module != '' {
-						fallback_variant = '${variant_module}__${variant_name}'
-					}
-					// For full variant name (type casts), always include module prefix
-					fallback_variant_full := if variant_module != '' {
-						'${variant_module}__${variant_name}'
-					} else if t.cur_module != '' && t.cur_module != 'main'
-						&& t.cur_module != 'builtin' {
-						'${t.cur_module}__${variant_name}'
-					} else {
-						variant_name
-					}
-					// Use empty sumtype name since we couldn't find it
-					t.push_smartcast_full(smartcast_expr, fallback_variant, fallback_variant_full,
-						'')
-					// Transform inner condition and body with smartcast
-					transformed_rest_fallback := t.transform_expr(cond.rhs)
-					transformed_body_fallback := t.transform_stmts(expr.stmts)
-					// Pop smartcast before using pre-transformed else
-					t.pop_smartcast()
-					inner_if := ast.IfExpr{
-						cond:      transformed_rest_fallback
-						stmts:     transformed_body_fallback
-						else_expr: transformed_else_fallback
-						pos:       expr.pos
-					}
-					// Keep original is-check condition (let cleanc handle it)
-					outer_if := ast.IfExpr{
-						cond:      ast.InfixExpr{
-							op:  lhs_infix.op
-							lhs: transformed_outer_lhs
-							rhs: lhs_infix.rhs
-							pos: lhs_infix.pos
+					// Fallback: use smartcast_context_from_is_check to get the proper
+					// context (interface-aware with __iface__ prefix, or plain).
+					if iface_ctx := t.smartcast_context_from_is_check(lhs_infix) {
+						// Transform else_expr FIRST without smartcast
+						transformed_else_fallback := t.transform_expr(expr.else_expr)
+						// Push interface-aware smartcast context
+						t.smartcast_stack << iface_ctx
+						// Transform inner condition and body with smartcast
+						transformed_rest_fallback := t.transform_expr(cond.rhs)
+						transformed_body_fallback := t.transform_stmts(expr.stmts)
+						// Pop smartcast
+						t.pop_smartcast()
+						inner_if := ast.IfExpr{
+							cond:      transformed_rest_fallback
+							stmts:     transformed_body_fallback
+							else_expr: transformed_else_fallback
+							pos:       expr.pos
 						}
-						stmts:     [ast.Stmt(ast.ExprStmt{
-							expr: inner_if
-						})]
-						else_expr: transformed_else_fallback
-						pos:       expr.pos
+						// Keep original is-check condition (let cleanc handle it)
+						return ast.IfExpr{
+							cond:      t.transform_expr(ast.Expr(lhs_infix))
+							stmts:     [
+								ast.Stmt(ast.ExprStmt{
+									expr: inner_if
+								}),
+							]
+							else_expr: transformed_else_fallback
+							pos:       expr.pos
+						}
 					}
-					return outer_if
 				}
 			}
 			// Check if RHS is an is-check: if cond && x is Type { ... }
@@ -1457,6 +1466,21 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							else_expr: t.transform_expr(expr.else_expr)
 							pos:       expr.pos
 						}
+					}
+				}
+				// Interface smartcast: if iface_var is ConcreteType { ... }
+				// The condition is left as-is (cleanc handles _type_id comparison).
+				// We only need to push the smartcast context so field accesses in
+				// the body are lowered to ((ConcreteType*)(iface._object))->field.
+				if iface_ctx := t.smartcast_context_from_is_check(cond) {
+					t.smartcast_stack << iface_ctx
+					transformed_stmts := t.transform_stmts(expr.stmts)
+					t.pop_smartcast()
+					return ast.IfExpr{
+						cond:      t.transform_expr(expr.cond)
+						stmts:     transformed_stmts
+						else_expr: t.transform_expr(expr.else_expr)
+						pos:       expr.pos
 					}
 				}
 			}
@@ -1667,10 +1691,26 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			for s in expr.stmts {
 				new_stmts << s
 			}
+			saved_p := t.pending_stmts.clone()
+			t.pending_stmts.clear()
+			t_stmts := t.transform_stmts(new_stmts)
+			inner_p := t.pending_stmts.clone()
+			t.pending_stmts = saved_p
+			for ip in inner_p {
+				t.pending_stmts << ip
+			}
+			saved_p2 := t.pending_stmts.clone()
+			t.pending_stmts.clear()
+			t_else := t.transform_expr(expr.else_expr)
+			inner_p2 := t.pending_stmts.clone()
+			t.pending_stmts = saved_p2
+			for ip in inner_p2 {
+				t.pending_stmts << ip
+			}
 			result_if := ast.IfExpr{
 				cond:      t.transform_expr(cond_expr)
-				stmts:     t.transform_stmts(new_stmts)
-				else_expr: t.transform_expr(expr.else_expr)
+				stmts:     t_stmts
+				else_expr: t_else
 				pos:       synth_pos
 			}
 			// Propagate the original IfExpr type to the synthesized node
@@ -1698,14 +1738,34 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	for ctx in body_smartcasts {
 		t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
 	}
+	// Save and restore pending_stmts around branch transformation to prevent
+	// outer pending_stmts (e.g., from earlier RHS if-expr lowering) from being
+	// flushed into the inner branch's transform_stmts.
+	saved_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	transformed_stmts := t.transform_stmts(expr.stmts)
+	// Merge any pending_stmts generated by the then-branch transform back into the outer context.
+	inner_pending_then := t.pending_stmts.clone()
+	t.pending_stmts = saved_pending
+	for ip in inner_pending_then {
+		t.pending_stmts << ip
+	}
 	for _ in body_smartcasts {
 		t.pop_smartcast()
+	}
+	saved_pending2 := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	transformed_else := t.transform_expr(expr.else_expr)
+	// Merge any pending_stmts generated by the else-expr transform back into the outer context.
+	inner_pending := t.pending_stmts.clone()
+	t.pending_stmts = saved_pending2
+	for ip in inner_pending {
+		t.pending_stmts << ip
 	}
 	transformed_if := ast.IfExpr{
 		cond:      t.transform_expr(expr.cond)
 		stmts:     transformed_stmts
-		else_expr: t.transform_expr(expr.else_expr)
+		else_expr: transformed_else
 		pos:       expr.pos
 	}
 	// Lower value-position IfExpr: hoist to a temp variable assignment.
@@ -1768,6 +1828,9 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			if sel.lhs is ast.Ident {
 				variant_module = (sel.lhs as ast.Ident).name
 			}
+		} else if expr.rhs is ast.Type {
+			// Handle complex type expressions like []Any, map[string]Any
+			variant_name = t.type_expr_to_variant_name(expr.rhs)
 		}
 		if variant_name != '' {
 			mut sumtype_name := t.get_sumtype_name_for_expr(expr.lhs)
@@ -1803,6 +1866,31 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 						value: '${tag_value}'
 						pos:   expr.pos
 					}), expr.pos)
+				}
+			}
+			// Interface self-type check: `iface_var is InterfaceType` where the variable
+			// is already of that interface type. This checks non-nil (type_id != 0).
+			if sumtype_name == '' {
+				if lhs_type := t.get_expr_type(expr.lhs) {
+					lhs_base := t.unwrap_alias_and_pointer_type(lhs_type)
+					if lhs_base is types.Interface {
+						is_self_check := lhs_base.name.ends_with(variant_name)
+							|| lhs_base.name == variant_name
+						if is_self_check {
+							transformed_lhs := t.transform_expr(expr.lhs)
+							cmp_op := if expr.op in [.key_is, .eq] {
+								token.Token.ne
+							} else {
+								token.Token.eq
+							}
+							return t.make_infix_expr_at(cmp_op, t.synth_selector(transformed_lhs,
+								'_type_id', types.Type(types.int_)), ast.Expr(ast.BasicLiteral{
+								kind:  token.Token.number
+								value: '0'
+								pos:   expr.pos
+							}), expr.pos)
+						}
+					}
 				}
 			}
 		}
@@ -2110,7 +2198,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			}
 			if !has_unresolved_shorthand {
 				mut method_info := arr_info
-				if enum_type != '' {
+				if enum_type != '' && !arr_info.is_fixed {
 					enum_c_name := t.v_type_name_to_c_name(enum_type)
 					if enum_c_name != '' {
 						method_info = ArrayMethodInfo{
@@ -2168,12 +2256,41 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			// Use push_many only when RHS element type matches the LHS element type.
 			// This avoids mis-lowering [][]T << []T, which must stay a single push.
 			mut rhs_is_array := false
-			if rhs_elem_type := t.array_value_elem_type(expr.rhs) {
-				rhs_is_array = t.array_elem_types_compatible(elem_type_name, rhs_elem_type)
-			} else {
-				lhs_is_nested_array := elem_type_name.starts_with('Array_')
-					|| elem_type_name.starts_with('Array_fixed_')
-				rhs_is_array = t.is_array_value_expr(expr.rhs) && !lhs_is_nested_array
+			// Enum shorthand (.member) is never an array value, even if the checker
+			// annotated it with the LHS array type instead of the element enum type.
+			rhs_is_enum_shorthand := expr.rhs is ast.SelectorExpr
+				&& (expr.rhs as ast.SelectorExpr).lhs is ast.EmptyExpr
+			if !rhs_is_enum_shorthand {
+				if rhs_elem_type := t.array_value_elem_type(expr.rhs) {
+					rhs_is_array = t.array_elem_types_compatible(elem_type_name, rhs_elem_type)
+				} else {
+					lhs_is_nested_array := elem_type_name.starts_with('Array_')
+						|| elem_type_name.starts_with('Array_fixed_')
+					rhs_is_array = t.is_array_value_expr(expr.rhs) && !lhs_is_nested_array
+				}
+			}
+			// Or-data-extract: _or_tN.data where the temp var holds a Result/Option of array.
+			// extract_or_expr replaces `call()!` with `_or_tN.data`, losing the PostfixExpr
+			// that array_value_elem_type would have recognized. Check the temp var's type.
+			if !rhs_is_array && expr.rhs is ast.SelectorExpr {
+				rhs_sel := expr.rhs as ast.SelectorExpr
+				if rhs_sel.rhs.name == 'data' && rhs_sel.lhs is ast.Ident {
+					or_ident := rhs_sel.lhs as ast.Ident
+					if or_ident.name.starts_with('_or_t') {
+						if or_type := t.lookup_var_type(or_ident.name) {
+							unwrapped := if or_type is types.ResultType {
+								or_type.base_type
+							} else if or_type is types.OptionType {
+								or_type.base_type
+							} else {
+								or_type
+							}
+							if unwrapped is types.Array {
+								rhs_is_array = true
+							}
+						}
+					}
+				}
 			}
 
 			// Check if LHS is already a pointer (e.g., mut receiver of type strings.Builder*)
@@ -2326,7 +2443,9 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		}
 	}
 	// Check for string comparisons: s1 == s2, s1 < s2, etc.
-	if expr.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+	// Skip if either side is nil — that's a pointer comparison, not a string comparison.
+	if expr.op in [.eq, .ne, .lt, .gt, .le, .ge] && !t.is_nil_expr(expr.lhs)
+		&& !t.is_nil_expr(expr.rhs) {
 		mut lhs_is_str := t.is_string_expr(expr.lhs)
 		mut rhs_is_str := t.is_string_expr(expr.rhs)
 		// Also check type environment for expression types if is_string_expr didn't find it
@@ -2656,6 +2775,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			}
 		}
 	}
+	// Note: struct == / != is handled by cleanc's memcmp/field-by-field comparison.
 	// Check for struct operator overloading (e.g., time.Time - time.Time)
 	// This transforms t1 - t2 into time__Time__minus(t1, t2) for structs with operator overloading
 	// Only applies to specific known struct types that define operator methods

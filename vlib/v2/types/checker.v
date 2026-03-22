@@ -4406,6 +4406,33 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	}
 }
 
+// resolve_interface_fields re-resolves an interface's fields from the module scope
+// when the interface embedded in a Pointer/Alias has stale (empty) fields.
+fn (mut c Checker) resolve_interface_fields(iface Interface) []Field {
+	qualified := iface.name
+	// Extract module and short name from qualified name like "log__Logger"
+	if idx := qualified.last_index('__') {
+		mod_name := qualified[..idx].replace('__', '.')
+		short_name := qualified[idx + 2..]
+		mut mod_scope := c.get_module_scope(mod_name, universe)
+		if obj := mod_scope.lookup(short_name) {
+			obj_t := obj.typ()
+			if obj_t is Interface {
+				return obj_t.fields
+			}
+		}
+	}
+	// Try current scope as fallback (same-module interface)
+	short_name := qualified.all_after_last('__')
+	if obj := c.scope.lookup_parent(short_name, 0) {
+		obj_t := obj.typ()
+		if obj_t is Interface {
+			return obj_t.fields
+		}
+	}
+	return iface.fields
+}
+
 fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 	// Strip @ prefix used to escape V keywords in field/method names (e.g., @type → type)
 	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
@@ -4543,7 +4570,15 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 		}
 		Interface {
 			// c.log('looking for fields on interface ${t.name()}')
-			for field in t.fields {
+			// If the interface was embedded in a Pointer/Alias before its fields
+			// were populated (e.g. struct field `&Downloader` resolved before
+			// process_pending_interface_decls ran), re-resolve from scope.
+			iface_fields := if t.fields.len == 0 && t.name.len > 0 {
+				c.resolve_interface_fields(t)
+			} else {
+				t.fields
+			}
+			for field in iface_fields {
 				if field.name == name {
 					// c.log('found field ${name} for interface ${t.name()}')
 					if c.expecting_method && resolve_alias(field.typ) !is FnType {

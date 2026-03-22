@@ -55,7 +55,7 @@ const f32_ = Primitive{
 	props: .float
 	size:  32
 }
-const f64_ = Primitive{
+pub const f64_ = Primitive{
 	props: .float
 	size:  64
 }

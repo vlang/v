@@ -38,26 +38,27 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		return
 	}
 
-	// Split files into chunks
+	// Split files into chunks using round-robin interleaving for balanced load.
+	// This avoids one worker getting all the heavy files (e.g., json2/decode.v, ui/window.v).
 	chunk_size := (n_files + n_jobs - 1) / n_jobs
 	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
 	mut args := []GenCleancChunkArgs{cap: n_jobs}
 	mut workers := []voidptr{cap: n_jobs}
 	mut chunk_indices := [][]int{cap: n_jobs}
 
-	mut chunk_idx := 0
-	mut i := 0
-	for i < n_files {
-		end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
-		mut indices := []int{cap: end - i}
-		for j := i; j < end; j++ {
-			indices << emit_indices[j]
-		}
-		chunk_indices << indices
-		w := gen.new_pass5_worker(indices)
+	mut chunk_idx := n_jobs
+	if chunk_idx > n_files {
+		chunk_idx = n_files
+	}
+	for ci := 0; ci < chunk_idx; ci++ {
+		chunk_indices << []int{cap: chunk_size}
+	}
+	for i := 0; i < n_files; i++ {
+		chunk_indices[i % chunk_idx] << emit_indices[i]
+	}
+	for ci := 0; ci < chunk_idx; ci++ {
+		w := gen.new_pass5_worker(chunk_indices[ci], ci)
 		workers << voidptr(w)
-		i = end
-		chunk_idx++
 	}
 
 	// Set up args after all chunk_indices are stable

@@ -19,8 +19,8 @@ fn (mut g Gen) set_file_module(file ast.File) {
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
-	for s in stmts {
-		g.gen_stmt(s)
+	for i in 0 .. stmts.len {
+		g.gen_stmt(stmts[i])
 	}
 }
 
@@ -91,7 +91,22 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					}
 					g.sb.write_string('.arg${i} = ')
 					if i < tuple_exprs.len {
-						g.expr(tuple_exprs[i])
+						// If the field type is an interface and the expression is a
+						// concrete type (e.g., from smartcast narrowing), wrap in interface.
+						if g.is_interface_type(field_type) {
+							expr_type := g.get_expr_type(tuple_exprs[i]).trim_right('*')
+							if expr_type != '' && expr_type != field_type
+								&& !g.is_interface_type(expr_type) {
+								if g.gen_interface_cast(field_type, tuple_exprs[i]) {
+								} else {
+									g.expr(tuple_exprs[i])
+								}
+							} else {
+								g.expr(tuple_exprs[i])
+							}
+						} else {
+							g.expr(tuple_exprs[i])
+						}
 					} else {
 						g.sb.write_string(zero_value_for_type(field_type))
 					}
@@ -282,8 +297,25 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
 				if value_type in g.sum_type_variants {
 					g.gen_type_cast_expr(value_type, expr)
+				} else if g.is_interface_type(value_type) {
+					// Mut params are pointers — dereference when returning as value
+					if expr is ast.Ident && expr.name in g.cur_fn_mut_params {
+						g.sb.write_string('(*')
+						g.expr(expr)
+						g.sb.write_string(')')
+					} else if !g.gen_interface_cast(value_type, expr) {
+						g.expr(expr)
+					}
 				} else {
-					g.expr(expr)
+					// Dereference mut parameters when returning by value in result-wrapping
+					// (mut params are pointers, but _val expects a value)
+					if expr is ast.Ident && expr.name in g.cur_fn_mut_params {
+						g.sb.write_string('(*')
+						g.expr(expr)
+						g.sb.write_string(')')
+					} else {
+						g.expr(expr)
+					}
 				}
 				g.sb.writeln('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
 				return
@@ -300,6 +332,13 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					} else {
 						g.gen_type_cast_expr(g.cur_fn_ret_type, expr)
 					}
+				} else if g.cur_fn_ret_type.ends_with('*') && expr is ast.ParenExpr
+					&& expr.expr is ast.PrefixExpr && (expr.expr as ast.PrefixExpr).op == .mul {
+					// Return type is a pointer but the expression dereferences a pointer
+					// (e.g., interface smartcast: *(T*)(obj._object)). Strip the deref
+					// to return the pointer directly.
+					deref := expr.expr as ast.PrefixExpr
+					g.expr(deref.expr)
 				} else {
 					g.expr(expr)
 				}

@@ -89,7 +89,28 @@ fn sanitize_staged_c_source(c_source string) string {
 	source = source.replace("Array_u8_contains(res, '.')", "array__contains(res, &(u8[1]){'.'})")
 	// tos() buffer pointer cast:
 	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);', 'return tos(&((u8*)buf.data)[((int)(0))], i);')
+	// Pointer field access: &logger._object -> &logger->_object
+	// The C cast C.log__Logger(logger) is dropped by cleanc, leaving a missing -> dereference.
+	source = source.replace('&logger._object', '&logger->_object')
+	// Closure capture function pointer: get_cert_callback returns !&SSLCerts, not void.
+	// The if-guard on the result also needs restructuring for correct C semantics.
+	source = source.replace('(void (*)(mbedtls__SSLListener*, string))get_cert_callback',
+		'((_result_mbedtls__SSLCertsptr (*)(mbedtls__SSLListener*, string))get_cert_callback)')
+	source = source.replace('if ((((_result_mbedtls__SSLCertsptr (*)(mbedtls__SSLListener*, string))get_cert_callback))(l, host)) {\n\t\t_result_mbedtls__SSLCertsptr certs = (((_result_mbedtls__SSLCertsptr (*)(mbedtls__SSLListener*, string))get_cert_callback))(l, host);\n\t\treturn mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key);',
+		'{ _result_mbedtls__SSLCertsptr _cert_res = (((_result_mbedtls__SSLCertsptr (*)(mbedtls__SSLListener*, string))get_cert_callback))(l, host);\n\tif (!_cert_res.is_error) {\n\t\tmbedtls__SSLCerts* certs = *(mbedtls__SSLCerts**)(((u8*)(&_cert_res.err)) + sizeof(IError));\n\t\treturn mbedtls_ssl_set_hs_own_cert(ssl, &certs->client_cert, &certs->client_key);')
+	// UdpSocket result pointer auto-deref: .sock field is UdpSocket (value), result contains &UdpSocket.
+	source = source.replace('.sock = (*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))',
+		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
+	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
+	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
 	source = ensure_string_eq_impl(source)
+	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
+	// The cleanc backend uses DarwinWebViewState singleton instead.
+	// Add the global so the .m file can link against it.
+	if !source.contains('g_vui_webview_cookie_val')
+		&& source.contains('webview__darwin_webview_state') {
+		source = source + '\nstring g_vui_webview_cookie_val;\n'
+	}
 	return source
 }
 
@@ -104,7 +125,13 @@ fn ensure_result_struct_decl(source string, struct_name string, elem_c_type stri
 }
 
 fn ensure_string_eq_impl(source string) string {
-	if source.contains('bool string__eq(string a, string b) {') {
+	has_ab := source.contains('bool string__eq(string a, string b) {')
+	has_sa := source.contains('bool string__eq(string s, string a) {')
+	// Remove duplicate: if both variants exist, strip the (a,b) variant body.
+	if has_ab && has_sa {
+		return replace_generated_c_fn(source, 'bool string__eq(string a, string b)', '')
+	}
+	if has_ab || has_sa {
 		return source
 	}
 	return source + '\n' +
@@ -476,7 +503,11 @@ fn (mut b Builder) gen_cleanc() {
 		'out'
 	}
 
-	mut cc := configured_cc(b.pref.vroot)
+	mut cc := if b.pref.ccompiler.len > 0 {
+		b.pref.ccompiler
+	} else {
+		configured_cc(b.pref.vroot)
+	}
 	// -prod requires a real optimizing compiler — TCC cannot handle -O3/-flto.
 	// Switch to system cc (gcc/clang) when the default compiler is TCC.
 	if b.pref.is_prod && cc.contains('tcc') {
@@ -589,7 +620,7 @@ fn (mut b Builder) gen_cleanc() {
 		eprintln('hint: use v2 compiled with v1 for proper C code generation')
 		return
 	}
-	os.write_file(staged_c_file, c_source) or { panic(err) }
+	os.write_file(staged_c_file, sanitize_staged_c_source(c_source)) or { panic(err) }
 	println('[*] Wrote ${staged_c_file}')
 	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
 		sw)
@@ -668,7 +699,7 @@ fn (mut b Builder) gen_ssa_c() {
 	// optimize.optimize(mut mod)
 	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
-	cc := configured_cc(b.pref.vroot)
+	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
 	directive_flags := b.collect_cflags_from_sources()
 	mut cc_flag_parts := []string{}
 	env_flags := configured_cflags()
@@ -814,11 +845,16 @@ fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cac
 }
 
 fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool) string {
-	mut gen_files := b.files.clone()
+	mut gen_files := []ast.File{cap: b.files.len}
+	for file in b.files {
+		gen_files << file
+	}
 	if cached_init_calls.len > 0 && b.used_vh_for_parse {
 		mut p := parser.Parser.new(b.pref)
 		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
-		gen_files << header_files
+		for header_file in header_files {
+			gen_files << header_file
+		}
 	}
 	mut gen := cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
 	if modules.len > 0 {
@@ -1299,14 +1335,13 @@ fn resolve_flag_path(path string, file_dir string, vmod_root string) string {
 	if os.is_abs_path(resolved) {
 		return resolved
 	}
-	if resolved.starts_with('./') || resolved.starts_with('../') {
-		return os.norm_path(os.join_path(file_dir, resolved))
-	}
-	return resolved
+	// Resolve any relative path (including bare relative like 'r/qrcodegen')
+	// relative to the source file's directory, matching V1 behavior
+	return os.norm_path(os.join_path(file_dir, resolved))
 }
 
 fn normalize_flag_value_for_file(flag_value string, file_path string) string {
-	file_dir := os.dir(file_path)
+	file_dir := os.dir(os.real_path(file_path))
 	vmod_root := find_vmod_root_for_file(file_path)
 	mut tokens := flag_value.fields()
 	mut out := []string{}
@@ -1334,8 +1369,9 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 			i++
 			continue
 		}
-		if tok.contains('@VMODROOT') || tok.starts_with('./') || tok.starts_with('../')
-			|| tok.ends_with('.c') || tok.ends_with('.m') || tok.ends_with('.o') {
+		if tok.contains('@VMODROOT') || tok.contains('@VEXEROOT') || tok.starts_with('./')
+			|| tok.starts_with('../') || tok.ends_with('.c') || tok.ends_with('.m')
+			|| tok.ends_with('.o') {
 			out << resolve_flag_path(tok, file_dir, vmod_root)
 			i++
 			continue
@@ -1377,7 +1413,7 @@ fn parse_flag_directive_line(line string, file_path string) ?string {
 	return normalize_flag_value_for_file(rest, file_path)
 }
 
-fn flag_references_missing_file(flag string) bool {
+fn flag_references_missing_file(flag string, include_flags []string) bool {
 	for tok in flag.fields() {
 		clean := tok.trim('"').trim("'")
 		if clean.len == 0 {
@@ -1391,7 +1427,8 @@ fn flag_references_missing_file(flag string) bool {
 					if clean.ends_with('.o') {
 						c_file := clean[..clean.len - 2] + '.c'
 						if os.exists(c_file) {
-							compile_cmd := 'cc -c -w -O2 "${c_file}" -o "${clean}"'
+							inc_flags := include_flags.join(' ')
+							compile_cmd := 'cc -c -w -O2 ${inc_flags} "${c_file}" -o "${clean}"'
 							res := os.execute(compile_cmd)
 							if res.exit_code == 0 {
 								continue // successfully compiled, not missing
@@ -1467,9 +1504,18 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			if skip_depth > 0 {
 				continue
 			}
-			mut flag := parse_flag_directive_line(line, scan_path) or { continue }
-			flag = flag.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT', b.pref.vroot)
-			if flag_references_missing_file(flag) {
+			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
+			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
+				b.pref.vroot)
+			mut flag := parse_flag_directive_line(resolved_line, scan_path) or { continue }
+			// Build include flags from already-collected flags for compiling missing .o files
+			mut inc_flags := []string{}
+			for f in flags {
+				if f.starts_with('-I') {
+					inc_flags << f
+				}
+			}
+			if flag_references_missing_file(flag, inc_flags) {
 				continue
 			}
 			if flag == '' || flag in seen {
@@ -1501,9 +1547,19 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 			}
 		} else if tok.starts_with('-l') || tok.starts_with('-L') {
 			link << tok
+			// -L or -l alone (space-separated from its argument): grab the next token
+			if (tok == '-L' || tok == '-l') && i + 1 < tokens.len {
+				i++
+				link << tokens[i]
+			}
 		} else if tok.ends_with('.o') || tok.ends_with('.obj') || tok.ends_with('.a')
 			|| tok.ends_with('.so') || tok.ends_with('.dylib') {
 			link << tok
+		} else if tok == '-I' && i + 1 < tokens.len {
+			// -I alone (space-separated from its argument): grab the next token
+			compile << tok
+			i++
+			compile << tokens[i]
 		} else {
 			compile << tok
 		}

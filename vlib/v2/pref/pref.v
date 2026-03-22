@@ -59,6 +59,7 @@ pub mut:
 	hot_fn                string   // Extract raw machine code for this function only (hot reload)
 	single_backend        bool     // Only include the selected backend (strip other backends from binary)
 	eval_runtime_args     []string // Program argv exposed to the eval backend
+	ccompiler             string   // C compiler override (-cc flag)
 pub:
 	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
@@ -231,6 +232,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
+	ccompiler := cmdline.option(args, '-cc', '')
 
 	// Parse -printfn option (comma-separated list of function names to print)
 	mut printfn_str := cmdline.option(args, '-printfn', '')
@@ -282,7 +284,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	// Validate flags: error on unknown options
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
-		'-d', '-hot-fn']
+		'-d', '-hot-fn', '-cc']
 	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
 		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
@@ -309,6 +311,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
 			eprintln('  --debug                Enable debug mode')
 			eprintln('  -v, --verbose          Enable verbose output')
+			eprintln('  -cc <compiler>         C compiler to use (default: tcc, fallback: cc)')
 			eprintln('  -showcc, --showcc      Print C compiler command')
 			eprintln('  -keepc                 Keep generated C file')
 			eprintln('  --no-parallel          Disable parallel type check and transform')
@@ -343,6 +346,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		printfn_list:          printfn_list
 		user_defines:          all_defines
 		hot_fn:                hot_fn_str
+		ccompiler:             ccompiler
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()
 	}

@@ -98,7 +98,7 @@ fn is_test_file(files []string) bool {
 // get_files extracts source files from args, excluding options and their values
 fn get_files(args []string) []string {
 	options_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d',
-		'-hot-fn']
+		'-hot-fn', '-cc']
 	mut files := []string{}
 	mut skip_next := false
 	for arg in args {

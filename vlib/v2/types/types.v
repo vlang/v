@@ -84,6 +84,7 @@ pub:
 }
 
 struct Channel {
+pub:
 	elem_type ?Type
 }
 
@@ -306,6 +307,31 @@ pub fn (t Type) base_type() Type {
 		// 	return t
 		// }
 	}
+}
+
+pub fn (t Type) channel_elem_type() ?Type {
+	mut cur := t
+	for {
+		match cur {
+			Alias {
+				cur = Type(cur).base_type()
+			}
+			Pointer {
+				cur = Type(cur).base_type()
+			}
+			Channel {
+				channel_type := cur as Channel
+				if elem_type := channel_type.elem_type {
+					return elem_type
+				}
+				return none
+			}
+			else {
+				return none
+			}
+		}
+	}
+	return none
 }
 
 fn type_data_ptr_is_nil(t Type) bool {

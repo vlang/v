@@ -84,6 +84,45 @@ fn (t &Transformer) get_fn_return_base_type(fn_name string) string {
 	}
 }
 
+fn (t &Transformer) channel_receive_wrapper_type(expr ast.Expr) ?types.Type {
+	if expr !is ast.PrefixExpr {
+		return none
+	}
+	prefix_expr := expr as ast.PrefixExpr
+	if prefix_expr.op != .arrow {
+		return none
+	}
+	mut recv_type := types.Type(types.void_)
+	if typ := t.get_expr_type(prefix_expr.expr) {
+		recv_type = typ
+	} else if prefix_expr.expr is ast.SelectorExpr {
+		recv_type = t.get_struct_field_type(prefix_expr.expr) or { return none }
+	} else {
+		return none
+	}
+	if elem_type := recv_type.channel_elem_type() {
+		return types.Type(types.OptionType{
+			base_type: elem_type
+		})
+	}
+	return none
+}
+
+fn (t &Transformer) expr_wrapper_type_for_or(expr ast.Expr) ?types.Type {
+	if !expr_has_valid_data(expr) {
+		return none
+	}
+	if typ := t.get_expr_type(expr) {
+		if typ is types.OptionType || typ is types.ResultType {
+			return typ
+		}
+	}
+	if wrapper_type := t.channel_receive_wrapper_type(expr) {
+		return wrapper_type
+	}
+	return none
+}
+
 // extract_return_sumtype_name extracts the base sumtype name from a return type AST node.
 // For ?SumType (OptionType) or !SumType (ResultType), returns the base type name.
 fn (t &Transformer) extract_return_sumtype_name(return_type ast.Expr) string {
@@ -404,8 +443,23 @@ fn (t &Transformer) expr_returns_option(expr ast.Expr) bool {
 	if !expr_has_valid_data(expr) {
 		return false
 	}
-	if typ := t.get_expr_type(expr) {
-		return typ is types.OptionType
+	if wrapper_type := t.expr_wrapper_type_for_or(expr) {
+		return wrapper_type is types.OptionType
+	}
+	// Fallback: check if the call target is a function pointer variable with Option return type.
+	if expr is ast.CallExpr || expr is ast.CallOrCastExpr {
+		mut call_lhs := ast.empty_expr
+		if expr is ast.CallExpr {
+			call_lhs = expr.lhs
+		} else if expr is ast.CallOrCastExpr {
+			call_lhs = expr.lhs
+		}
+		if call_lhs is ast.Ident {
+			lhs_ident := call_lhs as ast.Ident
+			if var_type := t.lookup_var_type(lhs_ident.name) {
+				return t.fn_type_returns_option(var_type)
+			}
+		}
 	}
 	return false
 }
@@ -419,6 +473,59 @@ fn (t &Transformer) expr_returns_result(expr ast.Expr) bool {
 	if typ := t.get_expr_type(expr) {
 		return typ is types.ResultType
 	}
+	// Fallback: check if the call target is a function pointer variable with Result return type.
+	// This handles cases like `if r := fn_ptr_var(args)` where the type checker didn't
+	// annotate the call expression but the variable's FnType has the return type info.
+	if expr is ast.CallExpr || expr is ast.CallOrCastExpr {
+		mut call_lhs := ast.empty_expr
+		if expr is ast.CallExpr {
+			call_lhs = expr.lhs
+		} else if expr is ast.CallOrCastExpr {
+			call_lhs = expr.lhs
+		}
+		if call_lhs is ast.Ident {
+			lhs_ident := call_lhs as ast.Ident
+			if var_type := t.lookup_var_type(lhs_ident.name) {
+				return t.fn_type_returns_result(var_type)
+			}
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) fn_type_returns_result(typ types.Type) bool {
+	match typ {
+		types.FnType {
+			if ret := typ.get_return_type() {
+				return ret is types.ResultType
+			}
+		}
+		types.Alias {
+			return t.fn_type_returns_result(typ.base_type)
+		}
+		types.Pointer {
+			return t.fn_type_returns_result(typ.base_type)
+		}
+		else {}
+	}
+	return false
+}
+
+fn (t &Transformer) fn_type_returns_option(typ types.Type) bool {
+	match typ {
+		types.FnType {
+			if ret := typ.get_return_type() {
+				return ret is types.OptionType
+			}
+		}
+		types.Alias {
+			return t.fn_type_returns_option(typ.base_type)
+		}
+		types.Pointer {
+			return t.fn_type_returns_option(typ.base_type)
+		}
+		else {}
+	}
 	return false
 }
 
@@ -427,13 +534,13 @@ fn (t &Transformer) get_expr_base_type(expr ast.Expr) string {
 	if !expr_has_valid_data(expr) {
 		return ''
 	}
-	if typ := t.get_expr_type(expr) {
-		match typ {
+	if wrapper_type := t.expr_wrapper_type_for_or(expr) {
+		match wrapper_type {
 			types.ResultType {
-				return typ.base_type.name()
+				return wrapper_type.base_type.name()
 			}
 			types.OptionType {
-				return typ.base_type.name()
+				return wrapper_type.base_type.name()
 			}
 			else {}
 		}
@@ -569,13 +676,24 @@ fn (mut t Transformer) is_void_call_expr(expr ast.Expr) bool {
 		}
 		return true // Return type is void
 	}
-	// Check using fn return type lookup
-	if ret := t.get_fn_return_type(fn_name) {
-		ret_name := ret.name()
-		if ret_name != '' && ret_name != 'void' && ret_name != 'Void' {
-			return false
+	// For method calls (SelectorExpr LHS), don't fall back to fn_return_type lookup
+	// since the short method name may conflict with a builtin function.
+	// e.g. `logger.error(...)` has fn_name='error' which matches builtin `error()`.
+	mut is_method_call := false
+	if expr is ast.CallExpr && expr.lhs is ast.SelectorExpr {
+		is_method_call = true
+	} else if expr is ast.CallOrCastExpr && expr.lhs is ast.SelectorExpr {
+		is_method_call = true
+	}
+	if !is_method_call {
+		// Check using fn return type lookup
+		if ret := t.get_fn_return_type(fn_name) {
+			ret_name := ret.name()
+			if ret_name != '' && ret_name != 'void' && ret_name != 'Void' {
+				return false
+			}
+			return true
 		}
-		return true
 	}
 	// No return type found — likely a void function
 	return true
@@ -712,8 +830,29 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		ret_name := decl.typ.return_type.name
 		// Qualify with module prefix for enum shorthand resolution
 		// (e.g., Token → token__Token so resolve_enum_shorthand produces token__Token__member)
+		// Skip qualification if the type is a builtin type (e.g., ChanState is defined in
+		// vlib/builtin, so functions in the sync module returning ChanState should NOT
+		// produce sync__ChanState__member — just ChanState__member).
+		mut is_builtin_ret_type := false
+		if !ret_name.contains('__') {
+			if scope := t.get_module_scope('builtin') {
+				if obj := scope.lookup_parent(ret_name, 0) {
+					is_builtin_ret_type = obj is types.Type
+				}
+			}
+			// Fallback: check if module-qualified name does NOT exist as a type.
+			// If `sync__ChanState` is not a real type but `ChanState` is (builtin),
+			// then don't add the module prefix.
+			if !is_builtin_ret_type && t.cur_module != '' {
+				qualified := '${t.cur_module}__${ret_name}'
+				qualified_exists := t.lookup_type(qualified) != none
+				if !qualified_exists {
+					is_builtin_ret_type = true
+				}
+			}
+		}
 		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
-			&& !ret_name.contains('__') {
+			&& !ret_name.contains('__') && !is_builtin_ret_type {
 			t.cur_fn_ret_type_name = '${t.cur_module}__${ret_name}'
 		} else {
 			t.cur_fn_ret_type_name = ret_name
@@ -734,12 +873,26 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	// must not affect variable 'a' in another function).
 	t.array_elem_type_overrides = map[string]string{}
 	old_fn_name_str := t.cur_fn_name_str
+	old_fn_recv_prefix := t.cur_fn_recv_prefix
+	old_fn_recv_param := t.cur_fn_recv_param
 	t.cur_fn_name_str = decl.name
-	transformed_stmts := t.transform_stmts(decl.stmts)
-	if decl.name == 'fetch_msgs_for' {
-		eprintln('debug fetch transform file=${t.cur_file_name}')
+	if decl.is_method {
+		recv_name := t.get_receiver_type_name(decl.receiver.typ)
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& !recv_name.contains('__') {
+			t.cur_fn_recv_prefix = '${t.cur_module}__${recv_name}'
+		} else {
+			t.cur_fn_recv_prefix = recv_name
+		}
+		t.cur_fn_recv_param = decl.receiver.name
+	} else {
+		t.cur_fn_recv_prefix = ''
+		t.cur_fn_recv_param = ''
 	}
+	transformed_stmts := t.transform_stmts(decl.stmts)
 	t.cur_fn_name_str = old_fn_name_str
+	t.cur_fn_recv_prefix = old_fn_recv_prefix
+	t.cur_fn_recv_param = old_fn_recv_param
 	t.cur_fn_ret_type_name = old_fn_ret_type_name
 	t.cur_fn_returns_option = old_fn_returns_option
 	t.cur_fn_returns_result = old_fn_returns_result
@@ -802,44 +955,6 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
-	if call_args_have_field_init(expr.args) && t.cur_file_name.ends_with('listbox.v')
-		&& t.cur_fn_name_str == 'draw_device' {
-		mut lhs_type_name := '<none>'
-		if lhs_type := t.get_expr_type(expr.lhs) {
-			lhs_type_name = lhs_type.name()
-		}
-		mut resolved_method := '<none>'
-		if expr.lhs is ast.SelectorExpr {
-			if method_name := t.resolve_method_call_name(expr.lhs.lhs, expr.lhs.rhs.name) {
-				resolved_method = method_name
-			}
-		}
-		call_info := t.lookup_call_fn_info(expr.lhs) or { CallFnInfo{} }
-		eprintln('debug transform_call_expr lhs=${expr.lhs.name()} lhs_type=${lhs_type_name} resolved_method=${resolved_method} param_names=${call_info.param_names} param_count=${call_info.param_types.len} arg_count=${expr.args.len}')
-	}
-	if call_args_have_field_init(expr.args) && t.cur_file_name.ends_with('browser_darwin.v')
-		&& t.cur_fn_name_str == 'create_browser' {
-		mut lhs_type_name := '<none>'
-		if lhs_type := t.get_expr_type(expr.lhs) {
-			lhs_type_name = lhs_type.name()
-		}
-		call_info := t.lookup_call_fn_info(expr.lhs) or { CallFnInfo{} }
-		eprintln('debug browser transform_call_expr lhs=${expr.lhs.name()} lhs_type=${lhs_type_name} param_names=${call_info.param_names} param_count=${call_info.param_types.len} arg_count=${expr.args.len}')
-	}
-	if call_args_have_field_init(expr.args) && expr.lhs is ast.SelectorExpr
-		&& expr.lhs.lhs is ast.Ident {
-		if (expr.lhs.lhs as ast.Ident).name == 'webview' && expr.lhs.rhs.name == 'new_window' {
-			mut lhs_type_name := '<none>'
-			if lhs_type := t.get_expr_type(expr.lhs) {
-				lhs_type_name = lhs_type.name()
-			}
-			call_info := t.lookup_call_fn_info(expr.lhs) or { CallFnInfo{} }
-			eprintln('debug module transform_call_expr file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs=${expr.lhs.name()} lhs_type=${lhs_type_name} param_names=${call_info.param_names} param_count=${call_info.param_types.len} arg_count=${expr.args.len}')
-		}
-	}
-	if call_args_have_field_init(expr.args) && t.cur_file_name.ends_with('main.v') {
-		eprintln('debug any transform_call_expr file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs_kind=${expr.lhs.type_name()} lhs_name=${expr.lhs.name()} arg_kinds=${expr.args.map(it.type_name())}')
-	}
 	// Resolve $d('key', default) comptime define calls to their default value.
 	// $d reads from compile-time environment; we just use the default.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
@@ -1192,8 +1307,9 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 			}
 		}
-		is_module_call := sel.lhs is ast.Ident && t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none
+		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
+			|| (t.get_module_scope(sel.lhs.name) != none
+			&& t.lookup_var_type(sel.lhs.name) == none))
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// Guard against misresolution: if the receiver is known to be a string
@@ -1318,6 +1434,79 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 					}
 					args: args
 					pos:  expr.pos
+				}
+			}
+		}
+	}
+	// Generic method call: w.get[T](args) where LHS is GenericArgOrIndexExpr
+	// wrapping a SelectorExpr. Resolve the method call and append the generic
+	// specialization suffix so cleanc can later substitute concrete types.
+	if expr.lhs is ast.GenericArgOrIndexExpr {
+		gai := expr.lhs as ast.GenericArgOrIndexExpr
+		if gai.lhs is ast.SelectorExpr {
+			sel := gai.lhs as ast.SelectorExpr
+			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
+				|| (t.get_module_scope(sel.lhs.name) != none
+				&& t.lookup_var_type(sel.lhs.name) == none))
+			if !is_module_call {
+				// Compute generic specialization suffix from the type arg
+				suffix := '_' + t.generic_specialization_token(gai.expr)
+				// When receiver matches the current method's receiver parameter
+				// and get_expr_type would fail (generic body), use the known prefix
+				recv_is_self := t.cur_fn_recv_param != '' && sel.lhs is ast.Ident
+					&& (sel.lhs as ast.Ident).name == t.cur_fn_recv_param && t.get_expr_type(sel.lhs) == none
+				if recv_is_self && t.cur_fn_recv_prefix != '' {
+					call_args2 := t.lower_missing_call_args(expr.lhs, expr.args)
+					fn_info2 := t.lookup_call_fn_info(expr.lhs)
+					mut args2 := []ast.Expr{cap: call_args2.len + 1}
+					args2 << t.transform_expr(sel.lhs)
+					for i, arg in call_args2 {
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
+							i)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: '${t.cur_fn_recv_prefix}__${sel.rhs.name}${suffix}'
+						}
+						args: args2
+						pos:  expr.pos
+					}
+				}
+				method_name := sel.rhs.name + suffix
+				if resolved := t.resolve_method_call_name(sel.lhs, method_name) {
+					call_args2 := t.lower_missing_call_args(expr.lhs, expr.args)
+					fn_info2 := t.lookup_call_fn_info(expr.lhs)
+					mut args2 := []ast.Expr{cap: call_args2.len + 1}
+					args2 << t.transform_expr(sel.lhs)
+					for i, arg in call_args2 {
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
+							i)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved
+						}
+						args: args2
+						pos:  expr.pos
+					}
+				}
+				// Fallback: resolve without suffix and append suffix to the resolved name
+				if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+					call_args2 := t.lower_missing_call_args(expr.lhs, expr.args)
+					fn_info2 := t.lookup_call_fn_info(expr.lhs)
+					mut args2 := []ast.Expr{cap: call_args2.len + 1}
+					args2 << t.transform_expr(sel.lhs)
+					for i, arg in call_args2 {
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
+							i)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved + suffix
+						}
+						args: args2
+						pos:  expr.pos
+					}
 				}
 			}
 		}
@@ -1679,7 +1868,34 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		methods_for_type := t.cached_methods[key] or { continue }
 		for method in methods_for_type {
 			if method.get_name() == method_name {
+				// When the method was found on a different module-qualified type
+				// (e.g. key=mbedtls__SSLConn vs c_prefix=ssl__SSLConn), use the
+				// actual method owner's name. This handles embedded struct method
+				// promotion where the method body lives on the embedded type.
+				if key != c_prefix && key.contains('__') && c_prefix.contains('__')
+					&& key.all_after_last('__') == c_prefix.all_after_last('__') {
+					return '${key}__${method_name}'
+				}
 				return '${c_prefix}__${method_name}'
+			}
+		}
+	}
+	// Embedded struct method fallback: if the type is a struct that embeds
+	// other structs, check if the method exists on any embedded struct.
+	// This handles cases like ssl.SSLConn embedding mbedtls.SSLConn.
+	if base_type is types.Struct {
+		for embedded in base_type.embedded {
+			emb_name := embedded.name
+			if emb_name == '' {
+				continue
+			}
+			if t.lookup_method_cached(emb_name, method_name) != none {
+				return '${emb_name}__${method_name}'
+			}
+			// Also try short name (without module prefix)
+			short_name := emb_name.all_after_last('__')
+			if short_name != emb_name && t.lookup_method_cached(short_name, method_name) != none {
+				return '${emb_name}__${method_name}'
 			}
 		}
 	}
@@ -1687,50 +1903,12 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 }
 
 fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
-	if call_args_have_field_init(args) && t.cur_file_name.ends_with('listbox.v')
-		&& t.cur_fn_name_str == 'draw_device' {
-		eprintln('debug lower_missing_call_args enter lhs=${lhs.name()} raw_arg_kinds=${args.map(it.type_name())}')
-	}
-	if call_args_have_field_init(args) && t.cur_file_name.ends_with('browser_darwin.v')
-		&& t.cur_fn_name_str == 'create_browser' {
-		eprintln('debug browser lower_missing_call_args enter lhs=${lhs.name()} raw_arg_kinds=${args.map(it.type_name())}')
-	}
-	if call_args_have_field_init(args) && lhs is ast.SelectorExpr && lhs.lhs is ast.Ident {
-		if (lhs.lhs as ast.Ident).name == 'webview' && lhs.rhs.name == 'new_window' {
-			eprintln('debug module lower_missing_call_args enter file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs=${lhs.name()} raw_arg_kinds=${args.map(it.type_name())}')
-		}
-	}
-	if call_args_have_field_init(args) && t.cur_file_name.ends_with('main.v') {
-		eprintln('debug any lower_missing_call_args enter file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs_kind=${lhs.type_name()} lhs_name=${lhs.name()} raw_arg_kinds=${args.map(it.type_name())}')
-	}
-	info := t.lookup_call_fn_info(lhs) or {
-		if call_args_have_field_init(args) && t.cur_file_name.ends_with('listbox.v')
-			&& t.cur_fn_name_str == 'draw_device' {
-			eprintln('debug lower_missing_call_args: no fn info for lhs=${lhs.name()}')
-		}
-		return args
-	}
+	info := t.lookup_call_fn_info(lhs) or { return args }
 	param_types := info.param_types
 	if param_types.len == 0 {
-		if call_args_have_field_init(args) && t.cur_file_name.ends_with('listbox.v')
-			&& t.cur_fn_name_str == 'draw_device' {
-			eprintln('debug lower_missing_call_args: empty params for lhs=${lhs.name()}')
-		}
 		return args
 	}
 	param_names := info.param_names
-	if t.cur_file_name.ends_with('listbox.v') && t.cur_fn_name_str == 'draw_device'
-		&& lhs is ast.SelectorExpr && lhs.rhs.name == 'draw_device_styled_text' {
-		mut lhs_type_name := '<none>'
-		if lhs_type := t.get_expr_type(lhs) {
-			lhs_type_name = lhs_type.name()
-		}
-		mut recv_type_name := '<none>'
-		if recv_type := t.get_expr_type(lhs.lhs) {
-			recv_type_name = recv_type.name()
-		}
-		eprintln('debug draw_device_styled_text lhs_type=${lhs_type_name} recv_type=${recv_type_name} param_names=${param_names} param_count=${param_types.len} arg_count=${args.len}')
-	}
 
 	mut out := []ast.Expr{cap: args.len}
 	for arg in args {
@@ -1738,22 +1916,6 @@ fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []
 	}
 	if call_args_have_field_init(out) {
 		out = t.lower_field_init_call_args(out, param_names, param_types)
-	}
-	if t.cur_file_name.ends_with('listbox.v') && t.cur_fn_name_str == 'draw_device'
-		&& lhs is ast.SelectorExpr && lhs.rhs.name == 'draw_device_styled_text' {
-		eprintln('debug lower_missing_call_args exit lhs=${lhs.name()} out_arg_kinds=${out.map(it.type_name())} out_args=${out.map(it.name())}')
-	}
-	if t.cur_file_name.ends_with('browser_darwin.v') && t.cur_fn_name_str == 'create_browser'
-		&& lhs is ast.SelectorExpr && lhs.rhs.name == 'new_window' {
-		eprintln('debug browser lower_missing_call_args exit lhs=${lhs.name()} out_arg_kinds=${out.map(it.type_name())} out_args=${out.map(it.name())}')
-	}
-	if lhs is ast.SelectorExpr && lhs.lhs is ast.Ident {
-		if (lhs.lhs as ast.Ident).name == 'webview' && lhs.rhs.name == 'new_window' {
-			eprintln('debug module lower_missing_call_args exit file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs=${lhs.name()} out_arg_kinds=${out.map(it.type_name())} out_args=${out.map(it.name())}')
-		}
-	}
-	if t.cur_file_name.ends_with('main.v') && call_args_have_field_init(out) {
-		eprintln('debug any lower_missing_call_args exit file=${t.cur_file_name} fn=${t.cur_fn_name_str} lhs_kind=${lhs.type_name()} lhs_name=${lhs.name()} out_arg_kinds=${out.map(it.type_name())} out_args=${out.map(it.name())}')
 	}
 	for i in 0 .. out.len {
 		if i >= param_types.len {
@@ -2062,18 +2224,6 @@ fn (mut t Transformer) lower_struct_shorthand_call(args []ast.Expr, param_types 
 				}
 			}
 			else {}
-		}
-	}
-	if t.cur_file_name.ends_with('listbox.v') && t.cur_fn_name_str == 'draw_device' {
-		eprintln('debug lower_struct_shorthand_call positional=${positional.len} field_names=${fields.map(it.name)} param_idx=${param_idx} param_type=${param_type.name()} base=${base.name()}')
-	}
-	if t.cur_file_name.ends_with('browser_darwin.v') && t.cur_fn_name_str == 'create_browser' {
-		eprintln('debug browser lower_struct_shorthand_call positional=${positional.len} field_names=${fields.map(it.name)} param_idx=${param_idx} param_type=${param_type.name()} base=${base.name()}')
-	}
-	if t.cur_file_name.ends_with('browser_darwin.v')
-		|| (fields.len > 0 && t.cur_file_name.ends_with('main.v')) {
-		if fields.len > 0 && param_idx < param_types.len {
-			eprintln('debug module lower_struct_shorthand_call file=${t.cur_file_name} fn=${t.cur_fn_name_str} positional=${positional.len} field_names=${fields.map(it.name)} param_idx=${param_idx} param_type=${param_type.name()} base=${base.name()}')
 		}
 	}
 	if base !is types.Struct {
@@ -2488,8 +2638,9 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	// Method call resolution: rewrite receiver.method(arg) -> Type__method(receiver, arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
-		is_module_call := sel.lhs is ast.Ident && t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none
+		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
+			|| (t.get_module_scope(sel.lhs.name) != none
+			&& t.lookup_var_type(sel.lhs.name) == none))
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// prepend(arr) → prepend_many(arr.data, arr.len)
@@ -2571,6 +2722,69 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 					}
 					args: args
 					pos:  expr.pos
+				}
+			}
+		}
+	}
+	// Generic method call: w.get[T](arg) where LHS is GenericArgOrIndexExpr
+	// wrapping a SelectorExpr. Resolve the method call and append the generic
+	// specialization suffix so cleanc can later substitute concrete types.
+	if expr.lhs is ast.GenericArgOrIndexExpr {
+		gai := expr.lhs as ast.GenericArgOrIndexExpr
+		if gai.lhs is ast.SelectorExpr {
+			sel := gai.lhs as ast.SelectorExpr
+			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
+				|| (t.get_module_scope(sel.lhs.name) != none
+				&& t.lookup_var_type(sel.lhs.name) == none))
+			if !is_module_call {
+				suffix := '_' + t.generic_specialization_token(gai.expr)
+				// When the receiver matches the current method's receiver parameter
+				// and get_expr_type would fail (generic body), use the known prefix
+				// directly to avoid wrong fallback to 'array__' prefix.
+				recv_is_self := t.cur_fn_recv_param != '' && sel.lhs is ast.Ident
+					&& (sel.lhs as ast.Ident).name == t.cur_fn_recv_param && t.get_expr_type(sel.lhs) == none
+				if recv_is_self && t.cur_fn_recv_prefix != '' {
+					mut args2 := []ast.Expr{cap: 2}
+					args2 << t.transform_expr(sel.lhs)
+					if expr.expr !is ast.EmptyExpr {
+						args2 << t.transform_expr(expr.expr)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: '${t.cur_fn_recv_prefix}__${sel.rhs.name}${suffix}'
+						}
+						args: args2
+						pos:  expr.pos
+					}
+				}
+				method_name := sel.rhs.name + suffix
+				if resolved := t.resolve_method_call_name(sel.lhs, method_name) {
+					mut args2 := []ast.Expr{cap: 2}
+					args2 << t.transform_expr(sel.lhs)
+					if expr.expr !is ast.EmptyExpr {
+						args2 << t.transform_expr(expr.expr)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved
+						}
+						args: args2
+						pos:  expr.pos
+					}
+				}
+				if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+					mut args2 := []ast.Expr{cap: 2}
+					args2 << t.transform_expr(sel.lhs)
+					if expr.expr !is ast.EmptyExpr {
+						args2 << t.transform_expr(expr.expr)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved + suffix
+						}
+						args: args2
+						pos:  expr.pos
+					}
 				}
 			}
 		}
@@ -2704,10 +2918,20 @@ fn is_c_type_name_for_cast(name string) bool {
 	// Keep in sync with cleanc `is_c_type_name`.
 	// This list is only used to disambiguate `C.TYPE(x)` casts from `C.fn(x)` calls
 	// in `CallOrCastExpr` lowering.
-	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
+	if name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
 		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
 		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un',
-		'mach_timebase_info_data_t']
+		'mach_timebase_info_data_t'] {
+		return true
+	}
+	// Module-qualified C type names (e.g. C.log__Logger) are casts, not calls.
+	if name.contains('__') {
+		after := name.all_after_last('__')
+		if after.len > 0 && after[0] >= `A` && after[0] <= `Z` {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) call_or_cast_lhs_is_type(lhs ast.Expr) bool {

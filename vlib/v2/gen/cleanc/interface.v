@@ -33,7 +33,10 @@ fn (mut g Gen) interface_method_info_from_ast(name string, fn_type ast.FnType) I
 	mut param_types := []string{}
 	mut cast_sig := '${ret} (*)(void*'
 	for param in fn_type.params {
-		t := g.expr_type_to_c(param.typ)
+		mut t := g.expr_type_to_c(param.typ)
+		if param.is_mut && !t.ends_with('*') {
+			t += '*'
+		}
 		cast_sig += ', ${t}'
 		param_types << t
 	}
@@ -89,6 +92,13 @@ fn (mut g Gen) interface_method_info(field ast.FieldDecl) ?InterfaceMethodInfo {
 		return g.interface_method_info_from_ast(field.name, fn_type)
 	}
 	if raw := g.get_raw_type(field.typ) {
+		// Only treat as method if the AST type was directly a FnType,
+		// NOT if it's a named type alias for a function (e.g. `on_scroll_change ScrollViewChangedFn`).
+		// Named fn-type aliases are interface data fields, not vtable methods.
+		if raw is types.Alias && raw.base_type is types.FnType {
+			// This is a fn-type alias field, not a method declaration
+			return none
+		}
 		return g.interface_method_info_from_raw(field.name, raw)
 	}
 	return none
@@ -430,6 +440,47 @@ fn (mut g Gen) interface_fields_resolved(node ast.InterfaceDecl) bool {
 	return true
 }
 
+// resolve_embedded_method checks if a method exists on an embedded struct type.
+// For example, ssl__SSLConn embeds openssl__SSLConn, so ssl__SSLConn__addr
+// resolves to openssl__SSLConn__addr.
+fn (mut g Gen) resolve_embedded_method(struct_name string, method_name string) string {
+	st := g.lookup_struct_type_by_c_name(struct_name)
+	for emb in st.embedded {
+		emb_c_name := g.types_type_to_c(types.Type(emb))
+		if emb_c_name == '' {
+			continue
+		}
+		candidate := '${emb_c_name}__${method_name}'
+		if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+			return candidate
+		}
+		// Recurse into nested embeddings
+		nested := g.resolve_embedded_method(emb_c_name, method_name)
+		if nested != '' {
+			return nested
+		}
+	}
+	return ''
+}
+
+fn (mut g Gen) resolve_embedded_interface_fields(emb_name string) ?[]ast.FieldDecl {
+	if decl := g.interface_decls[emb_name] {
+		mut fields := []ast.FieldDecl{}
+		// Recursively resolve further embeddings
+		for emb_expr in decl.embedded {
+			inner_name := g.expr_type_to_c(emb_expr)
+			if inner_name != '' {
+				if inner_fields := g.resolve_embedded_interface_fields(inner_name) {
+					fields << inner_fields
+				}
+			}
+		}
+		fields << decl.fields
+		return fields
+	}
+	return none
+}
+
 fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	name := g.get_interface_name(node)
 	body_key := 'body_${name}'
@@ -451,10 +502,22 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	if !has_type_name {
 		g.sb.writeln('\tstring (*type_name)(void*);')
 	}
+	// Collect all fields including those from embedded interfaces
+	mut all_fields := []ast.FieldDecl{}
+	for emb_expr in node.embedded {
+		emb_name := g.expr_type_to_c(emb_expr)
+		if emb_name != '' {
+			// Look up the embedded interface declaration and include its fields
+			if emb_fields := g.resolve_embedded_interface_fields(emb_name) {
+				all_fields << emb_fields
+			}
+		}
+	}
+	all_fields << node.fields
 	// Generate function pointers for each method
 	mut methods := []InterfaceMethodInfo{}
 	mut data_fields := []InterfaceDataFieldInfo{}
-	for field in node.fields {
+	for field in all_fields {
 		if method := g.interface_method_info(field) {
 			g.sb.write_string('\t${method.ret_type} (*${method.name})(void*')
 			for param_type in method.param_types {
@@ -504,4 +567,130 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 	g.sb.writeln('};')
 	g.sb.writeln('')
 	g.emitted_interface_bodies[name] = true
+}
+
+// find_concrete_types_for_interface returns all concrete type names that implement
+// the given interface (i.e., have all required methods AND data fields).
+fn (mut g Gen) find_concrete_types_for_interface(iface_name string) []string {
+	methods := g.interface_methods[iface_name] or { return [] }
+	data_fields := g.interface_data_fields[iface_name] or { []InterfaceDataFieldInfo{} }
+	if methods.len == 0 && data_fields.len == 0 {
+		return []
+	}
+	// Collect candidate concrete types from the first method's suffix
+	mut candidates := map[string]bool{}
+	if methods.len > 0 {
+		first_suffix := '__${methods[0].name}'
+		for fn_name, _ in g.fn_return_types {
+			if fn_name.ends_with(first_suffix) {
+				base := fn_name[..fn_name.len - first_suffix.len]
+				if base.len > 0 && !g.is_interface_type(base) {
+					candidates[base] = true
+				}
+			}
+		}
+	}
+	// Filter to types that have ALL methods AND all data fields
+	mut result := []string{}
+	for cand, _ in candidates {
+		mut has_all := true
+		for method in methods {
+			fn_name := '${cand}__${method.name}'
+			if fn_name !in g.fn_return_types {
+				has_all = false
+				break
+			}
+		}
+		if has_all {
+			// Also check that the concrete type has all required data fields
+			for df in data_fields {
+				field_key := '${cand}.${df.name}'
+				if field_key !in g.struct_field_types {
+					// Try with embedded struct owner
+					emb_key := '${cand}.${df.name}'
+					short_cand := if cand.contains('__') { cand.all_after_last('__') } else { cand }
+					emb_short_key := '${short_cand}.${df.name}'
+					if emb_key !in g.embedded_field_owner
+						&& emb_short_key !in g.embedded_field_owner {
+						has_all = false
+						break
+					}
+				}
+			}
+		}
+		if has_all {
+			result << cand
+		}
+	}
+	result.sort()
+	return result
+}
+
+// gen_iface_to_iface_cast generates an inline interface-to-interface conversion
+// using a GCC statement expression. Switches on _type_id to find the concrete type,
+// then constructs the target interface from (ConcreteType*)(_object).
+fn (mut g Gen) gen_iface_to_iface_cast(src_iface string, tgt_iface string, value_expr ast.Expr) bool {
+	concrete_types := g.find_concrete_types_for_interface(tgt_iface)
+	if concrete_types.len == 0 {
+		// No known concrete types — fall back to raw expression
+		g.expr(value_expr)
+		return true
+	}
+	tmp := '_iconv${g.tmp_counter}'
+	g.tmp_counter++
+	g.sb.write_string('({ ${src_iface} ${tmp} = ')
+	g.expr(value_expr)
+	g.sb.write_string('; ')
+	for i, ctype in concrete_types {
+		type_short := if ctype.contains('__') {
+			ctype.all_after_last('__')
+		} else {
+			ctype
+		}
+		type_id := interface_type_id_for_name(type_short)
+		if i == 0 {
+			g.sb.write_string('(${tmp}._type_id == ${type_id}) ? ')
+		} else {
+			g.sb.write_string(' : (${tmp}._type_id == ${type_id}) ? ')
+		}
+		// Construct target interface from (ConcreteType*)(src._object)
+		g.sb.write_string('(${tgt_iface}){._object = ${tmp}._object, ._type_id = ${tmp}._type_id')
+		// Method pointers
+		if methods := g.interface_methods[tgt_iface] {
+			for method in methods {
+				fn_name := '${ctype}__${method.name}'
+				mut target_name := fn_name
+				if ptr_params := g.fn_param_is_ptr[fn_name] {
+					if ptr_params.len > 0 && !ptr_params[0] {
+						target_name = interface_wrapper_name(tgt_iface, ctype, method.name)
+						g.needed_interface_wrappers[target_name] = true
+						if target_name !in g.interface_wrapper_specs {
+							g.interface_wrapper_specs[target_name] = InterfaceWrapperSpec{
+								fn_name:       fn_name
+								concrete_type: ctype
+								method:        method
+							}
+						}
+					}
+				}
+				g.sb.write_string(', .${method.name} = (${method.cast_signature})${target_name}')
+			}
+		}
+		// Data field pointers
+		if data_fields := g.interface_data_fields[tgt_iface] {
+			for df in data_fields {
+				embedded_owner := g.embedded_owner_for(ctype, df.name)
+				if embedded_owner != '' {
+					g.sb.write_string(', .${df.name} = &((${ctype}*)(${tmp}._object))->${embedded_owner}.${df.name}')
+				} else {
+					g.sb.write_string(', .${df.name} = &((${ctype}*)(${tmp}._object))->${df.name}')
+				}
+			}
+		}
+		g.sb.write_string('}')
+	}
+	// Default: zeroed struct
+	g.sb.write_string(' : (${tgt_iface}){0}')
+	g.sb.write_string('; })')
+	return true
 }

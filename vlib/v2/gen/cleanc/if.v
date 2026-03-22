@@ -81,14 +81,46 @@ fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 					continue
 				}
 			}
-			g.write_indent()
-			g.sb.write_string('${name} = ')
-			g.expr(stmt.expr)
-			g.sb.writeln(';')
+			// When the last expression is a void call (e.g. array__push from <<),
+			// emit it as a standalone statement without assigning to the temp var.
+			if g.expr_is_void_call(stmt.expr) {
+				g.write_indent()
+				g.expr(stmt.expr)
+				g.sb.writeln(';')
+			} else {
+				g.write_indent()
+				g.sb.write_string('${name} = ')
+				g.expr(stmt.expr)
+				g.sb.writeln(';')
+			}
 		} else {
 			g.gen_stmt(stmt)
 		}
 	}
+}
+
+// expr_is_void_call checks if the expression is a function call that returns void.
+// Used to prevent assigning void results to temp variables in if-expression branches.
+fn (mut g Gen) expr_is_void_call(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		if ret := g.get_call_return_type(expr.lhs, expr.args) {
+			return ret == 'void'
+		}
+		// Check resolved name
+		c_name := g.resolve_call_name(expr.lhs, expr.args.len)
+		if c_name != '' {
+			if ret := g.fn_return_types[c_name] {
+				return ret == 'void'
+			}
+		}
+		// panic/v_panic always returns void (noreturn)
+		if expr.lhs is ast.Ident {
+			if expr.lhs.name in ['panic', 'v_panic'] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) gen_decl_if_expr(name string, if_expr &ast.IfExpr) {

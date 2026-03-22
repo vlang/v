@@ -300,7 +300,8 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		name := g.generated_decl_name(field.name) or { continue }
 		// Skip consts that shadow a function with the same name — the
 		// function declaration takes precedence and a #define would break it.
-		if name in g.fn_return_types {
+		// Only skip when a forward declaration was actually emitted (fn_owner_file).
+		if 'fn_${name}' in g.fn_owner_file {
 			continue
 		}
 		// Skip constants already emitted as either extern or #define
@@ -385,6 +386,15 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 				continue
 			}
 		}
+		// C struct zero-init consts are emitted as global variables in
+		// gen_const_decl, so the extern declaration must match.
+		if is_c_struct_init(field.value) {
+			typ := g.const_decl_storage_type(field.value)
+			if typ != '' && typ != 'void' && typ != 'int' {
+				g.sb.writeln('extern ${typ} ${name};')
+				continue
+			}
+		}
 		g.sb.writeln('#define ${name} ${macro_expr}')
 	}
 }
@@ -425,6 +435,7 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		g.global_var_types[name] = typ
 		g.sb.write_string('${typ} ${name}')
 		if field.value !is ast.EmptyExpr {
 			// Function calls are not compile-time constants in C
@@ -474,6 +485,7 @@ fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		g.global_var_types[name] = typ
 		g.sb.writeln('extern ${typ} ${name};')
 	}
 }
@@ -543,8 +555,14 @@ fn (g &Gen) module_has_const_init_fn(module_name string) bool {
 fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 	for field in node.fields {
 		name := g.generated_decl_name(field.name) or { continue }
-		// Skip consts that shadow a function with the same name.
-		if name in g.fn_return_types {
+		// Skip consts that shadow a function with the same name —
+		// but only when a forward declaration was actually emitted
+		// for that function (fn_owner_file is populated in pass 4).
+		// Using fn_return_types alone is too broad: generic functions
+		// like math.max[f64] register math__max_f64 in fn_return_types
+		// but never emit a concrete function, falsely suppressing
+		// the math__max_f64 constant.
+		if 'fn_${name}' in g.fn_owner_file {
 			continue
 		}
 		const_key := 'const_${name}'
@@ -665,12 +683,41 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
 			}
 		} else {
-			// Fallback for aggregate literals and other complex consts.
-			g.sb.write_string('#define ${name} ')
-			g.expr(field.value)
-			g.sb.writeln('')
+			// C struct zero-init consts must be real global variables, not
+			// #define macros, because macros expand to temporaries — taking
+			// their address (&) or mutating them in-place has no effect.
+			if typ != '' && typ != 'void' && typ != 'int' && is_c_struct_init(field.value) {
+				g.sb.writeln('${typ} ${name} = {0};')
+			} else if typ != '' && typ != 'void' && typ != 'int' && !typ.starts_with('Array_')
+				&& !typ.starts_with('Map_') && !typ.contains('*') && !typ.contains('(')
+				&& field.value is ast.InitExpr && (field.value as ast.InitExpr).fields.len == 0 {
+				// Zero-initialized struct const — emit as global variable.
+				g.sb.writeln('${typ} ${name} = {0};')
+			} else {
+				// Fallback for aggregate literals and other complex consts.
+				g.sb.write_string('#define ${name} ')
+				g.expr(field.value)
+				g.sb.writeln('')
+			}
+			if typ != '' && typ != 'int' {
+				g.const_types[name] = typ
+			}
 		}
 	}
+}
+
+// is_c_struct_init returns true if the expression is a C struct zero-initialization
+// like `C.mbedtls_ctr_drbg_context{}`. These must be emitted as global variables,
+// not #define macros, because they need a stable memory address.
+fn is_c_struct_init(e ast.Expr) bool {
+	if e is ast.InitExpr {
+		init := e as ast.InitExpr
+		if init.typ is ast.Ident {
+			ident := init.typ as ast.Ident
+			return ident.name.starts_with('C.')
+		}
+	}
+	return false
 }
 
 fn is_numeric_const_expr(e ast.Expr) bool {

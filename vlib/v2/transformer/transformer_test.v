@@ -51,8 +51,9 @@ fn rune_type() types.Type {
 }
 
 fn test_transform_comptime_embed_file_call_or_cast_expr_to_init_expr() {
-	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_${os.getpid()}')
-	os.mkdir_all(tmp_dir) or { panic(err) }
+	raw_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_${os.getpid()}')
+	os.mkdir_all(raw_dir) or { panic(err) }
+	tmp_dir := os.real_path(raw_dir)
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
@@ -95,8 +96,9 @@ fn test_transform_comptime_embed_file_call_or_cast_expr_to_init_expr() {
 }
 
 fn test_transform_comptime_embed_file_chained_method_call() {
-	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_chain_${os.getpid()}')
-	os.mkdir_all(tmp_dir) or { panic(err) }
+	raw_dir := os.join_path(os.temp_dir(), 'v2_transformer_embed_file_chain_${os.getpid()}')
+	os.mkdir_all(raw_dir) or { panic(err) }
+	tmp_dir := os.real_path(raw_dir)
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}

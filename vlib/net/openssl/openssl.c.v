@@ -125,9 +125,9 @@ fn C.SSL_connect(&C.SSL) i32
 
 fn C.SSL_do_handshake(&C.SSL) i32
 
-fn C.SSL_set_cipher_list(ctx &SSL, str &char) i32
+fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
-fn C.SSL_get1_peer_certificate(ssl &SSL) &C.X509
+fn C.SSL_get1_peer_certificate(ssl &C.SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 
@@ -135,9 +135,9 @@ fn C.ERR_clear_error()
 
 fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
-fn C.SSL_get_verify_result(ssl &SSL) i32
+fn C.SSL_get_verify_result(ssl &C.SSL) i32
 
-fn C.SSL_set_tlsext_host_name(s &SSL, name &char) i32
+fn C.SSL_set_tlsext_host_name(s &C.SSL, name &char) i32
 
 fn C.SSL_shutdown(&C.SSL) i32
 
@@ -157,7 +157,7 @@ fn C.TLS_method() voidptr
 
 fn C.TLSv1_2_method() voidptr
 
-fn C.OPENSSL_init_ssl(opts u64, settings &OPENSSL_INIT_SETTINGS) i32
+fn C.OPENSSL_init_ssl(opts u64, settings &C.OPENSSL_INIT_SETTINGS) i32
 
 fn init() {
 	$if ssl_pre_1_1_version ? {
