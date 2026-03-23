@@ -81,12 +81,14 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	sym := g.table.sym(typ)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
-			if sym.info.concrete_types.len > 0 {
+			if sym.info.concrete_types.len > 0
+				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
 				return typ
 			}
 		}
 		ast.GenericInst {
-			if sym.info.concrete_types.len > 0 {
+			if sym.info.concrete_types.len > 0
+				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
 				return typ
 			}
 		}

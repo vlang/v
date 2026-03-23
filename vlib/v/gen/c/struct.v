@@ -478,8 +478,24 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 		if node.no_keys {
 			resolved_field.name = info.fields[i].name
 		}
-		if resolved_field.typ == 0 {
-			g.checker_bug('struct init, field.typ is 0', resolved_field.pos)
+		if resolved_field.typ == 0 || resolved_field.expected_type == 0 {
+			// Resolve from struct field info - needed for generic struct inits
+			// where the checker left init_field.typ/expected_type unset
+			for f in info.fields {
+				if f.name == resolved_field.name {
+					field_typ := g.unwrap_generic(f.typ)
+					if resolved_field.typ == 0 {
+						resolved_field.typ = field_typ
+					}
+					if resolved_field.expected_type == 0 {
+						resolved_field.expected_type = field_typ
+					}
+					break
+				}
+			}
+			if resolved_field.typ == 0 {
+				g.checker_bug('struct init, field.typ is 0', resolved_field.pos)
+			}
 		}
 		g.struct_init_ptr_field(tmp_var, resolved_field, language)
 		g.writeln(';')

@@ -3517,12 +3517,14 @@ fn (mut c Checker) recheck_concrete_type(typ ast.Type) ast.Type {
 	sym := c.table.sym(typ)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
-			if sym.info.concrete_types.len > 0 {
+			if sym.info.concrete_types.len > 0
+				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
 				return typ
 			}
 		}
 		ast.GenericInst {
-			if sym.info.concrete_types.len > 0 {
+			if sym.info.concrete_types.len > 0
+				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
 				return typ
 			}
 		}
@@ -3816,11 +3818,13 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.int_lit(mut node)
 		}
 		ast.LambdaExpr {
+			prev_inside_lambda := c.inside_lambda
+			prev_cur_lambda := c.table.cur_lambda
 			c.inside_lambda = true
 			c.table.cur_lambda = unsafe { &node }
 			defer(fn) {
-				c.inside_lambda = false
-				c.table.cur_lambda = unsafe { nil }
+				c.inside_lambda = prev_inside_lambda
+				c.table.cur_lambda = prev_cur_lambda
 			}
 			return c.lambda_expr(mut node, c.expected_type)
 		}

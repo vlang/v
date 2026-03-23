@@ -335,17 +335,11 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
 	mut expected_elem_type := node.elem_type
 	if node.elem_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
-		if c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-			expr := node.init_expr
-			if expr is ast.CallExpr {
-				if func := c.table.find_fn(expr.name) {
-					if !func.return_type.has_flag(.generic) {
-						expected_elem_type = c.table.unwrap_generic_type(node.elem_type,
-							c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-					}
-				}
-			}
+		generic_names := c.effective_fn_generic_names(c.table.cur_fn)
+		if generic_names.len > 0
+			&& c.table.cur_concrete_types.len == generic_names.len {
+			expected_elem_type = c.table.unwrap_generic_type(node.elem_type,
+				generic_names, c.table.cur_concrete_types)
 		}
 	}
 	c.expected_type = expected_elem_type
