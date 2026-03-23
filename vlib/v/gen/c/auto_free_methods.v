@@ -56,7 +56,13 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	if deref_typ in g.generated_free_methods {
 		return fn_name
 	}
+	// Also check by C function name to prevent duplicate definitions when
+	// different type IDs map to the same C name (e.g. nested array types).
+	if fn_name in g.generated_free_fn_names {
+		return fn_name
+	}
 	g.generated_free_methods[deref_typ] = true
+	g.generated_free_fn_names[fn_name] = true
 
 	objtyp := g.unwrap_generic(typ)
 	mut sym := g.table.sym(objtyp)

@@ -262,16 +262,17 @@ mut:
 	tests_inited        bool
 	has_main            bool
 	// main_fn_decl_node  ast.FnDecl
-	cur_mod                ast.Module
-	cur_concrete_types     []ast.Type // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
-	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
-	cur_lock               ast.LockExpr
-	cur_struct_init_typ    ast.Type
-	autofree_methods       map[ast.Type]string
-	generated_free_methods map[ast.Type]bool
-	autofree_scope_stmts   []string
-	use_segfault_handler   bool = true
-	test_function_names    []string
+	cur_mod                 ast.Module
+	cur_concrete_types      []ast.Type // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
+	cur_fn                  &ast.FnDecl = unsafe { nil } // same here
+	cur_lock                ast.LockExpr
+	cur_struct_init_typ     ast.Type
+	autofree_methods        map[ast.Type]string
+	generated_free_methods  map[ast.Type]bool
+	generated_free_fn_names map[string]bool
+	autofree_scope_stmts    []string
+	use_segfault_handler    bool = true
+	test_function_names     []string
 	/////////
 	// out_parallel []strings.Builder
 	// out_idx      int
