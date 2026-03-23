@@ -696,6 +696,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				ast.TypeNode {
 					expr_typ := c.recheck_concrete_type(expr.typ)
 					key = c.table.type_to_str(expr_typ)
+					expr.typ = expr_typ
 					expr_types << ast.TypeNode{
 						...expr
 						typ: expr_typ

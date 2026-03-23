@@ -455,6 +455,16 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				node_.expr_types[i] = field_typ
 			}
+			// Update format specifier if it was auto-determined and the type changed
+			if !node_.need_fmts[i] {
+				ftyp_sym := g.table.sym(field_typ)
+				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+					g.table.unalias_num_type(field_typ)
+				} else {
+					field_typ
+				}
+				fmts[i] = g.get_default_fmt(field_typ, new_typ)
+			}
 		}
 		expr_ := expr
 		match expr_ {

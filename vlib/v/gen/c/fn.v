@@ -1999,6 +1999,14 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		if left_node.obj is ast.Var {
 			if left_node.obj.ct_type_var != .no_comptime {
 				rec_type = g.type_resolver.get_type(left_node)
+				// In generic contexts, scope var types may be stale
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& left_node.obj.ct_type_var == .generic_param {
+					resolved := g.resolved_expr_type(left_node, rec_type)
+					if resolved != 0 {
+						rec_type = resolved
+					}
+				}
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			} else if left_node.obj.smartcasts.len > 0 {
@@ -4199,6 +4207,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.inside_interface_deref = false
 		}
 		mut typ := g.type_resolver.get_type_or_default(node.args[0].expr, node.args[0].typ)
+		// In generic contexts, AST-stored types may be stale from a previous
+		// instantiation. Use resolved_expr_type for Ident expressions.
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+			&& node.args[0].expr is ast.Ident {
+			resolved := g.resolved_expr_type(node.args[0].expr, node.args[0].typ)
+			if resolved != 0 {
+				typ = resolved
+			}
+		}
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
@@ -4250,6 +4267,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 				} else if expr is ast.Ident && expr.obj is ast.Var {
 					typ = expr.obj.typ
+					// In generic contexts, scope var types may be stale
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+						resolved := g.resolved_expr_type(expr, expr.obj.typ)
+						if resolved != 0 {
+							typ = resolved
+						}
+					}
 					if expr.obj.smartcasts.len > 0 {
 						typ = g.unwrap_generic(expr.obj.smartcasts.last())
 						cast_sym := g.table.sym(typ)

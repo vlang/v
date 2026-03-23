@@ -3497,7 +3497,8 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 			{
 				return t_typ
 			}
-			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {
+			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil }
+				&& c.table.cur_lambda.func != unsafe { nil } {
 				if t_typ := c.table.convert_generic_type(typ, c.table.cur_lambda.func.decl.generic_names,
 					c.table.cur_lambda.call_ctx.concrete_types)
 				{

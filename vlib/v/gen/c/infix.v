@@ -105,8 +105,25 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
-	right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
+	mut left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
+	mut right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
+	// In generic function contexts, AST-stored types may be stale from
+	// a previous instantiation. Use resolved_expr_type for Ident expressions
+	// (variables/params) where stale scope types are the actual problem.
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		if node.left is ast.Ident {
+			resolved_left := g.resolved_expr_type(node.left, node.left_type)
+			if resolved_left != 0 {
+				left_type = resolved_left
+			}
+		}
+		if node.right is ast.Ident {
+			resolved_right := g.resolved_expr_type(node.right, node.right_type)
+			if resolved_right != 0 {
+				right_type = resolved_right
+			}
+		}
+	}
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
@@ -660,8 +677,21 @@ fn (mut g Gen) infix_expr_in_sumtype_interface_array(infix_exprs []ast.InfixExpr
 
 // infix_expr_in_op generates code for `in` and `!in`
 fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	mut left_type := node.left_type
+	mut right_type := node.right_type
+	// In generic contexts, AST-stored types may be stale from a previous instantiation.
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		resolved_left := g.resolved_expr_type(node.left, node.left_type)
+		if resolved_left != 0 {
+			left_type = resolved_left
+		}
+		resolved_right := g.resolved_expr_type(node.right, node.right_type)
+		if resolved_right != 0 {
+			right_type = resolved_right
+		}
+	}
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 	if node.op == .not_in {
 		g.write('!')
 	}
@@ -743,12 +773,12 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			}
 		}
 		g.write('(')
-		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.gen_array_contains(right_type, node.right, left_type, node.left)
 		g.write(')')
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
-			mut sym_map := g.table.sym(node.right_type)
+			mut sym_map := g.table.sym(right_type)
 			if sym_map.info is ast.Alias {
 				sym_map = g.table.sym((sym_map.info as ast.Alias).parent_type)
 			}
@@ -825,7 +855,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			}
 		}
 		g.write('(')
-		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.gen_array_contains(right_type, node.right, left_type, node.left)
 		g.write(')')
 	} else if right.unaliased_sym.kind == .string && node.right !is ast.RangeExpr {
 		g.write2('(', 'string_contains(')

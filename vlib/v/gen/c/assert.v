@@ -168,15 +168,32 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind,
 	}
 	match node.expr {
 		ast.InfixExpr {
-			left_type := if node.expr.left_ct_expr {
+			mut left_type := if node.expr.left_ct_expr {
 				g.type_resolver.get_type_or_default(node.expr.left, node.expr.left_type)
 			} else {
 				node.expr.left_type
 			}
-			right_type := if node.expr.right_ct_expr {
+			mut right_type := if node.expr.right_ct_expr {
 				g.type_resolver.get_type(node.expr.right)
 			} else {
 				node.expr.right_type
+			}
+			// In generic contexts, AST-stored types may be stale from a previous
+			// instantiation. Use resolved_expr_type for Ident expressions
+			// (variables/params) where stale scope types are the actual problem.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				if node.expr.left is ast.Ident {
+					resolved_left := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+					if resolved_left != 0 {
+						left_type = resolved_left
+					}
+				}
+				if node.expr.right is ast.Ident {
+					resolved_right := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+					if resolved_right != 0 {
+						right_type = resolved_right
+					}
+				}
 			}
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, left_type)
