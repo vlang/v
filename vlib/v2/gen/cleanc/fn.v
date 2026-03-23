@@ -2239,35 +2239,34 @@ fn (mut g Gen) is_fn_pointer_expr(expr ast.Expr) bool {
 	return g.fn_pointer_return_type(expr) != ''
 }
 
-// fn_pointer_param_is_ptr extracts parameter pointer-ness from a fn-pointer type.
-// Returns an array of bools (true = param expects pointer, false = by value).
-fn (mut g Gen) fn_pointer_param_is_ptr(expr ast.Expr) []bool {
-	raw_type := g.get_raw_type(expr) or { return []bool{} }
-	fn_type := match raw_type {
+fn extract_fn_type(raw_type types.Type) ?types.FnType {
+	match raw_type {
 		types.FnType {
-			raw_type
+			return raw_type
 		}
 		types.Alias {
 			if raw_type.base_type is types.FnType {
-				raw_type.base_type as types.FnType
-			} else {
-				return []bool{}
+				return raw_type.base_type as types.FnType
 			}
 		}
 		types.Pointer {
 			if raw_type.base_type is types.FnType {
-				raw_type.base_type as types.FnType
-			} else if raw_type.base_type is types.Alias
-				&& raw_type.base_type.base_type is types.FnType {
-				raw_type.base_type.base_type as types.FnType
-			} else {
-				return []bool{}
+				return raw_type.base_type as types.FnType
+			}
+			if raw_type.base_type is types.Alias && raw_type.base_type.base_type is types.FnType {
+				return raw_type.base_type.base_type as types.FnType
 			}
 		}
-		else {
-			return []bool{}
-		}
+		else {}
 	}
+	return none
+}
+
+// fn_pointer_param_is_ptr extracts parameter pointer-ness from a fn-pointer type.
+// Returns an array of bools (true = param expects pointer, false = by value).
+fn (mut g Gen) fn_pointer_param_is_ptr(expr ast.Expr) []bool {
+	raw_type := g.get_raw_type(expr) or { return []bool{} }
+	fn_type := extract_fn_type(raw_type) or { return []bool{} }
 	param_types := fn_type.get_param_types()
 	mut result := []bool{cap: param_types.len}
 	for pt in param_types {

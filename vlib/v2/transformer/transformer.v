@@ -2508,19 +2508,23 @@ fn (mut t Transformer) transform_global_decl(decl ast.GlobalDecl) ast.GlobalDecl
 	}
 }
 
+fn (_ &Transformer) get_tuple_lhs(stmt ast.AssignStmt) ?[]ast.Expr {
+	if stmt.lhs.len > 1 {
+		return stmt.lhs
+	}
+	if stmt.lhs.len == 1 && stmt.lhs[0] is ast.Tuple {
+		return (stmt.lhs[0] as ast.Tuple).exprs
+	}
+	return none
+}
+
 // try_expand_tuple_call_assign expands `a, b = call()` to:
 //   _tuple_tN := call()
 //   a = _tuple_tN.arg0
 //   b = _tuple_tN.arg1
 // This handles tuple-returning calls when cleanc can't resolve the tuple type.
 fn (mut t Transformer) try_expand_tuple_call_assign(stmt ast.AssignStmt) ?[]ast.Stmt {
-	tuple_lhs := if stmt.lhs.len > 1 {
-		stmt.lhs
-	} else if stmt.lhs.len == 1 && stmt.lhs[0] is ast.Tuple {
-		(stmt.lhs[0] as ast.Tuple).exprs
-	} else {
-		return none
-	}
+	tuple_lhs := t.get_tuple_lhs(stmt) or { return none }
 	n := tuple_lhs.len
 	if n < 2 {
 		return none

@@ -395,7 +395,7 @@ fn (c &Checker) qualify_type_name(name string) string {
 }
 
 fn (c &Checker) type_ref_name(expr ast.Expr, resolved Type) string {
-	resolved_name := resolved.name()
+	resolved_name := if type_data_ptr_is_nil(resolved) { '' } else { resolved.name() }
 	if resolved_name != '' && resolved_name != 'void' {
 		return resolved_name
 	}
