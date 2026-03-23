@@ -5149,6 +5149,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
 		}
 	}
+	// Array slice expressions (e.g. b[..8]) always return a value in C (via builtin__array_slice),
+	// even when the container is a pointer (e.g. mut []u8 param). Deref so ref_or_deref_arg
+	// correctly sees this as a non-pointer arg that needs &.
+	if arg.expr is ast.IndexExpr && arg.expr.index is ast.RangeExpr && arg_typ.is_ptr() {
+		arg_typ = arg_typ.deref()
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()
