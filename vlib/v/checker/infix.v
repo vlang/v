@@ -883,10 +883,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
-	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
+	// Skip operator restriction checks for generic parameters that were resolved to
+	// bool/string by recheck_concrete_type — the generic function itself allows any T.
+	is_generic_resolved := c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len > 0 && (node.left_type in c.table.cur_concrete_types
+		|| node.right_type in c.table.cur_concrete_types)
+	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and]
+		&& !is_generic_resolved {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			node.pos)
-	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
+	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge]
+		&& !is_generic_resolved {
 		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)

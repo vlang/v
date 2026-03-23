@@ -2772,6 +2772,25 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				node.concrete_types = rec_concrete_types
 			}
 		}
+		ast.GenericInst {
+			// Concrete generic instance (e.g. Vec2[f64]): resolve from parent struct
+			parent_sym := c.table.sym(ast.new_type(rec_sym.info.parent_idx))
+			match parent_sym.info {
+				ast.Struct, ast.SumType, ast.Interface {
+					receiver_generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
+					receiver_generics_in_method := receiver_generic_names.len > 0
+						&& method.generic_names.len >= receiver_generic_names.len
+						&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+					rec_concrete_types = rec_sym.info.concrete_types.clone()
+					concrete_types_len := node.concrete_types.len
+					if !rec_is_generic && receiver_generics_in_method && rec_concrete_types.len > 0
+						&& concrete_types_len == 0 {
+						node.concrete_types = rec_concrete_types
+					}
+				}
+				else {}
+			}
+		}
 		else {}
 	}
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))

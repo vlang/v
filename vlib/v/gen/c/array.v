@@ -842,8 +842,18 @@ fn (mut g Gen) array_receiver_is_auto_heap(left ast.Expr) bool {
 fn (mut g Gen) resolved_array_receiver_type(node ast.CallExpr) ast.Type {
 	resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type))
 	default_left_type := g.recheck_concrete_type(node.left_type)
-	resolved_left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
-	default_left_sym := g.table.final_sym(g.unwrap_generic(default_left_type))
+	unwrapped_resolved := g.unwrap_generic(resolved_left_type)
+	unwrapped_default := g.unwrap_generic(default_left_type)
+	resolved_left_sym := if unwrapped_resolved != 0 {
+		g.table.final_sym(unwrapped_resolved)
+	} else {
+		g.table.final_sym(node.left_type)
+	}
+	default_left_sym := if unwrapped_default != 0 {
+		g.table.final_sym(unwrapped_default)
+	} else {
+		g.table.final_sym(node.left_type)
+	}
 	if resolved_left_type != 0 && resolved_left_sym.kind in [.array, .array_fixed] {
 		return resolved_left_type
 	}

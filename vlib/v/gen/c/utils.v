@@ -45,7 +45,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 					}
 				}
 			}
-		} else if g.table.sym(resolved_typ).kind == .struct {
+		} else if resolved_typ != 0 && g.table.sym(resolved_typ).kind == .struct {
 			// resolve selector `a.foo` where `a` is struct[T] on non generic function
 			sym := g.table.sym(resolved_typ)
 			if sym.info is ast.Struct {
@@ -745,7 +745,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			inner_type := g.resolved_expr_type(expr.expr, inner_default)
 			return if expr.op == .question {
 				mut resolved_postfix_type := g.unwrap_generic(inner_type)
-				if g.table.sym(resolved_postfix_type).kind == .alias {
+				if resolved_postfix_type != 0 && g.table.sym(resolved_postfix_type).kind == .alias {
 					unaliased_postfix_type := g.table.unaliased_type(resolved_postfix_type)
 					if unaliased_postfix_type.has_option_or_result() {
 						resolved_postfix_type = g.unwrap_generic(unaliased_postfix_type)
