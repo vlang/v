@@ -1713,22 +1713,24 @@ fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.
 }
 
 @[inline]
+fn (mut g Gen) write_raw_receiver_expr(node ast.Expr) {
+	old_inside_selector_lhs := g.inside_selector_lhs
+	g.inside_selector_lhs = true
+	defer {
+		g.inside_selector_lhs = old_inside_selector_lhs
+	}
+	g.expr(node)
+}
+
+@[inline]
 fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 	is_auto_heap_ident := node is ast.Ident && g.resolved_ident_is_auto_heap(node)
-	write_raw_receiver := fn [mut g] (node ast.Expr) {
-		old_inside_selector_lhs := g.inside_selector_lhs
-		g.inside_selector_lhs = true
-		defer {
-			g.inside_selector_lhs = old_inside_selector_lhs
-		}
-		g.expr(node)
-	}
 	if node_type.has_flag(.shared_f) {
 		if node_type.is_ptr() || is_auto_heap_ident {
 			g.write('&')
 		}
 		if is_auto_heap_ident {
-			write_raw_receiver(node)
+			g.write_raw_receiver_expr(node)
 		} else {
 			g.expr(node)
 		}
@@ -1736,7 +1738,7 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 	} else {
 		if node_type.is_ptr() || is_auto_heap_ident {
 			if is_auto_heap_ident {
-				write_raw_receiver(node)
+				g.write_raw_receiver_expr(node)
 			} else {
 				g.expr(node)
 			}
@@ -5223,14 +5225,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		return
 	}
 	is_auto_heap_ident := arg.expr is ast.Ident && g.resolved_ident_is_auto_heap(arg.expr)
-	write_raw_auto_heap_arg := fn [mut g] (expr ast.Expr) {
-		old_inside_selector_lhs := g.inside_selector_lhs
-		g.inside_selector_lhs = true
-		defer {
-			g.inside_selector_lhs = old_inside_selector_lhs
-		}
-		g.expr(expr)
-	}
 	mut needs_closing := false
 	old_inside_smartcast := g.inside_smartcast
 	if arg.is_mut && !exp_is_ptr {
@@ -5250,7 +5244,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		&& !(arg_sym.kind == .alias && g.table.unaliased_type(arg_typ).is_pointer()
 		&& expected_type.is_pointer()) {
 		if is_auto_heap_ident {
-			write_raw_auto_heap_arg(arg.expr)
+			g.write_raw_receiver_expr(arg.expr)
 			return
 		}
 		if arg.is_mut {

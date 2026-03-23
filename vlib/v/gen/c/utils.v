@@ -405,15 +405,24 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				scope_type := g.resolved_scope_var_type(expr)
 				if scope_type != 0 && !scope_type.has_flag(.generic)
 					&& !g.type_has_unresolved_generic_parts(scope_type) {
-					// In generic contexts, scope variable types may be stale from
-					// a previous instantiation for `.generic_var` variables.
-					// Skip early return to allow expression-based resolution below.
-					skip_for_generic_var := g.cur_fn != unsafe { nil }
-						&& g.cur_concrete_types.len > 0
-						&& expr.obj.ct_type_var == .generic_var
-					if (!expr.obj.is_arg
-						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0))
-						&& !skip_for_generic_var {
+					if !expr.obj.is_arg
+						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
+						// For generic_var in generic contexts, prefer expression-based
+						// resolution first (scope types may be stale from a previous
+						// instantiation), but fall back to scope type if expr resolution
+						// fails.
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+							&& expr.obj.ct_type_var == .generic_var
+							&& expr.obj.typ.has_flag(.generic) {
+							// Try expression-based resolution first
+							if expr.obj.expr !is ast.EmptyExpr && !(expr.obj.expr is ast.Ident
+								&& expr.obj.expr.name == expr.name) {
+								resolved := g.resolved_expr_type(expr.obj.expr, expr.obj.typ)
+								if resolved != 0 {
+									return g.unwrap_generic(resolved)
+								}
+							}
+						}
 						return scope_type
 					}
 				}

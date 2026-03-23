@@ -295,7 +295,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 						g.write(g.js_name(expr.name))
 						g.write(')')
 						return
-					} else if expr.kind == .variable {
+					} else if expr.kind == .variable && expr.info is ast.IdentVar {
 						v_sym := g.table.sym(expr.var_info().typ)
 						if v_sym.kind == .function {
 							g.write(g.js_name(expr.name))

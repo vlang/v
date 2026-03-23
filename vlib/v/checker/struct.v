@@ -597,14 +597,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			c.table.used_features.comptime_syms[node.typ] = true
 		}
 	}
-	if !is_field_zero_struct_init {
-		c.ensure_type_exists(concrete_node_typ, node.pos)
-	}
 	type_sym := c.table.sym(concrete_node_typ)
 	is_generic_zero_struct_init := original_node_typ.has_flag(.generic) && node.init_fields.len == 0
 		&& !node.has_update_expr
 	if is_generic_zero_struct_init {
 		return concrete_node_typ
+	}
+	if !is_field_zero_struct_init {
+		c.ensure_type_exists(concrete_node_typ, node.pos)
 	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.

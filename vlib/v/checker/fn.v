@@ -2364,30 +2364,28 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 }
 
 // checks if a symbol kind is an expected kind
-fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind ast.Kind, pos token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
 	if sym.kind == .alias {
 		parent_type := (sym.info as ast.Alias).parent_type
 		sym = c.table.sym(parent_type)
 	}
-	expected_kind_value := *expected_kind
-	if sym.kind != expected_kind_value {
-		c.error('expected ${expected_kind_value}, but `${name}` is ${sym.kind}', pos)
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
 	return true
 }
 
 // checks if a type from another module is as expected and visible(`is_pub`)
-fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind ast.Kind, pos token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
 	if sym.kind == .alias {
 		parent_type := (sym.info as ast.Alias).parent_type
 		sym = c.table.sym(parent_type)
 	}
-	expected_kind_value := *expected_kind
-	if sym.kind != expected_kind_value {
-		c.error('expected ${expected_kind_value}, but `${name}` is ${sym.kind}', pos)
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
 	if !sym.is_pub {
