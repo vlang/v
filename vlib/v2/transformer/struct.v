@@ -140,12 +140,21 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	// Extract simple variant name for _data._ accessor
 	// Union fields use: _Null (same-module Ident), _time__Time (cross-module SelectorExpr),
 	// _Array_json2__Any (composite). Only strip module prefix for same-module types.
+	// Union fields use the name as seen from the declaring module:
+	// same-module Ident → _Null, cross-module SelectorExpr → _time__Time.
+	// Strip module prefix when the variant's module matches the sumtype's module,
+	// because those variants were declared as Idents (no module prefix in the union).
+	sumtype_module := if ctx.sumtype.contains('__') {
+		ctx.sumtype.all_before_last('__')
+	} else {
+		''
+	}
 	variant_simple := if variant_short.starts_with('Array_') || variant_short.starts_with('Map_') {
 		// For composite types, use the short name to match union member
 		variant_short
 	} else if variant_short.contains('__') {
 		mod_prefix := variant_short.all_before_last('__')
-		if mod_prefix == t.cur_module {
+		if mod_prefix == sumtype_module {
 			variant_short.all_after_last('__')
 		} else {
 			variant_short

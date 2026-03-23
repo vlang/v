@@ -706,7 +706,8 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		mut has_generic_types := decl.name in t.env.generic_types
 		if !has_generic_types {
 			for key, _ in t.env.generic_types {
-				if key.starts_with('${decl.name}[') || key.contains('.${decl.name}[') {
+				if key.starts_with('${decl.name}[') || key.contains('.${decl.name}[')
+					|| key.ends_with('.${decl.name}') {
 					has_generic_types = true
 					break
 				}

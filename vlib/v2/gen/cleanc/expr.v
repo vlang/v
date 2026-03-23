@@ -1900,6 +1900,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			}
 			if node.op == .amp {
+				// &*(ptr) cancellation: when taking address of a deref of a pointer,
+				// the two operations cancel out. This avoids &(rvalue) errors when
+				// the deref gets null-guard expansion for sum type data pointers.
+				inner := g.unwrap_parens(node.expr)
+				if inner is ast.PrefixExpr && inner.op == .mul {
+					if g.expr_is_pointer(inner.expr) || g.expr_produces_pointer(inner.expr) {
+						g.expr(inner.expr)
+						return
+					}
+				}
 				// Generate inner expression to check if it produces a GCC statement
 				// expression `({...})` which is an rvalue — can't take address of rvalue.
 				saved_sb := g.sb

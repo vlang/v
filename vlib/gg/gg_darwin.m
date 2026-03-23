@@ -59,7 +59,7 @@ gg__Size gg_get_screen_size() {
 }
 
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
-	NSFont* font = [NSFont userFontOfSize:0]; // cfg.size];
+	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
 	if (cfg.mono) {
 		// # font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];

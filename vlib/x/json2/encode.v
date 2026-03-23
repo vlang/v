@@ -62,6 +62,17 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(f32(val))
 	} $else $if T.unaliased_typ is f64 {
 		encoder.encode_number(f64(val))
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_number(0)
+	} $else $if T.unaliased_typ is $array_fixed {
+		encoder.output << `[`
+		for i, item in val {
+			encoder.encode_value(item)
+			if i < val.len - 1 {
+				encoder.output << `,`
+			}
+		}
+		encoder.output << `]`
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
@@ -253,7 +264,7 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 	encoder.output << `]`
 }
 
-fn (mut encoder Encoder) encode_map[T](val map[string]T) {
+fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	encoder.output << `{`
 	if encoder.prettify {
 		encoder.increment_level()
@@ -262,7 +273,7 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 
 	mut i := 0
 	for key, value in val {
-		encoder.encode_string(key)
+		encoder.encode_string('${key}')
 		encoder.output << `:`
 		if encoder.prettify {
 			encoder.output << ` `
@@ -425,73 +436,65 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 			mut write_field := true
 
-			if field_info.is_skip {
+			$if field.indirections != 0 {
+				// Pointer fields are skipped during JSON encoding to prevent
+				// compile-time type walking through complex pointed-to types
 				write_field = false
-			} else {
-				value := val.$(field.name)
+			} $else {
+				if !field_info.is_skip {
+					value := val.$(field.name)
 
-				if field_info.is_omitempty {
-					$if value is $option {
-						write_field = check_not_empty(value) or { false }
-					} $else {
-						write_field = check_not_empty(value) or { false }
-					}
-				}
-
-				if !field_info.is_required {
-					$if value is $option {
-						if value == none {
-							write_field = false
+					if field_info.is_omitempty {
+						$if value is $option {
+							write_field = check_not_empty(value) or { false }
+						} $else {
+							write_field = check_not_empty(value) or { false }
 						}
 					}
-				}
-			}
 
-			$if field.indirections != 0 {
-				if val.$(field.name) == unsafe { nil } {
-					write_field = false
-				}
-			}
-
-			if write_field {
-				if is_first {
-					if encoder.prettify {
-						encoder.increment_level()
+					if !field_info.is_required {
+						$if value is $option {
+							if value == none {
+								write_field = false
+							}
+						}
 					}
-					is_first = false
-				} else {
-					encoder.output << `,`
-				}
-				if encoder.prettify {
-					encoder.add_indent()
-				}
 
-				if field_info.key_name in old_used_keys {
-					encoder.encode_string(prefix + field_info.key_name)
-				} else {
-					encoder.encode_string(field_info.key_name)
-					used_keys << field_info.key_name
-				}
+					if write_field {
+						if is_first {
+							if encoder.prettify {
+								encoder.increment_level()
+							}
+							is_first = false
+						} else {
+							encoder.output << `,`
+						}
+						if encoder.prettify {
+							encoder.add_indent()
+						}
 
-				encoder.output << `:`
-				if encoder.prettify {
-					encoder.output << ` `
-				}
+						if field_info.key_name in old_used_keys {
+							encoder.encode_string(prefix + field_info.key_name)
+						} else {
+							encoder.encode_string(field_info.key_name)
+							used_keys << field_info.key_name
+						}
 
-				$if field is $option {
-					if val.$(field.name) == none {
-						unsafe { encoder.output.push_many(null_string.str, null_string.len) }
-					} else {
-						encoder.encode_value(val.$(field.name))
+						encoder.output << `:`
+						if encoder.prettify {
+							encoder.output << ` `
+						}
+
+						$if field is $option {
+							if val.$(field.name) == none {
+								unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+							} else {
+								encoder.encode_value(val.$(field.name))
+							}
+						} $else {
+							encoder.encode_value(val.$(field.name))
+						}
 					}
-				} $else $if field.indirections == 1 {
-					encoder.encode_value(*val.$(field.name))
-				} $else $if field.indirections == 2 {
-					encoder.encode_value(**val.$(field.name))
-				} $else $if field.indirections == 3 {
-					encoder.encode_value(***val.$(field.name))
-				} $else {
-					encoder.encode_value(val.$(field.name))
 				}
 			}
 		}

@@ -2479,7 +2479,20 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		mut generic_types := []map[string]Type{}
 		mut has_generic_types := false
 		for name, inferred in c.env.generic_types {
-			if name == pending.decl.name {
+			// Extract the base function name from the key by stripping
+			// module prefix (before '.') and generic args (after '[').
+			mut base_name := name
+			bracket_pos := name.index_u8(`[`)
+			if bracket_pos > 0 {
+				base_name = name[..bracket_pos]
+			}
+			dot_pos := base_name.last_index_u8(`.`)
+			short_name := if dot_pos > 0 && dot_pos < base_name.len - 1 {
+				base_name[dot_pos + 1..]
+			} else {
+				base_name
+			}
+			if base_name == pending.decl.name || short_name == pending.decl.name {
 				generic_types = inferred.clone()
 				has_generic_types = true
 				break
@@ -3917,9 +3930,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	if mut fn_ is FnType {
 		mut generic_type_map := map[string]Type{}
 		if fn_.generic_params.len > 0 {
-			// file := c.file_set.file(expr.pos)
-			// pos := file.position(expr.pos)
-			// eprintln('GENERIC CALL: ${expr.lhs.name()} - ${expr.pos} - ${file.name}:${pos.line}')
+			C.printf(c'CHECKER GENERIC CALL: %s generic_params=%d\n', expr.lhs.name().str, fn_.generic_params.len)
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
 				// panic('GOT GENERIC CALL')
@@ -3941,17 +3952,18 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// TODO: move above (to be done globally)
 				// once error is fixed
 				mut arg_types := []Type{}
-				// eprintln('INFERRED GENERIC TYPES: ${expr.lhs.name()}')
+				C.printf(c'CHECKER INFER GENERIC: %s args=%d params=%d gp=%s\n', expr.lhs.name().str, expr.args.len, fn_.params.len, fn_.generic_params.str())
 				for i, arg in expr.args {
+					C.printf(c'  INFER LOOP i=%d\n', i)
+					C.fflush(C.stdout)
 					if i >= fn_.params.len {
 						break
 					}
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
 					arg_types << arg_type
-					// eprintln('call arg: ${param.typ.type_name()} - ${arg_type.type_name()}')
+					C.printf(c'  INFER arg[%d]: param.typ=%s(%s) arg_type=%s(%s)\n', i, param.typ.type_name().str, param.typ.name().str, arg_type.type_name().str, arg_type.name().str)
 
-					// println('infcerring call: ')
 					c.infer_generic_type(param.typ, arg_type, mut generic_type_map) or {
 						c.error_with_pos(err.msg(), expr.pos)
 					}
@@ -3973,9 +3985,11 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// 	}
 			// }
 			// dump(generic_type_map)
+			C.printf(c'CHECKER generic_type_map.len=%d for %s\n', generic_type_map.len, expr.lhs.name().str)
 			if generic_type_map.len > 0 {
 				fn_.generic_types << generic_type_map
 				lhs_name := lhs_expr.name()
+				C.printf(c'CHECKER registering generic types for lhs_name=%s\n', lhs_name.str)
 				if lhs_name !in c.env.generic_types {
 					empty_generic_types := []map[string]Type{}
 					c.env.generic_types[lhs_name] = empty_generic_types
@@ -4236,15 +4250,17 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			// }
 		}
 
-		if ident.name in c.generic_params {
-			return Type(NamedType(ident.name))
-		}
-
+		// Check cur_generic_types first: if a concrete type is available
+		// (e.g., T=Slack during checking of decode[Slack]'s body), use it
+		// so that inner generic calls can infer types properly.
 		for generic_types in c.env.cur_generic_types {
 			if generic_type := generic_types[ident.name] {
-				// eprintln('## replaced generic type ${ident.name} with ${generic_type.name()}')
 				return object_from_type(generic_type)
 			}
+		}
+
+		if ident.name in c.generic_params {
+			return Type(NamedType(ident.name))
 		}
 
 		// TODO: proper

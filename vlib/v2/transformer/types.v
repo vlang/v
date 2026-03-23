@@ -912,6 +912,10 @@ fn (t &Transformer) type_expr_to_c_name(typ ast.Expr) string {
 		ast.ModifierExpr {
 			return t.type_expr_to_c_name(typ.expr)
 		}
+		ast.Type {
+			// Handle composite types like []ast.Attribute, [3]int, map[string]int
+			return t.type_variant_name(typ)
+		}
 		else {}
 	}
 	return typ.name().replace('.', '__')

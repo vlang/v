@@ -2325,6 +2325,20 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 					return
 				}
 			}
+			// &*(ptr) cancels out to just ptr — avoids &(rvalue) when deref
+			// gets null-guard expansion for sum type data pointers.
+			if want_ptr {
+				unwrapped := g.unwrap_parens(base_arg)
+				if unwrapped is ast.PrefixExpr {
+					if unwrapped.op == .mul {
+						if g.expr_is_pointer(unwrapped.expr)
+							|| g.expr_produces_pointer(unwrapped.expr) {
+							g.expr(unwrapped.expr)
+							return
+						}
+					}
+				}
+			}
 			got_ptr := g.expr_is_pointer(base_arg)
 			// Also check for pointer-producing expressions (casts, pointer arithmetic)
 			// that expr_is_pointer misses but that produce pointer values in C.
