@@ -1498,42 +1498,36 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			}
 		}
 	}
-	needs_cast := resolved_left_type.is_number() && resolved_right_type.is_number()
+	mut needs_cast := resolved_left_type.is_number() && resolved_right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	mut typ := node.promoted_type
-	if resolved_left_type == resolved_right_type && resolved_left_type.is_number()
-		&& resolved_left_type !in [ast.int_literal_type, ast.float_literal_type] {
-		typ = resolved_left_type
-	} else {
-		resolved_promoted_type := g.type_resolver.promote_type(g.unwrap_generic(resolved_left_type),
-			g.unwrap_generic(resolved_right_type))
-		if resolved_promoted_type in [ast.f32_type, ast.f64_type] {
-			typ = resolved_promoted_type
-		}
-	}
 	mut typ_str := g.styp(typ)
 	if needs_cast {
 		typ = if node.left_ct_expr {
-			if resolved_left_type != 0 {
-				resolved_left_type
-			} else {
-				g.type_resolver.get_type_or_default(node.left, node.left_type)
-			}
+			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
-			if resolved_right_type != 0 {
-				resolved_right_type
-			} else {
-				g.type_resolver.get_type_or_default(node.right, node.promoted_type)
-			}
-		} else if typ != ast.void_type && !typ.has_flag(.generic)
-			&& !g.type_has_unresolved_generic_parts(typ) {
-			typ
+			g.type_resolver.get_type_or_default(node.right, node.promoted_type)
 		} else {
 			node.promoted_type
 		}
+		// In generic contexts, the promoted type may be stale from a previous
+		// instantiation. Recompute from the resolved operand types.
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			resolved_promoted := g.type_resolver.promote_type(g.unwrap_generic(resolved_left_type),
+				g.unwrap_generic(resolved_right_type))
+			if resolved_promoted != ast.void_type {
+				typ = resolved_promoted
+			}
+		}
 		typ_str = g.styp(typ)
-		g.write('(${typ_str})(')
+		// Skip redundant cast when operands already have the same type
+		if resolved_left_type == resolved_right_type && resolved_left_type == typ {
+			needs_cast = false
+		}
+		if needs_cast {
+			g.write('(${typ_str})(')
+		}
 	}
 	// do not use promoted_type for overflow detect
 	left_type := g.unwrap_generic(resolved_left_type)

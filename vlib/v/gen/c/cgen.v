@@ -5406,7 +5406,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
 		false
 	} else {
-		field_is_opt || expr_is_auto_heap || is_sumtype_smartcast_expr_ptr
+		field_is_opt || expr_is_auto_heap
 			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
 			|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
 			|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
@@ -6476,39 +6476,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 				}
 				obj_sym := g.table.final_sym(g.unwrap_generic(resolved_var.typ))
-				sumtype_selector_chain_as_ptr := g.inside_selector_lhs && obj_sym.kind == .sum_type
-					&& !is_option && !prevent_sum_type_unwrapping_once && !is_auto_heap
-					&& resolved_var.typ.nr_muls() <= 1
-				if sumtype_selector_chain_as_ptr {
-					mut smartcast_expr := if resolved_var.is_inherited {
-						'${closure_ctx}->${name}'
-					} else {
-						name
-					}
-					base_is_ptr := resolved_var.orig_type.is_ptr()
-					for i, typ in smartcast_types {
-						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						variant_name := if cast_sym.info is ast.Aggregate {
-							sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
-							sym.cname
-						} else {
-							g.get_sumtype_variant_name(g.unwrap_generic(typ), cast_sym)
-						}
-						dot := if i == 0 && base_is_ptr { '->' } else { '.' }
-						smartcast_expr += '${dot}_${variant_name}'
-						if i < smartcast_types.len - 1 {
-							smartcast_expr = '(*${smartcast_expr})'
-						}
-					}
-					g.write(smartcast_expr)
-					return
-				}
 				interface_scalar_smartcast_needs_deref := interface_source_is_interface
 					&& smartcast_types.len > 0 && smartcast_types.last().is_ptr()
 					&& !g.inside_selector_lhs
 					&& raw_smartcast_target_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface, .sum_type, .function]
-				sumtype_selector_variant_ptr := g.inside_selector_lhs && obj_sym.kind == .sum_type
-					&& !is_option
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := smartcast_types.len > 1
 					unwrap_sumtype := is_option && nested_unwrap && obj_sym.kind == .sum_type
@@ -6518,8 +6489,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for i, typ in smartcast_types {
 						is_option_unwrap := i == 0 && is_option
 							&& typ == resolved_var.orig_type.clear_flag(.option)
-						suppress_sumtype_variant_deref := sumtype_selector_variant_ptr
-							&& i == smartcast_types.len - 1
 						g.write('(')
 						if i == 0 && resolved_var.is_unwrapped
 							&& resolved_var.ct_type_var == .smartcast {
@@ -6535,7 +6504,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									styp := g.base_type(resolved_var.typ)
 									g.write('*(${styp}*)')
 								}
-							} else if !g.arg_no_auto_deref && !suppress_sumtype_variant_deref {
+							} else if !g.arg_no_auto_deref {
 								g.write('*')
 							}
 						} else if interface_var_needs_deref
@@ -9008,6 +8977,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	styp := g.styp(unwrapped_node_typ)
 	sym := g.table.sym(unwrapped_node_typ)
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	// Reset inside_selector_lhs so that inner g.expr() calls generate
+	// fully dereferenced values, not pointers. The as_cast applies its own
+	// dot/arrow operator based on expr_type.is_ptr().
+	old_inside_selector_lhs := g.inside_selector_lhs
+	g.inside_selector_lhs = false
+	defer {
+		g.inside_selector_lhs = old_inside_selector_lhs
+	}
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.prefers_msvc_compatible_code() {

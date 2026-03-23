@@ -405,11 +405,15 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				scope_type := g.resolved_scope_var_type(expr)
 				if scope_type != 0 && !scope_type.has_flag(.generic)
 					&& !g.type_has_unresolved_generic_parts(scope_type) {
-					// In generic contexts, scope vars are refreshed before codegen and
-					// can be more accurate than stale AST obj types from a different
-					// checker specialization pass.
-					if !expr.obj.is_arg
-						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
+					// In generic contexts, scope variable types may be stale from
+					// a previous instantiation for `.generic_var` variables.
+					// Skip early return to allow expression-based resolution below.
+					skip_for_generic_var := g.cur_fn != unsafe { nil }
+						&& g.cur_concrete_types.len > 0
+						&& expr.obj.ct_type_var == .generic_var
+					if (!expr.obj.is_arg
+						|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0))
+						&& !skip_for_generic_var {
 						return scope_type
 					}
 				}
