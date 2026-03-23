@@ -3154,6 +3154,22 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 			if cond.op == .logical_or {
 				return g.eval_comptime_cond(cond.lhs) || g.eval_comptime_cond(cond.rhs)
 			}
+			// Handle `$if T is i8` — comptime generic type check
+			if cond.op == .key_is || cond.op == .not_is {
+				if cond.lhs is ast.Ident && cond.rhs is ast.Ident {
+					if concrete := g.active_generic_types[cond.lhs.name] {
+						concrete_name := concrete.name()
+						target_name := cond.rhs.name
+						// Normalize type aliases: byte == u8, int == i32
+						matched := concrete_name == target_name
+							|| (target_name == 'byte' && concrete_name == 'u8')
+							|| (target_name == 'u8' && concrete_name == 'byte')
+							|| (target_name == 'int' && concrete_name == 'i32')
+							|| (target_name == 'i32' && concrete_name == 'int')
+						return if cond.op == .key_is { matched } else { !matched }
+					}
+				}
+			}
 		}
 		ast.PostfixExpr {
 			if cond.op == .question && cond.expr is ast.Ident {

@@ -3277,10 +3277,46 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 		// Add the final assignment with the extracted expression.
 		// Run through transform_stmt to handle map index assignment lowering (map__set),
 		// string compound assignment (string__plus), and other statement-level transforms.
+		transformed_rhs := t.transform_expr(new_rhs)
+		// For tuple destructuring (a, b := call()?), expand to:
+		//   _tuple_tmp := extracted_value
+		//   a := _tuple_tmp.arg0
+		//   b := _tuple_tmp.arg1
+		if tuple_lhs := t.get_tuple_lhs(stmt) {
+			if tuple_lhs.len >= 2 {
+				t.temp_counter++
+				tuple_tmp_name := '_tuple_tmp_${t.temp_counter}'
+				tuple_tmp_ident := ast.Ident{
+					name: tuple_tmp_name
+				}
+				prefix_stmts << ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(tuple_tmp_ident)]
+					rhs: [transformed_rhs]
+					pos: stmt.pos
+				})
+				for i in 0 .. tuple_lhs.len {
+					prefix_stmts << ast.Stmt(ast.AssignStmt{
+						op:  stmt.op
+						lhs: [tuple_lhs[i]]
+						rhs: [
+							ast.Expr(ast.SelectorExpr{
+								lhs: tuple_tmp_ident
+								rhs: ast.Ident{
+									name: 'arg${i}'
+								}
+							}),
+						]
+						pos: stmt.pos
+					})
+				}
+				return prefix_stmts
+			}
+		}
 		final_assign := ast.AssignStmt{
 			op:  stmt.op
 			lhs: stmt.lhs
-			rhs: [t.transform_expr(new_rhs)]
+			rhs: [transformed_rhs]
 			pos: stmt.pos
 		}
 		prefix_stmts << t.transform_stmt(final_assign)
@@ -3490,13 +3526,47 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	}
 	// 3. a := _t1.data (extract value) - only for non-void results
 	if !is_void_result {
-		// Variable type is already tracked in scope by checker
+		data_expr := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
+		// For tuple destructuring (a, b := call()?), expand to:
+		//   _tuple_tmp := _t1.data
+		//   a := _tuple_tmp.arg0
+		//   b := _tuple_tmp.arg1
+		if tuple_lhs := t.get_tuple_lhs(stmt) {
+			if tuple_lhs.len >= 2 {
+				t.temp_counter++
+				tuple_tmp_name := '_tuple_tmp_${t.temp_counter}'
+				tuple_tmp_ident := ast.Ident{
+					name: tuple_tmp_name
+				}
+				stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(tuple_tmp_ident)]
+					rhs: [data_expr]
+					pos: stmt.pos
+				}
+				for i in 0 .. tuple_lhs.len {
+					stmts << ast.AssignStmt{
+						op:  stmt.op
+						lhs: [tuple_lhs[i]]
+						rhs: [
+							ast.Expr(ast.SelectorExpr{
+								lhs: tuple_tmp_ident
+								rhs: ast.Ident{
+									name: 'arg${i}'
+								}
+							}),
+						]
+						pos: stmt.pos
+					}
+				}
+				return stmts
+			}
+		}
+		// Single variable assignment
 		stmts << ast.AssignStmt{
 			op:  stmt.op
 			lhs: stmt.lhs
-			rhs: [
-				t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_)),
-			]
+			rhs: [data_expr]
 			pos: stmt.pos
 		}
 	}
@@ -3529,7 +3599,11 @@ fn (mut t Transformer) gen_filter_temp_name() string {
 fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	method_name, receiver_expr, body_expr := t.get_filter_or_map_call_info(expr) or { return none }
 	// Handle .any() and .all() — expand to bool result + for loop with break
+	// Skip expansion when receiver is a flag enum (handled by flag enum rewrite later).
 	if method_name in ['any', 'all'] {
+		if t.is_flag_enum_receiver(receiver_expr, t.get_enum_type(receiver_expr)) {
+			return none
+		}
 		return t.expand_any_or_all_expr(method_name, receiver_expr, body_expr)
 	}
 	// Get the array type from the receiver

@@ -430,7 +430,6 @@ fn (mut b Builder) ensure_core_module_headers() {
 		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
 		source_struct_fields := b.source_struct_field_types_for_module(module_name)
 		header_source = repair_missing_struct_field_types(header_source, source_struct_fields)
-		header_source = ensure_ierror_interface_methods(header_source)
 		if header_source.len == 0 {
 			// Empty header would cause missing symbols in split compilation.
 			// Remove any partial headers already written and skip stamp update
@@ -1507,20 +1506,6 @@ fn merge_missing_source_fn_decls(header_source string, source_fn_decls map[strin
 	merged += extra.join('\n')
 	merged += '\n'
 	return merged
-}
-
-fn ensure_ierror_interface_methods(header_source string) string {
-	empty_pub := 'pub interface IError {\n}\n'
-	full_pub := 'pub interface IError {\n\tmsg fn() string\n\tcode fn() int\n}\n'
-	if header_source.contains(empty_pub) {
-		return header_source.replace(empty_pub, full_pub)
-	}
-	empty_plain := 'interface IError {\n}\n'
-	full_plain := 'interface IError {\n\tmsg fn() string\n\tcode fn() int\n}\n'
-	if header_source.contains(empty_plain) {
-		return header_source.replace(empty_plain, full_plain)
-	}
-	return header_source
 }
 
 fn header_struct_block_name(trimmed string) ?string {
