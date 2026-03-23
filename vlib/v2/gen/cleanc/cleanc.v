@@ -97,6 +97,7 @@ mut:
 	test_fn_names           []string                         // test function names collected in Pass 4
 	has_main                bool                             // whether a main() function was found in Pass 4
 	fn_owner_file           map[string]int                   // fn_key -> first file index (for parallel dedup)
+	global_owner_file       map[string]int                   // global_name -> first file index (for parallel dedup)
 	generic_struct_bindings map[string]map[string]types.Type // struct_name -> {T: concrete_type}
 	c_file_fn_keys          map[string]bool                  // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
 	typedef_c_types         map[string]bool                  // C struct names with @[typedef] attribute (emit without 'struct' prefix)
@@ -1144,6 +1145,8 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 		g.gen_file_extern_globals(file)
 	}
 	// Emit extern consts for non-emitted modules, collect emittable file indices.
+	// Also build global_owner_file: assign each global to the first file that declares it
+	// so parallel workers can avoid emitting duplicate definitions.
 	mut emit_indices := []int{cap: g.files.len}
 	for fi, file in g.files {
 		g.set_file_module(file)
@@ -1151,6 +1154,21 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 			g.gen_file_extern_consts(file)
 		} else {
 			emit_indices << fi
+			for stmt in file.stmts {
+				if stmt is ast.GlobalDecl {
+					for field in stmt.fields {
+						gname := if g.cur_module != '' && g.cur_module != 'main'
+							&& g.cur_module != 'builtin' {
+							'${g.cur_module}__${field.name}'
+						} else {
+							field.name
+						}
+						if gname !in g.global_owner_file {
+							g.global_owner_file[gname] = fi
+						}
+					}
+				}
+			}
 		}
 	}
 	return emit_indices
@@ -1185,12 +1203,18 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 	for fi in file_indices {
 		owned_files[fi] = true
 	}
-	// Clone emitted_types and reserve functions owned by other workers.
+	// Clone emitted_types and reserve functions/globals owned by other workers.
 	mut worker_emitted := g.emitted_types.clone()
 	mut blocked_fn_keys := map[string]bool{}
 	for fn_key, owner_fi in g.fn_owner_file {
 		if owner_fi !in owned_files {
 			blocked_fn_keys[fn_key] = true
+		}
+	}
+	// Block globals owned by other workers to prevent duplicate definitions.
+	for gname, owner_fi in g.global_owner_file {
+		if owner_fi !in owned_files {
+			worker_emitted['global_${gname}'] = true
 		}
 	}
 	return &Gen{

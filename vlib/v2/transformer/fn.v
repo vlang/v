@@ -1802,7 +1802,9 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	}
 	// Self-hosted ARM64 builds can misresolve byte-oriented receivers as `i8`
 	// even though the builtin helper methods are declared on `u8`.
-	if c_prefix == 'i8' && t.lookup_method_cached('u8', method_name) != none {
+	// Only fall back to u8 when i8 has no method of its own (e.g. bytestr, hex).
+	if c_prefix == 'i8' && t.lookup_method_cached('i8', method_name) == none
+		&& t.lookup_method_cached('u8', method_name) != none {
 		c_prefix = 'u8'
 	}
 	if c_prefix == '' {
@@ -2865,6 +2867,15 @@ fn (t &Transformer) get_enum_type(expr ast.Expr) string {
 		base := t.unwrap_alias_and_pointer_type(recv_type)
 		if base is types.Enum {
 			return t.type_to_c_name(base)
+		}
+	}
+	// Fallback: for SelectorExpr (struct field access), resolve via struct field type
+	if expr is ast.SelectorExpr {
+		if field_type := t.get_struct_field_type(expr) {
+			base := t.unwrap_alias_and_pointer_type(field_type)
+			if base is types.Enum {
+				return t.type_to_c_name(base)
+			}
 		}
 	}
 	return ''

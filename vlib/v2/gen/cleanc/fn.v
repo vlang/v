@@ -639,7 +639,7 @@ fn (mut g Gen) specialized_fn_name(node ast.FnDecl, generic_types map[string]typ
 	if suffixes.len == 0 {
 		return base_name
 	}
-	return '${base_name}_${suffixes.join('_')}'
+	return '${base_name}_T_${suffixes.join('_')}'
 }
 
 fn (g &Gen) generic_key_matches_decl(node ast.FnDecl, key string) bool {
@@ -934,7 +934,7 @@ fn (g &Gen) find_specialized_call_name(name string, token string) ?string {
 	if name == '' || token == '' {
 		return none
 	}
-	candidate := '${name}_${token}'
+	candidate := '${name}_T_${token}'
 	if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
 		return candidate
 	}
@@ -964,7 +964,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 			arg_type_name = (g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
 		}
 		if arg_type_name == 'string' {
-			candidate := '${name}_string'
+			candidate := '${name}_T_string'
 			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
 				return candidate
 			}
@@ -1009,7 +1009,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		mut changed := false
 		for i, part in parts {
 			if concrete := g.active_generic_types[part] {
-				parts[i] = g.generic_specialization_token_from_type(concrete)
+				parts[i] = 'T_${g.generic_specialization_token_from_type(concrete)}'
 				changed = true
 			}
 		}
@@ -1261,6 +1261,11 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 		g.active_generic_types = prev_generic_types.clone()
 	}
 	if g.generic_fn_param_names(*node).len > 0 {
+		// maxof[T]/minof[T] are compile-time functions fully inlined by the transformer.
+		// Skip emitting stub bodies (which contain invalid C).
+		if node.name in ['maxof', 'minof'] {
+			return
+		}
 		prev_generic_types := g.active_generic_types.clone()
 		for spec in g.generic_fn_specializations(*node) {
 			g.active_generic_types = spec.generic_types.clone()
@@ -4750,10 +4755,12 @@ fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
 				|| stub_ret.starts_with('Array_fixed_') {
 				stub_ret = 'array'
 			}
-			// Emit a stub that aborts at runtime with a clear message instead
-			// of silently returning a zero value.  This surfaces missing
-			// generic specialization bugs immediately rather than hiding them.
+			// Emit a stub that surfaces missing generic specializations both
+			// at compile time (#warning) and at runtime (abort).
 			g.sb.writeln('/* unresolved generic */ ${stub_ret} ${fn_name}() {')
+			g.sb.writeln('#if !defined(__TINYC__)')
+			g.sb.writeln('#warning "v2: unresolved generic stub: ${fn_name}"')
+			g.sb.writeln('#endif')
 			g.sb.writeln('\tfputs("v2: unresolved generic call: ${fn_name}\\n", stderr);')
 			g.sb.writeln('\tabort();')
 			if stub_ret != 'void' {

@@ -4,15 +4,20 @@
 module main
 
 import os
+import time
 import v2.pref
 import v2.builder
 
 fn main() {
 	compile_args, runtime_args := split_eval_runtime_args(os.args[1..])
 
-	// Check for 'ast' subcommand
+	// Check for subcommands
 	if compile_args.len > 0 && compile_args[0] == 'ast' {
 		run_ast_command(compile_args[1..])
+		return
+	}
+	if compile_args.len > 0 && compile_args[0] == 'test-self' {
+		run_test_self()
 		return
 	}
 
@@ -118,4 +123,108 @@ fn get_files(args []string) []string {
 		files << arg
 	}
 	return files
+}
+
+fn resolve_own_path() string {
+	arg0 := os.args[0]
+	if os.is_abs_path(arg0) {
+		return arg0
+	}
+	return os.join_path(os.getwd(), arg0)
+}
+
+fn run_test_self() {
+	t0 := time.now()
+	// Resolve the v2 binary's own path. Cannot use @VEXE because when v1
+	// compiles v2, @VEXE bakes in v1's path instead of v2's.
+	vexe := resolve_own_path()
+	vroot := os.dir(vexe)
+	v2_dir := os.join_path(vroot, 'cmd', 'v2')
+
+	mut all_test_files := []string{}
+
+	// Builtin test files
+	for name in ['array_test.v', 'string_test.v', 'map_test.v'] {
+		all_test_files << os.join_path(vroot, 'vlib', 'builtin', name)
+	}
+
+	// Math test
+	all_test_files << os.join_path(vroot, 'vlib', 'math', 'math_test.v')
+
+	// Sumtype tests in cmd/v2/
+	v2_files := os.ls(v2_dir) or { []string{} }
+	for file in v2_files {
+		if file.starts_with('test_sumtype') && file.ends_with('.v') {
+			all_test_files << os.join_path(v2_dir, file)
+		}
+	}
+
+	// Cleanc regression tests
+	cleanc_tests_dir := os.join_path(vroot, 'vlib', 'v2', 'gen', 'cleanc', 'tests')
+	cleanc_files := os.ls(cleanc_tests_dir) or { []string{} }
+	for file in cleanc_files {
+		if file.ends_with('.v') && file != 'run_tests.v' {
+			all_test_files << os.join_path(cleanc_tests_dir, file)
+		}
+	}
+
+	total := all_test_files.len
+	mut passed := 0
+	mut failed := 0
+	mut failed_files := []string{}
+
+	eprintln('---- v2 test-self: ${total} test files ----')
+
+	for i, test_file in all_test_files {
+		short_name := test_file.replace(vroot + '/', '')
+		t1 := time.now()
+
+		// Determine output binary path
+		base := os.file_name(test_file).all_before_last('.v')
+		out_bin := os.join_path(os.temp_dir(), 'v2_test_self_${base}')
+
+		// Compile (use os.system to avoid pipe deadlocks with popen/GC)
+		compile_cmd := '${vexe} -o ${out_bin} "${test_file}" > /dev/null 2>&1'
+		compile_ret := os.system(compile_cmd)
+		compile_ms := f64(time.since(t1)) / f64(time.millisecond)
+
+		if compile_ret != 0 || !os.exists(out_bin) {
+			failed++
+			failed_files << short_name
+			eprintln(' FAIL  [${i + 1:4}/${total}] C: ${compile_ms:7.1} ms  ${short_name}')
+			os.rm(out_bin) or {}
+			os.rm('${out_bin}.c') or {}
+			continue
+		}
+
+		// Run the compiled binary
+		t2 := time.now()
+		run_ret := os.system(out_bin + ' > /dev/null 2>&1')
+		run_ms := f64(time.since(t2)) / f64(time.millisecond)
+
+		if run_ret != 0 {
+			failed++
+			failed_files << short_name
+			eprintln(' FAIL  [${i + 1:4}/${total}] C: ${compile_ms:7.1} ms, R: ${run_ms:7.1} ms  ${short_name}')
+		} else {
+			passed++
+			eprintln('OK    [${i + 1:4}/${total}] C: ${compile_ms:7.1} ms, R: ${run_ms:7.1} ms  ${short_name}')
+		}
+
+		os.rm(out_bin) or {}
+		os.rm('${out_bin}.c') or {}
+	}
+
+	elapsed := time.since(t0)
+	eprintln('------------------------------------------------------------------------')
+	eprintln('${passed} passed, ${failed} failed, ${total} total  (${elapsed})')
+	if failed_files.len > 0 {
+		eprintln('Failed:')
+		for f in failed_files {
+			eprintln('  ${f}')
+		}
+	}
+	if failed > 0 {
+		exit(1)
+	}
 }
