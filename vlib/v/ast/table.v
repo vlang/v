@@ -417,15 +417,14 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 		}
 		if ts.parent_idx == 0 {
 			// Also try Struct/Interface/SumType parent_type for generic concrete types
-			match ts.info {
-				Struct, Interface, SumType {
-					if ts.info.parent_type != 0 {
-						if method := ts.find_method_with_generic_parent(name) {
-							return method
-						}
-					}
+			// whose parent_idx is 0 but have parent_type set.
+			has_parent_type := (ts.kind == .struct && (ts.info as Struct).parent_type != 0)
+				|| (ts.kind == .interface && (ts.info as Interface).parent_type != 0)
+				|| (ts.kind == .sum_type && (ts.info as SumType).parent_type != 0)
+			if has_parent_type {
+				if method := ts.find_method_with_generic_parent(name) {
+					return method
 				}
-				else {}
 			}
 			break
 		}

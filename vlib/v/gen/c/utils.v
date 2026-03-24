@@ -750,6 +750,9 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
 			}
 		}
+		ast.AsCast {
+			return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+		}
 		ast.UnsafeExpr {
 			return g.resolved_expr_type(expr.expr, default_typ)
 		}

@@ -2049,7 +2049,8 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 	if node.is_method {
 		if node.kind == .map && node.return_type != 0 && !node.return_type.has_flag(.generic)
-			&& !g.type_has_unresolved_generic_parts(node.return_type) {
+			&& !g.type_has_unresolved_generic_parts(node.return_type)
+			&& !(g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
 			return if node.or_block.kind == .absent {
 				g.unwrap_generic(g.recheck_concrete_type(node.return_type))
 			} else {
@@ -2427,7 +2428,15 @@ fn (mut g Gen) resolved_generic_call_arg_type(arg ast.CallArg) ast.Type {
 	mut has_current_generic_type := false
 	mut resolved_current_type := ast.void_type
 	if arg.expr is ast.Ident {
-		resolved_current_type = g.resolve_current_fn_generic_param_type(arg.expr.name)
+		// In comptime variant loops, a smartcast variable's type is dynamically
+		// resolved per variant iteration. Don't override it with the generic param
+		// resolution (which gives the sumtype, not the variant).
+		is_comptime_smartcast := arg.expr.obj is ast.Var
+			&& arg.expr.obj.ct_type_var == .smartcast
+			&& g.comptime.comptime_for_variant_var.len > 0
+		if !is_comptime_smartcast {
+			resolved_current_type = g.resolve_current_fn_generic_param_type(arg.expr.name)
+		}
 		if resolved_current_type != 0 {
 			has_current_generic_type = true
 			is_mut_source_arg := arg.expr.obj is ast.Var && arg.expr.obj.is_arg
@@ -2737,7 +2746,16 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 			if resolved_param_type := muttable.convert_generic_type(param.typ, func.generic_names,
 				concrete_types)
 			{
-				if g.unwrap_generic(resolved_param_type) != g.unwrap_generic(arg_type) {
+				// For variadic params, the resolved type is []T_resolved (array wrapper),
+				// but arg_type is just T_resolved (element). Extract element type to compare.
+				mut cmp_type := g.unwrap_generic(resolved_param_type)
+				if param.typ.has_flag(.variadic) {
+					cmp_sym := g.table.final_sym(cmp_type)
+					if cmp_sym.info is ast.Array {
+						cmp_type = cmp_sym.info.elem_type
+					}
+				}
+				if cmp_type != g.unwrap_generic(arg_type) {
 					trust_node_concrete_types = false
 					break
 				}
@@ -3133,7 +3151,23 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
 	}
-	if node.from_embed_types.len > 0 && !typ_sym.has_method(node.name) {
+	// In generic contexts, node.from_embed_types and node.receiver_type may be stale
+	// from a previous instantiation. Re-resolve embedded methods from the actual left_type.
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		left_sym2 := g.table.sym(left_type)
+		if !left_sym2.has_method(node.name) {
+			_, embed_types := g.table.find_method_from_embeds(left_sym2,
+				node.name) or { ast.Fn{}, []ast.Type{} }
+			if embed_types.len > 0 {
+				unwrapped_rec_type = embed_types.last()
+				typ_sym = g.table.sym(unwrapped_rec_type)
+			}
+		} else if left_type != unwrapped_rec_type {
+			// left_type has the method directly; use it instead of stale receiver type
+			unwrapped_rec_type = left_type
+			typ_sym = left_sym2
+		}
+	} else if node.from_embed_types.len > 0 && !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = node.from_embed_types.last()
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
@@ -3155,6 +3189,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
 			if resolved_left_type != 0 {
 				left_type = resolved_left_type
+			} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				scope_type := g.resolved_scope_var_type(node.left)
+				if scope_type != 0 && !scope_type.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(scope_type) {
+					left_type = scope_type
+				}
 			}
 		}
 		ast.SelectorExpr {

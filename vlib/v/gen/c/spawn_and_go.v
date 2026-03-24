@@ -74,6 +74,14 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			use_tmp_fn_var = true
 		}
 	}
+	// When inside a generic function, differentiate wrapper struct names
+	// per concrete type instantiation so each gets its own typed struct/wrapper.
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		generic_suffix := g.generic_fn_name(g.cur_concrete_types, '')
+		if generic_suffix != '' && !name.ends_with(generic_suffix) {
+			name = g.generic_fn_name(g.cur_concrete_types, name)
+		}
+	}
 	name = util.no_dots(name)
 	g.empty_line = true
 	g.writeln('// start go')
@@ -184,7 +192,30 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		mut fn_var := ''
 		mut wrapper_return_type := call_ret_type
 		if node.call_expr.is_fn_var {
-			fn_sym := g.table.sym(node.call_expr.fn_var_type)
+			mut fn_var_type := node.call_expr.fn_var_type
+			// In generic contexts, fn_var_type may be stale from the last checker pass.
+			// Look up the original fn parameter from the table to get the generic fn type,
+			// then resolve it through convert_generic_type.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+				&& g.cur_fn.generic_names.len > 0 {
+				cur_fn_name := g.cur_fn.fkey()
+				orig_fn := g.table.find_fn(cur_fn_name) or { ast.Fn{} }
+				for param in orig_fn.params {
+					if param.name == expr.name {
+						if param.typ.has_flag(.generic)
+							|| g.type_has_unresolved_generic_parts(param.typ) {
+							mut muttable := unsafe { &ast.Table(g.table) }
+							if resolved := muttable.convert_generic_type(param.typ,
+								orig_fn.generic_names, g.cur_concrete_types)
+							{
+								fn_var_type = resolved
+							}
+						}
+						break
+					}
+				}
+			}
+			fn_sym := g.table.sym(fn_var_type)
 			info := fn_sym.info as ast.FnType
 			wrapper_return_type = info.func.return_type
 			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type, info.func.params.map(it.typ),

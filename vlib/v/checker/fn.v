@@ -1977,14 +1977,28 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if final_param_sym.kind == .interface
 			|| (final_param_sym.kind == .generic_inst && final_param_sym.info is ast.GenericInst
 			&& c.table.type_symbols[final_param_sym.info.parent_idx].kind == .interface) {
-			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
+			// For generic interface parameters, resolve the generic type to its concrete
+			// instantiation before checking implementation.
+			mut resolved_param_typ := final_param_typ
+			if final_param_typ.has_flag(.generic) && func.generic_names.len > 0
+				&& node.concrete_types.len == func.generic_names.len {
+				if t := c.table.convert_generic_type(final_param_typ, func.generic_names,
+					node.concrete_types)
+				{
+					resolved_param_typ = t
+				}
+			}
+			if c.type_implements(arg_typ, resolved_param_typ, call_arg.expr.pos()) {
 				if !arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe
 					&& arg_typ_sym.kind != .interface {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
 
-			if arg_typ !in [ast.voidptr_type, ast.nil_type]
+			// For non-generic interfaces, check pointer compatibility.
+			// For generic_inst interfaces, the param.typ may still have unresolved
+			// generic flags, so skip the ptr check — type_implements already validated.
+			if final_param_sym.kind == .interface && arg_typ !in [ast.voidptr_type, ast.nil_type]
 				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
 				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',

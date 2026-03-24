@@ -1262,6 +1262,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(u32 sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
+				if sub_sym.kind == .interface {
+					continue
+				}
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
@@ -1281,6 +1284,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 				}
 				for t in inter_info.types {
 					sub_sym := g.table.sym(ast.mktyp(t))
+					if sub_sym.kind == .interface {
+						continue
+					}
 					if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 						continue
 					}
@@ -3681,8 +3687,16 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				}
 			}
+			// For auto-heap variables in generic contexts, ident() suppresses the (*t)
+			// deref, so g.expr(t) generates `t` (already a pointer in C).
+			// Treat got_is_ptr as true to prevent adding a spurious `&`.
+			mut effective_got_is_ptr := got_is_ptr
+			if !got_is_ptr && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+				&& expr is ast.Ident && g.resolved_ident_is_auto_heap(expr) {
+				effective_got_is_ptr = true
+			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-				got_is_ptr, false, got_styp)
+				effective_got_is_ptr, false, got_styp)
 		}
 		return
 	}
@@ -9273,7 +9287,9 @@ fn (mut g Gen) interface_table() string {
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
 		//
-		iname_table_length := inter_info.types.len
+		// Exclude interface types from the table length — an interface can't
+		// be its own concrete implementor (happens with nested generic interfaces).
+		iname_table_length := inter_info.types.filter(g.table.sym(it).kind != .interface).len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
 			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
@@ -9294,6 +9310,13 @@ fn (mut g Gen) interface_table() string {
 		mut current_iinidx := iinidx_minimum_base
 		for st in inter_info.types {
 			st_sym_info := g.table.sym(st)
+			// Skip interface types that appear in their own implementors list.
+			// An interface can't be its own concrete implementor; this happens
+			// with nested generic interface types where the interface type
+			// gets registered in its own types list during generic resolution.
+			if st_sym_info.kind == .interface {
+				continue
+			}
 			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
 				continue
 			}
