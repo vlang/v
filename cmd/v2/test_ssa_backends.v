@@ -127,8 +127,17 @@ fn main() {
 		}
 		os.rm(gen_output_path) or {}
 		// 60s timeout to catch infinite loops in ARM64-generated code
-		gen_cmd := if os.exists('/opt/homebrew/bin/timeout') || os.exists('/usr/bin/timeout') {
-			'timeout 60 ${cmd} > ${gen_output_path} 2>&1'
+		has_timeout := os.exists('/opt/homebrew/bin/timeout') || os.exists('/usr/bin/timeout')
+		has_gtimeout := os.exists('/opt/homebrew/bin/gtimeout') || os.exists('/usr/bin/gtimeout')
+		timeout_cmd := if has_timeout {
+			'timeout'
+		} else if has_gtimeout {
+			'gtimeout'
+		} else {
+			''
+		}
+		gen_cmd := if timeout_cmd != '' {
+			'${timeout_cmd} 60 ${cmd} > ${gen_output_path} 2>&1'
 		} else {
 			'${cmd} > ${gen_output_path} 2>&1'
 		}

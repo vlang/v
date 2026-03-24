@@ -4294,11 +4294,13 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 		if ident.name in ['typeof', 'sizeof', 'isreftype'] {
 			return Type(FnType{
 				return_type: Type(Struct{
-					name: '__typeof_result'
-					fields: [Field{
-						name: 'name'
-						typ:  Type(string_)
-					}]
+					name:   '__typeof_result'
+					fields: [
+						Field{
+							name: 'name'
+							typ:  Type(string_)
+						},
+					]
 				})
 			})
 		}

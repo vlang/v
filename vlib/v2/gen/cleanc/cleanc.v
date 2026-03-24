@@ -31,14 +31,14 @@ mut:
 	cur_fn_returned_idents map[string]bool
 	active_generic_types   map[string]types.Type
 	// Comptime $for field iteration state
-	comptime_field_var      string       // variable name (e.g., 'field')
-	comptime_field_name     string       // current field name (e.g., 'id')
-	comptime_field_type     string       // current field C type name
+	comptime_field_var      string // variable name (e.g., 'field')
+	comptime_field_name     string // current field name (e.g., 'id')
+	comptime_field_type     string // current field C type name
 	comptime_field_raw_type types.Type = types.Struct{} // raw types.Type for comptime checks
-	comptime_field_attrs    []string     // current field attributes
-	comptime_field_idx      int          // current field index
-	comptime_val_var        string       // the struct variable being decoded (e.g., 'val')
-	comptime_val_type       string       // C type of val (e.g., 'Slack')
+	comptime_field_attrs    []string // current field attributes
+	comptime_field_idx      int      // current field index
+	comptime_val_var        string   // the struct variable being decoded (e.g., 'val')
+	comptime_val_type       string   // C type of val (e.g., 'Slack')
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -85,25 +85,25 @@ mut:
 	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
 	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
 
-	const_exprs           map[string]string // const name → C expression string (for inlining)
-	const_types           map[string]string // const name → C type string
-	runtime_const_targets map[string]bool   // module-scoped consts initialized in __v_init_consts_*
-	used_fn_keys          map[string]bool
-	force_emit_fn_names   map[string]bool   // function C names that must be emitted regardless of mark_used
-	export_fn_names       map[string]string // V-qualified name → export name (from @[export:] attribute)
-	called_fn_names       map[string]bool
-	generic_spec_index    map[string][]string // fn_name → matching keys in env.generic_types
-	late_generic_specs    map[string][]map[string]types.Type // additional comptime-discovered specs
-	anon_fn_defs          []string            // lifted anonymous function definitions
-	late_struct_defs           []string            // struct definitions discovered during pass 5 codegen
-	pending_late_body_keys     map[string]bool     // body_keys in late_struct_defs but not yet flushed to g.sb
-	late_generic_str_instances []string            // c_names of late generic struct instances needing str macro check
-	pass5_start_pos       int                 // position in sb where pass 5 starts
-	deferred_m_includes   []string            // Objective-C .m file #include lines deferred until after type definitions
-	spawned_fns           map[string]bool     // spawn wrapper names already emitted
-	spawn_wrapper_defs    []string            // spawn wrapper struct + function definitions
-	emitted_trampolines   map[string]bool     // bound method trampoline names already emitted
-	trampoline_defs       []string            // bound method trampoline definitions
+	const_exprs                map[string]string // const name → C expression string (for inlining)
+	const_types                map[string]string // const name → C type string
+	runtime_const_targets      map[string]bool   // module-scoped consts initialized in __v_init_consts_*
+	used_fn_keys               map[string]bool
+	force_emit_fn_names        map[string]bool   // function C names that must be emitted regardless of mark_used
+	export_fn_names            map[string]string // V-qualified name → export name (from @[export:] attribute)
+	called_fn_names            map[string]bool
+	generic_spec_index         map[string][]string                // fn_name → matching keys in env.generic_types
+	late_generic_specs         map[string][]map[string]types.Type // additional comptime-discovered specs
+	anon_fn_defs               []string        // lifted anonymous function definitions
+	late_struct_defs           []string        // struct definitions discovered during pass 5 codegen
+	pending_late_body_keys     map[string]bool // body_keys in late_struct_defs but not yet flushed to g.sb
+	late_generic_str_instances []string        // c_names of late generic struct instances needing str macro check
+	pass5_start_pos            int             // position in sb where pass 5 starts
+	deferred_m_includes        []string        // Objective-C .m file #include lines deferred until after type definitions
+	spawned_fns                map[string]bool // spawn wrapper names already emitted
+	spawn_wrapper_defs         []string        // spawn wrapper struct + function definitions
+	emitted_trampolines        map[string]bool // bound method trampoline names already emitted
+	trampoline_defs            []string        // bound method trampoline definitions
 	// @[live] hot code reloading
 	live_fns                []LiveFnInfo                     // @[live] functions detected during code generation
 	live_source_file        string                           // source file containing @[live] functions
@@ -116,16 +116,16 @@ mut:
 	// a list of (suffix, bindings) pairs for each distinct concrete instantiation.
 	// E.g. [("json2__ValueInfo", {T: ValueInfo}), ("json2__StructFieldInfo", {T: StructFieldInfo})]
 	generic_struct_instances map[string][]GenericStructInstance
-	c_file_fn_keys          map[string]bool                  // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
-	typedef_c_types         map[string]bool                  // C struct names with @[typedef] attribute (emit without 'struct' prefix)
-	blocked_fn_keys         map[string]bool                  // worker-only fn keys reserved to other pass5 chunks
-	cached_vhash            string // cached git short hash for @VHASH/@VCURRENTHASH
+	c_file_fn_keys           map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
+	typedef_c_types          map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
+	blocked_fn_keys          map[string]bool // worker-only fn keys reserved to other pass5 chunks
+	cached_vhash             string          // cached git short hash for @VHASH/@VCURRENTHASH
 }
 
 struct GenericStructInstance {
-	params_key string               // e.g. "json2__ValueInfo" — unique key per instantiation
+	params_key string                // e.g. "json2__ValueInfo" — unique key per instantiation
 	bindings   map[string]types.Type // e.g. {T: ValueInfo}
-	c_name     string               // full C struct name, e.g. "json2__Node_T_json2__StructFieldInfo"
+	c_name     string                // full C struct name, e.g. "json2__Node_T_json2__StructFieldInfo"
 }
 
 struct LiveFnInfo {

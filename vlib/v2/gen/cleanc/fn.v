@@ -718,7 +718,7 @@ fn (mut g Gen) discover_comptime_generic_specs() {
 	for key, spec_list in g.env.generic_types {
 		for spec in spec_list {
 			for param_name, concrete_type in spec {
-					if concrete_type is types.Struct {
+				if concrete_type is types.Struct {
 					struct_type := concrete_type as types.Struct
 					if struct_type.fields.len == 0 {
 						continue
@@ -3812,7 +3812,8 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	mut embedded_receiver_owner := ''
 	call_args << args
 	if lhs is ast.Ident {
-		if lhs.name.contains('get_or_panic') || (lhs.name.contains('get') && lhs.name.contains('ui_TextBox')) {
+		if lhs.name.contains('get_or_panic')
+			|| (lhs.name.contains('get') && lhs.name.contains('ui_TextBox')) {
 			eprintln('[DBG call_expr IDENT] name=${lhs.name}')
 		}
 		name = sanitize_fn_ident(lhs.name)

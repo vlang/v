@@ -2840,7 +2840,8 @@ fn (mut g Gen) get_comptime_selector_type(node ast.SelectorExpr) string {
 	// field.name.str → char*, field.name.len → int
 	if node.lhs is ast.SelectorExpr {
 		inner := node.lhs as ast.SelectorExpr
-		if inner.lhs is ast.Ident && inner.lhs.name == g.comptime_field_var && inner.rhs.name == 'name' {
+		if inner.lhs is ast.Ident && inner.lhs.name == g.comptime_field_var
+			&& inner.rhs.name == 'name' {
 			match rhs_name {
 				'str' { return 'char*' }
 				'len' { return 'int' }
@@ -3085,7 +3086,9 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 			if lhs_type is types.SumType {
 				if narrowed_c := g.get_expr_type_from_env(node.lhs) {
 					if narrowed_type := g.resolve_c_type_to_raw(narrowed_c) {
-						if field_type := selector_struct_field_type_from_type(narrowed_type, node.rhs.name) {
+						if field_type := selector_struct_field_type_from_type(narrowed_type,
+							node.rhs.name)
+						{
 							return field_type
 						}
 					}

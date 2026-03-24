@@ -1070,17 +1070,27 @@ fn (mut t Transformer) resolve_comptime_if_stmts(node ast.IfExpr) []ast.Stmt {
 // checks (key_is/not_is) that need to be resolved by the backend.
 fn (t &Transformer) can_eval_comptime_cond(cond ast.Expr) bool {
 	match cond {
-		ast.Ident { return true }
-		ast.PrefixExpr { return t.can_eval_comptime_cond(cond.expr) }
+		ast.Ident {
+			return true
+		}
+		ast.PrefixExpr {
+			return t.can_eval_comptime_cond(cond.expr)
+		}
 		ast.InfixExpr {
 			if cond.op == .key_is || cond.op == .not_is {
 				return false
 			}
 			return t.can_eval_comptime_cond(cond.lhs) && t.can_eval_comptime_cond(cond.rhs)
 		}
-		ast.PostfixExpr { return true }
-		ast.ParenExpr { return t.can_eval_comptime_cond(cond.expr) }
-		else { return false }
+		ast.PostfixExpr {
+			return true
+		}
+		ast.ParenExpr {
+			return t.can_eval_comptime_cond(cond.expr)
+		}
+		else {
+			return false
+		}
 	}
 }
 

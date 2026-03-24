@@ -52,11 +52,15 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				is_call := node.expr is ast.CallExpr
 				is_ident := node.expr is ast.Ident
 				C.fprintf(C.stderr, c'[gen_stmt/ExprStmt] valid=%d comptime=%d if=%d call=%d ident=%d\n',
-					if expr_has_valid_data(node.expr) { 1 } else { 0 },
-					if is_comptime { 1 } else { 0 },
-					if is_if { 1 } else { 0 },
-					if is_call { 1 } else { 0 },
-					if is_ident { 1 } else { 0 })
+					if expr_has_valid_data(node.expr) { 1 } else { 0 }, if is_comptime {
+					1
+				} else {
+					0
+				}, if is_if { 1 } else { 0 }, if is_call { 1 } else { 0 }, if is_ident {
+					1
+				} else {
+					0
+				})
 			}
 			if !expr_has_valid_data(node.expr) {
 				return

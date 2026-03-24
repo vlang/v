@@ -956,7 +956,9 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
-	if (t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic') && expr.lhs.name() != 'snprintf' && expr.lhs.name() != 'memdup' && expr.lhs.name() != 'malloc' {
+	if (t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic')
+		&& expr.lhs.name() != 'snprintf' && expr.lhs.name() != 'memdup'
+		&& expr.lhs.name() != 'malloc' {
 		is_ga := expr.lhs is ast.GenericArgs
 		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
 		is_sel := expr.lhs is ast.SelectorExpr
