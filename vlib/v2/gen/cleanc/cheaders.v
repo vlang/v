@@ -163,10 +163,8 @@ fn (mut g Gen) collect_directives_from_stmts(stmts []ast.Stmt, file_name string,
 
 fn (mut g Gen) collect_directives_from_expr(expr ast.Expr, file_name string, mut seen map[string]bool) {
 	if expr is ast.ComptimeExpr {
-		eprintln('[directives-debug] ComptimeExpr in ${file_name}')
 		g.collect_directives_from_expr(expr.expr, file_name, mut seen)
 	} else if expr is ast.IfExpr {
-		eprintln('[directives-debug] IfExpr in ${file_name}, stmts.len=${expr.stmts.len}')
 		g.collect_directives_from_stmts(expr.stmts, file_name, mut seen)
 		if expr.else_expr !is ast.EmptyExpr {
 			g.collect_directives_from_expr(expr.else_expr, file_name, mut seen)
@@ -393,22 +391,8 @@ fn (mut g Gen) emit_runtime_aliases() {
 		}
 		g.sb.writeln('typedef array ${name};')
 	}
-	// Emit pointer element typedefs needed by array helper functions.
-	// e.g. Array_Coordptr needs 'typedef Coord* Coordptr;'
-	// Must come after array aliases so Array_int etc. are defined first.
-	for name in array_names {
-		if name.starts_with('Array_fixed_') {
-			continue
-		}
-		elem := name['Array_'.len..]
-		if elem.len > 3 && elem.ends_with('ptr') {
-			base := elem[..elem.len - 3]
-			if base !in ['void', 'char', 'byte'] && !elem.starts_with('Array_')
-				&& !elem.starts_with('Map_') {
-				g.sb.writeln('typedef ${base}* ${elem};')
-			}
-		}
-	}
+	// Pointer element typedefs (e.g. 'typedef Coord* Coordptr;') are deferred
+	// to emit_pointer_typedefs() which runs after pass 2 (enum/alias definitions).
 	// Emit primitive fixed array typedefs (non-primitive ones deferred until after struct defs)
 	for name in array_names {
 		if !name.starts_with('Array_fixed_') {
@@ -470,6 +454,27 @@ fn (mut g Gen) emit_runtime_aliases() {
 			g.sb.writeln('typedef struct ${name} ${name};')
 		} else {
 			g.sb.writeln('typedef _result ${name};')
+		}
+	}
+}
+
+// emit_pointer_typedefs emits pointer element typedefs needed by array helper functions.
+// e.g. Array_Coordptr needs 'typedef Coord* Coordptr;'.
+// Must run AFTER pass 2 so that enum and type alias definitions are available.
+fn (mut g Gen) emit_pointer_typedefs() {
+	mut array_names := g.array_aliases.keys()
+	array_names.sort()
+	for name in array_names {
+		if name.starts_with('Array_fixed_') {
+			continue
+		}
+		elem := name['Array_'.len..]
+		if elem.len > 3 && elem.ends_with('ptr') {
+			base := elem[..elem.len - 3]
+			if base !in ['void', 'char', 'byte'] && !elem.starts_with('Array_')
+				&& !elem.starts_with('Map_') {
+				g.sb.writeln('typedef ${base}* ${elem};')
+			}
 		}
 	}
 }

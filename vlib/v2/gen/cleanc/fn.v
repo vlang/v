@@ -375,7 +375,19 @@ fn (mut g Gen) collect_fn_signatures() {
 					// params so the signature has correct concrete types.
 					recv_gp := receiver_generic_param_names(stmt)
 					if recv_gp.len > 0 {
-						if bindings := g.get_receiver_generic_bindings(stmt) {
+						all_bindings := g.get_all_receiver_generic_bindings(stmt)
+						if all_bindings.len > 0 {
+							prev_gt := g.active_generic_types.clone()
+							for bi in all_bindings {
+								g.active_generic_types = bi.clone()
+								gfn := g.get_fn_name(stmt)
+								if gfn != '' {
+									g.register_fn_signature(stmt, gfn)
+								}
+							}
+							g.active_generic_types = prev_gt.clone()
+							continue
+						} else if bindings := g.get_receiver_generic_bindings(stmt) {
 							prev_gt := g.active_generic_types.clone()
 							g.active_generic_types = bindings.clone()
 							gfn := g.get_fn_name(stmt)
@@ -603,7 +615,11 @@ fn (mut g Gen) get_receiver_generic_bindings(node ast.FnDecl) ?map[string]types.
 		return none
 	}
 	// Get the receiver's C type name (e.g. json2__LinkedList)
-	recv_c_name := g.expr_type_to_c(node.receiver.typ)
+	mut recv_c_name := g.expr_type_to_c(node.receiver.typ)
+	// Strip pointer suffix — pointer receivers (e.g. &LinkedList[T]) produce "Type*"
+	if recv_c_name.ends_with('*') {
+		recv_c_name = recv_c_name.all_before_last('*')
+	}
 	if recv_c_name in g.generic_struct_bindings {
 		return g.generic_struct_bindings[recv_c_name]
 	}
@@ -616,6 +632,47 @@ fn (mut g Gen) get_receiver_generic_bindings(node ast.FnDecl) ?map[string]types.
 		}
 	}
 	return none
+}
+
+// get_all_receiver_generic_bindings returns ALL concrete type binding sets for a method
+// on a generic struct (for multi-instantiation, e.g. LinkedList[ValueInfo] AND LinkedList[StructFieldInfo]).
+fn (mut g Gen) get_all_receiver_generic_bindings(node ast.FnDecl) []map[string]types.Type {
+	if !node.is_method {
+		return []
+	}
+	mut recv_c_name := g.expr_type_to_c(node.receiver.typ)
+	// Strip pointer suffix — pointer receivers (e.g. &LinkedList[T]) produce "Type*"
+	if recv_c_name.ends_with('*') {
+		recv_c_name = recv_c_name.all_before_last('*')
+	}
+	mut struct_name := recv_c_name
+	if !struct_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+		&& g.cur_module != 'builtin' {
+		struct_name = '${g.cur_module}__${recv_c_name}'
+	}
+	// Check if there are multiple instances
+	if instances := g.generic_struct_instances[struct_name] {
+		if instances.len > 1 {
+			mut all_bindings := []map[string]types.Type{cap: instances.len}
+			for inst in instances {
+				all_bindings << inst.bindings
+			}
+			return all_bindings
+		}
+	}
+	// Also check without module prefix
+	if struct_name != recv_c_name {
+		if instances := g.generic_struct_instances[recv_c_name] {
+			if instances.len > 1 {
+				mut all_bindings := []map[string]types.Type{cap: instances.len}
+				for inst in instances {
+					all_bindings << inst.bindings
+				}
+				return all_bindings
+			}
+		}
+	}
+	return []
 }
 
 fn (mut g Gen) specialized_fn_name(node ast.FnDecl, generic_types map[string]types.Type) string {
@@ -646,6 +703,54 @@ fn (g &Gen) generic_key_matches_decl(node ast.FnDecl, key string) bool {
 	return key == node.name || key.starts_with('${node.name}[') || key.contains('.${node.name}[')
 }
 
+// discover_comptime_generic_specs pre-scans generic functions that use comptime
+// `$for field in T.fields` with recursive generic calls (e.g., decode_value, encode_value).
+// For each existing specialization T=SomeStruct, it discovers the struct's field types
+// and registers additional specializations (e.g., T=string) so function bodies get emitted.
+fn (mut g Gen) discover_comptime_generic_specs() {
+	if g.env == unsafe { nil } {
+		return
+	}
+	// For each generic function specialization where T is a struct,
+	// discover field types and register additional specializations
+	// so that comptime $for field in T.fields { decode_value(field) }
+	// can call decode_value_T_<field_type>.
+	for key, spec_list in g.env.generic_types {
+		for spec in spec_list {
+			for param_name, concrete_type in spec {
+					if concrete_type is types.Struct {
+					struct_type := concrete_type as types.Struct
+					if struct_type.fields.len == 0 {
+						continue
+					}
+					mut seen_types := map[string]bool{}
+					// Mark existing specs as seen to avoid duplicates
+					for existing_spec in spec_list {
+						if existing_t := existing_spec[param_name] {
+							seen_types[existing_t.name()] = true
+						}
+					}
+					for already in g.late_generic_specs[key] {
+						if already_t := already[param_name] {
+							seen_types[already_t.name()] = true
+						}
+					}
+					for field in struct_type.fields {
+						field_type_name := field.typ.name()
+						if field_type_name in seen_types {
+							continue
+						}
+						seen_types[field_type_name] = true
+						g.late_generic_specs[key] << {
+							param_name: field.typ
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // build_generic_spec_index precomputes a reverse index from function names
 // to matching keys in env.generic_types. This avoids O(n*m) iteration
 // in generic_fn_specializations (called per generic fn per file).
@@ -653,7 +758,15 @@ fn (mut g Gen) build_generic_spec_index() {
 	if g.env == unsafe { nil } {
 		return
 	}
+	// Index both env.generic_types and late_generic_specs keys
+	mut all_keys := map[string]bool{}
 	for key, _ in g.env.generic_types {
+		all_keys[key] = true
+	}
+	for key, _ in g.late_generic_specs {
+		all_keys[key] = true
+	}
+	for key, _ in all_keys {
 		// Extract the base function name from the key.
 		// Keys can be: "fn_name", "fn_name[T]", "module.fn_name[T]"
 		mut fn_name := key
@@ -723,8 +836,12 @@ fn (mut g Gen) generic_fn_specializations(node ast.FnDecl) []GenericFnSpecializa
 		if !g.generic_key_matches_decl(node, key) {
 			continue
 		}
-		generic_maps := g.env.generic_types[key]
-		for generic_types in generic_maps {
+		// Merge env specs and late-discovered comptime specs for this key
+		mut all_maps := g.env.generic_types[key].clone()
+		for late_spec in g.late_generic_specs[key] {
+			all_maps << late_spec
+		}
+		for generic_types in all_maps {
 			mut skip_spec := false
 			for param_name in generic_params {
 				concrete := generic_types[param_name] or {
@@ -776,6 +893,16 @@ fn (mut g Gen) generic_fn_specializations(node ast.FnDecl) []GenericFnSpecializa
 		for _, generic_maps in g.env.generic_types {
 			for generic_types in generic_maps {
 				concrete := generic_types[param_name] or { continue }
+				if concrete.name() == param_name || type_contains_generic_placeholder(concrete) {
+					continue
+				}
+				fallback_types[concrete.name()] = concrete
+			}
+		}
+		// Also include late-discovered comptime specs
+		for _, late_maps in g.late_generic_specs {
+			for late_spec in late_maps {
+				concrete := late_spec[param_name] or { continue }
 				if concrete.name() == param_name || type_contains_generic_placeholder(concrete) {
 					continue
 				}
@@ -1267,7 +1394,8 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			return
 		}
 		prev_generic_types := g.active_generic_types.clone()
-		for spec in g.generic_fn_specializations(*node) {
+		specs := g.generic_fn_specializations(*node)
+		for spec in specs {
 			g.active_generic_types = spec.generic_types.clone()
 			g.gen_fn_decl_with_name_ptr(node, spec.name)
 		}
@@ -1281,7 +1409,19 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 	// of the default fallback (f64).
 	recv_generic_params := receiver_generic_param_names(*node)
 	if recv_generic_params.len > 0 {
-		if bindings := g.get_receiver_generic_bindings(*node) {
+		all_bindings := g.get_all_receiver_generic_bindings(*node)
+		if all_bindings.len > 0 {
+			prev_generic_types := g.active_generic_types.clone()
+			for bi in all_bindings {
+				g.active_generic_types = bi.clone()
+				fn_name := g.get_fn_name(*node)
+				if fn_name != '' {
+					g.gen_fn_decl_with_name_ptr(node, fn_name)
+				}
+			}
+			g.active_generic_types = prev_generic_types.clone()
+			return
+		} else if bindings := g.get_receiver_generic_bindings(*node) {
 			prev_generic_types := g.active_generic_types.clone()
 			g.active_generic_types = bindings.clone()
 			fn_name := g.get_fn_name(*node)
@@ -2298,6 +2438,22 @@ fn (mut g Gen) should_auto_deref(arg ast.Expr) bool {
 
 fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
+	// Sum type variable narrowed via `is` check, passed to a function expecting the variant type.
+	// Only extract when the parameter type matches the narrowed type (not the original sum type).
+	if base_arg is ast.Ident {
+		if param_types := g.fn_param_types[fn_name] {
+			if idx < param_types.len {
+				param_type := param_types[idx]
+				decl_type := g.get_local_var_c_type(base_arg.name) or { '' }
+				// Only apply when param type differs from declared type (the sum type)
+				if decl_type != '' && param_type != decl_type && param_type != decl_type + '*' {
+					if g.gen_sum_narrowed_ident(base_arg) {
+						return
+					}
+				}
+			}
+		}
+	}
 	if fn_name in ['ui__EventMngr__add_receiver', 'ui__EventMngr__rm_receiver'] && idx == 1 {
 		if g.gen_interface_cast('ui__Widget', base_arg) {
 			return
@@ -2356,8 +2512,26 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 						}
 					}
 				}
-				g.sb.write_string('&')
+				// Generate inner code first to detect rvalue patterns
+				// (null-guarded ternaries from smartcast produce rvalues in C)
+				saved_sb2 := g.sb
+				g.sb = strings.new_builder(256)
 				g.expr(base_arg)
+				arg_code := g.sb.str()
+				g.sb = saved_sb2
+				if arg_code.contains('){0})') {
+					// Rvalue from null-guard — use temp variable
+					arg_type := g.get_expr_type(base_arg)
+					if arg_type != '' && arg_type != 'int' && arg_type != 'void' {
+						tmp_name := '_addr_t${g.tmp_counter}'
+						g.tmp_counter++
+						g.sb.write_string('({ ${arg_type} ${tmp_name} = ${arg_code}; &${tmp_name}; })')
+					} else {
+						g.sb.write_string('&${arg_code}')
+					}
+				} else {
+					g.sb.write_string('&${arg_code}')
+				}
 				return
 			}
 			if want_ptr && !got_ptr && !g.can_take_address(base_arg) {
@@ -3124,6 +3298,24 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	for i in 0 .. args.len {
 		_ = g.get_expr_type(args[i])
 	}
+	// Intercept comptime field.attrs.contains("x") calls
+	if g.comptime_field_var != '' && lhs is ast.SelectorExpr {
+		if lhs.rhs.name == 'contains' && lhs.lhs is ast.SelectorExpr {
+			inner := lhs.lhs as ast.SelectorExpr
+			if inner.lhs is ast.Ident && inner.lhs.name == g.comptime_field_var
+				&& inner.rhs.name == 'attrs' {
+				if args.len == 1 && args[0] is ast.BasicLiteral {
+					lit := args[0] as ast.BasicLiteral
+					attr_name := strip_literal_quotes(lit.value)
+					result := attr_name in g.comptime_field_attrs
+					g.sb.write_string(if result { 'true' } else { 'false' })
+					return
+				}
+				g.sb.write_string('false')
+				return
+			}
+		}
+	}
 	if lhs is ast.SelectorExpr {
 		mut receiver_type := g.get_expr_type(lhs.lhs)
 		if (receiver_type == '' || receiver_type == 'int') && lhs.lhs is ast.SelectorExpr {
@@ -3566,6 +3758,41 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 					return
 				}
 			}
+			// Last resort: in generic method bodies, the receiver may be a generic type T.
+			// Use active_generic_types to resolve the concrete type and find the method.
+			if g.active_generic_types.len > 0 && lhs.lhs is ast.SelectorExpr {
+				// Try to get the specialized type of lhs.lhs (e.g. current.value → StructFieldInfo)
+				specialized_recv := g.resolve_generic_struct_field_name(lhs.lhs.lhs)
+				if specialized_recv != '' {
+					field_name := lhs.lhs.rhs.name
+					if field_type := g.lookup_struct_field_type_by_name(specialized_recv,
+						field_name)
+					{
+						concrete_type := field_type.trim_right('*')
+						method_name := lhs.rhs.name
+						if concrete_method := g.resolve_method_on_concrete_type(concrete_type,
+							method_name)
+						{
+							ptr_params := g.fn_param_is_ptr[concrete_method] or { []bool{} }
+							receiver_as_ptr := ptr_params.len > 0 && ptr_params[0]
+							g.sb.write_string('${concrete_method}(')
+							if receiver_as_ptr {
+								g.sb.write_string('&(')
+								g.expr(lhs.lhs)
+								g.sb.write_string(')')
+							} else {
+								g.expr(lhs.lhs)
+							}
+							for i in 0 .. args.len {
+								g.sb.write_string(', ')
+								g.gen_call_arg(concrete_method, i + 1, args[i])
+							}
+							g.sb.write_string(')')
+							return
+						}
+					}
+				}
+			}
 			g.sb.write_string('((${c_ret}(*)())')
 			g.expr(lhs)
 			g.sb.write_string(')(')
@@ -3585,8 +3812,14 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	mut embedded_receiver_owner := ''
 	call_args << args
 	if lhs is ast.Ident {
+		if lhs.name.contains('get_or_panic') || (lhs.name.contains('get') && lhs.name.contains('ui_TextBox')) {
+			eprintln('[DBG call_expr IDENT] name=${lhs.name}')
+		}
 		name = sanitize_fn_ident(lhs.name)
 	} else if lhs is ast.SelectorExpr {
+		if lhs.rhs.name.contains('get_or_panic') || lhs.rhs.name.contains('get_T_') {
+			eprintln('[DBG call_expr SEL] rhs.name=${lhs.rhs.name} lhs.lhs=${lhs.lhs.name()}')
+		}
 		if lhs.rhs.name in ['hash_fn', 'key_eq_fn', 'clone_fn', 'free_fn'] {
 			base_type := g.method_receiver_base_type(lhs.lhs)
 			if base_type == 'map' || base_type.starts_with('Map_') {

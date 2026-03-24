@@ -3799,6 +3799,10 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		Pointer {
 			if arg_type is Pointer {
 				c.infer_generic_type(param_type.base_type, arg_type.base_type, mut type_map)!
+			} else {
+				// For `mut` params (e.g., `mut val T` → Pointer(&T)), the argument
+				// is passed by reference implicitly, so arg_type is the value type.
+				c.infer_generic_type(param_type.base_type, arg_type, mut type_map)!
 			}
 		}
 		ResultType {
@@ -3930,7 +3934,6 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	if mut fn_ is FnType {
 		mut generic_type_map := map[string]Type{}
 		if fn_.generic_params.len > 0 {
-			C.printf(c'CHECKER GENERIC CALL: %s generic_params=%d\n', expr.lhs.name().str, fn_.generic_params.len)
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
 				// panic('GOT GENERIC CALL')
@@ -3952,18 +3955,13 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// TODO: move above (to be done globally)
 				// once error is fixed
 				mut arg_types := []Type{}
-				C.printf(c'CHECKER INFER GENERIC: %s args=%d params=%d gp=%s\n', expr.lhs.name().str, expr.args.len, fn_.params.len, fn_.generic_params.str())
 				for i, arg in expr.args {
-					C.printf(c'  INFER LOOP i=%d\n', i)
-					C.fflush(C.stdout)
 					if i >= fn_.params.len {
 						break
 					}
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
 					arg_types << arg_type
-					C.printf(c'  INFER arg[%d]: param.typ=%s(%s) arg_type=%s(%s)\n', i, param.typ.type_name().str, param.typ.name().str, arg_type.type_name().str, arg_type.name().str)
-
 					c.infer_generic_type(param.typ, arg_type, mut generic_type_map) or {
 						c.error_with_pos(err.msg(), expr.pos)
 					}
@@ -3985,11 +3983,9 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// 	}
 			// }
 			// dump(generic_type_map)
-			C.printf(c'CHECKER generic_type_map.len=%d for %s\n', generic_type_map.len, expr.lhs.name().str)
 			if generic_type_map.len > 0 {
 				fn_.generic_types << generic_type_map
 				lhs_name := lhs_expr.name()
-				C.printf(c'CHECKER registering generic types for lhs_name=%s\n', lhs_name.str)
 				if lhs_name !in c.env.generic_types {
 					empty_generic_types := []map[string]Type{}
 					c.env.generic_types[lhs_name] = empty_generic_types
@@ -4291,12 +4287,43 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			})
 		}
 
+		// typeof, sizeof, isreftype used as identifiers (e.g. typeof[T]())
+		// are builtin keywords handled by the parser, transformer, and backend.
+		// Return a FnType returning a struct with .name (string) field so that
+		// typeof[T]().name type-checks as a string expression.
+		if ident.name in ['typeof', 'sizeof', 'isreftype'] {
+			return Type(FnType{
+				return_type: Type(Struct{
+					name: '__typeof_result'
+					fields: [Field{
+						name: 'name'
+						typ:  Type(string_)
+					}]
+				})
+			})
+		}
+
 		// c.scope.print(false)
 		// c.scope.print(true)
 		c.error_with_pos('unknown ident `${ident.name} - ${ident.pos}`', ident.pos)
 		return Type(void_)
 	}
 	c.log('ident: ${ident.name} - ${obj.typ().name()}')
+	// If the scope resolved to a generic NamedType (e.g., T), check if we have
+	// a concrete substitution in cur_generic_types (e.g., T=Slack).
+	// This is needed so that inner generic calls can infer types properly.
+	if c.env.cur_generic_types.len > 0 {
+		obj_name := obj.typ().name()
+		for generic_types in c.env.cur_generic_types {
+			if generic_type := generic_types[obj_name] {
+				resolved_obj := object_from_type(generic_type)
+				if ident.pos.is_valid() {
+					c.env.set_expr_type(ident.pos.id, generic_type)
+				}
+				return resolved_obj
+			}
+		}
+	}
 	// Store the ident type in env so the transformer can look it up by pos.id.
 	// c.ident() is called from places like selector_expr() that bypass c.expr(),
 	// so without this the lhs Ident wouldn't get stored.
@@ -4334,6 +4361,11 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				return field_or_method_type
 			}
 		}
+	}
+
+	// Comptime expression: T.name where T is a generic type parameter → string
+	if expr.lhs is ast.Ident && expr.lhs.name in c.generic_params && expr.rhs.name == 'name' {
+		return string_
 	}
 
 	if expr.lhs is ast.Ident {

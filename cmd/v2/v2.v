@@ -245,10 +245,7 @@ fn run_test_self() {
 			eprintln('  ${f}')
 		}
 	}
-	if failed > 0 {
-		exit(1)
-	}
-
+	// Always run the self-compilation chain, even when some tests fail.
 	// Self-compilation chain: v2 -> v3 -> v4 -> v5
 	eprintln('')
 	eprintln('---- v2 self-compilation chain ----')
@@ -308,6 +305,11 @@ fn run_test_self() {
 
 	total_elapsed := time.since(t0)
 	eprintln('')
+	if failed > 0 {
+		eprintln('=== SELF-COMPILATION OK, but ${failed} test(s) failed ===')
+		eprintln('Total time: ${total_elapsed}')
+		exit(1)
+	}
 	eprintln('=== SELF-COMPILATION TEST PASSED ===')
 	eprintln('Total time: ${total_elapsed}')
 }

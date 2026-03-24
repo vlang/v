@@ -4,7 +4,9 @@
 
 module cleanc
 
+import os
 import v2.ast
+import v2.types
 
 fn (mut g Gen) set_file_module(file ast.File) {
 	g.cur_file_name = file.name
@@ -19,7 +21,15 @@ fn (mut g Gen) set_file_module(file ast.File) {
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
+	if g.cur_fn_name == 'decode_value' && stmts.len > 0 {
+		C.fprintf(C.stderr, c'[gen_stmts] cur_fn=%s stmts.len=%d\n', g.cur_fn_name.str,
+			stmts.len)
+	}
 	for i in 0 .. stmts.len {
+		if g.cur_fn_name == 'decode_value' {
+			valid := stmt_has_valid_data(stmts[i])
+			C.fprintf(C.stderr, c'[gen_stmts] stmt[%d] valid=%d\n', i, if valid { 1 } else { 0 })
+		}
 		g.gen_stmt(stmts[i])
 	}
 }
@@ -36,6 +46,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.ExprStmt {
+			if g.cur_fn_name == 'decode_value' {
+				is_comptime := node.expr is ast.ComptimeExpr
+				is_if := node.expr is ast.IfExpr
+				is_call := node.expr is ast.CallExpr
+				is_ident := node.expr is ast.Ident
+				C.fprintf(C.stderr, c'[gen_stmt/ExprStmt] valid=%d comptime=%d if=%d call=%d ident=%d\n',
+					if expr_has_valid_data(node.expr) { 1 } else { 0 },
+					if is_comptime { 1 } else { 0 },
+					if is_if { 1 } else { 0 },
+					if is_call { 1 } else { 0 },
+					if is_ident { 1 } else { 0 })
+			}
 			if !expr_has_valid_data(node.expr) {
 				return
 			}
@@ -55,6 +77,13 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln('}')
 				}
 				return
+			}
+			if node.expr is ast.ComptimeExpr {
+				comptime_expr := node.expr as ast.ComptimeExpr
+				if comptime_expr.expr is ast.IfExpr {
+					g.gen_comptime_if_stmt(comptime_expr.expr as ast.IfExpr)
+					return
+				}
 			}
 			if node.expr is ast.IfExpr {
 				g.write_indent()
@@ -400,7 +429,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			panic('bug in v2 compiler: AssertStmt should have been lowered in v2.transformer')
 		}
 		ast.ComptimeStmt {
-			panic('bug in v2 compiler: ComptimeStmt should have been handled in v2.transformer')
+			g.gen_comptime_stmt(node)
 		}
 		ast.BlockStmt {
 			for bs in node.stmts {
@@ -422,4 +451,120 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		ast.EmptyStmt {}
 		// else {}
 	}
+}
+
+fn (mut g Gen) gen_comptime_stmt(node ast.ComptimeStmt) {
+	if os.getenv('V2_DEBUG_COMPTIME') != '' {
+		eprintln('[gen_comptime_stmt] fn=${g.cur_fn_name}')
+	}
+	inner := node.stmt
+	if inner is ast.ForStmt {
+		g.gen_comptime_for(inner)
+		return
+	}
+	if inner is ast.ExprStmt {
+		if inner.expr is ast.ComptimeExpr {
+			if inner.expr.expr is ast.IfExpr {
+				g.gen_comptime_if_stmt(inner.expr.expr)
+				return
+			}
+		}
+		g.write_indent()
+		g.expr(inner.expr)
+		g.sb.writeln(';')
+		return
+	}
+	g.write_indent()
+	g.sb.writeln('/* [TODO] ComptimeStmt */')
+}
+
+fn (mut g Gen) gen_comptime_if_stmt(node ast.IfExpr) {
+	result := g.eval_comptime_cond(node.cond)
+	if os.getenv('V2_DEBUG_COMPTIME') != '' {
+		eprintln('[comptime_if_stmt] cond=${node.cond.name()} result=${result} fn=${g.cur_fn_name}')
+	}
+	if result {
+		g.gen_stmts(node.stmts)
+		return
+	}
+	if node.else_expr is ast.IfExpr {
+		else_if := node.else_expr as ast.IfExpr
+		if else_if.cond is ast.EmptyExpr {
+			g.gen_stmts(else_if.stmts)
+		} else {
+			g.gen_comptime_if_stmt(else_if)
+		}
+	}
+}
+
+fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
+	// Extract ForInStmt from the ForStmt's init field
+	if node.init !is ast.ForInStmt {
+		g.write_indent()
+		g.sb.writeln('/* [TODO] ComptimeFor non-for-in */')
+		return
+	}
+	for_in := node.init as ast.ForInStmt
+	// The expression should be T.fields (a SelectorExpr)
+	if for_in.expr !is ast.SelectorExpr {
+		g.write_indent()
+		g.sb.writeln('/* [TODO] ComptimeFor non-selector */')
+		return
+	}
+	sel := for_in.expr as ast.SelectorExpr
+	kind := sel.rhs.name
+	if kind != 'fields' {
+		g.write_indent()
+		g.sb.writeln('/* [TODO] ComptimeFor ${kind} */')
+		return
+	}
+	type_name := sel.lhs.name()
+	concrete := g.active_generic_types[type_name] or {
+		g.write_indent()
+		g.sb.writeln('/* [TODO] ComptimeFor unknown type ${type_name} */')
+		return
+	}
+	if concrete !is types.Struct {
+		g.write_indent()
+		g.sb.writeln('/* ComptimeFor: ${type_name} is not a struct */')
+		return
+	}
+	struct_type := concrete as types.Struct
+	field_var := for_in.value.name()
+	// Save comptime state
+	prev_field_var := g.comptime_field_var
+	prev_field_name := g.comptime_field_name
+	prev_field_type := g.comptime_field_type
+	prev_field_raw_type := g.comptime_field_raw_type
+	prev_field_attrs := g.comptime_field_attrs
+	prev_field_idx := g.comptime_field_idx
+	g.comptime_field_var = field_var
+	g.write_indent()
+	g.sb.writeln('{ /* comptime for ${field_var} in ${type_name}.fields */')
+	g.indent++
+	for i, field in struct_type.fields {
+		g.comptime_field_name = field.name
+		g.comptime_field_type = g.types_type_to_c(field.typ)
+		g.comptime_field_raw_type = field.typ
+		g.comptime_field_attrs = []
+		g.comptime_field_idx = i
+		g.write_indent()
+		g.sb.writeln('{ /* field ${i}: ${field.name} */')
+		g.indent++
+		// Use ForStmt.stmts for the loop body
+		g.gen_stmts(node.stmts)
+		g.indent--
+		g.write_indent()
+		g.sb.writeln('}')
+	}
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+	// Restore comptime state
+	g.comptime_field_var = prev_field_var
+	g.comptime_field_name = prev_field_name
+	g.comptime_field_type = prev_field_type
+	g.comptime_field_raw_type = prev_field_raw_type
+	g.comptime_field_attrs = prev_field_attrs
+	g.comptime_field_idx = prev_field_idx
 }

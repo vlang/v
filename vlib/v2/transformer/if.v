@@ -1065,6 +1065,43 @@ fn (mut t Transformer) resolve_comptime_if_stmts(node ast.IfExpr) []ast.Stmt {
 	return []
 }
 
+// can_eval_comptime_cond returns true if the transformer can evaluate this
+// comptime condition. Returns false for conditions involving generic type
+// checks (key_is/not_is) that need to be resolved by the backend.
+fn (t &Transformer) can_eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident { return true }
+		ast.PrefixExpr { return t.can_eval_comptime_cond(cond.expr) }
+		ast.InfixExpr {
+			if cond.op == .key_is || cond.op == .not_is {
+				return false
+			}
+			return t.can_eval_comptime_cond(cond.lhs) && t.can_eval_comptime_cond(cond.rhs)
+		}
+		ast.PostfixExpr { return true }
+		ast.ParenExpr { return t.can_eval_comptime_cond(cond.expr) }
+		else { return false }
+	}
+}
+
+// transform_comptime_if_bodies recursively transforms the body stmts of each
+// branch in a comptime $if, without evaluating the condition. This is used when
+// the condition can't be evaluated at transform time (e.g., generic type checks).
+fn (mut t Transformer) transform_comptime_if_bodies(node ast.IfExpr) ast.IfExpr {
+	transformed_stmts := t.transform_stmts(node.stmts)
+	mut transformed_else := node.else_expr
+	if node.else_expr is ast.IfExpr {
+		else_if := node.else_expr as ast.IfExpr
+		transformed_else_if := t.transform_comptime_if_bodies(else_if)
+		transformed_else = ast.Expr(transformed_else_if)
+	}
+	return ast.IfExpr{
+		cond:      node.cond
+		stmts:     transformed_stmts
+		else_expr: transformed_else
+	}
+}
+
 // eval_comptime_cond evaluates a compile-time condition expression
 fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 	match cond {
