@@ -2005,26 +2005,38 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		return m
 	}
 	if generic_inst_parent_idx != 0 {
-		parent_sym := table.sym(new_type(generic_inst_parent_idx))
-		if m := parent_sym.find_method(name) {
-			if generic_names.len == concrete_types.len && concrete_types.len > 0 {
-				return specialize_method_with_concrete_types(m, generic_names, concrete_types)
+		mut psym := table.sym(new_type(generic_inst_parent_idx))
+		for {
+			if m := psym.find_method(name) {
+				if generic_names.len == concrete_types.len && concrete_types.len > 0 {
+					return specialize_method_with_concrete_types(m, generic_names, concrete_types)
+				}
+				return m
 			}
-			return m
+			if psym.parent_idx == 0 {
+				break
+			}
+			psym = table.type_symbols[psym.parent_idx]
 		}
 	}
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
-				parent_sym := table.sym(t.info.parent_type)
-				if x := parent_sym.find_method(name) {
-					match parent_sym.info {
-						Struct, Interface, SumType {
-							return specialize_method_with_concrete_types(x, generic_names,
-								concrete_types)
+				mut psym2 := table.sym(t.info.parent_type)
+				for {
+					if x := psym2.find_method(name) {
+						match psym2.info {
+							Struct, Interface, SumType {
+								return specialize_method_with_concrete_types(x, generic_names,
+									concrete_types)
+							}
+							else {}
 						}
-						else {}
 					}
+					if psym2.parent_idx == 0 {
+						break
+					}
+					psym2 = table.type_symbols[psym2.parent_idx]
 				}
 			}
 		}

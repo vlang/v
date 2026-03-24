@@ -5139,9 +5139,27 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				scope := g.file.scope.innermost(node.pos.pos)
 				field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name)
 				if field != unsafe { nil } {
-					nested_unwrap := is_option && field.smartcasts.len > 1
-					is_option_unwrap = is_option && field.smartcasts.len > 0
-						&& field.typ.clear_flag(.option) == field.smartcasts.last()
+					// In generic contexts, the scope's smartcast types may be stale
+					// from a different generic instantiation. Re-resolve from the
+					// actual field type using current concrete types.
+					mut smartcasts := field.smartcasts.clone()
+					resolved_scope_field_typ := if g.cur_fn != unsafe { nil }
+						&& g.cur_concrete_types.len > 0 {
+						g.unwrap_generic(field_typ)
+					} else {
+						field.typ
+					}
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+						&& is_option && smartcasts.len > 0
+						&& !smartcasts.last().has_flag(.generic) {
+						unwrapped_sc := resolved_scope_field_typ.clear_flag(.option)
+						if unwrapped_sc.idx() != smartcasts.last().idx() {
+							smartcasts = [unwrapped_sc]
+						}
+					}
+					nested_unwrap := is_option && smartcasts.len > 1
+					is_option_unwrap = is_option && smartcasts.len > 0
+						&& resolved_scope_field_typ.clear_flag(.option) == smartcasts.last()
 					if field.orig_type.is_ptr() {
 						sum_type_dot = '->'
 					}
@@ -5149,7 +5167,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						g.write('*(')
 						deref_count++
 					}
-					for i, typ in field.smartcasts {
+					for i, typ in smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
 								if is_iface_or_sumtype || (field.orig_type.is_ptr() && g.left_is_opt

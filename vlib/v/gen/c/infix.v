@@ -1295,8 +1295,19 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			resolved_right_type = g.unwrap_generic(right_type)
 		}
 		rhs_is_any_value := elem_sym.kind == .any
-		rhs_is_interface_value := elem_sym.kind == .interface
+		mut rhs_is_interface_value := elem_sym.kind == .interface
 			&& g.table.does_type_implement_interface(resolved_right_type, elem_type)
+		if rhs_is_interface_value {
+			// Don't prevent push_many when the right side is an array with matching
+			// element type (e.g. []Foo << []Foo where Foo is an interface).
+			resolved_right_sym := g.table.final_sym(resolved_right_type)
+			if resolved_right_sym.kind == .array {
+				right_elem := (resolved_right_sym.info as ast.Array).elem_type
+				if right_elem == elem_type {
+					rhs_is_interface_value = false
+				}
+			}
+		}
 		if rhs_is_any_value || rhs_is_interface_value {
 			prevent_push_many = true
 		}

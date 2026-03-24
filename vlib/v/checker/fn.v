@@ -2788,6 +2788,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					if !rec_is_generic && receiver_generics_in_method && rec_concrete_types.len > 0
 						&& concrete_types_len == 0 {
 						node.concrete_types = rec_concrete_types
+					} else if !rec_is_generic && receiver_generics_in_method
+						&& rec_concrete_types.len > 0 && concrete_types_len > 0
+						&& rec_concrete_types.len + concrete_types_len == method_generic_names_len {
+						t_concrete_types := node.concrete_types.clone()
+						node.concrete_types = rec_concrete_types
+						node.concrete_types << t_concrete_types
 					}
 				}
 				else {}

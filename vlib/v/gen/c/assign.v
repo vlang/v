@@ -678,6 +678,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					resolved_val_type = resolved_val_type.clear_option_and_result()
 				}
 				resolved_val_type = g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				// For SelectorExpr with scope smartcast (e.g. `if w.check != none`),
+				// the resolved field type has the option flag, but the smartcast
+				// unwraps it. Clear the option flag in that case.
+				if val is ast.SelectorExpr && resolved_val_type.has_flag(.option) {
+					scope := g.file.scope.innermost(val.pos.pos)
+					field := scope.find_struct_field(val.expr.str(), val.expr_type,
+						val.field_name)
+					if field != unsafe { nil } && field.smartcasts.len > 0 {
+						resolved_val_type = resolved_val_type.clear_flag(.option)
+					}
+				}
 				resolved_val_sym := g.table.final_sym(resolved_val_type)
 				if resolved_val_sym.kind == .array && !resolved_val_type.is_ptr() {
 					resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_sym.array_info().elem_type))

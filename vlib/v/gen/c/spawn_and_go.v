@@ -246,13 +246,31 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 		need_return_ptr := g.pref.os == .windows && wrapper_return_type != ast.void_type
 		for i, arg in expr.args {
-			arg_sym := g.table.sym(arg.typ)
+			mut arg_typ := arg.typ
+			// For AnonFn calls in generic contexts, use the declared parameter
+			// types instead of argument expression types, since the AST arg types
+			// may be stale from a previous generic instantiation.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				if expr.left is ast.AnonFn {
+					anon := expr.left as ast.AnonFn
+					f := anon.decl
+					if i < f.params.len {
+						arg_typ = g.unwrap_generic(f.params[i].typ)
+					}
+				} else {
+					resolved_arg_typ := g.unwrap_generic(arg_typ)
+					if resolved_arg_typ != 0 {
+						arg_typ = resolved_arg_typ
+					}
+				}
+			}
+			arg_sym := g.table.sym(arg_typ)
 			if arg_sym.info is ast.FnType {
-				sig := g.fn_var_signature(arg.typ, arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
+				sig := g.fn_var_signature(arg_typ, arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
 					'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				styp := g.styp(arg.typ)
+				styp := g.styp(arg_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
 		}

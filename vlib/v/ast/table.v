@@ -416,6 +416,17 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 			}
 		}
 		if ts.parent_idx == 0 {
+			// Also try Struct/Interface/SumType parent_type for generic concrete types
+			match ts.info {
+				Struct, Interface, SumType {
+					if ts.info.parent_type != 0 {
+						if method := ts.find_method_with_generic_parent(name) {
+							return method
+						}
+					}
+				}
+				else {}
+			}
 			break
 		}
 		ts = t.type_symbols[ts.parent_idx]
@@ -2988,6 +2999,11 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				has_generic = true
 			}
 			if has_generic {
+				// Clear the name so find_or_register_fn_type registers a new anonymous fn
+				// type with the resolved concrete param/return types, instead of returning
+				// the existing generic fn type entry (matched by name).
+				unwrapped_fn.name = ''
+				unwrapped_fn.generic_names = []
 				idx := t.find_or_register_fn_type(unwrapped_fn, true, false)
 				if idx <= 0 {
 					return typ

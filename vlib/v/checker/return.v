@@ -299,10 +299,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					exprv.pos())
 			}
 		}
-		if exprv is ast.Ident && exprv.obj is ast.Var && exprv.obj.smartcasts.len > 0 {
-			orig_sym := c.table.final_sym(exprv.obj.orig_type)
-			if orig_sym.kind == .interface {
-				continue
+		if exprv is ast.Ident {
+			if exprv.obj is ast.Var && exprv.obj.smartcasts.len > 0 {
+				orig_sym := c.table.final_sym(exprv.obj.orig_type)
+				if orig_sym.kind == .interface {
+					continue
+				}
 			}
 		}
 		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()
