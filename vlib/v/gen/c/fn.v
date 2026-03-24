@@ -2651,8 +2651,19 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 	for i, fn_param in param_fn.func.params {
 		if fn_param.typ.has_flag(.generic) {
 			gt_name := g.table.sym(fn_param.typ).name
+			mut inferred := arg_fn.func.params[i].typ
+			// Strip pointer muls that come from the generic param (e.g. &T -> &int => T=int)
+			if fn_param.typ.nr_muls() > 0 && inferred.nr_muls() > 0 {
+				param_muls := fn_param.typ.nr_muls()
+				arg_muls := inferred.nr_muls()
+				inferred = if arg_muls >= param_muls {
+					inferred.set_nr_muls(arg_muls - param_muls)
+				} else {
+					inferred.set_nr_muls(0)
+				}
+			}
 			g.set_generic_call_concrete_type(generic_names, mut concrete_types, gt_name,
-				arg_fn.func.params[i].typ)
+				inferred)
 		}
 	}
 	if param_fn.func.return_type.has_flag(.generic) {

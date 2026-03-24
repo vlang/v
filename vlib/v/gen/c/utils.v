@@ -441,6 +441,19 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 								}
 							}
 						}
+						// In generic contexts, scope types may be stale from a previous
+						// checker instantiation. If the variable's init expression is a
+						// struct init whose type name matches a generic parameter, re-resolve
+						// using the current concrete types.
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+							&& expr.obj.expr is ast.StructInit {
+							generic_names := g.current_fn_generic_names()
+							struct_init_typ_str := expr.obj.expr.typ_str
+							idx := generic_names.index(struct_init_typ_str)
+							if idx >= 0 && idx < g.cur_concrete_types.len {
+								return g.cur_concrete_types[idx]
+							}
+						}
 						return scope_type
 					}
 				}

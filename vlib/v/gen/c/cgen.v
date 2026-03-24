@@ -4992,7 +4992,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			} else if resolved_scope_type != 0 {
 				if node.expr_type.has_option_or_result()
 					|| g.table.sym(g.unwrap_generic(node.expr_type)).kind in [.interface, .sum_type, .any]
-					|| (selector_ident.obj is ast.Var && selector_ident.obj.smartcasts.len > 0) {
+					|| (selector_ident.obj is ast.Var && selector_ident.obj.smartcasts.len > 0)
+					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& resolved_scope_type != node.expr_type) {
 					lhs_expr_type = resolved_scope_type
 				}
 			} else if selector_ident.obj is ast.Var && (selector_ident.obj.typ.has_flag(.generic)
