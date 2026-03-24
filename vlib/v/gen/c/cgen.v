@@ -1359,8 +1359,18 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 	mut name := before + '_T'
 	for typ in types {
 		normalized_typ := ast.mktyp(typ)
+		mut typ_name := g.styp(normalized_typ.set_nr_muls(0))
+		// Normalize named function types to their anonymous form for consistent naming.
+		// E.g. `neg` (a specific fn) should produce the same name as `fn(int) int`.
+		sym := g.table.sym(normalized_typ)
+		if sym.info is ast.FnType && sym.kind == .function {
+			anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			if anon_cname != typ_name {
+				typ_name = anon_cname
+			}
+		}
 		name += '_' + strings.repeat_string('__ptr__', normalized_typ.nr_muls()) +
-			g.styp(normalized_typ.set_nr_muls(0)).replace(' ', '_')
+			typ_name.replace(' ', '_')
 	}
 	return name
 }
