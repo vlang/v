@@ -139,6 +139,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				node.expr_types << typ
 			}
 		}
+		// Resolve generic array type to concrete when inside generic function
+		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
+			resolved := c.recheck_concrete_type(node.typ)
+			if resolved != node.typ && !resolved.has_flag(.generic) {
+				return resolved
+			}
+		}
 		return node.typ
 	}
 
