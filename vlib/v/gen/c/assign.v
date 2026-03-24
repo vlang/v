@@ -787,7 +787,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			resolved_val_type := g.resolved_expr_type(val, val_type)
 			if resolved_val_type != 0 {
-				val_type = g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				new_val_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				// Preserve option/result flag clearing from earlier unwrap
+				if !val_type.has_flag(.option) && new_val_type.has_flag(.option) {
+					val_type = new_val_type.clear_option_and_result()
+				} else if !val_type.has_flag(.result) && new_val_type.has_flag(.result) {
+					val_type = new_val_type.clear_option_and_result()
+				} else {
+					val_type = new_val_type
+				}
 			}
 		}
 		styp = g.styp(var_type)

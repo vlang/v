@@ -2221,21 +2221,13 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			}
 		}
 	} else if node.is_static_method {
-		if g.cur_fn != unsafe { nil } {
-			_, name := g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
-				g.cur_concrete_types)
-			if func := g.table.find_fn(name) {
-				return if node.or_block.kind == .absent {
-					func.return_type
-				} else {
-					func.return_type.clear_option_and_result()
-				}
-			}
-		}
+		// Use node.return_type which was resolved by the checker, not the template
+		// function's unresolved return type from find_fn
+		ret_type := g.unwrap_generic(g.recheck_concrete_type(node.return_type))
 		return if node.or_block.kind == .absent {
-			node.return_type
+			ret_type
 		} else {
-			node.return_type.clear_option_and_result()
+			ret_type.clear_option_and_result()
 		}
 	} else {
 		mut fn_var_type := ast.void_type

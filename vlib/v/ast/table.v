@@ -3499,6 +3499,12 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					'_T_',
 					' ',
 					'',
+					'&',
+					'__ptr__',
+					'(',
+					'_',
+					')',
+					'_',
 				])
 			}
 		}
