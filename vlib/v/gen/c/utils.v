@@ -108,6 +108,12 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	if resolved_typ := g.table.convert_generic_type(typ, generic_names, concrete_types) {
 		return resolved_typ
 	}
+	mut muttable := unsafe { &ast.Table(g.table) }
+	unwrapped_typ := muttable.unwrap_generic_type_ex(typ, generic_names, concrete_types,
+		true)
+	if unwrapped_typ != typ {
+		return unwrapped_typ
+	}
 	return typ
 }
 

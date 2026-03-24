@@ -692,7 +692,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		// string & array are also structs but .kind of string/array
-		.struct, .string, .array, .alias {
+		.struct, .string, .array, .alias, .generic_inst {
 			mut info := ast.Struct{}
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as ast.Alias
@@ -714,6 +714,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 								node.pos)
 						}
 					}
+				}
+			} else if type_sym.kind == .generic_inst && type_sym.info is ast.GenericInst {
+				parent_sym := c.table.sym(ast.new_type(type_sym.info.parent_idx))
+				if parent_sym.info is ast.Struct {
+					info = parent_sym.info
 				}
 			} else {
 				info = type_sym.info as ast.Struct
