@@ -1001,8 +1001,10 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	}
 	if existing_symbol.kind == .placeholder {
 		// override placeholder
+		ngname := if typ.ngname != '' { typ.ngname } else { strip_generic_params(typ.name) }
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
+			ngname:     ngname
 			methods:    existing_symbol.methods
 			idx:        existing_idx
 			is_builtin: existing_symbol.is_builtin
@@ -1609,7 +1611,12 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	if expected_generic_types == 0 || concrete_types.len != expected_generic_types {
 		return 0
 	}
-	mut inst_name := parent_sym.ngname + '['
+	base_name := if parent_sym.ngname != '' {
+		parent_sym.ngname
+	} else {
+		strip_generic_params(parent_sym.name)
+	}
+	mut inst_name := base_name + '['
 	mut inst_cname := parent_sym.cname + '_T_'
 	for i, ct in concrete_types {
 		ct_sym := t.sym(ct)

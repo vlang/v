@@ -585,6 +585,27 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			c.error('union `${struct_sym.name}` can have only one field initialised',
 				node.pos)
 		}
+	} else if struct_sym.info is ast.GenericInst {
+		// For generic_inst types (concrete generic structs like Seq[int]),
+		// set up the generic struct init context using the parent's generic types
+		// and the inst's concrete types.
+		parent_sym := c.table.sym(ast.new_type(struct_sym.info.parent_idx))
+		if parent_sym.info is ast.Struct {
+			if parent_sym.info.generic_types.len > 0
+				&& parent_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
+				old_inside_generic_struct_init = c.inside_generic_struct_init
+				old_cur_struct_generic_types = c.cur_struct_generic_types.clone()
+				old_cur_struct_concrete_types = c.cur_struct_concrete_types.clone()
+				c.inside_generic_struct_init = true
+				c.cur_struct_generic_types = parent_sym.info.generic_types.clone()
+				c.cur_struct_concrete_types = struct_sym.info.concrete_types.clone()
+				defer(fn) {
+					c.inside_generic_struct_init = old_inside_generic_struct_init
+					c.cur_struct_generic_types = old_cur_struct_generic_types
+					c.cur_struct_concrete_types = old_cur_struct_concrete_types
+				}
+			}
+		}
 	} else if struct_sym.info is ast.FnType {
 		c.error('functions must be defined, not instantiated like structs', node.pos)
 	}

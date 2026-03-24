@@ -3624,13 +3624,45 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					}
 				}
 			}
-			if expr_type_sym.kind == .sum_type {
+			is_sumtype := expr_type_sym.kind == .sum_type
+				|| (expr_type_sym.kind == .generic_inst && expr_type_sym.info is ast.GenericInst
+				&& c.table.type_symbols[expr_type_sym.info.parent_idx].kind == .sum_type)
+			if is_sumtype {
 				c.ensure_type_exists(node.typ, node.pos)
-				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
+				unwrapped_expr_type := c.unwrap_generic(node.expr_type)
+				unwrapped_node_typ := c.unwrap_generic(node.typ)
+				if !c.table.sumtype_has_variant(unwrapped_expr_type, unwrapped_node_typ,
 					true) {
-					addr := '&'.repeat(node.typ.nr_muls())
-					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
-						node.pos)
+					// For generic_inst sumtypes, also check using the parent's variant info
+					mut found := false
+					ue_sym := c.table.sym(unwrapped_expr_type)
+					if ue_sym.kind == .generic_inst && ue_sym.info is ast.GenericInst {
+						parent_sym := c.table.type_symbols[ue_sym.info.parent_idx]
+						if parent_sym.kind == .sum_type && parent_sym.info is ast.SumType {
+							// Check if the variant type name matches any resolved variant
+							variant_sym := c.table.sym(unwrapped_node_typ)
+							for v in parent_sym.info.variants {
+								v_sym := c.table.sym(v)
+								if v_sym.name == variant_sym.name {
+									found = true
+									break
+								}
+								// Also check resolved generic variants
+								if v.has_flag(.generic) {
+									resolved_v := c.unwrap_generic(v)
+									if resolved_v.idx() == unwrapped_node_typ.idx() {
+										found = true
+										break
+									}
+								}
+							}
+						}
+					}
+					if !found {
+						addr := '&'.repeat(node.typ.nr_muls())
+						c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
+							node.pos)
+					}
 				}
 			} else if expr_type_sym.kind == .interface {
 				c.ensure_type_exists(node.typ, node.pos)
@@ -3638,11 +3670,15 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					c.type_implements(node.typ, node.expr_type, node.pos)
 				}
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
-				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
-				if type_sym.kind == .sum_type {
-					s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
+				// Also compare with unwrapped generic types to avoid false positives
+				unwrapped_node_typ := c.unwrap_generic(node.typ)
+				if node.expr_type.clear_flag(.option) != unwrapped_node_typ.clear_flag(.option) {
+					mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
+					if type_sym.kind == .sum_type {
+						s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
+					}
+					c.error(s, node.pos)
 				}
-				c.error(s, node.pos)
 			}
 			return node.typ
 		}
