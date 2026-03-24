@@ -1608,6 +1608,10 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	mut inst_cname := parent_sym.cname + '_T_'
 	for i, ct in concrete_types {
 		ct_sym := t.sym(ct)
+		if ct.nr_muls() > 0 {
+			inst_name += '&'.repeat(ct.nr_muls())
+			inst_cname += '__ptr__'.repeat(ct.nr_muls())
+		}
 		inst_name += ct_sym.name
 		inst_cname += ct_sym.scoped_cname()
 		if i < concrete_types.len - 1 {
@@ -2242,6 +2246,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						}
 						if ct.is_ptr() {
 							nrt += '&'.repeat(ct.nr_muls())
+							cnrt += '__ptr__'.repeat(ct.nr_muls())
 						}
 						nrt += gts.name
 						rnrt += gts.name
@@ -3337,6 +3342,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							...parent_info
 							is_generic:     false
 							concrete_types: info.concrete_types.clone()
+							scoped_name:    sym.name
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind

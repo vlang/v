@@ -722,10 +722,22 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			if concrete_types.any(it.has_flag(.generic)) {
 				continue
 			}
+			// Skip incomplete concrete type sets (e.g. only receiver generics
+			// resolved but method generics missing)
+			if concrete_types.len != effective_generic_names.len {
+				continue
+			}
 			g.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
 		g.cur_concrete_types = []
+		return
+	}
+	// For methods with their own generics (e.g. fn (c Calc[S]) next[T](input T))
+	// where cur_concrete_types only contains receiver generics (S=TypeA),
+	// skip if cur_concrete_types doesn't match the expected number of generic names.
+	if effective_generic_names.len > 0 && g.cur_concrete_types.len > 0
+		&& g.cur_concrete_types.len != effective_generic_names.len {
 		return
 	}
 	cur_fn_save := g.cur_fn
@@ -3128,6 +3140,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
 			if resolved_left_type != 0 {
 				left_type = resolved_left_type
+			}
+		}
+		ast.SelectorExpr {
+			// In generic contexts, the selector's type may be stale from a previous
+			// instantiation. Re-resolve through the struct field type hierarchy.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved := g.resolved_expr_type(node.left, node.left_type)
+				if resolved != 0 && resolved != left_type {
+					left_type = g.unwrap_generic(resolved)
+				}
 			}
 		}
 		else {}
