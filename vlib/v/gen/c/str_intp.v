@@ -435,10 +435,19 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
-			ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			mut ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			// In generic contexts, comptime type may be stale from a previous
+			// checker instantiation. Prefer resolved_expr_type when available.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_ct := g.resolved_expr_type(expr, ctyp)
+				if resolved_ct != ast.void_type && resolved_ct != 0 {
+					ctyp = g.unwrap_generic(g.recheck_concrete_type(resolved_ct))
+				}
+			}
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_` {
+				if node_.fmts[i] == `_` || (g.cur_fn != unsafe { nil }
+					&& g.cur_concrete_types.len > 0) {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)

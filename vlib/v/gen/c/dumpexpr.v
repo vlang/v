@@ -59,10 +59,18 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				} else {
 					resolved_ident_type := g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 						expr_type))
-					if resolved_ident_type != 0 {
+					if resolved_ident_type != 0 && resolved_ident_type != expr_type {
 						expr_type = resolved_ident_type
 					} else {
-						expr_type = g.unwrap_generic(node.expr.info.typ)
+						// For variables assigned from generic expressions
+						// (e.g. `x := opt_val or { T{} }`), scope types may be
+						// stale. Try resolving through the variable's init expression.
+						re := g.resolved_expr_type(node.expr, expr_type)
+						if re != 0 {
+							expr_type = re
+						} else {
+							expr_type = g.unwrap_generic(node.expr.info.typ)
+						}
 					}
 				}
 				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',

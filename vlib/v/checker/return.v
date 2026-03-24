@@ -286,9 +286,23 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					&& c.array_fixed_has_unresolved_size(exp_final_sym.info) {
 					continue
 				}
+				// In generic functions, scope variable types can be stale from a
+				// different instantiation pass. Skip the error if the original
+				// return type is generic — the cgen resolves types per-instantiation.
+				if c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.return_type.has_flag(.generic)
+					&& c.table.cur_concrete_types.len > 0 {
+					continue
+				}
 
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					exprv.pos())
+			}
+		}
+		if exprv is ast.Ident && exprv.obj is ast.Var && exprv.obj.smartcasts.len > 0 {
+			orig_sym := c.table.final_sym(exprv.obj.orig_type)
+			if orig_sym.kind == .interface {
+				continue
 			}
 		}
 		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()

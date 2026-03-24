@@ -6252,8 +6252,19 @@ fn (mut g Gen) ident(node ast.Ident) {
 	}
 	if node.scope != unsafe { nil } {
 		if scope_var := node.scope.find_var(node.name) {
+			// In generic contexts, node.obj may have correctly re-resolved smartcast
+			// types (with .generic flag), while the scope variable may have stale
+			// concrete types from a different generic instantiation. Preserve the
+			// obj's smartcasts when they contain generic types.
+			obj_smartcasts := resolved_var.smartcasts.clone()
 			resolved_var = *scope_var
 			has_resolved_var = true
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+				&& obj_smartcasts.len > 0
+				&& obj_smartcasts.any(it.has_flag(.generic)
+				|| g.type_has_unresolved_generic_parts(it)) {
+				resolved_var.smartcasts = obj_smartcasts
+			}
 		}
 	}
 	if node.info is ast.IdentVar {

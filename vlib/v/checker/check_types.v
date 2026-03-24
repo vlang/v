@@ -1184,6 +1184,14 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 										&& receiver_generic_names.len == sym.info.concrete_types.len {
 										idx := receiver_generic_names.index(gt_name)
 										typ = sym.info.concrete_types[idx]
+									} else if gt_name in func.generic_names {
+										// Method uses a different generic name than the struct
+										// (e.g. struct Foo[T] with method fn (f Foo[U]) ...)
+										// Map by position in the method's generic names.
+										fn_idx := func.generic_names.index(gt_name)
+										if fn_idx < sym.info.concrete_types.len {
+											typ = sym.info.concrete_types[fn_idx]
+										}
 									}
 								}
 								else {}

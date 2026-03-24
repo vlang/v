@@ -2442,7 +2442,11 @@ fn (mut g Gen) resolved_generic_call_arg_type(arg ast.CallArg) ast.Type {
 			scope_type := g.resolved_scope_var_type(arg.expr)
 			keep_source_generic_type := has_current_generic_type && arg.expr.obj.is_arg
 				&& arg.expr.obj.is_mut && scope_type.is_ptr() && !arg_type.is_ptr()
-			if scope_type != 0 && !keep_source_generic_type
+			// When the generic param type was resolved from cur_concrete_types
+			// and is fully concrete, trust it over potentially stale scope types.
+			skip_scope_override := has_current_generic_type && arg_type != 0
+				&& !arg_type.has_flag(.generic) && !g.type_has_unresolved_generic_parts(arg_type)
+			if scope_type != 0 && !keep_source_generic_type && !skip_scope_override
 				&& (arg_type == 0 || arg_type.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(arg_type)
 				|| has_current_generic_type

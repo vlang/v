@@ -5281,6 +5281,19 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 	} else {
 		target_type
 	}
+	has_generic_parts := c.type_has_unresolved_generic_parts(to_type_)
+		|| to_type_.has_flag(.generic)
+	scope_smartcast_type := if c.table.cur_fn != unsafe { nil }
+		&& c.table.cur_fn.generic_names.len > 0
+		&& has_generic_parts {
+		if sym.kind == .interface && c.table.sym(target_type).kind != .interface {
+			to_type_.ref()
+		} else {
+			to_type_
+		}
+	} else {
+		ast.no_type
+	}
 	match mut expr {
 		ast.SelectorExpr {
 			if expr.expr_type.idx() == 0 {
@@ -5313,7 +5326,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option)
 				|| allow_mut_selector_smartcast {
-				smartcasts << to_type
+				sc_type := if scope_smartcast_type != ast.no_type {
+					scope_smartcast_type
+				} else {
+					to_type
+				}
+				smartcasts << sc_type
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
@@ -5354,7 +5372,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut || is_option_unwrap) && !is_already_casted {
-				smartcasts << to_type
+				sc_type := if scope_smartcast_type != ast.no_type {
+					scope_smartcast_type
+				} else {
+					to_type
+				}
+				smartcasts << sc_type
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
 						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
@@ -5409,7 +5432,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			if var := scope.find_var(expr_name) {
 				smartcasts << var.smartcasts
 			}
-			smartcasts << to_type
+			sc_type := if scope_smartcast_type != ast.no_type {
+				scope_smartcast_type
+			} else {
+				to_type
+			}
+			smartcasts << sc_type
 			scope.register(ast.Var{
 				name:       expr_name
 				typ:        cur_type
@@ -6150,7 +6178,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {
-			typ = value_type
+			typ = c.unwrap_generic(value_type)
 		}
 	}
 	if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {

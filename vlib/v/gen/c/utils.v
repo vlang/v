@@ -420,6 +420,21 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						return g.unwrap_generic(g.recheck_concrete_type(resolved))
 					}
 				}
+				// In generic contexts, if the variable has smartcasts with generic
+				// types (preserved in node.obj), resolve from those instead of
+				// relying on scope types which may be stale from a different
+				// generic instantiation.
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& expr.obj.smartcasts.len > 0
+					&& expr.obj.smartcasts.any(it.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(it)) {
+					obj_smartcast_type := g.exposed_smartcast_type(expr.obj.orig_type,
+						expr.obj.smartcasts.last(), expr.obj.is_mut)
+					resolved_sc := g.unwrap_generic(g.recheck_concrete_type(obj_smartcast_type))
+					if resolved_sc != 0 {
+						return resolved_sc
+					}
+				}
 				scope_type := g.resolved_scope_var_type(expr)
 				if scope_type != 0 && !scope_type.has_flag(.generic)
 					&& !g.type_has_unresolved_generic_parts(scope_type) {
