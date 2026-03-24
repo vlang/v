@@ -1370,6 +1370,21 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					sumtype_name = t.find_sumtype_for_variant(variant_name)
 				}
 
+				// Cross-check: if the variant has an explicit module prefix (e.g. types.FnType)
+				// but the resolved sumtype is from a different module (e.g. ast__Type),
+				// the resolution picked the wrong homonymous sum type. Re-resolve using the
+				// variant's module to find the correct sum type.
+				if variant_module != '' && sumtype_name.contains('__') {
+					st_mod := sumtype_name.all_before_last('__')
+					if st_mod != variant_module {
+						st_short := sumtype_name.all_after_last('__')
+						candidate := '${variant_module}__${st_short}'
+						if t.is_sum_type(candidate) {
+							sumtype_name = candidate
+						}
+					}
+				}
+
 				if sumtype_name != '' {
 					// Find the tag value for this variant
 					variants := t.get_sum_type_variants(sumtype_name)

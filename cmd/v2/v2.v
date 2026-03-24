@@ -245,7 +245,71 @@ fn run_test_self() {
 			eprintln('  ${f}')
 		}
 	}
-	if failed > 0 {
+	// Always run the self-compilation chain, even when some tests fail.
+	// Self-compilation chain: v2 -> v3 -> v4 -> v5
+	eprintln('')
+	eprintln('---- v2 self-compilation chain ----')
+
+	v2_source := os.join_path(v2_dir, 'v2.v')
+	backend := 'cleanc'
+	tmpdir := os.temp_dir()
+	v3_bin := os.join_path(tmpdir, 'v2_self_v3')
+	v4_bin := os.join_path(tmpdir, 'v2_self_v4')
+	v5_bin := os.join_path(tmpdir, 'v2_self_v5')
+
+	steps := [
+		[vexe, v3_bin, 'v2 -> v3'],
+		[v3_bin, v4_bin, 'v3 -> v4'],
+		[v4_bin, v5_bin, 'v4 -> v5'],
+	]
+
+	for step in steps {
+		compiler := step[0]
+		out := step[1]
+		label := step[2]
+		ts := time.now()
+		cmd := '${compiler} -gc none -o ${out} -backend ${backend} "${v2_source}" > /dev/null 2>&1'
+		ret := os.system(cmd)
+		ms := f64(time.since(ts)) / f64(time.millisecond)
+		if ret != 0 || !os.exists(out) {
+			eprintln(' FAIL  ${label}  (${ms:.1} ms)')
+			// Clean up
+			for bin in [v3_bin, v4_bin, v5_bin] {
+				os.rm(bin) or {}
+				os.rm('${bin}.c') or {}
+			}
+			exit(1)
+		}
+		eprintln('OK    ${label}  (${ms:.1} ms)')
+	}
+
+	// Verify that v3 runs and produces expected output
+	result := os.execute('${v3_bin} 2>&1')
+	expected := 'At least 1 .v file expected'
+	if !result.output.contains(expected) {
+		eprintln("FAIL  v3 output check: expected '${expected}', got:")
+		eprintln(result.output)
+		for bin in [v3_bin, v4_bin, v5_bin] {
+			os.rm(bin) or {}
+			os.rm('${bin}.c') or {}
+		}
 		exit(1)
 	}
+	eprintln('OK    v3 output verified')
+
+	// Clean up
+	for bin in [v3_bin, v4_bin, v5_bin] {
+		os.rm(bin) or {}
+		os.rm('${bin}.c') or {}
+	}
+
+	total_elapsed := time.since(t0)
+	eprintln('')
+	if failed > 0 {
+		eprintln('=== SELF-COMPILATION OK, but ${failed} test(s) failed ===')
+		eprintln('Total time: ${total_elapsed}')
+		exit(1)
+	}
+	eprintln('=== SELF-COMPILATION TEST PASSED ===')
+	eprintln('Total time: ${total_elapsed}')
 }

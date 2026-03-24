@@ -912,6 +912,10 @@ fn (t &Transformer) type_expr_to_c_name(typ ast.Expr) string {
 		ast.ModifierExpr {
 			return t.type_expr_to_c_name(typ.expr)
 		}
+		ast.Type {
+			// Handle composite types like []ast.Attribute, [3]int, map[string]int
+			return t.type_variant_name(typ)
+		}
 		else {}
 	}
 	return typ.name().replace('.', '__')
@@ -1220,6 +1224,42 @@ fn (t &Transformer) get_sumtype_name_for_expr(expr ast.Expr) string {
 
 	if type_name != '' && t.is_sum_type(type_name) {
 		return type_name
+	}
+	// If unqualified lookup failed, try the env type for a direct SumType check.
+	// Then search all module scopes for a matching SumType definition.
+	// This handles cross-module types like types.Type being accessed from
+	// another module where the short name isn't in scope.
+	if type_name != '' && !type_name.contains('__') {
+		// Use the variable's actual type object (via scope) to get variant count
+		// for disambiguation when multiple modules define a SumType with the same name.
+		mut var_variant_count := 0
+		if unwrapped_expr is ast.Ident {
+			if raw_type := t.lookup_var_type(unwrapped_expr.name) {
+				if raw_type is types.SumType {
+					var_variant_count = raw_type.variants.len
+				}
+			}
+		}
+		scope_keys := t.cached_scopes.keys()
+		for mod_name in scope_keys {
+			if mod_name in ['main', 'builtin', ''] {
+				continue
+			}
+			scope := t.cached_scopes[mod_name] or { continue }
+			if obj := scope.objects[type_name] {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.SumType {
+						// Disambiguate: if we know the variable's variant count,
+						// match against the definition's variant count.
+						if var_variant_count > 0 && typ.variants.len != var_variant_count {
+							continue
+						}
+						return '${mod_name}__${type_name}'
+					}
+				}
+			}
+		}
 	}
 	// Check if it's a pointer to a sum type (e.g., &Object for a method receiver)
 	if type_name != '' {
