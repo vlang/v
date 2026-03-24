@@ -1974,7 +1974,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
-		if final_param_sym.kind == .interface {
+		if final_param_sym.kind == .interface
+			|| (final_param_sym.kind == .generic_inst && final_param_sym.info is ast.GenericInst
+			&& c.table.type_symbols[final_param_sym.info.parent_idx].kind == .interface) {
 			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
 				if !arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe
 					&& arg_typ_sym.kind != .interface {

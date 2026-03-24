@@ -382,6 +382,16 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			if expr.obj is ast.Var {
 				if g.cur_fn != unsafe { nil } && g.cur_fn.is_method
 					&& expr.name == g.cur_fn.receiver.name {
+					// In generic contexts, prefer resolving from the receiver declaration
+					// since scope types may be stale from a previous checker instantiation
+					if g.cur_concrete_types.len > 0
+						&& (g.cur_fn.receiver.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(g.cur_fn.receiver.typ)) {
+						resolved_receiver_type := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
+						if resolved_receiver_type != 0 {
+							return resolved_receiver_type
+						}
+					}
 					scope_type := g.resolved_scope_var_type(expr)
 					if scope_type != 0 {
 						return scope_type

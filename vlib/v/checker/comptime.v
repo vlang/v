@@ -1552,7 +1552,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 									return is_true, true
 								}
 								else {
-									c.error('definition of `${cond.left}` is unknown at compile time',
+									c.error('definition of `${ast.Expr(cond.left)}` is unknown at compile time',
 										cond.pos)
 									return false, false
 								}

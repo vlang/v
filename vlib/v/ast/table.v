@@ -900,6 +900,11 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
+	if idx == 65535 || typ == invalid_type {
+		// invalid_type is used as a sentinel during generic type resolution;
+		// return a safe placeholder instead of panicking.
+		return invalid_type_symbol
+	}
 	// this should never happen
 	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
@@ -2044,7 +2049,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 			return none
 		}
 		typ := to_types[index]
-		if typ == 0 {
+		if typ == 0 || typ.idx() >= t.type_symbols.len {
 			return none
 		}
 		mut rtyp := typ.derive_add_muls(generic_type)
@@ -2904,6 +2909,11 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 	type_idx := typ.idx()
 	if type_idx == 0 || type_idx >= t.type_symbols.len {
 		return typ
+	}
+	for ct in concrete_types {
+		if ct.idx() == 0 || ct.idx() >= t.type_symbols.len {
+			return typ
+		}
 	}
 	ts := t.type_symbols[type_idx]
 	match ts.info {

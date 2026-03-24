@@ -40,6 +40,11 @@ fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bo
 	if typ == 0 || typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
 		return true
 	}
+	// In generic contexts, always resolve expression types since AST types
+	// may be stale from a previous checker instantiation
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		return true
+	}
 	return match expr {
 		ast.CallExpr, ast.ComptimeSelector, ast.Ident, ast.IndexExpr, ast.InfixExpr {
 			true
@@ -78,7 +83,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .generic_inst, .map, .multi_return, .sum_type, .interface, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {

@@ -240,7 +240,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.pref.skip_unused && got_types[i].has_flag(.generic) {
 					c.table.used_features.comptime_syms[got_type] = true
 				}
-				if exp_type_sym.kind == .interface {
+				if exp_type_sym.kind == .interface
+				|| (exp_type_sym.kind == .generic_inst
+				&& exp_type_sym.info is ast.GenericInst
+				&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface) {
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {
