@@ -920,8 +920,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						init_field.typ = exp_type
 					} else {
 						c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
-							if field_info.typ.has_flag(.generic) || exp_type != field_info.typ {
-								c.error('cannot assign `${c.table.type_to_str(c.unwrap_generic(got_type))}` to struct field `${field_info.name}` with type `${c.table.type_to_str(c.unwrap_generic(exp_type))}`',
+							// For generic types, the same concrete type may have been
+							// registered with different indices through different code
+							// paths. Compare by type string as a fallback.
+							got_unwrapped := c.unwrap_generic(got_type)
+							exp_unwrapped := c.unwrap_generic(exp_type)
+							if c.table.type_to_str(got_unwrapped) == c.table.type_to_str(exp_unwrapped) {
+								// Same concrete type by name, different index - accept
+							} else if field_info.typ.has_flag(.generic) || exp_type != field_info.typ {
+								c.error('cannot assign `${c.table.type_to_str(got_unwrapped)}` to struct field `${field_info.name}` with type `${c.table.type_to_str(exp_unwrapped)}`',
 									init_field.expr.pos())
 							} else {
 								c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
