@@ -4192,22 +4192,23 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	mut print_auto_str := false
-	if is_print && (node.args[0].typ != ast.string_type
+	mut print_arg_typ := if is_print && node.args.len > 0 { node.args[0].typ } else { ast.void_type }
+	// In generic contexts, AST-stored types may be stale from a previous
+	// instantiation. Use resolved_expr_type for Ident expressions.
+	if is_print && node.args.len > 0 && g.cur_fn != unsafe { nil }
+		&& g.cur_concrete_types.len > 0 && node.args[0].expr is ast.Ident {
+		resolved := g.resolved_expr_type(node.args[0].expr, node.args[0].typ)
+		if resolved != 0 {
+			print_arg_typ = resolved
+		}
+	}
+	if is_print && node.args.len > 0 && (print_arg_typ != ast.string_type
 		|| g.comptime.comptime_for_method != unsafe { nil } || node.args[0].ct_expr) {
 		g.inside_interface_deref = true
 		defer(fn) {
 			g.inside_interface_deref = false
 		}
-		mut typ := g.type_resolver.get_type_or_default(node.args[0].expr, node.args[0].typ)
-		// In generic contexts, AST-stored types may be stale from a previous
-		// instantiation. Use resolved_expr_type for Ident expressions.
-		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-			&& node.args[0].expr is ast.Ident {
-			resolved := g.resolved_expr_type(node.args[0].expr, node.args[0].typ)
-			if resolved != 0 {
-				typ = resolved
-			}
-		}
+		mut typ := print_arg_typ
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
