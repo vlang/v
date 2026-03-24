@@ -4118,11 +4118,18 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
+	// When casting to a sumtype, reset expected_type so inner array literals
+	// are typed by their elements, not by the outer context (e.g. []SumType).
+	old_expected_type := c.expected_type
+	if c.table.sym(base_to_type).kind == .sum_type && node.expr is ast.ArrayInit {
+		c.expected_type = ast.void_type
+	}
 	node.expr_type = c.expr(mut node.expr) // type to be casted
 	if c.rewrite_smartcast_generic_wrapper_cast(mut node, to_type) {
 		node.expr_type = c.expr(mut node.expr)
 	}
 	c.inside_integer_literal_cast = old_inside_integer_literal_cast
+	c.expected_type = old_expected_type
 
 	if mut node.expr is ast.ComptimeSelector {
 		node.expr_type = c.type_resolver.get_comptime_selector_type(node.expr, node.expr_type)

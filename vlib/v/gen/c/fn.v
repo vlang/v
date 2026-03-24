@@ -3330,10 +3330,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	if final_left_sym.kind == .array
-		&& (!(left_sym.has_method(method_name)) || use_builtin_array_sort) {
-		if !(method_name == 'get' && receiver_type != 0
-			&& g.table.final_sym(g.unwrap_generic(receiver_type)).kind != .array)
-			&& g.gen_array_method_call(node, left_type, final_left_sym) {
+		&& (!(left_sym.has_method(method_name)) || use_builtin_array_sort || method_name == 'get') {
+		if g.gen_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}
