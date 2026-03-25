@@ -463,28 +463,22 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	mut variant_types := []string{}
 	mut variant_symbols := []ast.TypeSymbol{}
 	mut at_least_one_prim := false
-	mut object_like_variant_count := 0
-	mut object_like_variant_typ := ''
-	mut array_like_variant_count := 0
-	mut array_like_variant_typ := ''
+	mut object_variant_count := 0
+	mut fallback_struct_variant_typ := ''
 	for variant in info.variants {
 		variant_typ := g.styp(variant)
 		variant_types << variant_typ
 		variant_sym := g.table.sym(variant)
 		variant_symbols << variant_sym
-		unaliased_variant := g.table.unaliased_type(variant)
-		unaliased_variant_sym := g.table.sym(unaliased_variant)
-		unaliased_variant_typ := g.styp(unaliased_variant)
+		final_variant_sym := g.table.final_sym(variant)
 		at_least_one_prim = at_least_one_prim || is_js_prim(variant_typ)
 			|| variant_sym.kind == .enum || variant_sym.name == 'time.Time'
-		if !is_js_prim(unaliased_variant_typ) && unaliased_variant_sym.kind != .enum
-			&& unaliased_variant_sym.name != 'time.Time' {
-			if unaliased_variant_sym.kind == .array {
-				array_like_variant_count++
-				array_like_variant_typ = variant_typ
+		if variant_sym.name != 'time.Time' && final_variant_sym.kind in [.struct, .map] {
+			object_variant_count++
+			if object_variant_count == 1 && final_variant_sym.kind == .struct {
+				fallback_struct_variant_typ = variant_typ
 			} else {
-				object_like_variant_count++
-				object_like_variant_typ = variant_typ
+				fallback_struct_variant_typ = ''
 			}
 		}
 		unmangled_variant_name := variant_sym.name.split('.').last()
@@ -600,23 +594,20 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
-		dec.writeln('\t\t}')
-		if object_like_variant_count == 1 || array_like_variant_count == 1 {
-			dec.writeln('\t\telse {')
-			if object_like_variant_count == 1 {
-				dec.writeln('\t\t\tif (cJSON_IsObject(root)) {')
-				g.gen_sumtype_variant_decode(object_like_variant_typ, sym.cname, ret_styp,
-					prefix, is_option, '\t\t\t\t', mut dec)
-				dec.writeln('\t\t\t}')
+		if object_variant_count == 1 && fallback_struct_variant_typ != '' {
+			tmp := g.new_tmp_var()
+			dec.writeln('\t\t} else if (cJSON_IsObject(root)) {')
+			dec.writeln('\t\t\t${result_name}_${fallback_struct_variant_typ} ${tmp} = ${js_dec_name(fallback_struct_variant_typ)}(root);')
+			dec.writeln('\t\t\tif (${tmp}.is_error) {')
+			dec.writeln('\t\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
+			dec.writeln('\t\t\t}')
+			if is_option {
+				dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${fallback_struct_variant_typ}_to_sumtype_${sym.cname}((${fallback_struct_variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
+			} else {
+				dec.writeln('\t\t\t${prefix}res = ${fallback_struct_variant_typ}_to_sumtype_${sym.cname}((${fallback_struct_variant_typ}*)${tmp}.data, false);')
 			}
-			if array_like_variant_count == 1 {
-				dec.writeln('\t\t\tif (cJSON_IsArray(root)) {')
-				g.gen_sumtype_variant_decode(array_like_variant_typ, sym.cname, ret_styp,
-					prefix, is_option, '\t\t\t\t', mut dec)
-				dec.writeln('\t\t\t}')
-			}
-			dec.writeln('\t\t}')
 		}
+		dec.writeln('\t\t}')
 
 		mut number_is_met := false
 		mut string_is_met := false

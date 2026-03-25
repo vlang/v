@@ -31,12 +31,37 @@ fn test_json_decode_with_sumtype() {
 	assert v3.t == Test([true, false])
 }
 
-fn test_json_decode_with_sumtype_single_struct_variant() {
-	text := json.decode(GetBlockResponse, '{"result":"hello"}')!
-	assert text.result == GetBlockResult('hello')
+struct ComplexValue {
+	foo string
+}
 
-	object := json.decode(GetBlockResponse, '{"result":{"hash":"00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09","confirmations":743970}}')!
-	assert object.result == GetBlockResult(GetBlockResultB{
+type StringOrComplexValue = ComplexValue | string
+
+fn test_json_decode_with_sumtype_struct_variant_without_type_field() {
+	decoded := json.decode([]StringOrComplexValue, '["abc",{"foo":"bar"}]')!
+
+	assert decoded.len == 2
+	assert decoded[0] == StringOrComplexValue('abc')
+	assert decoded[1] == StringOrComplexValue(ComplexValue{
+		foo: 'bar'
+	})
+}
+
+pub type GetBlockResult = GetBlockResultB | string
+
+pub struct GetBlockResponse {
+	result GetBlockResult
+}
+
+pub struct GetBlockResultB {
+	hash          string
+	confirmations u64
+}
+
+fn test_json_decode_with_sumtype_struct_field_without_type_field() {
+	decoded := json.decode(GetBlockResponse, '{ "result": { "hash": "00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09", "confirmations": 743970 } }')!
+
+	assert decoded.result == GetBlockResult(GetBlockResultB{
 		hash:          '00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09'
 		confirmations: 743970
 	})
