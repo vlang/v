@@ -210,6 +210,7 @@ pub mut:
 	//
 	timer        time.StopWatch // starts right after new_context, and can be controlled/stopped/restarted in whatever way the user wants.
 	update_timer time.StopWatch // measures how much time has passed since the start of the frame.
+	frame_timer  time.StopWatch // enforces swap_interval as a fallback when the platform ignores vsync.
 	// Note: when there is an update_fn, this timer is reset by GG itself, at the start of each frame.
 
 	mbtn_mask     u8
@@ -338,6 +339,7 @@ fn gg_frame_fn(mut ctx Context) {
 	if ctx.config.frame_fn == unsafe { nil } {
 		return
 	}
+	ctx.pace_frame()
 	if ctx.native_rendering {
 		// return
 	}
@@ -366,6 +368,28 @@ fn gg_frame_fn(mut ctx Context) {
 	}
 	ctx.config.frame_fn(ctx.user_data)
 	ctx.needs_refresh = false
+}
+
+fn swap_interval_frame_budget(swap_interval int) time.Duration {
+	if swap_interval <= 0 {
+		return time.Duration(0)
+	}
+	return time.Duration(swap_interval) * time.second / 60
+}
+
+fn (mut ctx Context) pace_frame() {
+	frame_budget := swap_interval_frame_budget(ctx.config.swap_interval)
+	if frame_budget <= 0 || ctx.frame <= 1 {
+		ctx.frame_timer.restart()
+		return
+	}
+	elapsed := ctx.frame_timer.elapsed()
+	$if !emscripten ? {
+		if elapsed < frame_budget {
+			time.sleep(frame_budget - elapsed)
+		}
+	}
+	ctx.frame_timer.restart()
 }
 
 fn gg_event_fn(ce voidptr, user_data voidptr) {
