@@ -452,14 +452,13 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	prev_generic_types := g.active_generic_types.clone()
 	if node.generic_params.len > 0 {
 		struct_c_name := g.get_struct_name(node)
-		bindings := if struct_c_name in g.generic_struct_bindings {
-			g.generic_struct_bindings[struct_c_name].clone()
+		if struct_c_name in g.generic_struct_bindings {
+			g.active_generic_types = g.generic_struct_bindings[struct_c_name].clone()
 		} else {
-			g.fallback_generic_bindings_for_names(generic_param_names(node.generic_params)) or {
+			g.active_generic_types = g.fallback_generic_bindings_for_names(generic_param_names(node.generic_params)) or {
 				return
 			}
 		}
-		g.active_generic_types = bindings.clone()
 	}
 	defer {
 		g.active_generic_types = prev_generic_types.clone()

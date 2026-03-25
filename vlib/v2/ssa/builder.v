@@ -2067,19 +2067,21 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 			b.mod.type_store.get_int(8)
 		}
 		else {
-			// Array_* and Map_* are transformer-generated mangled names for []T and map[K]V.
-			// They always represent the builtin array/map struct regardless of suffix
-			// (e.g., Array_int* means []&int, still an array struct, NOT ptr([]int)).
-			// Check these BEFORE the ends_with('*') pointer check.
-			if name.starts_with('Array_') {
-				b.get_array_type()
-			} else if name.starts_with('Map_') {
-				b.struct_types['map'] or { b.mod.type_store.get_int(64) }
-			} else if name.ends_with('*') {
-				// Check for pointer types (e.g., 'StructType*', 'int*')
+			// Pointer types must be checked FIRST: `Array_int*` in a CastExpr means
+			// "pointer to array struct" (used by sumtype smartcast data access),
+			// NOT "array of &int". The non-pointer `Array_int` (without `*`) is the
+			// array struct itself.
+			if name.ends_with('*') {
+				// Check for pointer types (e.g., 'StructType*', 'int*', 'Array_int*')
 				base_name := name[..name.len - 1]
 				base_type := b.ident_type_to_ssa(base_name)
 				return b.mod.type_store.get_ptr(base_type)
+			} else if name.starts_with('Array_') {
+				// Array_* are transformer-generated mangled names for []T.
+				// They always represent the builtin array struct.
+				b.get_array_type()
+			} else if name.starts_with('Map_') {
+				b.struct_types['map'] or { b.mod.type_store.get_int(64) }
 			} else if name in b.struct_types {
 				// Check struct types
 				b.struct_types[name]
@@ -5625,6 +5627,14 @@ fn (mut b Builder) field_index(expr ast.SelectorExpr, base ValueID) int {
 					return i
 				}
 			}
+		}
+	}
+	// Tuple field access: the transformer generates `_tuple_tN.arg0`, `.arg1`, etc.
+	// Tuples have no named fields in the SSA type, so parse the index from `argN`.
+	if rhs_name.starts_with('arg') {
+		idx_str := rhs_name[3..]
+		if idx_str.len > 0 && idx_str[0] >= `0` && idx_str[0] <= `9` {
+			return int(parse_const_int_literal(idx_str))
 		}
 	}
 	return 0

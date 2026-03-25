@@ -126,12 +126,26 @@ fn main() {
 			cmd = '${saved_binary}.exe'
 		}
 		os.rm(gen_output_path) or {}
-		gen_cmd := '${cmd} > ${gen_output_path} 2>&1'
+		// 60s timeout to catch infinite loops in ARM64-generated code
+		has_timeout := os.exists('/opt/homebrew/bin/timeout') || os.exists('/usr/bin/timeout')
+		has_gtimeout := os.exists('/opt/homebrew/bin/gtimeout') || os.exists('/usr/bin/gtimeout')
+		timeout_cmd := if has_timeout {
+			'timeout'
+		} else if has_gtimeout {
+			'gtimeout'
+		} else {
+			''
+		}
+		gen_cmd := if timeout_cmd != '' {
+			'${timeout_cmd} 60 ${cmd} > ${gen_output_path} 2>&1'
+		} else {
+			'${cmd} > ${gen_output_path} 2>&1'
+		}
 		gen_res := os.execute(gen_cmd)
 		gen_out := os.read_file(gen_output_path) or { '' }
 		os.rm(gen_output_path) or {}
 		if gen_res.exit_code != 0 {
-			if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
+			if gen_res.exit_code == 124 || gen_res.exit_code == 142 || gen_res.exit_code == 14 {
 				eprintln('Error: Execution timed out (infinite loop detected) for backend ${backend}')
 				had_failures = true
 				continue

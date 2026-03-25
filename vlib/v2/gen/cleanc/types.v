@@ -767,9 +767,9 @@ fn (g &Gen) normalize_enum_name(name string) string {
 	// enum uses the short name (e.g., ChanState — a builtin type referenced from
 	// the sync module), strip the prefix so references match the typedef.
 	if name.contains('__') {
-		short := name.all_after_last('__')
-		if 'enum_${short}' in g.emitted_types && 'enum_${name}' !in g.emitted_types {
-			return short
+		short_name := name.all_after_last('__')
+		if 'enum_${short_name}' in g.emitted_types && 'enum_${name}' !in g.emitted_types {
+			return short_name
 		}
 	}
 	return name
@@ -2860,6 +2860,19 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 			}
 			if field_type := selector_struct_field_type_from_type(lhs_type, node.rhs.name) {
 				return field_type
+			}
+			// When LHS is a sum type and has been narrowed via `is` check, look up
+			// the field on the narrowed variant type instead.
+			if lhs_type is types.SumType {
+				if narrowed_c := g.get_expr_type_from_env(node.lhs) {
+					if narrowed_type := g.resolve_c_type_to_raw(narrowed_c) {
+						if field_type := selector_struct_field_type_from_type(narrowed_type,
+							node.rhs.name)
+						{
+							return field_type
+						}
+					}
+				}
 			}
 			if vector_field_index(node.rhs.name) >= 0 {
 				mut lhs_c_type := g.types_type_to_c(lhs_type)

@@ -2308,6 +2308,22 @@ fn (mut g Gen) should_auto_deref(arg ast.Expr) bool {
 
 fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
+	// Sum type variable narrowed via `is` check, passed to a function expecting the variant type.
+	// Only extract when the parameter type matches the narrowed type (not the original sum type).
+	if base_arg is ast.Ident {
+		if param_types := g.fn_param_types[fn_name] {
+			if idx < param_types.len {
+				param_type := param_types[idx]
+				decl_type := g.get_local_var_c_type(base_arg.name) or { '' }
+				// Only apply when param type differs from declared type (the sum type)
+				if decl_type != '' && param_type != decl_type && param_type != decl_type + '*' {
+					if g.gen_sum_narrowed_ident(base_arg) {
+						return
+					}
+				}
+			}
+		}
+	}
 	if fn_name in ['ui__EventMngr__add_receiver', 'ui__EventMngr__rm_receiver'] && idx == 1 {
 		if g.gen_interface_cast('ui__Widget', base_arg) {
 			return
@@ -2348,6 +2364,20 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 					return
 				}
 			}
+			// &*(ptr) cancels out to just ptr — avoids &(rvalue) when deref
+			// gets null-guard expansion for sum type data pointers.
+			if want_ptr {
+				unwrapped := g.unwrap_parens(base_arg)
+				if unwrapped is ast.PrefixExpr {
+					if unwrapped.op == .mul {
+						if g.expr_is_pointer(unwrapped.expr)
+							|| g.expr_produces_pointer(unwrapped.expr) {
+							g.expr(unwrapped.expr)
+							return
+						}
+					}
+				}
+			}
 			got_ptr := g.expr_is_pointer(base_arg)
 			// Also check for pointer-producing expressions (casts, pointer arithmetic)
 			// that expr_is_pointer misses but that produce pointer values in C.
@@ -2365,8 +2395,26 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 						}
 					}
 				}
-				g.sb.write_string('&')
+				// Generate inner code first to detect rvalue patterns
+				// (null-guarded ternaries from smartcast produce rvalues in C)
+				saved_sb2 := g.sb
+				g.sb = strings.new_builder(256)
 				g.expr(base_arg)
+				arg_code := g.sb.str()
+				g.sb = saved_sb2
+				if arg_code.contains('){0})') {
+					// Rvalue from null-guard — use temp variable
+					arg_type := g.get_expr_type(base_arg)
+					if arg_type != '' && arg_type != 'int' && arg_type != 'void' {
+						tmp_name := '_addr_t${g.tmp_counter}'
+						g.tmp_counter++
+						g.sb.write_string('({ ${arg_type} ${tmp_name} = ${arg_code}; &${tmp_name}; })')
+					} else {
+						g.sb.write_string('&${arg_code}')
+					}
+				} else {
+					g.sb.write_string('&${arg_code}')
+				}
 				return
 			}
 			if want_ptr && !got_ptr && !g.can_take_address(base_arg) {

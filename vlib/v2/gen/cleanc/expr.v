@@ -1900,6 +1900,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			}
 			if node.op == .amp {
+				// &*(ptr) cancellation: when taking address of a deref of a pointer,
+				// the two operations cancel out. This avoids &(rvalue) errors when
+				// the deref gets null-guard expansion for sum type data pointers.
+				inner := g.unwrap_parens(node.expr)
+				if inner is ast.PrefixExpr && inner.op == .mul {
+					if g.expr_is_pointer(inner.expr) || g.expr_produces_pointer(inner.expr) {
+						g.expr(inner.expr)
+						return
+					}
+				}
 				// Generate inner expression to check if it produces a GCC statement
 				// expression `({...})` which is an rvalue — can't take address of rvalue.
 				saved_sb := g.sb
@@ -1907,7 +1917,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(node.expr)
 				inner_code := g.sb.str()
 				g.sb = saved_sb
-				if inner_code.starts_with('({') || inner_code.starts_with('(({') {
+				// Detect rvalue expressions: GCC statement expressions ({...}),
+				// or null-guarded ternaries (ptr ? *ptr : (T){0}) from smartcast.
+				is_rvalue := inner_code.starts_with('({') || inner_code.starts_with('(({')
+					|| inner_code.contains('){0})')
+				if is_rvalue {
 					inner_type := g.get_expr_type(node.expr)
 					if inner_type != '' && inner_type != 'int' && inner_type != 'void' {
 						tmp_name := '_addr_t${g.tmp_counter}'
@@ -2714,30 +2728,61 @@ fn (mut g Gen) gen_sum_narrowed_selector(node ast.SelectorExpr) bool {
 	}
 	field_name := escape_c_keyword(node.rhs.name)
 	owner := g.embedded_owner_for(narrowed, node.rhs.name)
-	// Non-scalar sum type variants are stored as heap pointers that can be NULL
-	// when the sum type is zero-initialized. Add null guard to avoid null deref.
-	if !g.is_scalar_sum_payload_type(narrowed) && narrowed != 'string' {
-		g.sb.write_string('((')
-		g.expr(node.lhs)
-		g.sb.write_string('._data._${variant_field}) ? (((${narrowed}*)(((')
-		g.expr(node.lhs)
-		g.sb.write_string(')._data._${variant_field})))')
-		if owner != '' {
-			g.sb.write_string('->${escape_c_keyword(owner)}.${field_name}')
-		} else {
-			g.sb.write_string('->${field_name}')
-		}
-		g.sb.write_string(') : 0)')
+	// Inside a smartcast block, the is-check already confirmed the tag, so the
+	// variant pointer is guaranteed non-NULL. Dereference directly without a
+	// null guard (the previous ternary `ptr ? *ptr->field : 0` produced C type
+	// mismatches when the field type was a struct/array).
+	g.sb.write_string('(((${narrowed}*)(((')
+	g.expr(node.lhs)
+	g.sb.write_string(')._data._${variant_field})))')
+	if owner != '' {
+		g.sb.write_string('->${escape_c_keyword(owner)}.${field_name}')
 	} else {
-		g.sb.write_string('(((${narrowed}*)(((')
-		g.expr(node.lhs)
-		g.sb.write_string(')._data._${variant_field})))')
-		if owner != '' {
-			g.sb.write_string('->${escape_c_keyword(owner)}.${field_name}')
-		} else {
-			g.sb.write_string('->${field_name}')
+		g.sb.write_string('->${field_name}')
+	}
+	g.sb.write_string(')')
+	return true
+}
+
+// gen_sum_narrowed_ident handles bare Ident usage where the variable is a sum type
+// that has been narrowed via an `is` check. When a sum type variable is used directly
+// (e.g., passed as a function argument expecting the narrowed type), we need to emit
+// the variant extraction: (*(NarrowedType*)(var._data._Variant))
+fn (mut g Gen) gen_sum_narrowed_ident(node ast.Ident) bool {
+	decl_type := g.get_local_var_c_type(node.name) or { return false }
+	narrowed := g.get_expr_type_from_env(ast.Expr(node)) or { return false }
+	if narrowed == '' || narrowed == decl_type {
+		return false
+	}
+	// Pointer-only difference is not a real narrowing
+	if narrowed == decl_type + '*' || decl_type == narrowed + '*'
+		|| narrowed.trim_right('*') == decl_type.trim_right('*') {
+		return false
+	}
+	// Check if the declared type is a sum type
+	variants := g.sum_type_variants[decl_type] or { return false }
+	narrowed_short := if narrowed.contains('__') { narrowed.all_after_last('__') } else { narrowed }
+	mut variant_field := ''
+	for v in variants {
+		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+		if v == narrowed || v_short == narrowed_short || narrowed.ends_with('__${v_short}') {
+			variant_field = v_short
+			break
 		}
-		g.sb.write_string(')')
+	}
+	if variant_field == '' {
+		return false
+	}
+	// Generate the extraction expression
+	if g.is_scalar_sum_payload_type(narrowed) {
+		// Scalar types: ((type)(intptr_t)(var._data._variant))
+		g.sb.write_string('((${narrowed})(intptr_t)(${node.name}._data._${variant_field}))')
+	} else if narrowed == 'string' {
+		// String: same as struct dereference
+		g.sb.write_string('(*((${narrowed}*)(${node.name}._data._${variant_field})))')
+	} else {
+		// Struct types: (*(NarrowedType*)(var._data._Variant))
+		g.sb.write_string('(*((${narrowed}*)(${node.name}._data._${variant_field})))')
 	}
 	return true
 }

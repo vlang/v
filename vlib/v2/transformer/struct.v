@@ -140,12 +140,21 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	// Extract simple variant name for _data._ accessor
 	// Union fields use: _Null (same-module Ident), _time__Time (cross-module SelectorExpr),
 	// _Array_json2__Any (composite). Only strip module prefix for same-module types.
+	// Union fields use the name as seen from the declaring module:
+	// same-module Ident → _Null, cross-module SelectorExpr → _time__Time.
+	// Strip module prefix when the variant's module matches the sumtype's module,
+	// because those variants were declared as Idents (no module prefix in the union).
+	sumtype_module := if ctx.sumtype.contains('__') {
+		ctx.sumtype.all_before_last('__')
+	} else {
+		''
+	}
 	variant_simple := if variant_short.starts_with('Array_') || variant_short.starts_with('Map_') {
 		// For composite types, use the short name to match union member
 		variant_short
 	} else if variant_short.contains('__') {
 		mod_prefix := variant_short.all_before_last('__')
-		if mod_prefix == t.cur_module {
+		if mod_prefix == sumtype_module {
 			variant_short.all_after_last('__')
 		} else {
 			variant_short
@@ -700,11 +709,20 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 		})
 	}
 
-	// Create proper array type for the inner ArrayInitExpr
-	inner_array_typ := ast.Type(ast.ArrayType{
-		elem_type: ast.Ident{
+	// Create proper array type for the inner ArrayInitExpr.
+	// Use the resolved elem_type expression when available (preserves structured AST
+	// type info like ArrayType, PrefixExpr for &T, etc.). Only fall back to the mangled
+	// name string when no structured expression exists — the name-based path can lose
+	// type structure (e.g., 'Array_int*' gets misinterpreted as ptr(array) in SSA).
+	inner_elem_type := if elem_type_expr_resolved !is ast.EmptyExpr {
+		elem_type_expr_resolved
+	} else {
+		ast.Expr(ast.Ident{
 			name: elem_type_name
-		}
+		})
+	}
+	inner_array_typ := ast.Type(ast.ArrayType{
+		elem_type: inner_elem_type
 	})
 
 	return ast.CallExpr{
