@@ -6642,6 +6642,8 @@ which could be used to obtain the file contents as `string` or `[]u8`.
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
+the path can also come from a compile-time string expression like concatenation,
+`os.path_separator`, or `os.join_path(...)`.
 
 ```v ignore
 fn build() string {
