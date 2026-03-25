@@ -3640,16 +3640,8 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 					return
 				}
 			}
-			// Implicit context first arg?
-			/*
-			first_typ := f.params[0].typ
-			first_sym := c.table.sym(first_typ)
-			*/
-			if last_sym.info is ast.Struct {
-				if last_sym.name == 'main.Context' && last_required_param.name == 'ctx' { // TODO use int comparison for perf
-					// c.error('got ctx ${first_sym.name}', node.pos)
-					return
-				}
+			if c.try_add_implicit_veb_context_arg(mut node, f) {
+				return
 			}
 		}
 		c.fn_call_error_have_want(
@@ -3684,6 +3676,38 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		}
 		fill_trailing_optional_call_args(mut node, f)
 	}
+}
+
+fn (mut c Checker) try_add_implicit_veb_context_arg(mut node ast.CallExpr, f &ast.Fn) bool {
+	if f.params.len == 0 || f.params.last().name != 'ctx' || !c.has_veb_context(f.params.last().typ) {
+		return false
+	}
+	scope := if c.fn_scope != unsafe { nil } { c.fn_scope } else { node.scope }
+	if scope == unsafe { nil } {
+		return false
+	}
+	ctx_var := scope.find_var('ctx') or { return false }
+	node.args << ast.CallArg{
+		is_mut: f.params.last().is_mut
+		typ:    ctx_var.typ
+		pos:    node.pos
+		expr:   ast.Ident{
+			language: .v
+			tok_kind: .name
+			pos:      node.pos
+			scope:    scope
+			obj:      *ctx_var
+			mod:      c.mod
+			name:     'ctx'
+			kind:     .variable
+			info:     ast.IdentVar{
+				typ:    ctx_var.typ
+				is_mut: ctx_var.is_mut
+			}
+			is_mut:   f.params.last().is_mut
+		}
+	}
+	return true
 }
 
 @[params]
