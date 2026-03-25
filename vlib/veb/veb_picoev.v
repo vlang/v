@@ -245,6 +245,25 @@ $if !new_veb ? {
 		}
 	}
 
+	@[manualfree]
+	fn send_file_inline(mut conn net.TcpConn, mut file os.File, total i64, timeout_in_seconds int) ! {
+		conn.write_timeout = timeout_in_seconds * time.second
+		data := unsafe { malloc(max_write) }
+		defer {
+			unsafe { free(data) }
+		}
+		mut remaining := total
+		for remaining > 0 {
+			bytes_to_write := if remaining > max_write { max_write } else { int(remaining) }
+			bytes_read := file.read_into_ptr(data, bytes_to_write)!
+			if bytes_read <= 0 {
+				return error('unexpected EOF while sending file response')
+			}
+			send_string_ptr(mut conn, data, bytes_read)!
+			remaining -= bytes_read
+		}
+	}
+
 	// handle_write_string reads data from a string and sends that data over the socket
 	@[direct_array_access]
 	fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
@@ -508,28 +527,50 @@ $if !new_veb ? {
 						fast_send_resp(mut conn, http_500) or {}
 						return
 					}
-					params.file_responses[fd].total = length.i64()
-					params.file_responses[fd].file = os.open(completed_context.return_file) or {
-						// Context checks if the file is valid, so this should never happen
-						fast_send_resp(mut conn, http_500) or {}
-						params.file_responses[fd].done()
-						pv.close_conn(fd)
-						return
-					}
-					params.file_responses[fd].open = true
+					$if termux {
+						mut file := os.open(completed_context.return_file) or {
+							// Context checks if the file is valid, so this should never happen
+							fast_send_resp(mut conn, http_500) or {}
+							pv.close_conn(fd)
+							return
+						}
+						defer { file.close() }
+						fast_send_resp_header(mut conn, completed_context.res) or {
+							pv.close_conn(fd)
+							return
+						}
+						// Termux file responses are sent inline because deferred write events can
+						// leave static responses stalled.
+						send_file_inline(mut conn, mut file, length.i64(), params.timeout_in_seconds) or {
+							pv.close_conn(fd)
+							return
+						}
+						handle_complete_request(completed_context.client_wants_to_close, mut
+							pv, fd)
+					} $else {
+						params.file_responses[fd].total = length.i64()
+						params.file_responses[fd].file = os.open(completed_context.return_file) or {
+							// Context checks if the file is valid, so this should never happen
+							fast_send_resp(mut conn, http_500) or {}
+							params.file_responses[fd].done()
+							pv.close_conn(fd)
+							return
+						}
+						params.file_responses[fd].open = true
 
-					res := pv.add(fd, picoev.picoev_write, params.timeout_in_seconds,
-						picoev.raw_callback)
-					// picoev error
-					if res == -1 {
-						// should not happen
-						fast_send_resp(mut conn, http_500) or {}
-						params.file_responses[fd].done()
-						pv.close_conn(fd)
-						return
+						res := pv.add(fd, picoev.picoev_write, params.timeout_in_seconds,
+							picoev.raw_callback)
+						// picoev error
+						if res == -1 {
+							// should not happen
+							fast_send_resp(mut conn, http_500) or {}
+							params.file_responses[fd].done()
+							pv.close_conn(fd)
+							return
+						}
+						// no errors we can send the HTTP headers
+						fast_send_resp_header(mut conn, completed_context.res) or {}
 					}
-					// no errors we can send the HTTP headers
-					fast_send_resp_header(mut conn, completed_context.res) or {}
 				}
 			}
 		} else {
