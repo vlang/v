@@ -140,3 +140,20 @@ fn test_thirdparty_object_build_with_multiline_cflags() {
 	p.close()
 	assert p.code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
+
+fn test_missing_library_is_reported_without_compiler_bug_hint() {
+	os.chdir(test_path)!
+	os.mkdir_all('missing_library')!
+	lib_name := 'v_missing_lib_25499'
+	src_file := os.join_path('missing_library', 'main.v')
+	os.write_file(src_file, '#flag -l${lib_name}\nfn main() {}\n')!
+
+	res := os.execute('${os.quoted_path(vexe)} ${os.quoted_path(src_file)}')
+	normalized_output := res.output.replace('\r\n', '\n')
+
+	assert res.exit_code != 0
+	assert normalized_output.contains('builder error:')
+	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.')
+	assert normalized_output.contains('Please install the corresponding development package/libraries')
+	assert !normalized_output.contains('This is a V compiler bug')
+}

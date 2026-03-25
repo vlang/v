@@ -107,6 +107,56 @@ fn (v &Builder) ensure_imported_coroutines_runtime() ! {
 	pref.ensure_coroutines_runtime()!
 }
 
+fn c_error_missing_library_name(c_output string) ?string {
+	for line in c_output.split_into_lines() {
+		trimmed_line := line.trim_space()
+		for marker in ["library '", 'library "'] {
+			if !trimmed_line.contains(marker) || !trimmed_line.contains(' not found') {
+				continue
+			}
+			quote := marker[marker.len - 1].ascii_str()
+			lib_name := trimmed_line.all_after(marker).all_before(quote)
+			if lib_name != '' {
+				return lib_name
+			}
+		}
+		for prefix in [
+			'library not found for -l',
+			'unable to find library -l',
+			'cannot find -l',
+		] {
+			if !trimmed_line.contains(prefix) {
+				continue
+			}
+			lib_name := linker_flag_library_name(trimmed_line.all_after(prefix))
+			if lib_name != '' {
+				return lib_name
+			}
+		}
+		if !trimmed_line.contains("cannot open input file '") {
+			continue
+		}
+		lib_name := trimmed_line.all_after("cannot open input file '").all_before("'")
+		if lib_name.ends_with('.lib') {
+			return lib_name[..lib_name.len - 4]
+		}
+	}
+	return none
+}
+
+fn linker_flag_library_name(s string) string {
+	mut end := 0
+	for end < s.len {
+		c := s[end]
+		if c.is_alnum() || c in [`_`, `-`, `.`, `+`] {
+			end++
+			continue
+		}
+		break
+	}
+	return s[..end]
+}
+
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
@@ -195,6 +245,12 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 C error found while compiling generated C code.
 It looks like a C++ header was included with `#include` (for example one that contains `namespace`).
 Use a C-compatible header (for HDF5 use `hdf5.h` instead of `H5File.h`), or compile/link the C++ code separately.${more_suggestions}')
+	}
+	if missing_library := c_error_missing_library_name(res.output) {
+		verror('
+==================
+C library `${missing_library}` was not found while linking the generated program.
+Please install the corresponding development package/libraries, or make it available to your linker.${more_suggestions}')
 	}
 	verror('
 ==================
