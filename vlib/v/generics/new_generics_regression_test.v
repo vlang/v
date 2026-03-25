@@ -83,8 +83,8 @@ const expected_summsvc_generics = 'Summary for all V _test.v files: 53 failed, 2
 const expected_summary_generics = 'Summary for all V _test.v files: 52 failed, 213 passed, 265 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
-const expected_summsvc_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
-const expected_summary_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
+const expected_summsvc_flag = 'Summary for all V _test.v files: 15 failed, 5 passed, 20 total.'
+const expected_summary_flag = 'Summary for all V _test.v files: 15 failed, 5 passed, 20 total.'
 const failing_tests = [
 	'vlib/v/tests/generics/concrete_type_as_generic_fn_type_1_test.v',
 	'vlib/v/tests/generics/default_type_with_ref_test.v',
@@ -158,6 +158,7 @@ const failing_flag_tests = [
 	'vlib/flag/gnu_style_flags_test.v',
 	'vlib/flag/go_flag_style_flags_test.v',
 	'vlib/flag/posix_style_flags_test.v',
+	'vlib/flag/quoted_xdoc_attr_test.v',
 	'vlib/flag/v_flag_parser_style_flags_test.v',
 	'vlib/flag/v_style_flags_test.v',
 ]!

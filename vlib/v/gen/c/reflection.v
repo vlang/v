@@ -65,7 +65,6 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 	v_name := node.name.all_after_last('.')
 	arg_str += '.mod_name=_S("${node.mod}"),'
 	arg_str += '.name=_S("${v_name}"),'
-	arg_str += '.attrs=${g.gen_attrs_array(node.attrs)},'
 	arg_str += '.args=${g.gen_functionarg_array(cprefix + 'FunctionArg', node)},'
 	arg_str += '.file_idx=${g.reflection_string(util.cescaped_path(node.file))},'
 	arg_str += '.line_start=${node.pos.line_nr},'
@@ -88,24 +87,25 @@ fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	return '(${cprefix}TypeSymbol){.name=_S("${name}"),.mod=_S("${tsym.mod}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
-// gen_attrs_array generates C code for []VAttribute.
+// gen_attrs_array generates C code for []Attr
 @[inline]
 fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	if attrs.len == 0 {
-		return g.gen_empty_array('VAttribute')
+		return g.gen_empty_array('string')
 	}
-	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(VAttribute),'
-	out += '_MOV((VAttribute[${attrs.len}]){'
-	out += attrs.map(attr_to_vattribute_init(it)).join(',')
+	mut items := []string{cap: attrs.len}
+	for attr in attrs {
+		mut s := attr.name
+		if attr.has_arg {
+			s += '=${attr.arg}'
+		}
+		items << '_S("${cescape_nonascii(util.smart_quote(s, false))}")'
+	}
+	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
+	out += '_MOV((string[${attrs.len}]){'
+	out += items.join(',')
 	out += '}))'
 	return out
-}
-
-@[inline]
-fn attr_to_vattribute_init(attr ast.Attr) string {
-	name := cescape_nonascii(util.smart_quote(attr.name, false))
-	arg := cescape_nonascii(util.smart_quote(attr.arg, false))
-	return '(VAttribute){.name=_S("${name}"),.has_arg=${attr.has_arg},.arg=_S("${arg}"),.kind=${int(attr.kind)}}'
 }
 
 // gen_fields_array generates C code for []StructField
