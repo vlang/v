@@ -5048,6 +5048,14 @@ fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
 	return true
 }
 
+@[inline]
+fn (g &Gen) debugger_var_cname(obj ast.Var) string {
+	if obj.is_inherited {
+		return '${closure_ctx}->${c_name(obj.name)}'
+	}
+	return c_name(obj.name)
+}
+
 // debugger_stmt writes the call to V debugger REPL
 fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
@@ -5072,6 +5080,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				continue
 			}
 			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
+				cobj_name := g.debugger_var_cname(obj)
 				keys.write_string('_S("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
 					g.type_resolver.get_type(ast.Ident{ obj: obj })
@@ -5122,24 +5131,24 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 					if obj.ct_type_var == .smartcast {
 						cur_variant_sym := g.table.sym(g.unwrap_generic(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 							ast.void_type)))
-						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
+						param_var.write_string('${cobj_name}${dot}_${cur_variant_sym.cname}')
 					} else if cast_sym.info is ast.Aggregate {
 						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 						func = g.get_str_fn(cast_sym.info.types[g.aggregate_type_idx])
-						param_var.write_string('${obj.name}${dot}_${sym.cname}')
+						param_var.write_string('${cobj_name}${dot}_${sym.cname}')
 					} else if obj_sym.kind == .interface && cast_sym.kind == .interface {
 						ptr := '*'.repeat(obj.typ.nr_muls())
-						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
+						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${cobj_name})')
 					} else if obj_sym.kind in [.sum_type, .interface] {
-						param_var.write_string('${obj.name}')
+						param_var.write_string('${cobj_name}')
 						if opt_cast {
 							param_var.write_string('.data)')
 						}
 						param_var.write_string('${dot}_${cast_sym.cname}')
 					} else if is_option && !var_typ_is_option {
-						param_var.write_string('${obj.name}.data')
+						param_var.write_string('${cobj_name}.data')
 					} else {
-						param_var.write_string('${obj.name}')
+						param_var.write_string('${cobj_name}')
 					}
 					param_var.write_string(')')
 
@@ -5149,7 +5158,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 					if is_option && !var_typ_is_option {
 						// option unwrap
 						base_typ := g.base_type(obj.typ)
-						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
+						values.write_string('${func}(*(${base_typ}*)${cobj_name}.data)}')
 					} else {
 						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
 
@@ -5175,7 +5184,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						} else {
 							''
 						}
-						values.write_string('${func}(${deref}${obj.name})}')
+						values.write_string('${func}(${deref}${cobj_name})}')
 					}
 				}
 				vars << obj.name
