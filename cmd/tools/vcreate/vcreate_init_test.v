@@ -78,7 +78,7 @@ fn init_and_check() ! {
 		'# ENV',
 		'.env',
 		'',
-		'# vweb and database',
+		'# Web assets and local databases',
 		'*.db',
 		'*.js',
 		'',
