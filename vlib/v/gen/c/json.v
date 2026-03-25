@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.token
 import v.util
 import strings
 
@@ -29,7 +30,30 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	if is_js_prim(sym.name) && !utyp.has_flag(.option) && !typ.is_ptr() {
 		return
 	}
+	if g.json_gen_pos != token.Pos{}
+		&& (utyp !in g.json_types_pos || g.json_types_pos[utyp] == token.Pos{}) {
+		g.json_types_pos[utyp] = g.json_gen_pos
+	}
 	g.json_types << utyp
+}
+
+fn (mut g Gen) gen_json_for_type_with_pos(typ ast.Type, pos token.Pos) {
+	saved_json_gen_pos := g.json_gen_pos
+	g.json_gen_pos = pos
+	g.gen_json_for_type(typ)
+	g.json_gen_pos = saved_json_gen_pos
+}
+
+fn (mut g Gen) json_error(typ ast.Type, s string) {
+	utyp := g.unwrap_generic(typ)
+	mut pos := g.json_gen_pos
+	if utyp in g.json_types_pos {
+		pos = g.json_types_pos[utyp]
+	}
+	if pos != token.Pos{} {
+		g.error(s, pos)
+	}
+	verror(s)
 }
 
 fn (mut g Gen) gen_jsons() {
@@ -40,6 +64,8 @@ fn (mut g Gen) gen_jsons() {
 			continue
 		}
 		done << utyp
+		saved_json_gen_pos := g.json_gen_pos
+		g.json_gen_pos = g.json_types_pos[utyp]
 		mut dec := strings.new_builder(100)
 		mut enc := strings.new_builder(100)
 		sym := g.table.sym(utyp)
@@ -188,7 +214,7 @@ ${enc_fn_dec} {
 			} else if psym.kind == .enum {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
-				verror('json: ${sym.name} aliased sumtypes does not work at the moment')
+				g.json_error(utyp, 'json: ${sym.name} aliased sumtypes does not work at the moment')
 			} else if psym.kind == .map {
 				m := psym.info as ast.Map
 				g.gen_json_for_type(m.key_type)
@@ -198,13 +224,13 @@ ${enc_fn_dec} {
 			} else if utyp.has_flag(.option) {
 				g.gen_option_enc_dec(utyp, mut enc, mut dec)
 			} else {
-				verror('json: ${sym.name} is not struct')
+				g.json_error(utyp, 'json: ${sym.name} is not struct')
 			}
 		} else if sym.kind == .sum_type {
 			enc.writeln('\to = cJSON_CreateObject();')
 			// Sumtypes. Range through variants of sumtype
 			if sym.info !is ast.SumType {
-				verror('json: ${sym.name} is not a sumtype')
+				g.json_error(utyp, 'json: ${sym.name} is not a sumtype')
 			}
 			g.gen_sumtype_enc_dec(utyp, sym, mut enc, mut dec, ret_styp)
 		} else if sym.kind == .enum {
@@ -216,7 +242,7 @@ ${enc_fn_dec} {
 			enc.writeln('\to = cJSON_CreateObject();')
 			// Structs. Range through fields
 			if sym.info !is ast.Struct {
-				verror('json: ${sym.name} is not struct')
+				g.json_error(utyp, 'json: ${sym.name} is not struct')
 			}
 			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec, '')
 		}
@@ -227,6 +253,7 @@ ${enc_fn_dec} {
 		enc.writeln('\treturn o;\n}')
 		g.gowrappers.writeln(dec.str())
 		g.gowrappers.writeln(enc.str())
+		g.json_gen_pos = saved_json_gen_pos
 	}
 }
 

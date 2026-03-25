@@ -1,0 +1,6 @@
+vlib/v/checker/tests/run/json_encode_generic_interface.vv:10:22: cgen error: json: Interface is not struct
+    8 | 
+    9 | fn main() {
+   10 |     println(json.encode(Result[Interface]{}))
+      |                         ~~~~~~~~~~~~~~~~~~~
+   11 | }

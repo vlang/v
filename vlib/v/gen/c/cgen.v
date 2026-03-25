@@ -202,7 +202,9 @@ mut:
 	anon_fns                  shared []string // remove duplicate anon generated functions
 	sumtype_definitions       map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions      []string
-	json_types                []ast.Type           // to avoid json gen duplicates
+	json_types                []ast.Type // to avoid json gen duplicates
+	json_types_pos            map[ast.Type]token.Pos
+	json_gen_pos              token.Pos
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names          []string
 	hotcode_fpaths            []string
@@ -484,6 +486,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_last_index_types << g.array_last_index_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
+			for k, v in g.json_types_pos {
+				if k !in global_g.json_types_pos || global_g.json_types_pos[k] == token.Pos{} {
+					global_g.json_types_pos[k] = v
+				}
+			}
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
