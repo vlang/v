@@ -3,10 +3,52 @@ module checker
 import v.ast
 import v.token
 
-fn has_matching_reference_operator_overload(sym &ast.TypeSymbol, op string, receiver_type ast.Type, operand_type ast.Type) bool {
-	method := sym.find_method_with_generic_parent(op) or { return false }
-	return method.params.len == 2 && method.params[0].typ == receiver_type
-		&& method.params[1].typ == operand_type
+fn (mut c Checker) int_literal_needs_promotion(expr ast.Expr, promoted_type ast.Type) bool {
+	base_type := promoted_type.clear_flags()
+	if base_type !in ast.int_promoted_type_idxs {
+		return false
+	}
+	value := c.eval_comptime_const_expr(expr, 0) or { return false }
+	size, _ := c.table.type_size(base_type.idx_type())
+	bit_size := size * 8
+	if bit_size == 0 {
+		return false
+	}
+	if base_type.is_signed() {
+		signed_value := value.i64() or { return true }
+		max_signed := if bit_size >= 64 {
+			max_i64
+		} else {
+			i64((u64(1) << (bit_size - 1)) - 1)
+		}
+		min_signed := if bit_size >= 64 {
+			min_i64
+		} else {
+			-max_signed - 1
+		}
+		return signed_value < min_signed || signed_value > max_signed
+	}
+	unsigned_value := value.u64() or { return true }
+	max_unsigned := if bit_size >= 64 {
+		max_u64
+	} else {
+		(u64(1) << bit_size) - 1
+	}
+	return unsigned_value > max_unsigned
+}
+
+fn (mut c Checker) adjust_infix_int_literal_promotion(left ast.Expr, right ast.Expr, left_type ast.Type,
+	right_type ast.Type, promoted_type ast.Type) ast.Type {
+	if promoted_type.clear_flags() !in ast.int_promoted_type_idxs {
+		return promoted_type
+	}
+	if left_type == ast.int_literal_type && c.int_literal_needs_promotion(left, promoted_type) {
+		return ast.int_type
+	}
+	if right_type == ast.int_literal_type && c.int_literal_needs_promotion(right, promoted_type) {
+		return ast.int_type
+	}
+	return promoted_type
 }
 
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
@@ -181,13 +223,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	if left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
-		if has_matching_reference_operator_overload(left_sym, node.op.str(), left_type,
-			right_type)
-		{
-			// allow explicit operator overloads like `fn (x &Type) OP (y &Type) ReturnType {`
-		} else if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
+		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
-			c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+			if _ := left_sym.find_method(node.op.str()) {
+				if left_sym.kind == .alias && right_sym.kind == .alias {
+					// allow an explicit operator override `fn (x &AliasType) OP (y &AliasType) &AliasType {`
+				} else {
+					c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+				}
+			} else {
+				c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+			}
 		} else if node.op in [.plus, .minus] {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				if !c.pref.translated && !c.file.is_translated {
@@ -392,14 +438,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !left_final_sym.is_primitive() {
 				if left_sym.has_method(op_str) {
 					if method := left_sym.find_method(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
 				} else if left_final_sym.has_method_with_generic_parent(op_str) {
 					if method := left_final_sym.find_method_with_generic_parent(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -419,28 +463,24 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !right_final_sym.is_primitive() {
 				if right_sym.has_method(op_str) {
 					if method := right_sym.find_method(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
 				} else if right_final_sym.has_method_with_generic_parent(op_str) {
 					if method := right_final_sym.find_method_with_generic_parent(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
 				} else if left_sym.has_method(op_str) {
 					if method := left_sym.find_method(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
 				} else if left_final_sym.has_method_with_generic_parent(op_str) {
 					if method := left_final_sym.find_method_with_generic_parent(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -467,7 +507,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if left_sym.has_method_with_generic_parent(op_str) {
 					if method := left_sym.find_method_with_generic_parent(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -486,7 +525,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if right_sym.has_method_with_generic_parent(op_str) {
 					if method := right_sym.find_method_with_generic_parent(op_str) {
-						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -523,6 +561,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				unalias_right_type := c.table.unalias_num_type(unwrapped_right_type)
 				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type, unalias_right_type,
 					left_sym.kind, right_sym.kind)
+				promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
+					unaliased_left_type, unalias_right_type, promoted_type)
 				// subtract pointers is allowed in unsafe block
 				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
 					&& right_type.is_any_kind_of_pointer() && node.op == .minus
@@ -567,14 +607,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if left_sym.info is ast.Alias && left_final_sym.is_primitive() {
 					if left_sym.has_method(op_str) {
 						if method := left_sym.find_method(op_str) {
-							c.mark_fn_decl_as_referenced(method.fkey())
 							return_type = method.return_type
 						}
 					}
 				} else if right_sym.info is ast.Alias && right_final_sym.is_primitive() {
 					if right_sym.has_method(op_str) {
 						if method := right_sym.find_method(op_str) {
-							c.mark_fn_decl_as_referenced(method.fkey())
 							return_type = method.return_type
 						}
 					}
@@ -586,16 +624,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.gt, .lt, .ge, .le {
-			cmp_method_name := '<'
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
-			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(cmp_method_name) {
+			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(node.op.str()) {
 				left_sym = c.table.final_sym(unwrapped_left_type)
 			}
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if right_sym.kind == .alias
-				&& !right_sym.has_method_with_generic_parent(cmp_method_name) {
+			if right_sym.kind == .alias && !right_sym.has_method_with_generic_parent(node.op.str()) {
 				right_sym = c.table.final_sym(unwrapped_right_type)
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
@@ -626,8 +662,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						left_right_pos)
 				} else if !left_sym.has_method('<') && node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
-				} else if method := left_sym.find_method_with_generic_parent('<') {
-					c.mark_fn_decl_as_referenced(method.fkey())
 				}
 			} else if left_type.has_flag(.generic) && right_type.has_flag(.generic) {
 				// Try to unwrap the generic type to make sure that
@@ -642,8 +676,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if need_overload && !gen_sym.has_method_with_generic_parent('<')
 					&& node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
-				} else if method := gen_sym.find_method_with_generic_parent('<') {
-					c.mark_fn_decl_as_referenced(method.fkey())
 				}
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs
