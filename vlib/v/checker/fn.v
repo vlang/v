@@ -2224,6 +2224,52 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 	return true
 }
 
+fn (c &Checker) is_valid_os_file_struct_io_type(typ ast.Type) bool {
+	if typ.nr_muls() > 0 || typ.has_option_or_result() {
+		return false
+	}
+	mut current_typ := typ
+	mut sym := c.table.sym(current_typ)
+	for {
+		if sym.info !is ast.Alias {
+			break
+		}
+		alias_info := sym.info as ast.Alias
+		current_typ = alias_info.parent_type
+		if current_typ.nr_muls() > 0 || current_typ.has_option_or_result() {
+			return false
+		}
+		sym = c.table.sym(current_typ)
+	}
+	return sym.kind == .struct
+}
+
+fn (mut c Checker) check_os_file_struct_io_method_call(node &ast.CallExpr, method ast.Fn, concrete_types []ast.Type) {
+	if method.name !in ['read_struct', 'read_struct_at', 'write_struct', 'write_struct_at'] {
+		return
+	}
+	if method.params.len == 0 || concrete_types.len != 1 {
+		return
+	}
+	receiver_sym := c.table.final_sym(method.params[0].typ)
+	if receiver_sym.name != 'os.File' {
+		return
+	}
+	concrete_type := concrete_types[0]
+	if concrete_type.has_flag(.generic) || c.is_valid_os_file_struct_io_type(concrete_type) {
+		return
+	}
+	err_pos := if node.raw_concrete_types.len > 0 {
+		node.concrete_list_pos
+	} else if node.args.len > 0 {
+		node.args[0].pos
+	} else {
+		node.pos
+	}
+	c.error('`${receiver_sym.name}.${method.name}` expects a struct type, but got `${c.table.type_to_str(concrete_type)}`',
+		err_pos)
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	mut left_expr := node.left
@@ -2926,6 +2972,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.need_recheck_generic_fns = true
 		}
 	}
+	c.check_os_file_struct_io_method_call(node, method, concrete_types)
 
 	if node.concrete_types.len > 0 && method_generic_names_len == 0 {
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)

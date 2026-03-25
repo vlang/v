@@ -1,0 +1,13 @@
+vlib/v/checker/tests/os_file_write_struct_non_struct_err.vv:22:20: error: `os.File.write_struct` expects a struct type, but got `MySumType`
+   20 |     sum_value := MySumType(p)
+   21 |     iface_value := MyInterface(p)
+   22 |     file.write_struct(sum_value) or { panic(err) }
+      |                       ~~~~~~~~~
+   23 |     file.write_struct_at(iface_value, 0) or { panic(err) }
+   24 | }
+vlib/v/checker/tests/os_file_write_struct_non_struct_err.vv:23:23: error: `os.File.write_struct_at` expects a struct type, but got `MyInterface`
+   21 |     iface_value := MyInterface(p)
+   22 |     file.write_struct(sum_value) or { panic(err) }
+   23 |     file.write_struct_at(iface_value, 0) or { panic(err) }
+      |                          ~~~~~~~~~~~
+   24 | }

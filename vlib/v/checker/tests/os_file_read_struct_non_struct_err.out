@@ -1,0 +1,13 @@
+vlib/v/checker/tests/os_file_read_struct_non_struct_err.vv:21:23: error: `os.File.read_struct` expects a struct type, but got `MySumType`
+   19 |     mut sum_value := MySumType(MyStruct{val: 1})
+   20 |     mut iface_value := MyInterface(MyStruct{val: 1})
+   21 |     file.read_struct(mut sum_value) or { panic(err) }
+      |                          ~~~~~~~~~
+   22 |     file.read_struct_at[MyInterface](mut iface_value, 0) or { panic(err) }
+   23 | }
+vlib/v/checker/tests/os_file_read_struct_non_struct_err.vv:22:39: error: `os.File.read_struct_at` expects a struct type, but got `MyInterface`
+   20 |     mut iface_value := MyInterface(MyStruct{val: 1})
+   21 |     file.read_struct(mut sum_value) or { panic(err) }
+   22 |     file.read_struct_at[MyInterface](mut iface_value, 0) or { panic(err) }
+      |                                          ~~~~~~~~~~~
+   23 | }
