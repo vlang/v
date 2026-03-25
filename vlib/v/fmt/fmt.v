@@ -2547,7 +2547,9 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	buffering_save := f.buffering
-	if !f.buffering && node.op in [.logical_or, .and, .plus] {
+	is_wrappable_additive_minus := node.op == .minus
+		&& (is_additive_infix(node.left) || is_additive_infix(node.right))
+	if !f.buffering && (node.op in [.logical_or, .and, .plus] || is_wrappable_additive_minus) {
 		f.buffering = true
 	}
 	is_assign_save := f.is_assign
@@ -2620,7 +2622,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	cut_span := f.out.len - start_pos
 	infix_str := f.out.cut_last(cut_span)
-	if !infix_str.contains_any_substr(['&&', '||', '+']) {
+	if !infix_str.contains_any_substr(['&&', '||', '+', '-']) {
 		f.write(infix_str)
 		return
 	}
@@ -2630,6 +2632,13 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	}
 	conditions, penalties := split_up_infix(infix_str, false, is_cond)
 	f.write_splitted_infix(conditions, penalties, false, is_cond)
+}
+
+fn is_additive_infix(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr { expr.op in [.plus, .minus] }
+		else { false }
+	}
 }
 
 fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]string, []int) {
@@ -2649,11 +2658,15 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 				conditions << '${p} '
 				ind++
 			}
-		} else if !is_cond_infix && p == '+' {
-			penalties << 5
-			conditions[ind] += '${p} '
-			conditions << ''
-			ind++
+		} else if !is_cond_infix && p in ['+', '-'] {
+			if inside_paren {
+				conditions[ind] += '${p} '
+			} else {
+				penalties << 5
+				conditions[ind] += '${p} '
+				conditions << ''
+				ind++
+			}
 		} else {
 			conditions[ind] += '${p} '
 			if ignore_paren {
