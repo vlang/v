@@ -761,6 +761,14 @@ fn test_in_map_literal() {
 	}
 }
 
+fn test_in_int_keyed_map_var() {
+	my_map := {
+		1: 'A'
+	}
+	assert 1 in my_map
+	assert 2 !in my_map
+}
+
 fn test_byte_keys() {
 	mut m := map[u8]u8{}
 	byte_max := u8(255)
