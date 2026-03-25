@@ -44,183 +44,183 @@ mut:
 	out        strings.Builder
 	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
-	cheaders                       strings.Builder
-	preincludes                    strings.Builder // allows includes to go before `definitions`
-	postincludes                   strings.Builder // allows includes to go after all the rest of the code generation
-	includes                       strings.Builder // all C #includes required by V modules
-	typedefs                       strings.Builder
-	enum_typedefs                  strings.Builder // enum types
-	definitions                    strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	type_definitions               strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	sort_fn_definitions            strings.Builder // sort fns
-	alias_definitions              strings.Builder // alias fixed array of non-builtin
-	hotcode_definitions            strings.Builder // -live declarations & functions
-	channel_definitions            strings.Builder // channel related code
-	thread_definitions             strings.Builder // thread defines
-	comptime_definitions           strings.Builder // custom defines, given by -d/-define flags on the CLI
-	type_default_vars              strings.Builder // type_default() var declarations
-	cleanup                        strings.Builder
-	cleanups                       map[string]strings.Builder // contents of `void _vcleanup(){}`
-	gowrappers                     strings.Builder            // all go callsite wrappers
-	waiter_fn_definitions          strings.Builder            // waiter fns definitions
-	auto_str_funcs                 strings.Builder            // function bodies of all auto generated _str funcs
-	dump_funcs                     strings.Builder            // function bodies of all auto generated _str funcs
-	pcs_declarations               strings.Builder            // -prof profile counter declarations for each function
-	cov_declarations               strings.Builder            // -cov coverage
-	embedded_data                  strings.Builder            // data to embed in the executable/binary
-	shared_types                   strings.Builder            // shared/lock types
-	shared_functions               strings.Builder            // shared constructors
-	out_options_forward            strings.Builder            // forward `option_xxxx` types
-	out_options                    strings.Builder            // `option_xxxx` types
-	out_results_forward            strings.Builder            // forward`result_xxxx` types
-	out_results                    strings.Builder            // `result_xxxx` types
-	json_forward_decls             strings.Builder            // json type forward decls
-	sql_buf                        strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
-	global_const_defs              map[string]GlobalConstDef
-	vsafe_arithmetic_ops           map[string]VSafeArithmeticOp // 'VSAFE_DIV_u8' -> {11, /}, 'VSAFE_MOD_u8' -> {11,%}, 'VSAFE_MOD_i64' -> the same but with 9
-	sorted_global_const_names      []string
-	file                           &ast.File  = unsafe { nil }
-	table                          &ast.Table = unsafe { nil }
-	styp_cache                     map[ast.Type]string
-	no_eq_method_types             map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
-	unique_file_path_hash          u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
-	fn_decl                        &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
-	last_fn_c_name                 string
-	tmp_count                      int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count_af                   int  // a separate tmp var counter for autofree fn calls
-	tmp_count_declarations         int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count               int  // like tmp_count but global and not reset in each function
-	discard_or_result              bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_direct_array_access         bool // inside a `[direct_array_access fn a() {}` function
-	is_assign_lhs                  bool // inside left part of assign expr (for array_set(), etc)
-	is_void_expr_stmt              bool // ExprStmt whose result is discarded
-	is_arraymap_set                bool // map or array set value state
-	is_amp                         bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
-	is_sql                         bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared                      bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled              bool // is it safe to generate #line directives when -g is passed
-	is_autofree                    bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
-	is_autofree_tmp                bool // when generating autofree temporary variables
-	is_builtin_mod                 bool
-	is_json_fn                     bool // inside json.encode()
-	is_js_call                     bool // for handling a special type arg #1 `json.decode(User, ...)`
-	is_fn_index_call               bool
-	is_cc_msvc                     bool // g.pref.ccompiler == 'msvc'
-	atomic_postfix_helpers_emitted bool
-	is_option_auto_heap            bool
-	vlines_path                    string            // set to the proper path for generating #line directives
-	options_pos_forward            int               // insertion point to forward
-	options_forward                []string          // to forward
-	options                        map[string]string // to avoid duplicates
-	results_forward                []string          // to forward
-	results                        map[string]string // to avoid duplicates
-	done_options                   shared []string   // to avoid duplicates
-	done_results                   shared []string   // to avoid duplicates
-	chan_pop_options               map[string]string // types for `x := <-ch or {...}`
-	chan_push_options              map[string]string // types for `ch <- x or {...}`
-	mtxs                           string            // array of mutexes if the `lock` has multiple variables
-	tmp_var_ptr                    map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
-	labeled_loops                  map[string]&ast.Stmt
-	contains_ptr_cache             map[ast.Type]bool
-	inner_loop                     &ast.Stmt = unsafe { nil }
-	cur_indexexpr                  []int          // list of nested indexexpr which generates array_set/map_set
-	shareds                        map[int]string // types with hidden mutex for which decl has been emitted
-	coverage_files                 map[u64]&CoverageInfo
-	inside_smartcast               bool
-	inside_ternary                 int  // ?: comma separated statements on a single line
-	inside_map_postfix             bool // inside map++/-- postfix expr
-	inside_map_infix               bool // inside map<</+=/-= infix expr
-	inside_assign                  bool
-	inside_map_index               bool
-	inside_array_index             bool
-	inside_array_fixed_struct      bool
-	inside_opt_or_res              bool
-	inside_opt_data                bool
-	inside_if_option               bool
-	inside_if_result               bool
-	inside_match_option            bool
-	inside_match_result            bool
-	inside_vweb_tmpl               bool
-	inside_return                  bool
-	inside_return_tmpl             bool
-	inside_struct_init             bool
-	inside_or_block                bool
-	inside_call                    bool
-	inside_curry_call              bool // inside foo()()!, foo()()?, foo()()
-	inside_dump_fn                 bool
-	inside_c_extern                bool // inside `@[c_extern] fn C.somename(param1 int, param2 voidptr, param3 &char) &char`
-	expected_fixed_arr             bool
-	inside_for_c_stmt              bool
-	inside_cast_in_heap            int // inside cast to interface type in heap (resolve recursive calls)
-	inside_cast                    bool
-	inside_sumtype_cast            bool
-	inside_selector                bool
-	inside_selector_deref          bool // indicates if the inside selector was already dereferenced
-	inside_memset                  bool
-	inside_const                   bool
-	inside_array_item              bool
-	inside_const_opt_or_res        bool
-	inside_lambda                  bool
-	inside_cinit                   bool
-	inside_global_decl             bool
-	inside_interface_deref         bool
-	inside_assign_fn_var           bool
-	outer_tmp_var                  string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
-	last_tmp_call_var              []string
-	last_if_option_type            ast.Type // stores the expected if type on nested if expr
-	loop_depth                     int
-	unsafe_level                   int
-	ternary_names                  map[string]string
-	ternary_level_names            map[string][]string
-	arraymap_set_pos               int              // map or array set value position
-	stmt_path_pos                  []int            // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos                  bool             // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt                    bool             // left hand side on assignment is an option
-	right_is_opt                   bool             // right hand side on assignment is an option
-	assign_ct_type                 map[int]ast.Type // left hand side resolved comptime type
-	indent                         int
-	empty_line                     bool
-	assign_op                      token.Kind // *=, =, etc (for array_set)
-	defer_stmts                    []ast.DeferStmt
-	defer_ifdef                    string
-	defer_profile_code             string
-	defer_vars                     []string
-	closure_structs                []string
-	str_types                      []StrType       // types that need automatic str() generation
-	generated_str_fns              []StrType       // types that already have a str() function
-	str_fn_names                   shared []string // remove duplicate function names
-	threaded_fns                   shared []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns                     shared []string // functions that wait for `go xxx()` to finish
-	needed_equality_fns            []ast.Type
-	generated_eq_fns               []ast.Type
-	array_sort_fn                  shared []string
-	array_contains_types           []ast.Type
-	array_index_types              []ast.Type
-	array_last_index_types         []ast.Type
-	auto_fn_definitions            []string // auto generated functions definition list
-	sumtype_casting_fns            []SumtypeCastingFn
-	anon_fn_definitions            []string        // anon generated functions definition list
-	anon_fns                       shared []string // remove duplicate anon generated functions
-	sumtype_definitions            map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	trace_fn_definitions           []string
-	json_types                     []ast.Type           // to avoid json gen duplicates
-	pcs                            []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	hotcode_fn_names               []string
-	hotcode_fpaths                 []string
-	embedded_files                 []ast.EmbeddedFile
-	sql_i                          int
-	sql_stmt_name                  string
-	sql_bind_name                  string
-	sql_idents                     []string
-	sql_idents_types               []ast.Type
-	sql_left_type                  ast.Type
-	sql_table_name                 string
-	sql_table_typ                  ast.Type // the table type, used for generic types lookup
-	sql_fkey                       string
-	sql_parent_id                  string
-	sql_side                       SqlExprSide // left or right, to distinguish idents in `name == name`
-	sql_last_stmt_out_len          int
-	strs_to_free0                  []string // strings.Builder
+	cheaders                           strings.Builder
+	preincludes                        strings.Builder // allows includes to go before `definitions`
+	postincludes                       strings.Builder // allows includes to go after all the rest of the code generation
+	includes                           strings.Builder // all C #includes required by V modules
+	typedefs                           strings.Builder
+	enum_typedefs                      strings.Builder // enum types
+	definitions                        strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	type_definitions                   strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	sort_fn_definitions                strings.Builder // sort fns
+	alias_definitions                  strings.Builder // alias fixed array of non-builtin
+	hotcode_definitions                strings.Builder // -live declarations & functions
+	channel_definitions                strings.Builder // channel related code
+	thread_definitions                 strings.Builder // thread defines
+	comptime_definitions               strings.Builder // custom defines, given by -d/-define flags on the CLI
+	type_default_vars                  strings.Builder // type_default() var declarations
+	cleanup                            strings.Builder
+	cleanups                           map[string]strings.Builder // contents of `void _vcleanup(){}`
+	gowrappers                         strings.Builder            // all go callsite wrappers
+	waiter_fn_definitions              strings.Builder            // waiter fns definitions
+	auto_str_funcs                     strings.Builder            // function bodies of all auto generated _str funcs
+	dump_funcs                         strings.Builder            // function bodies of all auto generated _str funcs
+	pcs_declarations                   strings.Builder            // -prof profile counter declarations for each function
+	cov_declarations                   strings.Builder            // -cov coverage
+	embedded_data                      strings.Builder            // data to embed in the executable/binary
+	shared_types                       strings.Builder            // shared/lock types
+	shared_functions                   strings.Builder            // shared constructors
+	out_options_forward                strings.Builder            // forward `option_xxxx` types
+	out_options                        strings.Builder            // `option_xxxx` types
+	out_results_forward                strings.Builder            // forward`result_xxxx` types
+	out_results                        strings.Builder            // `result_xxxx` types
+	json_forward_decls                 strings.Builder            // json type forward decls
+	sql_buf                            strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
+	global_const_defs                  map[string]GlobalConstDef
+	vsafe_arithmetic_ops               map[string]VSafeArithmeticOp // 'VSAFE_DIV_u8' -> {11, /}, 'VSAFE_MOD_u8' -> {11,%}, 'VSAFE_MOD_i64' -> the same but with 9
+	sorted_global_const_names          []string
+	file                               &ast.File  = unsafe { nil }
+	table                              &ast.Table = unsafe { nil }
+	styp_cache                         map[ast.Type]string
+	no_eq_method_types                 map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
+	unique_file_path_hash              u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
+	fn_decl                            &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name                     string
+	tmp_count                          int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count_af                       int  // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations             int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count                   int  // like tmp_count but global and not reset in each function
+	discard_or_result                  bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_direct_array_access             bool // inside a `[direct_array_access fn a() {}` function
+	is_assign_lhs                      bool // inside left part of assign expr (for array_set(), etc)
+	is_void_expr_stmt                  bool // ExprStmt whose result is discarded
+	is_arraymap_set                    bool // map or array set value state
+	is_amp                             bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
+	is_sql                             bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared                          bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled                  bool // is it safe to generate #line directives when -g is passed
+	is_autofree                        bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
+	is_autofree_tmp                    bool // when generating autofree temporary variables
+	is_builtin_mod                     bool
+	is_json_fn                         bool // inside json.encode()
+	is_js_call                         bool // for handling a special type arg #1 `json.decode(User, ...)`
+	is_fn_index_call                   bool
+	is_cc_msvc                         bool // g.pref.ccompiler == 'msvc'
+	is_option_auto_heap                bool
+	vlines_path                        string            // set to the proper path for generating #line directives
+	options_pos_forward                int               // insertion point to forward
+	options_forward                    []string          // to forward
+	options                            map[string]string // to avoid duplicates
+	results_forward                    []string          // to forward
+	results                            map[string]string // to avoid duplicates
+	done_options                       shared []string   // to avoid duplicates
+	done_results                       shared []string   // to avoid duplicates
+	chan_pop_options                   map[string]string // types for `x := <-ch or {...}`
+	chan_push_options                  map[string]string // types for `ch <- x or {...}`
+	mtxs                               string            // array of mutexes if the `lock` has multiple variables
+	tmp_var_ptr                        map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
+	labeled_loops                      map[string]&ast.Stmt
+	contains_ptr_cache                 map[ast.Type]bool
+	inner_loop                         &ast.Stmt = unsafe { nil }
+	cur_indexexpr                      []int          // list of nested indexexpr which generates array_set/map_set
+	shareds                            map[int]string // types with hidden mutex for which decl has been emitted
+	coverage_files                     map[u64]&CoverageInfo
+	inside_smartcast                   bool
+	inside_ternary                     int  // ?: comma separated statements on a single line
+	inside_map_postfix                 bool // inside map++/-- postfix expr
+	inside_map_infix                   bool // inside map<</+=/-= infix expr
+	inside_assign                      bool
+	inside_map_index                   bool
+	inside_array_index                 bool
+	inside_array_fixed_struct          bool
+	inside_opt_or_res                  bool
+	inside_opt_data                    bool
+	inside_if_option                   bool
+	inside_if_result                   bool
+	inside_match_option                bool
+	inside_match_result                bool
+	inside_vweb_tmpl                   bool
+	inside_return                      bool
+	inside_return_tmpl                 bool
+	inside_struct_init                 bool
+	inside_or_block                    bool
+	inside_call                        bool
+	inside_curry_call                  bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn                     bool
+	inside_c_extern                    bool // inside `@[c_extern] fn C.somename(param1 int, param2 voidptr, param3 &char) &char`
+	expected_fixed_arr                 bool
+	inside_for_c_stmt                  bool
+	inside_cast_in_heap                int // inside cast to interface type in heap (resolve recursive calls)
+	inside_cast                        bool
+	inside_sumtype_cast                bool
+	inside_selector                    bool
+	inside_selector_deref              bool // indicates if the inside selector was already dereferenced
+	inside_memset                      bool
+	inside_const                       bool
+	inside_array_item                  bool
+	inside_const_opt_or_res            bool
+	inside_lambda                      bool
+	inside_cinit                       bool
+	inside_global_decl                 bool
+	inside_interface_deref             bool
+	inside_assign_fn_var               bool
+	outer_tmp_var                      string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
+	last_tmp_call_var                  []string
+	last_if_option_type                ast.Type // stores the expected if type on nested if expr
+	loop_depth                         int
+	unsafe_level                       int
+	ternary_names                      map[string]string
+	ternary_level_names                map[string][]string
+	arraymap_set_pos                   int              // map or array set value position
+	stmt_path_pos                      []int            // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos                      bool             // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt                        bool             // left hand side on assignment is an option
+	right_is_opt                       bool             // right hand side on assignment is an option
+	assign_ct_type                     map[int]ast.Type // left hand side resolved comptime type
+	indent                             int
+	empty_line                         bool
+	assign_op                          token.Kind // *=, =, etc (for array_set)
+	defer_stmts                        []ast.DeferStmt
+	defer_ifdef                        string
+	defer_profile_code                 string
+	defer_vars                         []string
+	closure_structs                    []string
+	str_types                          []StrType       // types that need automatic str() generation
+	generated_str_fns                  []StrType       // types that already have a str() function
+	str_fn_names                       shared []string // remove duplicate function names
+	threaded_fns                       shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns                         shared []string // functions that wait for `go xxx()` to finish
+	needed_equality_fns                []ast.Type
+	generated_eq_fns                   []ast.Type
+	array_sort_fn                      shared []string
+	array_contains_types               []ast.Type
+	array_index_types                  []ast.Type
+	array_last_index_types             []ast.Type
+	generated_array_interface_cast_fns shared map[string]bool
+	auto_fn_definitions                []string // auto generated functions definition list
+	sumtype_casting_fns                []SumtypeCastingFn
+	anon_fn_definitions                []string        // anon generated functions definition list
+	anon_fns                           shared []string // remove duplicate anon generated functions
+	sumtype_definitions                map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	trace_fn_definitions               []string
+	json_types                         []ast.Type           // to avoid json gen duplicates
+	pcs                                []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	hotcode_fn_names                   []string
+	hotcode_fpaths                     []string
+	embedded_files                     []ast.EmbeddedFile
+	sql_i                              int
+	sql_stmt_name                      string
+	sql_bind_name                      string
+	sql_idents                         []string
+	sql_idents_types                   []ast.Type
+	sql_left_type                      ast.Type
+	sql_table_name                     string
+	sql_table_typ                      ast.Type // the table type, used for generic types lookup
+	sql_fkey                           string
+	sql_parent_id                      string
+	sql_side                           SqlExprSide // left or right, to distinguish idents in `name == name`
+	sql_last_stmt_out_len              int
+	strs_to_free0                      []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -304,27 +304,12 @@ pub:
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
-	if pref_.build_mode == .build_module || pref_.is_o {
+	if pref_.build_mode == .build_module {
 		for file in files {
-			if !file.path.contains(pref_.path) {
-				continue
-			}
-			if pref_.build_mode == .build_module {
-				if file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
-					module_built = file.mod.name
-					break
-				}
-			} else {
+			if file.path.contains(pref_.path)
+				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
-			}
-		}
-		if pref_.is_o && module_built == '' {
-			for file in files {
-				if !util.module_is_builtin(file.mod.name) {
-					module_built = file.mod.name
-					break
-				}
 			}
 		}
 	}
@@ -384,8 +369,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: pref_.should_use_segfault_handler()
-		static_modifier:      if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
-		static_non_parallel:  if !pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
+		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
+		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -841,70 +826,69 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
-		fid:                   idx
-		tid:                   v_gettid().hex()
-		file:                  file
-		out:                   strings.new_builder(512000)
-		cheaders:              strings.new_builder(15000)
-		includes:              strings.new_builder(100)
-		typedefs:              strings.new_builder(100)
-		type_definitions:      strings.new_builder(100)
-		sort_fn_definitions:   strings.new_builder(100)
-		alias_definitions:     strings.new_builder(100)
-		definitions:           strings.new_builder(100)
-		gowrappers:            strings.new_builder(100)
-		waiter_fn_definitions: strings.new_builder(100)
-		auto_str_funcs:        strings.new_builder(100)
-		comptime_definitions:  strings.new_builder(100)
-		pcs_declarations:      strings.new_builder(100)
-		cov_declarations:      strings.new_builder(100)
-		hotcode_definitions:   strings.new_builder(100)
-		embedded_data:         strings.new_builder(1000)
-		out_options_forward:   strings.new_builder(100)
-		out_options:           strings.new_builder(100)
-		out_results_forward:   strings.new_builder(100)
-		out_results:           strings.new_builder(100)
-		shared_types:          strings.new_builder(100)
-		shared_functions:      strings.new_builder(100)
-		channel_definitions:   strings.new_builder(100)
-		thread_definitions:    strings.new_builder(100)
-		json_forward_decls:    strings.new_builder(100)
-		enum_typedefs:         strings.new_builder(100)
-		sql_buf:               strings.new_builder(100)
-		cleanup:               strings.new_builder(100)
-		table:                 global_g.table
-		pref:                  global_g.pref
-		fn_decl:               unsafe { nil }
-		anon_fn:               unsafe { nil }
-		indent:                -1
-		module_built:          global_g.module_built
-		timers:                util.new_timers(
+		fid:                                idx
+		tid:                                v_gettid().hex()
+		file:                               file
+		out:                                strings.new_builder(512000)
+		cheaders:                           strings.new_builder(15000)
+		includes:                           strings.new_builder(100)
+		typedefs:                           strings.new_builder(100)
+		type_definitions:                   strings.new_builder(100)
+		sort_fn_definitions:                strings.new_builder(100)
+		alias_definitions:                  strings.new_builder(100)
+		definitions:                        strings.new_builder(100)
+		gowrappers:                         strings.new_builder(100)
+		waiter_fn_definitions:              strings.new_builder(100)
+		auto_str_funcs:                     strings.new_builder(100)
+		comptime_definitions:               strings.new_builder(100)
+		pcs_declarations:                   strings.new_builder(100)
+		cov_declarations:                   strings.new_builder(100)
+		hotcode_definitions:                strings.new_builder(100)
+		embedded_data:                      strings.new_builder(1000)
+		out_options_forward:                strings.new_builder(100)
+		out_options:                        strings.new_builder(100)
+		out_results_forward:                strings.new_builder(100)
+		out_results:                        strings.new_builder(100)
+		shared_types:                       strings.new_builder(100)
+		shared_functions:                   strings.new_builder(100)
+		channel_definitions:                strings.new_builder(100)
+		thread_definitions:                 strings.new_builder(100)
+		json_forward_decls:                 strings.new_builder(100)
+		enum_typedefs:                      strings.new_builder(100)
+		sql_buf:                            strings.new_builder(100)
+		cleanup:                            strings.new_builder(100)
+		table:                              global_g.table
+		pref:                               global_g.pref
+		fn_decl:                            unsafe { nil }
+		anon_fn:                            unsafe { nil }
+		indent:                             -1
+		module_built:                       global_g.module_built
+		timers:                             util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
-		inner_loop:            &ast.empty_stmt
-		field_data_type:       global_g.table.find_type('FieldData')
-		enum_data_type:        global_g.table.find_type('EnumData')
-		variant_data_type:     global_g.table.find_type('VariantData')
-		array_sort_fn:         global_g.array_sort_fn
-		waiter_fns:            global_g.waiter_fns
-		threaded_fns:          global_g.threaded_fns
-		str_fn_names:          global_g.str_fn_names
-		anon_fns:              global_g.anon_fns
-		options_forward:       global_g.options_forward
-		results_forward:       global_g.results_forward
-		done_options:          global_g.done_options
-		done_results:          global_g.done_results
-		is_autofree:           global_g.pref.autofree
-		obf_table:             global_g.obf_table
-		referenced_fns:        global_g.referenced_fns
-		is_cc_msvc:            global_g.is_cc_msvc
-		use_segfault_handler:  global_g.use_segfault_handler
-		static_modifier:       global_g.static_modifier
-		static_non_parallel:   global_g.static_non_parallel
-		has_reflection:        'v.reflection' in global_g.table.modules
-		has_debugger:          'v.debug' in global_g.table.modules
-		reflection_strings:    global_g.reflection_strings
+		inner_loop:                         &ast.empty_stmt
+		field_data_type:                    global_g.table.find_type('FieldData')
+		enum_data_type:                     global_g.table.find_type('EnumData')
+		variant_data_type:                  global_g.table.find_type('VariantData')
+		array_sort_fn:                      global_g.array_sort_fn
+		waiter_fns:                         global_g.waiter_fns
+		threaded_fns:                       global_g.threaded_fns
+		str_fn_names:                       global_g.str_fn_names
+		anon_fns:                           global_g.anon_fns
+		generated_array_interface_cast_fns: global_g.generated_array_interface_cast_fns
+		options_forward:                    global_g.options_forward
+		results_forward:                    global_g.results_forward
+		done_options:                       global_g.done_options
+		done_results:                       global_g.done_results
+		is_autofree:                        global_g.pref.autofree
+		obf_table:                          global_g.obf_table
+		referenced_fns:                     global_g.referenced_fns
+		is_cc_msvc:                         global_g.is_cc_msvc
+		use_segfault_handler:               global_g.use_segfault_handler
+		has_reflection:                     'v.reflection' in global_g.table.modules
+		has_debugger:                       'v.debug' in global_g.table.modules
+		reflection_strings:                 global_g.reflection_strings
 	}
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info
@@ -1119,9 +1103,6 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode == .build_module {
 		g.comptime_definitions.writeln('#define _VBUILDMODULE (1)')
 	}
-	if g.pref.is_o {
-		g.comptime_definitions.writeln('#define _VOBJECTFILE (1)')
-	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -1134,10 +1115,6 @@ pub fn (mut g Gen) init() {
 	// muttable.used_features.used_fns['eprintln'] = true
 	// muttable.used_features.used_fns['print_backtrace'] = true
 	// muttable.used_features.used_fns['exit'] = true
-}
-
-fn (g &Gen) should_use_object_local_linkage(mod string) bool {
-	return g.pref.is_o && g.module_built != '' && mod != g.module_built
 }
 
 pub fn (mut g Gen) finish() {
@@ -1273,9 +1250,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
 			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
 			if g.pref.build_mode != .build_module {
-				g.definitions.writeln('${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				g.writeln2('', '${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-				if g.pref.parallel_cc && !g.pref.is_o {
+				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+				g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+				if g.pref.parallel_cc {
 					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
 				for t in inter_info.types {
@@ -1377,110 +1354,6 @@ fn (mut g Gen) expr_string_opt(typ ast.Type, expr ast.Expr) string {
 		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={E_STRUCT}}'
 	}
 	return expr_str
-}
-
-fn (mut g Gen) ensure_atomic_postfix_helpers() {
-	if g.atomic_postfix_helpers_emitted {
-		return
-	}
-	g.atomic_postfix_helpers_emitted = true
-	g.definitions.writeln('
-#ifndef V_ATOMIC_POSTFIX_HELPERS
-#define V_ATOMIC_POSTFIX_HELPERS
-#define V_ATOMIC_SEQ_CST 5
-#if defined(__TINYC__) && !defined(_WIN32)
-extern unsigned int __atomic_fetch_add_4(unsigned int* x, unsigned int y, int mo);
-extern unsigned int __atomic_fetch_sub_4(unsigned int* x, unsigned int y, int mo);
-extern unsigned long long __atomic_fetch_add_8(unsigned long long* x, unsigned long long y, int mo);
-extern unsigned long long __atomic_fetch_sub_8(unsigned long long* x, unsigned long long y, int mo);
-#endif
-static inline unsigned int __v_atomic_fetch_add_u32(unsigned int* x, unsigned int y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, (LONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_add_4(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned int __v_atomic_fetch_sub_u32(unsigned int* x, unsigned int y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, -(LONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_sub_4(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned long long __v_atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, (LONGLONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_add_8(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned long long __v_atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, -(LONGLONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_sub_8(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-#endif
-')
-	if g.pref.ccompiler_type == .tinyc && g.pref.os == .linux {
-		mod_name := if g.file == unsafe { nil } { 'main' } else { g.file.mod.name }
-		amd64_flag := '$' +
-			"when_first_existing('/usr/lib/gcc/x86_64-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/14/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/14/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/14/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a','/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')"
-		arm64_flag := '$' +
-			"when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/6/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/7/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/8/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/9/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/10/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/11/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/12/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/13/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/14/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/14/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/14/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.so','/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')"
-		flag := if g.pref.arch == .arm64 { arm64_flag } else { amd64_flag }
-		g.table.parse_cflag(flag, mod_name, g.pref.compile_defines_all) or {}
-	}
-}
-
-fn (mut g Gen) atomic_postfix_expr(node ast.PostfixExpr) bool {
-	if node.op !in [.inc, .dec] || !node.typ.has_flag(.atomic_f) {
-		return false
-	}
-	base_typ := g.unwrap_generic(node.typ).clear_flag(.atomic_f)
-	mut fn_name := ''
-	mut ptr_type := ''
-	match base_typ {
-		ast.int_type, ast.i32_type, ast.u32_type {
-			fn_name = if node.op == .inc {
-				'__v_atomic_fetch_add_u32'
-			} else {
-				'__v_atomic_fetch_sub_u32'
-			}
-			ptr_type = 'unsigned int*'
-		}
-		ast.i64_type, ast.u64_type {
-			fn_name = if node.op == .inc {
-				'__v_atomic_fetch_add_u64'
-			} else {
-				'__v_atomic_fetch_sub_u64'
-			}
-			ptr_type = 'unsigned long long*'
-		}
-		else {
-			return false
-		}
-	}
-	g.ensure_atomic_postfix_helpers()
-	g.write('${fn_name}((${ptr_type})&(')
-	if node.expr.is_auto_deref_var() {
-		g.write('*')
-		g.expr(node.expr)
-	} else {
-		g.expr(node.expr)
-	}
-	g.write('), 1)')
-	return true
 }
 
 fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
@@ -3388,6 +3261,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	got_sym := g.table.sym(got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
+	if g.can_convert_array_to_interface_array(got_type, expected_type) {
+		fn_name := g.register_array_interface_cast_fn(got_type, expected_type)
+		g.write('${fn_name}(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon
 	if got_type == ast.error_type_idx && expected_type == ast.string_type_idx {
@@ -3623,45 +3503,41 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	if stmt.templates.len == 0 {
-		g.writeln('""')
-	} else {
-		for template_tmp in stmt.templates {
-			mut template := template_tmp
-			g.write('"')
-			if template.is_directive {
-				g.write('.')
-			}
-			g.write(template.name)
-			if template.is_label {
-				g.write(':')
-			} else {
-				g.write(' ')
-			}
-			// swap destination and operands for att syntax, not for arm64
-			if template.args.len != 0 && !template.is_directive
-				&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
-				template.args.prepend(template.args.last())
-				template.args.delete(template.args.len - 1)
-			}
-
-			for i, arg in template.args {
-				if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
-					&& arg is ast.AsmRegister {
-					g.write('*') // indirect branching
-				}
-
-				g.asm_arg(arg, stmt)
-				if i + 1 < template.args.len {
-					g.write(', ')
-				}
-			}
-
-			if !template.is_label {
-				g.write('\\n\\t')
-			}
-			g.writeln('"')
+	for template_tmp in stmt.templates {
+		mut template := template_tmp
+		g.write('"')
+		if template.is_directive {
+			g.write('.')
 		}
+		g.write(template.name)
+		if template.is_label {
+			g.write(':')
+		} else {
+			g.write(' ')
+		}
+		// swap destination and operands for att syntax, not for arm64
+		if template.args.len != 0 && !template.is_directive
+			&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
+			template.args.prepend(template.args.last())
+			template.args.delete(template.args.len - 1)
+		}
+
+		for i, arg in template.args {
+			if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
+				&& arg is ast.AsmRegister {
+				g.write('*') // indirect branching
+			}
+
+			g.asm_arg(arg, stmt)
+			if i + 1 < template.args.len {
+				g.write(', ')
+			}
+		}
+
+		if !template.is_label {
+			g.write('\\n\\t')
+		}
+		g.writeln('"')
 	}
 
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
@@ -4289,17 +4165,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
 			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
 			g.inside_map_postfix = true
-			handled_atomic_postfix := !is_safe_inc && !is_safe_dec && g.atomic_postfix_expr(node)
-			if handled_atomic_postfix {
-				// atomic ++/-- need helper calls for tinyc, while still compiling on other backends
-			} else if node.is_c2v_prefix {
+			if node.is_c2v_prefix {
 				g.write(node.op.str())
 			}
-			if !handled_atomic_postfix && node.expr.is_auto_deref_var() {
+			if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
-			} else if !handled_atomic_postfix && node.op == .question {
+			} else if node.op == .question {
 				cur_line := g.go_before_last_stmt().trim_space()
 				mut expr_str := ''
 				mut is_unwrapped := true
@@ -4328,14 +4201,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				} else {
 					g.expr(node.expr)
 				}
-			} else if !handled_atomic_postfix {
+			} else {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !handled_atomic_postfix && !node.is_c2v_prefix && node.op != .question
-				&& !is_safe_inc && !is_safe_dec {
+			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
-			} else if !handled_atomic_postfix && (is_safe_inc || is_safe_dec) {
+			} else if is_safe_inc || is_safe_dec {
 				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
 				vsafe_fn_name := if is_safe_inc {
 					'builtin__overflow__add_${overflow_styp}'
@@ -7101,10 +6973,9 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vinit_start_pos := g.out.len
-	init_prefix := if g.pref.is_o { 'static ' } else { '' }
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
-	g.writeln('${init_prefix}void _vinit(int ___argc, voidptr ___argv) {')
+	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 
 	g.write_debug_calls_typeof_functions()
 
@@ -7212,7 +7083,7 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vcleanup_start_pos := g.out.len
-	g.writeln('${init_prefix}void _vcleanup(void) {')
+	g.writeln('void _vcleanup(void) {')
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_S("_vcleanup"));')
 	}
@@ -7249,10 +7120,8 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
-		if !g.pref.is_o {
-			g.export_funcs << '_vinit_caller'
-		}
-		g.writeln('${init_prefix}void _vinit_caller() {')
+		g.export_funcs << '_vinit_caller'
+		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
@@ -7260,10 +7129,8 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
-		if !g.pref.is_o {
-			g.export_funcs << '_vcleanup_caller'
-		}
-		g.writeln('${init_prefix}void _vcleanup_caller() {')
+		g.export_funcs << '_vcleanup_caller'
+		g.writeln('void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')
@@ -8734,14 +8601,13 @@ return ${cast_shared_struct_str};
 				}
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if cctype == cctype2 {
-					if !method.params[0].typ.is_ptr() {
-						if method.name !in aliased_method_names {
-							method_call = '${cctype}_${name}'
-						} else {
-							method_call = '${styp}_${name}'
-						}
+				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
+					if method.name !in aliased_method_names {
+						method_call = '${cctype}_${name}'
+					} else {
+						method_call = '${styp}_${name}'
 					}
+					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					mut wrapper_method_name := '${cctype}_${name}${iwpostfix}'
 					method_sym := g.table.sym(method.params[0].typ)
@@ -8749,17 +8615,23 @@ return ${cast_shared_struct_str};
 						wrapper_method_name = 'builtin__${wrapper_method_name}'
 						method_call = 'builtin__${method_call}'
 					}
-					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(void* _')
-					mut wrapper_args := []string{cap: method.params.len - 1}
-					for i in 1 .. method.params.len {
-						arg := method.params[i]
-						arg_name := '_arg${i}'
-						methods_wrapper.write_string(', ${g.styp(arg.typ)} ${arg_name}')
-						wrapper_args << arg_name
+					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(')
+					params_start_pos := g.out.len
+					mut params := method.params.clone()
+					// hack to mutate typ
+					params[0] = ast.Param{
+						...params[0]
+						typ: st.set_nr_muls(1)
 					}
+					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false, false)
+					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
+
+					if st.is_ptr() {
+						parameter_name = parameter_name.trim_string_left('__shared__')
+					}
+
+					methods_wrapper.write_string(parameter_name)
 					methods_wrapper.writeln(') {')
-					receiver_name := '_interface_obj'
-					methods_wrapper.writeln('\t${cctype}* ${receiver_name} = (${cctype}*)_;')
 					methods_wrapper.write_string('\t')
 					if method.return_type != ast.void_type {
 						methods_wrapper.write_string('return ')
@@ -8769,40 +8641,33 @@ return ${cast_shared_struct_str};
 					}
 					if embed_types.len > 0 && method.name !in method_names {
 						embed_sym := g.table.sym(embed_types.last())
-						mut embedded_method_name := '${embed_sym.cname}_${method.name}'
+						mut method_name := '${embed_sym.cname}_${method.name}'
 						if embed_sym.is_builtin() {
-							embedded_method_name = 'builtin__${embedded_method_name}'
+							method_name = 'builtin__${method_name}'
 						}
-						mut receiver_expr := receiver_name
+						methods_wrapper.write_string('${method_name}(${fargs[0]}')
 						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
 							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
-								receiver_expr += '->${esym.embed_name()}'
+								methods_wrapper.write_string('->${esym.embed_name()}')
 							} else {
-								receiver_expr += '.${esym.embed_name()}'
+								methods_wrapper.write_string('.${esym.embed_name()}')
 							}
 						}
-						if method.params[0].typ.is_ptr()
-							&& !embed_types.last().is_any_kind_of_pointer() {
-							receiver_expr = '&(${receiver_expr})'
+						if fargs.len > 1 {
+							methods_wrapper.write_string(', ')
 						}
-						if wrapper_args.len > 0 {
-							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr}, ${wrapper_args.join(', ')});')
-						} else {
-							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr});')
-						}
+						args := fargs[1..].join(', ')
+						methods_wrapper.writeln('${args});')
 					} else {
-						receiver_arg := if method.params[0].typ.is_ptr() {
-							receiver_name
+						if parameter_name.starts_with('__shared__') {
+							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
 						} else {
-							'*${receiver_name}'
+							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 						}
-						mut call_args := []string{cap: wrapper_args.len + 1}
-						call_args << receiver_arg
-						call_args << wrapper_args
-						methods_wrapper.writeln('${method_call}(${call_args.join(', ')});')
 					}
 					methods_wrapper.writeln('}')
+					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call = wrapper_method_name
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type

@@ -353,6 +353,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			return
 		}
 	} else {
+		if !arg.is_mut && c.can_convert_array_to_interface_array(got, exp_type) {
+			return
+		}
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
 		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
 		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
@@ -386,6 +389,44 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
+}
+
+fn (mut c Checker) can_convert_array_to_interface_array(got ast.Type, expected ast.Type) bool {
+	if got.is_ptr() || expected.is_ptr() || got.has_option_or_result()
+		|| expected.has_option_or_result() {
+		return false
+	}
+	got_type := c.table.unaliased_type(c.unwrap_generic(got))
+	expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	if c.table.final_sym(got_type).kind != .array || c.table.final_sym(expected_type).kind != .array {
+		return false
+	}
+	return c.can_convert_array_elem_to_interface_array(got_type, expected_type)
+}
+
+fn (mut c Checker) can_convert_array_elem_to_interface_array(got ast.Type, expected ast.Type) bool {
+	got_type := c.table.unaliased_type(c.unwrap_generic(got))
+	mut expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	got_sym := c.table.final_sym(got_type)
+	mut expected_sym := c.table.final_sym(expected_type)
+	if got_sym.kind == .array && expected_sym.kind == .array {
+		return c.can_convert_array_elem_to_interface_array(got_sym.array_info().elem_type,
+			expected_sym.array_info().elem_type)
+	}
+	if expected_type.is_ptr() || expected_sym.kind != .interface {
+		return false
+	}
+	if mut expected_sym.info is ast.Interface {
+		if expected_sym.info.is_generic && expected_sym.info.concrete_types.len == 0 {
+			inferred_type := c.unwrap_generic_interface(got_type, expected_type, token.Pos{})
+			if inferred_type == 0 {
+				return false
+			}
+			expected_type = inferred_type
+			expected_sym = c.table.final_sym(expected_type)
+		}
+	}
+	return c.table.does_type_implement_interface(got_type, expected_type)
 }
 
 fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
