@@ -4,6 +4,9 @@ The `json` module provides encoding/decoding of V data structures to/from JSON.
 For more details, see also the
 [JSON section of the V documentation](https://github.com/vlang/v/blob/master/doc/docs.md#json)
 
+Large `i64` and `u64` values are encoded as exact decimal JSON numbers, and
+`json.decode` preserves those integer values when reading decimal integer input.
+
 ## Examples
 
 Here is an example of encoding and decoding a V struct with several fields.
