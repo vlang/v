@@ -6,13 +6,20 @@ import v.util
 
 fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
-		if g.pref.is_livemain {
-			g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
-		}
-		if g.pref.is_liveshared {
-			g.hotcode_definitions.writeln('HANDLE live_fn_mutex;')
-		}
+		g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
 		g.hotcode_definitions.writeln('
+HANDLE* v_live_fn_mutex_ptr(void) {
+	if (g_live_reload_info) {
+		v__live__LiveReloadInfo* live_info = (v__live__LiveReloadInfo*)g_live_reload_info;
+		if (live_info->live_fn_mutex) {
+			return (HANDLE*)live_info->live_fn_mutex;
+		}
+	}
+	if (!live_fn_mutex) {
+		live_fn_mutex = CreateMutexA(0, 0, 0);
+	}
+	return &live_fn_mutex;
+}
 void pthread_mutex_lock(HANDLE *m) {
 	WaitForSingleObject(*m, INFINITE);
 }
@@ -21,12 +28,28 @@ void pthread_mutex_unlock(HANDLE *m) {
 }
 ')
 	} else {
-		if g.pref.is_livemain {
-			g.hotcode_definitions.writeln('pthread_mutex_t live_fn_mutex = PTHREAD_MUTEX_INITIALIZER;')
+		g.hotcode_definitions.writeln('pthread_mutex_t live_fn_mutex;')
+		g.hotcode_definitions.writeln('pthread_once_t live_fn_mutex_once = PTHREAD_ONCE_INIT;')
+		g.hotcode_definitions.writeln('
+void v_init_live_mutex(void) {
+	pthread_mutexattr_t live_fn_mutex_attr;
+	pthread_mutexattr_init(&live_fn_mutex_attr);
+	pthread_mutexattr_settype(&live_fn_mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&live_fn_mutex, &live_fn_mutex_attr);
+	pthread_mutexattr_destroy(&live_fn_mutex_attr);
+}
+
+pthread_mutex_t* v_live_fn_mutex_ptr(void) {
+	if (g_live_reload_info) {
+		v__live__LiveReloadInfo* live_info = (v__live__LiveReloadInfo*)g_live_reload_info;
+		if (live_info->live_fn_mutex) {
+			return (pthread_mutex_t*)live_info->live_fn_mutex;
 		}
-		if g.pref.is_liveshared {
-			g.hotcode_definitions.writeln('pthread_mutex_t live_fn_mutex;')
-		}
+	}
+	pthread_once(&live_fn_mutex_once, v_init_live_mutex);
+	return &live_fn_mutex;
+}
+')
 	}
 }
 
@@ -101,14 +124,12 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
 
 	g.writeln('\t\t// start background reloading thread')
-	if g.pref.os == .windows {
-		g.writeln('\t\tlive_fn_mutex = CreateMutexA(0, 0, 0);')
-	}
+	g.writeln('\t\tvoid* live_fn_mutex_addr = v_live_fn_mutex_ptr();')
 	g.writeln('\t\tv__live__LiveReloadInfo* live_info = v__live__executable__new_live_reload_info(')
 	g.writeln('\t\t\t\t\t builtin__tos2("${file}"),')
 	g.writeln('\t\t\t\t\t builtin__tos2("${vexe}"),')
 	g.writeln('\t\t\t\t\t builtin__tos2("${vopts}"),')
-	g.writeln('\t\t\t\t\t &live_fn_mutex,')
+	g.writeln('\t\t\t\t\t live_fn_mutex_addr,')
 	g.writeln('\t\t\t\t\t v_bind_live_symbols')
 	g.writeln('\t\t);')
 	mut already_added := map[string]bool{}

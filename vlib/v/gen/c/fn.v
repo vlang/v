@@ -501,6 +501,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// Adding the mutex lock/unlock inside the body of the implementation
 		// function is not reliable, because the implementation function can do
 		// an early exit, which will leave the mutex locked.
+		live_mutex_ptr_type := if g.pref.os == .windows {
+			'HANDLE*'
+		} else {
+			'pthread_mutex_t*'
+		}
 		mut fn_args_list := []string{}
 		for ia, fa in fargs {
 			fn_args_list << '${fargtypes[ia]} ${fa}'
@@ -516,9 +521,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		g.definitions.writeln('${type_name} ${name}(' + fn_args_list.join(', ') + ');')
 		g.hotcode_definitions.writeln('${type_name} ${name}(' + fn_args_list.join(', ') + '){')
-		g.hotcode_definitions.writeln('  pthread_mutex_lock(&live_fn_mutex);')
+		g.hotcode_definitions.writeln('  ${live_mutex_ptr_type} live_fn_mutex_ptr = v_live_fn_mutex_ptr();')
+		g.hotcode_definitions.writeln('  pthread_mutex_lock(live_fn_mutex_ptr);')
 		g.hotcode_definitions.writeln('  ${live_fncall}')
-		g.hotcode_definitions.writeln('  pthread_mutex_unlock(&live_fn_mutex);')
+		g.hotcode_definitions.writeln('  pthread_mutex_unlock(live_fn_mutex_ptr);')
 		g.hotcode_definitions.writeln('  ${live_fnreturn}')
 		g.hotcode_definitions.writeln('}')
 	}
