@@ -202,7 +202,8 @@ mut:
 	anon_fns                  shared []string // remove duplicate anon generated functions
 	sumtype_definitions       map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions      []string
-	json_types                []ast.Type           // to avoid json gen duplicates
+	json_types                []ast.Type // to avoid json gen duplicates
+	json_types_modes          map[ast.Type]JsonGenKind
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names          []string
 	hotcode_fpaths            []string
@@ -349,6 +350,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		shared_types:         strings.new_builder(100)
 		shared_functions:     strings.new_builder(100)
 		json_forward_decls:   strings.new_builder(100)
+		json_types_modes:     map[ast.Type]JsonGenKind{}
 		sql_buf:              strings.new_builder(100)
 		table:                table
 		pref:                 pref_
@@ -484,6 +486,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_last_index_types << g.array_last_index_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
+			for typ, mode in g.json_types_modes {
+				global_g.json_types_modes[typ] = global_g.json_types_modes[typ] | mode
+			}
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
@@ -853,6 +858,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		channel_definitions:   strings.new_builder(100)
 		thread_definitions:    strings.new_builder(100)
 		json_forward_decls:    strings.new_builder(100)
+		json_types_modes:      map[ast.Type]JsonGenKind{}
 		enum_typedefs:         strings.new_builder(100)
 		sql_buf:               strings.new_builder(100)
 		cleanup:               strings.new_builder(100)
