@@ -322,3 +322,16 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	}
 	return curr_closure
 }
+
+// closure_data returns the userdata pointer associated with a closure object.
+@[direct_array_access]
+fn closure_data(closure voidptr) voidptr {
+	unsafe {
+		mut p := &voidptr(&u8(closure) - assumed_page_size)
+		$if ppc64 {
+			return p[2]
+		} $else {
+			return p[0]
+		}
+	}
+}

@@ -116,6 +116,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'builtin.closure.closure_alloc'
 			core_fns << 'builtin.closure.closure_init'
 			core_fns << 'builtin.closure.closure_create'
+			core_fns << 'builtin.closure.closure_data'
 		}
 		if table.used_features.arr_map {
 			include_panic_deps = true
