@@ -357,6 +357,134 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 // abstract over reading the whole content from TCP or SSL connections:
 type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
 
+enum ChunkedBodyTrackerState {
+	chunk_size
+	chunk_data
+	chunk_data_crlf_start
+	chunk_data_crlf_end
+	trailer_line
+}
+
+struct ChunkedBodyTracker {
+mut:
+	state      ChunkedBodyTrackerState = .chunk_size
+	line_buf   []u8
+	chunk_left u64
+	complete   bool
+	invalid    bool
+}
+
+fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
+	if tracker.complete || tracker.invalid || data.len == 0 {
+		return tracker.complete
+	}
+	mut i := 0
+	for i < data.len {
+		match tracker.state {
+			.chunk_size {
+				ch := data[i]
+				i++
+				if ch == `\r` {
+					continue
+				}
+				if ch != `\n` {
+					tracker.line_buf << ch
+					continue
+				}
+				chunk_size := parse_chunked_size_line(tracker.line_buf) or {
+					tracker.invalid = true
+					return false
+				}
+				tracker.line_buf.clear()
+				if chunk_size == 0 {
+					tracker.state = .trailer_line
+					continue
+				}
+				tracker.chunk_left = chunk_size
+				tracker.state = .chunk_data
+			}
+			.chunk_data {
+				available := data.len - i
+				if tracker.chunk_left < u64(available) {
+					i += int(tracker.chunk_left)
+					tracker.chunk_left = 0
+				} else {
+					tracker.chunk_left -= u64(available)
+					i = data.len
+				}
+				if tracker.chunk_left == 0 {
+					tracker.state = .chunk_data_crlf_start
+				}
+			}
+			.chunk_data_crlf_start {
+				if data[i] != `\r` {
+					tracker.invalid = true
+					return false
+				}
+				i++
+				tracker.state = .chunk_data_crlf_end
+			}
+			.chunk_data_crlf_end {
+				if data[i] != `\n` {
+					tracker.invalid = true
+					return false
+				}
+				i++
+				tracker.state = .chunk_size
+			}
+			.trailer_line {
+				ch := data[i]
+				i++
+				if ch == `\r` {
+					continue
+				}
+				if ch != `\n` {
+					tracker.line_buf << ch
+					continue
+				}
+				if tracker.line_buf.len == 0 {
+					tracker.complete = true
+					return true
+				}
+				tracker.line_buf.clear()
+			}
+		}
+	}
+	return tracker.complete
+}
+
+fn parse_chunked_size_line(line []u8) !u64 {
+	mut size := u64(0)
+	mut has_digit := false
+	for ch in line {
+		if ch == `;` {
+			break
+		}
+		if !ch.is_hex_digit() {
+			return error('invalid chunk size')
+		}
+		has_digit = true
+		size = (size << 4) | u64(chunked_hex_value(ch))
+	}
+	if !has_digit {
+		return error('invalid chunk size')
+	}
+	return size
+}
+
+fn chunked_hex_value(ch u8) u8 {
+	if `0` <= ch && ch <= `9` {
+		return ch - `0`
+	}
+	if `a` <= ch && ch <= `f` {
+		return ch - `a` + 10
+	}
+	if `A` <= ch && ch <= `F` {
+		return ch - `A` + 10
+	}
+	return 0
+}
+
 fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
@@ -365,6 +493,8 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut headers_end := -1
 	mut expected_size := u64(0)
 	mut has_content_length := false
+	mut is_chunked_transfer := false
+	mut chunked_body_tracker := ChunkedBodyTracker{}
 	mut header_buf := strings.new_builder(1024)
 	mut old_len := u64(0)
 	mut new_len := u64(0)
@@ -423,7 +553,13 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 								expected_size = raw_cl.u64()
 								has_content_length = true
 							}
+						} else if low.starts_with('transfer-encoding:')
+							&& has_header_token(line.all_after(':').trim_space(), 'chunked') {
+							is_chunked_transfer = true
 						}
+					}
+					if is_chunked_transfer {
+						has_content_length = false
 					}
 				}
 			}
@@ -445,6 +581,9 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		}
+		if is_chunked_transfer && chunked_body_tracker.advance(bchunk) {
+			break
 		}
 		if has_content_length {
 			if expected_size > 0 && body_so_far >= expected_size {
