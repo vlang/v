@@ -640,8 +640,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	ret_styp := g.styp(return_type)
 	ret_sym := g.table.final_sym(return_type)
 
-	left_is_array := g.table.final_sym(node.left_type).kind == .array
-	inp_sym := g.table.final_sym(node.receiver_type)
+	left_type := g.resolve_array_call_left_type(node)
+	left_sym := g.table.final_sym(left_type)
+	left_is_array := left_sym.kind == .array
+	inp_sym := left_sym
 
 	ret_elem_type := if left_is_array {
 		(ret_sym.info as ast.Array).elem_type
@@ -1110,7 +1112,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 	info := sym.info as ast.Array
 	styp := g.styp(node.return_type)
-	left_sym := g.table.final_sym(node.left_type)
+	left_type := g.resolve_array_call_left_type(node)
+	left_sym := g.table.final_sym(left_type)
 	elem_type_str := g.styp(info.elem_type)
 	noscan := g.check_noscan(info.elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
@@ -1613,7 +1616,8 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	left_type := g.resolve_array_call_left_type(node)
+	sym := g.table.final_sym(left_type)
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1705,7 +1709,8 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	left_type := g.resolve_array_call_left_type(node)
+	sym := g.table.final_sym(left_type)
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1797,7 +1802,8 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	left_type := g.resolve_array_call_left_type(node)
+	sym := g.table.final_sym(left_type)
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1885,6 +1891,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) resolve_array_call_left_type(node &ast.CallExpr) ast.Type {
+	return g.unwrap_generic(g.type_resolver.get_type_or_default(node.left, node.left_type))
+}
+
 fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_stype string, initial_value string) bool {
 	g.writeln('${tmp_stype} ${tmp} = ${initial_value};')
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
@@ -1893,12 +1903,13 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		g.infix_left_var_name = ''
 		g.indent++
 	}
-	left_type := if node.left_type.has_flag(.shared_f) {
-		node.left_type.clear_flag(.shared_f).deref()
-	} else if node.left_type.is_ptr() {
-		node.left_type.deref()
+	resolved_left_type := g.resolve_array_call_left_type(node)
+	left_type := if resolved_left_type.has_flag(.shared_f) {
+		resolved_left_type.clear_flag(.shared_f).deref()
+	} else if resolved_left_type.is_ptr() {
+		resolved_left_type.deref()
 	} else {
-		node.left_type
+		resolved_left_type
 	}
 	left_sym := g.table.final_sym(left_type)
 	if left_sym.kind == .array {
