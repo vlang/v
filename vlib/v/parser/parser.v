@@ -2231,22 +2231,18 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	mut field_name := ''
-	// check if the name is on the same line as the dot
-	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
-		if p.is_vls && p.tok.kind != .name {
-			if p.tok.kind in [.rpar, .rcbr] {
-				// Simplify the dot expression for VLS, so that the parser doesn't error
-				// `println(x.)` => `println(x)`
-				// `x. }` => `x }` etc
-				return left
-			} else if name_pos.line_nr != p.tok.line_nr {
-				return left
-			}
+	// allow the selector/method name to continue on the next line after `.`
+	if p.is_vls && p.tok.kind != .name {
+		if p.tok.kind in [.rpar, .rcbr] {
+			// Simplify the dot expression for VLS, so that the parser doesn't error
+			// `println(x.)` => `println(x)`
+			// `x. }` => `x }` etc
+			return left
+		} else if name_pos.line_nr != p.tok.line_nr {
+			return left
 		}
-		field_name = p.check_name()
-	} else {
-		p.name_error = true
 	}
+	field_name = p.check_name()
 	if ast.builtin_array_generic_methods_matcher.matches(field_name) {
 		if p.file_backend_mode == .v || p.file_backend_mode == .c {
 			p.register_auto_import('builtin.closure')
