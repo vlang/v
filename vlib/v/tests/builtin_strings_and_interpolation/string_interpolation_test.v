@@ -187,6 +187,14 @@ fn test_utf8_string_interpolation() {
 	assert '>${g:-13}<' == '>Πελοπόννησος <'
 }
 
+fn test_utf8_string_interpolation_uses_grapheme_clusters() {
+	assert '>${'\u006E\u0303':10}<' == '>         ñ<'
+	assert '>${'\U0001F3F3\uFE0F\u200D\U0001F308':10}<' == '>        🏳️‍🌈<'
+	assert '>${'ห์':10}<' == '>         ห์<'
+	assert '>${'ปีเตอร์':10}<' == '>     ปีเตอร์<'
+	assert '>${'👩🏽‍💻':10}<' == '>        👩🏽‍💻<'
+}
+
 struct Sss {
 	v1 int
 	v2 f64

@@ -1574,6 +1574,16 @@ fn test_emoji_to_runes() {
 	assert x.runes()[0] == `👋`
 }
 
+fn test_graphemes() {
+	assert '\u006E\u0303'.graphemes() == ['ñ']
+	assert '\U0001F3F3\uFE0F\u200D\U0001F308'.graphemes() == ['🏳️‍🌈']
+	assert 'ห์'.graphemes() == ['ห์']
+	assert 'ปีเตอร์'.graphemes() == ['ปี', 'เ', 'ต', 'อ', 'ร์']
+	assert '🇺🇳'.graphemes() == ['🇺🇳']
+	assert '👩🏽‍💻'.graphemes() == ['👩🏽‍💻']
+	assert 'a\r\nb'.graphemes() == ['a', '\r\n', 'b']
+}
+
 fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
