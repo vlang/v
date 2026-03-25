@@ -5518,7 +5518,14 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			g.expr(args[0].expr)
 		} else if args.len > 0 && args.last().expr is ast.ArrayDecompose {
 			if !already_decomposed {
-				g.expr(ast.Expr(args.last().expr))
+				array_decompose := args.last().expr as ast.ArrayDecompose
+				varg_array_type := varg_type.clear_flag(.variadic)
+				if g.table.unaliased_type(array_decompose.expr_type) == g.table.unaliased_type(varg_array_type) {
+					g.expr(args.last().expr)
+				} else {
+					g.write_converted_variadic_array_decompose_arg(array_decompose, varg_array_type,
+						arr_info.elem_type, node.language)
+				}
 			}
 		} else {
 			if variadic_count > 0 {
@@ -5584,6 +5591,59 @@ fn (g &Gen) is_forwarded_variadic_arg(arg ast.CallArg) bool {
 		return var_obj.is_arg && arg.expr.name == g.cur_fn.params.last().name
 	}
 	return false
+}
+
+fn (mut g Gen) write_converted_variadic_array_decompose_arg(node ast.ArrayDecompose, varg_array_type ast.Type,
+	elem_type ast.Type, lang ast.Language) {
+	stmt_str := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	src_array_type := g.unwrap_generic(node.expr_type)
+	src_array_styp := g.styp(src_array_type)
+	src_array_var := g.new_tmp_var()
+	g.write('${src_array_styp} ${src_array_var} = ')
+	g.expr(node.expr)
+	g.writeln(';')
+	elem_styp := g.styp(elem_type)
+	noscan := g.check_noscan(elem_type)
+	dst_var := g.new_tmp_var()
+	g.writeln('${g.styp(varg_array_type)} ${dst_var} = builtin____new_array${noscan}(0, ${src_array_var}.len, sizeof(${elem_styp}));')
+	src_array_info := g.table.final_sym(src_array_type).array_info()
+	src_elem_type := src_array_info.elem_type
+	idx_var := g.new_tmp_var()
+	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${src_array_var}.len; ++${idx_var}) {')
+	g.indent++
+	src_item_expr := ast.IndexExpr{
+		left:      ast.Ident{
+			name: src_array_var
+			kind: .variable
+			info: ast.IdentVar{
+				typ: src_array_type
+			}
+		}
+		left_type: src_array_type
+		index:     ast.Ident{
+			name: idx_var
+			kind: .variable
+			info: ast.IdentVar{
+				typ: ast.int_type
+			}
+		}
+		is_array:  true
+		typ:       src_elem_type
+	}
+	src_item_arg := ast.CallArg{
+		typ:  src_elem_type
+		expr: src_item_expr
+	}
+	converted_var := g.new_tmp_var()
+	g.write('${elem_styp} ${converted_var} = ')
+	g.ref_or_deref_arg(src_item_arg, elem_type, lang, false)
+	g.writeln(';')
+	g.writeln('builtin__array_push${noscan}((array*)&${dst_var}, &${converted_var});')
+	g.indent--
+	g.writeln('}')
+	g.write(stmt_str)
+	g.write(dst_var)
 }
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions
