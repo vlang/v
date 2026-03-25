@@ -11,7 +11,7 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 		if g.inside_struct_init {
 			return true
 		}
-		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
+		if g.table.sym(node.return_type).kind in [.sum_type, .interface, .multi_return]
 			|| node.return_type.has_option_or_result() {
 			return true
 		}
@@ -244,7 +244,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.writeln(') {')
 				}
 			}
-			if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
+			if is_expr && tmp_var.len > 0
+				&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
 				g.expected_cast_type = node.return_type
 			}
 			inside_interface_deref_old := g.inside_interface_deref
@@ -353,7 +354,8 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			}
 		}
 		g.writeln('{')
-		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
+		if is_expr && tmp_var.len > 0
+			&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
 			g.expected_cast_type = node.return_type
 		}
 		ends_with_return := g.stmts_with_tmp_var(branch.stmts, tmp_var)
@@ -562,7 +564,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.writeln(') {')
 			}
 		}
-		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
+		if is_expr && tmp_var.len > 0
+			&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
 			g.expected_cast_type = node.return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
