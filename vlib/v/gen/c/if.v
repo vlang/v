@@ -262,6 +262,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			g.unwrap_generic(node_typ)
 		}
+		resolved_sym := g.table.final_sym(resolved_typ)
 		mut styp := g.styp(resolved_typ)
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
@@ -293,13 +294,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.empty_line = true
 		if tmp != '' && !use_outer_tmp {
 			// Only declare the tmp var if it's not from outer context
+			mut declared_tmp := false
 			if node.typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
+			} else if resolved_sym.kind == .function && resolved_sym.info is ast.FnType {
+				g.writeln('${g.fn_var_signature(resolved_typ, resolved_sym.info.func.return_type,
+					resolved_sym.info.func.params.map(it.typ), tmp)}; /* if prepend */')
+				declared_tmp = true
 			} else {
 				g.write('${styp} ')
 			}
-			g.writeln('${tmp}; /* if prepend */')
+			if !declared_tmp {
+				g.writeln('${tmp}; /* if prepend */')
+			}
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		if g.infix_left_var_name.len > 0 {
