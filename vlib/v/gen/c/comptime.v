@@ -393,6 +393,41 @@ fn (mut g Gen) gen_branch_context_string() string {
 	return arr.join(',')
 }
 
+fn (g &Gen) can_preserve_comptime_if_condition_in_c(cond ast.Expr) bool {
+	match cond {
+		ast.BoolLiteral {
+			return true
+		}
+		ast.ParExpr {
+			return g.can_preserve_comptime_if_condition_in_c(cond.expr)
+		}
+		ast.PrefixExpr {
+			return cond.op == .not && g.can_preserve_comptime_if_condition_in_c(cond.right)
+		}
+		ast.InfixExpr {
+			return cond.op in [.and, .logical_or]
+				&& g.can_preserve_comptime_if_condition_in_c(cond.left)
+				&& g.can_preserve_comptime_if_condition_in_c(cond.right)
+		}
+		ast.PostfixExpr {
+			return cond.op == .question && cond.expr is ast.Ident
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (g &Gen) comptime_if_condition_for_c(cond ast.Expr, result ast.ComptTimeCondResult) string {
+	if g.pref.output_cross_c || g.can_preserve_comptime_if_condition_in_c(cond) {
+		return result.c_str
+	}
+	// For normal C generation, honor the branch result that V already resolved.
+	// Re-evaluating built-in comptime conditions in the C preprocessor can pick
+	// a different branch than the V checker, e.g. `termux` vs `linux`.
+	return if result.val { '1' } else { '0' }
+}
+
 fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	tmp_var := g.new_tmp_var()
 	mut inferred_typ := node.typ
@@ -459,9 +494,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			} else {
 				g.write('#elif ')
 			}
-			// directly use `checker` evaluate results
-			// for `cgen`, we can use `is_true.c_str` or `is_true.value` here
-			g.writeln('${is_true.c_str}')
+			g.writeln(g.comptime_if_condition_for_c(branch.cond, is_true))
 			$if debug_comptime_branch_context ? {
 				g.writeln('/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
 			}
