@@ -88,6 +88,75 @@ pub fn (t &TypeResolver) get_ct_type_or_default(key string, default_type ast.Typ
 	return t.type_map[resolved_key] or { default_type }
 }
 
+// resolve_bound_generic_type returns the branch-local concrete type for a bound comptime generic.
+pub fn (t &TypeResolver) resolve_bound_generic_type(typ ast.Type) ?ast.Type {
+	if !typ.has_flag(.generic) {
+		return none
+	}
+	generic_name := t.table.sym(typ).name
+	if generic_name !in t.type_map {
+		return none
+	}
+	mut resolved := t.type_map[generic_name]
+	if typ.has_flag(.option) {
+		resolved = resolved.set_flag(.option)
+	}
+	if typ.has_flag(.result) {
+		resolved = resolved.set_flag(.result)
+	}
+	if typ.has_flag(.shared_f) {
+		resolved = resolved.set_flag(.shared_f)
+	}
+	if typ.has_flag(.atomic_f) {
+		resolved = resolved.set_flag(.atomic_f)
+	}
+	if typ.nr_muls() > 0 {
+		resolved = resolved.set_nr_muls(resolved.nr_muls() + typ.nr_muls())
+	}
+	return resolved
+}
+
+// bind_matching_generic_type binds a pointer-pattern generic like `&V` to the matching pointee type.
+pub fn (mut t TypeResolver) bind_matching_generic_type(left_type ast.Type, pattern_type ast.Type) bool {
+	if !pattern_type.has_flag(.generic) || pattern_type.nr_muls() == 0 {
+		return false
+	}
+	mut concrete_type := t.resolver.unwrap_generic(left_type)
+	if concrete_type == ast.no_type || concrete_type.has_flag(.generic) {
+		return false
+	}
+	if concrete_type.nr_muls() < pattern_type.nr_muls() {
+		return false
+	}
+	if concrete_type.has_flag(.option) != pattern_type.has_flag(.option)
+		|| concrete_type.has_flag(.result) != pattern_type.has_flag(.result)
+		|| concrete_type.has_flag(.shared_f) != pattern_type.has_flag(.shared_f)
+		|| concrete_type.has_flag(.atomic_f) != pattern_type.has_flag(.atomic_f) {
+		return false
+	}
+	for _ in 0 .. pattern_type.nr_muls() {
+		concrete_type = concrete_type.deref()
+	}
+	if pattern_type.has_flag(.option) {
+		concrete_type = concrete_type.clear_flag(.option)
+	}
+	if pattern_type.has_flag(.result) {
+		concrete_type = concrete_type.clear_flag(.result)
+	}
+	if pattern_type.has_flag(.shared_f) {
+		concrete_type = concrete_type.clear_flag(.shared_f)
+	}
+	if pattern_type.has_flag(.atomic_f) {
+		concrete_type = concrete_type.clear_flag(.atomic_f)
+	}
+	generic_name := t.table.sym(pattern_type).name
+	if existing_type := t.type_map[generic_name] {
+		return existing_type == concrete_type
+	}
+	t.update_ct_type(generic_name, concrete_type)
+	return true
+}
+
 @[noreturn]
 fn (t &TypeResolver) error(s string, pos token.Pos) {
 	util.show_compiler_message('cgen error:', pos: pos, file_path: t.resolver.file.path, message: s)

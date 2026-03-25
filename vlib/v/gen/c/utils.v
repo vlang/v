@@ -70,6 +70,9 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				}
 			}
 		}
+		if t_typ := g.type_resolver.resolve_bound_generic_type(typ) {
+			return t_typ
+		}
 	}
 	return resolved_typ
 }

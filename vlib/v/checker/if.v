@@ -140,6 +140,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	comptime_branch_context_str := if node.is_comptime { c.gen_branch_context_string() } else { '' }
 
 	for i, mut branch in node.branches {
+		if node.is_comptime {
+			c.push_new_comptime_info()
+		}
 		orig_branch_cond := branch.cond
 		mut comptime_remove_curr_branch_stmts := false
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -561,6 +564,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if comptime_remove_curr_branch_stmts && !c.pref.output_cross_c {
 			// remove the branch statements since they may contain OS-specific code.
 			branch.stmts = []
+		}
+		if node.is_comptime {
+			c.pop_comptime_info()
 		}
 	}
 	if nbranches_with_return > 0 {
