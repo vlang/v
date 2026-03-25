@@ -216,6 +216,20 @@ pub fn (mut ts TestSession) print_messages() {
 			}
 			return
 		}
+		if rmessage.kind in [.stats_output, .stats_error] {
+			mut msg := rmessage.message
+			if msg != '' && !msg.ends_with('\n') {
+				msg += '\n'
+			}
+			if rmessage.kind == .stats_error {
+				eprint(msg)
+				flush_stderr()
+			} else {
+				print(msg)
+				flush_stdout()
+			}
+			continue
+		}
 		if rmessage.kind != .info {
 			// info events can also be repeated, and should be ignored when determining
 			// the total order of the current test file, in the following replacements:
@@ -563,12 +577,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
 		mut res := ts.execute(cmd, mtc)
-		if res.exit_code != 0 {
-			eprintln(res.output)
-		} else {
-			println(res.output)
-		}
 		mut status := res.exit_code
+		if res.output != '' {
+			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
+			ts.append_message(output_kind, res.output, mtc)
+		}
 
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
@@ -583,7 +596,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				status = ts.system(cmd, mtc)
+				retry_res := ts.execute(cmd, mtc)
+				status = retry_res.exit_code
+				if retry_res.output != '' {
+					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
+					ts.append_message(output_kind, retry_res.output, mtc)
+				}
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
