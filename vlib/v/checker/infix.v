@@ -265,34 +265,37 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
 
-			// Do not allow comparing nil to non-pointers
-			if node.left.is_nil() {
-				mut final_type := right_type
-				if mut right_sym.info is ast.Alias
-					&& right_sym.info.parent_type.is_any_kind_of_pointer() {
-					final_type = right_sym.info.parent_type
+			// In SQL, `field == nil`/`field != nil` is lowered to NULL comparisons.
+			if !c.inside_sql {
+				// Do not allow comparing nil to non-pointers
+				if node.left.is_nil() {
+					mut final_type := right_type
+					if mut right_sym.info is ast.Alias
+						&& right_sym.info.parent_type.is_any_kind_of_pointer() {
+						final_type = right_sym.info.parent_type
+					}
+					if !final_type.is_any_kind_of_pointer() && (right_final_sym.kind != .function
+						|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder))
+						&& !right_final_sym.is_heap() {
+						rt := c.table.sym(right_type).name
+						c.error('cannot compare with `nil` because `${rt}` is not a pointer',
+							node.pos)
+					}
 				}
-				if !final_type.is_any_kind_of_pointer() && (right_final_sym.kind != .function
-					|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder))
-					&& !right_final_sym.is_heap() {
-					rt := c.table.sym(right_type).name
-					c.error('cannot compare with `nil` because `${rt}` is not a pointer',
-						node.pos)
-				}
-			}
 
-			if node.right.is_nil() {
-				mut final_type := left_type
-				if mut left_sym.info is ast.Alias
-					&& left_sym.info.parent_type.is_any_kind_of_pointer() {
-					final_type = left_sym.info.parent_type
-				}
-				if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
-					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder))
-					&& !left_final_sym.is_heap() {
-					lt := c.table.sym(left_type).name
-					c.error('cannot compare with `nil` because `${lt}` is not a pointer',
-						node.pos)
+				if node.right.is_nil() {
+					mut final_type := left_type
+					if mut left_sym.info is ast.Alias
+						&& left_sym.info.parent_type.is_any_kind_of_pointer() {
+						final_type = left_sym.info.parent_type
+					}
+					if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
+						|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder))
+						&& !left_final_sym.is_heap() {
+						lt := c.table.sym(left_type).name
+						c.error('cannot compare with `nil` because `${lt}` is not a pointer',
+							node.pos)
+					}
 				}
 			}
 		}
@@ -878,6 +881,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if left_is_result || right_is_result {
 		opt_infix_pos := if left_is_result { left_pos } else { right_pos }
 		c.error('unwrapped Result cannot be used in an infix expression', opt_infix_pos)
+	}
+	if c.inside_sql && node.op in [.eq, .ne] && (node.left.is_nil() || node.right.is_nil()) {
+		node.promoted_type = ast.bool_type
+		return ast.bool_type
 	}
 
 	// Dual sides check (compatibility check)

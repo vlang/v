@@ -3766,7 +3766,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.match_expr(mut node)
 		}
 		ast.Nil {
-			if !c.inside_unsafe {
+			if !c.inside_unsafe && !c.inside_sql {
 				c.error('`nil` is only allowed in `unsafe` code', node.pos)
 			}
 			return ast.nil_type

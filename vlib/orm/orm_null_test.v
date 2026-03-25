@@ -187,6 +187,13 @@ fn test_option_struct_fields_and_none() {
 		h:  none
 	}
 
+	_ := sql db {
+		select from Foo where d == nil && c != nil && a == nil
+	}!
+	assert db.st.last == 'SELECT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `d` IS NULL AND `c` IS NOT NULL AND `a` IS NULL;'
+	assert db.st.data.len == 0
+	assert db.st.where.len == 0
+
 	assert sql db {
 		select count from Foo where a == 'yo'
 	}! == 0
@@ -211,6 +218,15 @@ fn test_option_struct_fields_and_none() {
 	assert sql db {
 		select count from Foo where c == ''
 	}! == 0
+	assert sql db {
+		select count from Foo where a == nil
+	}! == 0
+	assert sql db {
+		select count from Foo where d == nil
+	}! == 1
+	assert sql db {
+		select count from Foo where c != nil
+	}! == 1
 	assert sql db {
 		select count from Foo where a is none
 	}! == 0

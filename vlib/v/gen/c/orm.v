@@ -660,6 +660,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		ast.CallExpr {
 			g.write_orm_primitive(expr.return_type, expr)
 		}
+		ast.Nil {
+			g.write_orm_primitive(ast.none_type, expr)
+		}
 		ast.None {
 			g.write_orm_primitive(ast.none_type, expr)
 		}
@@ -849,12 +852,22 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 			g.sql_side = .left
 			g.write_orm_where_expr(expr.left, mut fields, mut parentheses, mut kinds, mut
 				data, mut is_and)
+			is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
+			mut ignore_rhs := expr.op in [.key_is, .not_is] || is_nil_comparison
 			mut kind := match expr.op {
 				.ne {
-					'orm__OperationKind__neq'
+					if is_nil_comparison {
+						'orm__OperationKind__is_not_null'
+					} else {
+						'orm__OperationKind__neq'
+					}
 				}
 				.eq {
-					'orm__OperationKind__eq'
+					if is_nil_comparison {
+						'orm__OperationKind__is_null'
+					} else {
+						'orm__OperationKind__eq'
+					}
 				}
 				.lt {
 					'orm__OperationKind__lt'
@@ -902,7 +915,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 			if expr.left !is ast.InfixExpr && expr.right !is ast.InfixExpr && kind != '' {
 				kinds << kind
 			}
-			if expr.op !in [.key_is, .not_is] { // ignore rhs for unary ops
+			if !ignore_rhs { // ignore rhs for unary ops and SQL NULL equality
 				g.sql_side = .right
 				g.write_orm_where_expr(expr.right, mut fields, mut parentheses, mut kinds, mut
 					data, mut is_and)
