@@ -10387,13 +10387,14 @@ return ${cast_shared_struct_str};
 				name = g.specialized_method_name_from_receiver(method, st, name)
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
-					if method.name !in aliased_method_names {
-						method_call = '${cctype}_${name}'
-					} else {
-						method_call = '${styp}_${name}'
+				if cctype == cctype2 {
+					if !method.params[0].typ.is_ptr() {
+						if method.name !in aliased_method_names {
+							method_call = '${cctype}_${name}'
+						} else {
+							method_call = '${styp}_${name}'
+						}
 					}
-					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					mut wrapper_method_name := '${cctype}_${name}${iwpostfix}'
 					method_sym := g.table.sym(method.params[0].typ)
@@ -10401,23 +10402,17 @@ return ${cast_shared_struct_str};
 						wrapper_method_name = 'builtin__${wrapper_method_name}'
 						method_call = 'builtin__${method_call}'
 					}
-					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(')
-					params_start_pos := g.out.len
-					mut params := method.params.clone()
-					// hack to mutate typ
-					params[0] = ast.Param{
-						...params[0]
-						typ: st.set_nr_muls(1)
+					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(void* _')
+					mut wrapper_args := []string{cap: method.params.len - 1}
+					for i in 1 .. method.params.len {
+						arg := method.params[i]
+						arg_name := '_arg${i}'
+						methods_wrapper.write_string(', ${g.styp(arg.typ)} ${arg_name}')
+						wrapper_args << arg_name
 					}
-					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false, false)
-					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
-
-					if st.is_ptr() {
-						parameter_name = parameter_name.trim_string_left('__shared__')
-					}
-
-					methods_wrapper.write_string(parameter_name)
 					methods_wrapper.writeln(') {')
+					receiver_name := '_interface_obj'
+					methods_wrapper.writeln('\t${cctype}* ${receiver_name} = (${cctype}*)_;')
 					methods_wrapper.write_string('\t')
 					if method.return_type != ast.void_type {
 						methods_wrapper.write_string('return ')
@@ -10427,33 +10422,40 @@ return ${cast_shared_struct_str};
 					}
 					if embed_types.len > 0 && method.name !in method_names {
 						embed_sym := g.table.sym(embed_types.last())
-						mut method_name := '${embed_sym.cname}_${method.name}'
+						mut embedded_method_name := '${embed_sym.cname}_${method.name}'
 						if embed_sym.is_builtin() {
-							method_name = 'builtin__${method_name}'
+							embedded_method_name = 'builtin__${embedded_method_name}'
 						}
-						methods_wrapper.write_string('${method_name}(${fargs[0]}')
+						mut receiver_expr := receiver_name
 						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
 							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
-								methods_wrapper.write_string('->${esym.embed_name()}')
+								receiver_expr += '->${esym.embed_name()}'
 							} else {
-								methods_wrapper.write_string('.${esym.embed_name()}')
+								receiver_expr += '.${esym.embed_name()}'
 							}
 						}
-						if fargs.len > 1 {
-							methods_wrapper.write_string(', ')
+						if method.params[0].typ.is_ptr()
+							&& !embed_types.last().is_any_kind_of_pointer() {
+							receiver_expr = '&(${receiver_expr})'
 						}
-						args := fargs[1..].join(', ')
-						methods_wrapper.writeln('${args});')
-					} else {
-						if parameter_name.starts_with('__shared__') {
-							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
+						if wrapper_args.len > 0 {
+							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr}, ${wrapper_args.join(', ')});')
 						} else {
-							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr});')
 						}
+					} else {
+						receiver_arg := if method.params[0].typ.is_ptr() {
+							receiver_name
+						} else {
+							'*${receiver_name}'
+						}
+						mut call_args := []string{cap: wrapper_args.len + 1}
+						call_args << receiver_arg
+						call_args << wrapper_args
+						methods_wrapper.writeln('${method_call}(${call_args.join(', ')});')
 					}
 					methods_wrapper.writeln('}')
-					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call = wrapper_method_name
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type

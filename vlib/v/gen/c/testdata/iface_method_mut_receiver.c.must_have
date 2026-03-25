@@ -1,0 +1,4 @@
+static inline void main__Bar_free_Interface_main__Foo_method_wrapper(void* _)
+static inline u32 main__Bar_next_Interface_main__Foo_method_wrapper(void* _)
+._method__v_free = (void*) main__Bar_free_Interface_main__Foo_method_wrapper,
+._method_next = (void*) main__Bar_next_Interface_main__Foo_method_wrapper,
