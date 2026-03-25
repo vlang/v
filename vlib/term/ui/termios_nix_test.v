@@ -2,6 +2,24 @@ module ui
 
 import os
 
+fn test_terminal_capabilities_disable_xterm_features_for_linux_console() {
+	caps := terminal_capabilities_for('linux')
+	assert !caps.enable_ansi256
+	assert !caps.supports_alternate_buffer
+	assert !caps.supports_sgr_mouse
+	assert !caps.supports_sync_updates
+	assert !caps.supports_window_title
+}
+
+fn test_terminal_capabilities_keep_xterm_defaults() {
+	caps := terminal_capabilities_for('xterm-256color')
+	assert caps.enable_ansi256
+	assert caps.supports_alternate_buffer
+	assert caps.supports_sgr_mouse
+	assert caps.supports_sync_updates
+	assert caps.supports_window_title
+}
+
 fn test_get_cursor_position_reads_valid_row_column_data() ! {
 	mut original_stdin_fd := -1
 	unsafe {
