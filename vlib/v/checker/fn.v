@@ -84,11 +84,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	prev_inside_anon_fn := c.inside_anon_fn
 	prev_returns := c.returns
 	prev_stmt_level := c.stmt_level
+	prev_assert_autocasts := c.assert_autocasts.clone()
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
 	c.inside_unsafe = node.is_unsafe
 	c.returns = false
+	c.assert_autocasts = map[string]AssertAutocast{}
 	defer {
 		c.stmt_level = prev_stmt_level
 		c.fn_level--
@@ -98,6 +100,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.inside_defer = prev_inside_defer
 		c.in_for_count = prev_in_for_count
 		c.fn_scope = prev_fn_scope
+		c.assert_autocasts = prev_assert_autocasts.clone()
 	}
 	// Check generics fn/method without generic type parameters
 	mut need_generic_names := false
