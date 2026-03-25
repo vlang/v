@@ -3190,8 +3190,14 @@ i = 123
 println(func() == 1) // still true
 ```
 
-However, the variable can be modified inside the anonymous function.
-The change won't be reflected outside, but will be in the later function calls.
+However, the captured copy can be modified inside the anonymous function.
+`mut` only makes the closure's copy mutable; it does not capture the original
+variable by reference. The change won't be reflected outside, but will be in
+later function calls.
+
+This also applies to captured arrays, maps, and structs. For example,
+`fn [mut files]` inside `os.walk(...)` will modify the closure's `files` copy,
+not the outer `files` variable.
 
 ```v oksyntax
 fn new_counter() fn () int {
@@ -3220,6 +3226,19 @@ print_counter := fn [ref] () {
 print_counter() // 0
 i = 10
 print_counter() // 10
+```
+
+For callbacks like `os.walk`, use `os.walk_with_context` when the callback
+needs to update caller-owned state:
+
+```v oksyntax
+import os
+
+mut files := []string{}
+os.walk_with_context('.', &files, fn (mut files []string, file string) {
+	files << file
+})
+println(files.len > 0)
 ```
 
 ### Parameter evaluation order
