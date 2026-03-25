@@ -30,9 +30,18 @@ fn c_error_looks_like_cpp_header(c_output string) bool {
 	lower_output := c_output.to_lower()
 	for marker in [
 		"unknown type name 'namespace'",
+		"unknown type name 'class'",
+		"unknown type name 'template'",
 		'unknown type name `namespace`',
+		'unknown type name `class`',
+		'unknown type name `template`',
 		'error: namespace',
 		'namespace does not name a type',
+		"'operator' declared as",
+		'`operator` declared as',
+		"before 'operator'",
+		'before `operator`',
+		'before "operator"',
 	] {
 		if lower_output.contains(marker) {
 			return true
@@ -40,7 +49,14 @@ fn c_error_looks_like_cpp_header(c_output string) bool {
 	}
 	for line in lower_output.split_into_lines() {
 		trimmed_line := line.trim_space()
-		if trimmed_line.starts_with('namespace ') || trimmed_line.contains('| namespace ') {
+		if trimmed_line.starts_with('namespace ') || trimmed_line.contains('| namespace ')
+			|| trimmed_line.starts_with('class ') || trimmed_line.contains('| class ')
+			|| trimmed_line.starts_with('public:') || trimmed_line.contains('| public:')
+			|| trimmed_line.starts_with('private:') || trimmed_line.contains('| private:')
+			|| trimmed_line.starts_with('protected:') || trimmed_line.contains('| protected:')
+			|| trimmed_line.contains('template<') || trimmed_line.contains('template <')
+			|| trimmed_line.contains('operator[]') || trimmed_line.contains('operator []')
+			|| trimmed_line.contains('::') {
 			return true
 		}
 	}
