@@ -4,6 +4,7 @@ module util
 // 2022-01-30 that already does handle v.mod lookup properly, stopping at .git folders, supporting `.v.mod.stop` etc.
 import os
 import v.pref
+import v.vmod
 
 @[if trace_util_qualify ?]
 fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string, detail string) {
@@ -139,7 +140,8 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					path_part := path_parts[j]
 					// we reached a vmod folder
 					if path_part in vmod_folders {
-						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						mod_full_name := normalize_src_based_mod_name(try_path.split(os.path_separator)[
+							j + 1..].join('.'), try_path)
 						return mod_full_name
 					}
 				}
@@ -163,18 +165,19 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := try_path_parts[last_v_mod..].join('.')
+					mod_full_name := normalize_src_based_mod_name(try_path_parts[last_v_mod..].join('.'),
+						try_path)
 					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
 				}
 			}
 		}
 	}
-	if pref_.path.len > 0 && os.is_dir(path) {
-		real_pref_path_dir := pref_path_to_source_root(pref_)
-		real_path := os.real_path(path)
-		prefix := real_pref_path_dir + os.path_separator
-		if real_path.starts_with(prefix) {
-			full_mod_name := real_path[prefix.len..].replace(os.path_separator, '.')
+	if os.is_abs_path(pref_.path) && os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		rel_mod_path := path.replace(pref_.path.all_before_last(os.path_separator) +
+			os.path_separator, '')
+		if rel_mod_path != path {
+			full_mod_name := normalize_src_based_mod_name(rel_mod_path.replace(os.path_separator,
+				'.'), path)
 			return full_mod_name
 		}
 	}
@@ -192,4 +195,29 @@ fn pref_path_to_source_root(pref_ &pref.Preferences) string {
 		}
 	}
 	return real_pref_path_dir
+}
+
+fn normalize_src_based_mod_name(mod_full_name string, path string) string {
+	real_path := os.real_path(path)
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(real_path)
+	if vmod_file_location.vmod_file == '' {
+		return mod_full_name
+	}
+	vmod_prefix := vmod_file_location.vmod_folder + os.path_separator
+	if !real_path.starts_with(vmod_prefix) {
+		return mod_full_name
+	}
+	rel_path := real_path.all_after(vmod_prefix)
+	rel_parts := rel_path.split(os.path_separator)
+	if rel_parts.len == 0 || rel_parts[0] != 'src' {
+		return mod_full_name
+	}
+	full_parts := mod_full_name.split('.')
+	if rel_parts.len > full_parts.len {
+		return mod_full_name
+	}
+	mut normalized_parts := full_parts[..full_parts.len - rel_parts.len].clone()
+	normalized_parts << rel_parts[1..]
+	return normalized_parts.join('.')
 }
