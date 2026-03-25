@@ -1515,6 +1515,13 @@ fn (mut p Parser) alias_array_type() ast.Type {
 	return ast.void_type
 }
 
+fn (p &Parser) is_known_non_placeholder_type(name string) bool {
+	if idx := p.table.type_idxs[name] {
+		return p.table.sym(ast.idx_to_type(idx)).kind != .placeholder
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
@@ -1756,8 +1763,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name != '' && (is_capital_after_last_dot
-			|| name[0].is_capital()
-			|| (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))))) {
+			|| name[0].is_capital() || (!known_var && (p.is_known_non_placeholder_type(name)
+			|| p.is_known_non_placeholder_type(name_w_mod)))))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO: handle C.stat()
 			start_pos := p.tok.pos()

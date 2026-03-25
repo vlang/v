@@ -588,7 +588,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		}
 	}
 	if !is_field_zero_struct_init {
-		c.ensure_type_exists(node.typ, node.pos)
+		type_exists := c.ensure_type_exists(node.typ, node.pos)
+		if !type_exists && node.typ.idx() > 0 && c.table.sym(node.typ).kind == .placeholder {
+			return ast.void_type
+		}
 	}
 	type_sym := c.table.sym(node.typ)
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
@@ -765,9 +768,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				exp_type_sym := c.table.sym(exp_type)
 				c.expected_type = exp_type
+				nr_errors_before := c.nr_errors
 				got_type = c.expr(mut init_field.expr)
 				got_type_sym := c.table.sym(got_type)
-				if got_type == ast.void_type {
+				if got_type == ast.void_type && c.nr_errors == nr_errors_before {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
 				}
 				exp_type_is_option := exp_type.has_flag(.option)
