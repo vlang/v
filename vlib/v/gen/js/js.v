@@ -590,8 +590,22 @@ fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 	}
 }
 
+fn (mut g JsGen) gen_exported_global_alias(export_name string, global_name string, is_enumerable bool) {
+	g.writeln('Object.defineProperty(globalThis,"${export_name}", {')
+	g.writeln('\tconfigurable: false,')
+	g.writeln('\tenumerable: ${is_enumerable},')
+	g.writeln('\tget: function() { return \$global["${global_name}"]; },')
+	g.writeln('\tset: function(value) { \$global["${global_name}"] = value; }')
+	g.writeln('\t}); // exported global')
+}
+
 fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
-	mod := if g.pref.build_mode == .build_module { 'enumerable: false' } else { 'enumerable: true' }
+	is_enumerable := g.pref.build_mode != .build_module
+	export_name := if export_attr := node.attrs.find_first('export') {
+		if export_attr.arg.len > 0 { export_attr.arg } else { '' }
+	} else {
+		''
+	}
 	for field in node.fields {
 		if field.has_expr {
 			tmp_var := g.new_tmp_var()
@@ -600,7 +614,7 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 			g.writeln(';')
 			g.writeln('Object.defineProperty(\$global,"${field.name}", {
 				configurable: false,
-				${mod} ,
+				enumerable: ${is_enumerable},
 				writable: true,
 				value: ${tmp_var}
 				}
@@ -611,7 +625,7 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 			if field.typ.is_ptr() {
 				g.writeln('Object.defineProperty(\$global,"${field.name}", {
 					configurable: false,
-					${mod} ,
+					enumerable: ${is_enumerable},
 					writable: true,
 					value: new \$ref({})
 					}
@@ -619,11 +633,17 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 			} else {
 				g.writeln('Object.defineProperty(\$global,"${field.name}", {
 					configurable: false,
-					${mod} ,
+					enumerable: ${is_enumerable},
 					writable: true,
 					value: {}
 					}
 				); // global')
+			}
+		}
+		if field.is_exported {
+			final_export_name := if export_name.len > 0 { export_name } else { field.name }
+			if final_export_name != field.name {
+				g.gen_exported_global_alias(final_export_name, field.name, is_enumerable)
 			}
 		}
 	}

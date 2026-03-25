@@ -2851,6 +2851,13 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			}
 		}
 	}
+	mut export_name := ''
+	if export_attr := node.attrs.find_first('export') {
+		export_name = export_attr.arg
+		if export_name.len > 0 && !export_name.is_identifier() {
+			c.error('export name `${export_name}` should be a valid identifier', node.pos)
+		}
+	}
 	for mut field in node.fields {
 		if field.language != .c {
 			c.check_valid_snake_case(field.name, 'global name', field.pos)
@@ -2870,11 +2877,12 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if '${c.mod}.${field.name}' in c.const_names {
 			c.error('duplicate global and const `${field.name}`', field.pos)
 		}
-		if field.name in c.table.export_names.values() {
-			c.error('duplicate export name `${field.name}`', field.pos)
+		check_name := if field.is_exported && export_name.len > 0 { export_name } else { field.name }
+		if check_name in c.table.export_names.values() {
+			c.error('duplicate export name `${check_name}`', field.pos)
 		} else {
 			// add global to exports for duplicate check
-			c.table.export_names[field.name] = field.name
+			c.table.export_names[field.name] = check_name
 		}
 		c.ensure_type_exists(field.typ, field.typ_pos)
 		if field.has_expr {
