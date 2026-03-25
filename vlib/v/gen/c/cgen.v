@@ -8776,12 +8776,30 @@ fn (mut g Gen) ensure_fixed_array_option_definition(elem_type ast.Type) bool {
 	return true
 }
 
+fn (g &Gen) should_emit_private_c_struct(sym &ast.TypeSymbol, info ast.Struct) bool {
+	if sym.language != .c || sym.kind != .struct || info.is_anon || info.is_typedef {
+		return false
+	}
+	if !sym.name.all_after('C.').starts_with('_') {
+		return false
+	}
+	if info.name_pos.file_idx < 0 || int(info.name_pos.file_idx) >= g.table.filelist.len {
+		return false
+	}
+	decl_path := g.table.filelist[info.name_pos.file_idx]
+	return !decl_path.ends_with('.c.v')
+}
+
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 	mut struct_names := map[string]bool{}
 	for sym in symbols {
 		if sym.name.starts_with('C.') {
 			if sym.info is ast.Struct && sym.info.is_anon {
 				// For `C___VAnonStruct`, we need to create a new struct to make auto_str work.
+			} else if sym.info is ast.Struct && g.should_emit_private_c_struct(sym, sym.info) {
+				// Private C tags like `C._gpgme_key` are often only forward-declared in headers.
+				// When they are defined in a plain `.v` file, cgen needs to emit the backing
+				// struct body instead of assuming the C headers will provide it.
 			} else {
 				continue
 			}
@@ -8793,6 +8811,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			g.typedefs.writeln('typedef struct none none;')
 		}
 		mut name := sym.scoped_cname()
+		if sym.name.starts_with('C.') && sym.info is ast.Struct
+			&& g.should_emit_private_c_struct(sym, sym.info) {
+			name = sym.name.all_after('C.')
+		}
 		if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
 			if name in ['map', 'mapnode', 'SortedMap', 'MapMode', 'DenseArray'] {
 				continue
