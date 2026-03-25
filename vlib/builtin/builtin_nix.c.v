@@ -10,6 +10,7 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
+	unbuffer_stdout()
 }
 
 fn break_if_debugger_attached() {
