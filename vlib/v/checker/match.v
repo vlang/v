@@ -55,9 +55,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	c.check_expr_option_or_result_call(node.cond, node.cond_type)
 	cond_type_sym := c.table.sym(node.cond_type)
+	cond_final_sym := c.table.final_sym(node.cond_type)
 	cond_is_option := node.cond_type.has_flag(.option)
-	node.is_sum_type = cond_type_sym.kind in [.interface, .sum_type]
-	c.match_exprs(mut node, cond_type_sym)
+	node.is_sum_type = cond_final_sym.kind in [.interface, .sum_type]
+	c.match_exprs(mut node, cond_type_sym, cond_final_sym)
 	c.expected_type = node.cond_type
 	mut first_iteration := true
 	mut infer_cast_type := ast.void_type
@@ -602,12 +603,16 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 	return none
 }
 
-fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
+fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol, cond_final_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	if node.cond_type.idx() == 0 {
 		return
 	}
 	cond_sym := c.table.sym(node.cond_type)
+	cond_match_type := c.table.final_type(node.cond_type)
+	is_alias_to_matchable_type := cond_type_sym.kind == .alias
+		&& cond_final_sym.kind in [.interface, .sum_type]
+	cond_match_sym := if is_alias_to_matchable_type { cond_final_sym } else { cond_type_sym }
 	mut enum_ref_checked := false
 	mut is_comptime_value_match := false
 	// branch_exprs is a histogram of how many times
@@ -782,7 +787,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					return
 				}
 				expr_type_sym := c.table.sym(expr_type)
-				if cond_type_sym.kind == .interface {
+				is_exact_alias_type_match := is_alias_to_matchable_type
+					&& expr_type in [node.cond_type, cond_match_type]
+				if is_exact_alias_type_match {
+					// Allow matching an alias to its underlying sumtype/interface type.
+				} else if cond_match_sym.kind == .interface {
 					// TODO
 					// This generates a memory issue with TCC
 					// Needs to be checked later when TCC errors are fixed
@@ -796,11 +805,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							}
 						}
 					}
-				} else if cond_type_sym.info is ast.SumType {
-					if expr_type !in cond_type_sym.info.variants {
+				} else if cond_match_sym.info is ast.SumType {
+					if expr_type !in cond_match_sym.info.variants {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
-						sumtype_variant_names := cond_type_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
+						sumtype_variant_names := cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
 							{}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
@@ -821,7 +830,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
-			if cond_type_sym.kind in [.sum_type, .interface] {
+			if cond_match_sym.kind in [.sum_type, .interface] {
 				mut expr_type := ast.no_type
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
@@ -878,9 +887,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	} else {
-		match cond_type_sym.info {
+		match cond_match_sym.info {
 			ast.SumType {
-				for v in cond_type_sym.info.variants {
+				for v in cond_match_sym.info.variants {
 					v_str := c.table.type_to_str(v)
 					if v_str !in branch_exprs {
 						is_exhaustive = false
@@ -890,13 +899,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 			//
 			ast.Enum {
-				for v in cond_type_sym.info.vals {
+				for v in cond_match_sym.info.vals {
 					if v !in branch_exprs {
 						is_exhaustive = false
 						unhandled << '`.${v}`'
 					}
 				}
-				if cond_type_sym.info.is_flag {
+				if cond_match_sym.info.is_flag {
 					is_exhaustive = false
 				}
 			}
