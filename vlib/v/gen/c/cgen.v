@@ -7791,6 +7791,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
 		}
 	}
+	g.write_v_source_line_info_pos(or_block.pos)
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
 		if or_block.err_used
