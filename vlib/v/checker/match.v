@@ -573,15 +573,51 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 	}
 }
 
+fn char_literal_number_value(value string) ?i64 {
+	if value.len == 2 && value[0] == `\\` {
+		return match value[1] {
+			`a` { 7 }
+			`b` { 8 }
+			`t` { 9 }
+			`n` { 10 }
+			`v` { 11 }
+			`f` { 12 }
+			`r` { 13 }
+			`e` { 27 }
+			`$` { 36 }
+			`"` { 34 }
+			`'` { 39 }
+			`?` { 63 }
+			`@` { 64 }
+			`\\` { 92 }
+			`\`` { 96 }
+			`{` { 123 }
+			`}` { 125 }
+			else { none }
+		}
+	}
+	runes := value.runes()
+	if runes.len == 1 {
+		return runes[0]
+	}
+	return none
+}
+
 fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
+	if mut expr is ast.ParExpr {
+		return c.get_comptime_number_value(mut expr.expr)
+	}
+	if mut expr is ast.PrefixExpr && expr.op == .minus {
+		return -c.get_comptime_number_value(mut expr.right)?
+	}
 	if mut expr is ast.CharLiteral {
-		return expr.val[0]
+		return char_literal_number_value(expr.val)
 	}
 	if mut expr is ast.IntegerLiteral {
 		return expr.val.i64()
 	}
-	if mut expr is ast.CastExpr && expr.expr is ast.IntegerLiteral {
-		return expr.expr.val.i64()
+	if mut expr is ast.CastExpr {
+		return c.get_comptime_number_value(mut expr.expr)
 	}
 	if mut expr is ast.Ident {
 		if mut obj := c.table.global_scope.find_const(expr.full_name()) {
@@ -589,6 +625,24 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 				obj.typ = c.expr(mut obj.expr)
 			}
 			return c.get_comptime_number_value(mut obj.expr)
+		}
+	}
+	return none
+}
+
+fn (mut c Checker) get_match_case_int_key(mut expr ast.Expr, cond_sym ast.TypeSymbol) ?string {
+	if !cond_sym.is_int() {
+		return none
+	}
+	if value := c.get_comptime_number_value(mut expr) {
+		return value.str()
+	}
+	if value := c.eval_comptime_const_expr(expr, 0) {
+		if signed_value := value.i64() {
+			return signed_value.str()
+		}
+		if unsigned_value := value.u64() {
+			return unsigned_value.str()
 		}
 	}
 	return none
@@ -706,7 +760,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					}
 				}
 				else {
-					key = (*expr).str()
+					key = c.get_match_case_int_key(mut expr, cond_sym) or { (*expr).str() }
 				}
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
