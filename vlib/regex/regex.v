@@ -282,6 +282,7 @@ pub const f_ms = 0x00000002 // match true only if the match is at the start of t
 pub const f_me = 0x00000004 // match true only if the match is at the end of the string
 pub const f_efm = 0x00000100 // exit on first token matched, used by search
 pub const f_bin = 0x00000200 // work only on bytes, ignore utf-8
+pub const f_ci = 0x00000400 // compare ASCII letters without case sensitivity
 
 // behaviour modifier flags
 pub const f_src = 0x00020000
@@ -609,15 +610,87 @@ fn (re &RE) check_char_class(pc int, ch rune) bool {
 	mut cc_i := re.prog[pc].cc_index
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != cc_end {
 		if re.cc[cc_i].cc_type == cc_bsls {
-			if re.cc[cc_i].validator(u8(ch)) {
+			if re.validator_matches(re.cc[cc_i].validator, ch) {
 				return true
 			}
-		} else if ch >= re.cc[cc_i].ch0 && ch <= re.cc[cc_i].ch1 {
+		} else if re.char_in_range(ch, re.cc[cc_i].ch0, re.cc[cc_i].ch1) {
 			return true
 		}
 		cc_i++
 	}
 	return false
+}
+
+@[inline]
+fn (re &RE) chars_equal(a rune, b rune) bool {
+	if a == b {
+		return true
+	}
+	if (re.flag & f_ci) == 0 {
+		return false
+	}
+	lower_a := re.case_transform_char(a, false)
+	lower_b := re.case_transform_char(b, false)
+	if lower_a == lower_b {
+		return true
+	}
+	return re.case_transform_char(a, true) == re.case_transform_char(b, true)
+}
+
+@[inline]
+fn (re &RE) char_in_range(ch rune, start rune, end rune) bool {
+	if ch >= start && ch <= end {
+		return true
+	}
+	if (re.flag & f_ci) == 0 {
+		return false
+	}
+	lower := re.case_transform_char(ch, false)
+	if lower != ch && lower >= start && lower <= end {
+		return true
+	}
+	upper := re.case_transform_char(ch, true)
+	return upper != ch && upper >= start && upper <= end
+}
+
+@[inline]
+fn (re &RE) validator_matches(validator FnValidator, ch rune) bool {
+	if validator(u8(ch)) {
+		return true
+	}
+	if (re.flag & f_ci) == 0 {
+		return false
+	}
+	lower := re.case_transform_char(ch, false)
+	if lower != ch && validator(u8(lower)) {
+		return true
+	}
+	upper := re.case_transform_char(ch, true)
+	return upper != ch && validator(u8(upper))
+}
+
+fn (re &RE) case_transform_char(ch rune, upper bool) rune {
+	if upper {
+		if ch >= `a` && ch <= `z` {
+			return ch - 32
+		}
+		return ch
+	}
+	if ch >= `A` && ch <= `Z` {
+		return ch + 32
+	}
+	return ch
+}
+
+@[inline]
+fn (re &RE) token_matches(pc int, ch rune) bool {
+	return match re.prog[pc].ist {
+		ist_simple_char { re.chars_equal(re.prog[pc].ch, ch) }
+		ist_char_class_pos { re.check_char_class(pc, ch) }
+		ist_char_class_neg { !re.check_char_class(pc, ch) }
+		ist_bsls_char { re.validator_matches(re.prog[pc].validator, ch) }
+		else { false }
+	}
 }
 
 // parse_char_class return (index, str_len, cc_type) of a char class [abcm-p], char class start after the [ char
@@ -2236,34 +2309,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
 					chk_pc := re.prog[state.pc].dot_check_pc
-
-					// simple char
-					if re.prog[chk_pc].ist == ist_simple_char {
-						if re.prog[chk_pc].ch == ch_t {
-							next_check_flag = true
-						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
-					}
-					// char char_class
-					else if re.prog[chk_pc].ist == ist_char_class_pos
-						|| re.prog[chk_pc].ist == ist_char_class_neg {
-						mut cc_neg := false
-						if re.prog[chk_pc].ist == ist_char_class_neg {
-							cc_neg = true
-						}
-						mut cc_res := re.check_char_class(chk_pc, ch_t)
-
-						if cc_neg {
-							cc_res = !cc_res
-						}
-						next_check_flag = cc_res
-						// println("Check [ist_char_class] => ${next_check_flag}")
-					}
-					// check bsls
-					else if re.prog[chk_pc].ist == ist_bsls_char {
-						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => ${next_check_flag}")
-					}
+					next_check_flag = re.token_matches(chk_pc, ch_t)
 				}
 
 				// check if we must continue or pass to the next IST
@@ -2322,34 +2368,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
 					chk_pc := re.prog[state.pc].cc_check_pc
-
-					// simple char
-					if re.prog[chk_pc].ist == ist_simple_char {
-						if re.prog[chk_pc].ch == ch_t {
-							next_check_flag = true
-						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
-					}
-					// char char_class
-					else if re.prog[chk_pc].ist == ist_char_class_pos
-						|| re.prog[chk_pc].ist == ist_char_class_neg {
-						mut cc_neg := false
-						if re.prog[chk_pc].ist == ist_char_class_neg {
-							cc_neg = true
-						}
-						mut cc_res := re.check_char_class(chk_pc, ch_t)
-
-						if cc_neg {
-							cc_res = !cc_res
-						}
-						next_check_flag = cc_res
-						// println("Check [ist_char_class] => ${next_check_flag}")
-					}
-					// check bsls
-					else if re.prog[chk_pc].ist == ist_bsls_char {
-						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => ${next_check_flag}")
-					}
+					next_check_flag = re.token_matches(chk_pc, ch_t)
 				}
 
 				// check if we must continue or pass to the next IST
@@ -2435,34 +2454,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
 					chk_pc := re.prog[state.pc].bsls_check_pc
-
-					// simple char
-					if re.prog[chk_pc].ist == ist_simple_char {
-						if re.prog[chk_pc].ch == ch_t {
-							next_check_flag = true
-						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
-					}
-					// char char_class
-					else if re.prog[chk_pc].ist == ist_char_class_pos
-						|| re.prog[chk_pc].ist == ist_char_class_neg {
-						mut cc_neg := false
-						if re.prog[chk_pc].ist == ist_char_class_neg {
-							cc_neg = true
-						}
-						mut cc_res := re.check_char_class(chk_pc, ch_t)
-
-						if cc_neg {
-							cc_res = !cc_res
-						}
-						next_check_flag = cc_res
-						// println("Check [ist_char_class] => ${next_check_flag}")
-					}
-					// check bsls
-					else if re.prog[chk_pc].ist == ist_bsls_char {
-						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => ${next_check_flag}")
-					}
+					next_check_flag = re.token_matches(chk_pc, ch_t)
 				}
 
 				// check if we must continue or pass to the next IST
@@ -2490,7 +2482,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					continue
 				}
 
-				tmp_res := re.prog[state.pc].validator(u8(ch))
+				tmp_res := re.validator_matches(re.prog[state.pc].validator, ch)
 				if tmp_res == false {
 					m_state = .ist_quant_n
 					continue
@@ -2515,7 +2507,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("ist_simple_char")
 				state.match_flag = false
 
-				if re.prog[state.pc].ch == ch
+				if re.chars_equal(re.prog[state.pc].ch, ch)
 					&& (state.i < in_txt_len - 1 || re.prog[state.pc].ch != 0) {
 					state.match_flag = true
 					l_ist = ist_simple_char
