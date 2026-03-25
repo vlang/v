@@ -2957,7 +2957,20 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if field := c.table.find_field(left_sym, method_name) {
 					unknown_method_msg = 'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 				} else {
-					sname := left_sym.symbol_name_except_generic()
+					mut sname := left_sym.symbol_name_except_generic()
+					match left_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							if left_sym.info.concrete_types.len > 0
+								&& left_sym.info.parent_type.has_flag(.generic) {
+								sname = c.table.sym(left_sym.info.parent_type).symbol_name_except_generic()
+							}
+						}
+						else {}
+					}
+					if left_sym.generic_types.len > 0 {
+						generic_names := left_sym.generic_types.map(c.table.sym(it).name).join(', ')
+						sname = '${left_sym.ngname}<${generic_names}>'
+					}
 					name := sname.replace_each(['<', '[', '>', ']'])
 					unknown_method_msg = 'unknown method or field: `${name}.${method_name}`'
 				}
@@ -3256,6 +3269,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 			}
 		}
+		method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
+			rec_concrete_types
+		} else {
+			concrete_types
+		}
 		if exp_arg_typ.has_flag(.generic) {
 			has_unresolved_generic_param = c.check_unresolved_generic_param(node, arg)
 				|| has_unresolved_generic_param
@@ -3335,7 +3353,14 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if c.is_optional_array_arg_compatible(got_arg_typ, exp_arg_typ) {
 				continue
 			}
-			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+			receiver_name := if method.receiver_type.has_flag(.generic)
+				&& method_concrete_types.len > 0 {
+				c.table.type_to_str(c.table.unwrap_generic_type(method.receiver_type.set_nr_muls(0),
+					method.generic_names, method_concrete_types))
+			} else {
+				left_sym.name
+			}
+			c.error('${err.msg()} in argument ${i + 1} to `${receiver_name}.${method_name}`',
 				arg.pos)
 		}
 		if mut arg.expr is ast.LambdaExpr {
