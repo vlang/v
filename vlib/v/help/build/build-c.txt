@@ -207,10 +207,11 @@ see also `v help build`.
       more performant without autofree.
 
    -gc <mode>
-      V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
-      is supported currently with the following sub-options:
+      On most supported C targets, V uses a garbage collector by default. Musl keeps the
+      historical default of `-gc none`. Only the Boehm–Demers–Weiser garbage collector is
+      supported currently with the following sub-options:
 
-      `-gc boehm` ........... use default garbage collector (same as not specifying option)
+      `-gc boehm` ........... use the default Boehm garbage collector mode
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode

@@ -91,6 +91,21 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn test_musl_defaults_to_no_gc() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', target], false)
+	assert prefs.is_musl
+	assert prefs.gc_mode == .no_gc
+}
+
+fn test_musl_keeps_explicit_gc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', '-gc', 'boehm', target],
+		false)
+	assert prefs.is_musl
+	assert prefs.gc_mode == .boehm_full_opt
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'

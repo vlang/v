@@ -154,7 +154,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('cross') // TODO: remove when `$if cross {` works
 	}
 	if p.gc_mode == .unknown {
-		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows {
+		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows || p.is_musl {
 			p.gc_mode = .no_gc
 			p.build_options << ['-gc', 'none']
 		} else {
