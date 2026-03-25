@@ -53,6 +53,7 @@ fn C.mysql_stmt_execute(&C.MYSQL_STMT) i32
 fn C.mysql_stmt_close(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_free_result(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_error(&C.MYSQL_STMT) &char
+fn C.mysql_stmt_errno(&C.MYSQL_STMT) i32
 fn C.mysql_stmt_result_metadata(&C.MYSQL_STMT) &C.MYSQL_RES
 
 fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
@@ -166,12 +167,23 @@ pub fn (stmt Stmt) close() ! {
 }
 
 fn (stmt Stmt) get_error_msg() string {
-	return unsafe { cstring_to_vstring(&char(C.mysql_stmt_error(stmt.stmt))) }
+	return get_stmt_error_msg(stmt.stmt)
 }
 
-// error returns a proper V error with a human readable description, given the error code returned by MySQL
-pub fn (stmt Stmt) error(code int) IError {
+fn (stmt Stmt) get_error_code() int {
+	return get_stmt_errno(stmt.stmt)
+}
+
+// error returns a proper V error with a human readable description,
+// given the fallback status code returned by the MySQL statement API.
+pub fn (stmt Stmt) error(fallback_code int) IError {
 	msg := stmt.get_error_msg()
+	stmt_code := stmt.get_error_code()
+	code := if stmt_code != 0 {
+		stmt_code
+	} else {
+		fallback_code
+	}
 
 	return &SQLError{
 		msg:  '${msg} (${code}) (${stmt.query})'
