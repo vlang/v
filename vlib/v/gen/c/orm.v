@@ -25,8 +25,14 @@ fn orm_field_access_name(field_name string) string {
 fn (g &Gen) orm_primitive_field_name(typ ast.Type) string {
 	final_typ := g.table.final_type(typ.clear_flag(.option))
 	sym := g.table.sym(final_typ)
+	if sym.name == 'time.Time' {
+		return 'time'
+	}
 	if sym.kind == .enum {
 		return 'i64'
+	}
+	if sym.kind == .array {
+		return vint2int(sym.cname.to_lower())
 	}
 	return vint2int(sym.cname)
 }
@@ -513,20 +519,14 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			final_field_typ := g.table.final_type(field.typ)
 			mut sym := g.table.sym(final_field_typ)
-			mut typ := sym.cname
+			mut typ := g.orm_primitive_field_name(field.typ)
 			mut ctyp := sym.cname
-			if sym.kind == .struct && typ != 'time__Time' {
+			if sym.kind == .struct && ctyp != 'time__Time' {
 				g.writeln('(*(orm__Primitive*) builtin__array_get(${last_ids_arr}, ${structs})),')
 				structs++
 				continue
 			}
 			// fields processed hereafter can be NULL...
-			if typ == 'time__Time' {
-				ctyp = 'time__Time'
-				typ = 'time'
-			} else if sym.kind == .enum {
-				typ = g.table.sym(final_field_typ).cname
-			}
 			typ = vint2int(typ)
 			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
@@ -575,11 +575,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object));')
 		} else {
 			// else use the primary key value
-			mut sym := g.table.sym(primary_field.typ)
-			mut typ := sym.cname
-			if typ == 'time__Time' {
-				typ = 'time'
-			}
+			mut typ := g.orm_primitive_field_name(primary_field.typ)
 			typ = vint2int(typ)
 			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${orm_field_access_name(primary_field.name)});')
 		}
@@ -724,8 +720,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 
 		if t.has_flag(.option) {
 			typ = 'option_${typ}'
-		} else if g.table.final_sym(t).kind == .enum {
-			typ = g.table.sym(g.table.final_type(t)).cname
+		} else if g.table.final_sym(t.clear_flag(.option)).kind == .enum {
+			typ = 'i64'
 		} else if g.table.final_sym(t).kind == .array {
 			typ = g.table.sym(g.table.final_type(t)).cname.to_lower()
 		}
