@@ -2036,12 +2036,18 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	}
 	g.type_definitions.writeln('\t};')
 	g.type_definitions.writeln('\tu32 _typ;')
+	g.type_definitions.writeln('\tvoid* _methods;')
 	for field in info.fields {
 		styp := g.styp(field.typ)
 		cname := c_name(field.name)
 		g.type_definitions.writeln('\t${styp}* ${cname};')
 	}
 	g.type_definitions.writeln('};')
+}
+
+fn (mut g Gen) interface_methods_struct_name(typ ast.Type) string {
+	interface_sym := g.table.final_sym(g.table.unaliased_type(g.unwrap_generic(typ)))
+	return 'struct _${interface_sym.cname}_interface_methods'
 }
 
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
@@ -4800,10 +4806,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if !has_embeds {
 			if !node.has_hidden_receiver {
 				if node.expr is ast.Ident && sym.info is ast.Interface {
-					left_cc_type := g.cc_type(g.table.unaliased_type(node.expr_type),
-						false)
-					left_type_name := util.no_dots(left_cc_type)
-					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
+					methods_struct_name := g.interface_methods_struct_name(node.expr_type)
+					dot := g.dot_or_ptr(node.expr_type)
+					g.write('((${methods_struct_name}*)(${node.expr.name}${dot}_methods))->_method_${m.name}')
 				} else {
 					g.write('${g.styp(node.expr_type.idx_type())}_${m.name}')
 				}
@@ -4991,9 +4996,8 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 		}
 	}
 	if rec_sym.info is ast.Interface && rec_sym.info.get_methods().contains(method_name) {
-		left_cc_type := g.cc_type(g.table.unaliased_type(receiver.typ), false)
-		left_type_name := util.no_dots(left_cc_type)
-		sb.write_string('${c_name(left_type_name)}_name_table[a0->_typ]._method_${method_name}(')
+		methods_struct_name := g.interface_methods_struct_name(receiver.typ)
+		sb.write_string('((${methods_struct_name}*)a0->_methods)->_method_${method_name}(')
 	} else {
 		mut full_method_name := '${expr_styp}_${method_name}'
 		if !expr_styp.starts_with('builtin__') {
@@ -8563,6 +8567,12 @@ fn (mut g Gen) interface_table() string {
 			cast_struct.writeln('(${interface_name}) {')
 			cast_struct.writeln('\t\t._${cctype2} = x,')
 			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
+			methods_ptr := if inter_methods.len > 0 {
+				'&${interface_name}_name_table[${interface_index_name}]'
+			} else {
+				'0'
+			}
+			cast_struct.writeln('\t\t._methods = ${methods_ptr},')
 			if cctype == cctype2 {
 				for field in inter_info.fields {
 					cname := c_name(field.name)
@@ -8623,6 +8633,7 @@ return ${cast_struct_str};
 				cast_shared_struct.writeln('\t\t.val = {')
 				cast_shared_struct.writeln('\t\t\t._${cctype} = &x->val,')
 				cast_shared_struct.writeln('\t\t\t._typ = ${interface_index_name},')
+				cast_shared_struct.writeln('\t\t\t._methods = ${methods_ptr},')
 				cast_shared_struct.writeln('\t\t}')
 				cast_shared_struct.write_string('\t}')
 				cast_shared_struct_str := cast_shared_struct.str()
