@@ -2095,13 +2095,45 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 			g.styp(func.return_type)
 		g.type_definitions.write_string('typedef ${ret_typ} (${msvc_call_conv}*${fn_name})(')
 		for i, param in func.params {
-			g.type_definitions.write_string(g.styp(param.typ))
+			g.type_definitions.write_string(g.fn_param_type_decl(param.typ, ''))
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
 			}
 		}
 		g.type_definitions.writeln(')${call_conv_attribute_suffix};')
 	}
+}
+
+// fn_param_type_decl emits fixed-array parameters as direct C array declarators so
+// function type definitions do not depend on later fixed-array typedef ordering.
+fn (mut g Gen) fn_param_type_decl(typ ast.Type, name string) string {
+	styp := g.styp(typ)
+	if typ.is_ptr() || typ.has_flag(.option) || typ.has_flag(.result) {
+		return if name == '' { styp } else { '${styp} ${name}' }
+	}
+	mut current_typ := g.table.unaliased_type(typ)
+	mut current_sym := g.table.sym(current_typ)
+	if current_sym.kind != .array_fixed {
+		return if name == '' { styp } else { '${styp} ${name}' }
+	}
+	mut dims := []string{}
+	for current_sym.kind == .array_fixed {
+		info := current_sym.info as ast.ArrayFixed
+		dims << '[${info.size}]'
+		if info.elem_type.is_ptr() || info.elem_type.has_flag(.option)
+			|| info.elem_type.has_flag(.result) {
+			base_styp := g.styp(info.elem_type)
+			decl := if name == '' { dims.join('') } else { '${name}${dims.join('')}' }
+			return '${base_styp} ${decl}'
+		}
+		current_typ = g.table.unaliased_type(info.elem_type)
+		current_sym = g.table.sym(current_typ)
+	}
+	if current_sym.info is ast.FnType {
+		return if name == '' { styp } else { '${styp} ${name}' }
+	}
+	decl := if name == '' { dims.join('') } else { '${name}${dims.join('')}' }
+	return '${g.styp(current_typ)} ${decl}'
 }
 
 pub fn (mut g Gen) write_array_fixed_return_types() {
@@ -3832,9 +3864,7 @@ fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string) {
 	g.write('${ret_styp} (*${ptr_name}) (')
 	arg_len := func.func.params.len
 	for i, arg in func.func.params {
-		arg_styp := g.styp(arg.typ)
-		g.write(arg_styp)
-		g.write(' ${arg.name}')
+		g.write(g.fn_param_type_decl(arg.typ, arg.name))
 		if i < arg_len - 1 {
 			g.write(', ')
 		}
