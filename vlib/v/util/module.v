@@ -163,13 +163,27 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 			}
 		}
 	}
-	if os.is_abs_path(pref_.path) && os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
-		rel_mod_path := path.replace(pref_.path.all_before_last(os.path_separator) +
-			os.path_separator, '')
-		if rel_mod_path != path {
-			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
+	if os.is_dir(path) {
+		real_pref_path_dir := pref_path_to_source_root(pref_)
+		real_path := os.real_path(path)
+		prefix := real_pref_path_dir + os.path_separator
+		if real_path.starts_with(prefix) {
+			full_mod_name := real_path[prefix.len..].replace(os.path_separator, '.')
 			return full_mod_name
 		}
 	}
 	return error('module not found')
+}
+
+fn pref_path_to_source_root(pref_ &pref.Preferences) string {
+	pref_path_dir := if os.is_dir(pref_.path) { pref_.path } else { os.dir(pref_.path) }
+	real_pref_path_dir := os.real_path(pref_path_dir)
+	files := os.ls(real_pref_path_dir) or { return real_pref_path_dir }
+	if pref_.should_compile_filtered_files(real_pref_path_dir, files).len == 0 {
+		src_path := os.join_path(real_pref_path_dir, 'src')
+		if os.is_dir(src_path) {
+			return src_path
+		}
+	}
+	return real_pref_path_dir
 }
