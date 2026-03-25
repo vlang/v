@@ -84,14 +84,50 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// Time.new static method returns a time struct with the calculated Unix time.
+fn normalize_new_time(t Time) Time {
+	month := if t.month == 0 { 1 } else { t.month }
+	day := if t.day == 0 { 1 } else { t.day }
+	if t.year < -9999 || t.year > 9999 {
+		panic('invalid time: year must be between -9999 and 9999')
+	}
+	if month < 1 || month > 12 {
+		panic('invalid time: month must be between 1 and 12')
+	}
+	max_day := month_days[month - 1] + if month == 2 && is_leap_year(t.year) {
+		1
+	} else {
+		0
+	}
+	if day < 1 || day > max_day {
+		panic('invalid time: day must be between 1 and ${max_day} for year ${t.year}, month ${month}')
+	}
+	if t.hour < 0 || t.hour > 23 {
+		panic('invalid time: hour must be between 0 and 23')
+	}
+	if t.minute < 0 || t.minute > 59 {
+		panic('invalid time: minute must be between 0 and 59')
+	}
+	if t.second < 0 || t.second > 59 {
+		panic('invalid time: second must be between 0 and 59')
+	}
+	if t.nanosecond < 0 || t.nanosecond >= 1_000_000_000 {
+		panic('invalid time: nanosecond must be between 0 and 999999999')
+	}
+	return Time{
+		...t
+		month: month
+		day:   day
+	}
+}
+
+// Time.new returns a time struct with the calculated Unix time.
 pub fn Time.new(t Time) Time {
-	return time_with_unix(t)
+	return time_with_unix(normalize_new_time(t))
 }
 
 // new returns a time struct with the calculated Unix time.
 pub fn new(t Time) Time {
-	return time_with_unix(t)
+	return Time.new(t)
 }
 
 // smonth returns the month name abbreviation.
