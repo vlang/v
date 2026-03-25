@@ -3199,6 +3199,26 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	}
 }
 
+fn (g &Gen) single_pointer_sumtype_nil_variant(expected_type ast.Type, expr ast.Expr, got_type ast.Type) ast.Type {
+	if !expr.is_nil() && got_type != ast.nil_type {
+		return 0
+	}
+	expected_sym := g.table.final_sym(expected_type)
+	if expected_sym.kind != .sum_type {
+		return 0
+	}
+	mut variant := ast.Type(0)
+	for sumtype_variant in (expected_sym.info as ast.SumType).variants {
+		if g.table.unaliased_type(sumtype_variant).is_any_kind_of_pointer() {
+			if variant != 0 {
+				return 0
+			}
+			variant = sumtype_variant
+		}
+	}
+	return variant
+}
+
 // use instead of expr() when you need a var to use as reference
 fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
@@ -3357,14 +3377,33 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		unwrapped_exp_sym := g.table.sym(unwrapped_expected_type)
 		mut unwrapped_got_type := g.unwrap_generic(got_type)
 		mut unwrapped_got_sym := g.table.sym(unwrapped_got_type)
+		mut sumtype_got_type := unwrapped_got_type
+		mut sumtype_got_sym := unwrapped_got_sym
+		mut sumtype_got_styp := got_styp
+		mut sumtype_got_is_fn := got_is_fn
+		mut sumtype_got_is_ptr := got_is_ptr
+		nil_sumtype_variant := g.single_pointer_sumtype_nil_variant(unwrapped_expected_type,
+			expr, got_type)
+		if nil_sumtype_variant != 0 {
+			sumtype_got_type = nil_sumtype_variant
+			sumtype_got_sym = g.table.sym(sumtype_got_type)
+			sumtype_got_styp = g.styp(sumtype_got_type)
+			sumtype_got_is_fn = sumtype_got_sym.kind == .function
+			sumtype_got_is_ptr = sumtype_got_type.is_ptr()
+		}
 
 		expected_deref_type := if expected_is_ptr {
 			unwrapped_expected_type.deref()
 		} else {
 			unwrapped_expected_type
 		}
-		got_deref_type := if got_is_ptr { unwrapped_got_type.deref() } else { unwrapped_got_type }
-		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false) {
+		got_deref_type := if sumtype_got_is_ptr {
+			sumtype_got_type.deref()
+		} else {
+			sumtype_got_type
+		}
+		if nil_sumtype_variant != 0
+			|| g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false) {
 			mut is_already_sum_type := false
 			scope := g.file.scope.innermost(expr.pos().pos)
 			if expr is ast.Ident {
@@ -3386,12 +3425,15 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
-				if mut unwrapped_got_sym.info is ast.Aggregate {
-					unwrapped_got_type = unwrapped_got_sym.info.types[g.aggregate_type_idx]
-					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
+				if mut sumtype_got_sym.info is ast.Aggregate {
+					sumtype_got_type = sumtype_got_sym.info.types[g.aggregate_type_idx]
+					sumtype_got_sym = g.table.sym(sumtype_got_type)
+					sumtype_got_styp = g.styp(sumtype_got_type)
+					sumtype_got_is_fn = sumtype_got_sym.kind == .function
+					sumtype_got_is_ptr = sumtype_got_type.is_ptr()
 				}
 
-				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
+				fname := g.get_sumtype_casting_fn(sumtype_got_type, unwrapped_expected_type)
 				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
 					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
@@ -3403,8 +3445,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.write('${fname}(&${tmp_var}, ${unwrapped_expected_type.is_ptr()})')
 					return
 				} else {
-					g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type,
-						unwrapped_exp_sym.cname, got_is_ptr, got_is_fn, got_styp)
+					g.call_cfn_for_casting_expr(fname, expr, expected_type, sumtype_got_type,
+						unwrapped_exp_sym.cname, sumtype_got_is_ptr, sumtype_got_is_fn,
+						sumtype_got_styp)
 				}
 			}
 			return
