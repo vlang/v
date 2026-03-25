@@ -321,6 +321,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
 		val := node.right[i]
+		if is_decl && g.cur_concrete_types.len > 0 && val is ast.CallExpr
+			&& val.return_type_generic != 0 {
+			resolved_val_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+			if resolved_val_type != ast.void_type && !resolved_val_type.has_flag(.generic) {
+				var_type = ast.mktyp(resolved_val_type)
+				val_type = resolved_val_type
+			}
+		}
 		mut is_call := false
 		mut gen_or := false
 		mut blank_assign := false
@@ -408,7 +416,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
 						if val.return_type_generic != 0
 							&& val.return_type_generic.has_flag(.generic) {
-							fn_ret_type := g.resolve_return_type(val)
+							mut fn_ret_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+							if fn_ret_type == ast.void_type || fn_ret_type.has_flag(.generic) {
+								fn_ret_type = g.resolve_return_type(val)
+							}
 							if fn_ret_type != ast.void_type {
 								var_type = fn_ret_type
 								val_type = var_type

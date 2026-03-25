@@ -2377,6 +2377,25 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					node.return_type = info.func.return_type
 					return info.func.return_type
 				}
+				match left_sym.info {
+					ast.Struct, ast.Interface, ast.SumType {
+						if left_sym.info.parent_type != 0 {
+							parent_sym := c.table.sym(left_sym.info.parent_type)
+							if generic_field := c.table.find_field_with_embeds(parent_sym,
+								method_name)
+							{
+								generic_field_sym := c.table.sym(generic_field.typ)
+								if generic_field_sym.info is ast.FnType {
+									generic_ret := generic_field_sym.info.func.return_type
+									if generic_ret.has_flag(.generic) {
+										node.return_type_generic = generic_ret
+									}
+								}
+							}
+						}
+					}
+					else {}
+				}
 				node.return_type = info.func.return_type
 				mut earg_types := []ast.Type{}
 

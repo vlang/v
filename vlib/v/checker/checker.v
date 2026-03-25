@@ -4544,6 +4544,18 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		return ast.void_type
 	} else if node.kind in [.constant, .global, .variable] {
+		if node.kind == .variable && c.table.cur_concrete_types.len > 0 {
+			pobj := node.scope.find_ptr(node.name)
+			if pobj != unsafe { nil } {
+				obj := *pobj
+				if obj is ast.Var {
+					mut info := node.info as ast.IdentVar
+					info.typ = obj.typ
+					node.info = info
+					node.obj = obj
+				}
+			}
+		}
 		// second use
 		info := node.info as ast.IdentVar
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
