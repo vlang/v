@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_ptr_cast_ptr_outside_unsafe_warn.vv:8:6: warning: casting `&bool` to `&AStruct` is only allowed in `unsafe` code
+    6 | fn main() {
+    7 |     a := false
+    8 |     _ = &AStruct(&a)
+      |         ~~~~~~~~~~~~
+    9 | }

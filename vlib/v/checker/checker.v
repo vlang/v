@@ -3901,6 +3901,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
+	expr_is_ident_or_cast := node.expr is ast.Ident || node.expr is ast.CastExpr
 	node.expr_type = c.expr(mut node.expr) // type to be casted
 	c.inside_integer_literal_cast = old_inside_integer_literal_cast
 
@@ -3976,10 +3977,16 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else {
 		ast.void_type
 	}
+	enforce_safe_pointer_casts := c.file.language == .v && !c.is_builtin_mod
+	enforce_safe_voidptr_ref_cast := enforce_safe_pointer_casts && expr_is_ident_or_cast
 	if to_type.has_flag(.option) && from_type == ast.none_type {
 		// allow conversion from none to every option type
 	} else if to_type.has_flag(.option) && from_type == inner_to_type {
 		return to_type
+	} else if enforce_safe_voidptr_ref_cast && from_type == ast.voidptr_type_idx && to_type.is_ptr()
+		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast voidptr to `${tt}` outside `unsafe`', node.pos)
 	} else if to_sym.kind == .sum_type {
 		to_sym_info := to_sym.info as ast.SumType
 		if c.pref.skip_unused && to_sym_info.concrete_types.len > 0 {
@@ -4046,15 +4053,18 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
 			}
 		}
-		if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
-			&& !c.file.is_translated {
-			c.error('cannot cast voidptr to a struct outside `unsafe`', node.pos)
-		}
 		if !from_type.is_int() && final_from_sym.kind != .enum
 			&& !from_type.is_any_kind_of_pointer() {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
+		}
+		if enforce_safe_pointer_casts && !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr()
+			&& to_type != from_type && from_type != ast.voidptr_type_idx
+			&& to_type.deref() != ast.char_type && from_type.deref() != ast.char_type {
+			ft := c.table.type_to_str(from_type)
+			tt := c.table.type_to_str(to_type)
+			c.warn('casting `${ft}` to `${tt}` is only allowed in `unsafe` code', node.pos)
 		}
 	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
