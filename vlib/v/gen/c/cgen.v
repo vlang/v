@@ -4475,8 +4475,62 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 	g.write('_S("${util.strip_main_name(s)}")')
 }
 
+fn (mut g Gen) resolve_typeof_expr_type(expr ast.Expr, default_type ast.Type) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				if expr.obj.smartcasts.len > 0 {
+					mut typ := g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := g.table.sym(typ)
+					if cast_sym.info is ast.Aggregate {
+						typ = cast_sym.info.types[g.aggregate_type_idx]
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+					return typ
+				}
+				if expr.obj.ct_type_var == .smartcast {
+					typ := g.unwrap_generic(g.type_resolver.get_type(expr))
+					if typ != ast.void_type {
+						return typ
+					}
+				}
+				obj_typ := expr.obj.typ
+				obj_sym := g.table.final_sym(g.unwrap_generic(obj_typ))
+				if obj_sym.kind in [.interface, .sum_type] {
+					return default_type
+				}
+				return g.type_resolver.get_type_or_default(expr, obj_typ)
+			}
+		}
+		ast.CallExpr {
+			resolved_type := g.resolve_return_type(expr)
+			if resolved_type != ast.void_type {
+				return resolved_type
+			}
+			if expr.return_type != 0 {
+				return expr.return_type
+			}
+		}
+		ast.SelectorExpr {
+			if expr.typ != 0 {
+				resolved_type := g.type_resolver.typeof_type(expr, expr.typ)
+				if resolved_type != ast.void_type {
+					return resolved_type
+				}
+			}
+		}
+		else {}
+	}
+	return default_type
+}
+
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
+	mut default_type := g.get_type(node.typ)
+	if !node.is_type {
+		default_type = g.resolve_typeof_expr_type(node.expr, default_type)
+	}
+	typ := g.type_resolver.typeof_type(node.expr, default_type)
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
@@ -4529,7 +4583,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+							name_type))
 						if name_type == ast.void_type_idx {
 							name_type = node.name_type
 						}
@@ -4541,7 +4596,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
 						name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
-							name_type), node.field_name)
+							g.resolve_typeof_expr_type(node.expr.expr, name_type)), node.field_name)
 						g.write(int(name_type).str())
 					} else {
 						g.write(int(g.unwrap_generic(name_type)).str())
@@ -4551,13 +4606,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// `T.<field_name>`, `typeof(expr).<field_name>`
 					mut name_type := node.name_type
 					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr,
-						name_type), node.field_name)
+						g.resolve_typeof_expr_type(node.expr, name_type)), node.field_name)
 					g.write(int(name_type).str())
 					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+							name_type))
 					}
 					// `typeof(expr).indirections`
 					g.write(int(g.unwrap_generic(name_type).nr_muls()).str())

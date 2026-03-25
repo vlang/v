@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/term/ui/input.v", "fhash": "6afa49d8bf48b291",
+  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 4,
+  "points": [  210,211,222,223  ]
+}

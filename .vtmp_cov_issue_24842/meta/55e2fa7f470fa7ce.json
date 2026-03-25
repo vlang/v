@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/os/const_nix.c.v", "fhash": "55e2fa7f470fa7ce",
+  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 0,
+  "points": [    ]
+}

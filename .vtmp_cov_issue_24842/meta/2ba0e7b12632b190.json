@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/builtin/backtraces_nix.c.v", "fhash": "2ba0e7b12632b190",
+  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 14,
+  "points": [  5,8,9,10,17,24,27,28,29,30,31,32,34,36  ]
+}

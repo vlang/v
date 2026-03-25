@@ -12,6 +12,33 @@ module c
 import v.ast
 import v.util
 
+fn (mut g Gen) is_type_name_string_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.SelectorExpr {
+			expr.field_name == 'name' && (expr.expr is ast.TypeOf || expr.name_type != 0)
+		}
+		ast.CallExpr {
+			if expr.is_method && expr.name == 'type_name' && expr.args.len == 0 {
+				if func := g.table.find_method(g.table.sym(g.unwrap_generic(expr.left_type)),
+					expr.name)
+				{
+					func.return_type == ast.string_type
+				} else {
+					g.table.final_sym(g.unwrap_generic(expr.left_type)).kind == .sum_type
+				}
+			} else {
+				false
+			}
+		}
+		ast.ParExpr {
+			g.is_type_name_string_expr(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
@@ -53,6 +80,30 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		g.unwrap_generic(node.expr_types[i])
 	} else {
 		ast.string_type
+	}
+	expr := node.exprs[i]
+	if g.is_type_name_string_expr(expr) {
+		typ = ast.string_type
+	} else if expr is ast.Ident && expr.obj is ast.Var {
+		if expr.obj.smartcasts.len > 0 {
+			if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
+				&& i < node.expr_types.len && node.expr_types[i] != ast.void_type {
+				typ = g.unwrap_generic(node.expr_types[i])
+			} else {
+				typ = g.unwrap_generic(expr.obj.smartcasts.last())
+				cast_sym := g.table.sym(typ)
+				if cast_sym.info is ast.Aggregate {
+					typ = cast_sym.info.types[g.aggregate_type_idx]
+				} else if expr.obj.ct_type_var == .smartcast {
+					typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+				}
+			}
+		} else if expr.obj.ct_type_var == .smartcast {
+			resolved_typ := g.unwrap_generic(g.type_resolver.get_type(expr))
+			if resolved_typ != ast.void_type {
+				typ = resolved_typ
+			}
+		}
 	}
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
@@ -202,8 +253,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		ast.string_type
 	}
 	typ_sym := g.table.sym(typ)
-	if g.comptime.inside_comptime_for && expr is ast.SelectorExpr && expr.field_name == 'name'
-		&& expr.expr is ast.TypeOf {
+	if g.is_type_name_string_expr(expr) {
 		g.expr(expr)
 		return
 	}
@@ -340,8 +390,39 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		mut field_typ := if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
+		mut field_typ := if g.is_type_name_string_expr(expr) {
+			ast.string_type
+		} else if mut expr is ast.AsCast {
+			expr.typ
+		} else if mut expr is ast.CastExpr {
+			expr.typ
+		} else if mut expr is ast.PrefixExpr && expr.op == .mul && expr.right_type != 0 {
+			expr.right_type.deref()
+		} else if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
 			g.comptime.comptime_for_field_type
+		} else if mut expr is ast.Ident && expr.obj is ast.Var {
+			if expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
+					&& i < node_.expr_types.len && node_.expr_types[i] != ast.void_type {
+					node_.expr_types[i]
+				} else {
+					mut typ := g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := g.table.sym(typ)
+					if cast_sym.info is ast.Aggregate {
+						typ = cast_sym.info.types[g.aggregate_type_idx]
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+					typ
+				}
+			} else if expr.obj.ct_type_var == .smartcast {
+				g.unwrap_generic(g.type_resolver.get_type(expr))
+			} else if i < node_.expr_types.len
+				&& g.table.final_sym(g.unwrap_generic(expr.obj.typ)).kind in [.interface, .sum_type] {
+				node_.expr_types[i]
+			} else {
+				g.type_resolver.get_type_or_default(expr, expr.obj.typ)
+			}
 		} else if i < node_.expr_types.len {
 			node_.expr_types[i]
 		} else {
