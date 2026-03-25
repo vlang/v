@@ -1796,6 +1796,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				}
 			}
+			// If the source is a large struct/array (>16 bytes) but the destination
+			// pointer's elem_type was not classified as a struct (e.g., GEP through
+			// a ptr(ptr(...)) type from array-of-array construction), override.
+			if !dst_is_large_struct && val_typ.kind in [.struct_t, .array_t] && val_size > 16 {
+				dst_is_large_struct = true
+				dst_struct_size = val_size
+			}
 			if trace_store {
 				mut dst_kind := ssa.TypeKind.void_t
 				mut dst_size := 0

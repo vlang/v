@@ -709,11 +709,20 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 		})
 	}
 
-	// Create proper array type for the inner ArrayInitExpr
-	inner_array_typ := ast.Type(ast.ArrayType{
-		elem_type: ast.Ident{
+	// Create proper array type for the inner ArrayInitExpr.
+	// Use the resolved elem_type expression when available (preserves structured AST
+	// type info like ArrayType, PrefixExpr for &T, etc.). Only fall back to the mangled
+	// name string when no structured expression exists — the name-based path can lose
+	// type structure (e.g., 'Array_int*' gets misinterpreted as ptr(array) in SSA).
+	inner_elem_type := if elem_type_expr_resolved !is ast.EmptyExpr {
+		elem_type_expr_resolved
+	} else {
+		ast.Expr(ast.Ident{
 			name: elem_type_name
-		}
+		})
+	}
+	inner_array_typ := ast.Type(ast.ArrayType{
+		elem_type: inner_elem_type
 	})
 
 	return ast.CallExpr{
