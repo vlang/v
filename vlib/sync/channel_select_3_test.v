@@ -120,3 +120,45 @@ fn test_select_blocks() {
 	// since all channels are closed `select` should return `false`
 	assert is_open == false
 }
+
+fn test_select_else_skips_closed_buffered_receive() {
+	ch := chan int{cap: 1}
+	ch <- 1
+	ch.close()
+	mut received := []int{}
+	mut did_else := false
+	select {
+		value := <-ch {
+			received << value
+		}
+		else {
+			did_else = true
+		}
+	}
+	assert did_else
+	assert received == []
+	assert ch.len == 1
+	assert <-ch == 1
+}
+
+fn test_select_expr_false_on_closed_buffered_receive() {
+	ch := chan int{cap: 1}
+	ch <- 1
+	ch.close()
+	mut ran_branch := false
+	mut ran_else := false
+	if select {
+		_ := <-ch {
+			ran_branch = true
+		}
+		else {
+			ran_else = true
+		}
+	} {
+		assert false
+	}
+	assert ran_branch == false
+	assert ran_else == false
+	assert ch.len == 1
+	assert <-ch == 1
+}

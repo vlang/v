@@ -4925,6 +4925,9 @@ fn main() {
 The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
 It is also possible to proceed immediately if no channel is ready in the moment `select` is called
 by adding an `else { ... }` branch. `else` and `<timeout>` are mutually exclusive.
+In statement form, `else` also runs when every channel operation is unavailable because the
+channels are already closed. To drain buffered values from a closed channel, use a plain
+receive with `or {}` instead of `select ... else`.
 
 The `select` command can be used as an *expression* of type `bool`
 that becomes `false` if all channels are closed:
