@@ -2990,6 +2990,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 	exp_sym := g.table.sym(expected_type)
 	mut needs_closing := false
 	old_inside_smartcast := g.inside_smartcast
+	if arg.is_mut && arg.expr.is_auto_deref_var() && arg_typ.is_ptr() && expected_type.is_ptr() {
+		g.arg_no_auto_deref = true
+		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+		g.arg_no_auto_deref = false
+		return
+	}
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()

@@ -72,6 +72,9 @@ pub fn (t &ResolverInfo) is_comptime_variant_var(node ast.Ident) bool {
 // typeof_type resolves type for typeof() expr where field.typ is resolved to real type instead of int type to make type(field.typ).name working
 pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) ast.Type {
 	if node is ast.Ident {
+		if node.obj is ast.Var && node.obj.is_arg && node.obj.is_auto_deref && node.obj.typ.is_ptr() {
+			return node.obj.typ.deref().clear_flag(.option_mut_param_t)
+		}
 		if t.info.inside_comptime_for && t.info.comptime_for_field_var != '' {
 			if node.obj is ast.Var {
 				obj_typ := node.obj.typ
