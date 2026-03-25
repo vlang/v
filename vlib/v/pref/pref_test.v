@@ -166,3 +166,21 @@ fn test_generate_c_project_creates_build_files() {
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
 }
+
+fn test_output_flag_accepts_directory_path() {
+	output_dir := os.join_path(os.vtmp_dir(), 'v_output_flag_directory')
+	os.rmdir_all(output_dir) or {}
+	defer {
+		os.rmdir_all(output_dir) or {}
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	output_arg := output_dir + os.path_separator
+	res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(target)}')
+	assert res.exit_code == 0, res.output
+	assert os.is_dir(output_dir)
+	mut expected_output := os.join_path(output_dir, 'hello_world')
+	$if windows {
+		expected_output += '.exe'
+	}
+	assert os.is_file(expected_output)
+}

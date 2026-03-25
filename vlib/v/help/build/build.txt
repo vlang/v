@@ -22,6 +22,8 @@ By default, the executable is stored in the same directory as the compiled sourc
 
 The -o flag forces V to write the resulting executable or object to the output file or directory,
 instead of the default behavior described in the last two paragraphs.
+If the output ends with a path separator, it is treated as an output directory and
+V will infer the filename from the target, creating the directory if needed.
 
 You can put common options inside an environment variable named VFLAGS, so that
 you don't have to repeat them.
@@ -65,6 +67,7 @@ NB: the build flags are shared with the run command too:
   -o <output>, -output <output>
     Force V to output the executable in a specific location
     (relative to the current working directory if not absolute).
+    If <output> ends with a path separator, V treats it as a directory.
 
   -obf, -obfuscate
       Turn on obfuscation for the code being built. Currently only renames symbols.

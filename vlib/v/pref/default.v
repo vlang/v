@@ -102,21 +102,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
-		filename := os.file_name(rpath).trim_space()
-		mut base := filename.all_before_last('.')
-		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
-			base = base.all_before_last('.')
-		}
-		if base == '' {
-			// The file name is just `.v` or `.vsh` or `.*`
-			base = filename
-		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
-		if p.raw_vsh_tmp_prefix != '' {
-			p.out_name = os.join_path(target_dir, p.raw_vsh_tmp_prefix + '.' + base)
-		} else {
-			p.out_name = os.join_path(target_dir, base)
-		}
+		p.out_name = os.join_path(target_dir, p.default_output_name(rpath))
 		// Do *NOT* be tempted to generate binaries in the current work folder,
 		// when -o is not given by default, like Go, Clang, GCC etc do.
 		//
@@ -140,6 +127,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// If you do decide to break it, please *at the very least*, test it
 		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
+	} else if p.out_name_is_dir {
+		p.out_name = os.join_path(p.out_name, p.default_output_name(rpath))
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
@@ -235,6 +224,22 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		}
 		p.no_parallel = true
 	}
+}
+
+fn (p &Preferences) default_output_name(rpath string) string {
+	filename := os.file_name(rpath).trim_space()
+	mut base := filename.all_before_last('.')
+	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+		base = base.all_before_last('.')
+	}
+	if base == '' {
+		// The file name is just `.v` or `.vsh` or `.*`
+		base = filename
+	}
+	if p.raw_vsh_tmp_prefix != '' {
+		return p.raw_vsh_tmp_prefix + '.' + base
+	}
+	return base
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
