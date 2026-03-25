@@ -45,3 +45,24 @@ fn test_eq_operator_with_reference_operands() {
 	}
 	assert false
 }
+
+struct Sum {
+	value int
+}
+
+fn (a &Sum) + (b &Sum) &Sum {
+	return &Sum{
+		value: a.value + b.value
+	}
+}
+
+fn test_plus_operator_with_reference_operands() {
+	a := &Sum{
+		value: 2
+	}
+	b := &Sum{
+		value: 3
+	}
+	c := a + b
+	assert c.value == 5
+}

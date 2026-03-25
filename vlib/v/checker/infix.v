@@ -3,6 +3,12 @@ module checker
 import v.ast
 import v.token
 
+fn has_matching_reference_operator_overload(sym &ast.TypeSymbol, op string, receiver_type ast.Type, operand_type ast.Type) bool {
+	method := sym.find_method_with_generic_parent(op) or { return false }
+	return method.params.len == 2 && method.params[0].typ == receiver_type
+		&& method.params[1].typ == operand_type
+}
+
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -175,17 +181,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	if left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
-		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
+		if has_matching_reference_operator_overload(left_sym, node.op.str(), left_type,
+			right_type)
+		{
+			// allow explicit operator overloads like `fn (x &Type) OP (y &Type) ReturnType {`
+		} else if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
-			if _ := left_sym.find_method(node.op.str()) {
-				if left_sym.kind == .alias && right_sym.kind == .alias {
-					// allow an explicit operator override `fn (x &AliasType) OP (y &AliasType) &AliasType {`
-				} else {
-					c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
-				}
-			} else {
-				c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
-			}
+			c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
 		} else if node.op in [.plus, .minus] {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				if !c.pref.translated && !c.file.is_translated {
