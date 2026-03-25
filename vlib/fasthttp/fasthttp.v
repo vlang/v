@@ -5,6 +5,7 @@ module fasthttp
 
 import runtime
 import net
+import time
 
 #include <fcntl.h>
 #include <errno.h>
@@ -76,4 +77,137 @@ pub:
 	max_request_buffer_size int            = 8192
 	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
+}
+
+// ShutdownParams configures how long graceful shutdown should wait for in-flight requests.
+@[params]
+pub struct ShutdownParams {
+pub:
+	timeout         time.Duration = time.infinite
+	retry_period_ms int           = 10
+}
+
+// WaitTillRunningParams allows parametrizing the calls to `ServerHandle.wait_till_running()`.
+@[params]
+pub struct WaitTillRunningParams {
+pub:
+	max_retries     int = 100
+	retry_period_ms int = 10
+}
+
+// ServerHandle exposes lifecycle controls for a running `fasthttp.Server`.
+pub struct ServerHandle {
+	ptr voidptr
+}
+
+// handle returns a reusable handle for waiting on or shutting down the server.
+pub fn (s &Server) handle() ServerHandle {
+	return ServerHandle{
+		ptr: s
+	}
+}
+
+// wait_till_running waits until the server transitions to its serving state.
+pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
+	if h.ptr == unsafe { nil } {
+		return error('server handle is not initialized')
+	}
+	$if windows {
+		return error('fasthttp server lifecycle control is not supported on windows')
+	}
+	mut server := unsafe { &Server(h.ptr) }
+	return server.wait_till_running_impl(params)!
+}
+
+// shutdown gracefully stops accepting new requests and waits for active requests to finish.
+pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
+	if h.ptr == unsafe { nil } {
+		return error('server handle is not initialized')
+	}
+	$if windows {
+		return error('fasthttp server lifecycle control is not supported on windows')
+	}
+	mut server := unsafe { &Server(h.ptr) }
+	server.shutdown_impl(params)!
+}
+
+$if !windows {
+	fn normalized_retry_period_ms(retry_period_ms int) int {
+		return if retry_period_ms > 0 { retry_period_ms } else { 1 }
+	}
+
+	fn (mut s Server) wait_till_running_impl(params WaitTillRunningParams) !int {
+		retry_period_ms := normalized_retry_period_ms(params.retry_period_ms)
+		mut attempts := 0
+		mut running := s.running
+		for !running.load() && attempts < params.max_retries {
+			time.sleep(retry_period_ms * time.millisecond)
+			attempts++
+		}
+		if !running.load() {
+			return error('maximum retries reached')
+		}
+		time.sleep(retry_period_ms * time.millisecond)
+		return attempts
+	}
+
+	fn (mut s Server) shutdown_impl(params ShutdownParams) ! {
+		mut stopped := s.stopped
+		if stopped.load() {
+			return
+		}
+		mut shutting_down := s.shutting_down
+		if shutting_down.compare_and_swap(false, true) {
+			s.stop_accepting()
+		}
+		retry_period_ms := normalized_retry_period_ms(params.retry_period_ms)
+		mut watch := time.new_stopwatch()
+		for !stopped.load() {
+			if params.timeout != time.infinite && watch.elapsed() >= params.timeout {
+				return error('graceful shutdown timed out after ${params.timeout}')
+			}
+			time.sleep(retry_period_ms * time.millisecond)
+		}
+	}
+
+	fn (s &Server) begin_request() {
+		mut active_requests := s.active_requests
+		active_requests.add(1)
+	}
+
+	fn (s &Server) end_request() {
+		mut active_requests := s.active_requests
+		active_requests.sub(1)
+	}
+
+	fn (s &Server) active_request_count() int {
+		mut active_requests := s.active_requests
+		return active_requests.load()
+	}
+
+	fn (s &Server) is_shutting_down() bool {
+		mut shutting_down := s.shutting_down
+		return shutting_down.load()
+	}
+
+	fn (s &Server) is_stopped() bool {
+		mut stopped := s.stopped
+		return stopped.load()
+	}
+
+	fn (mut s Server) mark_running() {
+		mut running := s.running
+		running.store(true)
+		mut stopped := s.stopped
+		stopped.store(false)
+	}
+
+	fn (mut s Server) mark_stopped() {
+		mut active_requests := s.active_requests
+		active_requests.store(0)
+		mut running := s.running
+		running.store(false)
+		mut stopped := s.stopped
+		stopped.store(true)
+	}
 }

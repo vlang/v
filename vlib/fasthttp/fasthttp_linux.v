@@ -1,11 +1,14 @@
 module fasthttp
 
 import net
+import sync.stdatomic
 
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <netinet/tcp.h>
+
+const epoll_wait_timeout_ms = 100
 
 fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
 
@@ -39,10 +42,14 @@ pub:
 	max_request_buffer_size int            = 8192
 	user_data               voidptr
 mut:
-	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
-	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
 	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 	request_handler fn (HttpRequest) !HttpResponse @[required]
+	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
+	active_requests &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
@@ -56,6 +63,10 @@ pub fn new_server(config ServerConfig) !&Server {
 		max_request_buffer_size: config.max_request_buffer_size
 		user_data:               config.user_data
 		request_handler:         config.handler
+		running:                 stdatomic.new_atomic(false)
+		shutting_down:           stdatomic.new_atomic(false)
+		stopped:                 stdatomic.new_atomic(true)
+		active_requests:         stdatomic.new_atomic(0)
 	}
 	unsafe {
 		server.listen_fds.flags.set(.noslices | .noshrink | .nogrow)
@@ -165,7 +176,7 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
 	return true
 }
 
-fn handle_accept_loop(epoll_fd int, listen_fd int) {
+fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]bool) {
 	for {
 		client_fd := C.accept4(listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
 		if client_fd < 0 {
@@ -182,11 +193,13 @@ fn handle_accept_loop(epoll_fd int, listen_fd int) {
 		// Register client socket with epoll
 		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 			close_socket(client_fd)
+			continue
 		}
+		client_fds[client_fd] = true
 	}
 }
 
-fn handle_client_closure(epoll_fd int, client_fd int) {
+fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]bool) {
 	// Never close the listening socket here
 	if client_fd == 0 {
 		return
@@ -195,23 +208,161 @@ fn handle_client_closure(epoll_fd int, client_fd int) {
 		eprintln('ERROR: Invalid FD=${client_fd} for closure')
 		return
 	}
+	client_fds.delete(client_fd)
 	remove_fd_from_epoll(epoll_fd, client_fd)
 	close_socket(client_fd)
 }
 
-fn process_events(mut server Server, epoll_fd int, listen_fd int) {
+fn close_worker_clients(epoll_fd int, mut client_fds map[int]bool) {
+	for client_fd in client_fds.keys() {
+		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+	}
+}
+
+fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool) {
+	server.begin_request()
+	defer {
+		server.end_request()
+	}
+	mut decoded_http_request := decode_http_request(request_buffer) or {
+		eprintln('Error decoding request ${err}')
+		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+			C.MSG_NOSIGNAL)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		return
+	}
+	decoded_http_request.client_conn_fd = client_fd
+	decoded_http_request.user_data = server.user_data
+	response := server.request_handler(decoded_http_request) or {
+		eprintln('Error handling request ${err}')
+		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+			C.MSG_NOSIGNAL)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		return
+	}
+
+	if response.content.len > 0 {
+		mut send_error := false
+		mut pos := 0
+		for pos < response.content.len {
+			sent := C.send(client_fd, unsafe { &response.content[pos] }, response.content.len - pos,
+				C.MSG_NOSIGNAL)
+			if sent <= 0 {
+				eprintln('ERROR: send() failed with errno=${C.errno}')
+				send_error = true
+				break
+			}
+			pos += sent
+		}
+		if send_error {
+			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			return
+		}
+	}
+
+	if response.file_path != '' {
+		mut fd := C.open(response.file_path.str, C.O_RDONLY)
+		if fd == -1 {
+			eprintln('ERROR: open file failed')
+			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			return
+		}
+		defer {
+			if fd != -1 {
+				C.close(fd)
+			}
+		}
+		mut st := C.stat{}
+		if C.fstat(fd, &st) != 0 {
+			eprintln('ERROR: fstat failed')
+			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			return
+		}
+		mut offset := i64(0)
+		mut remaining := i64(st.st_size)
+		mut sf_retries := 0
+		for remaining > 0 {
+			ssize := C.sendfile(client_fd, fd, &offset, usize(remaining))
+			if ssize > 0 {
+				remaining -= i64(ssize)
+				sf_retries = 0
+				continue
+			}
+			errno_val := C.errno
+			match errno_val {
+				C.EAGAIN, C.EWOULDBLOCK, C.EINTR {
+					if sf_retries < 3 {
+						sf_retries++
+						continue
+					}
+					eprintln('ERROR: sendfile() transient failure after ${sf_retries} retries (errno=${errno_val})')
+				}
+				C.EBADF {
+					eprintln('ERROR: sendfile() EBADF: input fd or socket not open for required access (errno=${errno_val})')
+				}
+				C.EFAULT {
+					eprintln('ERROR: sendfile() EFAULT: bad address for offset (errno=${errno_val})')
+				}
+				C.EINVAL {
+					eprintln('ERROR: sendfile() EINVAL: invalid descriptor state or non-seekable input (errno=${errno_val})')
+				}
+				C.EIO {
+					eprintln('ERROR: sendfile() EIO: I/O error while reading input file (errno=${errno_val})')
+				}
+				C.ENOMEM {
+					eprintln('ERROR: sendfile() ENOMEM: insufficient kernel memory (errno=${errno_val})')
+				}
+				C.EOVERFLOW {
+					eprintln('ERROR: sendfile() EOVERFLOW: count exceeds file/socket limits (errno=${errno_val})')
+				}
+				C.ESPIPE {
+					eprintln('ERROR: sendfile() ESPIPE: input file not seekable with offset (errno=${errno_val})')
+				}
+				else {
+					eprintln('ERROR: sendfile() failed with errno=${errno_val}')
+				}
+			}
+			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			return
+		}
+	}
+
+	if server.is_shutting_down() {
+		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+	}
+}
+
+fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
 	mut request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
+	mut client_fds := map[int]bool{}
 	unsafe {
 		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
 	}
 	for {
-		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
+		if server.is_shutting_down() && server.active_request_count() == 0 {
+			close_worker_clients(epoll_fd, mut client_fds)
+			return
+		}
+		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
+		if num_events < 0 {
+			if C.errno == C.EINTR {
+				continue
+			}
+			if server.is_shutting_down() {
+				continue
+			}
+			eprintln('ERROR: epoll_wait() failed with errno=${C.errno}')
+			continue
+		}
 		for i := 0; i < num_events; i++ {
 			client_fd := unsafe { events[i].data.fd }
 			// Accept new connections when the listening socket is readable
 			if client_fd == listen_fd {
-				handle_accept_loop(epoll_fd, listen_fd)
+				if server.is_shutting_down() {
+					continue
+				}
+				handle_accept_loop(epoll_fd, listen_fd, mut client_fds)
 				continue
 			}
 
@@ -224,13 +375,17 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					// Try to send 444 No Response before closing abnormal connection
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
 				}
 				continue
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
+				if server.is_shutting_down() {
+					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					continue
+				}
 				// Read all available data from the socket
 				mut total_bytes_read := 0
 				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
@@ -277,121 +432,35 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					if total_bytes_read >= server.max_request_buffer_size - 1 {
 						C.send(client_fd, status_413_response.data, status_413_response.len,
 							C.MSG_NOSIGNAL)
-						handle_client_closure(epoll_fd, client_fd)
+						handle_client_closure(epoll_fd, client_fd, mut client_fds)
 						continue
 					}
-					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
-						eprintln('Error decoding request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-							C.MSG_NOSIGNAL)
-						handle_client_closure(epoll_fd, client_fd)
-						continue
-					}
-					decoded_http_request.client_conn_fd = client_fd
-					decoded_http_request.user_data = server.user_data
-					response := server.request_handler(decoded_http_request) or {
-						eprintln('Error handling request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-							C.MSG_NOSIGNAL)
-						handle_client_closure(epoll_fd, client_fd)
-						continue
-					}
-					// Send response content (headers/body)
-					if response.content.len > 0 {
-						mut send_error := false
-						mut pos := 0
-						for pos < response.content.len {
-							sent := C.send(client_fd, unsafe { &response.content[pos] },
-								response.content.len - pos, C.MSG_NOSIGNAL)
-							if sent <= 0 {
-								eprintln('ERROR: send() failed with errno=${C.errno}')
-								send_error = true
-								break
-							}
-							pos += sent
-						}
-						if send_error {
-							handle_client_closure(epoll_fd, client_fd)
-							continue
-						}
-					}
-
-					// Send file if present
-					if response.file_path != '' {
-						fd := C.open(response.file_path.str, C.O_RDONLY)
-						if fd == -1 {
-							eprintln('ERROR: open file failed')
-							handle_client_closure(epoll_fd, client_fd)
-							continue
-						}
-						mut st := C.stat{}
-						if C.fstat(fd, &st) != 0 {
-							eprintln('ERROR: fstat failed')
-							handle_client_closure(epoll_fd, client_fd)
-							continue
-						}
-						mut offset := i64(0)
-						mut remaining := i64(st.st_size)
-						mut sf_retries := 0
-						for remaining > 0 {
-							ssize := C.sendfile(client_fd, fd, &offset, usize(remaining))
-							if ssize > 0 {
-								remaining -= i64(ssize)
-								sf_retries = 0
-								continue
-							}
-							errno_val := C.errno
-							match errno_val {
-								C.EAGAIN, C.EWOULDBLOCK, C.EINTR {
-									if sf_retries < 3 {
-										sf_retries++
-										continue
-									}
-									eprintln('ERROR: sendfile() transient failure after ${sf_retries} retries (errno=${errno_val})')
-								}
-								C.EBADF {
-									eprintln('ERROR: sendfile() EBADF: input fd or socket not open for required access (errno=${errno_val})')
-								}
-								C.EFAULT {
-									eprintln('ERROR: sendfile() EFAULT: bad address for offset (errno=${errno_val})')
-								}
-								C.EINVAL {
-									eprintln('ERROR: sendfile() EINVAL: invalid descriptor state or non-seekable input (errno=${errno_val})')
-								}
-								C.EIO {
-									eprintln('ERROR: sendfile() EIO: I/O error while reading input file (errno=${errno_val})')
-								}
-								C.ENOMEM {
-									eprintln('ERROR: sendfile() ENOMEM: insufficient kernel memory (errno=${errno_val})')
-								}
-								C.EOVERFLOW {
-									eprintln('ERROR: sendfile() EOVERFLOW: count exceeds file/socket limits (errno=${errno_val})')
-								}
-								C.ESPIPE {
-									eprintln('ERROR: sendfile() ESPIPE: input file not seekable with offset (errno=${errno_val})')
-								}
-								else {
-									eprintln('ERROR: sendfile() failed with errno=${errno_val}')
-								}
-							}
-							handle_client_closure(epoll_fd, client_fd)
-							break
-						}
-
-						C.close(fd)
-					}
-					// Leave the connection open; closure is driven by client FIN or errors
+					process_request(server, epoll_fd, client_fd, readed_request_buffer, mut
+						client_fds)
 				} else if total_bytes_read == 0 {
 					// Normal client closure (FIN received)
-					handle_client_closure(epoll_fd, client_fd)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds)
 				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds)
 				}
 			}
 		}
+	}
+}
+
+fn (mut server Server) stop_accepting() {
+	for i := 0; i < max_thread_pool_size; i++ {
+		if server.listen_fds[i] < 0 {
+			continue
+		}
+		if server.epoll_fds[i] >= 0 {
+			remove_fd_from_epoll(server.epoll_fds[i], server.listen_fds[i])
+		}
+		close_socket(server.listen_fds[i])
+		server.listen_fds[i] = -1
 	}
 }
 
@@ -421,12 +490,18 @@ pub fn (mut server Server) run() ! {
 			return
 		}
 
-		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
+		server.threads[i] = spawn process_events(server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
+	server.mark_running()
 	println('listening on http://0.0.0.0:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()
+		if server.epoll_fds[i] >= 0 {
+			close_socket(server.epoll_fds[i])
+			server.epoll_fds[i] = -1
+		}
 	}
+	server.mark_stopped()
 }

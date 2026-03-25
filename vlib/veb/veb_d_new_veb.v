@@ -8,6 +8,25 @@ import net.http
 import time
 import net.urllib
 
+// Server exposes lifecycle controls for the `-d new_veb` backend.
+@[heap]
+pub struct Server {
+	handle fasthttp.ServerHandle
+}
+
+// ServerShutdownParams configures graceful shutdown waiting for `veb.Server.shutdown()`.
+@[params]
+pub struct ServerShutdownParams {
+pub:
+	timeout         time.Duration = time.infinite
+	retry_period_ms int           = 10
+}
+
+interface HasServerLifecycle {
+mut:
+	init_server(server &Server)
+}
+
 struct RequestParams {
 	global_app                voidptr
 	controllers_sorted        []&ControllerPath
@@ -19,6 +38,14 @@ const http_ok_response = 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nC
 
 pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	run_new[A, X](mut global_app, params)!
+}
+
+// shutdown gracefully stops the `-d new_veb` server and waits for active requests to finish.
+pub fn (mut s Server) shutdown(params ServerShutdownParams) ! {
+	s.handle.shutdown(
+		timeout:         params.timeout
+		retry_period_ms: params.retry_period_ms
+	)!
 }
 
 // run_new - start a new veb server using the parallel fasthttp backend.
@@ -50,7 +77,16 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		eprintln('Failed to create server: ${err}')
 		return
 	}
-	println('[veb] Running multi-threaded app on http://localhost:${params.port}/')
+	mut veb_server := &Server{
+		handle: server.handle()
+	}
+	$if A is HasServerLifecycle {
+		global_app.init_server(veb_server)
+	}
+	if params.show_startup_message {
+		host := if params.host == '' { 'localhost' } else { params.host }
+		println('[veb] Running multi-threaded app on http://${host}:${params.port}/')
+	}
 	flush_stdout()
 	server.run() or { panic(err) }
 }
