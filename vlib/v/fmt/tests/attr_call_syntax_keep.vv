@@ -1,0 +1,20 @@
+module main
+
+@[
+	xml(
+		name: 'foo',
+		prefix: 'f',
+		namespace: 'https://example.com/xmlns/foo'
+	)
+]
+struct Foo {}
+
+@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01'); inline]
+fn foo() {}
+
+@[deprecated('use bar_v2() instead', after: '2026-06-02')]
+fn bar() {}
+
+struct User {
+	name string @[json(name: 'user_name'); required]
+}
