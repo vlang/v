@@ -10,6 +10,7 @@ import v.util
 pub type FnBackend = fn (mut b Builder)
 
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	check_if_input_file_exists(pref_)
 	check_if_output_folder_is_writable(pref_)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
@@ -22,7 +23,22 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	b.run_compiled_executable_and_exit()
 }
 
+fn check_if_input_file_exists(pref_ &pref.Preferences) {
+	if pref_.path == '' || pref_.path == '-' {
+		return
+	}
+	if pref_.path.ends_with('.v') || pref_.path.ends_with('.vsh') || pref_.path.ends_with('.vv') {
+		if !os.exists(pref_.path) {
+			verror("${pref_.path} doesn't exist")
+		}
+	}
+}
+
 fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
+	if pref_.should_output_to_stdout() || pref_.check_only || pref_.only_check_syntax
+		|| pref_.backend == .interpret {
+		return
+	}
 	odir := os.dir(pref_.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:

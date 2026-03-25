@@ -1,8 +1,13 @@
 import os
 import os.filelock
 
+fn lockfile_path(name string) string {
+	return os.join_path(os.vtmp_dir(), 'filelock_test_${os.getpid()}_${name}')
+}
+
 fn test_flock() {
-	lockfile := 'test.lock'
+	lockfile := lockfile_path('test.lock')
+	os.rm(lockfile) or {}
 	mut l := filelock.new(lockfile)
 	assert !os.exists(lockfile)
 	l.acquire() or { panic(err) }
@@ -13,7 +18,8 @@ fn test_flock() {
 }
 
 fn test_flock_try() {
-	lockfile := 'test-try.lock'
+	lockfile := lockfile_path('test-try.lock')
+	os.rm(lockfile) or {}
 	mut l := filelock.new(lockfile)
 	assert l.try_acquire()
 	l.release()

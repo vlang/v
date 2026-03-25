@@ -286,7 +286,7 @@ fn detect_musl(mut res Preferences) {
 @[noreturn]
 fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string,
 	content string) {
-	tmp_file_path := rand.ulid()
+	tmp_file_path := os.join_path(os.vtmp_dir(), rand.ulid())
 	mut tmp_exe_file_path := res.out_name
 	mut output_option := ''
 	if tmp_exe_file_path == '' {

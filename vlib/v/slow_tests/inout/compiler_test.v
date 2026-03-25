@@ -53,26 +53,28 @@ fn test_all() {
 		}
 		program := path
 		tname := rand.ulid()
-		compilation := os.execute('${os.quoted_path(vexe)} -o ${tname} -cflags "-w" -cg ${os.quoted_path(program)}')
+		tbase := os.join_path(os.vtmp_dir(), tname)
+		texe := if os.user_os() == 'windows' { '${tbase}.exe' } else { tbase }
+		compilation := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tbase)} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute('./${tname}')
+		res := os.execute(os.quoted_path(texe))
 		if res.exit_code < 0 {
 			vprintln('nope')
 			panic(res.output)
 		}
 		$if windows {
-			os.rm('./${tname}.exe') or {}
+			os.rm(texe) or {}
 			$if msvc {
-				os.rm('./${tname}.ilk') or {}
-				os.rm('./${tname}.pdb') or {}
+				os.rm('${tbase}.ilk') or {}
+				os.rm('${tbase}.pdb') or {}
 			}
 		} $else {
-			os.rm('./${tname}') or {}
+			os.rm(texe) or {}
 		}
 		// println('============')
 		// println(res.output)

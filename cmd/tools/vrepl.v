@@ -458,6 +458,10 @@ fn remove_comment(oline string) string {
 }
 
 fn run_repl(workdir string, vrepl_prefix string) int {
+	os.chdir(workdir) or {
+		rerror('Could not change the REPL working folder to `${workdir}`: ${err}')
+		return 1
+	}
 	if !is_stdin_a_pipe {
 		print_welcome_screen()
 	}
