@@ -1730,28 +1730,6 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
-fn (mut c Checker) unwrap_generic_concrete_type(typ ast.Type) ast.Type {
-	utyp := c.unwrap_generic(typ)
-	if !c.needs_unwrap_generic_type(typ) || c.table.sym(utyp).kind != .placeholder {
-		return utyp
-	}
-	if c.inside_generic_struct_init {
-		generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
-		return c.table.unwrap_generic_type(typ, generic_names, c.cur_struct_concrete_types)
-	}
-	if c.table.cur_fn != unsafe { nil } {
-		resolved := c.table.unwrap_generic_type(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-		if c.table.sym(resolved).kind != .placeholder {
-			return resolved
-		}
-		if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {
-			return c.table.unwrap_generic_type(typ, c.table.cur_lambda.func.decl.generic_names,
-				c.table.cur_lambda.call_ctx.concrete_types)
-		}
-	}
-	return utyp
-}
-
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	mut resolved_interface_type := c.unwrap_generic(interface_type)
 	if typ == resolved_interface_type {
@@ -1760,7 +1738,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${resolved_interface_type.debug()} (`${c.table.type_to_str(resolved_interface_type)}`)')
 	}
-	utyp := c.unwrap_generic_concrete_type(typ)
+	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.final_sym(resolved_interface_type)
@@ -1934,9 +1912,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
-					if c.table.type_has_implicit_str_method(utyp, imethod) {
-						continue
-					}
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
 					are_methods_implemented = false
@@ -2651,12 +2626,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 
 	if has_field {
 		is_used_outside := !c.inside_recheck && sym.mod != c.mod
-		if is_used_outside && sym.language == .c && !sym.is_pub {
-			c.ensure_type_exists(typ, node.pos)
-			return field.typ
-		}
-		if is_used_outside && !field.is_pub && sym.language != .c {
-			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
+		unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
+		type_has_module_visibility := final_sym.kind in [.struct, .interface, .sum_type, .aggregate]
+		type_is_private := type_has_module_visibility && !sym.is_pub && sym.mod != 'builtin'
+		if is_used_outside && (!field.is_pub || type_is_private) && sym.language != .c {
 			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
 		}
 		field_type := c.resolve_selector_field_type(typ, field_name, field)
@@ -2958,11 +2931,6 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		// ensure that the minimum value is negative, even with msvc, which has a bug that makes -2147483648 positive ...
 		enum_imin *= -1
 	}
-	saved_expected_type := c.expected_type
-	defer {
-		c.expected_type = saved_expected_type
-	}
-	c.expected_type = node.typ
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO: C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -3120,20 +3088,6 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
 							// accepts int constants as enum value
 							if mut field.expr.obj is ast.ConstField {
-								if comptime_value := c.eval_comptime_const_expr(field.expr,
-									0)
-								{
-									if comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
-										field.expr.pos)
-									{
-										c.check_enum_field_integer_literal(comptime_lit,
-											signed, node.is_multi_allowed, senum_type,
-											field.expr.pos, mut useen, enum_umin, enum_umax, mut
-											iseen, enum_imin, enum_imax)
-										field.expr = comptime_lit
-										continue
-									}
-								}
 								folded_expr := c.checker_transformer.expr(mut field.expr.obj.expr)
 
 								if folded_expr is ast.IntegerLiteral {
@@ -3141,7 +3095,6 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 										node.is_multi_allowed, senum_type, field.expr.pos, mut
 										useen, enum_umin, enum_umax, mut iseen, enum_imin,
 										enum_imax)
-									field.expr = folded_expr
 								}
 							}
 							continue
@@ -4009,9 +3962,6 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 				}
 			}
 		}
-		if t_typ := c.type_resolver.resolve_bound_generic_type(typ) {
-			return t_typ
-		}
 	}
 	return typ
 }
@@ -4689,8 +4639,6 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
-	number_to_type_ref_cast_outside_unsafe := from_type.is_number() && to_type.is_ptr()
-		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated
 	c.markused_castexpr(mut node, to_type, mut final_to_sym)
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
@@ -4736,16 +4684,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else {
 		ast.void_type
 	}
-	enforce_safe_pointer_casts := c.file.language == .v && !c.is_builtin_mod
-	enforce_safe_voidptr_ref_cast := enforce_safe_pointer_casts && expr_is_ident_or_cast
 	if to_type.has_flag(.option) && from_type == ast.none_type {
 		// allow conversion from none to every option type
 	} else if to_type.has_flag(.option) && from_type == inner_to_type {
 		return to_type
-	} else if enforce_safe_voidptr_ref_cast && from_type == ast.voidptr_type_idx && to_type.is_ptr()
-		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
-		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast voidptr to `${tt}` outside `unsafe`', node.pos)
 	} else if to_sym.kind == .sum_type {
 		to_sym_info := to_sym.info as ast.SumType
 		if c.pref.skip_unused && to_sym_info.concrete_types.len > 0 {
@@ -4805,14 +4747,33 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.info is ast.Alias {
 			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
-		if int_lit := integer_literal_from_pointer_cast_expr(node.expr) {
-			if int_lit.val.int() == 0 && number_to_type_ref_cast_outside_unsafe {
-				tt := c.table.type_to_str(to_type)
-				c.error('cannot null cast a struct pointer, use ${tt}(unsafe { nil })',
+		if mut node.expr is ast.IntegerLiteral {
+			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
+				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
 					node.pos)
-			} else if number_to_type_ref_cast_outside_unsafe {
+			} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
 				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
 			}
+		} else if mut node.expr is ast.Ident {
+			match mut node.expr.obj {
+				ast.GlobalField, ast.ConstField, ast.Var {
+					if mut node.expr.obj.expr is ast.IntegerLiteral {
+						if node.expr.obj.expr.val.int() == 0 && !c.pref.translated
+							&& !c.file.is_translated {
+							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+								node.pos)
+						} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+							c.error('cannot cast int to a struct pointer outside `unsafe`',
+								node.pos)
+						}
+					}
+				}
+				else {}
+			}
+		}
+		if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
+			&& !c.file.is_translated {
+			c.error('cannot cast voidptr to a struct outside `unsafe`', node.pos)
 		}
 		if !from_type.is_int() && final_from_sym.kind != .enum
 			&& !from_type.is_any_kind_of_pointer() {
@@ -4949,22 +4910,14 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	// if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
 	// Do not allow `&u8(unsafe { nil })` etc, force nil or voidptr cast
-	if number_to_type_ref_cast_outside_unsafe && !(to_sym.kind == .struct && final_to_is_ptr)
-		&& c.table.sym(to_type.idx_type()).kind != .placeholder {
+	if from_type.is_number() && to_type.is_ptr() && !c.inside_unsafe && !c.pref.translated
+		&& !c.file.is_translated {
 		if from_sym.language != .c {
 			ne_name := node.expr.str()
 			if !ne_name.starts_with('C.') {
-				tt := c.table.type_to_str(to_type)
-				if int_lit := integer_literal_from_pointer_cast_expr(node.expr) {
-					if int_lit.val.int() == 0 {
-						c.error('cannot null cast a pointer, use ${tt}(unsafe { nil })',
-							node.pos)
-					} else {
-						c.error('cannot cast a number to `${tt}` outside `unsafe`', node.pos)
-					}
-				} else {
-					c.error('cannot cast a number to `${tt}` outside `unsafe`', node.pos)
-				}
+				// TODO make an error
+				c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
+					node.pos)
 			}
 		}
 	}
@@ -5002,10 +4955,6 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.error('invalid casting value to function', node.pos)
 			}
 		}
-	} else if final_from_sym.kind == .function && final_to_sym.is_number() {
-		fnexpr := node.expr.str()
-		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast function `${fnexpr}` to `${tt}`', node.pos)
 	}
 	if to_type.is_ptr() && to_sym.kind == .alias && from_sym.kind == .map {
 		c.error('cannot cast to alias pointer `${c.table.type_to_str(to_type)}` because `${c.table.type_to_str(from_type)}` is a value',
@@ -5558,18 +5507,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		return ast.void_type
 	} else if node.kind in [.constant, .global, .variable] {
-		if node.kind == .variable && c.table.cur_concrete_types.len > 0 {
-			pobj := node.scope.find_ptr(node.name)
-			if pobj != unsafe { nil } {
-				obj := *pobj
-				if obj is ast.Var {
-					mut info := node.info as ast.IdentVar
-					info.typ = obj.typ
-					node.info = info
-					node.obj = obj
-				}
-			}
-		}
 		// second use
 		info := node.info as ast.IdentVar
 		mut info_typ := info.typ
@@ -6296,8 +6233,8 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 		match mut branch.stmt {
 			ast.ExprStmt {
 				if branch.is_timeout {
-					tsym := c.table.final_sym(c.unwrap_generic(branch.stmt.typ))
-					if !tsym.is_int() {
+					if !branch.stmt.typ.is_int() {
+						tsym := c.table.sym(branch.stmt.typ)
 						c.error('invalid type `${tsym.name}` for timeout - expected integer number of nanoseconds aka `time.Duration`',
 							branch.stmt.pos)
 					}

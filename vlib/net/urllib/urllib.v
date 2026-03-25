@@ -358,7 +358,7 @@ fn user_password(username string, password string) Userinfo {
 // password details for a URL. An existing Userinfo value is guaranteed
 // to have a username set (potentially empty, as allowed by RFC 2396),
 // and optionally a password.
-struct Userinfo {
+pub struct Userinfo {
 pub:
 	username     string
 	password     string
