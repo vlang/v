@@ -24,6 +24,7 @@ pub struct Client {
 	is_server bool
 mut:
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
+	proxy_url         string
 	flags             []Flag                // flags used in handshake
 	fragments         []Fragment            // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
@@ -86,6 +87,7 @@ pub:
 	read_timeout  i64         = 30 * time.second
 	write_timeout i64         = 30 * time.second
 	logger        &log.Logger = default_logger
+	proxy_url     string // optional proxy URL used to open the websocket TCP tunnel
 }
 
 // new_client instance a new websocket client
@@ -98,6 +100,7 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 		is_ssl:        address.starts_with('wss')
 		logger:        opt.logger
 		uri:           uri
+		proxy_url:     opt.proxy_url
 		client_state:  ClientState{
 			state: .closed
 		}

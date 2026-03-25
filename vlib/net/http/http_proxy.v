@@ -18,6 +18,13 @@ mut:
 	url      string
 }
 
+// dial_tcp_via_proxy connects to `host` through the proxy specified by `proxy_url`.
+// `host` should be in `host:port` form.
+pub fn dial_tcp_via_proxy(proxy_url string, host string) !&net.TcpConn {
+	proxy := new_http_proxy(proxy_url)!
+	return proxy.dial(host)!
+}
+
 // new_http_proxy creates a new HttpProxy instance, from the given http proxy url in `raw_url`
 pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	mut url := urllib.parse(raw_url) or { return error('malformed proxy url') }
@@ -91,6 +98,47 @@ fn (pr &HttpProxy) build_proxy_headers(host string) string {
 	return 'CONNECT ${host} ${version}\r\nHost: ${address}\r\n' + uheaders.join('') + '\r\n'
 }
 
+fn read_proxy_connect_response(mut tcp net.TcpConn) !string {
+	mut total_bytes_read := 0
+	mut msg := [4096]u8{}
+	mut buffer := [1]u8{}
+	for total_bytes_read < msg.len {
+		bytes_read := tcp.read_ptr(&buffer[0], 1)!
+		if bytes_read == 0 {
+			return error('proxy closed the connection while establishing a tunnel')
+		}
+		msg[total_bytes_read] = buffer[0]
+		total_bytes_read++
+		if total_bytes_read > 3 && msg[total_bytes_read - 1] == `\n`
+			&& msg[total_bytes_read - 2] == `\r` && msg[total_bytes_read - 3] == `\n`
+			&& msg[total_bytes_read - 4] == `\r` {
+			return msg[..total_bytes_read].bytestr()
+		}
+	}
+	return error('proxy response headers exceeded 4096 bytes')
+}
+
+fn validate_proxy_connect_response(response string) ! {
+	status_line := response.all_before('\r\n')
+	if !status_line.starts_with('HTTP/1.1 200') && !status_line.starts_with('HTTP/1.0 200') {
+		return error('proxy tunnel error: ${status_line}')
+	}
+}
+
+fn (pr &HttpProxy) connect_tcp(host string) !&net.TcpConn {
+	if pr.scheme in ['http', 'https'] {
+		mut tcp := net.dial_tcp(pr.host)!
+		tcp.write(pr.build_proxy_headers(host).bytes())!
+		response := read_proxy_connect_response(mut tcp)!
+		validate_proxy_connect_response(response)!
+		return tcp
+	} else if pr.scheme == 'socks5' {
+		return socks.socks5_dial(pr.host, host, pr.username, pr.password)!
+	} else {
+		return error('http_proxy connect_tcp: invalid proxy scheme')
+	}
+}
+
 fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Request) !Response {
 	host_name, port := net.split_address(host.hostname())!
 
@@ -135,30 +183,12 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 }
 
 fn (pr &HttpProxy) dial(host string) !&net.TcpConn {
-	if pr.scheme in ['http', 'https'] {
-		mut tcp := net.dial_tcp(pr.host)!
-		tcp.write(pr.build_proxy_headers(host).bytes())!
-		mut bf := []u8{len: 4096}
-
-		tcp.read(mut bf)!
-		return tcp
-	} else if pr.scheme == 'socks5' {
-		return socks.socks5_dial(pr.host, host, pr.username, pr.password)!
-	} else {
-		return error('http_proxy dial: invalid proxy scheme')
-	}
+	return pr.connect_tcp(host)!
 }
 
 fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 	if pr.scheme in ['http', 'https'] {
-		mut tcp := net.dial_tcp(pr.host)!
-		tcp.write(pr.build_proxy_headers(host).bytes())!
-		mut bf := []u8{len: 4096}
-		tcp.read(mut bf)!
-		if !bf.bytestr().contains('HTTP/1.1 200') {
-			return error('ssl dial error: ${bf.bytestr()}')
-		}
-
+		mut tcp := pr.connect_tcp(host)!
 		mut ssl_conn := ssl.new_ssl_conn(
 			verify:                 ''
 			cert:                   ''
