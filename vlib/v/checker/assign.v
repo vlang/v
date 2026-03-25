@@ -107,7 +107,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
 		}
 		if mut right is ast.AnonFn {
-			if right.decl.generic_names.len > 0 {
+			if right.decl.generic_names.len > 0 && right.inherited_vars.len == 0 {
 				c.error('cannot assign generic function to a variable', right.decl.pos)
 			}
 		}
