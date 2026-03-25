@@ -4215,41 +4215,45 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	for template_tmp in stmt.templates {
-		mut template := template_tmp
-		g.write('"')
-		if template.is_directive {
-			g.write('.')
-		}
-		g.write(template.name)
-		if template.is_label {
-			g.write(':')
-		} else {
-			g.write(' ')
-		}
-		// swap destination and operands for att syntax, not for arm64
-		if template.args.len != 0 && !template.is_directive
-			&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
-			template.args.prepend(template.args.last())
-			template.args.delete(template.args.len - 1)
-		}
-
-		for i, arg in template.args {
-			if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
-				&& arg is ast.AsmRegister {
-				g.write('*') // indirect branching
+	if stmt.templates.len == 0 {
+		g.writeln('""')
+	} else {
+		for template_tmp in stmt.templates {
+			mut template := template_tmp
+			g.write('"')
+			if template.is_directive {
+				g.write('.')
+			}
+			g.write(template.name)
+			if template.is_label {
+				g.write(':')
+			} else {
+				g.write(' ')
+			}
+			// swap destination and operands for att syntax, not for arm64
+			if template.args.len != 0 && !template.is_directive
+				&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
+				template.args.prepend(template.args.last())
+				template.args.delete(template.args.len - 1)
 			}
 
-			g.asm_arg(arg, stmt)
-			if i + 1 < template.args.len {
-				g.write(', ')
-			}
-		}
+			for i, arg in template.args {
+				if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
+					&& arg is ast.AsmRegister {
+					g.write('*') // indirect branching
+				}
 
-		if !template.is_label {
-			g.write('\\n\\t')
+				g.asm_arg(arg, stmt)
+				if i + 1 < template.args.len {
+					g.write(', ')
+				}
+			}
+
+			if !template.is_label {
+				g.write('\\n\\t')
+			}
+			g.writeln('"')
 		}
-		g.writeln('"')
 	}
 
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
