@@ -80,7 +80,7 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 			g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
 		}
 		ast.Struct {
-			g.gen_str_for_struct(sym.info, styp, str_fn_name)
+			g.gen_str_for_struct(sym.info, styp, str_fn_name, sym.idx)
 		}
 		ast.Map {
 			g.gen_str_for_map(sym.info, styp, str_fn_name)
@@ -692,7 +692,7 @@ fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 	return .si_i32
 }
 
-fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string, type_idx int) {
 	// _str() functions should have a single argument, the indenting ones take 2:
 
 	g.definitions.writeln('function ${str_fn_name}(it) { return indent_${str_fn_name}(it, 0);}')
@@ -717,10 +717,15 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		fn_builder.writeln('}')
 		return
 	}
+	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
+	if !allow_circular {
+		fn_builder.writeln('\tif (builtin__autostr_type_in_stack(${type_idx})) {')
+		fn_builder.writeln('\t\treturn new string("<circular>")')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('\tbuiltin__autostr_type_push(${type_idx})')
+	}
 
 	fn_builder.writeln('\tlet res = /*struct name*/new string("${clean_struct_v_type_name}{\\n")')
-
-	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
 		mut prefix := ''
@@ -784,6 +789,9 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		fn_builder.writeln('')
 	}
 	fn_builder.writeln('res.str += "\\n}"')
+	if !allow_circular {
+		fn_builder.writeln('\tbuiltin__autostr_type_pop()')
+	}
 	//	fn_builder.writeln('\t\t{new string("\\n"), ${c.si_s_code}, {.d_s=indents}}, {new string("}"), 0, {.d_c=0}},')
 	fn_builder.writeln('\treturn res;')
 	fn_builder.writeln('}')
