@@ -14,14 +14,17 @@ const exit_after = time.second * 10
 pub struct Context {
 	veb.Context
 pub mut:
-	counter int
+	counter              int
+	bound_middleware_tag string
 }
 
 @[heap]
 pub struct App {
 	veb.Middleware[Context]
 mut:
-	started chan bool
+	started                chan bool
+	bound_middleware_hits  int
+	bound_middleware_value string
 }
 
 pub fn (mut app App) before_accept_loop() {
@@ -91,8 +94,22 @@ pub fn (app &App) double_after(mut ctx Context) veb.Result {
 	return ctx.text('handler response')
 }
 
+// bound verifies that route middleware can read app state before the handler runs.
+@['/bound']
+pub fn (app &App) bound(mut ctx Context) veb.Result {
+	return ctx.text('${app.bound_middleware_value}, ${app.bound_middleware_hits}, ${ctx.bound_middleware_tag}, ${ctx.counter}')
+}
+
 pub fn (app &App) app_middleware(mut ctx Context) bool {
 	ctx.counter++
+	return true
+}
+
+// route_bound_middleware reads and mutates the bound app to exercise stateful middleware.
+pub fn (mut app App) route_bound_middleware(mut ctx Context) bool {
+	app.bound_middleware_hits++
+	ctx.bound_middleware_tag = app.bound_middleware_value
+	ctx.counter += 10
 	return true
 }
 
@@ -138,7 +155,9 @@ fn route_after_sends_response(mut ctx Context) bool {
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 
-	mut app := &App{}
+	mut app := &App{
+		bound_middleware_value: 'from app middleware'
+	}
 	// even though `route_use` is called first, global middleware is still executed first
 	app.Middleware.route_use('/unreachable', handler: middleware_unreachable)
 
@@ -150,6 +169,7 @@ fn testsuite_begin() {
 	app.Middleware.route_use('/bar/:foo', handler: middleware_handler)
 	// should match multiple slashes
 	app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
+	app.Middleware.route_use('/bound', handler: app.route_bound_middleware)
 
 	app.Middleware.route_use('/after', handler: after_middleware, after: true)
 	app.Middleware.route_use('/admin/auth',
@@ -203,6 +223,11 @@ fn test_dynamic_route() {
 fn test_nested() {
 	x := http.get('${localserver}/nested/route/method')!
 	assert x.body == 'from nested, 3'
+}
+
+fn test_route_middleware_bound_method_can_access_app_state() {
+	x := http.get('${localserver}/bound')!
+	assert x.body == 'from app middleware, 1, from app middleware, 12'
 }
 
 fn test_route_middleware_method_filter_get() {
