@@ -458,6 +458,7 @@ pub fn (mut g JsGen) init() {
 	}
 	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
+	g.definitions.writeln('function \$ref_index(value, parent, index) { let ref = new \$ref(value); ref._v_array = parent; ref._v_index = index; return ref; } ')
 	if g.pref.backend != .js_node {
 		g.definitions.writeln('const \$process = {')
 		g.definitions.writeln('  arch: "js",')
@@ -1021,19 +1022,34 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.PrefixExpr {
 			if node.op in [.amp, .mul] {
 				if node.op == .amp {
-					// if !node.right_type.is_pointer() {
-					// kind of weird way to handle references but it allows us to access type methods easily.
-					/*
-					g.write('(function(x) {')
-					g.write(' return { val: x, __proto__: Object.getPrototypeOf(x), valueOf: function() { return this.val; } }})(  ')
-					g.expr(node.right)
-					g.write(')')*/
-					g.write('new \$ref(')
-					g.expr(node.right)
-					g.write(')')
-					//} else {
-					//		g.expr(node.right)
-					//	}
+					mut is_array_index_ref := false
+					mut right := node.right
+					if mut right is ast.IndexExpr {
+						mut parent_type := right.left_type
+						if parent_type.is_ptr() {
+							parent_type = parent_type.deref()
+						}
+						parent_sym := g.table.final_sym(parent_type)
+						if parent_sym.kind in [.array, .array_fixed] && !right.is_map {
+							is_array_index_ref = true
+							g.write('\$ref_index(')
+							g.expr(right)
+							g.write(', ')
+							g.expr(right.left)
+							if right.left_type.is_ptr() {
+								g.write('.valueOf()')
+							}
+							g.write(', ')
+							g.expr(right.index)
+							g.write(')')
+						}
+					}
+					if !is_array_index_ref {
+						// kind of weird way to handle references but it allows us to access type methods easily.
+						g.write('new \$ref(')
+						g.expr(node.right)
+						g.write(')')
+					}
 				} else {
 					g.write('(')
 					g.expr(node.right)
