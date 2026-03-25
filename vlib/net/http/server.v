@@ -218,9 +218,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		req.header.add_custom('Remote-Addr', remote_ip) or {}
 
 		mut resp := w.handler.handle(req)
-		if resp.version() == .unknown {
-			resp.set_version(req.version)
-		}
+		normalize_server_response(mut resp, req)
 
 		// Implemented by developers?
 		if !resp.header.contains(.content_length) {
@@ -267,6 +265,26 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		if !keep_alive {
 			return
 		}
+	}
+}
+
+fn normalize_server_response(mut resp Response, req Request) {
+	server_version := if req.version == .unknown { Version.v1_1 } else { req.version }
+	match resp.http_version {
+		'1.0', '1.1', '2.0' {}
+		else {
+			resp.set_version(server_version)
+		}
+	}
+	status := status_from_int(resp.status_code)
+	if status.is_valid() {
+		if resp.status_msg == '' {
+			resp.status_msg = status.str()
+		}
+	} else if resp.status_code == 0 && resp.status_msg == '' {
+		resp.set_status(.ok)
+	} else {
+		resp.set_status(.internal_server_error)
 	}
 }
 

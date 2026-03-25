@@ -283,7 +283,101 @@ fn test_host_header_sent_to_server() {
 	dump(server.addr)
 	x := http.get('http://${server.addr}/')!
 	dump(x)
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
 	assert x.body.ends_with('${ip}:${port}')
+}
+
+//
+
+struct InvalidResponseHandler {}
+
+fn (mut handler InvalidResponseHandler) handle(req http.Request) http.Response {
+	return http.Response{
+		header: http.new_header_from_map({
+			http.CommonHeader.content_type: 'text/plain'
+		})
+	}
+}
+
+struct InvalidStatusCodeHandler {}
+
+fn (mut handler InvalidStatusCodeHandler) handle(req http.Request) http.Response {
+	return http.Response{
+		body:        'broken status'
+		status_code: 42
+	}
+}
+
+fn test_server_normalizes_invalid_handler_response() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		handler:              InvalidResponseHandler{}
+		addr:                 '127.0.0.1:18202'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	mut conn := net.dial_tcp('127.0.0.1:18202')!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	request := 'GET / HTTP/1.1\r\nHost: 127.0.0.1:18202\r\nConnection: close\r\n\r\n'
+	conn.write(request.bytes())!
+	response := read_http_response(mut conn)!
+	lines := response.split('\r\n')
+	assert lines[0] == 'HTTP/1.1 200 OK'
+	assert response.to_lower().contains('content-type: text/plain')
+	assert response.to_lower().contains('content-length: 0')
+
+	server.stop()
+	t.wait()
+}
+
+fn test_server_coerces_invalid_status_code_to_internal_server_error() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		handler:              InvalidStatusCodeHandler{}
+		addr:                 '127.0.0.1:18203'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	mut conn := net.dial_tcp('127.0.0.1:18203')!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	request := 'GET / HTTP/1.1\r\nHost: 127.0.0.1:18203\r\nConnection: close\r\n\r\n'
+	conn.write(request.bytes())!
+	response := read_http_response(mut conn)!
+	lines := response.split('\r\n')
+	assert lines[0] == 'HTTP/1.1 500 Internal Server Error'
+	assert response.ends_with('broken status')
+
+	server.stop()
+	t.wait()
 }
 
 //
