@@ -824,6 +824,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			final_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
 			final_right_sym := g.table.final_sym(unwrapped_val_type)
 			mut aligned := 0
+			is_safe_shift_assign := !g.pref.translated && !g.file.is_translated
+				&& node.op in [.left_shift_assign, .right_shift_assign] && final_left_sym.is_int()
+			safe_shift_fn_name := if is_safe_shift_assign {
+				g.safe_shift_fn_name(var_type, token.assign_op_to_infix_op(node.op))
+			} else {
+				''
+			}
 			if final_left_sym.info is ast.Struct {
 				if attr := final_left_sym.info.attrs.find_first('aligned') {
 					aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
@@ -976,11 +983,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			} else if !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add
 				&& !op_overloaded && !is_safe_add_assign && !is_safe_sub_assign
-				&& !is_safe_mul_assign {
+				&& !is_safe_mul_assign && !is_safe_shift_assign {
 				g.write(' ${op} ')
 			} else if (str_add || op_overloaded) && !is_safe_add_assign && !is_safe_sub_assign
 				&& !is_safe_mul_assign {
 				g.write(', ')
+			} else if is_safe_shift_assign {
+				g.write(' = ${safe_shift_fn_name}(')
+				g.expr(left)
+				g.write(', (u64)')
 			} else if is_safe_add_assign || is_safe_sub_assign || is_safe_mul_assign {
 				overflow_styp := g.styp(get_overflow_fn_type(var_type))
 				vsafe_fn_name := match true {
@@ -1234,6 +1245,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if str_add || op_overloaded || is_safe_add_assign || is_safe_sub_assign
 				|| is_safe_mul_assign {
+				g.write(')')
+			} else if is_safe_shift_assign {
 				g.write(')')
 			}
 			if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {

@@ -7,6 +7,29 @@ import v.ast
 import v.token
 import v.util
 
+fn (mut g Gen) safe_shift_fn_name(left_type ast.Type, op token.Kind) string {
+	shift_type := g.table.unalias_num_type(g.unwrap_generic(left_type))
+	prefix := if op == .left_shift { 'v__lshift_' } else { 'v__rshift_' }
+	return prefix + util.no_dots(g.base_type(shift_type))
+}
+
+fn (mut g Gen) gen_safe_shift_expr(node ast.InfixExpr) {
+	left_type := match node.left {
+		ast.CastExpr {
+			node.left.typ
+		}
+		else {
+			g.type_resolver.get_type_or_default(node.left, node.left_type)
+		}
+	}
+	g.write(g.safe_shift_fn_name(left_type, node.op))
+	g.write('(')
+	g.expr(node.left)
+	g.write(', (u64)')
+	g.expr(node.right)
+	g.write(')')
+}
+
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	g.expected_fixed_arr = true
 	defer {
@@ -43,7 +66,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		.right_shift {
 			g.write('(')
-			g.gen_plain_infix_expr(node)
+			if g.pref.translated || g.file.is_translated {
+				g.gen_plain_infix_expr(node)
+			} else {
+				g.gen_safe_shift_expr(node)
+			}
 			g.write(')')
 		}
 		.and, .logical_or {
@@ -1157,7 +1184,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		}
 	} else {
 		g.write('(')
-		g.gen_plain_infix_expr(node)
+		if g.pref.translated || g.file.is_translated {
+			g.gen_plain_infix_expr(node)
+		} else {
+			g.gen_safe_shift_expr(node)
+		}
 		g.write(')')
 	}
 }
