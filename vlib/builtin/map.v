@@ -119,6 +119,26 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
+@[inline]
+fn (mut d DenseArray) trim_deleted_tail() {
+	if d.deletes == 0 {
+		return
+	}
+	for d.len > 0 && unsafe { d.all_deleted[d.len - 1] } != 0 {
+		unsafe {
+			d.all_deleted[d.len - 1] = 0
+		}
+		d.deletes--
+		d.len--
+	}
+	if d.deletes == 0 {
+		unsafe {
+			free(d.all_deleted)
+			d.all_deleted = nil
+		}
+	}
+}
+
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 @[inline]
@@ -672,6 +692,11 @@ fn (m &map) exists(key voidptr) bool {
 
 @[inline]
 fn (mut d DenseArray) delete(i int) {
+	if i == d.len - 1 {
+		d.len--
+		d.trim_deleted_tail()
+		return
+	}
 	if d.deletes == 0 {
 		d.all_deleted = vcalloc(d.cap) // sets to 0
 	}
