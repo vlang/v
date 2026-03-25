@@ -18,6 +18,13 @@ const c_verror_message_marker = 'VERROR_MESSAGE '
 const current_os = os.user_os()
 
 const c_compilation_error_title = 'C compilation error'
+const missing_libatomic_markers = [
+	"library 'atomic' not found",
+	'cannot find -latomic',
+	'unable to find library -latomic',
+	'library not found for -latomic',
+	'cannot find libatomic',
+]!
 
 fn c_error_looks_like_cpp_header(c_output string) bool {
 	lower_output := c_output.to_lower()
@@ -40,54 +47,20 @@ fn c_error_looks_like_cpp_header(c_output string) bool {
 	return false
 }
 
-fn c_error_missing_library_name(c_output string) ?string {
+fn c_error_missing_libatomic_marker(c_output string) string {
 	for line in c_output.split_into_lines() {
-		trimmed_line := line.trim_space()
-		for marker in ["library '", 'library "'] {
-			if !trimmed_line.contains(marker) || !trimmed_line.contains(' not found') {
-				continue
+		lower_line := line.to_lower()
+		for marker in missing_libatomic_markers {
+			if start := lower_line.index(marker) {
+				return line[start..start + marker.len]
 			}
-			quote := marker[marker.len - 1].ascii_str()
-			lib_name := trimmed_line.all_after(marker).all_before(quote)
-			if lib_name != '' {
-				return lib_name
-			}
-		}
-		for prefix in [
-			'library not found for -l',
-			'unable to find library -l',
-			'cannot find -l',
-		] {
-			if !trimmed_line.contains(prefix) {
-				continue
-			}
-			lib_name := linker_flag_library_name(trimmed_line.all_after(prefix))
-			if lib_name != '' {
-				return lib_name
-			}
-		}
-		if !trimmed_line.contains("cannot open input file '") {
-			continue
-		}
-		lib_name := trimmed_line.all_after("cannot open input file '").all_before("'")
-		if lib_name.ends_with('.lib') {
-			return lib_name[..lib_name.len - 4]
 		}
 	}
-	return none
+	return ''
 }
 
-fn linker_flag_library_name(s string) string {
-	mut end := 0
-	for end < s.len {
-		c := s[end]
-		if c.is_alnum() || c in [`_`, `-`, `.`, `+`] {
-			end++
-			continue
-		}
-		break
-	}
-	return s[..end]
+fn c_error_looks_like_missing_libatomic(c_output string) bool {
+	return c_error_missing_libatomic_marker(c_output) != ''
 }
 
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
@@ -117,6 +90,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		}
 		return
 	}
+	libatomic_marker := c_error_missing_libatomic_marker(res.output)
 	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
@@ -135,7 +109,14 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			original_elines := trimmed_output.split_into_lines()
 			mlines := 12
 			cut_off_limit := if original_elines.len > mlines + 3 { mlines } else { mlines + 3 }
-			elines := error_context_lines(trimmed_output, 'error:', 1, cut_off_limit)
+			mut error_keyword := 'error:'
+			mut error_context_before := 1
+			if libatomic_marker != '' && trimmed_output.contains(libatomic_marker) {
+				error_keyword = libatomic_marker
+				error_context_before = 0
+			}
+			elines := error_context_lines(trimmed_output, error_keyword, error_context_before,
+				cut_off_limit)
 			header := '================== ${c_compilation_error_title} (from ${ccompiler}): =============='
 			println(header)
 			for eline in elines {
@@ -174,11 +155,13 @@ C error found while compiling generated C code.
 It looks like a C++ header was included with `#include` (for example one that contains `namespace`).
 Use a C-compatible header (for HDF5 use `hdf5.h` instead of `H5File.h`), or compile/link the C++ code separately.${more_suggestions}')
 	}
-	if missing_library := c_error_missing_library_name(res.output) {
+	if libatomic_marker != '' {
 		verror('
 ==================
-C library `${missing_library}` was not found while linking the generated program.
-Please install the corresponding development package/libraries, or make it available to your linker.${more_suggestions}')
+C error found while compiling generated C code.
+The C toolchain could not find `libatomic`, which V needs for `sync.stdatomic` with this compiler on this platform.
+Install the system package that provides `libatomic` and retry.
+On CentOS/RHEL, that is usually `libatomic` or `libatomic-devel`.${more_suggestions}')
 	}
 	verror('
 ==================
@@ -228,23 +211,6 @@ pub mut:
 	post_args    []string // options that should go after .o_args
 	linker_flags []string // `-lm`
 	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
-}
-
-fn detect_cc_from_version_output(cc_ver string) CC {
-	cc_ver_lower := cc_ver.to_lower_ascii()
-	return match true {
-		cc_ver_lower.contains('apple clang version') || cc_ver_lower.contains('clang version ') {
-			.clang
-		}
-		cc_ver_lower.contains('free software foundation') || cc_ver_lower.contains('(gcc)')
-			|| cc_ver_lower.starts_with('gcc ')
-			|| cc_ver_lower.starts_with('cc (gcc)') || cc_ver_lower.contains('\ngcc ') {
-			.gcc
-		}
-		else {
-			.unknown
-		}
-	}
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -306,12 +272,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' {
 		cc_ver := os.execute('cc --version').output
-		ccoptions.cc = detect_cc_from_version_output(cc_ver)
-		if ccoptions.cc == .unknown {
+		if cc_ver.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
+			// Also covers `g++`, `g++-9`, `g++-11` etc.
+			ccoptions.cc = .gcc
+		} else if cc_ver.contains('clang version ') {
+			ccoptions.cc = .clang
+		} else {
 			if v.pref.is_verbose {
 				eprintln('failed to detect C compiler from version info `${cc_ver}`')
 			}
 			eprintln('Compilation with unknown C compiler')
+			ccoptions.cc = .unknown
 		}
 	} else {
 		cc_file_name := os.file_name(ccompiler)
@@ -1178,29 +1149,13 @@ fn (mut b Builder) cc_linux_cross() {
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
-	// Separate .c source files from other flags; they must be compiled
-	// individually when cross compiling, because the main compilation
-	// step uses `-c -o` for a single output object file.
-	mut conly_flags := []string{cap: others.len}
-	mut extra_c_sources := []string{cap: 4}
-	for other in others {
-		trimmed := other.replace('"', '')
-		if trimmed.ends_with('.c') {
-			extra_c_sources << trimmed
-		} else {
-			conly_flags << other
-		}
-	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target x86_64-linux-gnu'
 	cc_args << defines
-	cc_args << conly_flags
-	// Add the sysroot include path after everything else,
-	// so that local folders like thirdparty/ or vmodules have
-	// a chance to supply their own headers.
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
+	cc_args << others
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
@@ -1220,61 +1175,7 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
-	// Compile extra .c source files (from `#flag @VMODROOT/file.c` etc.)
-	// separately for the cross target, and collect the resulting .o files.
-	mut extra_obj_files := []string{cap: extra_c_sources.len}
-	for csource in extra_c_sources {
-		extra_obj := csource + '.o'
-		mut extra_cc_args := []string{cap: 10}
-		extra_cc_args << '-w'
-		extra_cc_args << '-fPIC'
-		extra_cc_args << '-target x86_64-linux-gnu'
-		extra_cc_args << defines
-		extra_cc_args << conly_flags
-		extra_cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-		extra_cc_args << '-o ${os.quoted_path(extra_obj)}'
-		extra_cc_args << '-c ${os.quoted_path(csource)}'
-		extra_cmd := '${b.quote_compiler_name(cc_name)} ' + extra_cc_args.join(' ')
-		if b.pref.show_cc {
-			println(extra_cmd)
-		}
-		extra_res := os.execute(extra_cmd)
-		if extra_res.exit_code != 0 {
-			println('Cross compilation for Linux failed (compiling ${csource}).')
-			verror(extra_res.output)
-			return
-		}
-		extra_obj_files << os.quoted_path(extra_obj)
-	}
-	// For libraries that only exist as static .a in the sysroot (e.g. libpq.a),
-	// create shared library stubs so the linker produces a dynamically linked binary
-	// instead of pulling in incomplete static archives with missing internal deps.
-	lib_search_paths := [
-		os.join_path(sysroot, 'usr', 'lib', 'x86_64-linux-gnu'),
-		os.join_path(sysroot, 'lib', 'x86_64-linux-gnu'),
-	]
-	stubs_dir := os.join_path(os.vtmp_dir(), 'cross_linux_stubs')
-	os.mkdir_all(stubs_dir) or {}
-	for lib in libs {
-		libname := lib.replace('-l', '')
-		if libname in ['c', 'pthread', 'm', 'dl'] {
-			continue // standard libs, always available
-		}
-		has_so := lib_search_paths.any(os.exists(os.join_path(it, 'lib${libname}.so')))
-		has_a := !has_so && lib_search_paths.any(os.exists(os.join_path(it, 'lib${libname}.a')))
-		if has_a {
-			a_path := lib_search_paths.map(os.join_path(it, 'lib${libname}.a')).filter(os.exists(it))[0] or {
-				continue
-			}
-			stub_so := os.join_path(stubs_dir, 'lib${libname}.so')
-			if !os.exists(stub_so) {
-				b.create_shared_lib_stub(cc_name, a_path, stub_so, sysroot)
-			}
-		}
-	}
 	mut linker_args := [
-		'-L',
-		os.quoted_path(stubs_dir),
 		'-L',
 		os.quoted_path('${sysroot}/usr/lib/x86_64-linux-gnu/'),
 		'-L',
@@ -1290,15 +1191,13 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
 		'-lc',
+		'-lcrypto',
+		'-lssl',
 		'-lpthread',
 		os.quoted_path('${sysroot}/crtn.o'),
 		'-lm',
 		'-ldl',
 	]
-	// Pass library flags from the cflags system (e.g. -lssl -lcrypto from -d use_openssl)
-	// instead of hardcoding them, so the linker only links what the program actually needs.
-	linker_args << libs
-	linker_args << extra_obj_files
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
@@ -1317,38 +1216,6 @@ fn (mut b Builder) cc_linux_cross() {
 		return
 	}
 	println(out_name + ' has been successfully cross compiled for linux.')
-}
-
-// create_shared_lib_stub creates a minimal .so stub from a static .a archive
-// by extracting its global symbols and compiling empty function definitions.
-// This is used during cross compilation to avoid pulling in static archives
-// that have unresolvable internal dependencies.
-fn (mut b Builder) create_shared_lib_stub(cc_name string, a_path string, stub_so string, sysroot string) {
-	nm_res := os.execute('nm --defined-only -g ${os.quoted_path(a_path)}')
-	if nm_res.exit_code != 0 {
-		return
-	}
-	mut stub_lines := []string{cap: 256}
-	for line in nm_res.output.split_into_lines() {
-		parts := line.split(' ')
-		if parts.len >= 3 && parts[1] == 'T' {
-			stub_lines << 'void ${parts[2]}() {}'
-		}
-	}
-	stub_c := stub_so + '.c'
-	stub_o := stub_so + '.o'
-	os.write_file(stub_c, stub_lines.join('\n')) or { return }
-	cc_res := os.execute('${b.quote_compiler_name(cc_name)} -w -fPIC -target x86_64-linux-gnu -c ${os.quoted_path(stub_c)} -o ${os.quoted_path(stub_o)}')
-	if cc_res.exit_code != 0 {
-		return
-	}
-	ldlld := '${sysroot}/ld.lld'
-	lld_res := os.execute('${b.quote_compiler_name(ldlld)} -shared -o ${os.quoted_path(stub_so)} ${os.quoted_path(stub_o)}')
-	if lld_res.exit_code != 0 {
-		return
-	}
-	os.rm(stub_c) or {}
-	os.rm(stub_o) or {}
 }
 
 fn (mut b Builder) cc_freebsd_cross() {
@@ -1627,7 +1494,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	current_folder := os.getwd()
 	os.chdir(v.pref.vroot) or {}
 
-	mut str_args := if source_kind == .asm {
+	cc_options := if source_kind == .asm {
 		'-o ${os.quoted_path(opath)} -c ${os.quoted_path(source_file)}'
 	} else {
 		mut all_options := []string{cap: 4}
@@ -1636,12 +1503,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		all_options << '-o ${v.tcc_quoted_path(opath)}'
 		all_options << '-c ${v.tcc_quoted_path(source_file)}'
 		cpp_file := source_kind == .cpp
-		all_thirdparty_options := v.thirdparty_object_args(v.ccoptions, all_options, cpp_file)
-		if v.pref.no_rsp {
-			all_thirdparty_options.join(' ').replace('\n', ' ')
-		} else {
-			all_thirdparty_options.join(' ')
-		}
+		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
 	}
 
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
@@ -1652,15 +1514,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		}
 		ccompiler = v.pref.cppcompiler
 	}
-	mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
-	mut response_file := ''
-	if !v.pref.no_rsp && source_kind != .asm {
-		response_file = '${opath}.rsp'
-		response_file_content := str_args.replace('\\', '\\\\')
-		rspexpr := '@${response_file}'
-		cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
-		write_response_file(response_file, response_file_content)
-	}
+	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
 	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
@@ -1676,9 +1530,6 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		eprintln('>           cmd: ${cmd}')
 		verror(res.output)
 		return
-	}
-	if response_file != '' && !v.ccoptions.debug_mode {
-		os.rm(response_file) or {}
 	}
 	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or {
 		panic(err)

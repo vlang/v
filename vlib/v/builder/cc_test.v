@@ -15,22 +15,20 @@ fn test_c_error_looks_like_cpp_header_with_regular_c_error() {
 	assert !c_error_looks_like_cpp_header(c_output)
 }
 
-fn test_detect_cc_from_version_output_detects_clang() {
-	clang_output := 'Apple clang version 17.0.0 (clang-1700.6.3.2)\nTarget: arm64-apple-darwin25.2.0'
-	assert detect_cc_from_version_output(clang_output) == .clang
+fn test_c_error_missing_libatomic_marker_with_tcc_output() {
+	c_output := "/tmp/v/vdoc.tmp.c:24184: warning: assignment makes pointer from integer without a cast\ntcc: error: library 'atomic' not found\n"
+	assert c_error_missing_libatomic_marker(c_output) == "library 'atomic' not found"
+	assert c_error_looks_like_missing_libatomic(c_output)
 }
 
-fn test_detect_cc_from_version_output_detects_modern_gcc_output() {
-	gcc_output := 'cc (GCC) 14.3.1 20251022 (Red Hat 14.3.1-4)\nCopyright (C) 2025 Free Software Foundation, Inc.'
-	assert detect_cc_from_version_output(gcc_output) == .gcc
+fn test_c_error_missing_libatomic_marker_with_ld_output() {
+	c_output := '/usr/bin/ld: cannot find -latomic\ncollect2: error: ld returned 1 exit status\n'
+	assert c_error_missing_libatomic_marker(c_output) == 'cannot find -latomic'
+	assert c_error_looks_like_missing_libatomic(c_output)
 }
 
-fn test_detect_cc_from_version_output_detects_distro_gcc_alias_output() {
-	gcc_output := 'cc (Debian 12.2.0-14) 12.2.0\nCopyright (C) 2022 Free Software Foundation, Inc.'
-	assert detect_cc_from_version_output(gcc_output) == .gcc
-}
-
-fn test_detect_cc_from_version_output_keeps_unknown_output_unknown() {
-	unknown_output := 'zig 0.14.0-dev.1152+abc123'
-	assert detect_cc_from_version_output(unknown_output) == .unknown
+fn test_c_error_missing_libatomic_marker_with_regular_c_error() {
+	c_output := "error: unknown type name 'my_missing_type'"
+	assert c_error_missing_libatomic_marker(c_output) == ''
+	assert !c_error_looks_like_missing_libatomic(c_output)
 }
