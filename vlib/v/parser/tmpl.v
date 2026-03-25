@@ -351,6 +351,95 @@ fn normalize_keyword_template_interpolations(line string) string {
 	return sb.str()
 }
 
+struct TmplControlLine {
+	header              string
+	inline_body         string
+	has_inline_body     bool
+	opens_brace_block   bool
+	closes_inline_block bool
+}
+
+fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
+	pos := line.index(directive) or { return TmplControlLine{} }
+	remainder := line[pos + directive.len..].trim_space()
+	if remainder.len == 0 {
+		return TmplControlLine{}
+	}
+	if remainder.ends_with('{') {
+		return TmplControlLine{
+			header:            remainder[..remainder.len - 1].trim_space()
+			opens_brace_block: true
+		}
+	}
+	if !remainder.ends_with('}') {
+		return TmplControlLine{
+			header: remainder
+		}
+	}
+	close_pos := remainder.last_index('}') or { return TmplControlLine{
+		header: remainder
+	} }
+	open_pos := remainder.index('{') or { return TmplControlLine{
+		header: remainder
+	} }
+	return TmplControlLine{
+		header:              remainder[..open_pos].trim_space()
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
+		closes_inline_block: true
+	}
+}
+
+fn parse_tmpl_else_line(line string) TmplControlLine {
+	pos := line.index('@else') or { return TmplControlLine{} }
+	remainder := line[pos + '@else'.len..].trim_space()
+	if remainder.len == 0 {
+		return TmplControlLine{
+			header: 'else'
+		}
+	}
+	if remainder.ends_with('{') {
+		suffix := remainder[..remainder.len - 1].trim_space()
+		return TmplControlLine{
+			header:            if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+			opens_brace_block: true
+		}
+	}
+	if !remainder.ends_with('}') {
+		return TmplControlLine{
+			header: if remainder.len == 0 { 'else' } else { 'else ${remainder}' }
+		}
+	}
+	close_pos := remainder.last_index('}') or {
+		return TmplControlLine{
+			header: if remainder.len == 0 { 'else' } else { 'else ${remainder}' }
+		}
+	}
+	open_pos := remainder.index('{') or {
+		return TmplControlLine{
+			header: if remainder.len == 0 { 'else' } else { 'else ${remainder}' }
+		}
+	}
+	suffix := remainder[..open_pos].trim_space()
+	return TmplControlLine{
+		header:              if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
+		closes_inline_block: true
+	}
+}
+
+fn (mut p Parser) append_tmpl_line_info(template_file string, tmpl_line int, count int) {
+	for _ in 0 .. count {
+		p.template_line_map << ast.TemplateLineInfo{
+			tmpl_path: template_file
+			tmpl_line: tmpl_line
+		}
+	}
+}
+
 // struct to track dependecies and cache templates for reuse without io
 struct DependencyCache {
 pub mut:
@@ -518,11 +607,13 @@ fn veb_tmpl_${fn_name}() string {
 
 	mut in_span := false
 	mut in_html_comment := false
+	mut simple_brace_block_depth := 0
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
 		line := lines[i]
+		trimmed_line := line.trim_space()
 		tline_number++
 		start_of_line_pos = end_of_line_pos
 		end_of_line_pos += line.len + 1
@@ -631,93 +722,130 @@ fn veb_tmpl_${fn_name}() string {
 			i--
 			continue
 		}
-		if line.contains('@if ') {
+		if state == .simple && simple_brace_block_depth > 0 && trimmed_line == '}' {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
+			p.append_tmpl_line_info(template_file, tline_number, 2)
+			source.writeln('}')
+			p.append_tmpl_line_info(template_file, tline_number, 1)
+			source.write_string(tmpl_str_start)
+			simple_brace_block_depth--
+			continue
+		}
+		if line.contains('@if ') {
+			if state == .simple {
+				control := parse_tmpl_control_line(line, '@if')
+				source.writeln(tmpl_str_end)
+				// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+				p.append_tmpl_line_info(template_file, tline_number, 2)
+				source.writeln('if ${control.header} {')
+				p.append_tmpl_line_info(template_file, tline_number, 1)
+				source.write_string(tmpl_str_start)
+				if control.has_inline_body {
+					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+				}
+				if control.closes_inline_block {
+					source.writeln(tmpl_str_end)
+					// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+					p.append_tmpl_line_info(template_file, tline_number, 2)
+					source.writeln('}')
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+					source.write_string(tmpl_str_start)
+				} else if control.opens_brace_block {
+					simple_brace_block_depth++
+				}
+				continue
 			}
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			source.writeln(tmpl_str_end)
+			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+			p.append_tmpl_line_info(template_file, tline_number, 2)
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 1)
 			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@end') {
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 2)
 			source.writeln('}')
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 1)
 			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@else') {
+			if state == .simple {
+				control := parse_tmpl_else_line(line)
+				source.writeln(tmpl_str_end)
+				// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+				p.append_tmpl_line_info(template_file, tline_number, 2)
+				source.writeln('} ${control.header} {')
+				p.append_tmpl_line_info(template_file, tline_number, 1)
+				source.write_string(tmpl_str_start)
+				if control.has_inline_body {
+					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+				}
+				if control.closes_inline_block {
+					source.writeln(tmpl_str_end)
+					// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+					p.append_tmpl_line_info(template_file, tline_number, 2)
+					source.writeln('}')
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+					source.write_string(tmpl_str_start)
+				}
+				continue
+			}
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 2)
 			pos := line.index('@else') or { continue }
 			source.writeln('}' + line[pos + 1..] + '{')
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 1)
 			// source.writeln(' } else { ')
 			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@for') {
+			if state == .simple {
+				control := parse_tmpl_control_line(line, '@for')
+				source.writeln(tmpl_str_end)
+				// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+				p.append_tmpl_line_info(template_file, tline_number, 2)
+				source.writeln('for ${control.header} {')
+				p.append_tmpl_line_info(template_file, tline_number, 1)
+				source.write_string(tmpl_str_start)
+				if control.has_inline_body {
+					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+				}
+				if control.closes_inline_block {
+					source.writeln(tmpl_str_end)
+					// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
+					p.append_tmpl_line_info(template_file, tline_number, 2)
+					source.writeln('}')
+					p.append_tmpl_line_info(template_file, tline_number, 1)
+					source.write_string(tmpl_str_start)
+				} else if control.opens_brace_block {
+					simple_brace_block_depth++
+				}
+				continue
+			}
 			source.writeln(tmpl_str_end)
 			// tmpl_str_end contains '\n', so writeln creates 2 lines: ')' and empty
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 2)
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 1)
 			source.write_string(tmpl_str_start)
 			continue
 		}
 		if state == .simple {
 			// by default, just copy 1:1
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
-			p.template_line_map << ast.TemplateLineInfo{
-				tmpl_path: template_file
-				tmpl_line: tline_number
-			}
+			p.append_tmpl_line_info(template_file, tline_number, 1)
 			continue
 		}
 		// in_write = false
