@@ -1534,7 +1534,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	// println / eprintln / panic can print anything
-	if args_len > 0 && fn_name in print_everything_fns {
+	if args_len > 0 && fn_name in print_everything_fns && func.mod == 'builtin' {
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
 		c.markused_print_call(mut node)
@@ -3125,7 +3125,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	// check if multi-return is used as unique argument to the function
 	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
 		is_multi := node.args[0].expr.nr_ret_values > 1
-		if is_multi && node.name !in print_everything_fns {
+		if is_multi && !(node.name in print_everything_fns && f.mod == 'builtin') {
 			// it is a multi-return argument
 			nr_args = node.args[0].expr.nr_ret_values
 			if nr_args != nr_params {
