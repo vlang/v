@@ -548,7 +548,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
-		if found_path := find_module_path_from_search_root(p1, mod) {
+		if found_path := find_module_path_from_search_root(current_dir, mod) {
 			return found_path
 		}
 		parent_dir := os.dir(current_dir)

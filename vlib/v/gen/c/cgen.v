@@ -203,7 +203,9 @@ mut:
 	anon_fns                           shared []string // remove duplicate anon generated functions
 	sumtype_definitions                map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions               []string
-	json_types                         []ast.Type           // to avoid json gen duplicates
+	json_types                         []ast.Type // to avoid json gen duplicates
+	json_types_pos                     map[ast.Type]token.Pos
+	json_gen_pos                       token.Pos
 	pcs                                []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names                   []string
 	hotcode_fpaths                     []string
@@ -485,6 +487,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_last_index_types << g.array_last_index_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
+			for k, v in g.json_types_pos {
+				if k !in global_g.json_types_pos || global_g.json_types_pos[k] == token.Pos{} {
+					global_g.json_types_pos[k] = v
+				}
+			}
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
@@ -1116,6 +1123,10 @@ pub fn (mut g Gen) init() {
 	// muttable.used_features.used_fns['eprintln'] = true
 	// muttable.used_features.used_fns['print_backtrace'] = true
 	// muttable.used_features.used_fns['exit'] = true
+}
+
+fn (g &Gen) should_use_object_local_linkage(mod string) bool {
+	return g.pref.is_o && g.module_built != '' && mod != g.module_built
 }
 
 pub fn (mut g Gen) finish() {
@@ -9158,6 +9169,52 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 		}
 	}
 	return ''
+}
+
+// vgc_ptrmap computes a precise pointer bitmap for simple VGC heap allocations.
+fn (mut g Gen) vgc_ptrmap(typ ast.Type) (string, string) {
+	if g.pref.gc_mode != .vgc {
+		return '', ''
+	}
+	if !g.contains_ptr(typ) {
+		return '', ''
+	}
+	unwrapped := g.unwrap_generic(typ)
+	sym := g.table.final_sym(unwrapped)
+	if sym.kind != .struct {
+		return '', ''
+	}
+	info := sym.info as ast.Struct
+	styp := g.styp(unwrapped)
+	mut parts := []string{}
+	mut nptrs := 0
+	for embed in info.embeds {
+		if g.contains_ptr(embed) {
+			return '', ''
+		}
+	}
+	for field in info.fields {
+		if field.typ.is_any_kind_of_pointer() || field.typ.is_ptr() {
+			fname := c_name(field.name)
+			parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+			nptrs++
+		} else {
+			fsym := g.table.final_sym(field.typ)
+			if fsym.kind in [.array, .map, .string] {
+				fname := c_name(field.name)
+				parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+				nptrs++
+			} else if fsym.kind in [.interface, .sum_type] {
+				return '', ''
+			} else if g.contains_ptr(field.typ) {
+				return '', ''
+			}
+		}
+	}
+	if parts.len == 0 {
+		return '', ''
+	}
+	return '(uint64_t)(${parts.join(' | ')})', '${nptrs}'
 }
 
 // vint2int rename `_vint_t` to `int`

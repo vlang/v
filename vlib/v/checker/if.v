@@ -766,9 +766,6 @@ fn (mut c Checker) smartcast_none_guard_fallthrough(cond ast.Expr, mut scope ast
 						return
 					}
 				}
-			} else if first_cond.left in [ast.Ident, ast.SelectorExpr] && first_cond.op == .not_is {
-				c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.right_type, mut
-					scope, false, false)
 			}
 			if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
 				cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
