@@ -436,65 +436,73 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 			mut write_field := true
 
-			$if field.indirections != 0 {
-				// Pointer fields are skipped during JSON encoding to prevent
-				// compile-time type walking through complex pointed-to types
+			if field_info.is_skip {
 				write_field = false
-			} $else {
-				if !field_info.is_skip {
-					value := val.$(field.name)
+			} else {
+				value := val.$(field.name)
 
-					if field_info.is_omitempty {
-						$if value is $option {
-							write_field = check_not_empty(value) or { false }
-						} $else {
-							write_field = check_not_empty(value) or { false }
+				if field_info.is_omitempty {
+					$if value is $option {
+						write_field = check_not_empty(value) or { false }
+					} $else {
+						write_field = check_not_empty(value) or { false }
+					}
+				}
+
+				if !field_info.is_required {
+					$if value is $option {
+						if value == none {
+							write_field = false
 						}
 					}
+				}
+			}
 
-					if !field_info.is_required {
-						$if value is $option {
-							if value == none {
-								write_field = false
-							}
-						}
+			$if field.indirections != 0 {
+				if val.$(field.name) == unsafe { nil } {
+					write_field = false
+				}
+			}
+
+			if write_field {
+				if is_first {
+					if encoder.prettify {
+						encoder.increment_level()
 					}
+					is_first = false
+				} else {
+					encoder.output << `,`
+				}
+				if encoder.prettify {
+					encoder.add_indent()
+				}
 
-					if write_field {
-						if is_first {
-							if encoder.prettify {
-								encoder.increment_level()
-							}
-							is_first = false
-						} else {
-							encoder.output << `,`
-						}
-						if encoder.prettify {
-							encoder.add_indent()
-						}
+				if field_info.key_name in old_used_keys {
+					encoder.encode_string(prefix + field_info.key_name)
+				} else {
+					encoder.encode_string(field_info.key_name)
+					used_keys << field_info.key_name
+				}
 
-						if field_info.key_name in old_used_keys {
-							encoder.encode_string(prefix + field_info.key_name)
-						} else {
-							encoder.encode_string(field_info.key_name)
-							used_keys << field_info.key_name
-						}
+				encoder.output << `:`
+				if encoder.prettify {
+					encoder.output << ` `
+				}
 
-						encoder.output << `:`
-						if encoder.prettify {
-							encoder.output << ` `
-						}
-
-						$if field is $option {
-							if val.$(field.name) == none {
-								unsafe { encoder.output.push_many(null_string.str, null_string.len) }
-							} else {
-								encoder.encode_value(val.$(field.name))
-							}
-						} $else {
-							encoder.encode_value(val.$(field.name))
-						}
+				$if field is $option {
+					if val.$(field.name) == none {
+						unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+					} else {
+						encoder.encode_value(val.$(field.name))
 					}
+				} $else $if field.indirections == 1 {
+					encoder.encode_value(*val.$(field.name))
+				} $else $if field.indirections == 2 {
+					encoder.encode_value(**val.$(field.name))
+				} $else $if field.indirections == 3 {
+					encoder.encode_value(***val.$(field.name))
+				} $else {
+					encoder.encode_value(val.$(field.name))
 				}
 			}
 		}

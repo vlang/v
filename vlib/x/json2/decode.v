@@ -316,61 +316,59 @@ fn get_dynamic_from_element[T](_t T) []T {
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	// Custom Decoders (only for struct types)
-	$if T.unaliased_typ is $struct {
-		$if val is StringDecoder {
-			struct_info := decoder.current_node.value
+	// Custom Decoders
+	$if val is StringDecoder {
+		struct_info := decoder.current_node.value
 
-			if struct_info.value_kind == .string {
-				val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
-					struct_info.length - 1]) or {
-					decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
-				}
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
+		if struct_info.value_kind == .string {
+			val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
+				struct_info.length - 1]) or {
+				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
 			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
 		}
-		$if val is NumberDecoder {
-			struct_info := decoder.current_node.value
+	}
+	$if val is NumberDecoder {
+		struct_info := decoder.current_node.value
 
-			if struct_info.value_kind == .number {
-				val.from_json_number(decoder.json[struct_info.position..struct_info.position +
-					struct_info.length]) or {
-					decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
-				}
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
+		if struct_info.value_kind == .number {
+			val.from_json_number(decoder.json[struct_info.position..struct_info.position +
+				struct_info.length]) or {
+				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
 			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
 		}
-		$if val is BooleanDecoder {
-			struct_info := decoder.current_node.value
+	}
+	$if val is BooleanDecoder {
+		struct_info := decoder.current_node.value
 
-			if struct_info.value_kind == .boolean {
-				val.from_json_boolean(decoder.json[struct_info.position] == `t`)
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
+		if struct_info.value_kind == .boolean {
+			val.from_json_boolean(decoder.json[struct_info.position] == `t`)
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
 			}
+
+			return
 		}
-		$if val is NullDecoder {
-			struct_info := decoder.current_node.value
+	}
+	$if val is NullDecoder {
+		struct_info := decoder.current_node.value
 
-			if struct_info.value_kind == .null {
-				val.from_json_null()
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
+		if struct_info.value_kind == .null {
+			val.from_json_null()
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
 			}
+
+			return
 		}
 	}
 	$if T.unaliased_typ is voidptr {
@@ -615,11 +613,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 													}
 													decoder.decode_value(mut unwrapped_val)!
 													val.$(field.name) = unwrapped_val
-												}
-											} $else $if field.indirections != 0 {
-												// skip pointer fields - cannot decode pointers from JSON
-												if decoder.current_node != unsafe { nil } {
-													decoder.current_node = decoder.current_node.next
 												}
 											} $else {
 												decoder.decode_value(mut val.$(field.name))!

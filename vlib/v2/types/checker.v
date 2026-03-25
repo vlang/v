@@ -394,11 +394,7 @@ fn (c &Checker) qualify_type_name(name string) string {
 	return '${c.cur_file_module}__${name}'
 }
 
-fn (c &Checker) type_ref_name(expr ast.Expr, resolved Type) string {
-	resolved_name := if type_data_ptr_is_nil(resolved) { '' } else { resolved.name() }
-	if resolved_name != '' && resolved_name != 'void' {
-		return resolved_name
-	}
+fn (c &Checker) type_ref_name(expr ast.Expr) string {
 	match expr {
 		ast.Ident {
 			return c.qualify_type_name(expr.name)
@@ -2379,7 +2375,7 @@ fn (mut c Checker) process_pending_struct_decls() {
 				// Union members may be aliases whose base structs are resolved later in
 				// process_pending_type_decls. Keep a named placeholder here so
 				// find_field_or_method can re-resolve the live type from scope.
-				embedded_name := c.type_ref_name(embedded_expr, embedded_type)
+				embedded_name := c.type_ref_name(embedded_expr)
 				if embedded_name != '' {
 					embedded << Struct{
 						name: embedded_name
