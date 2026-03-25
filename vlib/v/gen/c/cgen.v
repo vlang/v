@@ -44,6 +44,7 @@ mut:
 	out        strings.Builder
 	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
+<<<<<<< HEAD
 	cheaders                   strings.Builder
 	preincludes                strings.Builder // allows includes to go before `definitions`
 	postincludes               strings.Builder // allows includes to go after all the rest of the code generation
@@ -316,27 +317,12 @@ pub:
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
-	if pref_.build_mode == .build_module || pref_.is_o {
+	if pref_.build_mode == .build_module {
 		for file in files {
-			if !file.path.contains(pref_.path) {
-				continue
-			}
-			if pref_.build_mode == .build_module {
-				if file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
-					module_built = file.mod.name
-					break
-				}
-			} else {
+			if file.path.contains(pref_.path)
+				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
-			}
-		}
-		if pref_.is_o && module_built == '' {
-			for file in files {
-				if !util.module_is_builtin(file.mod.name) {
-					module_built = file.mod.name
-					break
-				}
 			}
 		}
 	}
@@ -396,8 +382,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: pref_.should_use_segfault_handler()
-		static_modifier:      if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
-		static_non_parallel:  if !pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
+		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
+		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -875,6 +861,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
+<<<<<<< HEAD
 		fid:                    idx
 		tid:                    v_gettid().hex()
 		file:                   file
@@ -1159,9 +1146,6 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode == .build_module {
 		g.comptime_definitions.writeln('#define _VBUILDMODULE (1)')
 	}
-	if g.pref.is_o {
-		g.comptime_definitions.writeln('#define _VOBJECTFILE (1)')
-	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -1174,10 +1158,6 @@ pub fn (mut g Gen) init() {
 	// muttable.used_features.used_fns['eprintln'] = true
 	// muttable.used_features.used_fns['print_backtrace'] = true
 	// muttable.used_features.used_fns['exit'] = true
-}
-
-fn (g &Gen) should_use_object_local_linkage(mod string) bool {
-	return g.pref.is_o && g.module_built != '' && mod != g.module_built
 }
 
 pub fn (mut g Gen) finish() {
@@ -1316,9 +1296,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln2('\treturn _S("unknown ${util.strip_main_name(sym.name)}");', '}')
 			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
 			if g.pref.build_mode != .build_module {
-				g.definitions.writeln('${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				g.writeln2('', '${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-				if g.pref.parallel_cc && !g.pref.is_o {
+				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+				g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+				if g.pref.parallel_cc {
 					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
 				for t in inter_info.types {
@@ -1444,110 +1424,6 @@ fn (mut g Gen) expr_string_opt(typ ast.Type, expr ast.Expr) string {
 		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={E_STRUCT}}'
 	}
 	return expr_str
-}
-
-fn (mut g Gen) ensure_atomic_postfix_helpers() {
-	if g.atomic_postfix_helpers_emitted {
-		return
-	}
-	g.atomic_postfix_helpers_emitted = true
-	g.definitions.writeln('
-#ifndef V_ATOMIC_POSTFIX_HELPERS
-#define V_ATOMIC_POSTFIX_HELPERS
-#define V_ATOMIC_SEQ_CST 5
-#if defined(__TINYC__) && !defined(_WIN32)
-extern unsigned int __atomic_fetch_add_4(unsigned int* x, unsigned int y, int mo);
-extern unsigned int __atomic_fetch_sub_4(unsigned int* x, unsigned int y, int mo);
-extern unsigned long long __atomic_fetch_add_8(unsigned long long* x, unsigned long long y, int mo);
-extern unsigned long long __atomic_fetch_sub_8(unsigned long long* x, unsigned long long y, int mo);
-#endif
-static inline unsigned int __v_atomic_fetch_add_u32(unsigned int* x, unsigned int y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, (LONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_add_4(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned int __v_atomic_fetch_sub_u32(unsigned int* x, unsigned int y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, -(LONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_sub_4(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned long long __v_atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, (LONGLONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_add_8(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-static inline unsigned long long __v_atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
-#if defined(__TINYC__) && defined(_WIN32)
-	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, -(LONGLONG)y);
-#elif defined(__TINYC__)
-	return __atomic_fetch_sub_8(x, y, V_ATOMIC_SEQ_CST);
-#else
-	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
-#endif
-}
-#endif
-')
-	if g.pref.ccompiler_type == .tinyc && g.pref.os == .linux {
-		mod_name := if g.file == unsafe { nil } { 'main' } else { g.file.mod.name }
-		amd64_flag := '$' +
-			"when_first_existing('/usr/lib/gcc/x86_64-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/14/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/14/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/14/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a','/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')"
-		arm64_flag := '$' +
-			"when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/6/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/7/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/8/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/9/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/10/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/11/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/12/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/13/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/14/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/14/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/14/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.so','/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')"
-		flag := if g.pref.arch == .arm64 { arm64_flag } else { amd64_flag }
-		g.table.parse_cflag(flag, mod_name, g.pref.compile_defines_all) or {}
-	}
-}
-
-fn (mut g Gen) atomic_postfix_expr(node ast.PostfixExpr) bool {
-	if node.op !in [.inc, .dec] || !node.typ.has_flag(.atomic_f) {
-		return false
-	}
-	base_typ := g.unwrap_generic(node.typ).clear_flag(.atomic_f)
-	mut fn_name := ''
-	mut ptr_type := ''
-	match base_typ {
-		ast.int_type, ast.i32_type, ast.u32_type {
-			fn_name = if node.op == .inc {
-				'__v_atomic_fetch_add_u32'
-			} else {
-				'__v_atomic_fetch_sub_u32'
-			}
-			ptr_type = 'unsigned int*'
-		}
-		ast.i64_type, ast.u64_type {
-			fn_name = if node.op == .inc {
-				'__v_atomic_fetch_add_u64'
-			} else {
-				'__v_atomic_fetch_sub_u64'
-			}
-			ptr_type = 'unsigned long long*'
-		}
-		else {
-			return false
-		}
-	}
-	g.ensure_atomic_postfix_helpers()
-	g.write('${fn_name}((${ptr_type})&(')
-	if node.expr.is_auto_deref_var() {
-		g.write('*')
-		g.expr(node.expr)
-	} else {
-		g.expr(node.expr)
-	}
-	g.write('), 1)')
-	return true
 }
 
 fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
@@ -3887,6 +3763,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	got_sym := g.table.sym(got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
+	if g.can_convert_array_to_interface_array(got_type, expected_type) {
+		fn_name := g.register_array_interface_cast_fn(got_type, expected_type)
+		g.write('${fn_name}(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon
 	if got_type == ast.error_type_idx && expected_type == ast.string_type_idx {
@@ -4215,45 +4098,41 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	if stmt.templates.len == 0 {
-		g.writeln('""')
-	} else {
-		for template_tmp in stmt.templates {
-			mut template := template_tmp
-			g.write('"')
-			if template.is_directive {
-				g.write('.')
-			}
-			g.write(template.name)
-			if template.is_label {
-				g.write(':')
-			} else {
-				g.write(' ')
-			}
-			// swap destination and operands for att syntax, not for arm64
-			if template.args.len != 0 && !template.is_directive
-				&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
-				template.args.prepend(template.args.last())
-				template.args.delete(template.args.len - 1)
-			}
-
-			for i, arg in template.args {
-				if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
-					&& arg is ast.AsmRegister {
-					g.write('*') // indirect branching
-				}
-
-				g.asm_arg(arg, stmt)
-				if i + 1 < template.args.len {
-					g.write(', ')
-				}
-			}
-
-			if !template.is_label {
-				g.write('\\n\\t')
-			}
-			g.writeln('"')
+	for template_tmp in stmt.templates {
+		mut template := template_tmp
+		g.write('"')
+		if template.is_directive {
+			g.write('.')
 		}
+		g.write(template.name)
+		if template.is_label {
+			g.write(':')
+		} else {
+			g.write(' ')
+		}
+		// swap destination and operands for att syntax, not for arm64
+		if template.args.len != 0 && !template.is_directive
+			&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
+			template.args.prepend(template.args.last())
+			template.args.delete(template.args.len - 1)
+		}
+
+		for i, arg in template.args {
+			if stmt.arch == .amd64 && (template.name == 'call' || template.name[0] == `j`)
+				&& arg is ast.AsmRegister {
+				g.write('*') // indirect branching
+			}
+
+			g.asm_arg(arg, stmt)
+			if i + 1 < template.args.len {
+				g.write(', ')
+			}
+		}
+
+		if !template.is_label {
+			g.write('\\n\\t')
+		}
+		g.writeln('"')
 	}
 
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
@@ -4896,16 +4775,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
 			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
 			g.inside_map_postfix = true
-			handled_atomic_postfix := !is_safe_inc && !is_safe_dec && g.atomic_postfix_expr(node)
-			if handled_atomic_postfix {
-				// atomic ++/-- need helper calls for tinyc, while still compiling on other backends
-			} else if node.is_c2v_prefix {
+			if node.is_c2v_prefix {
 				g.write(node.op.str())
 			}
-			if !handled_atomic_postfix && node.expr.is_auto_deref_var() {
+			if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
+<<<<<<< HEAD
 			} else if !handled_atomic_postfix && node.op == .question {
 				mut expr_type := ast.void_type
 				if mut node.expr is ast.ComptimeSelector {
@@ -4950,17 +4827,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				} else {
 					g.expr(node.expr)
 				}
-			} else if !handled_atomic_postfix {
+			} else {
 				g.expr(node.expr)
 				if node.typ.has_flag(.shared_f) {
 					g.write('->val')
 				}
 			}
 			g.inside_map_postfix = false
-			if !handled_atomic_postfix && !node.is_c2v_prefix && node.op != .question
-				&& !is_safe_inc && !is_safe_dec {
+			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
-			} else if !handled_atomic_postfix && (is_safe_inc || is_safe_dec) {
+			} else if is_safe_inc || is_safe_dec {
 				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
 				vsafe_fn_name := if is_safe_inc {
 					'builtin__overflow__add_${overflow_styp}'
@@ -8663,10 +8539,9 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vinit_start_pos := g.out.len
-	init_prefix := if g.pref.is_o { 'static ' } else { '' }
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
-	g.writeln('${init_prefix}void _vinit(int ___argc, voidptr ___argv) {')
+	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 
 	g.write_debug_calls_typeof_functions()
 
@@ -8774,7 +8649,7 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vcleanup_start_pos := g.out.len
-	g.writeln('${init_prefix}void _vcleanup(void) {')
+	g.writeln('void _vcleanup(void) {')
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_S("_vcleanup"));')
 	}
@@ -8811,10 +8686,8 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
-		if !g.pref.is_o {
-			g.export_funcs << '_vinit_caller'
-		}
-		g.writeln('${init_prefix}void _vinit_caller() {')
+		g.export_funcs << '_vinit_caller'
+		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
@@ -8822,10 +8695,8 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
-		if !g.pref.is_o {
-			g.export_funcs << '_vcleanup_caller'
-		}
-		g.writeln('${init_prefix}void _vcleanup_caller() {')
+		g.export_funcs << '_vcleanup_caller'
+		g.writeln('void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')
@@ -10391,14 +10262,13 @@ return ${cast_shared_struct_str};
 				name = g.specialized_method_name_from_receiver(method, st, name)
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if cctype == cctype2 {
-					if !method.params[0].typ.is_ptr() {
-						if method.name !in aliased_method_names {
-							method_call = '${cctype}_${name}'
-						} else {
-							method_call = '${styp}_${name}'
-						}
+				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
+					if method.name !in aliased_method_names {
+						method_call = '${cctype}_${name}'
+					} else {
+						method_call = '${styp}_${name}'
 					}
+					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					mut wrapper_method_name := '${cctype}_${name}${iwpostfix}'
 					method_sym := g.table.sym(method.params[0].typ)
@@ -10406,17 +10276,23 @@ return ${cast_shared_struct_str};
 						wrapper_method_name = 'builtin__${wrapper_method_name}'
 						method_call = 'builtin__${method_call}'
 					}
-					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(void* _')
-					mut wrapper_args := []string{cap: method.params.len - 1}
-					for i in 1 .. method.params.len {
-						arg := method.params[i]
-						arg_name := '_arg${i}'
-						methods_wrapper.write_string(', ${g.styp(arg.typ)} ${arg_name}')
-						wrapper_args << arg_name
+					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${wrapper_method_name}(')
+					params_start_pos := g.out.len
+					mut params := method.params.clone()
+					// hack to mutate typ
+					params[0] = ast.Param{
+						...params[0]
+						typ: st.set_nr_muls(1)
 					}
+					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false, false)
+					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
+
+					if st.is_ptr() {
+						parameter_name = parameter_name.trim_string_left('__shared__')
+					}
+
+					methods_wrapper.write_string(parameter_name)
 					methods_wrapper.writeln(') {')
-					receiver_name := '_interface_obj'
-					methods_wrapper.writeln('\t${cctype}* ${receiver_name} = (${cctype}*)_;')
 					methods_wrapper.write_string('\t')
 					if method.return_type != ast.void_type {
 						methods_wrapper.write_string('return ')
@@ -10426,40 +10302,33 @@ return ${cast_shared_struct_str};
 					}
 					if embed_types.len > 0 && method.name !in method_names {
 						embed_sym := g.table.sym(embed_types.last())
-						mut embedded_method_name := '${embed_sym.cname}_${method.name}'
+						mut method_name := '${embed_sym.cname}_${method.name}'
 						if embed_sym.is_builtin() {
-							embedded_method_name = 'builtin__${embedded_method_name}'
+							method_name = 'builtin__${method_name}'
 						}
-						mut receiver_expr := receiver_name
+						methods_wrapper.write_string('${method_name}(${fargs[0]}')
 						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
 							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
-								receiver_expr += '->${esym.embed_name()}'
+								methods_wrapper.write_string('->${esym.embed_name()}')
 							} else {
-								receiver_expr += '.${esym.embed_name()}'
+								methods_wrapper.write_string('.${esym.embed_name()}')
 							}
 						}
-						if method.params[0].typ.is_ptr()
-							&& !embed_types.last().is_any_kind_of_pointer() {
-							receiver_expr = '&(${receiver_expr})'
+						if fargs.len > 1 {
+							methods_wrapper.write_string(', ')
 						}
-						if wrapper_args.len > 0 {
-							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr}, ${wrapper_args.join(', ')});')
-						} else {
-							methods_wrapper.writeln('${embedded_method_name}(${receiver_expr});')
-						}
+						args := fargs[1..].join(', ')
+						methods_wrapper.writeln('${args});')
 					} else {
-						receiver_arg := if method.params[0].typ.is_ptr() {
-							receiver_name
+						if parameter_name.starts_with('__shared__') {
+							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
 						} else {
-							'*${receiver_name}'
+							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 						}
-						mut call_args := []string{cap: wrapper_args.len + 1}
-						call_args << receiver_arg
-						call_args << wrapper_args
-						methods_wrapper.writeln('${method_call}(${call_args.join(', ')});')
 					}
 					methods_wrapper.writeln('}')
+					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call = wrapper_method_name
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type
