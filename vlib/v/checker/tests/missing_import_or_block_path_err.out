@@ -1,0 +1,15 @@
+vlib/v/checker/tests/missing_import_or_block_path_err.vv:2:12: error: undefined ident: `os`
+    1 | folder := '/Users/foxjazz/Documents/EVE/logs/ChatLogs'
+    2 | entries := os.ls(folder) or { [] }
+      |            ~~
+    3 | _ = entries
+vlib/v/checker/tests/missing_import_or_block_path_err.vv:2:26: error: unexpected `or` block, the function `ls` does not return an Option or a Result
+    1 | folder := '/Users/foxjazz/Documents/EVE/logs/ChatLogs'
+    2 | entries := os.ls(folder) or { [] }
+      |                          ~~~~~~~~~
+    3 | _ = entries
+vlib/v/checker/tests/missing_import_or_block_path_err.vv:2:9: error: assignment mismatch: 1 variable but `ls()` returns 0 values
+    1 | folder := '/Users/foxjazz/Documents/EVE/logs/ChatLogs'
+    2 | entries := os.ls(folder) or { [] }
+      |         ~~
+    3 | _ = entries
