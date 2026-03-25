@@ -539,6 +539,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	global_g.gen_jsons()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
+	global_g.register_interface_auto_str_methods()
 	for i := 0; i < global_g.str_types.len; i++ {
 		global_g.final_gen_str(global_g.str_types[i])
 	}
@@ -10358,6 +10359,24 @@ return ${cast_shared_struct_str};
 					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
 				}
 			}
+			if str_method := isym.find_method_with_generic_parent('str') {
+				if 'str' in methodidx && !ordered_methods.any(it.name == 'str') && cctype == cctype2
+					&& g.table.type_has_implicit_str_method(st, str_method) {
+					str_fn_name := g.get_str_fn(st)
+					mut method_call := str_fn_name
+					if !st_sym.is_c_struct() {
+						wrapper_method_name := '${cctype}_str_Interface_${interface_name}_method_wrapper'
+						methods_wrapper.writeln('static inline string ${wrapper_method_name}(${cctype}* x) {')
+						methods_wrapper.writeln('\treturn ${str_fn_name}(*x);')
+						methods_wrapper.writeln('}')
+						method_call = wrapper_method_name
+					}
+					if g.pref.build_mode != .build_module && st != ast.voidptr_type
+						&& st != ast.nil_type {
+						methods_struct.writeln('\t\t._method_str = (void*) ${method_call},')
+					}
+				}
+			}
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t},')
@@ -10433,6 +10452,30 @@ return ${cast_shared_struct_str};
 		sb.writeln(conversion_functions.str())
 	}
 	return sb.str()
+}
+
+fn (mut g Gen) register_interface_auto_str_methods() {
+	mut already_registered_ifaces := map[string]bool{}
+	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
+	for isym in interfaces {
+		inter_info := isym.info as ast.Interface
+		if inter_info.is_generic || 'str' !in inter_info.get_methods() {
+			continue
+		}
+		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
+			continue
+		}
+		if isym.cname in already_registered_ifaces {
+			continue
+		}
+		already_registered_ifaces[isym.cname] = true
+		str_method := isym.find_method_with_generic_parent('str') or { continue }
+		for st in inter_info.types {
+			if g.table.type_has_implicit_str_method(st, str_method) {
+				g.get_str_fn(st)
+			}
+		}
+	}
 }
 
 fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
