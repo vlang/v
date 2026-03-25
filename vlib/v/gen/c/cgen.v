@@ -6177,13 +6177,39 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	g.write(', .data={E_STRUCT} }')
 }
 
+fn missing_shader_header_message(node ast.HashStmt) string {
+	if node.msg != '' {
+		return '${node.msg}.'
+	}
+	if shader_source := matching_generated_shader_source(node) {
+		shader_name := os.file_name(shader_source)
+		return 'This header can be generated from `${shader_name}`. Run `v shader .` in that directory to create it.'
+	}
+	return 'Please install the corresponding development headers.'
+}
+
+fn matching_generated_shader_source(node ast.HashStmt) ?string {
+	if node.main.starts_with('<') && node.main.ends_with('>') {
+		return none
+	}
+	header_path := node.main.trim('"')
+	if os.file_ext(header_path) != '.h' {
+		return none
+	}
+	mut resolved_header_path := header_path
+	if !os.is_abs_path(resolved_header_path) {
+		resolved_header_path = os.join_path(os.dir(node.source_file), resolved_header_path)
+	}
+	shader_source := resolved_header_path.all_before_last('.') + '.glsl'
+	if !os.is_file(shader_source) {
+		return none
+	}
+	return shader_source
+}
+
 fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 	mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-	if node.msg != '' {
-		missing_message += ' ${node.msg}.'
-	} else {
-		missing_message += ' Please install the corresponding development headers.'
-	}
+	missing_message += ' ${missing_shader_header_message(node)}'
 	mut guarded_include := get_guarded_include_text(node.main, missing_message)
 	if node.main == '<errno.h>' {
 		// fails with musl-gcc and msvc; but an unguarded include works:
