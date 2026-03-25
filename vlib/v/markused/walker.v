@@ -35,11 +35,16 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	cur_fn                 string
-	level                  int
-	is_builtin_mod         bool
-	is_direct_array_access bool
-	inside_in_op           bool
+	cur_fn                    string
+	cur_fn_concrete_types     []ast.Type
+	level                     int
+	is_builtin_mod            bool
+	is_direct_array_access    bool
+	inside_in_op              bool
+	inside_comptime           int
+	used_fn_generic_types     map[string][][]ast.Type
+	walked_fn_generic_types   map[string][][]ast.Type
+	keep_all_fn_generic_types map[string]bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -105,6 +110,62 @@ fn (mut w Walker) mark_fn_as_used(fkey string) {
 		eprintln('    fn > |${fkey}|')
 	}
 	w.used_fns[fkey] = true
+}
+
+fn (w &Walker) fn_generic_names(node ast.FnDecl) []string {
+	mut generic_names := []string{}
+	if node.is_method {
+		receiver_sym := w.table.sym(node.receiver.typ)
+		match receiver_sym.info {
+			ast.Struct {
+				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+			}
+			ast.Interface {
+				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+			}
+			ast.SumType {
+				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+			}
+			else {}
+		}
+	}
+	generic_names << node.generic_names
+	return generic_names
+}
+
+fn (mut w Walker) resolve_current_generic_type(typ ast.Type) ast.Type {
+	if typ == 0 || !typ.has_flag(.generic) || w.cur_fn == '' || w.cur_fn_concrete_types.len == 0 {
+		return typ
+	}
+	cur_fn := w.all_fns[w.cur_fn] or { return typ }
+	generic_names := w.fn_generic_names(cur_fn)
+	if generic_names.len == 0 || generic_names.len != w.cur_fn_concrete_types.len {
+		return typ
+	}
+	return w.table.convert_generic_type(typ, generic_names, w.cur_fn_concrete_types) or { typ }
+}
+
+fn (mut w Walker) resolve_current_concrete_types(types []ast.Type) []ast.Type {
+	if types.len == 0 {
+		return []
+	}
+	mut concrete_types := []ast.Type{cap: types.len}
+	for typ in types {
+		concrete_types << w.resolve_current_generic_type(typ)
+	}
+	if concrete_types.any(it.has_flag(.generic)) {
+		return []
+	}
+	return concrete_types
+}
+
+fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast.Type) {
+	if concrete_types.len == 0 || concrete_types.any(it.has_flag(.generic)) {
+		return
+	}
+	if concrete_types !in w.used_fn_generic_types[fkey] {
+		w.used_fn_generic_types[fkey] << concrete_types.clone()
+	}
 }
 
 @[inline]
@@ -274,6 +335,10 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		}
 		ast.ComptimeFor {
 			w.mark_by_type(node.typ)
+			w.inside_comptime++
+			defer {
+				w.inside_comptime--
+			}
 			w.stmts(node.stmts)
 			match node.kind {
 				.attributes {
@@ -523,6 +588,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.field_expr)
 		}
 		ast.ComptimeCall {
+			w.inside_comptime++
+			defer {
+				w.inside_comptime--
+			}
 			w.expr(node.left)
 			for args in node.args {
 				w.expr(args.expr)
@@ -723,7 +792,16 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_const_as_used(node.name)
 				}
 				.function {
-					w.fn_by_name(node.name)
+					if mut stmt := w.all_fns[node.name] {
+						ident_concrete_types := w.resolve_current_concrete_types(node.concrete_types)
+						if stmt.generic_names.len > 0
+							&& (ident_concrete_types.len == 0 || w.inside_comptime > 0) {
+							w.keep_all_fn_generic_types[node.name] = true
+						}
+						w.fn_decl_with_concrete_types(mut stmt, ident_concrete_types)
+					} else {
+						w.fn_by_name(node.name)
+					}
 					if node.info is ast.IdentFn {
 						w.mark_by_type(node.info.typ)
 					}
@@ -873,9 +951,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.TypeOf {
 			w.expr(node.expr)
 			w.mark_by_type(node.typ)
-			if !node.is_type && node.typ != 0 && w.table.final_sym(node.typ).kind == .sum_type {
-				w.uses_type_name = true
-			}
 		}
 		///
 		ast.AsCast {
@@ -934,6 +1009,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 }
 
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
+	w.fn_decl_with_concrete_types(mut node, [])
+}
+
+fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_types []ast.Type) {
 	if node == unsafe { nil } {
 		return
 	}
@@ -954,12 +1033,26 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 
 	fkey := node.fkey()
-	if w.used_fns[fkey] {
+	resolved_concrete_types := w.resolve_current_concrete_types(concrete_types)
+	if resolved_concrete_types.len > 0 {
+		w.record_used_fn_generic_types(fkey, resolved_concrete_types)
+		if resolved_concrete_types in w.walked_fn_generic_types[fkey] {
+			w.mark_fn_as_used(fkey)
+			return
+		}
+		w.walked_fn_generic_types[fkey] << resolved_concrete_types.clone()
+	} else if w.used_fns[fkey] {
 		return
 	}
 	last_is_direct_array_access := w.is_direct_array_access
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
 	defer { w.is_direct_array_access = last_is_direct_array_access }
+	last_cur_fn := w.cur_fn
+	last_cur_fn_concrete_types := w.cur_fn_concrete_types.clone()
+	defer {
+		w.cur_fn = last_cur_fn
+		w.cur_fn_concrete_types = last_cur_fn_concrete_types
+	}
 	if w.trace_enabled {
 		w.level++
 		defer(fn) { w.level-- }
@@ -983,6 +1076,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	w.cur_fn = fkey
+	w.cur_fn_concrete_types = resolved_concrete_types
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 }
@@ -997,7 +1091,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
 		w.used_option++
 	}
-	for concrete_type in node.concrete_types {
+	call_concrete_types := w.resolve_current_concrete_types(node.concrete_types)
+	concrete_types_to_mark := if call_concrete_types.len > 0 {
+		call_concrete_types
+	} else {
+		node.concrete_types
+	}
+	for concrete_type in concrete_types_to_mark {
 		w.mark_by_type(concrete_type)
 	}
 	if node.language == .c {
@@ -1041,20 +1141,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				w.fn_by_name(fn_embed)
 			}
 		} else if node.left_type.has_flag(.generic) {
-			if w.cur_fn != '' {
-				if concrete_types_list := w.table.fn_generic_types[w.cur_fn] {
-					for concrete_types in concrete_types_list {
-						for concrete_type in concrete_types {
-							if node.name == 'type_name'
-								&& w.table.final_sym(concrete_type).kind in [.sum_type, .interface] {
-								w.uses_type_name = true
-							}
-							method_name := '${int(concrete_type)}.${node.name}'
-							if !w.used_fns[method_name] {
-								w.fn_by_name(method_name)
-							}
-						}
-					}
+			concrete_type := w.resolve_current_generic_type(node.left_type)
+			if concrete_type != 0 && !concrete_type.has_flag(.generic) {
+				method_name := '${int(concrete_type)}.${node.name}'
+				if !w.used_fns[method_name] {
+					w.fn_by_name(method_name)
 				}
 			}
 		} else {
@@ -1075,9 +1166,6 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 
 	mut fn_name := node.fkey()
 	mut receiver_typ := node.receiver_type
-	if w.used_fns[fn_name] {
-		return
-	}
 	if node.is_method {
 		if node.left_type != 0 {
 			lsym := w.table.sym(node.left_type)
@@ -1119,8 +1207,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	w.mark_by_type(node.return_type)
 	mut stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
+		if stmt.generic_names.len > 0 && (call_concrete_types.len == 0 || w.inside_comptime > 0) {
+			w.keep_all_fn_generic_types[fn_name] = true
+		}
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			w.fn_decl(mut stmt)
+			w.fn_decl_with_concrete_types(mut stmt, call_concrete_types)
 		}
 		if node.return_type.has_flag(.option) {
 			w.used_option++
@@ -1132,7 +1223,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			// mark concrete []T param as used
 			max_param_len := if node.is_method { stmt.params.len - 1 } else { stmt.params.len }
 			param_i := if node.is_method { 1 } else { 0 }
-			for concrete_type_list in w.table.fn_generic_types[fn_name] {
+			concrete_type_lists := if call_concrete_types.len > 0 {
+				[call_concrete_types]
+			} else {
+				w.table.fn_generic_types[fn_name]
+			}
+			for concrete_type_list in concrete_type_lists {
 				for k, concrete_type in concrete_type_list {
 					if k >= max_param_len {
 						break
@@ -1364,23 +1460,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 }
 
 fn (mut w Walker) remove_unused_fn_generic_types() {
-	for _, node in w.all_fns {
-		mut count := 0
-		nkey := node.fkey()
-		if all_concrete_types := w.table.fn_generic_types[nkey] {
-			if all_concrete_types.len == 0 {
-				continue
-			}
-			for k, concrete_types in all_concrete_types {
-				if concrete_types.len != 1 {
-					continue
-				}
-				if concrete_types[0].idx() !in w.used_syms {
-					w.table.fn_generic_types[nkey].delete(k - count)
-					count++
-				}
-			}
+	for nkey, concrete_types in w.used_fn_generic_types {
+		if concrete_types.len == 0 || w.keep_all_fn_generic_types[nkey] {
+			continue
 		}
+		w.table.fn_generic_types[nkey] = concrete_types.clone()
 	}
 }
 
