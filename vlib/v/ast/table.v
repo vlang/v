@@ -1721,6 +1721,30 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	}
 }
 
+pub fn (t &Table) interface_inherits_interface(typ Type, inter_typ Type) bool {
+	if typ.idx() == inter_typ.idx() {
+		return true
+	}
+	sym := t.sym(typ)
+	if sym.kind != .interface || sym.info !is Interface {
+		return false
+	}
+	info := sym.info as Interface
+	for embed in info.embeds {
+		if embed.idx() == inter_typ.idx() || t.interface_inherits_interface(embed, inter_typ) {
+			return true
+		}
+	}
+	if info.parent_type != 0 && info.parent_type.idx() != 0 && info.parent_type != typ {
+		parent_sym := t.sym(info.parent_type)
+		if parent_sym.kind == .interface
+			&& t.interface_inherits_interface(info.parent_type, inter_typ) {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
@@ -1741,7 +1765,8 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 	}
 	mut inter_sym := t.sym(inter_typ)
-	if sym.kind == .interface && inter_sym.kind == .interface {
+	is_interface_upcast := sym.kind == .interface && inter_sym.kind == .interface
+	if is_interface_upcast && !t.interface_inherits_interface(typ, inter_typ) {
 		return false
 	}
 	if mut inter_sym.info is Interface {
@@ -1801,7 +1826,7 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		if typ != voidptr_type && typ != nil_type && typ != none_type
+		if !is_interface_upcast && typ != voidptr_type && typ != nil_type && typ != none_type
 			&& !inter_sym.info.types.contains(typ) {
 			inter_sym.info.types << typ
 		}

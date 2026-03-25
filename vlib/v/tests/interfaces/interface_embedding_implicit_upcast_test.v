@@ -16,18 +16,26 @@ fn greet(x Base) bool {
 	return x is Empty
 }
 
+fn pass_through(x Solid) Base {
+	return x
+}
+
 fn test_interface_embedding_implicit_upcast() {
 	solid := Solid(Empty{})
+	assert greet(Empty{})
 	assert greet(solid)
-
-	mut base := Base(Empty{})
-	base = solid
+	assert greet(Solid(Empty{}))
+	base := pass_through(solid)
 	assert base is Empty
+
+	mut base2 := Base(Empty{})
+	base2 = solid
+	assert base2 is Empty
 	assert (solid as Base) is Empty
 
 	dense := Dense(Empty{})
 	assert greet(dense)
-	base = dense
-	assert base is Empty
+	base2 = dense
+	assert base2 is Empty
 	assert (dense as Base) is Empty
 }
