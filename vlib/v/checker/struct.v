@@ -694,6 +694,21 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			return ast.void_type
 		}
 	}
+	if c.anon_struct_should_be_mut {
+		mut anon_type_sym := c.table.sym(node.typ)
+		if anon_type_sym.info is ast.Struct && anon_type_sym.info.is_anon {
+			mut anon_info := anon_type_sym.info as ast.Struct
+			mut anon_fields := []ast.StructField{cap: anon_info.fields.len}
+			for field in anon_info.fields {
+				anon_fields << ast.StructField{
+					...field
+					is_mut: true
+				}
+			}
+			anon_info.fields = anon_fields
+			anon_type_sym.info = anon_info
+		}
+	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
