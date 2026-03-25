@@ -7,6 +7,7 @@ import os
 import v.ast
 import v.token
 import v.errors
+import v.util
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
@@ -140,6 +141,132 @@ fn (mut p Parser) hash() ast.HashStmt {
 
 const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 
+fn (p &Parser) resolve_tmpl_path_expr(expr ast.Expr) ?string {
+	return p.resolve_tmpl_path_expr_with_depth(expr, 0)
+}
+
+fn (p &Parser) resolve_tmpl_path_expr_with_depth(expr ast.Expr, depth int) ?string {
+	if depth > 50 {
+		return none
+	}
+	match expr {
+		ast.AtExpr {
+			return expr.name
+		}
+		ast.CallExpr {
+			match expr.name {
+				'os.join_path' {
+					if expr.args.len == 0 {
+						return ''
+					}
+					mut path := p.resolve_tmpl_path_expr_with_depth(expr.args[0].expr,
+						depth + 1)?
+					for arg in expr.args[1..] {
+						path = os.join_path_single(path, p.resolve_tmpl_path_expr_with_depth(arg.expr,
+							depth + 1)?)
+					}
+					return path
+				}
+				'os.join_path_single' {
+					if expr.args.len != 2 {
+						return none
+					}
+					return os.join_path_single(p.resolve_tmpl_path_expr_with_depth(expr.args[0].expr,
+						depth + 1)?, p.resolve_tmpl_path_expr_with_depth(expr.args[1].expr,
+						depth + 1)?)
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.Ident {
+			if var := p.scope.find_var(expr.name) {
+				return p.resolve_tmpl_path_expr_with_depth(var.expr, depth + 1)
+			}
+			if expr.name == 'os.path_separator' {
+				return os.path_separator
+			}
+			if imported_name := p.imported_symbols[expr.name] {
+				if const_field := p.table.global_scope.find_const(imported_name) {
+					return p.resolve_tmpl_path_expr_with_depth(const_field.expr, depth + 1)
+				}
+			}
+			if const_field := p.table.global_scope.find_const(expr.name) {
+				return p.resolve_tmpl_path_expr_with_depth(const_field.expr, depth + 1)
+			}
+			if const_field := p.table.global_scope.find_const('${expr.mod}.${expr.name}') {
+				return p.resolve_tmpl_path_expr_with_depth(const_field.expr, depth + 1)
+			}
+			if const_field := p.table.global_scope.find_const('${p.mod}.${expr.name}') {
+				return p.resolve_tmpl_path_expr_with_depth(const_field.expr, depth + 1)
+			}
+			return none
+		}
+		ast.InfixExpr {
+			if expr.op != .plus {
+				return none
+			}
+			return p.resolve_tmpl_path_expr_with_depth(expr.left, depth + 1)? +
+				p.resolve_tmpl_path_expr_with_depth(expr.right, depth + 1)?
+		}
+		ast.ParExpr {
+			return p.resolve_tmpl_path_expr_with_depth(expr.expr, depth + 1)
+		}
+		ast.SelectorExpr {
+			module_name := p.resolve_tmpl_path_module_name(expr.expr) or { return none }
+			if module_name == 'os' && expr.field_name == 'path_separator' {
+				return os.path_separator
+			}
+			if const_field := p.table.global_scope.find_const('${module_name}.${expr.field_name}') {
+				return p.resolve_tmpl_path_expr_with_depth(const_field.expr, depth + 1)
+			}
+			return none
+		}
+		ast.StringLiteral {
+			return expr.val
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (p &Parser) resolve_tmpl_path_module_name(expr ast.Expr) ?string {
+	match expr {
+		ast.Ident {
+			if module_name := p.imports[expr.name] {
+				return module_name
+			}
+			return expr.name
+		}
+		ast.SelectorExpr {
+			return '${p.resolve_tmpl_path_module_name(expr.expr)?}.${expr.field_name}'
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut p Parser) resolve_tmpl_pseudo_variables(path string, pos token.Pos) ?string {
+	mut resolved := path
+	source_path := os.real_path(p.scanner.file_path)
+	if resolved.contains('@VEXEROOT') {
+		resolved = resolved.replace('@VEXEROOT', p.pref.vroot)
+	}
+	if resolved.contains('@VMODROOT') {
+		resolved = util.resolve_vmodroot(resolved, source_path) or {
+			p.error_with_pos(err.msg(), pos)
+			return none
+		}
+	}
+	if resolved.contains('@DIR') {
+		resolved = resolved.replace('@DIR', os.dir(source_path))
+	}
+	return resolved
+}
+
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -264,18 +391,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	has_string_arg := p.tok.kind == .string
 	mut literal_string_param := if is_html && !has_string_arg { '' } else { p.tok.lit }
-	if p.tok.kind == .name {
-		if var := p.scope.find_var(p.tok.lit) {
-			if var.expr is ast.StringLiteral {
-				literal_string_param = var.expr.val
-			}
-		} else if var := p.table.global_scope.find_const(p.mod + '.' + p.tok.lit) {
-			if var.expr is ast.StringLiteral {
-				literal_string_param = var.expr.val
-			}
-		}
-	}
-	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	mut arg := ast.CallArg{}
 	if is_html && !(has_string_arg || p.tok.kind == .rpar) {
 		p.error('expecting `\$vweb.html()` for a default template path or `\$vweb.html("/path/to/template.html")`')
@@ -284,6 +399,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		// $vweb.html() can have no arguments
 	} else {
 		arg_expr := p.expr(0)
+		if resolved_path := p.resolve_tmpl_path_expr(arg_expr) {
+			literal_string_param = resolved_path
+		}
 		arg = ast.CallArg{
 			expr: arg_expr
 		}
@@ -322,7 +440,11 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	tmpl_path := if is_html && !has_string_arg {
 		'${fn_path.last()}.html'
 	} else {
-		path_of_literal_string_param
+		mut resolved_path := literal_string_param.replace('/', os.path_separator)
+		resolved_path = p.resolve_tmpl_pseudo_variables(resolved_path, arg_pos) or {
+			return err_node
+		}
+		resolved_path
 	}
 	// Looking next to the vweb program
 	dir := os.dir(compiled_vfile_path)
