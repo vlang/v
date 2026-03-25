@@ -865,7 +865,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	}
 
 	stype_arg := g.styp(elem_type)
-	g.sort_fn_definitions.writeln('VV_LOC ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
+	g.sort_fn_definitions.writeln('VV_LOC int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
 		method_name := if comparison_type.sym.is_builtin() {
 			'builtin__${g.styp(comparison_type.typ)}__lt'

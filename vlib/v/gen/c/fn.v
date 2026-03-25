@@ -399,7 +399,13 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${name.all_after_first('C__')}('
 		g.definitions.write_string(c_extern_fn_header)
 	} else {
-		if !(node.is_pub || g.pref.is_debug) {
+		force_static_linkage := g.pref.is_o && !(node.is_pub && node.mod == g.module_built)
+		if force_static_linkage {
+			if !(node.is_anon && g.pref.parallel_cc) {
+				g.write('static ')
+				g.definitions.write_string('static ')
+			}
+		} else if !(node.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
 			// binaries
 			if g.pref.build_mode != .build_module && !g.pref.use_cache {
@@ -416,7 +422,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// when -usecache is enabled to fix duplicate symbols with clang
 		// TODO: implement a better sulution
 		visibility_kw := if g.cur_concrete_types.len > 0
-			&& (g.pref.build_mode == .build_module || g.pref.use_cache) {
+			&& (g.pref.build_mode == .build_module || g.pref.use_cache) && !force_static_linkage {
 			'static '
 		} else {
 			''

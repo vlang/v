@@ -180,7 +180,7 @@ const c_common_macros = '
 		#else
 			#define VV_EXP  extern __attribute__((visibility("default")))
 		#endif
-		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE))
+		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE) || defined(_VOBJECTFILE))
 			#define VV_LOC static
 		#else
 			#define VV_LOC  __attribute__ ((visibility ("hidden")))
@@ -365,13 +365,23 @@ static int v__snprintf(char *s, size_t n, const char *fmt, ...) {
 #define snprintf v__snprintf
 #endif
 //================================== GLOBALS =================================*/
+#ifdef _VOBJECTFILE
+static void _vinit(int ___argc, voidptr ___argv);
+static void _vcleanup(void);
+#else
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
+#endif
 #ifdef _WIN32
 	// workaround for windows, export _vinit_caller/_vcleanup_caller, let dl.open()/dl.close() call it
 	// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!
-	VV_EXP void _vinit_caller();
-	VV_EXP void _vcleanup_caller();
+	#ifdef _VOBJECTFILE
+		static void _vinit_caller();
+		static void _vcleanup_caller();
+	#else
+		VV_EXP void _vinit_caller();
+		VV_EXP void _vcleanup_caller();
+	#endif
 #endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
@@ -559,8 +569,13 @@ typedef __builtin_va_list va_list;
 #define va_arg(a, b)   __builtin_va_arg(a, b)
 #define va_copy(a, b)  __builtin_va_copy(a, b)
 //================================== GLOBALS =================================*/
+#ifdef _VOBJECTFILE
+static void _vinit(int ___argc, voidptr ___argv);
+static void _vcleanup(void);
+#else
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
+#endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 voidptr builtin__memdup(voidptr src, isize size);

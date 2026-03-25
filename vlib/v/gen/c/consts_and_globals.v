@@ -74,7 +74,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				typ := if field.expr.language == .c { 'char*' } else { 'string' }
 				g.global_const_defs[name] = GlobalConstDef{
 					mod:   field.mod
-					def:   '${typ} ${const_name}; // a string literal, inited later'
+					def:   '${g.static_non_parallel}${typ} ${const_name}; // a string literal, inited later'
 					init:  '\t${const_name} = ${val};'
 					order: -1
 				}
@@ -240,7 +240,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			}
 			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 				mod:   mod
-				def:   '${styp} ${cname}; // str inited later'
+				def:   '${g.static_non_parallel}${styp} ${cname}; // str inited later'
 				init:  '\t${cname} = ${init};'
 				order: -1
 			}
@@ -286,7 +286,7 @@ fn (mut g Gen) const_decl_simple_define(mod string, name string, cname string, v
 	if g.pref.translated {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod:   mod
-			def:   'const ${ast.int_type_name} ${cname} = ${val};'
+			def:   '${g.static_non_parallel}const ${ast.int_type_name} ${cname} = ${val};'
 			order: -1
 		}
 	} else {
@@ -341,7 +341,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if surround_cbr {
 		init.writeln('}')
 	}
-	mut def := '${styp} ${cname}'
+	mut def := '${g.static_non_parallel}${styp} ${cname}'
 	if g.pref.parallel_cc {
 		// So that the const is usable in other files
 		// def = 'extern ${def}'
@@ -405,7 +405,7 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 			init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))
 		}
 	}
-	mut def := '${styp} ${cname}'
+	mut def := '${g.static_non_parallel}${styp} ${cname}'
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod:       mod
 		def:       '${def}; // inited later'
@@ -430,7 +430,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	// was static used here to to make code optimizable? it was removed when
 	// 'extern' was used to fix the duplicate symbols with usecache && clang
 	// visibility_kw := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' }
-	visibility_kw := if
+	visibility_kw := if g.should_use_object_local_linkage(node.mod) {
+		'static '
+	} else if
 		(g.pref.use_cache || (g.pref.build_mode == .build_module && g.module_built != node.mod))
 		&& !util.should_bundle_module(node.mod) {
 		'extern '
@@ -487,10 +489,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		mut def_builder := strings.new_builder(100)
 		mut init := ''
 		extern := if field.is_extern { 'extern ' } else { '' }
+		field_visibility_kw := if field.is_extern { '' } else { visibility_kw }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		final_c_name := field.name.all_after('C.')
 		if field.is_extern {
-			def_builder.writeln('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}; // global 2')
+			def_builder.writeln('${extern}${field_visibility_kw}${modifier}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -500,7 +503,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
+			def_builder.write_string('${extern}${field_visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {
