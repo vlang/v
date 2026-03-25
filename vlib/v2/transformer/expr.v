@@ -252,6 +252,10 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			expr
 		}
 		ast.GenericArgs {
+			// typeof[T] — keep as-is so typeof[T]().name can be resolved later
+			if t.is_typeof_generic_args(expr) {
+				return expr
+			}
 			// Disambiguate `x[y]` parsed as GenericArgs: if lhs is not callable and there
 			// is a single argument, this is an index expression.
 			if expr.args.len == 1 {
@@ -328,6 +332,12 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			expr
 		}
 	}
+}
+
+// is_typeof_generic_args checks if a GenericArgs node is typeof[T]
+// without using an `is` check that would trigger smartcast narrowing.
+fn (t &Transformer) is_typeof_generic_args(ga ast.GenericArgs) bool {
+	return ga.lhs.name() == 'typeof'
 }
 
 fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
@@ -624,6 +634,24 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 					kind:  .v
 					value: quote_v_string_literal(type_name)
 					pos:   expr.pos
+				}
+			}
+		}
+	}
+	// typeof[T]().name -> string literal with V type name
+	// Parser creates: SelectorExpr{lhs: CallExpr{lhs: GenericArgs{lhs: Ident{"typeof"}, args: [T]}}, rhs: "name"}
+	if expr.rhs.name == 'name' && expr.lhs is ast.CallExpr {
+		call := expr.lhs as ast.CallExpr
+		if call.lhs is ast.GenericArgs {
+			ga := call.lhs as ast.GenericArgs
+			if ga.lhs is ast.Ident && ga.lhs.name == 'typeof' && ga.args.len > 0 {
+				type_name := t.resolve_typeof_expr(ga.args[0])
+				if type_name != '' {
+					return ast.StringLiteral{
+						kind:  .v
+						value: quote_v_string_literal(type_name)
+						pos:   expr.pos
+					}
 				}
 			}
 		}

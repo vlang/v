@@ -1982,7 +1982,7 @@ fn (mut t Transformer) specialize_generic_callable_expr(lhs ast.Expr, args []ast
 	for arg in args {
 		parts << t.generic_specialization_token(arg)
 	}
-	suffix := if parts.len > 0 { '_' + parts.join('_') } else { '' }
+	suffix := if parts.len > 0 { '_T_' + parts.join('_') } else { '' }
 	match lhs {
 		ast.Ident {
 			return ast.Expr(ast.Ident{

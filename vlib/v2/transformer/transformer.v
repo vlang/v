@@ -1808,8 +1808,20 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.ComptimeStmt {
-			// Unwrap ComptimeStmt - the inner stmt is transformed directly
-			t.transform_stmt(stmt.stmt)
+			// Keep ComptimeStmt wrapper for $for — cleanc handles it at codegen time
+			if stmt.stmt is ast.ForStmt {
+				for_stmt := stmt.stmt as ast.ForStmt
+				ast.Stmt(ast.ComptimeStmt{
+					stmt: ast.Stmt(ast.ForStmt{
+						init:  for_stmt.init
+						cond:  for_stmt.cond
+						post:  for_stmt.post
+						stmts: t.transform_stmts(for_stmt.stmts)
+					})
+				})
+			} else {
+				t.transform_stmt(stmt.stmt)
+			}
 		}
 		ast.DeferStmt {
 			ast.DeferStmt{
@@ -1890,7 +1902,12 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 			if stmt.rhs.len == 1 && stmt.rhs[0] is ast.ComptimeExpr {
 				comptime_expr := stmt.rhs[0] as ast.ComptimeExpr
 				if comptime_expr.expr is ast.IfExpr {
-					selected := t.resolve_comptime_if_stmts(comptime_expr.expr as ast.IfExpr)
+					comptime_if := comptime_expr.expr as ast.IfExpr
+					if !t.can_eval_comptime_cond(comptime_if.cond) {
+						t.append_transformed_stmt(mut result, stmt)
+						continue
+					}
+					selected := t.resolve_comptime_if_stmts(comptime_if)
 					if selected.len > 0 {
 						// Inline all but the last statement
 						for i := 0; i < selected.len - 1; i++ {
@@ -2028,12 +2045,22 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.ComptimeExpr {
 				if stmt.expr.expr is ast.IfExpr {
-					selected := t.resolve_comptime_if_stmts(stmt.expr.expr)
-					// Process through transform_stmts to handle nested $if blocks
-					transformed := t.transform_stmts(selected)
-					for s in transformed {
-						result << s
+					if t.can_eval_comptime_cond(stmt.expr.expr.cond) {
+						selected := t.resolve_comptime_if_stmts(stmt.expr.expr)
+						// Process through transform_stmts to handle nested $if blocks
+						transformed := t.transform_stmts(selected)
+						for s in transformed {
+							result << s
+						}
+						continue
 					}
+					// Can't evaluate — transform body stmts and keep the comptime wrapper
+					transformed_comptime := t.transform_comptime_if_bodies(stmt.expr.expr)
+					result << ast.Stmt(ast.ExprStmt{
+						expr: ast.Expr(ast.ComptimeExpr{
+							expr: ast.Expr(transformed_comptime)
+						})
+					})
 					continue
 				}
 			}

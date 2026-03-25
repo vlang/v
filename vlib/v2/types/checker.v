@@ -394,11 +394,7 @@ fn (c &Checker) qualify_type_name(name string) string {
 	return '${c.cur_file_module}__${name}'
 }
 
-fn (c &Checker) type_ref_name(expr ast.Expr, resolved Type) string {
-	resolved_name := if type_data_ptr_is_nil(resolved) { '' } else { resolved.name() }
-	if resolved_name != '' && resolved_name != 'void' {
-		return resolved_name
-	}
+fn (c &Checker) type_ref_name(expr ast.Expr) string {
 	match expr {
 		ast.Ident {
 			return c.qualify_type_name(expr.name)
@@ -2379,7 +2375,7 @@ fn (mut c Checker) process_pending_struct_decls() {
 				// Union members may be aliases whose base structs are resolved later in
 				// process_pending_type_decls. Keep a named placeholder here so
 				// find_field_or_method can re-resolve the live type from scope.
-				embedded_name := c.type_ref_name(embedded_expr, embedded_type)
+				embedded_name := c.type_ref_name(embedded_expr)
 				if embedded_name != '' {
 					embedded << Struct{
 						name: embedded_name
@@ -2479,7 +2475,20 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		mut generic_types := []map[string]Type{}
 		mut has_generic_types := false
 		for name, inferred in c.env.generic_types {
-			if name == pending.decl.name {
+			// Extract the base function name from the key by stripping
+			// module prefix (before '.') and generic args (after '[').
+			mut base_name := name
+			bracket_pos := name.index_u8(`[`)
+			if bracket_pos > 0 {
+				base_name = name[..bracket_pos]
+			}
+			dot_pos := base_name.last_index_u8(`.`)
+			short_name := if dot_pos > 0 && dot_pos < base_name.len - 1 {
+				base_name[dot_pos + 1..]
+			} else {
+				base_name
+			}
+			if base_name == pending.decl.name || short_name == pending.decl.name {
 				generic_types = inferred.clone()
 				has_generic_types = true
 				break
@@ -3789,6 +3798,10 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		Pointer {
 			if arg_type is Pointer {
 				c.infer_generic_type(param_type.base_type, arg_type.base_type, mut type_map)!
+			} else {
+				// For `mut` params (e.g., `mut val T` → Pointer(&T)), the argument
+				// is passed by reference implicitly, so arg_type is the value type.
+				c.infer_generic_type(param_type.base_type, arg_type, mut type_map)!
 			}
 		}
 		ResultType {
@@ -3920,9 +3933,6 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	if mut fn_ is FnType {
 		mut generic_type_map := map[string]Type{}
 		if fn_.generic_params.len > 0 {
-			// file := c.file_set.file(expr.pos)
-			// pos := file.position(expr.pos)
-			// eprintln('GENERIC CALL: ${expr.lhs.name()} - ${expr.pos} - ${file.name}:${pos.line}')
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
 				// panic('GOT GENERIC CALL')
@@ -3944,7 +3954,6 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// TODO: move above (to be done globally)
 				// once error is fixed
 				mut arg_types := []Type{}
-				// eprintln('INFERRED GENERIC TYPES: ${expr.lhs.name()}')
 				for i, arg in expr.args {
 					if i >= fn_.params.len {
 						break
@@ -3952,9 +3961,6 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
 					arg_types << arg_type
-					// eprintln('call arg: ${param.typ.type_name()} - ${arg_type.type_name()}')
-
-					// println('infcerring call: ')
 					c.infer_generic_type(param.typ, arg_type, mut generic_type_map) or {
 						c.error_with_pos(err.msg(), expr.pos)
 					}
@@ -4239,15 +4245,17 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			// }
 		}
 
-		if ident.name in c.generic_params {
-			return Type(NamedType(ident.name))
-		}
-
+		// Check cur_generic_types first: if a concrete type is available
+		// (e.g., T=Slack during checking of decode[Slack]'s body), use it
+		// so that inner generic calls can infer types properly.
 		for generic_types in c.env.cur_generic_types {
 			if generic_type := generic_types[ident.name] {
-				// eprintln('## replaced generic type ${ident.name} with ${generic_type.name()}')
 				return object_from_type(generic_type)
 			}
+		}
+
+		if ident.name in c.generic_params {
+			return Type(NamedType(ident.name))
 		}
 
 		// TODO: proper
@@ -4278,12 +4286,45 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			})
 		}
 
+		// typeof, sizeof, isreftype used as identifiers (e.g. typeof[T]())
+		// are builtin keywords handled by the parser, transformer, and backend.
+		// Return a FnType returning a struct with .name (string) field so that
+		// typeof[T]().name type-checks as a string expression.
+		if ident.name in ['typeof', 'sizeof', 'isreftype'] {
+			return Type(FnType{
+				return_type: Type(Struct{
+					name:   '__typeof_result'
+					fields: [
+						Field{
+							name: 'name'
+							typ:  Type(string_)
+						},
+					]
+				})
+			})
+		}
+
 		// c.scope.print(false)
 		// c.scope.print(true)
 		c.error_with_pos('unknown ident `${ident.name} - ${ident.pos}`', ident.pos)
 		return Type(void_)
 	}
 	c.log('ident: ${ident.name} - ${obj.typ().name()}')
+	// If the scope resolved to a generic NamedType (e.g., T), check if we have
+	// a concrete substitution in cur_generic_types (e.g., T=Slack).
+	// This is needed so that inner generic calls can infer types properly.
+	if c.env.cur_generic_types.len > 0 {
+		obj_name := obj.typ().name()
+		for generic_types in c.env.cur_generic_types {
+			if generic_type := generic_types[obj_name] {
+				resolved_obj := object_from_type(generic_type)
+				if ident.pos.is_valid() {
+					c.env.set_expr_type(ident.pos.id, generic_type)
+				}
+				return resolved_obj
+			}
+		}
+	}
 	// Store the ident type in env so the transformer can look it up by pos.id.
 	// c.ident() is called from places like selector_expr() that bypass c.expr(),
 	// so without this the lhs Ident wouldn't get stored.
@@ -4321,6 +4362,11 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				return field_or_method_type
 			}
 		}
+	}
+
+	// Comptime expression: T.name where T is a generic type parameter → string
+	if expr.lhs is ast.Ident && expr.lhs.name in c.generic_params && expr.rhs.name == 'name' {
+		return string_
 	}
 
 	if expr.lhs is ast.Ident {

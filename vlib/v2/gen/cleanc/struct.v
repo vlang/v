@@ -19,6 +19,11 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 					g.scan_expr_for_generic_types(field.typ)
 				}
 			}
+			// Also scan function bodies for generic type references
+			// (e.g. LinkedList[StructFieldInfo]{} in decode_value)
+			if stmt is ast.FnDecl {
+				g.scan_stmts_for_generic_types(stmt.stmts)
+			}
 		}
 	}
 	// Propagation pass: for each generic struct with recorded bindings,
@@ -36,9 +41,12 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 				if struct_c_name !in g.generic_struct_bindings {
 					continue
 				}
-				parent_bindings := g.generic_struct_bindings[struct_c_name].clone()
-				for field in stmt.fields {
-					g.propagate_generic_bindings(field.typ, parent_bindings)
+				// Propagate for ALL instances (not just the primary binding)
+				instances := g.generic_struct_instances[struct_c_name]
+				for inst in instances {
+					for field in stmt.fields {
+						g.propagate_generic_bindings(field.typ, inst.bindings)
+					}
 				}
 			}
 		}
@@ -64,7 +72,7 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 							break
 						}
 					}
-					if all_concrete && base_name !in g.generic_struct_bindings {
+					if all_concrete {
 						struct_base := if base_name.contains('__') {
 							base_name.all_after_last('__')
 						} else {
@@ -86,7 +94,7 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 		ast.GenericArgOrIndexExpr {
 			base_name := g.expr_type_to_c(e.lhs)
 			arg_name := e.expr.name()
-			if base_name !in g.generic_struct_bindings {
+			{
 				if is_generic_placeholder_type_name(arg_name) && arg_name in parent_bindings {
 					struct_base := if base_name.contains('__') {
 						base_name.all_after_last('__')
@@ -107,7 +115,7 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 		}
 		ast.GenericArgs {
 			base_name := g.expr_type_to_c(e.lhs)
-			if base_name !in g.generic_struct_bindings && e.args.len > 0 {
+			if e.args.len > 0 {
 				struct_base := if base_name.contains('__') {
 					base_name.all_after_last('__')
 				} else {
@@ -181,7 +189,56 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 				g.record_generic_struct_bindings(struct_base, base_name, e.args)
 			}
 		}
+		ast.CallOrCastExpr {
+			// LinkedList[StructFieldInfo]{} is parsed as CallOrCastExpr with
+			// lhs = GenericArgOrIndexExpr or GenericArgs
+			g.scan_expr_for_generic_types(e.lhs)
+		}
+		ast.InitExpr {
+			// e.g. LinkedList[StructFieldInfo]{} has .typ = GenericArgs
+			g.scan_expr_for_generic_types(e.typ)
+		}
 		else {}
+	}
+}
+
+// scan_stmts_for_generic_types walks statements to find generic
+// type instantiations (e.g. LinkedList[StructFieldInfo]{} in function bodies).
+fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
+	for stmt in stmts {
+		if stmt is ast.AssignStmt {
+			for rhs in stmt.rhs {
+				g.scan_expr_for_generic_types(rhs)
+			}
+		} else if stmt is ast.ExprStmt {
+			g.scan_expr_for_generic_types(stmt.expr)
+			// Recurse into IfExpr/MatchExpr bodies
+			g.scan_expr_stmts_for_generic_types(stmt.expr)
+		} else if stmt is ast.ComptimeStmt {
+			// Recurse into comptime $if/$for bodies (wraps a single stmt)
+			g.scan_stmts_for_generic_types([stmt.stmt])
+		} else if stmt is ast.ForStmt {
+			g.scan_stmts_for_generic_types(stmt.stmts)
+		} else if stmt is ast.BlockStmt {
+			g.scan_stmts_for_generic_types(stmt.stmts)
+		}
+	}
+}
+
+// scan_expr_stmts_for_generic_types recurses into IfExpr/MatchExpr/ComptimeExpr bodies.
+fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
+	if e is ast.IfExpr {
+		g.scan_stmts_for_generic_types(e.stmts)
+		if e.else_expr !is ast.EmptyExpr {
+			g.scan_expr_stmts_for_generic_types(e.else_expr)
+		}
+	} else if e is ast.MatchExpr {
+		for branch in e.branches {
+			g.scan_stmts_for_generic_types(branch.stmts)
+		}
+	} else if e is ast.ComptimeExpr {
+		// $if / $for wrapped in ComptimeExpr
+		g.scan_expr_stmts_for_generic_types(e.expr)
 	}
 }
 
@@ -454,6 +511,15 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		struct_c_name := g.get_struct_name(node)
 		if struct_c_name in g.generic_struct_bindings {
 			g.active_generic_types = g.generic_struct_bindings[struct_c_name].clone()
+		} else if instances := g.generic_struct_instances[struct_c_name] {
+			// Use the first recorded instance's bindings as the primary struct body.
+			if instances.len > 0 {
+				g.active_generic_types = instances[0].bindings.clone()
+			} else {
+				g.active_generic_types = g.fallback_generic_bindings_for_names(generic_param_names(node.generic_params)) or {
+					return
+				}
+			}
 		} else {
 			g.active_generic_types = g.fallback_generic_bindings_for_names(generic_param_names(node.generic_params)) or {
 				return
@@ -468,6 +534,14 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	body_key := 'body_${name}'
 	if body_key in g.emitted_types {
 		return
+	}
+	// For generic structs with active bindings, verify that all field types
+	// are already emitted. This prevents the last-resort pass from emitting
+	// a generic struct body before its concrete field types are defined.
+	if node.generic_params.len > 0 && g.active_generic_types.len > 0 {
+		if !g.struct_fields_resolved(node) {
+			return
+		}
 	}
 	g.emitted_types[body_key] = true
 	keyword := if node.is_union { 'union' } else { 'struct' }
@@ -639,6 +713,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if struct_str_fn !in g.fn_return_types {
 		label := '${name}{}'
 		g.sb.writeln('#define ${name}__str(v) ((string){.str = "${label}", .len = ${label.len}, .is_lit = 1})')
+		// Register the macro in fn_return_types so method resolution can find it
+		g.fn_return_types[struct_str_fn] = 'string'
 	}
 	struct_short_str_fn := '${name}_str'
 	if struct_short_str_fn !in g.fn_return_types {
@@ -648,6 +724,45 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Generate SoA (Structure of Arrays) companion struct and helpers for @[soa] structs
 	if env_struct.is_soa && env_struct.fields.len > 0 {
 		g.gen_soa_companion(name, env_struct)
+	}
+	// Emit additional generic struct instantiations (e.g. Node[StructFieldInfo]
+	// when Node[ValueInfo] was the primary binding).
+	if node.generic_params.len > 0 {
+		instances := g.generic_struct_instances[name]
+		for inst in instances {
+			if inst.c_name == name {
+				continue // already emitted as primary
+			}
+			inst_body_key := 'body_${inst.c_name}'
+			if inst_body_key in g.emitted_types || inst_body_key in g.pending_late_body_keys {
+				continue
+			}
+			g.emitted_types[inst_body_key] = true
+			// Set active generic types to this instantiation's bindings
+			prev_active := g.active_generic_types.clone()
+			g.active_generic_types = inst.bindings.clone()
+			g.sb.writeln('${keyword} ${inst.c_name} {')
+			for field in node.fields {
+				field_type := g.expr_type_to_c(field.typ)
+				field_name := if field.name.len > 0 { field.name } else { 'value' }
+				g.sb.writeln('\t${field_type} ${field_name};')
+				// Register field types for this instantiation
+				g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
+			}
+			if node.fields.len == 0 {
+				g.sb.writeln('\tu8 _dummy;')
+			}
+			g.sb.writeln('};')
+			// str macros — only emit fallback if no explicit str() method exists
+			inst_str_fn := '${inst.c_name}__str'
+			if inst_str_fn !in g.fn_return_types {
+				inst_label := '${inst.c_name}{}'
+				g.sb.writeln('#define ${inst.c_name}__str(v) ((string){.str = "${inst_label}", .len = ${inst_label.len}, .is_lit = 1})')
+				g.sb.writeln('#define ${inst.c_name}_str(v) ${inst.c_name}__str(v)')
+			}
+			g.sb.writeln('')
+			g.active_generic_types = prev_active.clone()
+		}
 	}
 }
 
@@ -827,6 +942,32 @@ fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, 
 fn (g &Gen) is_scalar_sum_payload_type(type_name string) bool {
 	return type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'bool', 'rune', 'byte', 'usize', 'isize']
+}
+
+// gen_sum_wrapped_init_field checks if an InitExpr is a variant of the given
+// sum type and wraps it accordingly. Returns true if wrapping was emitted.
+fn (mut g Gen) gen_sum_wrapped_init_field(sum_type_name string, init_expr ast.InitExpr) bool {
+	variants := g.get_sum_type_variants_for(sum_type_name)
+	if variants.len == 0 {
+		return false
+	}
+	init_type := g.expr_type_to_c(init_expr.typ)
+	mut resolved := init_type
+	if (resolved == '' || resolved == 'int') && init_expr.typ is ast.Ident {
+		resolved = (init_expr.typ as ast.Ident).name.replace('.', '__')
+	}
+	if resolved == '' || resolved == sum_type_name {
+		return false
+	}
+	init_short := if resolved.contains('__') { resolved.all_after_last('__') } else { resolved }
+	for i, v in variants {
+		if v == init_short || v == resolved || resolved.ends_with('__${v}')
+			|| v.ends_with('__${resolved}') {
+			g.gen_sum_type_wrap(sum_type_name, v, i, false, ast.Expr(init_expr), resolved)
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, is_primitive bool, expr ast.Expr, inner_type string) {
@@ -1463,6 +1604,13 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 					continue
 				}
 			}
+		}
+		// Auto-wrap variant struct literals into sum type wrapping
+		// (e.g. types.Struct{} -> types__Type{._tag = N, ._data._Struct = ...})
+		// Only for InitExpr values (struct literals that are a variant of the sum type).
+		if expected_field_type != '' && field.value is ast.InitExpr
+			&& g.gen_sum_wrapped_init_field(expected_field_type, field.value) {
+			continue
 		}
 		g.expr(field.value)
 	}

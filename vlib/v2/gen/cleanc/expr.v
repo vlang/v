@@ -1975,6 +1975,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			lhs_expr := sel.lhs
 			rhs_name := sel.rhs.name
 			lhs_name := if lhs_expr is ast.Ident { sel.lhs.name() } else { '' }
+			// Comptime field access interception: field.name, field.typ, val.$(field.name), etc.
+			if g.comptime_field_var != '' {
+				if g.gen_comptime_field_selector(sel) {
+					return
+				}
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if lhs_expr is ast.Ident {
 				if lhs_name == 'C' {
@@ -2787,6 +2793,29 @@ fn (mut g Gen) gen_sum_narrowed_ident(node ast.Ident) bool {
 	return true
 }
 
+// resolve_narrowed_selector_field_type resolves the field type of a SelectorExpr
+// when the LHS is a sum type variable narrowed via an `is` check.
+// Returns the raw types.Type of the field on the narrowed variant struct.
+fn (mut g Gen) resolve_narrowed_selector_field_type(sel ast.SelectorExpr) ?types.Type {
+	if sel.lhs !is ast.Ident {
+		return none
+	}
+	ident := sel.lhs as ast.Ident
+	// Get the narrowed C type from the checker environment
+	narrowed_c := g.get_expr_type_from_env(sel.lhs) or { return none }
+	decl_type := g.get_local_var_c_type(ident.name) or { return none }
+	if narrowed_c == '' || narrowed_c == decl_type {
+		return none
+	}
+	// Resolve the narrowed C type name to a raw types.Type
+	narrowed_type := g.resolve_c_type_to_raw(narrowed_c) or { return none }
+	// Look up the field on the narrowed struct
+	if field_type := selector_struct_field_type_from_type(narrowed_type, sel.rhs.name) {
+		return field_type
+	}
+	return none
+}
+
 fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	if node.stmts.len == 0 {
 		g.sb.write_string('0')
@@ -2989,6 +3018,30 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			return
 		}
 	}
+	// Sum type narrowing: when indexing a field of a smartcasted sum type variable
+	// (e.g. stmt.lhs[0] where stmt is narrowed from ast.Stmt to ast.AssignStmt),
+	// get_raw_type fails because the declared type (SumType) has no struct fields.
+	// Resolve the field type through the narrowed variant type instead.
+	if node.lhs is ast.SelectorExpr && node.lhs.lhs is ast.Ident {
+		if narrowed_field_type := g.resolve_narrowed_selector_field_type(node.lhs) {
+			if narrowed_field_type is types.Array {
+				elem_type := g.types_type_to_c(narrowed_field_type.elem_type)
+				g.sb.write_string('((${elem_type}*)')
+				g.expr(node.lhs)
+				g.sb.write_string('.data)[')
+				g.gen_index_expr_value(node.expr)
+				g.sb.write_string(']')
+				return
+			}
+			if narrowed_field_type is types.ArrayFixed {
+				g.expr(node.lhs)
+				g.sb.write_string('[')
+				g.gen_index_expr_value(node.expr)
+				g.sb.write_string(']')
+				return
+			}
+		}
+	}
 	// Fallback: check string-based local type for pointer-to-fixed-array params
 	// (e.g., `mut state &[8]u32` → type string `Array_fixed_u32_8*`)
 	// get_raw_type may miss these when the env doesn't record the parameter type.
@@ -3128,7 +3181,77 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		g.sb.write_string(']')
 		return
 	}
+	// When lhs_type is unresolved ('int') and the LHS is a SelectorExpr,
+	// try to resolve the actual field type via struct_field_types map.
+	// This handles cases like stmt.lhs[0] where stmt is smartcasted from
+	// a sum type — get_expr_type/get_raw_type fail because they see the
+	// declared sum type, not the narrowed variant.
+	if (lhs_type == '' || lhs_type == 'int') && node.lhs is ast.SelectorExpr {
+		sel := node.lhs as ast.SelectorExpr
+		// Get the struct C type for the selector's LHS. When the LHS ident
+		// is narrowed via an is-check, get_expr_type may return the narrowed type.
+		mut struct_name := g.get_expr_type(sel.lhs)
+		if struct_name == '' || struct_name == 'int' {
+			// Also try the env type
+			if env_t := g.get_expr_type_from_env(sel.lhs) {
+				struct_name = env_t
+			}
+		}
+		if struct_name != '' && struct_name != 'int' {
+			if field_type := g.lookup_struct_field_type_by_name(struct_name, sel.rhs.name) {
+				if field_type.starts_with('Array_') && !field_type.starts_with('Array_fixed_') {
+					elem_type := field_type['Array_'.len..].trim_right('*')
+					if elem_type != '' {
+						g.sb.write_string('((${elem_type}*)')
+						g.expr(node.lhs)
+						g.sb.write_string('.data)[')
+						g.gen_index_expr_value(node.expr)
+						g.sb.write_string(']')
+						return
+					}
+				}
+			}
+		}
+	}
 	// Fallback: direct C array indexing
+	if lhs_type == '' || lhs_type == 'int' {
+		// Generate LHS to temp buffer to analyze the C code and determine
+		// if it's a dynamic array that needs .data accessor.
+		saved := g.sb
+		g.sb = strings.new_builder(256)
+		g.expr(node.lhs)
+		tmp := g.sb.str()
+		g.sb = saved
+		// Detect sum type narrowed field access: )->field_name)
+		// Extract the struct name from the cast pattern to look up field type.
+		if tmp.contains(')->') {
+			// Extract field name from the end: ...)->field_name)
+			field_part := tmp.all_after_last(')->')
+			field_name := field_part.trim_right(')')
+			// Extract struct name from the cast: ((struct_name*)(
+			struct_part := tmp.all_after('((').all_before('*)(')
+			if struct_part != '' && field_name != '' {
+				if field_type := g.lookup_struct_field_type_by_name(struct_part, field_name) {
+					if field_type.starts_with('Array_') && !field_type.starts_with('Array_fixed_') {
+						elem_type := field_type['Array_'.len..].trim_right('*')
+						if elem_type != '' {
+							g.sb.write_string('((${elem_type}*)')
+							g.sb.write_string(tmp)
+							g.sb.write_string('.data)[')
+							g.gen_index_expr_value(node.expr)
+							g.sb.write_string(']')
+							return
+						}
+					}
+				}
+			}
+		}
+		g.sb.write_string(tmp)
+		g.sb.write_string('[')
+		g.expr(node.expr)
+		g.sb.write_string(']')
+		return
+	}
 	g.expr(node.lhs)
 	g.sb.write_string('[')
 	g.expr(node.expr)
@@ -3202,19 +3325,28 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 			if cond.op == .logical_or {
 				return g.eval_comptime_cond(cond.lhs) || g.eval_comptime_cond(cond.rhs)
 			}
-			// Handle `$if T is i8` — comptime generic type check
+			// Handle `$if T is string`, `$if T.unaliased_typ is $struct`, `$if field.typ is string`, etc.
 			if cond.op == .key_is || cond.op == .not_is {
-				if cond.lhs is ast.Ident && cond.rhs is ast.Ident {
-					if concrete := g.active_generic_types[cond.lhs.name] {
-						concrete_name := concrete.name()
-						target_name := cond.rhs.name
-						// Normalize type aliases: byte == u8, int == i32
-						matched := concrete_name == target_name
-							|| (target_name == 'byte' && concrete_name == 'u8')
-							|| (target_name == 'u8' && concrete_name == 'byte')
-							|| (target_name == 'int' && concrete_name == 'i32')
-							|| (target_name == 'i32' && concrete_name == 'int')
-						return if cond.op == .key_is { matched } else { !matched }
+				resolved := g.resolve_comptime_is_lhs(cond.lhs)
+				if resolved.matched {
+					result := g.comptime_type_matches(resolved.typ, cond.rhs)
+					return if cond.op == .key_is { result } else { !result }
+				}
+			}
+			// Handle `$if field.is_array` or `$if !field.is_array` style
+			if cond.op == .eq || cond.op == .ne {
+				// field.name == "x" — string comparison
+				if cond.lhs is ast.SelectorExpr {
+					lhs_sel := cond.lhs as ast.SelectorExpr
+					if lhs_sel.lhs is ast.Ident && lhs_sel.lhs.name == g.comptime_field_var {
+						if lhs_sel.rhs.name == 'name' {
+							if cond.rhs is ast.BasicLiteral {
+								rhs_lit := cond.rhs as ast.BasicLiteral
+								rhs_name := strip_literal_quotes(rhs_lit.value)
+								matched := g.comptime_field_name == rhs_name
+								return if cond.op == .eq { matched } else { !matched }
+							}
+						}
 					}
 				}
 			}
@@ -3228,6 +3360,242 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 			return g.eval_comptime_cond(cond.expr)
 		}
 		else {}
+	}
+	return false
+}
+
+struct ComptimeResolvedType {
+	matched bool
+	typ     types.Type = types.Struct{}
+}
+
+// resolve_comptime_is_lhs resolves the LHS of a comptime `is` check to a concrete type.
+// Handles: T, T.unaliased_typ, field.typ, field.unaliased_typ
+fn (g &Gen) resolve_comptime_is_lhs(lhs ast.Expr) ComptimeResolvedType {
+	if lhs is ast.Ident {
+		// Simple `T is ...` — look up generic type
+		if concrete := g.active_generic_types[lhs.name] {
+			return ComptimeResolvedType{
+				matched: true
+				typ:     concrete
+			}
+		}
+	}
+	if lhs is ast.SelectorExpr {
+		sel := lhs as ast.SelectorExpr
+		if sel.lhs is ast.Ident {
+			lhs_name := sel.lhs.name
+			rhs_name := sel.rhs.name
+			// T.unaliased_typ — resolve generic T then strip aliases
+			if concrete := g.active_generic_types[lhs_name] {
+				if rhs_name == 'unaliased_typ' {
+					return ComptimeResolvedType{
+						matched: true
+						typ:     comptime_unalias_type(concrete)
+					}
+				}
+				return ComptimeResolvedType{
+					matched: true
+					typ:     concrete
+				}
+			}
+			// field.typ or field.unaliased_typ — use comptime field state
+			if lhs_name == g.comptime_field_var {
+				if rhs_name == 'typ' || rhs_name == 'unaliased_typ' {
+					field_type := g.comptime_field_raw_type
+					typ := if rhs_name == 'unaliased_typ' {
+						comptime_unalias_type(field_type)
+					} else {
+						field_type
+					}
+					return ComptimeResolvedType{
+						matched: true
+						typ:     typ
+					}
+				}
+			}
+		}
+	}
+	return ComptimeResolvedType{}
+}
+
+// comptime_unalias_type strips Alias layers from a type.
+fn comptime_unalias_type(t types.Type) types.Type {
+	mut cur := t
+	for {
+		if cur is types.Alias {
+			a := cur as types.Alias
+			cur = a.base_type
+			continue
+		}
+		break
+	}
+	return cur
+}
+
+// comptime_type_matches checks if a resolved type matches the RHS of a comptime `is` check.
+// Handles: Ident (concrete type name), ComptimeExpr ($struct, $enum, etc.), PrefixExpr (&type)
+fn (g &Gen) comptime_type_matches(typ types.Type, rhs ast.Expr) bool {
+	if rhs is ast.Ident {
+		return g.comptime_matches_type_name(typ, rhs.name)
+	}
+	if rhs is ast.ComptimeExpr {
+		// $struct, $enum, $int, $float, $array, $map, $option, etc.
+		if rhs.expr is ast.Ident {
+			return g.comptime_matches_keyword(typ, rhs.expr.name)
+		}
+		return false
+	}
+	if rhs is ast.PrefixExpr {
+		// e.g., &int — pointer to type
+		return false
+	}
+	return false
+}
+
+// comptime_matches_type_name checks if a type matches a concrete type name.
+fn (g &Gen) comptime_matches_type_name(typ types.Type, name string) bool {
+	type_name := typ.name()
+	if type_name == name {
+		return true
+	}
+	// Normalize aliases
+	if (name == 'byte' && type_name == 'u8') || (name == 'u8' && type_name == 'byte') {
+		return true
+	}
+	if (name == 'int' && type_name == 'i32') || (name == 'i32' && type_name == 'int') {
+		return true
+	}
+	// Check C type name
+	c_name := g.types_type_to_c(typ)
+	if c_name == name {
+		return true
+	}
+	return false
+}
+
+// comptime_matches_keyword checks if a type matches a comptime keyword like $struct, $enum, etc.
+fn (g &Gen) comptime_matches_keyword(typ types.Type, keyword string) bool {
+	match keyword {
+		'struct' {
+			return typ is types.Struct
+		}
+		'enum' {
+			return typ is types.Enum
+		}
+		'int' {
+			name := typ.name()
+			return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte',
+				'isize', 'usize']
+		}
+		'float' {
+			name := typ.name()
+			return name in ['f32', 'f64']
+		}
+		'array' {
+			return typ is types.Array
+		}
+		'map' {
+			return typ is types.Map
+		}
+		'option' {
+			return typ is types.OptionType
+		}
+		'string' {
+			return typ is types.String || typ.name() == 'string'
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// gen_comptime_field_selector handles comptime field access patterns:
+// - field.name → V string literal with field name
+// - field.name.str → C string literal
+// - field.name.len → integer literal
+// - field.attrs → array literal
+// - val.$(field.name) → val->field_name or val.field_name
+// Returns true if the selector was handled.
+fn (mut g Gen) gen_comptime_field_selector(sel ast.SelectorExpr) bool {
+	rhs_name := sel.rhs.name
+	// Handle val.$(field.name) — comptime selector placeholder
+	if rhs_name == '__comptime_selector__' || rhs_name == 'TODO: comptime selector' {
+		lhs_expr := sel.lhs
+		mut use_ptr := g.selector_use_ptr(lhs_expr)
+		if lhs_expr is ast.Ident {
+			if lhs_expr.name in g.cur_fn_mut_params {
+				use_ptr = true
+			} else if local_type := g.local_var_c_type_for_expr(lhs_expr) {
+				use_ptr = local_type.ends_with('*') || local_type == 'chan'
+			}
+		}
+		g.expr(lhs_expr)
+		selector := if use_ptr { '->' } else { '.' }
+		g.sb.write_string('${selector}${g.comptime_field_name}')
+		return true
+	}
+	// Handle field.name, field.typ, field.is_mut, etc.
+	if sel.lhs is ast.Ident {
+		if sel.lhs.name == g.comptime_field_var {
+			match rhs_name {
+				'name' {
+					g.sb.write_string(c_static_v_string_expr(g.comptime_field_name))
+					return true
+				}
+				'typ' {
+					g.sb.write_string(c_static_v_string_expr(g.comptime_field_type))
+					return true
+				}
+				'is_mut' {
+					g.sb.write_string('true')
+					return true
+				}
+				'is_shared' {
+					g.sb.write_string('false')
+					return true
+				}
+				'is_array' {
+					is_arr := g.comptime_field_raw_type is types.Array
+					g.sb.write_string(if is_arr { 'true' } else { 'false' })
+					return true
+				}
+				'is_map' {
+					is_map := g.comptime_field_raw_type is types.Map
+					g.sb.write_string(if is_map { 'true' } else { 'false' })
+					return true
+				}
+				'is_option' {
+					is_opt := g.comptime_field_raw_type is types.OptionType
+					g.sb.write_string(if is_opt { 'true' } else { 'false' })
+					return true
+				}
+				'attrs' {
+					g.sb.write_string('((Array_string){0})')
+					return true
+				}
+				else {}
+			}
+		}
+	}
+	// Handle field.name.str, field.name.len
+	if sel.lhs is ast.SelectorExpr {
+		inner := sel.lhs as ast.SelectorExpr
+		if inner.lhs is ast.Ident && inner.lhs.name == g.comptime_field_var {
+			if inner.rhs.name == 'name' {
+				match rhs_name {
+					'str' {
+						g.sb.write_string('"${g.comptime_field_name}"')
+						return true
+					}
+					'len' {
+						g.sb.write_string('${g.comptime_field_name.len}')
+						return true
+					}
+					else {}
+				}
+			}
+		}
 	}
 	return false
 }

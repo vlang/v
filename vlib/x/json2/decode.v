@@ -371,7 +371,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			return
 		}
 	}
-	$if T.unaliased_typ is string {
+	$if T.unaliased_typ is voidptr {
+		// skip voidptr fields - they cannot be decoded from JSON
+		if decoder.current_node != unsafe { nil } {
+			decoder.current_node = decoder.current_node.next
+		}
+		return
+	} $else $if T.unaliased_typ is string {
 		decoder.decode_string(mut val)!
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
@@ -801,7 +807,11 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 
 			mut array_element := T{}
 
-			decoder.decode_value(mut array_element)!
+			$if T.unaliased_typ is $struct {
+				decoder.decode_value(mut array_element)!
+			} $else {
+				decoder.decode_value(mut array_element)!
+			}
 
 			val << array_element
 		}
@@ -830,7 +840,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				break
 			}
 
-			key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+			key_str := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
 
 			decoder.current_node = decoder.current_node.next
 
@@ -844,10 +854,30 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 
 			decoder.decode_value(mut map_value)!
 
-			$if V is $map {
-				val[key] = map_value.move()
+			$if K is string {
+				$if V is $map {
+					val[key_str] = map_value.move()
+				} $else {
+					val[key_str] = map_value
+				}
+			} $else $if K is rune {
+				$if V is $map {
+					val[rune(key_str.int())] = map_value.move()
+				} $else {
+					val[rune(key_str.int())] = map_value
+				}
+			} $else $if K is $int {
+				$if V is $map {
+					val[K(key_str.int())] = map_value.move()
+				} $else {
+					val[K(key_str.int())] = map_value
+				}
 			} $else {
-				val[key] = map_value
+				$if V is $map {
+					val[key_str] = map_value.move()
+				} $else {
+					val[key_str] = map_value
+				}
 			}
 		}
 	} else {

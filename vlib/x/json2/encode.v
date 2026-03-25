@@ -62,6 +62,17 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(f32(val))
 	} $else $if T.unaliased_typ is f64 {
 		encoder.encode_number(f64(val))
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_number(0)
+	} $else $if T.unaliased_typ is $array_fixed {
+		encoder.output << `[`
+		for i, item in val {
+			encoder.encode_value(item)
+			if i < val.len - 1 {
+				encoder.output << `,`
+			}
+		}
+		encoder.output << `]`
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
@@ -253,7 +264,7 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 	encoder.output << `]`
 }
 
-fn (mut encoder Encoder) encode_map[T](val map[string]T) {
+fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	encoder.output << `{`
 	if encoder.prettify {
 		encoder.increment_level()
@@ -262,7 +273,7 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 
 	mut i := 0
 	for key, value in val {
-		encoder.encode_string(key)
+		encoder.encode_string('${key}')
 		encoder.output << `:`
 		if encoder.prettify {
 			encoder.output << ` `

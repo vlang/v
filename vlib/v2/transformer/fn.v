@@ -706,7 +706,8 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		mut has_generic_types := decl.name in t.env.generic_types
 		if !has_generic_types {
 			for key, _ in t.env.generic_types {
-				if key.starts_with('${decl.name}[') || key.contains('.${decl.name}[') {
+				if key.starts_with('${decl.name}[') || key.contains('.${decl.name}[')
+					|| key.ends_with('.${decl.name}') {
 					has_generic_types = true
 					break
 				}
@@ -955,6 +956,15 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
+	if (t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic')
+		&& expr.lhs.name() != 'snprintf' && expr.lhs.name() != 'memdup'
+		&& expr.lhs.name() != 'malloc' {
+		is_ga := expr.lhs is ast.GenericArgs
+		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
+		is_sel := expr.lhs is ast.SelectorExpr
+		is_ident := expr.lhs is ast.Ident
+		eprintln('[DBG transform_call_expr ENTRY] fn=${t.cur_fn_name_str} lhs_name=${expr.lhs.name()} is_ga=${is_ga} is_gaoi=${is_gaoi} is_sel=${is_sel} is_ident=${is_ident} args.len=${expr.args.len}')
+	}
 	// Resolve $d('key', default) comptime define calls to their default value.
 	// $d reads from compile-time environment; we just use the default.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
@@ -1443,6 +1453,10 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// specialization suffix so cleanc can later substitute concrete types.
 	if expr.lhs is ast.GenericArgOrIndexExpr {
 		gai := expr.lhs as ast.GenericArgOrIndexExpr
+		if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
+			is_sel := gai.lhs is ast.SelectorExpr
+			eprintln('[DBG GAOI in call] fn=${t.cur_fn_name_str} gai.lhs_name=${gai.lhs.name()} is_sel=${is_sel} gai.expr=${gai.expr.name()}')
+		}
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
 			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
@@ -1450,7 +1464,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				&& t.lookup_var_type(sel.lhs.name) == none))
 			if !is_module_call {
 				// Compute generic specialization suffix from the type arg
-				suffix := '_' + t.generic_specialization_token(gai.expr)
+				suffix := '_T_' + t.generic_specialization_token(gai.expr)
 				// When receiver matches the current method's receiver parameter
 				// and get_expr_type would fail (generic body), use the known prefix
 				recv_is_self := t.cur_fn_recv_param != '' && sel.lhs is ast.Ident
@@ -1514,6 +1528,12 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Default: transform arguments and lhs recursively
 	// This is important for smart cast propagation through method chains
 	// e.g., stmt.name.replace() when stmt is smartcast
+	if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
+		lhs_name := expr.lhs.name()
+		is_ga := expr.lhs is ast.GenericArgs
+		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
+		eprintln('[DBG transform_call default] fn=${t.cur_fn_name_str} lhs_name=${lhs_name} is_ga=${is_ga} is_gaoi=${is_gaoi}')
+	}
 	call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 	// Look up function parameter types for sumtype re-wrapping
 	fn_info := t.lookup_call_fn_info(expr.lhs)
@@ -2739,7 +2759,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				|| (t.get_module_scope(sel.lhs.name) != none
 				&& t.lookup_var_type(sel.lhs.name) == none))
 			if !is_module_call {
-				suffix := '_' + t.generic_specialization_token(gai.expr)
+				suffix := '_T_' + t.generic_specialization_token(gai.expr)
 				// When the receiver matches the current method's receiver parameter
 				// and get_expr_type would fail (generic body), use the known prefix
 				// directly to avoid wrong fallback to 'array__' prefix.
