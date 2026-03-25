@@ -364,7 +364,7 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 			}
 			s += ': ${arg}'
 		}
-		res << '_S("${escape_quotes(s)}")'
+		res << '_S("${cescape_nonascii(util.smart_quote(s, false))}")'
 	}
 	return res
 }
