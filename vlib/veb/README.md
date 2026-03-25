@@ -86,6 +86,39 @@ or for data that you want to share between different routes.
 A new `Context` struct is created every time a request is received,
 so it can contain different data for each request.
 
+## HTTPS
+
+To serve HTTPS directly from `veb`, pass an `mbedtls.SSLConnectConfig` in `RunParams`:
+
+```v
+module main
+
+import net.mbedtls
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(mut ctx Context) veb.Result {
+	return ctx.text('Hello over HTTPS')
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run_at[App, Context](mut app,
+		host:       '0.0.0.0'
+		port:       8443
+		ssl_config: mbedtls.SSLConnectConfig{
+			cert:     'certs/server.crt'
+			cert_key: 'certs/server.key'
+		}
+	) or { panic(err) }
+}
+```
+
 ## Defining endpoints
 
 To add endpoints to your web server, you must extend the `App` struct.

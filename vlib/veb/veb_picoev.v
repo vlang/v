@@ -20,11 +20,14 @@ $if !new_veb ? {
 		if params.port <= 0 || params.port > 65535 {
 			return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 		}
+		if ssl_enabled(params) {
+			run_at_with_ssl[A, X](mut global_app, params)!
+			return
+		}
 		routes := generate_routes[A, X](global_app)!
 		controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 		if params.show_startup_message {
-			host := if params.host == '' { 'localhost' } else { params.host }
-			println('[veb] Running app on http://${host}:${params.port}/')
+			println('[veb] Running app on ${server_protocol(params)}://${startup_host(params)}:${params.port}/')
 		}
 		flush_stdout()
 		mut pico_context := &RequestParams{
@@ -114,16 +117,6 @@ $if !new_veb ? {
 
 	fn (err IncompleteChunkedRequestBodyError) msg() string {
 		return 'incomplete chunked request body'
-	}
-
-	fn transfer_encoding_is_chunked(header http.Header) bool {
-		transfer_encoding := header.get(.transfer_encoding) or { return false }
-		for word in transfer_encoding.to_lower().split(',') {
-			if word.trim_space() == 'chunked' {
-				return true
-			}
-		}
-		return false
 	}
 
 	fn decode_chunked_request_body(encoded_body string) !string {

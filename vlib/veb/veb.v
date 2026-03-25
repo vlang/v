@@ -3,11 +3,15 @@
 // that can be found in the LICENSE file.
 module veb
 
+import io
 import net
 import net.http
+import net.mbedtls
 import net.urllib
 import os
+import strconv
 import strings
+import time
 
 // A type which doesn't get filtered inside templates
 pub type RawHtml = string
@@ -79,6 +83,286 @@ pub:
 	timeout_in_seconds        int  = 30
 	max_request_buffer_size   int  = 8192
 	benchmark_page_generation bool // for the "page rendered in X ms"
+	ssl_config                mbedtls.SSLConnectConfig
+}
+
+struct SslRequestParams {
+	global_app                voidptr
+	controllers_sorted        []&ControllerPath
+	routes                    &map[string]Route
+	benchmark_page_generation bool
+	max_request_buffer_size   int
+}
+
+fn ssl_enabled(params RunParams) bool {
+	return params.ssl_config.cert != '' || params.ssl_config.cert_key != ''
+}
+
+fn server_protocol(params RunParams) string {
+	if ssl_enabled(params) {
+		return 'https'
+	}
+	return 'http'
+}
+
+fn startup_host(params RunParams) string {
+	if params.host == '' {
+		return 'localhost'
+	}
+	return params.host
+}
+
+fn listen_addr(params RunParams) string {
+	if params.host == '' {
+		return ':${params.port}'
+	}
+	return '${params.host}:${params.port}'
+}
+
+fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
+	routes := generate_routes[A, X](global_app)!
+	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	if params.show_startup_message {
+		println('[veb] Running app on https://${startup_host(params)}:${params.port}/')
+	}
+	flush_stdout()
+	mut ssl_listener := mbedtls.new_ssl_listener(listen_addr(params), params.ssl_config)!
+	defer {
+		ssl_listener.shutdown() or {}
+	}
+	ssl_params := &SslRequestParams{
+		global_app:                unsafe { global_app }
+		controllers_sorted:        controllers_sorted
+		routes:                    &routes
+		benchmark_page_generation: params.benchmark_page_generation
+		max_request_buffer_size:   if params.max_request_buffer_size > 0 {
+			params.max_request_buffer_size
+		} else {
+			max_read
+		}
+	}
+	$if A is BeforeAcceptApp {
+		global_app.before_accept_loop()
+	}
+	for {
+		mut ssl_conn := ssl_listener.accept() or {
+			eprintln('[veb] accept() failed, reason: ${err}; skipping')
+			continue
+		}
+		ssl_conn.duration = params.timeout_in_seconds * time.second
+		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params)
+	}
+}
+
+fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestParams) {
+	defer {
+		ssl_conn.shutdown() or {}
+	}
+	mut reader := io.new_buffered_reader(
+		reader: ssl_conn
+		cap:    params.max_request_buffer_size
+	)
+	defer {
+		unsafe {
+			reader.free()
+		}
+	}
+	for {
+		req := read_request_from_buffered_reader(mut reader) or {
+			if err !is io.Eof {
+				write_ssl_response(mut ssl_conn, http_400) or {}
+			}
+			return
+		}
+		completed_context := handle_ssl_request[A, X](req, params) or {
+			write_ssl_response(mut ssl_conn, http_400) or {}
+			return
+		}
+		if completed_context.takeover {
+			eprintln('[veb] HTTPS connections do not support `ctx.takeover_conn()` yet; closing the connection after this response.')
+		}
+		write_ssl_context_response(mut ssl_conn, completed_context) or {
+			eprintln('[veb] error sending HTTPS response: ${err}')
+			return
+		}
+		if completed_context.takeover
+			|| should_close_ssl_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
+			return
+		}
+	}
+}
+
+fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
+	mut req := http.parse_request_head(mut reader)!
+	if transfer_encoding_is_chunked(req.header) {
+		req.data = read_chunked_request_body(mut reader)!
+		return req
+	}
+	content_length := req.header.get(.content_length) or { '0' }
+	content_length_i := content_length.int()
+	if content_length_i <= 0 {
+		return req
+	}
+	mut body := []u8{len: content_length_i}
+	read_exact_bytes(mut reader, mut body)!
+	req.data = body.bytestr()
+	return req
+}
+
+fn transfer_encoding_is_chunked(header http.Header) bool {
+	transfer_encoding := header.get(.transfer_encoding) or { return false }
+	for word in transfer_encoding.to_lower().split(',') {
+		if word.trim_space() == 'chunked' {
+			return true
+		}
+	}
+	return false
+}
+
+fn read_chunked_request_body(mut reader io.BufferedReader) !string {
+	mut sb := strings.new_builder(1024)
+	for {
+		mut chunk_size_line := reader.read_line()!
+		if semicolon_idx := chunk_size_line.index(';') {
+			chunk_size_line = chunk_size_line[..semicolon_idx]
+		}
+		chunk_size_line = chunk_size_line.trim_space()
+		if chunk_size_line.len == 0 {
+			return error('invalid chunk size line')
+		}
+		chunk_size_u64 := strconv.parse_uint(chunk_size_line, 16, 64) or {
+			return error('invalid chunk size line')
+		}
+		if chunk_size_u64 > u64(max_int) {
+			return error('chunk size too large')
+		}
+		chunk_size := int(chunk_size_u64)
+		if chunk_size == 0 {
+			for {
+				trailer := reader.read_line()!
+				if trailer == '' {
+					return sb.str()
+				}
+			}
+		}
+		mut chunk := []u8{len: chunk_size}
+		read_exact_bytes(mut reader, mut chunk)!
+		sb.write(chunk)!
+		mut delimiter := []u8{len: 2}
+		read_exact_bytes(mut reader, mut delimiter)!
+		if delimiter[0] != `\r` || delimiter[1] != `\n` {
+			return error('invalid chunk delimiter')
+		}
+	}
+	return error('invalid chunked body')
+}
+
+fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
+	mut offset := 0
+	for offset < buf.len {
+		offset += reader.read(mut buf[offset..])!
+	}
+}
+
+fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Context {
+	mut global_app := unsafe { &A(params.global_app) }
+	page_gen_start := time.ticks()
+	mut url := urllib.parse(req.url) or {
+		eprintln('[veb] error parsing path "${req.url}": ${err}')
+		return none
+	}
+	query := parse_query_from_url(url)
+	form, files := parse_form_from_request(req) or {
+		eprintln('[veb] error parsing form: ${err.msg()}')
+		return none
+	}
+	host_with_port := req.header.get(.host) or { '' }
+	host, _ := urllib.split_host_port(host_with_port)
+	mut ctx := &Context{
+		req:            req
+		page_gen_start: page_gen_start
+		query:          query
+		form:           form
+		files:          files
+	}
+	if connection_header := req.header.get(.connection) {
+		if connection_header.to_lower() == 'close' {
+			ctx.client_wants_to_close = true
+		}
+	}
+	$if A is StaticApp {
+		ctx.custom_mime_types = global_app.static_mime_types.clone()
+	}
+	$if A is ControllerInterface {
+		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut
+			url, host)
+		{
+			return completed_context
+		}
+	}
+	mut user_context := X{}
+	user_context.Context = ctx
+	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
+	return &user_context.Context
+}
+
+fn write_ssl_context_response(mut ssl_conn mbedtls.SSLConn, completed_context &Context) ! {
+	if !completed_context.done && completed_context.return_type == .normal {
+		return error('context did not send a response')
+	}
+	match completed_context.return_type {
+		.normal {
+			write_ssl_response(mut ssl_conn, completed_context.res)!
+		}
+		.file {
+			write_ssl_response(mut ssl_conn, completed_context.res)!
+			if completed_context.return_file == '' {
+				return error('missing file response path')
+			}
+			mut file := os.open(completed_context.return_file)!
+			defer {
+				file.close()
+			}
+			mut buf := []u8{len: max_read}
+			for {
+				n := file.read(mut buf) or {
+					if err is io.Eof {
+						break
+					}
+					return err
+				}
+				if n <= 0 {
+					break
+				}
+				ssl_conn.write(buf[..n])!
+			}
+		}
+	}
+}
+
+fn write_ssl_response(mut ssl_conn mbedtls.SSLConn, resp http.Response) ! {
+	ssl_conn.write(resp.bytes())!
+}
+
+fn should_close_ssl_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
+	if client_wants_to_close {
+		return true
+	}
+	resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
+	if resp_conn == 'close' {
+		return true
+	}
+	if resp_conn == 'keep-alive' {
+		return false
+	}
+	req_conn := (req.header.get(.connection) or { '' }).to_lower()
+	if req_conn == 'close' {
+		return true
+	}
+	if req_conn == 'keep-alive' {
+		return false
+	}
+	return req.version != .v1_1
 }
 
 struct FileResponse {
