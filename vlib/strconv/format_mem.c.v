@@ -207,9 +207,11 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			c++
 		}
 
-		// allocate exp+32 chars for the return string
-		// mut res := []u8{len:exp+32,init:`0`}
-		mut res := []u8{len: exp + 40, init: 0}
+		// Reserve enough space for the current digits, exponent-driven zeros,
+		// requested fractional padding, and the trailing NUL.
+		extra_frac_digits := if dec_digit > 0 { dec_digit } else { 0 }
+		sign_len := if sgn < 0 { 1 } else { 0 }
+		mut res := []u8{len: sign_len + i1 + exp + extra_frac_digits + 4, init: 0}
 		mut r_i := 0 // result string buffer index
 
 		// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
