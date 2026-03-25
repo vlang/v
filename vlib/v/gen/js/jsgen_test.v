@@ -61,6 +61,18 @@ fn test_example_compilation() {
 	}
 }
 
+fn test_issue_11379_js_browser_builtin_print_call_does_not_panic() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path(test_dir, 'testdata', 'js_browser_builtin_print_regression.v')
+	output := os.join_path(output_dir, 'js_browser_builtin_print_regression.js')
+	res := os.execute('${os.quoted_path(vexe)} -enable-globals -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('V panic:'), res.output
+	assert os.exists(output)
+}
+
 fn find_test_files() []string {
 	files := os.ls(test_dir) or { panic(err) }
 	// The life example never exits, so tests would hang with it, skip
