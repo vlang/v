@@ -316,12 +316,27 @@ pub:
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
-	if pref_.build_mode == .build_module {
+	if pref_.build_mode == .build_module || pref_.is_o {
 		for file in files {
-			if file.path.contains(pref_.path)
-				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+			if !file.path.contains(pref_.path) {
+				continue
+			}
+			if pref_.build_mode == .build_module {
+				if file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+					module_built = file.mod.name
+					break
+				}
+			} else {
 				module_built = file.mod.name
 				break
+			}
+		}
+		if pref_.is_o && module_built == '' {
+			for file in files {
+				if !util.module_is_builtin(file.mod.name) {
+					module_built = file.mod.name
+					break
+				}
 			}
 		}
 	}
@@ -381,8 +396,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: pref_.should_use_segfault_handler()
-		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
-		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
+		static_modifier:      if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
+		static_non_parallel:  if !pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -914,7 +929,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		results_forward:        global_g.results_forward
 		done_options:           global_g.done_options
 		done_results:           global_g.done_results
-		late_chan_types:        global_g.late_chan_types
+		late_chan_types:         global_g.late_chan_types
 		is_autofree:            global_g.pref.autofree
 		obf_table:              global_g.obf_table
 		referenced_fns:         global_g.referenced_fns
@@ -923,6 +938,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		done_typedef_phase:     global_g.done_typedef_phase
 		array_typedefs:         global_g.array_typedefs.clone()
 		written_array_typedefs: global_g.written_array_typedefs
+		static_modifier:        global_g.static_modifier
+		static_non_parallel:    global_g.static_non_parallel
 		has_reflection:         'v.reflection' in global_g.table.modules
 		has_debugger:           'v.debug' in global_g.table.modules
 		reflection_strings:     global_g.reflection_strings
@@ -1142,6 +1159,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode == .build_module {
 		g.comptime_definitions.writeln('#define _VBUILDMODULE (1)')
 	}
+	if g.pref.is_o {
+		g.comptime_definitions.writeln('#define _VOBJECTFILE (1)')
+	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -1154,6 +1174,10 @@ pub fn (mut g Gen) init() {
 	// muttable.used_features.used_fns['eprintln'] = true
 	// muttable.used_features.used_fns['print_backtrace'] = true
 	// muttable.used_features.used_fns['exit'] = true
+}
+
+fn (g &Gen) should_use_object_local_linkage(mod string) bool {
+	return g.pref.is_o && g.module_built != '' && mod != g.module_built
 }
 
 pub fn (mut g Gen) finish() {
@@ -1292,9 +1316,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln2('\treturn _S("unknown ${util.strip_main_name(sym.name)}");', '}')
 			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
 			if g.pref.build_mode != .build_module {
-				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-				if g.pref.parallel_cc {
+				g.definitions.writeln('${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+				g.writeln2('', '${g.static_non_parallel}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+				if g.pref.parallel_cc && !g.pref.is_o {
 					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
 				for t in inter_info.types {
@@ -8635,9 +8659,10 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vinit_start_pos := g.out.len
+	init_prefix := if g.pref.is_o { 'static ' } else { '' }
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
-	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	g.writeln('${init_prefix}void _vinit(int ___argc, voidptr ___argv) {')
 
 	g.write_debug_calls_typeof_functions()
 
@@ -8745,7 +8770,7 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	fn_vcleanup_start_pos := g.out.len
-	g.writeln('void _vcleanup(void) {')
+	g.writeln('${init_prefix}void _vcleanup(void) {')
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_S("_vcleanup"));')
 	}
@@ -8782,8 +8807,10 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
-		g.export_funcs << '_vinit_caller'
-		g.writeln('void _vinit_caller() {')
+		if !g.pref.is_o {
+			g.export_funcs << '_vinit_caller'
+		}
+		g.writeln('${init_prefix}void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
@@ -8791,8 +8818,10 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
-		g.export_funcs << '_vcleanup_caller'
-		g.writeln('void _vcleanup_caller() {')
+		if !g.pref.is_o {
+			g.export_funcs << '_vcleanup_caller'
+		}
+		g.writeln('${init_prefix}void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')

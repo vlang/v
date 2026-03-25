@@ -189,6 +189,8 @@ see also `v help build`.
       Tell V to compile an .o object file instead of an executable.
       This is useful if you plan to create a module, that will be later linked to a
       larger program, potentially written in another language.
+      The flag can also be combined with `-o file.c`, to generate C source that can be
+      compiled and linked together with other `-is_o` generated V units.
       Note: this option currently works with gcc/clang/tcc, but not msvc.
       Note: use either -no-skip-unused or tag the functions you expect to be publicly
       usable in the .o file with `@[markused]` . Adding `-gc none` may be also needed,
