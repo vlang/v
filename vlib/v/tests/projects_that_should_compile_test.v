@@ -62,6 +62,12 @@ fn test_projects_should_run() {
 	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
 	assert res2.trim_space() == 'somemodule somemoduletwo'
 
+	res_sibling_modules_in_src := vrun_ok('run', vroot_path('vlib/v/tests/testdata/sibling_modules_in_src/'))
+	assert res_sibling_modules_in_src.trim_space() == 'b says Hello from a!'
+
+	res_sibling_modules_in_src_single_file := vrun_ok('run', vroot_path('vlib/v/tests/testdata/sibling_modules_in_src/src/main.v'))
+	assert res_sibling_modules_in_src_single_file.trim_space() == 'b says Hello from a!'
+
 	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
 	assert res3.trim_space().ends_with('cache.a: 123')
 }
