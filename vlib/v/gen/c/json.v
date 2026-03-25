@@ -129,7 +129,14 @@ ${dec_fn_dec} {
 
 			base_type := utyp.clear_flag(.option)
 			base_type_str := g.styp(base_type)
-			dec.writeln('\tbuiltin___option_ok(&(${base_type_str}[]){ ${g.type_default(base_type)} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
+			// Optional struct pointers need storage before field decoding writes through them.
+			base_value := if base_type.is_ptr() && sym.info is ast.Struct {
+				ptr_styp := g.styp(base_type.set_nr_muls(base_type.nr_muls() - 1))
+				'HEAP(${ptr_styp}, {0})'
+			} else {
+				g.type_default(base_type)
+			}
+			dec.writeln('\tbuiltin___option_ok(&(${base_type_str}[]){ ${base_value} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
 		}
 
 		extern_str := if g.pref.parallel_cc { 'extern ' } else { '' }
