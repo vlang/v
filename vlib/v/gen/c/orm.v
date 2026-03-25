@@ -664,7 +664,6 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 			g.write_orm_primitive(ast.none_type, expr)
 		}
 		else {
-			eprintln(expr)
 			verror('ORM: ${expr.type_name()} is not supported')
 		}
 	}

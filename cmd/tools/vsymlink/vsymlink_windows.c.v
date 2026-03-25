@@ -119,8 +119,8 @@ fn warn_and_exit(err string) {
 fn get_reg_sys_env_handle() !voidptr {
 	// open the registry key
 	reg_key_path := 'Environment'
-	reg_env_key := unsafe { nil } // or HKEY (HANDLE)
-	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
+	mut reg_env_key := os.hkey_current_user // placeholder, overwritten by RegOpenKeyEx
+	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, voidptr(&reg_env_key)) != 0 {
 		return error('Could not open "${reg_key_path}" in the registry')
 	}
 	return reg_env_key
