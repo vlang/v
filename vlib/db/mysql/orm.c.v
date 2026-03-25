@@ -244,6 +244,12 @@ fn mysql_stmt_bind_query_data(mut stmt Stmt, d orm.QueryData) ! {
 	}
 }
 
+fn stmt_bind_array[T](mut stmt Stmt, data []T) {
+	for element in data {
+		stmt_bind_primitive(mut stmt, orm.Primitive(element))
+	}
+}
+
 // stmt_bind_primitive binds the `data` to the `stmt`.
 fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 	match data {
@@ -294,9 +300,49 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_null()
 		}
 		[]orm.Primitive {
-			for element in data {
-				stmt_bind_primitive(mut stmt, element)
-			}
+			stmt_bind_array(mut stmt, data)
+		}
+		[]bool {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]int {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]string {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]time.Time {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]orm.InfixType {
+			stmt_bind_array(mut stmt, data)
 		}
 	}
 }

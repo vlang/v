@@ -454,3 +454,9 @@ The API includes a built-in parser to handle intricate `WHERE` clause conditions
 
 Note the use of placeholders `?`.
 The conditional expressions support logical operators including `AND`, `OR`, `||`, and `&&`.
+Named arrays can also be passed directly for `IN` clauses:
+
+```v ignore
+	user_ids := ['1', '2']
+	users := qb.where('id IN ?', user_ids)!.query()!
+```

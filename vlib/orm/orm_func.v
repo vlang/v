@@ -60,7 +60,7 @@ pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&Que
 		// skip first field
 		qb.where.is_and << true // and
 	}
-	qb.parse_conditions(condition, params)!
+	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
 	qb.config.has_where = true
 	return qb
 }
@@ -72,9 +72,45 @@ pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&
 		// skip first field
 		qb.where.is_and << false // or
 	}
-	qb.parse_conditions(condition, params)!
+	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
 	qb.config.has_where = true
 	return qb
+}
+
+fn normalize_primitive_arguments(params []Primitive) []Primitive {
+	mut normalized := []Primitive{cap: params.len}
+	for param in params {
+		normalized << primitive_value(param)
+	}
+	return normalized
+}
+
+fn primitive_value(value Primitive) Primitive {
+	return match value {
+		[]bool { primitive_array(value) }
+		[]f32 { primitive_array(value) }
+		[]f64 { primitive_array(value) }
+		[]i16 { primitive_array(value) }
+		[]i64 { primitive_array(value) }
+		[]i8 { primitive_array(value) }
+		[]int { primitive_array(value) }
+		[]string { primitive_array(value) }
+		[]time.Time { primitive_array(value) }
+		[]u16 { primitive_array(value) }
+		[]u32 { primitive_array(value) }
+		[]u64 { primitive_array(value) }
+		[]u8 { primitive_array(value) }
+		[]InfixType { primitive_array(value) }
+		else { value }
+	}
+}
+
+fn primitive_array[T](values []T) []Primitive {
+	mut out := []Primitive{cap: values.len}
+	for value in values {
+		out << Primitive(value)
+	}
+	return out
 }
 
 fn parse_error(msg string, pos int, conds string) ! {
