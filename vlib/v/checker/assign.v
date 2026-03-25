@@ -895,12 +895,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				continue
 			}
 			if method := left_sym.find_method_with_generic_parent(extracted_op) {
+				c.mark_fn_decl_as_referenced(method.fkey())
 				if method.return_type != left_type_unwrapped {
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
 			} else {
 				if method := parent_sym.find_method_with_generic_parent(extracted_op) {
+					c.mark_fn_decl_as_referenced(method.fkey())
 					if parent_sym.kind == .alias
 						&& (parent_sym.info as ast.Alias).parent_type != method.return_type {
 						c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',

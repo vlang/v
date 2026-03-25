@@ -19,3 +19,10 @@ vlib/v/checker/tests/return_working_match_if.vv:9:7: notice: condition is always
       |                ~~~~
    10 |                 return ''
    11 |             } else {
+vlib/v/checker/tests/return_working_match_if.vv:3:4: warning: unused function: `foo`
+    1 | fn main() {}
+    2 | 
+    3 | fn foo() string {
+      |    ~~~
+    4 |     match 1 {
+    5 |         1 {

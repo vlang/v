@@ -11,31 +11,33 @@ import v.token
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	dump           bool            // filled in by markused
-	anon_fn        bool            // fn () { }
-	auto_str       bool            // auto str fns
-	auto_str_ptr   bool            // auto str fns for ptr type
-	auto_str_arr   bool            // auto str fns for array
-	arr_prepend    bool            // arr.prepend()
-	arr_insert     bool            // arr.insert()
-	arr_first      bool            // arr.first()
-	arr_last       bool            // arr.last()
-	arr_pop_left   bool            // arr.pop_left()
-	arr_pop        bool            // arr.pop()
-	arr_delete     bool            // arr.delete()
-	arr_reverse    bool            // arr.reverse()
-	arr_map        bool            // []map[key]value
-	print_options  bool            // print option type
-	safe_int       bool            // needs safe int comparison
-	print_types    map[int]bool    // print() idx types
-	used_fns       map[string]bool // filled in by markused
-	used_consts    map[string]bool // filled in by markused
-	used_globals   map[string]bool // filled in by markused
-	used_syms      map[int]bool    // filled in by markused
-	used_veb_types []Type          // veb context types, filled in by checker
-	used_maps      int             // how many times maps were used, filled in by markused
-	used_none      int             // how many times `none` was used, filled in by markused
-	used_closures  int             // number of used closures, either directly with `fn [state] () {}`, or indirectly (though `instance.method` promotions)
+	dump              bool            // filled in by markused
+	anon_fn           bool            // fn () { }
+	auto_str          bool            // auto str fns
+	auto_str_ptr      bool            // auto str fns for ptr type
+	auto_str_arr      bool            // auto str fns for array
+	arr_prepend       bool            // arr.prepend()
+	arr_insert        bool            // arr.insert()
+	arr_first         bool            // arr.first()
+	arr_last          bool            // arr.last()
+	arr_pop_left      bool            // arr.pop_left()
+	arr_pop           bool            // arr.pop()
+	arr_delete        bool            // arr.delete()
+	arr_reverse       bool            // arr.reverse()
+	arr_map           bool            // []map[key]value
+	print_options     bool            // print option type
+	safe_int          bool            // needs safe int comparison
+	print_types       map[int]bool    // print() idx types
+	used_fns          map[string]bool // filled in by markused
+	used_consts       map[string]bool // filled in by markused
+	used_globals      map[string]bool // filled in by markused
+	used_syms         map[int]bool    // filled in by markused
+	referenced_fns    map[string]bool // filled in by the checker
+	referenced_consts map[string]bool // filled in by the checker
+	used_veb_types    []Type          // veb context types, filled in by checker
+	used_maps         int             // how many times maps were used, filled in by markused
+	used_none         int             // how many times `none` was used, filled in by markused
+	used_closures     int             // number of used closures, either directly with `fn [state] () {}`, or indirectly (though `instance.method` promotions)
 	// json             bool            // json is imported
 	comptime_calls map[string]bool // resolved name to call on comptime
 	comptime_syms  map[Type]bool   // resolved syms (generic)
@@ -52,6 +54,8 @@ pub fn (mut uf UsedFeatures) free() {
 		uf.used_fns.free()
 		uf.used_consts.free()
 		uf.used_globals.free()
+		uf.referenced_fns.free()
+		uf.referenced_consts.free()
 		uf.used_veb_types.free()
 	}
 }

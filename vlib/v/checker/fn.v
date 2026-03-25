@@ -1446,6 +1446,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			found = true
 			func = f
 			unsafe { c.table.fns[name_prefixed].usages++ }
+			c.mark_fn_decl_as_referenced(f.fkey())
 		}
 	}
 	if !found && node.left is ast.IndexExpr {
@@ -1502,6 +1503,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			found = true
 			func = f
 			unsafe { c.table.fns[fn_name].usages++ }
+			c.mark_fn_decl_as_referenced(f.fkey())
 		}
 	}
 
@@ -1517,6 +1519,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					func = f
 					node.name = qualified_name
 					unsafe { c.table.fns[qualified_name].usages++ }
+					c.mark_fn_decl_as_referenced(f.fkey())
 					if !c.table.register_fn_concrete_types(f.name, concrete_types) {
 						c.need_recheck_generic_fns = true
 					}
@@ -1539,6 +1542,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						found = true
 						func = f
 						unsafe { c.table.fns[orig_name].usages++ }
+						c.mark_fn_decl_as_referenced(f.fkey())
 						node.name = orig_name
 						node.left_type = typ
 					}
@@ -1605,6 +1609,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			unsafe { c.table.fns[fn_name].usages++ }
 			found = true
 			func = unsafe { c.table.fns[fn_name] }
+			c.mark_fn_decl_as_referenced(func.fkey())
 			is_native_builtin = true
 		}
 	}
@@ -1623,6 +1628,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			found = true
 			func = f
 			unsafe { c.table.fns[os_name].usages++ }
+			c.mark_fn_decl_as_referenced(f.fkey())
 		}
 	}
 	if is_native_builtin {
@@ -1742,6 +1748,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					node.is_fn_a_const = true
 					node.fn_var_type = obj.typ
 					node.const_name = qualified_const_name
+					c.mark_const_decl_as_referenced(qualified_const_name)
 				}
 			}
 		}
@@ -2991,6 +2998,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		return ast.void_type
 	}
+	c.mark_fn_decl_as_referenced(method.fkey())
 
 	// x is Bar[T], x.foo() -> x.foo[T]()
 	rec_sym := if is_method_from_embed {

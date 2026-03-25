@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_working_unsafe.vv:3:4: warning: unused function: `foo`
+    1 | fn main() {}
+    2 | 
+    3 | fn foo() string {
+      |    ~~~
+    4 |     unsafe {
+    5 |         return ''
