@@ -59,7 +59,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_sum_type = cond_type_sym.kind in [.interface, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = node.cond_type
-	mut first_iteration := true
+	mut ret_type_needs_inference := true
 	mut infer_cast_type := ast.void_type
 	mut need_explicit_cast := false
 	mut ret_type := ast.void_type
@@ -324,32 +324,36 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
 				must_be_option = must_be_option || expr_type == ast.none_type
 				stmt.typ = expr_type
-				if first_iteration {
-					if unwrapped_expected_type.has_option_or_result()
-						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
-						c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
-							expr_type)
-						ret_type = node.expected_type
-					} else {
-						ret_type = expr_type
-						if expr_type.is_ptr() {
-							if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
-								&& c.table.is_interface_var(stmt.expr.obj) {
-								ret_type = expr_type.deref()
-							} else if mut stmt.expr is ast.PrefixExpr
-								&& stmt.expr.right is ast.Ident {
-								ident := stmt.expr.right as ast.Ident
-								if ident.obj is ast.Var && c.table.is_interface_var(ident.obj) {
+				is_noreturn := is_noreturn_callexpr(stmt.expr)
+				if ret_type_needs_inference {
+					if !is_noreturn {
+						if unwrapped_expected_type.has_option_or_result()
+							|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
+							c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
+								expr_type)
+							ret_type = node.expected_type
+						} else {
+							ret_type = expr_type
+							if expr_type.is_ptr() {
+								if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+									&& c.table.is_interface_var(stmt.expr.obj) {
 									ret_type = expr_type.deref()
+								} else if mut stmt.expr is ast.PrefixExpr
+									&& stmt.expr.right is ast.Ident {
+									ident := stmt.expr.right as ast.Ident
+									if ident.obj is ast.Var && c.table.is_interface_var(ident.obj) {
+										ret_type = expr_type.deref()
+									}
 								}
 							}
+							c.expected_expr_type = expr_type
 						}
-						c.expected_expr_type = expr_type
-					}
-					infer_cast_type = stmt.typ
-					if mut stmt.expr is ast.CastExpr {
-						need_explicit_cast = true
-						infer_cast_type = stmt.expr.typ
+						infer_cast_type = stmt.typ
+						if mut stmt.expr is ast.CastExpr {
+							need_explicit_cast = true
+							infer_cast_type = stmt.expr.typ
+						}
+						ret_type_needs_inference = false
 					}
 				} else {
 					if ret_type.idx() != expr_type.idx() {
@@ -376,7 +380,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					if must_be_option && ret_type == ast.none_type && expr_type != ret_type {
 						ret_type = expr_type.set_flag(.option)
 					}
-					if stmt.typ != ast.error_type && !is_noreturn_callexpr(stmt.expr) {
+					if stmt.typ != ast.error_type && !is_noreturn {
 						ret_sym := c.table.sym(ret_type)
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface]
@@ -487,9 +491,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			} else if c.inside_return && mut stmt is ast.Return && ret_type == ast.void_type {
 				ret_type = if stmt.types.len > 0 { stmt.types[0] } else { c.expected_type }
 			}
-		}
-		if !node.is_comptime || (node.is_comptime && comptime_match_branch_result) {
-			first_iteration = false
 		}
 		if node.is_comptime {
 			// branches may not have been processed by c.stmts()
