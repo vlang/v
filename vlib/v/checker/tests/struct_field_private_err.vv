@@ -13,3 +13,6 @@ _ := amod.Bcg2[int]{
 }
 
 amod.foo(bar: 'bar')
+
+foo := amod.new_private_foo(12)
+_ = foo.bar

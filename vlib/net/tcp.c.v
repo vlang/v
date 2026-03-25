@@ -519,7 +519,7 @@ pub fn (c &TcpListener) addr() !Addr {
 	return c.sock.address()
 }
 
-struct TcpSocket {
+pub struct TcpSocket {
 	Socket
 }
 
