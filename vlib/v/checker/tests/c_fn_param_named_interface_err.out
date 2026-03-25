@@ -1,0 +1,8 @@
+vlib/v/checker/tests/c_fn_param_named_interface_err.vv:9:4: error: expected 4 arguments, but got 3
+    7 | fn main() {
+    8 |     registry := C.wl_registry{}
+    9 |     C.wl_registry_bind(&registry, u32(0), u32(0))
+      |       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 | }
+Details: have (&C.wl_registry, u32, u32)
+         want (&C.wl_registry, u32, &C.wl_interface, u32)

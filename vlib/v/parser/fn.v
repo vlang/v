@@ -1332,7 +1332,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 			if is_mut {
 				p.next()
 			}
-			if p.fn_language == .c && p.tok.kind == .name
+			if p.fn_language == .c && is_ident_name(p.tok.lit)
+				&& p.tok.kind !in [.key_fn, .key_struct]
 				&& p.peek_tok.kind !in [.comma, .rpar, .dot] {
 				name = p.tok.lit
 				p.next()
