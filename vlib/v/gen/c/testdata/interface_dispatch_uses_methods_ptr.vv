@@ -1,0 +1,20 @@
+interface Plugin {
+	print_msg()
+}
+
+struct MyPlugin {}
+
+fn (p MyPlugin) print_msg() {}
+
+fn create_plugin() Plugin {
+	return MyPlugin{}
+}
+
+fn use_plugin(plugin Plugin) {
+	plugin.print_msg()
+}
+
+fn main() {
+	plugin := create_plugin()
+	use_plugin(plugin)
+}

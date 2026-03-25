@@ -3544,9 +3544,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			eprintln('>>> interface typ_sym.name: ${typ_sym.name} | receiver_type_name: ${receiver_type_name} | pos: ${node.pos}')
 		}
 
-		left_cc_type := g.cc_type(g.table.unaliased_type(left_type), false)
-		left_type_name := util.no_dots(left_cc_type)
-		g.write('${c_name(left_type_name)}_name_table[')
+		methods_struct_name := g.interface_methods_struct_name(left_type)
+		g.write('((${methods_struct_name}*)(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
@@ -3556,7 +3555,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		dot := g.dot_or_ptr(left_type)
 		mname := c_fn_name(method_name)
-		g.write('${dot}_typ]._method_${mname}(')
+		g.write('${dot}_methods))->_method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
