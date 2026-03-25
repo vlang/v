@@ -513,7 +513,7 @@ pub fn (db &DB) prepare(query string) !StmtHandle {
 
 	mut code := C.mysql_stmt_prepare(stmt, query.str, query.len)
 	if code != 0 {
-		db.throw_mysql_error()!
+		throw_mysql_stmt_error(stmt)!
 	}
 
 	return StmtHandle{
@@ -543,12 +543,12 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 
 	mut response := C.mysql_stmt_bind_param(stmt.stmt, unsafe { &C.MYSQL_BIND(bind_params.data) })
 	if response == true {
-		stmt.db.throw_mysql_error()!
+		throw_mysql_stmt_error(stmt.stmt)!
 	}
 
 	mut code := C.mysql_stmt_execute(stmt.stmt)
 	if code != 0 {
-		stmt.db.throw_mysql_error()!
+		throw_mysql_stmt_error(stmt.stmt)!
 	}
 
 	query_metadata := C.mysql_stmt_result_metadata(stmt.stmt)
@@ -608,6 +608,11 @@ pub fn (stmt &StmtHandle) close() {
 @[inline]
 fn (db &DB) throw_mysql_error() ! {
 	return error_with_code(get_error_msg(db.conn), get_errno(db.conn))
+}
+
+@[inline]
+fn throw_mysql_stmt_error(stmt &C.MYSQL_STMT) ! {
+	return error_with_code(get_stmt_error_msg(stmt), get_stmt_errno(stmt))
 }
 
 @[inline]
