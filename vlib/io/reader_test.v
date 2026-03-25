@@ -38,6 +38,37 @@ fn test_read_all_huge() {
 	assert res == '123'.repeat(100000).bytes()
 }
 
+struct ZeroReadAfterDataReader {
+mut:
+	call_count int
+}
+
+fn (mut r ZeroReadAfterDataReader) read(mut buf []u8) !int {
+	match r.call_count {
+		0 {
+			r.call_count++
+			return copy(mut buf, 'hello'.bytes())
+		}
+		1 {
+			r.call_count++
+			return 0
+		}
+		else {
+			return error('unexpected extra read after zero-length read')
+		}
+	}
+}
+
+fn test_read_all_stops_on_zero_length_read_after_partial_data() {
+	mut reader := &ZeroReadAfterDataReader{}
+	res := read_all(reader: reader) or {
+		assert false
+		''.bytes()
+	}
+	assert res == 'hello'.bytes()
+	assert reader.call_count == 2
+}
+
 struct StringReaderTest {
 	text string
 mut:
