@@ -59,6 +59,8 @@ fn main() {
 decode[T] is smart and can auto-convert the types of struct fields - this means
 examples below will have the same result
 
+Embedded struct fields are decoded from the surrounding object, including reference fields.
+
 ```v ignore
 json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!
 json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11 13:54:25.000"}')!
