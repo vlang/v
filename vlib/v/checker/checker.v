@@ -4641,7 +4641,130 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	return ast.string_type
 }
 
+fn (mut c Checker) infer_fn_value_generic_type(pattern ast.Type, actual ast.Type, generic_names []string, mut inferred map[string]ast.Type) bool {
+	pattern_typ := c.unwrap_generic(pattern)
+	actual_typ := c.unwrap_generic(actual)
+	pattern_root := pattern_typ.clear_option_and_result().set_nr_muls(0)
+	pattern_root_sym := c.table.sym(pattern_root)
+	if pattern_root.has_flag(.generic) && pattern_root_sym.name in generic_names {
+		if pattern_typ.has_flag(.option) && !actual_typ.has_flag(.option) {
+			return false
+		}
+		if pattern_typ.has_flag(.result) && !actual_typ.has_flag(.result) {
+			return false
+		}
+		if actual_typ.nr_muls() < pattern_typ.nr_muls() {
+			return false
+		}
+		mut inferred_typ := actual_typ
+		if pattern_typ.has_flag(.option) {
+			inferred_typ = inferred_typ.clear_flag(.option)
+		}
+		if pattern_typ.has_flag(.result) {
+			inferred_typ = inferred_typ.clear_flag(.result)
+		}
+		inferred_typ = inferred_typ.set_nr_muls(actual_typ.nr_muls() - pattern_typ.nr_muls())
+		if pattern_root_sym.name in inferred {
+			return c.table.unaliased_type(inferred[pattern_root_sym.name]) == c.table.unaliased_type(inferred_typ)
+		}
+		inferred[pattern_root_sym.name] = inferred_typ
+		return true
+	}
+	pattern_sym := c.table.final_sym(pattern_typ)
+	actual_sym := c.table.final_sym(actual_typ)
+	match pattern_sym.info {
+		ast.Array {
+			if actual_sym.info is ast.Array {
+				return c.infer_fn_value_generic_type(pattern_sym.info.elem_type, actual_sym.info.elem_type,
+					generic_names, mut inferred)
+			}
+		}
+		ast.ArrayFixed {
+			if actual_sym.info is ast.ArrayFixed {
+				return c.infer_fn_value_generic_type(pattern_sym.info.elem_type, actual_sym.info.elem_type,
+					generic_names, mut inferred)
+			}
+		}
+		ast.Map {
+			if actual_sym.info is ast.Map {
+				return
+					c.infer_fn_value_generic_type(pattern_sym.info.key_type, actual_sym.info.key_type, generic_names, mut inferred)
+					&& c.infer_fn_value_generic_type(pattern_sym.info.value_type, actual_sym.info.value_type, generic_names, mut inferred)
+			}
+		}
+		ast.FnType {
+			if actual_sym.info is ast.FnType {
+				pattern_fn := pattern_sym.info.func
+				actual_fn := actual_sym.info.func
+				if pattern_fn.params.len != actual_fn.params.len {
+					return false
+				}
+				if !c.infer_fn_value_generic_type(pattern_fn.return_type, actual_fn.return_type,
+					generic_names, mut inferred) {
+					return false
+				}
+				for i, pattern_param in pattern_fn.params {
+					actual_param := actual_fn.params[i]
+					if pattern_param.is_mut != actual_param.is_mut {
+						return false
+					}
+					if !c.infer_fn_value_generic_type(pattern_param.typ, actual_param.typ,
+						generic_names, mut inferred) {
+						return false
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return true
+}
+
+fn (mut c Checker) infer_fn_value_concrete_types(func &ast.Fn, expected_type ast.Type) []ast.Type {
+	if func.generic_names.len == 0 || expected_type in [0, ast.void_type] {
+		return []ast.Type{}
+	}
+	expected_typ := c.unwrap_generic(expected_type)
+	expected_sym := c.table.final_sym(expected_typ)
+	if expected_sym.info !is ast.FnType {
+		return []ast.Type{}
+	}
+	expected_fn := (expected_sym.info as ast.FnType).func
+	if func.params.len != expected_fn.params.len {
+		return []ast.Type{}
+	}
+	mut inferred := map[string]ast.Type{}
+	if !c.infer_fn_value_generic_type(func.return_type, expected_fn.return_type, func.generic_names, mut
+		inferred) {
+		return []ast.Type{}
+	}
+	for i, param in func.params {
+		expected_param := expected_fn.params[i]
+		if param.is_mut != expected_param.is_mut {
+			return []ast.Type{}
+		}
+		if !c.infer_fn_value_generic_type(param.typ, expected_param.typ, func.generic_names, mut
+			inferred) {
+			return []ast.Type{}
+		}
+	}
+	if inferred.len != func.generic_names.len {
+		return []ast.Type{}
+	}
+	mut concrete_types := []ast.Type{cap: func.generic_names.len}
+	for generic_name in func.generic_names {
+		if generic_name !in inferred {
+			return []ast.Type{}
+		}
+		concrete_types << inferred[generic_name]
+	}
+	return concrete_types
+}
+
 fn (mut c Checker) resolve_var_fn(func &ast.Fn, mut node ast.Ident, name string) ast.Type {
+	if func.generic_names.len > 0 && node.concrete_types.len == 0 {
+		node.concrete_types = c.infer_fn_value_concrete_types(func, c.expected_type)
+	}
 	mut fn_type := c.table.find_or_register_fn_type(func, false, true)
 	if fn_type < 0 {
 		mut f := ast.Fn{
@@ -4733,13 +4856,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if func := c.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
 				if node.concrete_types.len == 0 {
+					node.concrete_types = c.infer_fn_value_concrete_types(func, c.expected_type)
+				}
+				if node.concrete_types.len == 0 {
 					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
 						node.pos)
 				}
-				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-				if concrete_types.all(!it.has_flag(.generic)) {
-					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
-				}
+				return c.resolve_var_fn(func, mut node, node.name)
 			}
 		}
 		return info.typ
@@ -4929,6 +5052,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
 			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					node.concrete_types = c.infer_fn_value_concrete_types(func, c.expected_type)
+				}
 				if node.concrete_types.len == 0 {
 					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
 						node.pos)
