@@ -139,27 +139,22 @@ pub fn (mut c TcpConn) close() ! {
 // read_ptr reads data from the tcp connection to the given buffer. It reads at most `len` bytes.
 // It returns the number of actually read bytes, which can vary between 0 to `len`.
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
-	mut should_ewouldblock := false
-	mut res := $if is_coroutine ? {
-		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+	mut res := 0
+	mut ecode := 0
+	$if is_coroutine ? {
+		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+		ecode = error_code()
 	} $else {
-		// The new socket returned by accept() behaves differently in blocking mode and needs special treatment.
-		mut has_data := true
 		if c.is_blocking {
-			if ok := select(c.sock.handle, .read, 1) {
-				has_data = ok
-			} else {
-				false
-			}
-		}
-		if has_data {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			// Honor read deadlines/timeouts first, then use a normal blocking recv.
+			// This avoids transient EAGAIN-style reads on newly accepted sockets.
+			c.wait_for_read()!
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		} else {
-			should_ewouldblock = true
-			-1
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
 		}
+		ecode = error_code()
 	}
-	ecode := error_code()
 	if res == 0 {
 		return io.Eof{}
 	}
@@ -176,17 +171,23 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := if should_ewouldblock { int(error_ewouldblock) } else { ecode }
-	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
+	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		} $else {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			if c.is_blocking {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			} else {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			}
+		}
+		if res == 0 {
+			return io.Eof{}
 		}
 		$if trace_tcp ? {
 			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${code} |\n' +
+				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
@@ -198,7 +199,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return socket_error(res)
 	} else {
-		wrap_error(code)!
+		wrap_error(ecode)!
 	}
 	return error('none')
 }

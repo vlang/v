@@ -92,7 +92,7 @@ pub fn (mut s Server) listen_and_serve() {
 		s.on_running(mut s)
 	}
 	for s.state == .running {
-		mut conn := s.listener.accept() or {
+		mut conn := s.listener.accept_only() or {
 			if err.code() == net.err_timed_out_code {
 				// Skip network timeouts, they are normal
 				continue
@@ -185,6 +185,11 @@ fn (mut w HandlerWorker) process_requests() {
 }
 
 fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
+	conn.set_sock() or {
+		net.close(conn.handle) or {}
+		eprintln('set_sock() failed: ${err}')
+		return
+	}
 	defer {
 		conn.close() or { eprintln('close() failed: ${err}') }
 	}
@@ -199,9 +204,11 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 	mut request_count := 0
 	for {
 		mut req := parse_request(mut reader) or {
-			$if debug {
-				// only show in debug mode to prevent abuse
-				eprintln('error parsing request: ${err}')
+			if err !is io.Eof {
+				$if debug {
+					// only show in debug mode to prevent abuse
+					eprintln('error parsing request: ${err}')
+				}
 			}
 			return
 		}

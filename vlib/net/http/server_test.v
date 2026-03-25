@@ -296,7 +296,7 @@ mut:
 fn (mut handler KeepAliveHandler) handle(req http.Request) http.Response {
 	handler.request_count++
 	mut r := http.Response{
-		body: 'request #${handler.request_count}'
+		body: 'request #${handler.request_count}: ${req.url}'
 	}
 	r.set_status(.ok)
 	r.set_version(req.version)
@@ -362,6 +362,55 @@ fn test_server_keep_alive() {
 
 	// Verify all 3 requests were handled
 	assert handler.request_count == 3
+}
+
+fn test_server_keep_alive_many_requests() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	total_requests := 64
+	mut handler := KeepAliveHandler{}
+	mut server := &http.Server{
+		accept_timeout:          atimeout
+		handler:                 handler
+		addr:                    '127.0.0.1:18199'
+		show_startup_message:    false
+		max_keep_alive_requests: 0
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	mut conn := net.dial_tcp('127.0.0.1:18199')!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	for i in 0 .. total_requests {
+		path := if i % 2 == 0 { '/left' } else { '/right' }
+		request := 'GET ${path}?n=${i} HTTP/1.1\r\nHost: 127.0.0.1:18199\r\nConnection: keep-alive\r\n\r\n'
+		conn.write(request.bytes())!
+		resp := read_http_response(mut conn)!
+		assert resp.contains('request #${i + 1}')
+		assert resp.contains(path)
+		assert resp.to_lower().contains('connection: keep-alive')
+	}
+
+	request_done := 'GET /done HTTP/1.1\r\nHost: 127.0.0.1:18199\r\nConnection: close\r\n\r\n'
+	conn.write(request_done.bytes())!
+	resp_done := read_http_response(mut conn)!
+	assert resp_done.contains('request #${total_requests + 1}')
+	assert resp_done.contains('/done')
+	assert resp_done.to_lower().contains('connection: close')
+
+	server.stop()
+	t.wait()
+	assert handler.request_count == total_requests + 1
 }
 
 fn test_server_max_keep_alive_requests() {
