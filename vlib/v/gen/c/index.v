@@ -494,7 +494,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		|| g.unwrap_generic(resolved_left_type) != g.unwrap_generic(map_left_type)) {
 		map_left_type = resolved_left_type
 	}
-	left_is_ptr := map_left_type.is_ptr()
+	mut left_is_ptr := map_left_type.is_ptr()
+	if !left_is_ptr && g.is_assign_lhs && node.left is ast.Ident
+		&& g.resolved_ident_is_auto_heap(node.left) {
+		left_is_ptr = true
+	}
 	left_sym := if map_left_type != 0 {
 		*g.table.final_sym(g.unwrap_generic(map_left_type))
 	} else {

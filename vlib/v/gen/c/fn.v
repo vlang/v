@@ -4308,6 +4308,51 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		if typ != ast.string_type || g.comptime.comptime_for_method != unsafe { nil } {
 			expr := node.args[0].expr
+			if expr is ast.ComptimeSelector {
+				if expr.typ_key != '' {
+					typ = g.type_resolver.get_ct_type_or_default(expr.typ_key, typ)
+				}
+			} else if expr is ast.ComptimeCall {
+				if expr.kind == .method {
+					sym := g.table.sym(g.unwrap_generic(expr.left_type))
+					if m := sym.find_method(g.comptime.comptime_for_method.name) {
+						typ = m.return_type
+					}
+				}
+			} else if expr is ast.Ident && expr.obj is ast.Var {
+				typ = expr.obj.typ
+				if expr.name in g.type_resolver.type_map {
+					resolved := g.type_resolver.get_ct_type_or_default(expr.name, typ)
+					if resolved != 0 && resolved != ast.void_type {
+						typ = resolved
+					}
+				}
+				if expr.ct_expr || expr.obj.ct_type_var != .no_comptime {
+					resolved := g.type_resolver.get_type_or_default(ast.Expr(expr), typ)
+					if resolved != 0 && resolved != ast.void_type {
+						typ = resolved
+					}
+				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					// In generic contexts, scope var types may be stale.
+					resolved := g.resolved_expr_type(expr, expr.obj.typ)
+					if resolved != 0 {
+						typ = resolved
+					}
+				}
+				if expr.obj.smartcasts.len > 0 {
+					typ = g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := g.table.sym(typ)
+					if cast_sym.info is ast.Aggregate {
+						typ = cast_sym.info.types[g.aggregate_type_idx]
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+				}
+				// handling println(var or { ... })
+				if typ.has_flag(.option) && expr.or_expr.kind != .absent {
+					typ = typ.clear_flag(.option)
+				}
+			}
 			typ_sym := g.table.sym(typ)
 			needs_tmp_string := !typ.has_option_or_result()
 				&& (g.is_autofree || g.pref.gc_mode == .boehm_leak)
@@ -4341,40 +4386,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('; builtin__${c_fn_name(print_method)}(${tmp}); builtin__string_free(&${tmp});')
 			} else {
 				g.write('builtin__${c_fn_name(print_method)}(')
-				if expr is ast.ComptimeSelector {
-					if expr.typ_key != '' {
-						typ = g.type_resolver.get_ct_type_or_default(expr.typ_key, typ)
-					}
-				} else if expr is ast.ComptimeCall {
-					if expr.kind == .method {
-						sym := g.table.sym(g.unwrap_generic(expr.left_type))
-						if m := sym.find_method(g.comptime.comptime_for_method.name) {
-							typ = m.return_type
-						}
-					}
-				} else if expr is ast.Ident && expr.obj is ast.Var {
-					typ = expr.obj.typ
-					// In generic contexts, scope var types may be stale
-					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-						resolved := g.resolved_expr_type(expr, expr.obj.typ)
-						if resolved != 0 {
-							typ = resolved
-						}
-					}
-					if expr.obj.smartcasts.len > 0 {
-						typ = g.unwrap_generic(expr.obj.smartcasts.last())
-						cast_sym := g.table.sym(typ)
-						if cast_sym.info is ast.Aggregate {
-							typ = cast_sym.info.types[g.aggregate_type_idx]
-						} else if expr.obj.ct_type_var == .smartcast {
-							typ = g.unwrap_generic(g.type_resolver.get_type(expr))
-						}
-					}
-					// handling println( var or { ... })
-					if typ.has_flag(.option) && expr.or_expr.kind != .absent {
-						typ = typ.clear_flag(.option)
-					}
-				}
 				g.gen_expr_to_string(expr, typ)
 				g.write(')')
 			}

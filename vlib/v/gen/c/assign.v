@@ -434,6 +434,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								var_type = val_type.clear_flag(.option)
 							}
 							left.obj.typ = var_type
+							g.type_resolver.update_ct_type(left.name, var_type)
 						}
 					} else if val is ast.ComptimeSelector {
 						if val.typ_key != '' {
@@ -442,6 +443,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									var_type)
 								val_type = var_type
 								left.obj.typ = var_type
+								g.type_resolver.update_ct_type(left.name, var_type)
 							} else {
 								val_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
 									var_type)
@@ -451,6 +453,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						key_str := '${val.method_name}.return_type'
 						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 						left.obj.typ = var_type
+						g.type_resolver.update_ct_type(left.name, var_type)
 						g.assign_ct_type[val.pos.pos] = var_type
 					} else if val is ast.Ident && val.info is ast.IdentVar {
 						val_info := val.info as ast.IdentVar
@@ -466,6 +469,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									var_type)
 								val_type = var_type
 								left.obj.typ = var_type
+								g.type_resolver.update_ct_type(left.name, var_type)
 							}
 						}
 					} else if val is ast.IndexExpr && (val.left is ast.Ident && val.left.ct_expr) {
@@ -474,6 +478,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
+							g.type_resolver.update_ct_type(left.name, var_type)
 						}
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
 						fn_ret_type := g.resolve_return_type(val)

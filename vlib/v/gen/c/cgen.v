@@ -6386,7 +6386,15 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if !g.is_assign_lhs
 				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime, .aggregate] {
 				comptime_type := g.type_resolver.get_type(node)
-				orig_has_option := node.obj.typ.has_flag(.option)
+				mut runtime_type := node.obj.typ
+				if node.name in g.type_resolver.type_map {
+					resolved_runtime_type := g.type_resolver.get_ct_type_or_default(node.name,
+						runtime_type)
+					if resolved_runtime_type != 0 && resolved_runtime_type != ast.void_type {
+						runtime_type = resolved_runtime_type
+					}
+				}
+				orig_has_option := runtime_type.has_flag(.option)
 				if orig_has_option && !comptime_type.has_flag(.option) {
 					styp := g.base_type(comptime_type)
 					ptr := if is_auto_heap { '->' } else { '.' }
