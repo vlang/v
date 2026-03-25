@@ -270,6 +270,22 @@ sql db {
 }!
 ```
 
+For a Rails-style full-record save, load a struct, mutate it, then call `orm.save`.
+The helper uses the struct primary key, or an `id` field when present, for the
+`WHERE` clause and updates the remaining mapped fields automatically.
+
+```v ignore
+import orm
+
+mut foo := (sql db {
+    select from Foo where id == 1
+}!).first()
+foo.name = 'updated'
+foo.updated_at = time.now()
+
+orm.save(db, foo)!
+```
+
 Note that `is none` and `!is none` can be used to select for NULL fields.
 
 ### Delete
@@ -407,6 +423,16 @@ struct User {
 
 ```v ignore
 	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?','John')!.update()!
+```
+
+For a full-record update without spelling out each `set(...)` clause, use `orm.save`:
+
+```v ignore
+	selected := qb.where('name = ?', 'John')!.query()!
+	mut john := selected.first()
+	john.age = 72
+	john.title = 'lead'
+	orm.save(db, john)!
 ```
 
 9. Query aggregate values​​:

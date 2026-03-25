@@ -1004,6 +1004,60 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	return qb
 }
 
+// save updates all mapped fields in `value` using the struct primary key or `id` field.
+pub fn save[T](conn Connection, value T) ! {
+	mut qb := new_query[T](conn)
+	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
+	qb.conn.update(qb.config.table, data, where)!
+}
+
+fn build_save_query_data[T](meta []TableField, table_name string, value T) !(QueryData, QueryData) {
+	data := fill_data_with_struct[T](value, meta)
+	if data.fields.len != data.data.len {
+		return error('${@FN}(): table `${table_name}` contains fields that `save` cannot map automatically')
+	}
+	primary_field_name := find_save_primary_field_name(meta) or {
+		return error('${@FN}(): table `${table_name}` needs a primary key or `id` field to use `save`')
+	}
+	mut update_data := QueryData{}
+	mut where_data := QueryData{
+		kinds: [.eq]
+	}
+	for i, field_name in data.fields {
+		if field_name == primary_field_name {
+			where_data.fields << field_name
+			where_data.data << data.data[i]
+			continue
+		}
+		update_data.fields << field_name
+		update_data.data << data.data[i]
+	}
+	if where_data.fields.len == 0 {
+		return error('${@FN}(): struct value is missing the primary key field `${primary_field_name}`')
+	}
+	if update_data.fields.len == 0 {
+		return error('${@FN}(): no updatable fields were found for table `${table_name}`')
+	}
+	return update_data, where_data
+}
+
+fn find_save_primary_field_name(meta []TableField) ?string {
+	for field in meta {
+		for attr in field.attrs {
+			if attr_name_matches(attr.name, 'primary') {
+				return sql_field_name(field)
+			}
+		}
+	}
+	for field in meta {
+		field_name := sql_field_name(field)
+		if field.name == 'id' || field_name == 'id' {
+			return field_name
+		}
+	}
+	return none
+}
+
 fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 	mut qb := QueryData{}
 	$for field in T.fields {
