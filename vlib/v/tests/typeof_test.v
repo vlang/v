@@ -120,6 +120,19 @@ fn test_typeof_on_sumtypes_of_structs() {
 	assert d.type_name() == 'UnaryExpr'
 }
 
+fn raw_sumtype_typeof(v ExprType) string {
+	return typeof(v)
+}
+
+fn test_raw_typeof_on_sumtypes_is_printable() {
+	a := fexpr(1)
+	b := fexpr(2)
+	c := fexpr(3)
+	assert raw_sumtype_typeof(a) == 'UnaryExpr'
+	assert raw_sumtype_typeof(b) == 'BinExpr'
+	assert raw_sumtype_typeof(c) == 'BoolExpr'
+}
+
 fn myfn(i int) int {
 	return i
 }
