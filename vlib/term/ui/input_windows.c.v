@@ -56,8 +56,12 @@ pub fn init(cfg Config) &Context {
 	if !C.SetConsoleMode(stdin_handle, 0x80) {
 		panic('could not set raw input mode')
 	}
-	// enable window and mouse input events.
-	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
+	mut input_mode := u32(C.ENABLE_WINDOW_INPUT)
+	if ctx.cfg.mouse_enabled {
+		input_mode |= C.ENABLE_MOUSE_INPUT
+	}
+	// enable window input and optionally mouse input events.
+	if !C.SetConsoleMode(stdin_handle, input_mode) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back
