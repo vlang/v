@@ -5117,8 +5117,8 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 		match mut branch.stmt {
 			ast.ExprStmt {
 				if branch.is_timeout {
-					if !branch.stmt.typ.is_int() {
-						tsym := c.table.sym(branch.stmt.typ)
+					tsym := c.table.final_sym(c.unwrap_generic(branch.stmt.typ))
+					if !tsym.is_int() {
 						c.error('invalid type `${tsym.name}` for timeout - expected integer number of nanoseconds aka `time.Duration`',
 							branch.stmt.pos)
 					}
