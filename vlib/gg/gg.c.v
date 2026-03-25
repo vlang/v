@@ -276,9 +276,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// if ctx.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(ctx.config.font_path) } $else { true }
-	if ctx.config.font_path != '' && !exists {
-		ctx.render_text = false
-	} else if ctx.config.font_path != '' && exists {
+	if ctx.config.font_path != '' && exists {
 		// t := time.ticks()
 		ctx.ft = new_ft(
 			font_path:             ctx.config.font_path
