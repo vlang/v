@@ -751,6 +751,9 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
 						scope, false, true, false)
 				}
+			} else if first_cond.left in [ast.Ident, ast.SelectorExpr] && first_cond.op == .not_is {
+				c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.right_type, mut
+					scope, false, false)
 			}
 		}
 	}
