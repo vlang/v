@@ -559,9 +559,9 @@ typedef long unsigned int size_t;
 void *malloc(size_t size);
 void *calloc(size_t nitems, size_t size);
 void *realloc(void *ptr, size_t size);
-void *memcpy(void *dest, void *src, size_t n);
+void *memcpy(void *dest, const void *src, size_t n);
 void *memset(void *s, int c, size_t n);
-void *memmove(void *dest, void *src, size_t n);
+void *memmove(void *dest, const void *src, size_t n);
 // varargs implementation, TODO: works on tcc and gcc, but is very unportable and hacky
 typedef __builtin_va_list va_list;
 #define va_start(a, b) __builtin_va_start(a, b)

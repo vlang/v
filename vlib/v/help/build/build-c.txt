@@ -95,14 +95,14 @@ see also `v help build`.
          @[export: 'calloc']
          __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, src &C.void, n usize) &C.void
+         memcpy(dest &C.void, const_src &C.void, n usize) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, src &C.void, n usize) &C.void
+         memmove(dest &C.void, const_src &C.void, n usize) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(a &C.void, b &C.void, n usize) int
+         memcmp(const_a &C.void, const_b &C.void, n usize) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(s &C.void) usize
+         strlen(const_s &char) usize
             Returns the amount of bytes until the first `0`, starting at s
          memset(s &C.void, c int, n usize) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
