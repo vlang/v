@@ -576,14 +576,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.gt, .lt, .ge, .le {
+			cmp_method_name := '<'
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
-			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(node.op.str()) {
+			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(cmp_method_name) {
 				left_sym = c.table.final_sym(unwrapped_left_type)
 			}
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if right_sym.kind == .alias && !right_sym.has_method_with_generic_parent(node.op.str()) {
+			if right_sym.kind == .alias
+				&& !right_sym.has_method_with_generic_parent(cmp_method_name) {
 				right_sym = c.table.final_sym(unwrapped_right_type)
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
