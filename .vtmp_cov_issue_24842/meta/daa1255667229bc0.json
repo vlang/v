@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch6/issue-26629/vlib/builtin/allocation.c.v", "fhash": "daa1255667229bc0",
+  "v_version": "V 0.5.1 c4d051b4c2e6e7ad292e52b8ef560679dc0fb03a",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 85,
+  "points": [  14,16,17,18,21,23,24,26,27,41,42,44,46,47,50,51,68,69,76,86,87,89,90,95,96,97,117,118,125,132,133,135,147,148,151,152,155,156,171,172,179,191,192,199,211,212,214,251,252,253,265,266,268,279,280,282,284,289,305,315,318,319,321,322,323,324,332,344,351,353,382,383,385,386,387,396,397,399,400,401,414,415,417,418,419  ]
+}

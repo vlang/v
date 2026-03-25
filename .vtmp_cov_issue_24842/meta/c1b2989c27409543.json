@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch6/issue-26629/vlib/builtin/closure/closure_nix.c.v", "fhash": "c1b2989c27409543",
+  "v_version": "V 0.5.1 c4d051b4c2e6e7ad292e52b8ef560679dc0fb03a",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 21,
+  "points": [  16,17,25,29,30,33,38,41,43,46,55,56,58,61,62,67,68,74,75,81,82  ]
+}

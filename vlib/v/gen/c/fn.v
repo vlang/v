@@ -633,9 +633,23 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 const closure_ctx = '_V_closure_ctx'
 
+fn (g &Gen) anon_fn_generic_names(generic_names []string) []string {
+	if g.cur_fn == unsafe { nil } || g.cur_fn.generic_names.len == 0
+		|| g.cur_concrete_types.len == 0 {
+		return generic_names.clone()
+	}
+	mut names := g.cur_fn.generic_names.clone()
+	for generic_name in generic_names {
+		if generic_name !in names {
+			names << generic_name
+		}
+	}
+	return names
+}
+
 fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	mut fn_name := node.decl.name
-	if node.decl.generic_names.len > 0 {
+	if g.anon_fn_generic_names(node.decl.generic_names).len > 0 {
 		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 	if node.has_ct_var {
@@ -691,7 +705,12 @@ fn (mut g Gen) c_call_name(node ast.CallExpr, cname string) string {
 
 fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 	mut fn_name := node.name
-	if node.generic_names.len > 0 {
+	generic_names := if node.is_anon {
+		g.anon_fn_generic_names(node.generic_names)
+	} else {
+		node.generic_names
+	}
+	if generic_names.len > 0 {
 		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 	return 'struct _V_${fn_name}_Ctx'
@@ -805,10 +824,14 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	was_anon_fn := g.anon_fn
 	prev_stmt_path_pos := g.stmt_path_pos.clone()
 	prev_skip_stmt_pos := g.skip_stmt_pos
+	decl := ast.FnDecl{
+		...node.decl
+		generic_names: g.anon_fn_generic_names(node.decl.generic_names)
+	}
 	g.stmt_path_pos = []
 	g.skip_stmt_pos = false
 	g.anon_fn = node
-	g.fn_decl(node.decl)
+	g.fn_decl(decl)
 	g.anon_fn = was_anon_fn
 	g.skip_stmt_pos = prev_skip_stmt_pos
 	g.stmt_path_pos = prev_stmt_path_pos
@@ -2283,53 +2306,55 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
 			mut is_fn_var := false
-			if obj := node.scope.find_var(node.name) {
-				// Temp fix generate call fn error when the struct type of sumtype
-				// has the fn field and is same to the struct name.
-				mut is_cast_needed := true
-				if node.is_method && node.left_type != 0 {
-					left_sym := g.table.sym(node.left_type)
-					if left_sym.kind == .struct && node.name == obj.name {
-						is_cast_needed = false
-					}
-				}
-				if obj.smartcasts.len > 0 && is_cast_needed {
-					for typ in obj.smartcasts {
-						sym := g.table.sym(g.unwrap_generic(typ))
-						if obj.orig_type.has_flag(.option) && sym.kind == .function {
-							g.write('(*(${sym.cname}*)(')
-						} else {
-							g.write('(*(${sym.cname})(')
+			if !is_selector_call {
+				if obj := node.scope.find_var(node.name) {
+					// Temp fix generate call fn error when the struct type of sumtype
+					// has the fn field and is same to the struct name.
+					mut is_cast_needed := true
+					if node.is_method && node.left_type != 0 {
+						left_sym := g.table.sym(node.left_type)
+						if left_sym.kind == .struct && node.name == obj.name {
+							is_cast_needed = false
 						}
 					}
-					for i, typ in obj.smartcasts {
-						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						mut is_ptr := false
-						if i == 0 {
-							if obj.is_inherited {
-								g.write(closure_ctx + '->' + c_name(node.name))
+					if obj.smartcasts.len > 0 && is_cast_needed {
+						for typ in obj.smartcasts {
+							sym := g.table.sym(g.unwrap_generic(typ))
+							if obj.orig_type.has_flag(.option) && sym.kind == .function {
+								g.write('(*(${sym.cname}*)(')
 							} else {
-								g.write(node.name)
-							}
-							if obj.orig_type.is_ptr() {
-								is_ptr = true
+								g.write('(*(${sym.cname})(')
 							}
 						}
-						dot := if is_ptr { '->' } else { '.' }
-						if cast_sym.info is ast.Aggregate {
-							sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
-							g.write('${dot}_${sym.cname}')
-						} else if cast_sym.kind == .function && obj.orig_type.has_flag(.option) {
-							g.write('.data')
-						} else {
-							g.write('${dot}_${cast_sym.cname}')
+						for i, typ in obj.smartcasts {
+							cast_sym := g.table.sym(g.unwrap_generic(typ))
+							mut is_ptr := false
+							if i == 0 {
+								if obj.is_inherited {
+									g.write(closure_ctx + '->' + c_name(node.name))
+								} else {
+									g.write(node.name)
+								}
+								if obj.orig_type.is_ptr() {
+									is_ptr = true
+								}
+							}
+							dot := if is_ptr { '->' } else { '.' }
+							if cast_sym.info is ast.Aggregate {
+								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+								g.write('${dot}_${sym.cname}')
+							} else if cast_sym.kind == .function && obj.orig_type.has_flag(.option) {
+								g.write('.data')
+							} else {
+								g.write('${dot}_${cast_sym.cname}')
+							}
+							g.write('))')
 						}
-						g.write('))')
+						is_fn_var = true
+					} else if obj.is_inherited {
+						g.write(closure_ctx + '->' + c_name(node.name))
+						is_fn_var = true
 					}
-					is_fn_var = true
-				} else if obj.is_inherited {
-					g.write(closure_ctx + '->' + c_name(node.name))
-					is_fn_var = true
 				}
 			}
 			if !is_fn_var {

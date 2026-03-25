@@ -1,0 +1,7 @@
+{
+  "file": "/Users/alexander/code/worktrees/batch6/issue-26629/vlib/builtin/chan_option_result.v", "fhash": "c7f986b1be67f4b2",
+  "v_version": "V 0.5.1 c4d051b4c2e6e7ad292e52b8ef560679dc0fb03a",
+  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
+  "npoints": 31,
+  "points": [  50,51,53,59,60,62,63,64,66,73,77,89,90,92,97,102,107,119,120,129,130,155,156,160,165,166,168,173,174,179,193  ]
+}

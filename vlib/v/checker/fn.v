@@ -705,11 +705,15 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
 	keep_anon_fn := c.cur_anon_fn
+	keep_anon_fn_generic_names := c.anon_fn_generic_names.clone()
+	keep_anon_fn_concrete_types := c.anon_fn_concrete_types.clone()
 	c.table.used_features.anon_fn = true
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
 		c.cur_anon_fn = keep_anon_fn
+		c.anon_fn_generic_names = keep_anon_fn_generic_names
+		c.anon_fn_concrete_types = keep_anon_fn_concrete_types
 	}
 	if node.decl.no_body {
 		c.error('anonymous function must declare a body', node.decl.pos)
@@ -719,6 +723,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('use `_` to name an unused parameter', param.pos)
 		}
 	}
+	mut can_use_outer_generic_context := node.decl.generic_names.len > 0
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
 	c.cur_anon_fn = unsafe { &node }
@@ -741,12 +746,13 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		if parent_var.typ != ast.no_type {
 			parent_var_sym := c.table.final_sym(ptyp)
 			if parent_var_sym.info is ast.FnType {
-				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
+				ret_typ := parent_var_sym.info.func.return_type
 				if ret_typ.has_flag(.generic) {
 					generic_names := c.table.generic_type_names(ret_typ)
-					curr_list := c.table.cur_fn.generic_names.join(', ')
+					curr_list := node.decl.generic_names.join(', ')
 					for name in generic_names {
-						if name !in c.table.cur_fn.generic_names {
+						if name !in node.decl.generic_names {
+							can_use_outer_generic_context = false
 							c.error('Add the generic type `${name}` to the anon fn generic list type, that is currently `[${curr_list}]`',
 								var.pos)
 						}
@@ -773,6 +779,24 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			has_generic = true
 		}
 		node.decl.scope.update_var_type(var.name, var.typ)
+	}
+	c.anon_fn_generic_names = []string{}
+	c.anon_fn_concrete_types = []ast.Type{}
+	if can_use_outer_generic_context && keep_fn != unsafe { nil }
+		&& keep_fn.generic_names.len == c.table.cur_concrete_types.len {
+		for generic_name in node.decl.generic_names {
+			generic_idx := keep_fn.generic_names.index(generic_name)
+			if generic_idx >= 0 {
+				c.anon_fn_generic_names << generic_name
+				c.anon_fn_concrete_types << c.table.cur_concrete_types[generic_idx]
+			}
+		}
+		for i, generic_name in keep_fn.generic_names {
+			if generic_name !in c.anon_fn_generic_names {
+				c.anon_fn_generic_names << generic_name
+				c.anon_fn_concrete_types << c.table.cur_concrete_types[i]
+			}
+		}
 	}
 	if has_generic && node.decl.generic_names.len == 0 {
 		c.error('generic closure fn must specify type parameter, e.g. fn [foo] [T]()',
@@ -2382,7 +2406,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// TODO: can we use SelectorExpr for all? this dosent really belong here
 		if field := c.table.find_field_with_embeds(left_sym, method_name) {
 			mut field_typ := field.typ
-			if field.typ.has_flag(.option) {
+			if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0
+				&& left_sym.info.generic_types.len == left_sym.info.concrete_types.len {
+				generic_names := c.table.get_generic_names(left_sym.info.generic_types)
+				if resolved_typ := c.table.convert_generic_type(field_typ, generic_names,
+					left_sym.info.concrete_types)
+				{
+					field_typ = resolved_typ
+				}
+			}
+			if field_typ.has_flag(.option) {
 				// unwrapped callback (if f.func != none {})
 				scope_field := node.scope.find_struct_field(node.left.str(), node.left_type,
 					method_name)
@@ -2398,9 +2431,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				node.is_method = false
 				node.is_field = true
 				info := field_sym.info as ast.FnType
-
 				c.check_expected_arg_count(mut node, info.func) or {
 					node.return_type = info.func.return_type
+					if info.func.return_type.has_flag(.generic) {
+						node.return_type_generic = info.func.return_type
+					}
 					return info.func.return_type
 				}
 				match left_sym.info {
@@ -2423,6 +2458,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					else {}
 				}
 				node.return_type = info.func.return_type
+				if info.func.return_type.has_flag(.generic) {
+					node.return_type_generic = info.func.return_type
+				}
 				mut earg_types := []ast.Type{}
 
 				for i, mut arg in node.args {
