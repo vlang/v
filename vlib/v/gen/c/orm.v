@@ -659,6 +659,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		ast.Nil {
 			g.write_orm_primitive(ast.none_type, expr)
 		}
+		ast.IfExpr {
+			g.write_orm_primitive(expr.typ, expr)
+		}
 		ast.None {
 			g.write_orm_primitive(ast.none_type, expr)
 		}
