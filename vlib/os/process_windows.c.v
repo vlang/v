@@ -54,6 +54,11 @@ pub mut:
 	child_stderr_write &u32 = unsafe { nil }
 }
 
+@[inline]
+fn process_wdata_ptr(p &Process) &WProcess {
+	return unsafe { &WProcess(p.wdata) }
+}
+
 @[manualfree]
 fn (mut p Process) win_spawn_process() int {
 	mut to_be_freed := []voidptr{cap: 5}
@@ -178,7 +183,7 @@ fn (mut p Process) win_stop_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := unsafe { &WProcess(p.wdata) }
+	wdata := process_wdata_ptr(p)
 	the_fn(wdata.proc_info.h_process)
 }
 
@@ -187,12 +192,12 @@ fn (mut p Process) win_resume_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := unsafe { &WProcess(p.wdata) }
+	wdata := process_wdata_ptr(p)
 	the_fn(wdata.proc_info.h_process)
 }
 
 fn (mut p Process) win_kill_process() {
-	wdata := unsafe { &WProcess(p.wdata) }
+	wdata := process_wdata_ptr(p)
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
 }
 
@@ -201,7 +206,7 @@ fn (mut p Process) win_term_process() {
 }
 
 fn (mut p Process) win_kill_pgroup() {
-	wdata := unsafe { &WProcess(p.wdata) }
+	wdata := process_wdata_ptr(p)
 	C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
 	C.Sleep(20)
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
@@ -209,7 +214,7 @@ fn (mut p Process) win_kill_pgroup() {
 
 fn (mut p Process) win_wait() {
 	exit_code := u32(1)
-	mut wdata := unsafe { &WProcess(p.wdata) }
+	mut wdata := process_wdata_ptr(p)
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
@@ -225,7 +230,7 @@ fn (mut p Process) win_wait() {
 
 fn (mut p Process) win_is_alive() bool {
 	exit_code := u32(0)
-	wdata := unsafe { &WProcess(p.wdata) }
+	wdata := process_wdata_ptr(p)
 	C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
 	if exit_code == C.STILL_ACTIVE {
 		return true
@@ -236,7 +241,7 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, _s string) {
-	mut wdata := unsafe { &WProcess(p.wdata) }
+	mut wdata := process_wdata_ptr(p)
 	if unsafe { wdata == 0 } || idx != 0 {
 		return
 	}
@@ -251,7 +256,7 @@ fn (mut p Process) win_write_string(idx int, _s string) {
 }
 
 fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
-	mut wdata := unsafe { &WProcess(p.wdata) }
+	mut wdata := process_wdata_ptr(p)
 	if unsafe { wdata == 0 } {
 		return '', 0
 	}
@@ -283,7 +288,7 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 }
 
 fn (mut p Process) win_is_pending(idx int) bool {
-	mut wdata := unsafe { &WProcess(p.wdata) }
+	mut wdata := process_wdata_ptr(p)
 	if unsafe { wdata == 0 } {
 		return false
 	}
@@ -305,7 +310,7 @@ fn (mut p Process) win_is_pending(idx int) bool {
 }
 
 fn (mut p Process) win_slurp(idx int) string {
-	mut wdata := unsafe { &WProcess(p.wdata) }
+	mut wdata := process_wdata_ptr(p)
 	if unsafe { wdata == 0 } {
 		return ''
 	}

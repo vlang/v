@@ -2063,10 +2063,13 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			}
 		}
 		mut left_type := g.resolved_expr_type(node.left, node.left_type)
-		if left_type == ast.void_type {
+		if left_type == 0 || left_type == ast.void_type {
 			left_type = node.left_type
 		}
 		left_type = g.recheck_concrete_type(left_type)
+		if left_type == 0 || left_type == ast.void_type {
+			return ast.void_type
+		}
 		left_sym := g.table.sym(left_type)
 		final_left_sym := g.table.final_sym(g.unwrap_generic(left_type))
 		if final_left_sym.kind == .map && node.kind in [.keys, .values] {

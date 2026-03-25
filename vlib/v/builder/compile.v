@@ -178,7 +178,7 @@ fn eshcb(_ os.Signal) {
 @[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
-	panic(e)
+	panic(e.msg())
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {

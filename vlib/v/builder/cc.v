@@ -752,6 +752,13 @@ pub fn (mut v Builder) tcc_quoted_path(p string) string {
 	return os.quoted_path(p)
 }
 
+fn (v &Builder) rsp_safe_arg(arg string) string {
+	if v.ccoptions.cc == .tcc && arg.starts_with('-B') && arg.len > 2 && arg[2..].contains(' ') {
+		return '-B"${arg[2..]}"'
+	}
+	return arg
+}
+
 fn (v &Builder) c_project_source_name() string {
 	mut output_name := os.file_name(v.pref.out_name)
 	if output_name == '' {
@@ -988,10 +995,11 @@ pub fn (mut v Builder) cc() {
 		//
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
+		rsp_args := all_args.map(v.rsp_safe_arg(it))
 		str_args := if v.pref.no_rsp {
-			all_args.join(' ').replace('\n', ' ')
+			rsp_args.join(' ').replace('\n', ' ')
 		} else {
-			all_args.join(' ')
+			rsp_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {

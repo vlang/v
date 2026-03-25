@@ -113,6 +113,11 @@ mut:
 	b_inherit_handle       bool
 }
 
+@[inline]
+fn wide_ptr_to_string(wstr &u16) string {
+	return unsafe { string_from_wide(wstr) }
+}
+
 pub struct C._utimbuf {
 	actime  i64
 	modtime i64
@@ -147,7 +152,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 
 	// save first finding
-	fname := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	fname := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if fname !in ['.', '..'] {
 		mut fp := fname.replace('\\', '/')
 		if match_base != '' {
@@ -161,7 +166,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 
 	// check and save next findings
 	for i := 0; C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0; i++ {
-		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 		if filename in ['.', '..'] {
 			continue
 		}
@@ -207,12 +212,12 @@ pub fn ls(path string) ![]string {
 	if h_find_files == C.INVALID_HANDLE_VALUE {
 		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
 	}
-	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
-		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}
@@ -302,7 +307,7 @@ pub fn get_error_msg(code int) string {
 	if ptr_text == 0 { // compare with null
 		return ''
 	}
-	msg := unsafe { string_from_wide(ptr_text) }
+	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
 	return msg
 }
@@ -609,7 +614,7 @@ fn get_long_path(path string) !string {
 	if res == 0 {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	long_path := unsafe { string_from_wide(&long_path_buf[0]) }
+	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path
 }
 
