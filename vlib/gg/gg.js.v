@@ -234,7 +234,7 @@ pub:
 	fullscreen    bool
 	scale         f32 = 1.0
 	sample_count  int
-	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
+	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. Ignored by the JS backend; frame pacing follows requestAnimationFrame.
 	// ved needs this
 	// init_text bool
 	font_path             string

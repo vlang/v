@@ -248,7 +248,7 @@ pub mut:
 	width                        int       // the preferred width of the window / canvas
 	height                       int       // the preferred height of the window / canvas
 	sample_count                 int       // MSAA sample count
-	swap_interval                int       // the preferred swap interval (ignored on some platforms)
+	swap_interval                int       // the preferred swap interval on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet
 	high_dpi                     bool      // whether the rendering canvas is full-resolution on HighDPI displays
 	fullscreen                   bool      // whether the window should be created in fullscreen mode
 	alpha                        bool      // whether the framebuffer should have an alpha channel (ignored on some platforms)
