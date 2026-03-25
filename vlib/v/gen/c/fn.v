@@ -5549,8 +5549,12 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						}
 						g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 						for j in arg_nr .. args.len {
-							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
-								false)
+							if arr_info.elem_type == ast.voidptr_type {
+								g.write_variadic_voidptr_arg(args[j], node.language)
+							} else {
+								g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+									false)
+							}
 							if j < args.len - 1 {
 								g.write(', ')
 							}
@@ -5617,6 +5621,39 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save + i});')
 		}
 	}
+}
+
+fn (g &Gen) variadic_voidptr_promotion_type(arg_typ ast.Type) ast.Type {
+	final_sym := g.table.final_sym(arg_typ)
+	return match final_sym.kind {
+		.i8, .i16, .u8, .u16, .rune, .enum { ast.int_type }
+		.f32 { ast.f64_type }
+		else { arg_typ }
+	}
+}
+
+fn (mut g Gen) write_variadic_voidptr_arg(arg ast.CallArg, lang ast.Language) {
+	arg_typ := if arg.ct_expr {
+		g.unwrap_generic(g.type_resolver.get_type(arg.expr))
+	} else {
+		g.unwrap_generic(arg.typ)
+	}
+	arg_sym := g.table.sym(arg_typ)
+	is_alias_pointer := arg_sym.kind == .alias
+		&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()
+	if arg_typ.is_any_kind_of_pointer() || is_alias_pointer || arg_sym.kind == .function
+		|| arg.expr is ast.None {
+		g.ref_or_deref_arg(arg, ast.voidptr_type, lang, false)
+		return
+	}
+	promoted_type := g.variadic_voidptr_promotion_type(arg_typ)
+	if promoted_type != arg_typ || !arg.expr.is_lvalue() {
+		g.write('(voidptr)ADDR(${g.styp(promoted_type)}, ')
+		g.expr(arg.expr)
+		g.write(')')
+		return
+	}
+	g.ref_or_deref_arg(arg, ast.voidptr_type, lang, false)
 }
 
 @[inline]

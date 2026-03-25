@@ -2041,11 +2041,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
 		// the compiler has special codegen support for), so it should be opt in, that is it
 		// should require an explicit voidptr(x) cast (and probably unsafe{} ?) .
+		// V variadic ...voidptr calls are boxed in cgen, so rvalues are safe there.
 		if call_arg.typ != param.typ && (param.typ == ast.voidptr_type
 			|| final_param_sym.idx == ast.voidptr_type_idx
 			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
 			&& !call_arg.expr.is_lvalue() && !c.pref.translated && !c.file.is_translated
+			&& !(func.is_variadic && final_param_sym.idx == ast.voidptr_type_idx)
 			&& !func.is_c_variadic && func.name !in ['json.encode', 'json.encode_pretty'] {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}

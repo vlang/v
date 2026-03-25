@@ -37,6 +37,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 // Note, that this function is unsafe.
 // In most cases, you are better off using V's string interpolation,
 // when your format string is known at compile time.
+// Small integer and `f32` arguments follow C-style default promotions.
 // Example:
 // ```v
 // x := 3.141516
@@ -97,7 +98,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		// single char, manage it here
 		if ch == `c` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
-			d1 := unsafe { *(&u8(pt[p_index])) }
+			d1 := u8(unsafe { *(&int(pt[p_index])) })
 			res.write_u8(d1)
 			status = .reset_params
 			p_index++
@@ -251,15 +252,16 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					// h for 16 bit int
 					// hh for 8 bit int
 					`h` {
+						v_sprintf_panic(p_index, pt.len)
+						x := unsafe { *(&int(pt[p_index])) }
 						if ch2 == `h` {
-							v_sprintf_panic(p_index, pt.len)
-							x := unsafe { *(&i8(pt[p_index])) }
-							positive = if x >= 0 { true } else { false }
-							d1 = if positive { u64(x) } else { u64(-x) }
+							sx := i8(x)
+							positive = if sx >= 0 { true } else { false }
+							d1 = if positive { u64(sx) } else { u64(-sx) }
 						} else {
-							x := unsafe { *(&i16(pt[p_index])) }
-							positive = if x >= 0 { true } else { false }
-							d1 = if positive { u64(x) } else { u64(-x) }
+							sx := i16(x)
+							positive = if sx >= 0 { true } else { false }
+							d1 = if positive { u64(sx) } else { u64(-sx) }
 						}
 					}
 					// l  i64
@@ -318,10 +320,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					// h for 16 bit unsigned int
 					// hh for 8 bit unsigned int
 					`h` {
+						x := unsafe { *(&int(pt[p_index])) }
 						if ch2 == `h` {
-							d1 = u64(unsafe { *(&u8(pt[p_index])) })
+							d1 = u64(u8(x))
 						} else {
-							d1 = u64(unsafe { *(&u16(pt[p_index])) })
+							d1 = u64(u16(x))
 						}
 					}
 					// l  u64
@@ -339,7 +342,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					}
 					// default int
 					else {
-						d1 = u64(unsafe { *(&u32(pt[p_index])) })
+						d1 = u64(u32(unsafe { *(&int(pt[p_index])) }))
 					}
 				}
 
@@ -366,12 +369,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					// h for 16 bit int
 					// hh fot 8 bit int
 					`h` {
+						x := unsafe { *(&int(pt[p_index])) }
 						if ch2 == `h` {
-							x := unsafe { *(&i8(pt[p_index])) }
-							s = x.hex()
+							s = i8(x).hex()
 						} else {
-							x := unsafe { *(&i16(pt[p_index])) }
-							s = x.hex()
+							s = i16(x).hex()
 						}
 					}
 					// l  i64
