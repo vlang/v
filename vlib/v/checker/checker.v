@@ -97,6 +97,8 @@ pub mut:
 	inside_integer_literal_cast bool // true inside `int(123)`
 	cur_struct_generic_types    []ast.Type
 	cur_struct_concrete_types   []ast.Type
+	anon_fn_generic_names       []string
+	anon_fn_concrete_types      []ast.Type
 	skip_flags                  bool      // should `#flag` and `#include` be skipped
 	fn_level                    int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	smartcast_mut_pos           token.Pos // match mut foo, if mut foo is Foo
@@ -3944,6 +3946,12 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 		if c.inside_generic_struct_init {
 			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
 			if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
+				return t_typ
+			}
+		}
+		if c.inside_anon_fn && c.anon_fn_generic_names.len > 0
+			&& c.anon_fn_generic_names.len == c.anon_fn_concrete_types.len {
+			if t_typ := c.table.convert_generic_type(typ, c.anon_fn_generic_names, c.anon_fn_concrete_types) {
 				return t_typ
 			}
 		}
