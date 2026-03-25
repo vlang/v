@@ -557,6 +557,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 		if v.pref.os == .macos {
 			ccoptions.args << '-flat_namespace'
+			if v.pref.is_liveshared {
+				// Resolve sapp_* and similar host symbols when the live-reload dylib is loaded.
+				ccoptions.args << '-undefined'
+				ccoptions.args << 'dynamic_lookup'
+			}
 		}
 	}
 

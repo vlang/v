@@ -607,6 +607,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-sharedlive' {
 				res.is_liveshared = true
 				res.is_shared = true
+				res.compile_defines << 'sharedlive'
+				res.compile_defines_all << 'sharedlive'
 			}
 			'-shared' {
 				res.is_shared = true
