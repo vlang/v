@@ -407,13 +407,14 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	if node.kind == .update {
 		for i, mut expr in node.update_exprs {
-			// set enum_col = .enum_val
-			if mut expr is ast.EnumVal {
-				column := node.updated_columns[i]
-				field := node.fields.filter(it.name == column)[0]
-				c.expected_type = field.typ
+			column := node.updated_columns[i]
+			matched_fields := node.fields.filter(it.name == column)
+			old_expected_type := c.expected_type
+			if matched_fields.len > 0 {
+				c.expected_type = matched_fields[0].typ
 			}
 			c.expr(mut expr)
+			c.expected_type = old_expected_type
 		}
 	}
 
