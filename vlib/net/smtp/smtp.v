@@ -28,12 +28,8 @@ pub enum BodyType {
 	html
 }
 
-// Client configures an SMTP connection. `timeout` applies to the underlying TCP reads and writes.
-pub struct Client {
-mut:
-	conn     net.TcpConn
-	ssl_conn &ssl.SSLConn = unsafe { nil }
-	reader   ?&io.BufferedReader
+// Config stores the settings used to connect a new SMTP client.
+pub struct Config {
 pub:
 	server   string
 	port     int = 25
@@ -42,7 +38,14 @@ pub:
 	from     string
 	ssl      bool
 	starttls bool
-	timeout  time.Duration = net.tcp_default_read_timeout
+}
+
+pub struct Client {
+	Config
+mut:
+	conn     net.TcpConn
+	ssl_conn &ssl.SSLConn = unsafe { nil }
+	reader   ?&io.BufferedReader
 pub mut:
 	is_open   bool
 	encrypted bool
@@ -70,13 +73,13 @@ pub:
 }
 
 // new_client returns a new SMTP client and connects to it
-pub fn new_client(config Client) !&Client {
+pub fn new_client(config Config) !&Client {
 	if config.ssl && config.starttls {
 		return error('Can not use both implicit SSL and STARTTLS')
 	}
 
 	mut c := &Client{
-		...config
+		Config: config
 	}
 	c.reconnect()!
 	return c
@@ -88,11 +91,7 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
-		return error('Connecting to server failed')
-	}
-	conn.set_read_timeout(c.timeout)
-	conn.set_write_timeout(c.timeout)
+	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
 	c.conn = conn
 
 	if c.ssl || c.encrypted {
