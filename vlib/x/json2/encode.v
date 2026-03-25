@@ -307,7 +307,7 @@ fn (mut encoder Encoder) encode_null() {
 	unsafe { encoder.output.push_many(null_string.str, null_string.len) }
 }
 
-fn (mut encoder Encoder) encode_array[T](val []T) {
+fn (mut encoder Encoder) encode_array[T](val T) {
 	encoder.output << `[`
 	if encoder.prettify {
 		encoder.increment_level()
