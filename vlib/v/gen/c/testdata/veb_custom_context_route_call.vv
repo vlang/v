@@ -1,0 +1,23 @@
+module main
+
+import veb
+
+struct App {}
+
+struct Context {
+	veb.Context
+}
+
+fn (mut app App) new() veb.Result {
+	return $veb.html('veb_custom_context_route_call.html')
+}
+
+fn (mut app App) create(mut ctx Context) veb.Result {
+	return app.new()
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	_ = app.create(mut ctx)
+}

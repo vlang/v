@@ -8,6 +8,27 @@ import v.ast
 import v.util
 import v.type_resolver
 
+fn (g &Gen) veb_context_html_arg() string {
+	if g.fn_decl.params.len < 2 {
+		return 'ctx'
+	}
+	ctx_param := g.fn_decl.params[1]
+	ctx_sym := g.table.final_sym(ctx_param.typ)
+	if ctx_sym.name == 'veb.Context' {
+		return ctx_param.name
+	}
+	if ctx_sym.info is ast.Struct {
+		for embed in ctx_sym.info.embeds {
+			embed_sym := g.table.sym(embed)
+			if embed_sym.name == 'veb.Context' {
+				dot := if ctx_param.typ.is_ptr() { '->' } else { '.' }
+				return '&${ctx_param.name}${dot}${embed_sym.embed_name()}'
+			}
+		}
+	}
+	return ctx_param.name
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	is_interface_field := g.table.sym(node.left_type).kind == .interface
 	if is_interface_field {
@@ -120,11 +141,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		if is_html {
 			// return a vweb or x.vweb html template
 			if is_veb {
-				ctx_name := g.fn_decl.params[1].name
-				g.writeln('veb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+				g.writeln('veb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
 			} else if is_x_vweb {
-				ctx_name := g.fn_decl.params[1].name
-				g.writeln('x__vweb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+				g.writeln('x__vweb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
 			} else {
 				// old vweb:
 				app_name := g.fn_decl.params[0].name
