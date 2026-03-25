@@ -28,6 +28,7 @@ pub enum BodyType {
 	html
 }
 
+// Client configures an SMTP connection. `timeout` applies to the underlying TCP reads and writes.
 pub struct Client {
 mut:
 	conn     net.TcpConn
@@ -41,6 +42,7 @@ pub:
 	from     string
 	ssl      bool
 	starttls bool
+	timeout  time.Duration = net.tcp_default_read_timeout
 pub mut:
 	is_open   bool
 	encrypted bool
@@ -86,7 +88,11 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
+	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
+		return error('Connecting to server failed')
+	}
+	conn.set_read_timeout(c.timeout)
+	conn.set_write_timeout(c.timeout)
 	c.conn = conn
 
 	if c.ssl || c.encrypted {
