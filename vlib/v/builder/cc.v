@@ -302,6 +302,23 @@ pub mut:
 	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
 }
 
+fn detect_cc_from_version_output(cc_ver string) CC {
+	cc_ver_lower := cc_ver.to_lower_ascii()
+	return match true {
+		cc_ver_lower.contains('apple clang version') || cc_ver_lower.contains('clang version ') {
+			.clang
+		}
+		cc_ver_lower.contains('free software foundation') || cc_ver_lower.contains('(gcc)')
+			|| cc_ver_lower.starts_with('gcc ')
+			|| cc_ver_lower.starts_with('cc (gcc)') || cc_ver_lower.contains('\ngcc ') {
+			.gcc
+		}
+		else {
+			.unknown
+		}
+	}
+}
+
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut ccoptions := CcompilerOptions{}
 
@@ -354,17 +371,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' {
 		cc_ver := os.execute('cc --version').output
-		if cc_ver.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
-			// Also covers `g++`, `g++-9`, `g++-11` etc.
-			ccoptions.cc = .gcc
-		} else if cc_ver.contains('clang version ') {
-			ccoptions.cc = .clang
-		} else {
+		ccoptions.cc = detect_cc_from_version_output(cc_ver)
+		if ccoptions.cc == .unknown {
 			if v.pref.is_verbose {
 				eprintln('failed to detect C compiler from version info `${cc_ver}`')
 			}
 			eprintln('Compilation with unknown C compiler')
-			ccoptions.cc = .unknown
 		}
 	} else {
 		cc_file_name := os.file_name(ccompiler)

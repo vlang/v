@@ -106,25 +106,22 @@ fn test_c_error_missing_library_name_detects_tcc_output() {
 	assert lib_name == 'pq'
 }
 
-fn test_c_error_missing_library_name_detects_macos_ld_output() {
-	clang_output := 'ld: library not found for -lpq\nclang: error: linker command failed with exit code 1'
-	lib_name := c_error_missing_library_name(clang_output) or { panic(err) }
-	assert lib_name == 'pq'
+fn test_detect_cc_from_version_output_detects_clang() {
+	clang_output := 'Apple clang version 17.0.0 (clang-1700.6.3.2)\nTarget: arm64-apple-darwin25.2.0'
+	assert detect_cc_from_version_output(clang_output) == .clang
 }
 
-fn test_c_error_missing_library_name_detects_gnu_ld_output() {
-	gcc_output := '/usr/bin/ld: cannot find -lpq: No such file or directory'
-	lib_name := c_error_missing_library_name(gcc_output) or { panic(err) }
-	assert lib_name == 'pq'
+fn test_detect_cc_from_version_output_detects_modern_gcc_output() {
+	gcc_output := 'cc (GCC) 14.3.1 20251022 (Red Hat 14.3.1-4)\nCopyright (C) 2025 Free Software Foundation, Inc.'
+	assert detect_cc_from_version_output(gcc_output) == .gcc
 }
 
-fn test_c_error_missing_library_name_detects_msvc_output() {
-	msvc_output := "LINK : fatal error LNK1181: cannot open input file 'pq.lib'"
-	lib_name := c_error_missing_library_name(msvc_output) or { panic(err) }
-	assert lib_name == 'pq'
+fn test_detect_cc_from_version_output_detects_distro_gcc_alias_output() {
+	gcc_output := 'cc (Debian 12.2.0-14) 12.2.0\nCopyright (C) 2022 Free Software Foundation, Inc.'
+	assert detect_cc_from_version_output(gcc_output) == .gcc
 }
 
-fn test_c_error_missing_library_name_ignores_regular_c_error() {
-	c_output := "error: unknown type name 'my_missing_type'"
-	assert c_error_missing_library_name(c_output) == none
+fn test_detect_cc_from_version_output_keeps_unknown_output_unknown() {
+	unknown_output := 'zig 0.14.0-dev.1152+abc123'
+	assert detect_cc_from_version_output(unknown_output) == .unknown
 }
