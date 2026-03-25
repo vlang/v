@@ -1816,7 +1816,40 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	is_interface_upcast := typ_sym.kind == .interface && inter_sym.kind == .interface
 		&& !styp.starts_with('JS.') && !inter_sym.name.starts_with('JS.')
-	if is_interface_upcast && !c.table.interface_inherits_interface(utyp, resolved_interface_type) {
+	if is_interface_upcast {
+		if mut inter_sym.info is ast.Interface {
+			if inter_sym.info.methods.len == 0 && inter_sym.info.fields.len == 0
+				&& inter_sym.info.embeds.len == 0 {
+				// Preserve the source interface's known variants so the empty interface keeps
+				// the original dynamic type for later `is`/`as` checks and conversions.
+				mut source_types := []ast.Type{}
+				match typ_sym.info {
+					ast.Interface {
+						source_types = typ_sym.info.types.clone()
+					}
+					else {}
+				}
+				mut target_variants := c.table.iface_types[inter_sym.name]
+				for variant in source_types {
+					variant_sym := c.table.sym(ast.mktyp(variant))
+					if variant in [ast.nil_type, ast.none_type] || variant_sym.kind == .interface {
+						continue
+					}
+					if !inter_sym.info.types.contains(variant) {
+						inter_sym.info.types << variant
+					}
+					if variant !in target_variants {
+						target_variants << variant
+					}
+				}
+				c.table.iface_types[inter_sym.name] = target_variants
+				if !inter_sym.info.types.contains(ast.voidptr_type) {
+					inter_sym.info.types << ast.voidptr_type
+				}
+				return true
+			}
+		}
+		if !c.table.interface_inherits_interface(utyp, resolved_interface_type) {
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
 			pos)
 		return false

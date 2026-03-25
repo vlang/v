@@ -3777,17 +3777,15 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		}
 		g.expr(expr)
 		g.write(')')
-
 		mut info := got_sym.info as ast.Interface
+		exp_info := exp_sym.info as ast.Interface
 		lock info.conversions {
 			if expected_type !in info.conversions {
-				left_variants := g.table.iface_types[got_sym.name]
-				right_variants := g.table.iface_types[exp_sym.name]
-				info.conversions[expected_type] = left_variants.filter(it in right_variants)
+				info.conversions[expected_type] = info.types.filter(it in exp_info.types)
 			}
 		}
-		mut muttable := unsafe { &ast.Table(g.table) }
-		muttable.type_symbols[got_type.idx()].info = info
+		mut got_interface_sym := g.table.sym(got_type)
+		got_interface_sym.info = info
 		return
 	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
@@ -9861,7 +9859,21 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else if expr_type_sym.kind == .interface && sym.kind == .interface {
-		g.gen_interface_to_interface_conversion(node.expr, node.expr_type, node.typ)
+		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
+		if node.expr_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.expr)
+		g.write(')')
+
+		mut info := expr_type_sym.info as ast.Interface
+		sym_info := sym.info as ast.Interface
+		lock info.conversions {
+			if node.typ !in info.conversions {
+				info.conversions[node.typ] = info.types.filter(it in sym_info.types)
+			}
+		}
+		expr_type_sym.info = info
 	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {

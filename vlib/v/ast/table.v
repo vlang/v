@@ -1996,9 +1996,15 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 	}
 	mut inter_sym := t.sym(inter_typ)
-	is_interface_upcast := sym.kind == .interface && inter_sym.kind == .interface
-	if is_interface_upcast && !t.interface_inherits_interface(typ, inter_typ) {
-		return false
+	if sym.kind == .interface && inter_sym.kind == .interface {
+		inter_info := inter_sym.info as Interface
+		if inter_info.methods.len == 0 && inter_info.fields.len == 0
+			&& inter_info.embeds.len == 0 {
+			return true
+		}
+		if !t.interface_inherits_interface(typ, inter_typ) {
+			return false
+		}
 	}
 	if mut inter_sym.info is Interface {
 		attrs := unsafe { t.interfaces[inter_typ].attrs }
