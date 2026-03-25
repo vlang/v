@@ -410,6 +410,8 @@ $if !new_veb ? {
 	mut:
 		// request body buffer
 		buf &u8 = unsafe { nil }
+		// request bodies are assembled in byte buffers to avoid repeated string reallocations
+		body_buffers [][]u8
 		// idx keeps track of how much of the request body has been read
 		// for each incomplete request, see `handle_conn`
 		idx                 []int
@@ -424,6 +426,10 @@ $if !new_veb ? {
 	pub fn (mut params RequestParams) request_done(fd int) {
 		mut request := &params.incomplete_requests[fd]
 		request.reset()
+		if params.body_buffers[fd].cap > 0 {
+			unsafe { params.body_buffers[fd].free() }
+			params.body_buffers[fd] = []u8{}
+		}
 		params.idx[fd] = 0
 		$if trace_handle_read ? {
 			eprintln('>>>>> fd: ${fd} | request_done.')
