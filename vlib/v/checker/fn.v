@@ -3127,8 +3127,11 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 				if is_params {
 					// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
 					node.args << ast.CallArg{
+						pos:  node.pos
 						expr: ast.StructInit{
-							typ: last_typ
+							typ:      last_typ
+							pos:      node.pos
+							name_pos: node.name_pos
 						}
 					}
 					return
