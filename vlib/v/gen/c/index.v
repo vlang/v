@@ -574,6 +574,12 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if gen_or {
 			g.writeln(';')
+			// The surrounding expression may already carry a pointer prefix placeholder.
+			direct_ptr_cur_line := if cur_line.ends_with('&') || cur_line.ends_with('H') {
+				cur_line[..cur_line.len - 1]
+			} else {
+				cur_line
+			}
 			if g.unsafe_level > 0 && !node.is_option && !node.is_setter
 				&& node.or_expr.kind == .block && node.or_expr.stmts.len == 1 {
 				last_stmt := node.or_expr.stmts[0]
@@ -582,7 +588,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.write('if (!${tmp_opt_ptr}) { ${tmp_opt_ptr} = ')
 					g.expr(last_stmt.expr)
 					g.write('; }')
-					g.write('\n${cur_line}(*${tmp_opt_ptr})')
+					if cur_line.ends_with('&') || cur_line.ends_with('H') {
+						g.write('\n${direct_ptr_cur_line}${tmp_opt_ptr}')
+					} else {
+						g.write('\n${cur_line}(*${tmp_opt_ptr})')
+					}
 					return
 				}
 			}
