@@ -688,6 +688,21 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 		qb.config.fields = qb.meta.map(sql_field_name(it))
 	}
 
+	if qb.config.select_exprs.len != qb.config.fields.len {
+		mut select_exprs := []string{cap: qb.config.fields.len}
+		for f in qb.config.fields {
+			mut select_expr := f
+			for ff in qb.meta {
+				if sql_field_name(ff) == f {
+					select_expr = sql_field_select_expr(ff)
+					break
+				}
+			}
+			select_exprs << select_expr
+		}
+		qb.config.select_exprs = select_exprs
+	}
+
 	if qb.config.types.len == 0 {
 		// set field's types
 		mut types := []int{cap: qb.config.fields.len}

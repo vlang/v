@@ -2,6 +2,7 @@
 // vtest build: present_sqlite3? && !windows
 // import db.mysql
 // import db.pg
+import orm
 import time
 import db.sqlite
 
@@ -38,6 +39,11 @@ struct TestTime {
 	create time.Time
 }
 
+struct SelectTransformUser {
+	id   int    @[primary; sql: serial]
+	name string @[sql_select: 'upper(name)']
+}
+
 fn test_use_struct_field_as_limit() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -72,6 +78,38 @@ fn test_use_struct_field_as_limit() {
 	assert users[0].skipped_string2 == ''
 	assert users[0].skipped_array == [], 'skipped because of the @[skip] tag, used for both sql and json'
 	assert users[0].skipped_array2 == [], "should be skipped, because of the sql specific @[sql: '-'] tag"
+}
+
+fn test_orm_sql_select_attribute() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table SelectTransformUser
+	}!
+
+	alice := SelectTransformUser{
+		name: 'Alice'
+	}
+
+	sql db {
+		insert alice into SelectTransformUser
+	}!
+
+	rows := sql db {
+		select from SelectTransformUser where id == 1
+	}!
+
+	assert rows.len == 1
+	assert rows[0].name == 'ALICE'
+
+	mut qb := orm.new_query[SelectTransformUser](db)
+	qb_rows := qb.query()!
+
+	assert qb_rows.len == 1
+	assert qb_rows[0].name == 'ALICE'
 }
 
 fn test_orm() {

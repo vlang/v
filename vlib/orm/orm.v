@@ -249,6 +249,7 @@ pub mut:
 	has_offset      bool
 	has_distinct    bool
 	fields          []string
+	select_exprs    []string
 	types           []int
 	joins           []JoinConfig // JOIN clauses for this query
 }
@@ -707,7 +708,16 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		}
 	} else {
 		for i, field in cfg.fields {
-			str += '${q}${field}${q}'
+			select_expr := if cfg.select_exprs.len > i && cfg.select_exprs[i] != '' {
+				cfg.select_exprs[i]
+			} else {
+				field
+			}
+			if select_expr == field {
+				str += '${q}${field}${q}'
+			} else {
+				str += select_expr
+			}
 			if i < cfg.fields.len - 1 {
 				str += ', '
 			}
@@ -1087,6 +1097,16 @@ fn sql_field_name(field TableField) string {
 		}
 	}
 	return name
+}
+
+// Get's the SQL select expression for a field.
+fn sql_field_select_expr(field TableField) string {
+	for attr in field.attrs {
+		if attr.name == 'sql_select' && attr.has_arg {
+			return attr.arg
+		}
+	}
+	return sql_field_name(field)
 }
 
 // needed for backend functions

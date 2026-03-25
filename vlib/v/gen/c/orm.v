@@ -1030,11 +1030,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('.fields = builtin__new_array_from_c_array(${select_fields.len}, ${select_fields.len}, sizeof(string),')
 	g.indent++
 	mut types := []string{}
+	mut select_exprs := []string{}
 	if select_fields.len > 0 {
 		g.writeln('_MOV((string[${select_fields.len}]){')
 		g.indent++
 		for field in select_fields {
-			g.writeln('_S("${g.get_orm_column_name_from_struct_field(field)}"),')
+			column_name := g.get_orm_column_name_from_struct_field(field)
+			g.writeln('_S("${column_name}"),')
+			select_exprs << g.get_orm_select_expr_from_struct_field(field)
 			mut final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
 			if node.aggregate_kind == .avg {
 				final_field_typ = ast.f64_type
@@ -1054,6 +1057,23 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				continue
 			}
 			types << final_field_typ.idx().str()
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL')
+	}
+	g.indent--
+	g.writeln2('),', '.select_exprs = builtin__new_array_from_c_array(${select_exprs.len}, ${select_exprs.len}, sizeof(string),')
+	g.indent++
+
+	if select_exprs.len > 0 {
+		g.writeln('_MOV((string[${select_exprs.len}]){')
+		g.indent++
+		for select_expr in select_exprs {
+			expr1 := util.smart_quote(select_expr, false)
+			expr := cescape_nonascii(expr1)
+			g.writeln('_S("${expr}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -1462,6 +1482,14 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	}
 
 	return name
+}
+
+// get_orm_select_expr_from_struct_field returns the SQL expression used in a SELECT list.
+fn (g &Gen) get_orm_select_expr_from_struct_field(field ast.StructField) string {
+	if attr := field.attrs.find_first('sql_select') {
+		return attr.arg
+	}
+	return g.get_orm_column_name_from_struct_field(field)
 }
 
 // get_orm_struct_primary_field returns the table's primary column field.
