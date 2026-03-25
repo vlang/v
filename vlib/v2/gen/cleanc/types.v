@@ -2866,7 +2866,9 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 			if lhs_type is types.SumType {
 				if narrowed_c := g.get_expr_type_from_env(node.lhs) {
 					if narrowed_type := g.resolve_c_type_to_raw(narrowed_c) {
-						if field_type := selector_struct_field_type_from_type(narrowed_type, node.rhs.name) {
+						if field_type := selector_struct_field_type_from_type(narrowed_type,
+							node.rhs.name)
+						{
 							return field_type
 						}
 					}
