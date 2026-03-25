@@ -120,6 +120,21 @@ fn test_sprintf_with_escape() {
 	assert s == '69 is 100% awesome'
 }
 
+struct SprintfPromotedValue {
+mut:
+	x u8
+}
+
+fn test_sprintf_promoted_variadic_values() {
+	mut value := SprintfPromotedValue{
+		x: 1
+	}
+	assert unsafe { strconv.v_sprintf('x=%02d', value.x) } == 'x=01'
+	assert unsafe { strconv.v_sprintf('x=%02d', int(value.x)) } == 'x=01'
+	assert unsafe { strconv.v_sprintf('%s', 'abc') } == 'abc'
+	assert unsafe { strconv.v_sprintf('%.1f', f32(1.5)) } == '1.5'
+}
+
 fn test_remove_tail_zeros() {
 	assert strconv.remove_tail_zeros('1.234000000000') == '1.234'
 	assert strconv.remove_tail_zeros('1.0000000') == '1'
