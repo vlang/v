@@ -229,7 +229,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 					s = t.type_to_str(param_typ.clear_flag(.shared_f).deref())
 				}
 			}
-			s = util.no_cur_mod(s, cur_mod)
+			s = shorten_full_name_based_on_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
 			if !is_type_only {
 				f.write_string(' ')
@@ -254,7 +254,8 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			node.return_type
 		}
-		sreturn_type := util.no_cur_mod(t.type_to_str(return_type), cur_mod)
+		sreturn_type := shorten_full_name_based_on_cur_mod(t.type_to_str(return_type),
+			cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
 		f.write_string(' ${short_sreturn_type}')
 	}
@@ -377,6 +378,23 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 		res = replace_qualified_name_based_on_alias(res, r.mod, r.alias)
 	}
 	return res
+}
+
+fn shorten_full_name_based_on_cur_mod(input string, cur_mod string) string {
+	if cur_mod == '' || !input.contains('${cur_mod}.') {
+		return input
+	}
+	pattern := '${cur_mod}.'
+	mut out := strings.new_builder(input.len)
+	for i := 0; i < input.len; i++ {
+		if input[i..].starts_with(pattern)
+			&& (i == 0 || input[i - 1] in [` `, `(`, `[`, `,`, `|`, `&`, `?`, `!`, `:`]) {
+			i += pattern.len - 1
+			continue
+		}
+		out.write_u8(input[i])
+	}
+	return out.str()
 }
 
 // This method creates the format specifier (including the colon) or an empty
