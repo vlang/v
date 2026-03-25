@@ -112,7 +112,7 @@ pub:
 	window_title      string = 'A GG Window. Set window_title: to change it.' // the desired title of the window
 	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
-	borderless_window bool  // TODO: implement or deprecate
+	borderless_window bool  // create the window without native decorations when supported by the platform backend
 	always_on_top     bool  // TODO: implement or deprecate
 	bg_color          Color // The background color of the window. By default, the first thing gg does in ctx.begin(), is clear the whole buffer with that color.
 	init_fn           FNCb   = unsafe { nil } // Called once, after Sokol has finished its setup. Some gg and Sokol functions have to be called *in this* callback, or after this callback, but not before
@@ -589,6 +589,7 @@ pub fn new_context(cfg Config) &Context {
 			__v_native_render:   cfg.native_rendering
 			min_width:           cfg.min_width
 			min_height:          cfg.min_height
+			borderless_window:   cfg.borderless_window
 			// drag&drop
 			enable_dragndrop:             cfg.enable_dragndrop
 			max_dropped_files:            cfg.max_dropped_files

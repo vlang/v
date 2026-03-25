@@ -17,3 +17,11 @@ fn test_remove_cached_image_remove_and_get() {
 	ctx.remove_cached_image_by_idx(idx)
 	assert ctx.get_cached_image_by_idx(idx).ok == false
 }
+
+fn test_new_context_sets_borderless_window_flag() {
+	ctx := gg.new_context(
+		width:             100
+		borderless_window: true
+	)
+	assert ctx.window.borderless_window == true
+}
