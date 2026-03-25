@@ -278,6 +278,39 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	return ''
 }
 
+fn (g &Gen) static_init_guard_name(pos token.Pos) string {
+	return '_vstatic_init_${pos.pos}'
+}
+
+fn (mut g Gen) gen_static_decl_runtime_init(node ast.AssignStmt, left ast.Expr, left_type ast.Type, right ast.Expr, right_type ast.Type) bool {
+	if node.left.len != 1 || node.right.len != 1 || g.inside_ternary != 0 {
+		return false
+	}
+	if left !is ast.Ident {
+		return false
+	}
+	guard_name := g.static_init_guard_name(left.pos())
+	g.writeln(';')
+	g.writeln('static bool ${guard_name};')
+	g.writeln('if (!${guard_name}) {')
+	g.indent++
+	g.writeln('${guard_name} = true;')
+	old_is_assign_lhs := g.is_assign_lhs
+	g.is_assign_lhs = false
+	g.assign_stmt(ast.AssignStmt{
+		op:          .assign
+		pos:         node.pos
+		left:        [left]
+		right:       [right]
+		left_types:  [left_type]
+		right_types: [right_type]
+	})
+	g.is_assign_lhs = old_is_assign_lhs
+	g.indent--
+	g.writeln('}')
+	return true
+}
+
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
@@ -1486,6 +1519,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write(';\n${cur_line}')
 				g.out.write_string(util.tabs(g.indent))
 				g.expr(left)
+			}
+			if is_decl && node.is_static
+				&& g.gen_static_decl_runtime_init(node, left, var_type, val, val_type) {
+				continue
 			}
 			g.is_assign_lhs = false
 			if left is ast.IndexExpr && g.cur_indexexpr.len > 0 {
