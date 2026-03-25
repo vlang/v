@@ -98,7 +98,13 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	b.parsed_files << parser.parse_text(code, '', mut b.table, .skip_comments, b.pref)
+	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
+		exit(1)
+	}
 	b.parse_imports()
+	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
+		exit(1)
+	}
 
 	if b.pref.only_check_syntax {
 		return error_with_code('stop_after_parser', 7001)
@@ -118,8 +124,14 @@ pub fn (mut b Builder) front_stages(v_files []string) ! {
 	util.timing_start('Builder.front_stages.parse_files')
 	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	timers.show('Builder.front_stages.parse_files')
+	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
+		exit(1)
+	}
 
 	b.parse_imports()
+	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
+		exit(1)
+	}
 
 	timers.show('SCAN')
 	timers.show('PARSE')
@@ -187,6 +199,17 @@ pub fn (mut b Builder) middle_stages() ! {
 pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {
 	b.front_stages(v_files)!
 	b.middle_stages()!
+}
+
+@[inline]
+fn (b &Builder) should_stop_after_frontend_error() bool {
+	return b.pref.fatal_errors
+		|| (b.pref.output_mode == .stdout && !b.pref.check_only && !b.pref.is_vls)
+}
+
+@[inline]
+fn (b &Builder) has_frontend_errors() bool {
+	return b.parsed_files.any(it.errors.len > 0)
 }
 
 // parse all deps from already parsed files
@@ -266,6 +289,9 @@ pub fn (mut b Builder) parse_imports() {
 				}
 			}
 			b.parsed_files << parsed_files
+			if b.should_stop_after_frontend_error() && parsed_files.any(it.errors.len > 0) {
+				return
+			}
 			done_imports << mod
 		}
 	}

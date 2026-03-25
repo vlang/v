@@ -69,34 +69,28 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
 	mut kind := 'error:'
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
-	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
-		exit(1)
-	}
-	if p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls {
+	should_abort_after_print := p.pref.fatal_errors
+		|| (p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls)
+	if should_abort_after_print {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
 		}
 		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
-		exit(1)
-	} else {
-		p.errors << errors.Error{
-			file_path: file_path
-			pos:       pos
-			reporter:  .parser
-			message:   s
-		}
-
-		// To avoid getting stuck after an error, the parser
-		// will proceed to the next token.
-		if p.pref.check_only || p.pref.only_check_syntax {
-			if p.tok.kind != .eof {
-				p.next()
-			}
-		}
+		p.should_abort = true
 	}
-	if p.pref.output_mode == .silent && p.tok.kind != .eof {
+	p.errors << errors.Error{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   s
+	}
+
+	// To avoid getting stuck after an error, the parser will always
+	// proceed to the next token in modes where parsing continues, or
+	// while it is unwinding after a printed error.
+	if (should_abort_after_print || p.pref.check_only || p.pref.only_check_syntax
+		|| p.pref.output_mode == .silent) && p.tok.kind != .eof {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
 		// of the parser logic does not expect that, and may loop forever.
@@ -111,25 +105,22 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 
 fn (mut p Parser) error_with_error(error errors.Error) {
 	mut kind := 'error:'
-	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, error.CompilerMessage)
-		exit(1)
-	}
-	if p.pref.output_mode == .stdout && !p.pref.check_only {
+	should_abort_after_print := p.pref.fatal_errors
+		|| (p.pref.output_mode == .stdout && !p.pref.check_only)
+	if should_abort_after_print {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
 		}
 		util.show_compiler_message(kind, error.CompilerMessage)
-		exit(1)
-	} else {
-		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
-			p.should_abort = true
-			return
-		}
-		p.errors << error
+		p.should_abort = true
 	}
-	if p.pref.output_mode == .silent {
+	if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
+		p.should_abort = true
+		return
+	}
+	p.errors << error
+	if (should_abort_after_print || p.pref.output_mode == .silent) && p.tok.kind != .eof {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
 		// of the parser logic does not expect that, and may loop forever.

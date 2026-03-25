@@ -427,12 +427,18 @@ pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences)
 	$if time_parsing ? {
 		timers.should_print = true
 	}
+	stop_after_first_error := pref_.fatal_errors
+		|| (pref_.output_mode == .stdout && !pref_.check_only && !pref_.is_vls)
 	unsafe {
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
 			timers.start('parse_file ${path}')
-			files << parse_file(path, mut table, .skip_comments, pref_)
+			file := parse_file(path, mut table, .skip_comments, pref_)
+			files << file
 			timers.show('parse_file ${path}')
+			if stop_after_first_error && file.errors.len > 0 {
+				break
+			}
 		}
 		handle_codegen_for_multiple_files(mut files)
 		return files
