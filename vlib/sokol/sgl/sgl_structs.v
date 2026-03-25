@@ -80,6 +80,7 @@ mut:
 	base_vertex   int
 	num_vertices  int
 	uniform_index int
+	max_vertices  int
 }
 
 struct ViewportArgs {
@@ -213,6 +214,8 @@ const default_context_pool_size = 4
 const default_pipeline_pool_size = 64
 const default_max_vertices = (1 << 17)
 const default_max_commands = (1 << 15)
+// Large point batches can disappear on some backends/drivers once they exceed 16-bit counts.
+const max_point_batch_vertices = 0xFFFF
 const slot_shift = 16
 const max_pool_size = (1 << slot_shift)
 const slot_mask = (max_pool_size - 1)

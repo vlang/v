@@ -463,6 +463,16 @@ fn cur_command(ctx &ContextInternal) &Command {
 	return unsafe { nil }
 }
 
+@[inline]
+fn next_draw_chunk(base_vertex int, remaining_vertices int, max_vertices int) (int, int) {
+	chunk_vertices := if max_vertices > 0 && remaining_vertices > max_vertices {
+		max_vertices
+	} else {
+		remaining_vertices
+	}
+	return base_vertex, chunk_vertices
+}
+
 @[direct_array_access]
 fn vtx(ctx &ContextInternal, x f32, y f32, z f32, u_ f32, v_ f32, rgba_ u32) {
 	unsafe {
@@ -609,7 +619,19 @@ fn internal_draw(ctx &ContextInternal, layer_id int) {
 					cur_uniform_index = args.uniform_index
 				}
 				if args.num_vertices > 0 {
-					gfx.draw(args.base_vertex, args.num_vertices, 1)
+					if args.max_vertices > 0 && args.num_vertices > args.max_vertices {
+						mut base_vertex := args.base_vertex
+						mut remaining_vertices := args.num_vertices
+						for remaining_vertices > 0 {
+							chunk_base_vertex, chunk_vertices := next_draw_chunk(base_vertex,
+								remaining_vertices, args.max_vertices)
+							gfx.draw(chunk_base_vertex, chunk_vertices, 1)
+							base_vertex += chunk_vertices
+							remaining_vertices -= chunk_vertices
+						}
+					} else {
+						gfx.draw(args.base_vertex, args.num_vertices, 1)
+					}
 				}
 			}
 		}
@@ -1615,6 +1637,11 @@ pub fn end() {
 				a.base_vertex = ctx.base_vertex
 				a.num_vertices = ctx.vertices_next - ctx.base_vertex
 				a.uniform_index = ctx.uniforms_next - 1
+				a.max_vertices = if ctx.cur_prim_type == .points {
+					max_point_batch_vertices
+				} else {
+					0
+				}
 			}
 		}
 	}
