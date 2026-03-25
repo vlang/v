@@ -23,14 +23,19 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	// Resolve generic table type if we're inside a generic function context
-	mut table_type := node.table_expr.typ
-	if table_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
-		&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
-		table_type = c.table.unwrap_generic_type(table_type, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types)
-		node.table_expr.typ = table_type
+	// Keep the SQL expression type aligned with the concretized ORM table type.
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len > 0 {
+		if c.needs_unwrap_generic_type(node.table_expr.typ) {
+			node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+		}
+		if c.needs_unwrap_generic_type(node.typ) {
+			node.typ = c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+		}
 	}
+	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
@@ -282,14 +287,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	// Resolve generic table type if we're inside a generic function context
-	mut table_type := node.table_expr.typ
-	if table_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
-		&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
-		table_type = c.table.unwrap_generic_type(table_type, c.table.cur_fn.generic_names,
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len > 0 && c.needs_unwrap_generic_type(node.table_expr.typ) {
+		node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ, c.table.cur_fn.generic_names,
 			c.table.cur_concrete_types)
-		node.table_expr.typ = table_type
 	}
+	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
@@ -315,9 +318,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
-		// Resolve generic inserting object type if we're inside a generic function context
-		if inserting_object_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
-			&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_concrete_types.len > 0
+			&& c.needs_unwrap_generic_type(inserting_object_type) {
 			inserting_object_type = c.table.unwrap_generic_type(inserting_object_type,
 				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 		}
