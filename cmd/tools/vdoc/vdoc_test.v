@@ -244,3 +244,20 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)!
 	assert out.contains('<a href="https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v">')
 }
+
+fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{
+			table: ast.new_table()
+		}
+	}
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut
+		renderer)!
+	assert out.contains('<blockquote>')
+	assert out.contains('<strong>Note</strong><br />line one<br />line two')
+}
+
+fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
+	input := '```sh\n> prompt\n> next\n```'
+	assert prepare_markdown_for_html(input) == input
+}

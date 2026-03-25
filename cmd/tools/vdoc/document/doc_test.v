@@ -83,3 +83,12 @@ fn test_generated_enum_helpers_are_documented() {
 	assert mouse_buttons_zero.kind == .method
 	assert mouse_buttons_zero.content.contains('MouseButtons.zero')
 }
+
+fn test_merge_doc_comments_keeps_blockquotes_on_separate_lines() {
+	comments := [
+		doc.DocComment{
+			text: '> **Note**\n> line one\n> line two'
+		},
+	]
+	assert doc.merge_doc_comments(comments).trim_space() == '> **Note**\n> line one\n> line two'
+}
