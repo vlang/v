@@ -189,6 +189,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		return
 	}
 	for i, mut left in node.left {
+		if !is_decl {
+			if left is ast.Ident {
+				ident := left as ast.Ident
+				c.clear_assert_autocast(ident.scope, ident.name)
+			}
+		}
 		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
 			if c.pref.is_vls {

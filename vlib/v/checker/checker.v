@@ -42,6 +42,11 @@ pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
+struct AssertAutocast {
+	from_type ast.Type
+	to_type   ast.Type
+}
+
 @[heap; minify]
 pub struct Checker {
 pub mut:
@@ -140,6 +145,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	assert_autocasts                 map[string]AssertAutocast
 	is_js_backend                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
@@ -3437,6 +3443,11 @@ fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
+	if !isnil(c.fn_scope) {
+		scope := c.fn_scope.innermost(node.pos.pos)
+		c.apply_assert_autocasts(mut node.expr, scope)
+	}
+	nr_errors_before := c.nr_errors
 	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
 	c.markused_assertstmt_auto_str(mut node)
 	if assert_type != ast.bool_type_idx {
@@ -3453,6 +3464,12 @@ fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
 		}
 	}
 	c.fail_if_unreadable(node.expr, ast.bool_type_idx, 'assertion')
+	// Asserts are stripped in `-prod`, so only persist narrowing when the assert stays in the program.
+	if node.is_used && !isnil(c.fn_scope) && assert_type == ast.bool_type_idx
+		&& c.nr_errors == nr_errors_before {
+		scope := c.fn_scope.innermost(node.pos.pos)
+		c.remember_assert_autocasts(mut node.expr, scope)
+	}
 	c.expected_type = cur_exp_typ
 }
 
@@ -6049,6 +6066,132 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 
 fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
 	return '__smartcast_index_expr__${ast.Expr(expr).str()}'
+}
+
+fn assert_autocast_scope_key(scope &ast.Scope, name string) string {
+	return '${scope.start_pos}:${scope.end_pos}:${name}'
+}
+
+fn (c &Checker) find_assert_autocast(scope &ast.Scope, name string) ?AssertAutocast {
+	for sc := unsafe { scope }; sc != unsafe { nil }; sc = sc.parent {
+		if autocast := c.assert_autocasts[assert_autocast_scope_key(sc, name)] {
+			return autocast
+		}
+		if sc.parent == unsafe { nil } || sc.detached_from_parent {
+			break
+		}
+	}
+	return none
+}
+
+fn (mut c Checker) clear_assert_autocast(scope &ast.Scope, name string) {
+	for sc := unsafe { scope }; sc != unsafe { nil }; sc = sc.parent {
+		key := assert_autocast_scope_key(sc, name)
+		if key in c.assert_autocasts {
+			c.assert_autocasts.delete(key)
+			return
+		}
+		if sc.parent == unsafe { nil } || sc.detached_from_parent {
+			break
+		}
+	}
+}
+
+fn (mut c Checker) apply_assert_autocasts(mut expr ast.Expr, scope &ast.Scope) {
+	if expr is ast.Ident {
+		ident := expr as ast.Ident
+		ident_scope := if !isnil(ident.scope) { ident.scope } else { scope }
+		if autocast := c.find_assert_autocast(ident_scope, ident.name) {
+			expr = ast.Expr(ast.ParExpr{
+				expr: ast.Expr(ast.AsCast{
+					typ:       autocast.to_type
+					expr:      ast.Expr(ident)
+					expr_type: autocast.from_type
+				})
+			})
+		}
+		return
+	}
+	match mut expr {
+		ast.SelectorExpr {
+			c.apply_assert_autocasts(mut expr.expr, scope)
+		}
+		ast.ParExpr {
+			c.apply_assert_autocasts(mut expr.expr, scope)
+		}
+		ast.PrefixExpr {
+			c.apply_assert_autocasts(mut expr.right, scope)
+		}
+		ast.CallExpr {
+			if expr.left !is ast.Ident {
+				c.apply_assert_autocasts(mut expr.left, scope)
+			}
+			for mut arg in expr.args {
+				c.apply_assert_autocasts(mut arg.expr, scope)
+			}
+		}
+		ast.InfixExpr {
+			c.apply_assert_autocasts(mut expr.left, scope)
+			c.apply_assert_autocasts(mut expr.right, scope)
+		}
+		ast.IndexExpr {
+			c.apply_assert_autocasts(mut expr.left, scope)
+			c.apply_assert_autocasts(mut expr.index, scope)
+		}
+		ast.RangeExpr {
+			c.apply_assert_autocasts(mut expr.low, scope)
+			c.apply_assert_autocasts(mut expr.high, scope)
+		}
+		ast.StringInterLiteral {
+			for mut subexpr in expr.exprs {
+				c.apply_assert_autocasts(mut subexpr, scope)
+			}
+		}
+		ast.UnsafeExpr {
+			c.apply_assert_autocasts(mut expr.expr, scope)
+		}
+		ast.Likely {
+			c.apply_assert_autocasts(mut expr.expr, scope)
+		}
+		else {}
+	}
+}
+
+fn (mut c Checker) remember_assert_autocasts(mut node ast.Expr, scope &ast.Scope) {
+	match mut node {
+		ast.InfixExpr {
+			if node.op == .and {
+				c.remember_assert_autocasts(mut node.left, scope)
+				c.remember_assert_autocasts(mut node.right, scope)
+			} else {
+				left := node.left
+				if left is ast.Ident && node.op == .ne && node.right is ast.None {
+					if node.left_type.has_flag(.option) {
+						autocast_scope := if !isnil(left.scope) { left.scope } else { scope }
+
+						c.assert_autocasts[assert_autocast_scope_key(autocast_scope, left.name)] = AssertAutocast{
+							from_type: node.left_type
+							to_type:   node.left_type.clear_flag(.option)
+						}
+					}
+				} else if left is ast.Ident && node.op == .key_is {
+					autocast_scope := if !isnil(left.scope) { left.scope } else { scope }
+
+					c.assert_autocasts[assert_autocast_scope_key(autocast_scope, left.name)] = AssertAutocast{
+						from_type: node.left_type
+						to_type:   node.right_type
+					}
+				}
+			}
+		}
+		ast.Likely {
+			c.remember_assert_autocasts(mut node.expr, scope)
+		}
+		ast.ParExpr {
+			c.remember_assert_autocasts(mut node.expr, scope)
+		}
+		else {}
+	}
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
