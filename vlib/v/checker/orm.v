@@ -741,6 +741,103 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 	}
 }
 
+// check_where_data_expr_has_no_struct_field_refs checks that expressions destined for ORM bind data
+// do not reference fields from the queried table, because ORM where clauses currently only support
+// comparing a table field with a V value, not with another table field.
+fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_symbol &ast.TypeSymbol, expr ast.Expr, op token.Kind) {
+	match expr {
+		ast.Ident {
+			if expr.kind == .unresolved && table_type_symbol.has_field(expr.name) {
+				c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
+					expr.pos)
+			}
+		}
+		ast.ArrayInit {
+			for item in expr.exprs {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, item,
+					op)
+			}
+		}
+		ast.CallExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
+				op)
+			for arg in expr.args {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, arg.expr,
+					op)
+			}
+		}
+		ast.CastExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
+				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.arg,
+				op)
+		}
+		ast.IndexExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
+				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.index,
+				op)
+		}
+		ast.InfixExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
+				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
+				op)
+		}
+		ast.MapInit {
+			for key in expr.keys {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, key,
+					op)
+			}
+			for val in expr.vals {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, val,
+					op)
+			}
+		}
+		ast.ParExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
+				op)
+		}
+		ast.PrefixExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
+				op)
+		}
+		ast.SelectorExpr {
+			table_name := util.strip_mod_name(table_type_symbol.name)
+			if table_type_symbol.has_field(expr.field_name) {
+				if expr.expr is ast.TypeNode
+					&& c.table.sym(expr.expr.typ).name == table_type_symbol.name {
+					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
+						expr.pos)
+				} else if expr.expr is ast.Ident && expr.expr.kind == .unresolved
+					&& expr.expr.name == table_name {
+					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
+						expr.pos)
+				}
+			}
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
+				op)
+		}
+		ast.StringInterLiteral {
+			for interpolated in expr.exprs {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, interpolated,
+					op)
+			}
+		}
+		ast.StructInit {
+			for init_field in expr.init_fields {
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, init_field.expr,
+					op)
+			}
+		}
+		ast.UnsafeExpr {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
+				op)
+		}
+		else {}
+	}
+}
+
 // check_where_expr_has_no_pointless_exprs checks that an expression has no pointless expressions
 // which don't affect the result. For example, `where 3` is pointless.
 // Also, it checks that the left side of the infix expression is always the structure field.
@@ -771,7 +868,11 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
-		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
+		if expr.op in [.ne, .eq, .lt, .gt, .ge, .le, .key_like, .key_ilike, .key_in, .not_in] {
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
+				expr.op)
+		} else if expr.right is ast.InfixExpr || expr.right is ast.ParExpr
+			|| expr.right is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
 				expr.right)
 		}
