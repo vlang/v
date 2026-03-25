@@ -450,6 +450,7 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	} else {
 		1048576 // Default: 1MB
 	}
+	user_context.static_compression_mime_types = app.static_compression_mime_types.clone()
 
 	user_context.send_file(mime_type, static_file)
 	return true

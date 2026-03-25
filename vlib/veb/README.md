@@ -434,7 +434,7 @@ over gzip when the client supports both.
 **How it works:**
 
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
-   them in zero-copy streaming mode for maximum performance.
+   them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
    on first request and cached as `.zst` or `.gz` files on disk (zstd preferred when client
    supports it).
@@ -471,7 +471,9 @@ fn main() {
 	// Enable static file compression (zstd/gzip, disabled by default)
 	// Use enable_static_zstd and enable_static_gzip for specific compression
 	app.enable_static_compression = true
-	app.static_compression_max_size = 524288 // Maximum file size for auto-compression is 512 KB (default: 1MB)
+	// Maximum file size for auto-compression is 512 KB (default: 1MB)
+	app.static_compression_max_size = 524288
+	app.static_compression_mime_types = [veb.mime_types['.css'], veb.mime_types['.js']]
 
 	// Serve files from the 'static' directory
 	app.handle_static('static', true)!
@@ -484,6 +486,10 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 ```
+
+Set `app.static_compression_mime_types` when you only want to compress specific static MIME
+types. Leave it empty to keep the current behavior and allow compression for any static file
+type.
 
 **Setup and testing:**
 

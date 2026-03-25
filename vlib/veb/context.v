@@ -36,10 +36,11 @@ mut:
 	// If the `Connection: close` header is present the connection should always be closed
 	client_wants_to_close bool
 	// Configuration for static file compression (set by serve_if_static)
-	enable_static_gzip          bool
-	enable_static_zstd          bool
-	enable_static_compression   bool
-	static_compression_max_size int
+	enable_static_gzip            bool
+	enable_static_zstd            bool
+	enable_static_compression     bool
+	static_compression_max_size   int
+	static_compression_mime_types []string
 	// if true the response should not be sent and the connection should be closed
 	// manually.
 	takeover    bool
@@ -203,11 +204,12 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	client_accepts_zstd := accept_encoding.contains('zstd')
 	client_accepts_gzip := accept_encoding.contains('gzip')
 	max_size_bytes := ctx.static_compression_max_size
+	should_use_static_compression := ctx.should_use_static_compression_for_mime(content_type)
 	// Determine which compression modes are enabled
-	use_zstd := (ctx.enable_static_zstd && client_accepts_zstd)
-		|| (ctx.enable_static_compression && client_accepts_zstd)
-	use_gzip := (ctx.enable_static_gzip && client_accepts_gzip)
-		|| (ctx.enable_static_compression && client_accepts_gzip)
+	use_zstd := should_use_static_compression && ((ctx.enable_static_zstd && client_accepts_zstd)
+		|| (ctx.enable_static_compression && client_accepts_zstd))
+	use_gzip := should_use_static_compression && ((ctx.enable_static_gzip && client_accepts_gzip)
+		|| (ctx.enable_static_compression && client_accepts_gzip))
 	// Try to serve pre-compressed files if any compression is enabled
 	if use_zstd || use_gzip {
 		orig_mtime := os.file_last_mod_unix(file_path)
@@ -264,6 +266,26 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
 	return ctx.send_response_to_client(content_type, '')
+}
+
+fn normalize_static_compression_mime_type(mime_type string) string {
+	return mime_type.all_before(';').trim_space().to_lower()
+}
+
+fn (ctx &Context) should_use_static_compression_for_mime(content_type string) bool {
+	if ctx.static_compression_mime_types.len == 0 {
+		return true
+	}
+	normalized_content_type := normalize_static_compression_mime_type(content_type)
+	if normalized_content_type == '' {
+		return false
+	}
+	for mime_type in ctx.static_compression_mime_types {
+		if normalize_static_compression_mime_type(mime_type) == normalized_content_type {
+			return true
+		}
+	}
+	return false
 }
 
 fn sanitize_cache_path_component(component string) string {

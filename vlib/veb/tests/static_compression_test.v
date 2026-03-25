@@ -10,15 +10,19 @@ const port = 14013
 const port_no_auto = 14014 // Port for static_compression_max_size = 0 test
 const port_gzip_only = 14015 // Port for enable_static_gzip only test
 const port_zstd_only = 14016 // Port for enable_static_zstd only test
+const port_filtered_mimes = 14017 // Port for static_compression_mime_types test
 
 const localserver = 'http://127.0.0.1:${port}'
 const localserver_no_auto = 'http://127.0.0.1:${port_no_auto}'
 const localserver_gzip_only = 'http://127.0.0.1:${port_gzip_only}'
 const localserver_zstd_only = 'http://127.0.0.1:${port_zstd_only}'
+const localserver_filtered_mimes = 'http://127.0.0.1:${port_filtered_mimes}'
 
 const exit_after = time.second * 30
 
 const test_file_content = 'This is a test file for gzip compression. It contains enough text to make compression worthwhile. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+const filtered_css_content = 'body{margin:0;padding:0;color:#123456;background:#fafafa;}'
+const filtered_svg_content = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><rect width="2" height="2" fill="#fff"/></svg>'
 
 pub struct App {
 	veb.StaticHandler
@@ -106,6 +110,10 @@ fn testsuite_begin() {
 	// Create files for gzip-only and zstd-only tests
 	os.write_file('testdata_compression/gzip_only_test.txt', test_file_content)!
 	os.write_file('testdata_compression/zstd_only_test.txt', test_file_content)!
+	os.write_file('testdata_compression/filtered.css', filtered_css_content)!
+	os.write_file('testdata_compression/filtered.svg', filtered_svg_content)!
+	filtered_svg_gz := gzip.compress(filtered_svg_content.bytes()) or { panic(err) }
+	os.write_file('testdata_compression/filtered.svg.gz', filtered_svg_gz.bytestr())!
 
 	spawn fn () {
 		time.sleep(exit_after)
@@ -117,6 +125,7 @@ fn testsuite_begin() {
 	run_no_auto_compression_test()
 	run_gzip_only_test()
 	run_zstd_only_test()
+	run_filtered_mime_test()
 }
 
 fn testsuite_end() {
@@ -189,6 +198,23 @@ fn run_zstd_only_test() {
 
 	spawn veb.run_at[App, Context](mut app,
 		port:               port_zstd_only
+		timeout_in_seconds: 25
+		family:             .ip
+	)
+	_ := <-app.started
+}
+
+fn run_filtered_mime_test() {
+	mut app := &App{}
+
+	app.enable_static_compression = true
+	app.static_compression_max_size = 1048576
+	app.static_compression_mime_types = [veb.mime_types['.css'], veb.mime_types['.js']]
+
+	app.handle_static('testdata_compression', true) or { panic(err) }
+
+	spawn veb.run_at[App, Context](mut app,
+		port:               port_filtered_mimes
 		timeout_in_seconds: 25
 		family:             .ip
 	)
@@ -573,4 +599,31 @@ fn test_zstd_only_no_compression_without_zstd_header() {
 		return
 	}
 	assert false, 'zstd-only mode should not compress when client only accepts gzip'
+}
+
+fn test_static_compression_mime_filter_allows_matching_types() {
+	mut req := http.new_request(.get, '${localserver_filtered_mimes}/filtered.css', '')
+	req.add_header(.accept_encoding, 'gzip')
+	x := req.do()!
+
+	assert x.status() == .ok
+	assert x.header.get(.content_encoding)! == 'gzip'
+	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.body == filtered_css_content
+
+	gz_path := find_cached_static_file('filtered.css', '.gz')
+	assert gz_path != '', 'allowed MIME type should create a cached compressed file'
+}
+
+fn test_static_compression_mime_filter_skips_excluded_types() {
+	mut req := http.new_request(.get, '${localserver_filtered_mimes}/filtered.svg', '')
+	req.add_header(.accept_encoding, 'gzip')
+	x := req.do()!
+
+	assert x.status() == .ok
+	_ := x.header.get(.content_encoding) or {
+		assert x.body == filtered_svg_content
+		return
+	}
+	assert false, 'excluded MIME type should not be served from compressed content'
 }
