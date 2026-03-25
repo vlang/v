@@ -215,12 +215,24 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_search_paths << v.compiled_dir
+	mut source_root := ''
+	src_root := os.join_path(v.compiled_dir, 'src')
+	if os.exists(src_root) {
+		root_files := os.ls(v.compiled_dir) or { []string{} }
+		if v.pref.should_compile_filtered_files(v.compiled_dir, root_files).len == 0 {
+			source_root = src_root
+			v.module_search_paths << source_root
+		}
+	}
 	x := os.join_path(v.compiled_dir, 'modules')
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
 
-	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
+	if source_root != '' && os.exists(os.join_path(source_root, 'modules')) {
+		v.module_search_paths << os.join_path(source_root, 'modules')
+	}
+	if source_root == '' && os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
 		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
 	}
 	if os.exists(os.join_path(v.compiled_dir, 'modules')) {

@@ -38,3 +38,23 @@ fn test_projects_should_run() {
 	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
 	assert res3.trim_space().ends_with('cache.a: 123')
 }
+
+fn test_running_subdir_project_with_parent_vmod_works() {
+	root := os.join_path(os.vtmp_dir(), 'v_subdir_project_with_parent_vmod')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'hexagonal', 'application'))!
+	os.write_file(os.join_path(root, 'v.mod'), 'Module {\nname: "vanilla3"\n}')!
+	os.write_file(os.join_path(root, 'hexagonal', 'application', 'auth_usecase.v'), 'module application\n\npub struct AuthUseCase {}\n')!
+	os.write_file(os.join_path(root, 'hexagonal', 'main.v'), "module main\n\nimport application\n\nfn main() {\n\t_ := application.AuthUseCase{}\n\tprintln('built')\n}\n")!
+	old_dir := os.getwd()
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	os.chdir(root)!
+	res := os.execute('${os.quoted_path(@VEXE)} run hexagonal')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'built'
+}

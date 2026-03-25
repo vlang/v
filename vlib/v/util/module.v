@@ -20,6 +20,10 @@ fn trace_qualify(callfn string, mod string, file_path string, kind_res string, r
 // qualify_import is used by V's parser, to find the full module name of import statements.
 // Do not use it.
 pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) string {
+	if m1 := import_path_to_full_name_from_pref_path(pref_, mod) {
+		trace_qualify(@FN, mod, file_path, 'import_res 0', m1, 'm1 == pref(${mod})')
+		return m1
+	}
 	// comments are from workdir: /v/vls
 	mut mod_paths := pref_.lookup_path.clone()
 	mod_paths << os.vmodules_paths()
@@ -62,6 +66,10 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 		return mod
 	}
 	clean_file_path := file_path.all_before_last(os.path_separator)
+	if m1 := mod_path_to_full_name_from_pref_path(pref_, mod, clean_file_path) {
+		trace_qualify(@FN, mod, file_path, 'module_res 2', m1, 'm1 == pref(${clean_file_path})')
+		return m1
+	}
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
@@ -70,11 +78,11 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
-		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
+		trace_qualify(@FN, mod, file_path, 'module_res 3', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
 	if m1 := mod_path_to_full_name(pref_, mod, clean_file_path) {
-		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${clean_file_path})')
+		trace_qualify(@FN, mod, file_path, 'module_res 4', m1, 'm1 == f(${clean_file_path})')
 		// >  qualify_module: net  | file_path: /v/cleanv/vlib/net/util.v     | =>   module_res 3: net     ; m1 == f(/v/cleanv/vlib/net)
 		// >  qualify_module: term | file_path: /v/cleanv/vlib/term/control.v | =>   module_res 3: term    ; m1 == f(/v/cleanv/vlib/term)
 		// >  qualify_module: log  | file_path: /v/vls/lsp/log/log.v          | =>   module_res 3: lsp.log ; m1 == f(/v/vls/lsp/log)
@@ -85,8 +93,76 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	}
 	// zzzzzzz WORKING, when there is NO ../v.mod:
 	// zzzzzzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 4: help          ; ---, clean_file_path: /v/cleanv/cmd/v/help
-	trace_qualify(@FN, mod, file_path, 'module_res 4', mod, '---, clean_file_path: ${clean_file_path}')
+	trace_qualify(@FN, mod, file_path, 'module_res 5', mod, '---, clean_file_path: ${clean_file_path}')
 	return mod
+}
+
+fn mod_path_to_full_name_from_pref_path(pref_ &pref.Preferences, mod string, path string) !string {
+	for root in module_roots_from_pref_path(pref_)! {
+		if m1 := mod_path_relative_to_root(mod, path, root) {
+			return m1
+		}
+	}
+	return error('module not found')
+}
+
+fn import_path_to_full_name_from_pref_path(pref_ &pref.Preferences, mod string) !string {
+	mod_path := mod.replace('.', os.path_separator)
+	for root in module_roots_from_pref_path(pref_)! {
+		if os.is_dir(os.join_path(root, mod_path)) {
+			return mod
+		}
+	}
+	return error('module not found')
+}
+
+fn module_roots_from_pref_path(pref_ &pref.Preferences) ![]string {
+	if pref_.path == '' || !os.is_dir(pref_.path) {
+		return error('module not found')
+	}
+	compile_root := os.real_path(pref_.path)
+	if !os.is_dir(compile_root) {
+		return error('module not found')
+	}
+	mut source_root := compile_root
+	src_root := os.join_path(compile_root, 'src')
+	if os.is_dir(src_root) {
+		root_files := os.ls(compile_root) or { []string{} }
+		if pref_.should_compile_filtered_files(compile_root, root_files).len == 0 {
+			source_root = src_root
+		}
+	}
+	mut roots := []string{}
+	for root in [
+		os.join_path(source_root, 'modules'),
+		os.join_path(compile_root, 'modules'),
+		source_root,
+	] {
+		if root !in roots && os.is_dir(root) {
+			roots << root
+		}
+	}
+	if roots.len == 0 {
+		return error('module not found')
+	}
+	return roots
+}
+
+fn mod_path_relative_to_root(mod string, path string, root string) !string {
+	clean_path := os.real_path(path)
+	clean_root := os.real_path(root)
+	if clean_path == clean_root {
+		return mod
+	}
+	root_prefix := clean_root + os.path_separator
+	if !clean_path.starts_with(root_prefix) {
+		return error('module not found')
+	}
+	rel_mod_path := clean_path.all_after(root_prefix)
+	if rel_mod_path.len == 0 {
+		return mod
+	}
+	return rel_mod_path.replace(os.path_separator, '.')
 }
 
 // TODO:
