@@ -4197,6 +4197,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.error('invalid casting value to function', node.pos)
 			}
 		}
+	} else if final_from_sym.kind == .function && final_to_sym.is_number() {
+		fnexpr := node.expr.str()
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast function `${fnexpr}` to `${tt}`', node.pos)
 	}
 	if to_type.is_ptr() && to_sym.kind == .alias && from_sym.kind == .map {
 		c.error('cannot cast to alias pointer `${c.table.type_to_str(to_type)}` because `${c.table.type_to_str(from_type)}` is a value',
