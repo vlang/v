@@ -1,0 +1,22 @@
+module main
+
+struct MyStruct[T] {
+    a T
+}
+
+struct Box[T] {}
+
+fn do_it_wrong[T](v []MyStruct[T]) T {
+    return v[0].a
+}
+
+fn (b Box[T]) do_it_wrong(v []MyStruct[T]) T {
+    return v[0].a
+}
+
+fn main() {
+    m := MyStruct[f64]{a: 1.23}
+    a := [&m]
+    println(do_it_wrong[f64](a))
+    println(Box[f64]{}.do_it_wrong(a))
+}
