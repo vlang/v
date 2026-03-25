@@ -28,6 +28,7 @@ pub fn read(bytes_needed int) ![]u8 {
 			return &ReadError{}
 		}
 		bytes_read += rbytes
+		remaining_bytes -= rbytes
 	}
 	return unsafe { buffer.vbytes(bytes_needed) }
 }
