@@ -88,6 +88,8 @@ NB: the build flags are shared with the run command too:
     Using these, you can arrange for very flexible search orders for you project, for example:
       -path "/v/my_project_private_modules|@vlib|@vmodules"
     By default, -path is just "@vlib|@vmodules" .
+    Project-local module lookup is resolved from the compiled target/importing file,
+    not from the shell current working directory.
 
   -exclude
     Specify an exclude pattern that will be applied as a filter over the full paths of the .v

@@ -436,7 +436,8 @@ pub fn module_path(mod string) string {
 pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	// support @VEXEROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()
-	vmod_file_location := mcache.get_by_file(fpath)
+	resolved_fpath := os.real_path(fpath)
+	vmod_file_location := mcache.get_by_file(resolved_fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0
@@ -444,11 +445,10 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
-	module_lookup_paths << os.getwd()
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
-	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
-		parts := fpath.split(os.path_separator)
+	if resolved_fpath.contains(os.path_separator + 'modules' + os.path_separator) {
+		parts := resolved_fpath.split(os.path_separator)
 		for i := parts.len - 2; i >= 0; i-- {
 			if parts[i] == 'modules' {
 				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
@@ -469,16 +469,20 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		}
 	}
 	// look up through parents
-	path_parts := fpath.split(os.path_separator)
-	for i := path_parts.len - 2; i > 0; i-- {
-		p1 := path_parts[0..i].join(os.path_separator)
-		try_path := os.join_path(p1, mod_path)
+	mut current_dir := os.dir(resolved_fpath)
+	for {
+		try_path := os.join_path(current_dir, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if os.is_dir(try_path) {
 			return try_path
 		}
+		parent_dir := os.dir(current_dir)
+		if parent_dir == current_dir {
+			break
+		}
+		current_dir = parent_dir
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "${mod}" not found in:\n${smodule_lookup_paths}')
