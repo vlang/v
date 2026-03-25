@@ -12,3 +12,8 @@ vlib/v/checker/tests/var_duplicate_const.vv:4:5: warning: unused variable: `size
       |     ~~~~
     5 |     println(main.size)
     6 | }
+vlib/v/checker/tests/var_duplicate_const.vv:1:7: warning: unused constant: `size`
+    1 | const size = 22
+      |       ~~~~~~~~~
+    2 | 
+    3 | fn main() {

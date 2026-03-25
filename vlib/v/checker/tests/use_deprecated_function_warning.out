@@ -18,3 +18,10 @@ vlib/v/checker/tests/use_deprecated_function_warning.vv:23:4: warning: method `S
    23 |     s.m()
       |       ~~~
    24 | }
+vlib/v/checker/tests/use_deprecated_function_warning.vv:21:4: warning: unused function: `method`
+   19 | fn (s S1) m() {}
+   20 | 
+   21 | fn method() {
+      |    ~~~~~~
+   22 |     s := S1{}
+   23 |     s.m()

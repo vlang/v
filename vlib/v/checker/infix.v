@@ -392,12 +392,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !left_final_sym.is_primitive() {
 				if left_sym.has_method(op_str) {
 					if method := left_sym.find_method(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
 				} else if left_final_sym.has_method_with_generic_parent(op_str) {
 					if method := left_final_sym.find_method_with_generic_parent(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -417,24 +419,28 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !right_final_sym.is_primitive() {
 				if right_sym.has_method(op_str) {
 					if method := right_sym.find_method(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
 				} else if right_final_sym.has_method_with_generic_parent(op_str) {
 					if method := right_final_sym.find_method_with_generic_parent(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
 				} else if left_sym.has_method(op_str) {
 					if method := left_sym.find_method(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
 				} else if left_final_sym.has_method_with_generic_parent(op_str) {
 					if method := left_final_sym.find_method_with_generic_parent(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -461,6 +467,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if left_sym.has_method_with_generic_parent(op_str) {
 					if method := left_sym.find_method_with_generic_parent(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -479,6 +486,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if right_sym.has_method_with_generic_parent(op_str) {
 					if method := right_sym.find_method_with_generic_parent(op_str) {
+						c.mark_fn_decl_as_referenced(method.fkey())
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -559,12 +567,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if left_sym.info is ast.Alias && left_final_sym.is_primitive() {
 					if left_sym.has_method(op_str) {
 						if method := left_sym.find_method(op_str) {
+							c.mark_fn_decl_as_referenced(method.fkey())
 							return_type = method.return_type
 						}
 					}
 				} else if right_sym.info is ast.Alias && right_final_sym.is_primitive() {
 					if right_sym.has_method(op_str) {
 						if method := right_sym.find_method(op_str) {
+							c.mark_fn_decl_as_referenced(method.fkey())
 							return_type = method.return_type
 						}
 					}
@@ -616,6 +626,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						left_right_pos)
 				} else if !left_sym.has_method('<') && node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
+				} else if method := left_sym.find_method_with_generic_parent('<') {
+					c.mark_fn_decl_as_referenced(method.fkey())
 				}
 			} else if left_type.has_flag(.generic) && right_type.has_flag(.generic) {
 				// Try to unwrap the generic type to make sure that
@@ -630,6 +642,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if need_overload && !gen_sym.has_method_with_generic_parent('<')
 					&& node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
+				} else if method := gen_sym.find_method_with_generic_parent('<') {
+					c.mark_fn_decl_as_referenced(method.fkey())
 				}
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs

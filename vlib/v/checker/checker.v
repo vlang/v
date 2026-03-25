@@ -542,6 +542,8 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
 
+	c.check_unused_declarations(ast_files)
+
 	if c.pref.is_test {
 		mut n_test_fns := 0
 		for _, f in c.table.fns {
@@ -1923,6 +1925,15 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return node.expr_type
 	}
 	node.expr_type = typ
+	const_name := c.module_qualified_selector_const_name(node)
+	if const_name != '' {
+		c.mark_const_decl_as_referenced(const_name)
+		if mut const_obj := c.table.global_scope.find_const(node.field_name) {
+			c.mark_const_decl_as_referenced(const_obj.name)
+		}
+	} else if mut const_obj := c.file.global_scope.find_const(node.str()) {
+		c.mark_const_decl_as_referenced(const_obj.name)
+	}
 	if !(node.expr is ast.Ident && node.expr.kind == .constant) {
 		if node.expr_type.has_flag(.option) {
 			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
@@ -2057,6 +2068,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return field.typ
 	}
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
+		c.mark_fn_decl_as_referenced(method.fkey())
 		c.markused_comptime_call(typ.has_flag(.generic), '${int(method.params[0].typ)}.${field_name}')
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
 			mut method_copy := method
@@ -4511,6 +4523,7 @@ fn (mut c Checker) resolve_var_fn(func &ast.Fn, mut node ast.Ident, name string)
 	node.info = ast.IdentFn{
 		typ: fn_type
 	}
+	c.mark_fn_decl_as_referenced(func.fkey())
 	return fn_type
 }
 
@@ -4553,6 +4566,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		return ast.void_type
 	} else if node.kind in [.constant, .global, .variable] {
+		if node.kind == .constant {
+			c.mark_const_decl_as_referenced(node.full_name())
+		}
 		// second use
 		info := node.info as ast.IdentVar
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
@@ -4754,6 +4770,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					obj.typ = typ
 					node.obj = obj
+					c.mark_const_decl_as_referenced(obj.name)
 
 					if obj.attrs.contains('deprecated') && obj.mod != c.mod {
 						c.deprecate('const', obj.name, obj.attrs, node.pos)

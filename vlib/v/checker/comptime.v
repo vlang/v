@@ -280,6 +280,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.error('could not find method `${method_name}`', node.method_pos)
 		return ast.void_type
 	}
+	c.mark_fn_decl_as_referenced(f.fkey())
 	c.markused_comptime_call(true, '${int(left_type)}.${method_name}')
 	node.result_type = f.return_type
 	return f.return_type

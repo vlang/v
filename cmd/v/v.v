@@ -61,7 +61,6 @@ const external_tools = [
 	'watch',
 	'where',
 ]
-const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
