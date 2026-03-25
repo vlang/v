@@ -994,3 +994,11 @@ fn test_js_string() {
 	assert s.startsWith(js'hello') == JS.Boolean(true)
 	assert s.endsWith(js'V') == JS.Boolean(true)
 }
+
+fn test_tos_from_u8_ptr() {
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]!
+	s := unsafe { tos(&buf[0], buf.len) }
+
+	assert s == '0000-00-00T00:00:00.000000000Z'
+}
