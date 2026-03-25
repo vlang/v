@@ -2309,6 +2309,11 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		// ensure that the minimum value is negative, even with msvc, which has a bug that makes -2147483648 positive ...
 		enum_imin *= -1
 	}
+	saved_expected_type := c.expected_type
+	defer {
+		c.expected_type = saved_expected_type
+	}
+	c.expected_type = node.typ
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO: C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -2435,7 +2440,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						}
 					}
 				}
-				ast.CallExpr {
+				ast.CallExpr, ast.IfExpr {
 					c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
 					if comptime_value := c.eval_comptime_const_expr(field.expr, 0) {
 						comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
