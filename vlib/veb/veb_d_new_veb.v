@@ -94,7 +94,7 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 // runs middleware, and finds the correct route for a request.
 fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, params RequestParams) &Context {
 	// Create and populate the `veb.Context` from the request.
-	mut url := urllib.parse(req.url) or {
+	mut url := urllib.parse_request_uri(req.url) or {
 		// This should be rare if http.parse_request succeeded.
 		mut bad_ctx := &Context{
 			req: req

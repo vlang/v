@@ -777,7 +777,7 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	// target := urllib.parse(words[1])!
 	// version := version_from_str(words[2])
 	method := method_from_str(method_str)
-	target := urllib.parse(target_str)!
+	target := urllib.parse_request_uri(target_str)!
 	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)
 	// println('VERSION="${version}"')

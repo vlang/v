@@ -605,7 +605,7 @@ $if !new_veb ? {
 			dump(req.url)
 		}
 		// parse the URL, query and form data
-		mut url := urllib.parse(req.url) or {
+		mut url := urllib.parse_request_uri(req.url) or {
 			eprintln('[veb] error parsing path "${req.url}": ${err}')
 			return none
 		}

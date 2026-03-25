@@ -1,5 +1,6 @@
 // vtest build: !windows
 import net.http
+import net.urllib
 import net
 import io
 import time
@@ -69,6 +70,31 @@ fn test_parse_request_line() {
 	}
 	assert method == .get
 	assert target.str() == '/target'
+	assert version == .v1_1
+}
+
+fn test_parse_request_uri_with_consecutive_slashes() {
+	url := urllib.parse_request_uri('//another.html') or { panic('did not parse: ${err}') }
+	assert url.host == ''
+	assert url.path == '//another.html'
+	assert url.str() == '//another.html'
+
+	absolute := urllib.parse_request_uri('http://localhost:8080//another.html') or {
+		panic('did not parse: ${err}')
+	}
+	assert absolute.host == 'localhost:8080'
+	assert absolute.path == '//another.html'
+	assert absolute.str() == 'http://localhost:8080//another.html'
+}
+
+fn test_parse_request_line_with_consecutive_slashes() {
+	method, target, version := http.parse_request_line('GET //another.html HTTP/1.1') or {
+		panic('did not parse: ${err}')
+	}
+	assert method == .get
+	assert target.host == ''
+	assert target.path == '//another.html'
+	assert target.str() == '//another.html'
 	assert version == .v1_1
 }
 
