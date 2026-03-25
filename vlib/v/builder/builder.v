@@ -444,6 +444,66 @@ pub fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
+fn find_module_path_from_vmod_root(vmod_root string, mod string) !string {
+	vmod_path := os.join_path(vmod_root, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return error('module not found')
+	}
+	manifest := vmod.from_file(vmod_path) or { return error('module not found') }
+	tail_path := mod_tail_after_vmod_name(mod, manifest.name) or {
+		return error('module not found')
+	}
+	if tail_path == '' {
+		return error('module not found')
+	}
+	try_path := os.join_path(vmod_root, 'src', tail_path)
+	if os.is_dir(try_path) {
+		return try_path
+	}
+	return error('module not found')
+}
+
+fn find_module_path_from_search_root(search_path string, mod string) !string {
+	mod_path := module_path(mod)
+	try_path := os.join_path_single(search_path, mod_path)
+	if os.is_dir(try_path) {
+		return try_path
+	}
+	if src_try_path := find_module_path_from_vmod_root(search_path, mod) {
+		return src_try_path
+	}
+	mod_parts := mod.split('.')
+	for i := mod_parts.len - 1; i > 0; i-- {
+		candidate_root := os.join_path_single(search_path, mod_parts[..i].join(os.path_separator))
+		if !os.is_file(os.join_path(candidate_root, 'v.mod')) {
+			continue
+		}
+		submodule_path := mod_parts[i..].join(os.path_separator)
+		src_try_path := os.join_path(candidate_root, 'src', submodule_path)
+		if os.is_dir(src_try_path) {
+			return src_try_path
+		}
+	}
+	return error('module not found')
+}
+
+fn mod_tail_after_vmod_name(mod string, vmod_name string) !string {
+	if vmod_name == '' {
+		return error('module not found')
+	}
+	mod_parts := mod.split('.')
+	vmod_parts := vmod_name.split('.')
+	for i := 0; i + vmod_parts.len <= mod_parts.len; i++ {
+		if i > 1 {
+			break
+		}
+		if mod_parts[i..i + vmod_parts.len].join('.') == vmod_name {
+			return mod_parts[i + vmod_parts.len..].join(os.path_separator)
+		}
+	}
+	return error('module not found')
+}
+
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
@@ -474,11 +534,11 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
-		if os.is_dir(try_path) {
+		if found_path := find_module_path_from_search_root(search_path, mod) {
 			if b.pref.is_verbose {
-				println('  << found ${try_path} .')
+				println('  << found ${found_path} .')
 			}
-			return try_path
+			return found_path
 		}
 	}
 	// look up through parents
@@ -488,8 +548,8 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
-		if os.is_dir(try_path) {
-			return try_path
+		if found_path := find_module_path_from_search_root(p1, mod) {
+			return found_path
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
