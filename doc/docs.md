@@ -1726,7 +1726,7 @@ fn main() {
 		month: 12
 		day:   25
 	}
-	println(time.new(my_time).utc_string())
+	println(time.new(my_time).http_header_string())
 	println('Century: ${my_time.century()}')
 }
 ```

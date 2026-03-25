@@ -509,10 +509,12 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.second:02}')
 			}
 			'k' {
-				sb.write_string((t.hour + 1).str())
+				h := if t.hour == 0 { 24 } else { t.hour }
+				sb.write_string(h.str())
 			}
 			'kk' {
-				sb.write_string('${(t.hour + 1):02}')
+				h := if t.hour == 0 { 24 } else { t.hour }
+				sb.write_string('${h:02}')
 			}
 			'w' {
 				sb.write_string('${t.week_of_year():.0}')
@@ -599,6 +601,8 @@ pub fn (t Time) custom_format(s string) string {
 // - a date string in "HH:mm" format (24h) for current day
 // - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
+@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
+@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean() string {
 	znow := now()
 	// Today
@@ -617,6 +621,8 @@ pub fn (t Time) clean() string {
 // - a date string in "hh:mm" format (12h) for current day
 // - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
+@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
+@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean12() string {
 	znow := now()
 	// Today
@@ -708,7 +714,9 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 	}
 }
 
-// This is just a TEMPORARY function for cookies and their expire dates
+// utc_string returns a date string in the legacy UTC cookie/header format.
+@[deprecated: 'use `http_header_string()` instead']
+@[deprecated_after: '2026-09-30']
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
