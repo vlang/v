@@ -44,7 +44,6 @@ mut:
 	out        strings.Builder
 	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
-<<<<<<< HEAD
 	cheaders                   strings.Builder
 	preincludes                strings.Builder // allows includes to go before `definitions`
 	postincludes               strings.Builder // allows includes to go after all the rest of the code generation
@@ -504,11 +503,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_get_types << g.array_get_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
-			for k, v in g.json_types_pos {
-				if k !in global_g.json_types_pos || global_g.json_types_pos[k] == token.Pos{} {
-					global_g.json_types_pos[k] = v
-				}
-			}
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
@@ -539,7 +533,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	global_g.gen_jsons()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
-	global_g.register_interface_auto_str_methods()
 	for i := 0; i < global_g.str_types.len; i++ {
 		global_g.final_gen_str(global_g.str_types[i])
 	}
@@ -1427,6 +1420,110 @@ fn (mut g Gen) expr_string_opt(typ ast.Type, expr ast.Expr) string {
 		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={E_STRUCT}}'
 	}
 	return expr_str
+}
+
+fn (mut g Gen) ensure_atomic_postfix_helpers() {
+	if g.atomic_postfix_helpers_emitted {
+		return
+	}
+	g.atomic_postfix_helpers_emitted = true
+	g.definitions.writeln('
+#ifndef V_ATOMIC_POSTFIX_HELPERS
+#define V_ATOMIC_POSTFIX_HELPERS
+#define V_ATOMIC_SEQ_CST 5
+#if defined(__TINYC__) && !defined(_WIN32)
+extern unsigned int __atomic_fetch_add_4(unsigned int* x, unsigned int y, int mo);
+extern unsigned int __atomic_fetch_sub_4(unsigned int* x, unsigned int y, int mo);
+extern unsigned long long __atomic_fetch_add_8(unsigned long long* x, unsigned long long y, int mo);
+extern unsigned long long __atomic_fetch_sub_8(unsigned long long* x, unsigned long long y, int mo);
+#endif
+static inline unsigned int __v_atomic_fetch_add_u32(unsigned int* x, unsigned int y) {
+#if defined(__TINYC__) && defined(_WIN32)
+	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, (LONG)y);
+#elif defined(__TINYC__)
+	return __atomic_fetch_add_4(x, y, V_ATOMIC_SEQ_CST);
+#else
+	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
+#endif
+}
+static inline unsigned int __v_atomic_fetch_sub_u32(unsigned int* x, unsigned int y) {
+#if defined(__TINYC__) && defined(_WIN32)
+	return (unsigned int)InterlockedExchangeAdd((volatile LONG*)x, -(LONG)y);
+#elif defined(__TINYC__)
+	return __atomic_fetch_sub_4(x, y, V_ATOMIC_SEQ_CST);
+#else
+	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
+#endif
+}
+static inline unsigned long long __v_atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
+#if defined(__TINYC__) && defined(_WIN32)
+	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, (LONGLONG)y);
+#elif defined(__TINYC__)
+	return __atomic_fetch_add_8(x, y, V_ATOMIC_SEQ_CST);
+#else
+	return __atomic_fetch_add(x, y, V_ATOMIC_SEQ_CST);
+#endif
+}
+static inline unsigned long long __v_atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
+#if defined(__TINYC__) && defined(_WIN32)
+	return (unsigned long long)InterlockedExchangeAdd64((volatile LONGLONG*)x, -(LONGLONG)y);
+#elif defined(__TINYC__)
+	return __atomic_fetch_sub_8(x, y, V_ATOMIC_SEQ_CST);
+#else
+	return __atomic_fetch_sub(x, y, V_ATOMIC_SEQ_CST);
+#endif
+}
+#endif
+')
+	if g.pref.ccompiler_type == .tinyc && g.pref.os == .linux {
+		mod_name := if g.file == unsafe { nil } { 'main' } else { g.file.mod.name }
+		amd64_flag := '$' +
+			"when_first_existing('/usr/lib/gcc/x86_64-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-linux-gnu/14/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/14/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/14/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a','/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')"
+		arm64_flag := '$' +
+			"when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/6/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/7/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/8/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/9/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/10/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/11/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/12/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/13/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/14/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/14/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/14/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.so','/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')"
+		flag := if g.pref.arch == .arm64 { arm64_flag } else { amd64_flag }
+		g.table.parse_cflag(flag, mod_name, g.pref.compile_defines_all) or {}
+	}
+}
+
+fn (mut g Gen) atomic_postfix_expr(node ast.PostfixExpr) bool {
+	if node.op !in [.inc, .dec] || !node.typ.has_flag(.atomic_f) {
+		return false
+	}
+	base_typ := g.unwrap_generic(node.typ).clear_flag(.atomic_f)
+	mut fn_name := ''
+	mut ptr_type := ''
+	match base_typ {
+		ast.int_type, ast.i32_type, ast.u32_type {
+			fn_name = if node.op == .inc {
+				'__v_atomic_fetch_add_u32'
+			} else {
+				'__v_atomic_fetch_sub_u32'
+			}
+			ptr_type = 'unsigned int*'
+		}
+		ast.i64_type, ast.u64_type {
+			fn_name = if node.op == .inc {
+				'__v_atomic_fetch_add_u64'
+			} else {
+				'__v_atomic_fetch_sub_u64'
+			}
+			ptr_type = 'unsigned long long*'
+		}
+		else {
+			return false
+		}
+	}
+	g.ensure_atomic_postfix_helpers()
+	g.write('${fn_name}((${ptr_type})&(')
+	if node.expr.is_auto_deref_var() {
+		g.write('*')
+		g.expr(node.expr)
+	} else {
+		g.expr(node.expr)
+	}
+	g.write('), 1)')
+	return true
 }
 
 fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
@@ -2382,7 +2479,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					if g.prefers_msvc_compatible_code() {
+					if g.is_cc_msvc {
 						msvc_call_conv = '__${attr.arg} '
 					} else {
 						call_conv = '${attr.arg}'
@@ -3778,25 +3875,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		return
 	}
-	if got_sym.kind == .interface && exp_sym.kind == .interface
-		&& got_type.idx() != expected_type.idx() {
-		g.write('I_${got_sym.cname}_as_I_${exp_sym.cname}(')
-		if got_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(expr)
-		g.write(')')
-		mut info := got_sym.info as ast.Interface
-		exp_info := exp_sym.info as ast.Interface
-		lock info.conversions {
-			if expected_type !in info.conversions {
-				info.conversions[expected_type] = info.types.filter(it in exp_info.types)
-			}
-		}
-		mut got_interface_sym := g.table.sym(got_type)
-		got_interface_sym.info = info
-		return
-	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
 		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
@@ -4113,9 +4191,6 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	if stmt.templates.len == 0 {
-		g.writeln('""')
-	}
 	for template_tmp in stmt.templates {
 		mut template := template_tmp
 		g.write('"')
@@ -4793,14 +4868,17 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
 			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
 			g.inside_map_postfix = true
-			if node.is_c2v_prefix {
+			handled_atomic_postfix := !is_safe_inc && !is_safe_dec && g.atomic_postfix_expr(node)
+			if handled_atomic_postfix {
+				// atomic ++/-- need helper calls for tinyc, while still compiling on other backends
+			} else if node.is_c2v_prefix {
 				g.write(node.op.str())
 			}
-			if node.expr.is_auto_deref_var() {
+			if !handled_atomic_postfix && node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
-			} else if node.op == .question {
+			} else if !handled_atomic_postfix && node.op == .question {
 				mut expr_type := ast.void_type
 				if mut node.expr is ast.ComptimeSelector {
 					if node.expr.field_expr is ast.SelectorExpr
@@ -4844,16 +4922,17 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				} else {
 					g.expr(node.expr)
 				}
-			} else {
+			} else if !handled_atomic_postfix {
 				g.expr(node.expr)
 				if node.typ.has_flag(.shared_f) {
 					g.write('->val')
 				}
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
+			if !handled_atomic_postfix && !node.is_c2v_prefix && node.op != .question
+				&& !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
-			} else if is_safe_inc || is_safe_dec {
+			} else if !handled_atomic_postfix && (is_safe_inc || is_safe_dec) {
 				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
 				vsafe_fn_name := if is_safe_inc {
 					'builtin__overflow__add_${overflow_styp}'
@@ -5143,7 +5222,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('builtin__charptr_vstring_literal(v_typeof_sumtype_${sym.cname}( (')
+		g.write('builtin__tos3(v_typeof_sumtype_${sym.cname}( (')
 		if typ.nr_muls() > 0 {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
@@ -8763,6 +8842,7 @@ fn (mut g Gen) write_sorted_types() {
 	}
 }
 
+<<<<<<< HEAD
 fn (mut g Gen) ensure_fixed_array_option_definition(elem_type ast.Type) bool {
 	if !elem_type.has_flag(.option) || elem_type.has_flag(.generic) {
 		return false
@@ -8803,10 +8883,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		if sym.name.starts_with('C.') {
 			if sym.info is ast.Struct && sym.info.is_anon {
 				// For `C___VAnonStruct`, we need to create a new struct to make auto_str work.
-			} else if sym.info is ast.Struct && g.should_emit_private_c_struct(sym, sym.info) {
-				// Private C tags like `C._gpgme_key` are often only forward-declared in headers.
-				// When they are defined in a plain `.v` file, cgen needs to emit the backing
-				// struct body instead of assuming the C headers will provide it.
 			} else {
 				continue
 			}
@@ -8818,10 +8894,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			g.typedefs.writeln('typedef struct none none;')
 		}
 		mut name := sym.scoped_cname()
-		if sym.name.starts_with('C.') && sym.info is ast.Struct
-			&& g.should_emit_private_c_struct(sym, sym.info) {
-			name = sym.name.all_after('C.')
-		}
 		if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
 			if name in ['map', 'mapnode', 'SortedMap', 'MapMode', 'DenseArray'] {
 				continue
@@ -9876,10 +9948,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 
 		mut info := expr_type_sym.info as ast.Interface
-		sym_info := sym.info as ast.Interface
 		lock info.conversions {
 			if node.typ !in info.conversions {
-				info.conversions[node.typ] = info.types.filter(it in sym_info.types)
+				left_variants := g.table.iface_types[expr_type_sym.name]
+				right_variants := g.table.iface_types[sym.name]
+				info.conversions[node.typ] = left_variants.filter(it in right_variants)
 			}
 		}
 		expr_type_sym.info = info
@@ -10359,24 +10432,6 @@ return ${cast_shared_struct_str};
 					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
 				}
 			}
-			if str_method := isym.find_method_with_generic_parent('str') {
-				if 'str' in methodidx && !ordered_methods.any(it.name == 'str') && cctype == cctype2
-					&& g.table.type_has_implicit_str_method(st, str_method) {
-					str_fn_name := g.get_str_fn(st)
-					mut method_call := str_fn_name
-					if !st_sym.is_c_struct() {
-						wrapper_method_name := '${cctype}_str_Interface_${interface_name}_method_wrapper'
-						methods_wrapper.writeln('static inline string ${wrapper_method_name}(${cctype}* x) {')
-						methods_wrapper.writeln('\treturn ${str_fn_name}(*x);')
-						methods_wrapper.writeln('}')
-						method_call = wrapper_method_name
-					}
-					if g.pref.build_mode != .build_module && st != ast.voidptr_type
-						&& st != ast.nil_type {
-						methods_struct.writeln('\t\t._method_str = (void*) ${method_call},')
-					}
-				}
-			}
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t},')
@@ -10452,30 +10507,6 @@ return ${cast_shared_struct_str};
 		sb.writeln(conversion_functions.str())
 	}
 	return sb.str()
-}
-
-fn (mut g Gen) register_interface_auto_str_methods() {
-	mut already_registered_ifaces := map[string]bool{}
-	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
-	for isym in interfaces {
-		inter_info := isym.info as ast.Interface
-		if inter_info.is_generic || 'str' !in inter_info.get_methods() {
-			continue
-		}
-		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
-			continue
-		}
-		if isym.cname in already_registered_ifaces {
-			continue
-		}
-		already_registered_ifaces[isym.cname] = true
-		str_method := isym.find_method_with_generic_parent('str') or { continue }
-		for st in inter_info.types {
-			if g.table.type_has_implicit_str_method(st, str_method) {
-				g.get_str_fn(st)
-			}
-		}
-	}
 }
 
 fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
@@ -10664,91 +10695,6 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 		}
 	}
 	return ''
-}
-
-// Compute pointer bitmap for a type: returns (ptrmap_expr, nptrs) for VGC.
-// ptrmap is a u64 where bit N means word offset N contains a pointer.
-// Returns empty strings if not applicable (non-vgc mode, no pointers, too large).
-fn (mut g Gen) vgc_ptrmap(typ ast.Type) (string, string) {
-	if g.pref.gc_mode != .vgc {
-		return '', ''
-	}
-	if !g.contains_ptr(typ) {
-		return '', ''
-	}
-	unwrapped := g.unwrap_generic(typ)
-	sym := g.table.final_sym(unwrapped)
-	if sym.kind != .struct {
-		return '', ''
-	}
-	info := sym.info as ast.Struct
-	styp := g.styp(unwrapped)
-	// Build the bitmap expression using offsetof
-	mut parts := []string{}
-	mut nptrs := 0
-	// Check embeds first
-	for embed in info.embeds {
-		if g.contains_ptr(embed) {
-			// Recurse into embedded struct - for now treat conservatively
-			return '', ''
-		}
-	}
-	for field in info.fields {
-		if field.typ.is_any_kind_of_pointer() || field.typ.is_ptr() {
-			fname := c_name(field.name)
-			parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
-			nptrs++
-		} else {
-			fsym := g.table.final_sym(field.typ)
-			if fsym.kind == .array || fsym.kind == .map || fsym.kind == .string {
-				// These V types contain pointers internally (data pointer)
-				fname := c_name(field.name)
-				parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
-				nptrs++
-			} else if fsym.kind == .interface || fsym.kind == .sum_type {
-				// Interface/sumtype contain pointer-like fields
-				return '', '' // too complex, fall back to conservative
-			} else if g.contains_ptr(field.typ) {
-				// Nested struct with pointers - fall back for now
-				return '', ''
-			}
-		}
-	}
-	if parts.len == 0 {
-		return '', ''
-	}
-	// Structs > 512 bytes (64 words on 64-bit) can't fit in u64 bitmap
-	if parts.len > 0 {
-		ptrmap_expr := '(uint64_t)(${parts.join(' | ')})'
-		return ptrmap_expr, '${nptrs}'
-	}
-	return '', ''
-}
-
-// write_heap_alloc writes the appropriate HEAP macro call.
-// For VGC mode with known pointer maps, uses HEAP_vgc for precise scanning.
-// Otherwise falls back to HEAP or HEAP_noscan.
-fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
-	if g.pref.gc_mode == .vgc {
-		ptrmap, _ := g.vgc_ptrmap(typ)
-		if ptrmap.len > 0 {
-			g.write('HEAP_vgc(${styp}, (')
-			return
-		}
-	}
-	g.write('HEAP(${styp}, (')
-}
-
-// write_heap_alloc_close writes the closing part of a HEAP_vgc or HEAP call.
-fn (mut g Gen) write_heap_alloc_close(typ ast.Type) {
-	if g.pref.gc_mode == .vgc {
-		ptrmap, nptrs := g.vgc_ptrmap(typ)
-		if ptrmap.len > 0 {
-			g.write('), ${ptrmap}, ${nptrs})')
-			return
-		}
-	}
-	g.write('))')
 }
 
 // vint2int rename `_vint_t` to `int`
