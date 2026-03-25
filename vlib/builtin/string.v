@@ -531,6 +531,65 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
+// format replaces positional placeholders like `{0}` and `{1}` in `s`
+// with the corresponding values from `args`.
+// Use `{{` and `}}` to output literal braces.
+@[direct_array_access]
+pub fn (s string) format(args ...string) string {
+	if s.len == 0 {
+		return ''
+	}
+	mut out := strings.new_builder(s.len)
+	mut i := 0
+	for i < s.len {
+		ch := s[i]
+		if ch == `{` {
+			if i + 1 < s.len && s[i + 1] == `{` {
+				out.write_byte(`{`)
+				i += 2
+				continue
+			}
+			mut j := i + 1
+			if j >= s.len || !s[j].is_digit() {
+				out.write_byte(ch)
+				i++
+				continue
+			}
+			mut idx := 0
+			mut overflowed := false
+			for j < s.len && s[j].is_digit() {
+				digit := int(s[j] - `0`)
+				if idx > (max_int - digit) / 10 {
+					overflowed = true
+					break
+				}
+				idx = idx * 10 + digit
+				j++
+			}
+			if !overflowed && j < s.len && s[j] == `}` {
+				if idx < args.len {
+					out.write_string(args[idx])
+				} else {
+					out.write_string(s[i..j + 1])
+				}
+				i = j + 1
+				continue
+			}
+			out.write_byte(ch)
+			i++
+			continue
+		}
+		if ch == `}` && i + 1 < s.len && s[i + 1] == `}` {
+			out.write_byte(`}`)
+			i += 2
+			continue
+		}
+		out.write_byte(ch)
+		i++
+	}
+	return out.str()
+}
+
 // replace_char replaces all occurrences of the character `rep`, with `repeat` x the character passed in `with`.
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 @[direct_array_access]
