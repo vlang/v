@@ -449,7 +449,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					}
 				} else {
 					// Anonymous struct
-					p.next()
+					if !p.is_explicit_anon_struct_init() {
+						p.next()
+					}
 					return p.struct_init('', .anon, false)
 				}
 			} else if p.tok.kind == .key_type {
@@ -481,6 +483,24 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
+}
+
+fn (p &Parser) is_explicit_anon_struct_init() bool {
+	mut n := 2
+	mut curlies := 1
+	for curlies > 0 {
+		tok := p.peek_token(n)
+		if tok.kind == .eof {
+			return false
+		}
+		if tok.kind == .lcbr {
+			curlies++
+		} else if tok.kind == .rcbr {
+			curlies--
+		}
+		n++
+	}
+	return p.peek_token(n).kind == .lcbr
 }
 
 fn (mut p Parser) parse_typeof_expr(start_pos token.Pos) ast.Expr {
