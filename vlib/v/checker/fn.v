@@ -788,6 +788,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// Register implicit context var
 	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
 	if node.is_method && node.return_type == typ_veb_result {
+		for param in node.params[1..] {
+			if c.has_veb_context(param.typ) && !param.is_mut {
+				c.error('veb app method `${node.name}` must declare context parameter `${param.name}` as mutable, e.g. `mut ${param.name} ${c.table.type_to_str(param.typ)}`',
+					param.pos)
+				break
+			}
+		}
 		// Find a custom user Context type first
 		mut ctx_idx := c.table.find_type('main.Context')
 		if ctx_idx < 1 {
