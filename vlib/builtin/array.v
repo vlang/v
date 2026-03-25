@@ -789,10 +789,11 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 		// string interpolation also uses <<; avoid it, use a fixed string for the panic
 		panic('array.push_many: new len exceeds max_int')
 	}
+	is_self_append := a.data == val && a.data != 0
 	if new_len >= a.cap {
 		a.ensure_cap(int(new_len))
 	}
-	if a.data == val && a.data != 0 {
+	if is_self_append {
 		// handle `arr << arr`
 		copy := a.clone()
 		unsafe {
