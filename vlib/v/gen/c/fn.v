@@ -4422,7 +4422,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 		}
 	}
-	mut is_print := !is_selector_call && node.kind in [.print, .println, .eprint, .eprintln, .panic]
+	mut is_builtin_print := !is_selector_call && node.kind in [.print, .println, .eprint, .eprintln, .panic]
 	print_method := name
 	is_json_encode := node.kind == .json_encode
 	is_json_encode_pretty := node.kind == .json_encode_pretty
@@ -4515,6 +4515,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if !is_selector_call {
 		if func := g.table.find_fn(node_name) {
+			if is_builtin_print {
+				is_builtin_print = func.mod == 'builtin'
+			}
 			mut concrete_types := g.generic_fn_call_concrete_types(func, node)
 			mut node_ := unsafe { node }
 			comptime_args := g.type_resolver.resolve_args(g.cur_fn, func, mut node_, concrete_types)
@@ -4544,9 +4547,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if func.mod == 'builtin' && !name.starts_with('builtin__') && node.language != .c {
 				name = 'builtin__${name}'
 			}
-			is_print = is_print && func.mod == 'builtin'
-		} else {
-			is_print = false
+		} else if is_builtin_print && g.pref.no_builtin {
+			is_builtin_print = false
 		}
 	}
 	if node.is_fn_a_const {
@@ -4557,17 +4559,17 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	mut print_auto_str := false
-	mut print_arg_typ := if is_print && node.args.len > 0 { node.args[0].typ } else { ast.void_type }
+	mut print_arg_typ := if is_builtin_print && node.args.len > 0 { node.args[0].typ } else { ast.void_type }
 	// In generic contexts, AST-stored types may be stale from a previous
 	// instantiation. Use resolved_expr_type for Ident expressions.
-	if is_print && node.args.len > 0 && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+	if is_builtin_print && node.args.len > 0 && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 		&& node.args[0].expr is ast.Ident {
 		resolved := g.resolved_expr_type(node.args[0].expr, node.args[0].typ)
 		if resolved != 0 {
 			print_arg_typ = resolved
 		}
 	}
-	if is_print && node.args.len > 0 && (print_arg_typ != ast.string_type
+	if is_builtin_print && node.args.len > 0 && (print_arg_typ != ast.string_type
 		|| g.comptime.comptime_for_method != unsafe { nil } || node.args[0].ct_expr) {
 		g.inside_interface_deref = true
 		defer(fn) {
@@ -4681,7 +4683,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
-		if is_print && g.pref.gc_mode == .boehm_leak && node.args[0].typ == ast.string_type
+		if is_builtin_print && g.pref.gc_mode == .boehm_leak && node.args[0].typ == ast.string_type
 			&& node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
 			tmp := g.new_tmp_var()
 			tmp_init := g.autofree_tmp_arg_init_stmt('string ${tmp} = ', node.args[0].expr)
@@ -4690,7 +4692,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.writeln('builtin__string_free(&${tmp});')
 			return
 		}
-		if is_print && node.args[0].expr !is ast.CallExpr {
+		if is_builtin_print && node.args[0].expr !is ast.CallExpr {
 			// only need for `println(err)`
 			// not need for `println(err.msg())`
 			g.inside_interface_deref = true
@@ -4698,7 +4700,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.inside_interface_deref = false
 			}
 		}
-		if g.pref.is_debug && node.kind == .panic {
+		if g.pref.is_debug && is_builtin_print && node.kind == .panic {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 			g.write('builtin__panic_debug(${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"),  ')
 			g.call_args(node)

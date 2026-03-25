@@ -564,12 +564,16 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			} else if !node.is_method && node.args.len == 1
 				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
-				if node.args[0].typ != ast.string_type {
-					w.uses_str[node.args[0].typ] = true
-				}
-				if w.pref.gc_mode == .boehm_leak && (node.args[0].typ != ast.string_type
-					|| node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
-					w.uses_free[ast.string_type] = true
+				if f := w.table.find_fn(node.name) {
+					if f.mod == 'builtin' {
+						if node.args[0].typ != ast.string_type {
+							w.uses_str[node.args[0].typ] = true
+						}
+						if w.pref.gc_mode == .boehm_leak && (node.args[0].typ != ast.string_type
+							|| node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
+							w.uses_free[ast.string_type] = true
+						}
+					}
 				}
 			} else if node.is_method && node.name == 'str' {
 				w.uses_str[node.left_type] = true

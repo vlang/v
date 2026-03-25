@@ -6894,7 +6894,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if func.mod == 'builtin' && !name.starts_with('builtin__') && func.language != .c {
 				name = 'builtin__${name}'
 			}
-		} else if node.name == 'print' {
+		} else if node.name == 'print' && !g.pref.no_builtin {
 			name = 'builtin__print'
 		}
 	}
