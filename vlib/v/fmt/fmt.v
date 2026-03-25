@@ -838,6 +838,15 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	return true
 }
 
+fn (mut f Fmt) write_expr_list(exprs []ast.Expr) {
+	for i, expr in exprs {
+		f.expr(expr)
+		if i < exprs.len - 1 {
+			f.write(', ')
+		}
+	}
+}
+
 //=== Specific Stmt methods ===//
 
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
@@ -861,10 +870,23 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	}
 	f.is_assign = true
 	f.write(' ${node.op.str()} ')
-	for i, val in node.right {
-		f.expr(val)
-		if i < node.right.len - 1 {
-			f.write(', ')
+	right_start_pos := f.out.len
+	right_start_len := f.line_len
+	can_wrap_rhs := node.right.len == 1 && node.right[0] in [ast.CallExpr, ast.StructInit]
+	f.write_expr_list(node.right)
+	if can_wrap_rhs && !f.single_line_if && f.line_len > max_len {
+		right_str := f.out.after(right_start_pos)
+		if !right_str.contains('\n') {
+			f.out.go_back_to(right_start_pos)
+			f.line_len = right_start_len
+			if f.out.last() == ` ` {
+				f.out.go_back(1)
+				f.line_len--
+			}
+			f.writeln('')
+			f.indent++
+			f.write_expr_list(node.right)
+			f.indent--
 		}
 	}
 	if node.attr.name != '' {
@@ -2152,8 +2174,14 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if && !f.use_short_fn_args {
-			f.wrap_long_line(3, true)
+		if i > 0 && !f.single_line_if && !f.use_short_fn_args && arg.expr !is ast.StructInit {
+			arg_str := f.node_str(arg.expr)
+			tail_len := if i < args.len - 1 { 2 } else { 1 }
+			is_tiny_last_assign_arg := f.is_assign && i == args.len - 1 && arg_str.len <= 4
+			if !is_tiny_last_assign_arg && !arg_str.contains('\n')
+				&& f.line_len + arg_str.len + tail_len > max_len {
+				f.wrap_long_line(0, true)
+			}
 		}
 		f.expr(arg.expr)
 		if post_comments.len > 0 {
