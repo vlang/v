@@ -1,0 +1,13 @@
+@[unsafe()]
+fn allow_unsafe_parentheses() {}
+
+@[deprecated('use new_fn instead')]
+fn old_positional() {}
+
+@[deprecated(msg: 'use new_fn instead', after: '2999-10-10')]
+fn old_named() {}
+
+struct Config {
+	flag  bool   @[custom(flag: true, count: 2)]
+	value string @[xml(name: 'cfg'); raw]
+}

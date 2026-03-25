@@ -25,6 +25,9 @@ pub:
 	ct_opt  bool // true for [if user_defined_name?]
 	pos     token.Pos
 	has_at  bool // new syntax `@[attr]`
+	// original call-style metadata for `@[foo(...)]`, used by vfmt
+	call_name     string
+	call_arg_name string
 pub mut:
 	ct_expr   Expr // .kind == comptime_define, for [if !name]
 	ct_evaled bool // whether ct_skip has been evaluated already
@@ -32,7 +35,7 @@ pub mut:
 }
 
 pub fn (a &Attr) debug() string {
-	return 'Attr{ name: "${a.name}", has_arg: ${a.has_arg}, arg: "${a.arg}", kind: ${a.kind}, ct_expr: ${a.ct_expr}, ct_opt: ${a.ct_opt}, ct_skip: ${a.ct_skip}}'
+	return 'Attr{ name: "${a.name}", has_arg: ${a.has_arg}, arg: "${a.arg}", kind: ${a.kind}, ct_expr: ${a.ct_expr}, ct_opt: ${a.ct_opt}, ct_skip: ${a.ct_skip}, call_name: "${a.call_name}", call_arg_name: "${a.call_arg_name}" }'
 }
 
 // str returns the string representation without square brackets
