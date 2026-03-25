@@ -1,0 +1,13 @@
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(ctx Context) veb.Result {
+	return veb.no_result()
+}
