@@ -784,7 +784,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx = g.closure_ctx(node, [])
+		cur_closure_ctx = g.closure_ctx(node)
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -927,13 +927,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${name.all_after_first('C__')}('
 		g.definitions.write_string(c_extern_fn_header)
 	} else {
-		force_static_linkage := g.pref.is_o && !(node.is_pub && node.mod == g.module_built)
-		if force_static_linkage {
-			if !(node.is_anon && g.pref.parallel_cc) {
-				g.write('static ')
-				g.definitions.write_string('static ')
-			}
-		} else if !(node.is_pub || g.pref.is_debug) {
+		if !(node.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
 			// binaries
 			if g.pref.build_mode != .build_module && !g.pref.use_cache {
@@ -950,7 +944,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// when -usecache is enabled to fix duplicate symbols with clang
 		// TODO: implement a better sulution
 		visibility_kw := if g.cur_concrete_types.len > 0
-			&& (g.pref.build_mode == .build_module || g.pref.use_cache) && !force_static_linkage {
+			&& (g.pref.build_mode == .build_module || g.pref.use_cache) {
 			'static '
 		} else {
 			''
@@ -1153,24 +1147,6 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	}
 
 	if node.generic_names.len > 0 {
-		// For anonymous functions (including lambdas), replace generic type names
-		// in the function name with concrete types.
-		// This is needed because anonymous function names are generated in the
-		// parser/checker phase with generic type names, but we need concrete
-		// types in the C code.
-		// Note: we use a sanitized form of the type name, similar to generic_fn_name,
-		// to handle pointer types correctly (e.g., &Foo -> __ptr__Foo instead of Foo*)
-		if node.is_anon && g.anon_fn != unsafe { nil } {
-			concrete_types := g.get_anon_fn_concrete_types(g.anon_fn)
-			for i, gen_name in node.generic_names {
-				if i < concrete_types.len {
-					typ := concrete_types[i]
-					concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
-						g.styp(typ.set_nr_muls(0)).replace(' ', '_')
-					name = name.replace('__${gen_name}', '__${concrete_styp}')
-				}
-			}
-		}
 		name = g.generic_fn_name(g.cur_concrete_types, name)
 		name = name.replace_each(c_fn_name_escape_seq)
 	}
@@ -1191,49 +1167,10 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 const closure_ctx = '_V_closure_ctx'
 
-// get_anon_fn_concrete_types returns the concrete types for an anonymous function's
-// generic parameters, by mapping them from the parent function's generic parameters
-// and concrete types.
-fn (mut g Gen) get_anon_fn_concrete_types(node ast.AnonFn) []ast.Type {
-	if node.decl.generic_names.len == 0 {
-		return []
-	}
-	// If cur_fn is the parent function (not the anon fn itself),
-	// map the anon fn's generic names to the parent's concrete types.
-	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
-		&& g.cur_fn.generic_names.len == g.cur_concrete_types.len {
-		mut concrete_types := []ast.Type{cap: node.decl.generic_names.len}
-		for anon_gen_name in node.decl.generic_names {
-			idx := g.cur_fn.generic_names.index(anon_gen_name)
-			if idx >= 0 && idx < g.cur_concrete_types.len {
-				concrete_types << g.cur_concrete_types[idx]
-			} else {
-				// Generic name not found in parent, this shouldn't happen
-				// if the checker validated correctly
-				return g.cur_concrete_types
-			}
-		}
-		return concrete_types
-	}
-	return g.cur_concrete_types
-}
-
 fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	mut fn_name := node.decl.name
 	if node.decl.generic_names.len > 0 {
-		concrete_types := g.get_anon_fn_concrete_types(node)
-		// Replace generic type names in the function name with concrete types
-		// Use sanitized type names to handle pointer types correctly
-		for i, gen_name in node.decl.generic_names {
-			if i < concrete_types.len {
-				typ := concrete_types[i]
-				concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
-					g.styp(typ.set_nr_muls(0)).replace(' ', '_')
-				fn_name = fn_name.replace('__${gen_name}', '__${concrete_styp}')
-			}
-		}
-		// Add the generic suffix
-		fn_name = g.generic_fn_name(concrete_types, fn_name)
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 	if node.has_ct_var {
 		fn_name += '_${g.comptime.comptime_loop_id}'
@@ -1241,22 +1178,55 @@ fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	return fn_name
 }
 
-fn (mut g Gen) closure_ctx(node ast.FnDecl, concrete_types []ast.Type) string {
-	mut fn_name := node.name
-	if node.generic_names.len > 0 {
-		types := if concrete_types.len > 0 { concrete_types } else { g.cur_concrete_types }
-		// Replace generic type names in the function name with concrete types
-		// Use sanitized type names to handle pointer types correctly
-		for i, gen_name in node.generic_names {
-			if i < types.len {
-				typ := types[i]
-				concrete_styp := strings.repeat_string('__ptr__', typ.nr_muls()) +
-					g.styp(typ.set_nr_muls(0)).replace(' ', '_')
-				fn_name = fn_name.replace('__${gen_name}', '__${concrete_styp}')
+fn (mut g Gen) c_call_alias_signature(node ast.CallExpr, name string) string {
+	ret_styp := g.styp(node.return_type)
+	mut sig := '${ret_styp} (*${name})('
+	if node.args.len == 0 && !node.is_c_variadic {
+		sig += 'void'
+	} else {
+		for i, arg in node.args {
+			arg_typ := if arg.typ != 0 {
+				arg.typ
+			} else if i < node.expected_arg_types.len {
+				node.expected_arg_types[i]
+			} else {
+				ast.voidptr_type
+			}
+			sig += g.styp(arg_typ)
+			if i < node.args.len - 1 || node.is_c_variadic {
+				sig += ', '
 			}
 		}
-		// Add the generic suffix
-		fn_name = g.generic_fn_name(types, fn_name)
+		if node.is_c_variadic {
+			sig += '...'
+		}
+	}
+	sig += ')'
+	return sig
+}
+
+fn (mut g Gen) c_call_name(node ast.CallExpr, cname string) string {
+	if node.scope == unsafe { nil } {
+		return cname
+	}
+	if node.scope.find_var(cname) == none && node.scope.find_global(cname) == none {
+		return cname
+	}
+	g.global_tmp_count++
+	alias_name := '__v_c_fn_${g.global_tmp_count}_${cname}'
+	alias_sig := g.c_call_alias_signature(node, alias_name)
+	cast_sig := g.c_call_alias_signature(node, '')
+	g.definitions.writeln('${g.static_non_parallel}${alias_sig} = (${cast_sig})${cname};')
+	if g.pref.parallel_cc {
+		g.extern_out.writeln('extern ${alias_sig};')
+	}
+	return alias_name
+}
+
+fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
+	mut fn_name := node.name
+	if node.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 	return 'struct _V_${fn_name}_Ctx'
 }
@@ -1322,8 +1292,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(fn_name)
 		return
 	}
-	concrete_types := g.get_anon_fn_concrete_types(node)
-	ctx_struct := g.closure_ctx(node.decl, concrete_types)
+	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
 	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
@@ -1408,11 +1377,9 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		return
 	}
 	mut builder := strings.new_builder(256)
-	// Get concrete types for the anon fn's generic parameters
-	concrete_types := g.get_anon_fn_concrete_types(node)
 	// Generate a closure struct
 	if node.inherited_vars.len > 0 {
-		ctx_struct := g.closure_ctx(node.decl, concrete_types)
+		ctx_struct := g.closure_ctx(node.decl)
 		if ctx_struct !in g.closure_structs {
 			g.closure_structs << ctx_struct
 			g.definitions.writeln('${ctx_struct} {')
@@ -1453,13 +1420,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.stmt_path_pos = []
 	g.skip_stmt_pos = false
 	g.anon_fn = node
-	// Save and set correct concrete types for the anon fn's generic parameters
-	save_cur_concrete_types := g.cur_concrete_types
-	if node.decl.generic_names.len > 0 {
-		g.cur_concrete_types = concrete_types
-	}
 	g.fn_decl(node.decl)
-	g.cur_concrete_types = save_cur_concrete_types
 	g.anon_fn = was_anon_fn
 	g.skip_stmt_pos = prev_skip_stmt_pos
 	g.stmt_path_pos = prev_stmt_path_pos
@@ -1742,13 +1703,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		} else if node.return_type_generic != 0 {
 			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
 			if !unwrapped_ret_typ.has_flag(.generic) {
-				ret_typ = if node.return_type.has_flag(.result) {
-					unwrapped_ret_typ.set_flag(.result)
-				} else if node.return_type.has_flag(.option) {
-					unwrapped_ret_typ.set_flag(.option)
-				} else {
-					unwrapped_ret_typ
-				}
 				ret_sym := g.table.sym(unwrapped_ret_typ)
 				if ret_sym.info is ast.Array && g.table.sym(node.return_type_generic).kind == .array {
 					// Make []T returns T type when array was supplied to T
@@ -3663,13 +3617,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
 		match node.kind {
 			.type_name {
-				if left_sym.kind == .sum_type {
-					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_sumtype_${typ_sym.cname}',
+				if left_sym.kind in [.sum_type, .interface] {
+					g.conversion_function_call('builtin__tos3(v_typeof_${prefix_name}_${typ_sym.cname}',
 						')', node)
-					return
-				} else if left_sym.kind == .interface {
-					g.conversion_function_call('v_typeof_interface_${typ_sym.cname}',
-						'', node)
 					return
 				}
 			}
@@ -4517,7 +4467,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// `json.decode(User, s)` => json.decode_User(s)
 			typ := c_name(g.styp(ast_type.typ))
 			fn_name := c_fn_name(name) + '_' + typ
-			g.gen_json_for_type_with_pos(ast_type.typ, node.args[0].expr.pos())
+			g.gen_json_for_type(ast_type.typ)
 			g.empty_line = true
 			g.writeln('// json.decode')
 			g.write('cJSON* ${json_obj} = json__json_parse(')
@@ -4548,7 +4498,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if node.language == .c {
 		// Skip "C."
-		name = util.no_dots(name[2..])
+		name = g.c_call_name(node, util.no_dots(name[2..]))
 	} else {
 		name = if is_selector_call { c_name(name) } else { c_fn_name(name) }
 	}
@@ -5562,12 +5512,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						}
 						g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 						for j in arg_nr .. args.len {
-							if arr_info.elem_type == ast.voidptr_type {
-								g.write_variadic_voidptr_arg(args[j], node.language)
-							} else {
-								g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
-									false)
-							}
+							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+								false)
 							if j < args.len - 1 {
 								g.write(', ')
 							}
@@ -5634,39 +5580,6 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save + i});')
 		}
 	}
-}
-
-fn (g &Gen) variadic_voidptr_promotion_type(arg_typ ast.Type) ast.Type {
-	final_sym := g.table.final_sym(arg_typ)
-	return match final_sym.kind {
-		.i8, .i16, .u8, .u16, .rune, .enum { ast.int_type }
-		.f32 { ast.f64_type }
-		else { arg_typ }
-	}
-}
-
-fn (mut g Gen) write_variadic_voidptr_arg(arg ast.CallArg, lang ast.Language) {
-	arg_typ := if arg.ct_expr {
-		g.unwrap_generic(g.type_resolver.get_type(arg.expr))
-	} else {
-		g.unwrap_generic(arg.typ)
-	}
-	arg_sym := g.table.sym(arg_typ)
-	is_alias_pointer := arg_sym.kind == .alias
-		&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()
-	if arg_typ.is_any_kind_of_pointer() || is_alias_pointer || arg_sym.kind == .function
-		|| arg.expr is ast.None {
-		g.ref_or_deref_arg(arg, ast.voidptr_type, lang, false)
-		return
-	}
-	promoted_type := g.variadic_voidptr_promotion_type(arg_typ)
-	if promoted_type != arg_typ || !arg.expr.is_lvalue() {
-		g.write('(voidptr)ADDR(${g.styp(promoted_type)}, ')
-		g.expr(arg.expr)
-		g.write(')')
-		return
-	}
-	g.ref_or_deref_arg(arg, ast.voidptr_type, lang, false)
 }
 
 @[inline]
@@ -6144,13 +6057,13 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
-				fn_attrs += call_convention_attribute('stdcall', g.prefers_msvc_compatible_code())
+				fn_attrs += call_convention_attribute('stdcall', g.is_cc_msvc)
 			}
 			'_fastcall' {
-				fn_attrs += call_convention_attribute('fastcall', g.prefers_msvc_compatible_code())
+				fn_attrs += call_convention_attribute('fastcall', g.is_cc_msvc)
 			}
 			'callconv' {
-				fn_attrs += call_convention_attribute(attr.arg, g.prefers_msvc_compatible_code())
+				fn_attrs += call_convention_attribute(attr.arg, g.is_cc_msvc)
 			}
 			'console' {
 				g.force_main_console = true
@@ -6163,12 +6076,8 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 	return fn_attrs
 }
 
-fn (g &Gen) prefers_msvc_compatible_code() bool {
-	return g.pref.os == .windows || g.is_cc_msvc
-}
-
-fn call_convention_attribute(cconvention string, use_keyword bool) string {
-	return if use_keyword { '__${cconvention} ' } else { '__attribute__((${cconvention})) ' }
+fn call_convention_attribute(cconvention string, is_cc_msvc bool) string {
+	return if is_cc_msvc { '__${cconvention} ' } else { '__attribute__((${cconvention})) ' }
 }
 
 fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType, nr_muls int) {
@@ -6178,7 +6087,7 @@ fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType, nr_muls int) {
 	for attr in info.func.attrs {
 		match attr.name {
 			'callconv' {
-				if g.prefers_msvc_compatible_code() {
+				if g.is_cc_msvc {
 					msvc_call_conv = '__${attr.arg} '
 				} else {
 					call_conv = '${attr.arg}'
