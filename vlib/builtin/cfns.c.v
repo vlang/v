@@ -3,6 +3,14 @@ module builtin
 @[typedef]
 pub struct C.FILE {}
 
+// Virtual C globals that are available through libc or generated C headers.
+__global C.errno int
+__global C.stdin &C.FILE
+__global C.stdout &C.FILE
+__global C.stderr &C.FILE
+__global C.environ &&char
+__global C._wyp &u64
+
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 

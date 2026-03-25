@@ -1,5 +1,7 @@
 module pref
 
+const C.__V_architecture int
+
 pub enum Arch {
 	_auto
 	amd64 // aka x86_64

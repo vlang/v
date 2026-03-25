@@ -5820,6 +5820,11 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if x := c.table.global_scope.find_const(node.name) {
 			return x.typ
 		}
+		c_name := node.name.all_after('C.')
+		if !c.pref.translated && !c.file.is_translated && c_name.to_upper() != c_name {
+			c.error('undefined C identifier: `${node.name}`', node.pos)
+			return ast.int_type
+		}
 		return ast.int_type
 	}
 	if c.inside_sql {

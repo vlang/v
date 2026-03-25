@@ -9,6 +9,8 @@ module http
 
 pub struct C.TlsContext {}
 
+const C.vsc_init_resp_buff_size int
+
 fn C.new_tls_context() C.TlsContext
 
 fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {

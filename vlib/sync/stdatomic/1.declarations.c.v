@@ -112,6 +112,10 @@ fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 fn C.atomic_thread_fence(i32)
 fn C.cpu_relax()
 
+pub const C.memory_order_relaxed i32
+pub const C.memory_order_acquire i32
+pub const C.memory_order_release i32
+
 fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
 fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, i32)
 fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, i32)

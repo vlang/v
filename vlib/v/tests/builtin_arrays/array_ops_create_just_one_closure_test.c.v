@@ -2,6 +2,8 @@ struct C.builtin__closure__Closure {
 	closure_cap int
 }
 
+__global C.g_closure voidptr
+
 fn setup(fname string) (int, int, []int) {
 	println(fname)
 	return unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap }, 42, []int{len: 5, init: index * 5}
