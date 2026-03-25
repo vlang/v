@@ -458,6 +458,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 		}
 		val := node.right[i]
+		if is_decl && g.cur_concrete_types.len > 0 && val is ast.CallExpr
+			&& val.return_type_generic != 0 {
+			resolved_val_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+			if resolved_val_type != ast.void_type && !resolved_val_type.has_flag(.generic) {
+				var_type = ast.mktyp(resolved_val_type)
+				val_type = resolved_val_type
+			}
+		}
 		mut is_call := false
 		mut gen_or := false
 		mut blank_assign := false
@@ -647,8 +655,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.type_resolver.update_ct_type(left.name, var_type)
 						}
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
-						fn_ret_type := g.resolve_return_type(val)
-						if fn_ret_type != ast.void_type {
+						if val.return_type_generic != 0
+							&& val.return_type_generic.has_flag(.generic) {
+							mut fn_ret_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+							if fn_ret_type == ast.void_type || fn_ret_type.has_flag(.generic) {
+								fn_ret_type = g.resolve_return_type(val)
+							}
+							if fn_ret_type != ast.void_type {
+								var_type = fn_ret_type
+								val_type = var_type
+								left.obj.typ = var_type
+								g.assign_ct_type[val.pos.pos] = var_type
+							}
+						} else if val.is_static_method && val.left_type.has_flag(.generic) {
+							fn_ret_type := g.resolve_return_type(val)
 							var_type = fn_ret_type
 							val_type = var_type
 							left.obj.typ = var_type

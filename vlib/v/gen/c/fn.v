@@ -1736,6 +1736,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		} else if node.return_type_generic != 0 {
 			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
 			if !unwrapped_ret_typ.has_flag(.generic) {
+				ret_typ = if node.return_type.has_flag(.result) {
+					unwrapped_ret_typ.set_flag(.result)
+				} else if node.return_type.has_flag(.option) {
+					unwrapped_ret_typ.set_flag(.option)
+				} else {
+					unwrapped_ret_typ
+				}
 				ret_sym := g.table.sym(unwrapped_ret_typ)
 				if ret_sym.info is ast.Array && g.table.sym(node.return_type_generic).kind == .array {
 					// Make []T returns T type when array was supplied to T
