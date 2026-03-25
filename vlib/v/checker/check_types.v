@@ -361,6 +361,16 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
+		if !arg.is_mut && c.table.can_implicit_array_cast(got, expected) {
+			expected_info := c.table.final_sym(expected).info as ast.Array
+			expected_elem_type := c.table.unaliased_type(expected_info.elem_type)
+			if c.table.final_sym(expected_elem_type).kind == .interface {
+				got_info := c.table.final_sym(got).info as ast.Array
+				got_elem_type := c.table.unaliased_type(got_info.elem_type)
+				c.type_implements(got_elem_type, expected_elem_type, arg.expr.pos())
+			}
+			return
+		}
 
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type[int] == &Type[]`. This is a common case we are implementing a function

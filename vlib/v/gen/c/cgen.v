@@ -3287,6 +3287,60 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 	return tmp_var
 }
 
+// expr_with_array_element_upcast materializes an array whose elements are boxed into
+// the expected interface or sum type element type.
+fn (mut g Gen) expr_with_array_element_upcast(expr ast.Expr, got_type ast.Type, expected_type ast.Type) {
+	got_sym := g.table.final_sym(got_type)
+	expected_sym := g.table.final_sym(expected_type)
+	got_info := got_sym.info as ast.Array
+	expected_info := expected_sym.info as ast.Array
+	got_elem_type := got_info.elem_type
+	expected_elem_type := expected_info.elem_type
+	got_styp := g.styp(got_type)
+	expected_styp := g.styp(expected_type)
+	got_elem_styp := g.styp(got_elem_type)
+	expected_elem_styp := g.styp(expected_elem_type)
+	expected_elem_sym := g.table.final_sym(expected_elem_type)
+	noscan := g.check_noscan(expected_elem_type)
+	stmt_str := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	source_tmp := g.new_tmp_var()
+	result_tmp := g.new_tmp_var()
+	index_tmp := g.new_tmp_var()
+	item_tmp := g.new_tmp_var()
+	converted_tmp := g.new_tmp_var()
+	g.write('${got_styp} ${source_tmp}_orig = ')
+	g.expr(expr)
+	g.writeln(';')
+	g.writeln('${expected_styp} ${result_tmp} = builtin____new_array${noscan}(0, ${source_tmp}_orig.len, sizeof(${expected_elem_styp}));')
+	g.writeln('for (${ast.int_type_name} ${index_tmp} = 0; ${index_tmp} < ${source_tmp}_orig.len; ++${index_tmp}) {')
+	g.indent++
+	if expected_elem_sym.kind == .interface {
+		expected_interface_info := expected_elem_sym.info as ast.Interface
+		mut fname := 'I_${g.cc_type(got_elem_type, true)}_to_Interface_${expected_elem_sym.cname}'
+		lock g.referenced_fns {
+			g.referenced_fns[fname] = true
+		}
+		if expected_interface_info.is_generic {
+			fname = g.generic_fn_name(expected_interface_info.concrete_types, fname)
+		}
+		g.writeln('${expected_elem_styp} ${converted_tmp} = ${fname}(&(((${got_elem_styp}*)${source_tmp}_orig.data)[${index_tmp}]));')
+	} else {
+		g.write_prepared_var(item_tmp, got_elem_type, got_elem_styp, source_tmp, index_tmp,
+			true, false)
+		g.write('${expected_elem_styp} ${converted_tmp} = ')
+		g.expr_with_cast(ast.Ident{
+			name: item_tmp
+		}, got_elem_type, expected_elem_type)
+		g.writeln(';')
+	}
+	g.writeln('builtin__array_push${noscan}((array*)&${result_tmp}, &${converted_tmp});')
+	g.indent--
+	g.writeln('}')
+	g.write(stmt_str)
+	g.write(result_tmp)
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := ast.mktyp(got_type_raw)
@@ -3311,6 +3365,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if got_sym.kind == .none && exp_sym.idx == ast.error_type_idx {
 		g.expr(expr)
+		return
+	}
+	if !got_is_ptr && !expected_is_ptr && !got_type_raw.has_flag(.shared_f)
+		&& !expected_type.has_flag(.shared_f)
+		&& g.table.can_implicit_array_cast(got_type, expected_type) {
+		g.expr_with_array_element_upcast(expr, got_type, expected_type)
 		return
 	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface

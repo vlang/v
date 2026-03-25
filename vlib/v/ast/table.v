@@ -1652,6 +1652,39 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 	return t.sumtype_has_variant(parent, typ, false)
 }
 
+// can_implicit_array_cast reports whether `got` can be converted to `expected`
+// by boxing each array element into the expected interface or sum type.
+pub fn (t &Table) can_implicit_array_cast(got Type, expected Type) bool {
+	got_unaliased := t.unaliased_type(got)
+	expected_unaliased := t.unaliased_type(expected)
+	got_sym := t.final_sym(got_unaliased)
+	expected_sym := t.final_sym(expected_unaliased)
+	if got_sym.kind != .array || expected_sym.kind != .array {
+		return false
+	}
+	got_info := got_sym.info as Array
+	expected_info := expected_sym.info as Array
+	if got_info.nr_dims != expected_info.nr_dims {
+		return false
+	}
+	got_elem_type := t.unaliased_type(got_info.elem_type)
+	expected_elem_type := t.unaliased_type(expected_info.elem_type)
+	if got_elem_type == expected_elem_type {
+		return false
+	}
+	match t.final_sym(expected_elem_type).kind {
+		.sum_type {
+			return t.is_sumtype_or_in_variant(expected_elem_type, mktyp(got_elem_type))
+		}
+		.interface {
+			return t.does_type_implement_interface(got_elem_type, expected_elem_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 @[inline]
 pub fn (t &Table) is_interface_var(var ScopeObject) bool {
 	return var is Var && var.orig_type != 0 && t.sym(var.orig_type).kind == .interface
