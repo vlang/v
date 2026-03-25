@@ -2361,10 +2361,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 							c.handle_generic_lambda_arg(node, mut call_arg.expr)
 							continue
 						}
-						// passing []?T to []T
-						if !unwrap_typ.has_flag(.variadic) && unwrap_sym.kind == .array
-							&& c.table.final_sym(utyp).kind == .array
-							&& c.check_basic(c.table.value_type(utyp).clear_flag(.option), c.table.value_type(unwrap_typ)) {
+						if c.is_optional_array_arg_compatible(utyp, unwrap_typ) {
 							continue
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
@@ -2511,6 +2508,7 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 	return true
 }
 
+<<<<<<< HEAD
 fn (c &Checker) is_valid_os_file_struct_io_type(typ ast.Type) bool {
 	if typ.nr_muls() > 0 || typ.has_option_or_result() {
 		return false
@@ -2555,6 +2553,26 @@ fn (mut c Checker) check_os_file_struct_io_method_call(node &ast.CallExpr, metho
 	}
 	c.error('`${receiver_sym.name}.${method.name}` expects a struct type, but got `${c.table.type_to_str(concrete_type)}`',
 		err_pos)
+}
+
+// is_optional_array_arg_compatible allows the generic recheck fallback for `[]?T -> []T`
+// without also accepting `[]&T -> []T` or other pointedness mismatches.
+fn (mut c Checker) is_optional_array_arg_compatible(got ast.Type, expected ast.Type) bool {
+	if expected.has_flag(.variadic) {
+		return false
+	}
+	if c.table.final_sym(got).kind != .array || c.table.final_sym(expected).kind != .array {
+		return false
+	}
+	got_value_type := c.table.value_type(got)
+	expected_value_type := c.table.value_type(expected)
+	if !got_value_type.has_flag(.option) || expected_value_type.has_flag(.option) {
+		return false
+	}
+	if got_value_type.nr_muls() != expected_value_type.nr_muls() {
+		return false
+	}
+	return c.check_types(got_value_type.clear_flag(.option), expected_value_type)
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
@@ -3257,10 +3275,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 			}
-			// passing []?T to []T
-			if !exp_arg_typ.has_flag(.variadic) && param_typ_sym.kind == .array
-				&& c.table.final_sym(got_arg_typ).kind == .array
-				&& c.check_basic(c.table.value_type(got_arg_typ).clear_flag(.option), c.table.value_type(exp_arg_typ)) {
+			if c.is_optional_array_arg_compatible(got_arg_typ, exp_arg_typ) {
 				continue
 			}
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
