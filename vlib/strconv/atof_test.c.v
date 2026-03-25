@@ -105,6 +105,15 @@ fn test_atof_subnormal() {
 	assert strconv.atof64('-1.0e-320') or { panic('parse error') } == -1.0e-320
 }
 
+fn test_atof_small_decimal_with_many_leading_zeroes() {
+	assert strconv.atof64('0.0000000000000000005') or { panic('parse error') } == strconv.atof64('5e-19') or {
+		panic('parse error')
+	}
+	assert strconv.atof64('-0.0000000000000000005') or { panic('parse error') } == strconv.atof64('-5e-19') or {
+		panic('parse error')
+	}
+}
+
 fn test_atof_errors() {
 	if x := strconv.atof64('') {
 		eprintln('> x: ${x}')

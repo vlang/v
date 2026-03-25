@@ -3,8 +3,10 @@
 // that can be found in the LICENSE file.
 module transformer
 
+import math
 import v.pref
 import v.ast
+import v.token
 import v.util
 
 pub struct Transformer {
@@ -57,6 +59,23 @@ pub fn (mut t Transformer) transform(mut ast_file ast.File) {
 	t.file = ast_file
 	for mut stmt in ast_file.stmts {
 		stmt = t.stmt(mut stmt)
+	}
+}
+
+fn folded_float_literal(value f64, pos token.Pos) ast.FloatLiteral {
+	// ast.FloatLiteral stores source text, so the folded value needs a
+	// decimal/scientific form that reparses to the same bits.
+	short := value.str()
+	if math.f64_bits(short.f64()) == math.f64_bits(value) {
+		return ast.FloatLiteral{
+			val: short
+			pos: pos
+		}
+	}
+	exact := value.strsci(17)
+	return ast.FloatLiteral{
+		val: exact
+		pos: pos
 	}
 }
 
@@ -985,28 +1004,16 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 								}
 							}
 							.plus {
-								return ast.FloatLiteral{
-									val: (left_val + right_val).str()
-									pos: pos
-								}
+								return folded_float_literal(left_val + right_val, pos)
 							}
 							.mul {
-								return ast.FloatLiteral{
-									val: (left_val * right_val).str()
-									pos: pos
-								}
+								return folded_float_literal(left_val * right_val, pos)
 							}
 							.minus {
-								return ast.FloatLiteral{
-									val: (left_val - right_val).str()
-									pos: pos
-								}
+								return folded_float_literal(left_val - right_val, pos)
 							}
 							.div {
-								return ast.FloatLiteral{
-									val: (left_val / right_val).str()
-									pos: pos
-								}
+								return folded_float_literal(left_val / right_val, pos)
 							}
 							else {}
 						}
