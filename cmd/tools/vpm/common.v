@@ -196,17 +196,49 @@ fn get_all_modules_for_search() []string {
 	working_server_url := get_working_server_url()
 	verbose_println_more(@FILE_LINE, @FN, 'working_server_url: ${working_server_url}')
 	println('Search server: ${working_server_url} .')
-	search_url := '${working_server_url}/search'
+	return get_all_modules_for_search_from_server(working_server_url) or {
+		vpm_error(err.msg())
+		exit(1)
+	}
+}
+
+fn get_all_modules_for_search_with_selector(mut selector VpmInstallServerSelector) ![]string {
+	if selector.candidate_urls.len == 0 {
+		return error('no vpm server urls configured.')
+	}
+	mut errors := []string{}
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in selector.metadata_server_urls() {
+		modules := get_all_modules_for_search_from_server(url) or {
+			errors << err.msg()
+			continue
+		}
+		if selector.selected_url == '' {
+			selector.selected_url = url
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
+		}
+		return modules
+	}
+	return error(errors.join_lines())
+}
+
+fn get_all_modules_for_search_from_server(server_url string) ![]string {
+	search_url := '${server_url}/search'
 	verbose_println_more(@FILE_LINE, @FN, 'making a GET request to search_url: ${search_url} ...')
 	r := http.get(search_url) or {
-		vpm_error(err.msg(), verbose: true)
-		exit(1)
+		return error('Http server did not respond to our request for `${search_url}`.\nError details: ${err}')
 	}
 	if r.status_code != 200 {
-		vpm_error('failed to search through ${search_url}', details: 'Status code: ${r.status_code}')
-		exit(1)
+		return error('failed to search through ${search_url}\nStatus code: ${r.status_code}')
 	}
-	s := r.body
+	modules := extract_modules_from_search_response(r.body)
+	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
+	return modules
+}
+
+fn extract_modules_from_search_response(s string) []string {
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
@@ -228,8 +260,24 @@ fn get_all_modules_for_search() []string {
 			break
 		}
 	}
-	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
 	return modules
+}
+
+fn normalize_repo_lookup_url(raw_url string) !string {
+	normalized_url := if raw_url.starts_with('git@') {
+		'https://' + raw_url['git@'.len..].replace(':', '/')
+	} else {
+		raw_url
+	}
+	url := urllib.parse(normalized_url) or {
+		return error('failed to parse module URL `${raw_url}`.')
+	}
+	host := url.hostname().trim_space().to_lower()
+	path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git').to_lower()
+	if host == '' || path == '' {
+		return error('failed to normalize module URL `${raw_url}`.')
+	}
+	return '${host}/${path}'
 }
 
 fn get_installed_modules() []string {
