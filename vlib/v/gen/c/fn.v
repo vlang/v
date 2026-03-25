@@ -1505,7 +1505,12 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			} else {
 				''
 			}
-			s := '${const_prefix}${param_type_name} ${var_name_prefix}${caname}'
+			const_param_type_name := if const_prefix != '' {
+				g.const_pointer_param_type_name(typ, param_type_name)
+			} else {
+				param_type_name
+			}
+			s := '${const_prefix}${const_param_type_name} ${var_name_prefix}${caname}'
 			if !g.inside_c_extern {
 				g.write(s)
 			}
@@ -1528,6 +1533,16 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		g.definitions.write_string(', ... ')
 	}
 	return fparams, fparamtypes, heap_promoted
+}
+
+fn (mut g Gen) const_pointer_param_type_name(typ ast.Type, param_type_name string) string {
+	unwrapped_typ := g.unwrap_generic(typ)
+	return match unwrapped_typ {
+		ast.voidptr_type { 'void*' }
+		ast.byteptr_type { 'u8*' }
+		ast.charptr_type { 'char*' }
+		else { param_type_name }
+	}
 }
 
 fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) string {

@@ -25,7 +25,7 @@ fn __malloc(n usize) voidptr {
 
 @[export: 'strlen']
 @[unsafe]
-fn strlen(const_s &char) usize {
+fn strlen(const_s voidptr) usize {
 	s := unsafe { &u8(const_s) }
 	mut i := 0
 	for ; unsafe { s[i] } != 0; i++ {}
