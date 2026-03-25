@@ -759,9 +759,11 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 	ret_styp := g.styp(return_type)
 	ret_sym := g.table.final_sym(return_type)
-	resolved_left_type := g.resolved_array_receiver_type(node)
-	inp_sym := g.table.final_sym(resolved_left_type)
-	left_is_array := inp_sym.kind == .array
+
+	left_type := g.resolve_array_call_left_type(node)
+	left_sym := g.table.final_sym(left_type)
+	left_is_array := left_sym.kind == .array
+	inp_sym := left_sym
 
 	ret_elem_type := if left_is_array {
 		(ret_sym.info as ast.Array).elem_type
@@ -2186,6 +2188,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.writeln('}')
 		g.set_current_pos_as_last_stmt_pos()
 	}
+}
+
+fn (mut g Gen) resolve_array_call_left_type(node &ast.CallExpr) ast.Type {
+	return g.unwrap_generic(g.type_resolver.get_type_or_default(node.left, node.left_type))
 }
 
 fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_stype string, initial_value string) bool {
