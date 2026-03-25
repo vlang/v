@@ -25,3 +25,10 @@ fn bar() {
 fn baz(arg map[string]?string) ?string {
 	return arg['akey']
 }
+
+fn test_map_value_with_option_or_block() {
+	m := map[string]?int{}
+	value := m['missing'] or { none }
+	assert value == none
+	assert m['missing'] or { none } == none
+}

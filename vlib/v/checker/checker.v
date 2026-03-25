@@ -1637,8 +1637,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		ast.InfixExpr {
-			c.check_expr_option_or_result_call(expr.left, ret_type)
-			c.check_expr_option_or_result_call(expr.right, ret_type)
+			left_ret_type := if expr.left_type != 0 { expr.left_type } else { ret_type }
+			right_ret_type := if expr.right_type != 0 { expr.right_type } else { ret_type }
+			c.check_expr_option_or_result_call(expr.left, left_ret_type)
+			c.check_expr_option_or_result_call(expr.right, right_ret_type)
 		}
 		else {}
 	}
@@ -1699,30 +1701,39 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
+	allow_none_as_option_value := expr is ast.IndexExpr && ret_type.has_flag(.option)
+	default_or_type := if expr is ast.IndexExpr && ret_type.has_flag(.option) {
+		ret_type
+	} else {
+		expr_return_type.clear_option_and_result()
+	}
 	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
 		// requires a block returning an unwrapped type of expr return type
-		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
+		c.check_or_last_stmt(mut last_stmt, ret_type, default_or_type, allow_none_as_option_value)
 	} else {
 		// allow f() or { var = 123 }
-		c.check_or_last_stmt(mut last_stmt, ast.void_type, expr_return_type.clear_option_and_result())
+		c.check_or_last_stmt(mut last_stmt, ast.void_type, default_or_type, allow_none_as_option_value)
 	}
 }
 
-fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
+fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, default_or_type ast.Type, allow_none_as_option_value bool) {
 	if ret_type != ast.void_type {
 		match mut stmt {
 			ast.ExprStmt {
 				c.expected_type = ret_type
-				c.expected_or_type = ret_type.clear_option_and_result()
-				if c.inside_or_block_value && stmt.expr is ast.None && ret_type.has_flag(.option) {
-					// return call() or { none } where fn returns an Option type
+				c.expected_or_type = default_or_type
+				if stmt.expr is ast.None && allow_none_as_option_value
+					&& default_or_type.has_flag(.option) {
+					// `none` is valid when the `or` block itself is expected to return an Option.
 					return
 				}
 				last_stmt_typ := c.expr(mut stmt.expr)
 				stmt.typ = last_stmt_typ
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
-					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
-						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr]
+						&& !(last_stmt_typ == ast.none_type && allow_none_as_option_value
+						&& default_or_type.has_flag(.option)) {
+						expected_type_name := c.table.type_to_str(default_or_type)
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
 							stmt.expr.pos())
@@ -1742,7 +1753,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						for mut branch in stmt.expr.branches {
 							if branch.stmts.len > 0 {
 								mut stmt_ := branch.stmts.last()
-								c.check_or_last_stmt(mut stmt_, ret_type, expr_return_type)
+								c.check_or_last_stmt(mut stmt_, ret_type, default_or_type,
+									allow_none_as_option_value)
 							}
 						}
 						return
@@ -1750,12 +1762,13 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						for mut branch in stmt.expr.branches {
 							if branch.stmts.len > 0 {
 								mut stmt_ := branch.stmts.last()
-								c.check_or_last_stmt(mut stmt_, ret_type, expr_return_type)
+								c.check_or_last_stmt(mut stmt_, ret_type, default_or_type,
+									allow_none_as_option_value)
 							}
 						}
 						return
 					}
-					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					expected_type_name := c.table.type_to_str(default_or_type)
 					c.error('`or` block must provide a default value of type `${expected_type_name}`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
@@ -1763,15 +1776,13 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						&& c.table.sym(last_stmt_typ).kind == .voidptr {
 						return
 					}
-					if last_stmt_typ == ast.none_type_idx && ret_type.has_flag(.option) {
+					if last_stmt_typ == ast.none_type_idx && allow_none_as_option_value
+						&& default_or_type.has_flag(.option) {
 						return
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
-					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
-					if ret_type.has_flag(.generic) {
-						return
-					}
-					if ret_type.clear_option_and_result() != expr_return_type {
+					expected_type_name := c.table.type_to_str(default_or_type)
+					if default_or_type.has_flag(.generic) {
 						return
 					}
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
@@ -1788,7 +1799,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			ast.Return {}
 			else {
 				if stmt !is ast.AssertStmt || c.inside_or_block_value {
-					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					expected_type_name := c.table.type_to_str(default_or_type)
 					c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
 						stmt.pos)
 				}
@@ -1800,7 +1811,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				for mut branch in stmt.expr.branches {
 					if branch.stmts.len > 0 {
 						mut stmt_ := branch.stmts.last()
-						c.check_or_last_stmt(mut stmt_, ret_type, expr_return_type)
+						c.check_or_last_stmt(mut stmt_, ret_type, default_or_type, allow_none_as_option_value)
 					}
 				}
 			}
@@ -1808,30 +1819,30 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				for mut branch in stmt.expr.branches {
 					if branch.stmts.len > 0 {
 						mut stmt_ := branch.stmts.last()
-						c.check_or_last_stmt(mut stmt_, ret_type, expr_return_type)
+						c.check_or_last_stmt(mut stmt_, ret_type, default_or_type, allow_none_as_option_value)
 					}
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
+				if stmt.typ == ast.void_type || default_or_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {
 					return
 				}
-				if c.check_types(stmt.typ, expr_return_type) {
-					if stmt.typ.is_ptr() == expr_return_type.is_ptr()
-						|| (expr_return_type.is_ptr() && stmt.typ.is_pointer()
+				if c.check_types(stmt.typ, default_or_type) {
+					if stmt.typ.is_ptr() == default_or_type.is_ptr()
+						|| (default_or_type.is_ptr() && stmt.typ.is_pointer()
 						&& c.table.sym(stmt.typ).kind == .voidptr) {
 						return
 					}
 				}
-				if expr_return_type.has_flag(.generic) {
+				if default_or_type.has_flag(.generic) {
 					return
 				}
 				// opt_returning_string() or { ... 123 }
 				type_name := c.table.type_to_str(stmt.typ)
-				expr_return_type_name := c.table.type_to_str(expr_return_type)
+				expr_return_type_name := c.table.type_to_str(default_or_type)
 				c.error('the default expression type in the `or` block should be `${expr_return_type_name}`, instead you gave a value of type `${type_name}`',
 					stmt.expr.pos())
 			}

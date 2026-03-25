@@ -7710,6 +7710,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					mut return_is_option := is_option && return_type.has_option_or_result()
+					direct_option_value := !is_option && return_type.has_flag(.option)
 					tmp_op := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
 					if is_option {
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
@@ -7734,6 +7735,8 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 							}
 						}
+					} else if direct_option_value {
+						g.write('${cvar_name} = ')
 					} else {
 						g.write('${cvar_name} = ')
 					}
@@ -7756,6 +7759,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
 						&& return_is_option {
 						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type)
+					} else if direct_option_value {
+						old_inside_opt_data := g.inside_opt_data
+						g.inside_opt_data = true
+						g.expr_with_opt(expr_stmt.expr, expr_stmt.typ, return_type)
+						g.inside_opt_data = old_inside_opt_data
 					} else {
 						old_inside_opt_data := g.inside_opt_data
 						g.inside_opt_data = true
@@ -7778,6 +7786,59 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 		}
 	}
 	g.indent--
+}
+
+// or_block_on_value handles `or {}` blocks where the temp already stores the final value,
+// including optional values like `map[K]?T` lookups.
+fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_type ast.Type) {
+	if or_block.kind != .block {
+		g.or_block(var_name, or_block, return_type)
+		return
+	}
+	cvar_name := c_name(var_name)
+	tmp_op := if var_name in g.tmp_var_ptr || return_type.has_flag(.option_mut_param_t) {
+		'->'
+	} else {
+		'.'
+	}
+	if or_block.stmts.len == 0 {
+		g.write(';\n${util.tabs(g.indent)}(void)${cvar_name};')
+		return
+	}
+	g.writeln(';')
+	if return_type.has_flag(.result) {
+		g.writeln('if (${cvar_name}${tmp_op}is_error) {')
+	} else {
+		g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
+	}
+	g.or_expr_return_type = return_type
+	if or_block.err_used
+		|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
+		g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
+	}
+	g.inside_or_block = true
+	defer {
+		g.inside_or_block = false
+	}
+	stmts := or_block.stmts
+	if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
+		g.gen_or_block_stmts(cvar_name, g.base_type(return_type), stmts, return_type,
+			false, or_block.scope, or_block.pos)
+	} else {
+		g.stmts(stmts)
+		if stmts.len > 0 {
+			stmt_last := stmts.last()
+			if stmt_last is ast.ExprStmt {
+				g.writeln(';')
+			}
+			if stmt_last !in [ast.Return, ast.BranchStmt] {
+				g.write_defer_stmts(or_block.scope, false, or_block.pos)
+			}
+		}
+	}
+	g.or_expr_return_type = ast.void_type
+	g.writeln('}')
+	g.set_current_pos_as_last_stmt_pos()
 }
 
 // If user is accessing the return value eg. in assignment, pass the variable name.

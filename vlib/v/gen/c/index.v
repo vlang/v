@@ -586,24 +586,40 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					return
 				}
 			}
-			opt_val_type := g.styp(val_type.set_flag(.option))
-			g.writeln('${opt_val_type} ${tmp_opt} = {0};')
-			g.writeln('if (${tmp_opt_ptr}) {')
-			if val_sym.kind == .array_fixed {
-				g.writeln('\tmemcpy((${val_type_str}*)${tmp_opt}.data, (${val_type_str}*)${tmp_opt_ptr}, sizeof(${val_type_str}));')
+			if val_type.has_flag(.option) {
+				g.writeln('${val_type_str} ${tmp_opt} = {0};')
+				g.writeln('if (${tmp_opt_ptr}) {')
+				g.writeln('\t${tmp_opt} = *${tmp_opt_ptr};')
+				g.writeln('} else {')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
+				g.writeln('}')
+				if !node.is_option {
+					g.or_block_on_value(tmp_opt, node.or_expr, val_type)
+				}
+				if is_gen_or_and_assign_rhs {
+					g.set_current_pos_as_last_stmt_pos()
+				}
+				g.write('\n${cur_line}${tmp_opt}')
 			} else {
-				g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
+				opt_val_type := g.styp(val_type.set_flag(.option))
+				g.writeln('${opt_val_type} ${tmp_opt} = {0};')
+				g.writeln('if (${tmp_opt_ptr}) {')
+				if val_sym.kind == .array_fixed {
+					g.writeln('\tmemcpy((${val_type_str}*)${tmp_opt}.data, (${val_type_str}*)${tmp_opt_ptr}, sizeof(${val_type_str}));')
+				} else {
+					g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
+				}
+				g.writeln('} else {')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
+				g.writeln('}')
+				if !node.is_option {
+					g.or_block(tmp_opt, node.or_expr, val_type)
+				}
+				if is_gen_or_and_assign_rhs {
+					g.set_current_pos_as_last_stmt_pos()
+				}
+				g.write('\n${cur_line}(*(${val_type_str}*)${tmp_opt}.data)')
 			}
-			g.writeln('} else {')
-			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
-			g.writeln('}')
-			if !node.is_option {
-				g.or_block(tmp_opt, node.or_expr, val_type)
-			}
-			if is_gen_or_and_assign_rhs {
-				g.set_current_pos_as_last_stmt_pos()
-			}
-			g.write('\n${cur_line}(*(${val_type_str}*)${tmp_opt}.data)')
 		}
 	}
 }
