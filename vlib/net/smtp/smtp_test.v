@@ -10,7 +10,7 @@ fn fn_errors(mut c smtp.Client, m smtp.Mail) bool {
 }
 
 fn send_mail(starttls bool) {
-	client_cfg := smtp.Client{
+	client_cfg := smtp.Config{
 		server:   'smtp.mailtrap.io'
 		port:     465
 		from:     'dev@vlang.io'
@@ -108,7 +108,7 @@ fn test_smtp_implicit_ssl() {
 		return
 	}
 
-	client_cfg := smtp.Client{
+	client_cfg := smtp.Config{
 		server:   'smtp.gmail.com'
 		port:     465
 		from:     ''
@@ -123,6 +123,21 @@ fn test_smtp_implicit_ssl() {
 	}
 
 	assert client.is_open && client.encrypted
+}
+
+fn test_new_client_rejects_conflicting_tls_modes() {
+	client_cfg := smtp.Config{
+		server:   'smtp.example.com'
+		ssl:      true
+		starttls: true
+	}
+
+	smtp.new_client(client_cfg) or {
+		assert err.msg() == 'Can not use both implicit SSL and STARTTLS'
+		return
+	}
+
+	assert false
 }
 
 fn test_smtp_multiple_recipients() {
