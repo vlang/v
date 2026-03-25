@@ -179,7 +179,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		}
 		ast.Struct {
 			g.gen_str_for_struct(sym.info, sym.language, styp, g.table.type_to_str(typ.typ),
-				str_fn_name)
+				str_fn_name, sym.idx)
 		}
 		ast.Map {
 			g.gen_str_for_map(sym.info, styp, str_fn_name)
@@ -995,7 +995,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	return .si_i32
 }
 
-fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp string, typ_str string, str_fn_name string) {
+fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp string, typ_str string, str_fn_name string, type_idx int) {
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
@@ -1019,6 +1019,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		fn_builder.writeln('}')
 		return
 	}
+	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
+	if g.pref.hide_auto_str {
+		fn_builder.writeln('\tstring res = { .str ="str() used with -hide-auto-str", .len=30 };')
+		fn_builder.writeln('\treturn res;')
+		fn_builder.writeln('}')
+		return
+	}
+	if !allow_circular {
+		fn_builder.writeln('\tif (builtin__autostr_type_in_stack(${type_idx})) {')
+		fn_builder.writeln('\t\treturn _S("<circular>");')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('\tbuiltin__autostr_type_push(${type_idx});')
+	}
 
 	fn_builder.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
 
@@ -1028,6 +1041,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		fn_body_surrounder.builder_write_befores(mut fn_builder)
 		fn_builder << fn_body
 		fn_body_surrounder.builder_write_afters(mut fn_builder)
+		if !allow_circular {
+			fn_builder.writeln('\tbuiltin__autostr_type_pop();')
+		}
 		fn_builder.writeln('\tbuiltin__string_free(&indents);')
 		fn_builder.writeln('\treturn res;')
 		fn_builder.writeln('}')
@@ -1041,15 +1057,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			}
 		}
 	}
-	// -hide-auto-str hides potential sensitive struct data from resulting binary files
-	if g.pref.hide_auto_str {
-		fn_body.writeln('\tstring res = { .str ="str() used with -hide-auto-str", .len=30 }; return res;')
-		return
-	}
 	fn_body.writeln('\tstring res = builtin__str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
-	fn_body.writeln('\t\t{_S("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}, 0, 0, 0},')
+	fn_body.writeln('\t\t{_S("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}},')
 
-	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	mut is_first := true
 	for i, field in info.fields {
 		// Skip `str:skip` fields

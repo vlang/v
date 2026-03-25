@@ -72,3 +72,22 @@ fn test_heap_circular_elem_auto_str() {
 	s := '${elem}'.replace('\n', '|')
 	assert s == '&Circular{|    next: &<circular>|}'
 }
+
+struct CrossRefWindow {
+mut:
+	widgets []CrossRefWidget
+}
+
+struct CrossRefWidget {
+mut:
+	parent &CrossRefWindow = unsafe { nil }
+}
+
+fn test_cross_reference_field_auto_str() {
+	mut window := &CrossRefWindow{}
+	mut widget := &CrossRefWidget{}
+	widget.parent = window
+	window.widgets << widget
+	s := '${window}'.replace('\n', '|')
+	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &<circular>|    }]|}'
+}
