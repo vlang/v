@@ -50,6 +50,7 @@ pub mut:
 	is_shared_lib         bool                  // Compile to shared library (.dylib/.so) for live reload
 	no_optimize           bool                  // -O0: skip SSA optimization (mem2reg, phi elimination)
 	is_prod               bool                  // -prod: use -O3 optimization for C compiler
+	prealloc              bool                  // -prealloc: use arena allocation (bump-pointer, not thread-safe)
 	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
 	arch                  Arch = .auto
@@ -290,7 +291,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod']
+		'-single-backend', '-prod', '-prealloc']
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -308,6 +309,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -d <name>              Define a comptime flag')
 			eprintln('  -enable-globals        Accepted for v1 compatibility')
 			eprintln('  -prod                  Production build: optimize with -O3 -flto')
+			eprintln('  -prealloc              Use arena allocation (faster, not thread-safe)')
 			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
 			eprintln('  --debug                Enable debug mode')
 			eprintln('  -v, --verbose          Enable verbose output')
@@ -338,6 +340,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		is_shared_lib:         '-shared' in options || '--shared' in options
 		no_optimize:           '-O0' in options
 		is_prod:               '-prod' in options
+		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
 		gc_mode:               gc_mode
 		backend:               backend
@@ -395,6 +398,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		is_shared_lib:         '-shared' in options || '--shared' in options
 		no_optimize:           '-O0' in options
 		is_prod:               '-prod' in options
+		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
 		backend:               backend
 		arch:                  arch

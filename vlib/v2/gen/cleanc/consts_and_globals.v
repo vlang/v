@@ -342,9 +342,10 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if value_expr.len == 0 {
 			continue
 		}
-		// Array consts with static backing data cannot be #defined across
-		// translation units. Emit extern declarations instead.
-		if value_expr.contains('__const_array_data_') {
+		// Array consts with static backing data or inline compound literals
+		// cannot be #defined across translation units. Emit extern declarations instead.
+		if value_expr.contains('__const_array_data_')
+			|| value_expr.contains('new_array_from_c_array') {
 			g.emitted_types[macro_key] = true
 			g.sb.writeln('extern array ${name};')
 			continue
@@ -436,7 +437,13 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 			typ = 'int'
 		}
 		g.global_var_types[name] = typ
-		g.sb.write_string('${typ} ${name}')
+		// With prealloc, g_memory_block must be thread-local so each thread
+		// gets its own arena and the bump allocator is safe without locks.
+		if name == 'g_memory_block' && g.pref != unsafe { nil } && g.pref.prealloc {
+			g.sb.write_string('_Thread_local ${typ} ${name}')
+		} else {
+			g.sb.write_string('${typ} ${name}')
+		}
 		if field.value !is ast.EmptyExpr {
 			// Function calls are not compile-time constants in C
 			if g.contains_call_expr(field.value) {
@@ -486,7 +493,11 @@ fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 			typ = 'int'
 		}
 		g.global_var_types[name] = typ
-		g.sb.writeln('extern ${typ} ${name};')
+		if name == 'g_memory_block' && g.pref != unsafe { nil } && g.pref.prealloc {
+			g.sb.writeln('extern _Thread_local ${typ} ${name};')
+		} else {
+			g.sb.writeln('extern ${typ} ${name};')
+		}
 	}
 }
 

@@ -1172,8 +1172,11 @@ fn (t &Transformer) eval_comptime_flag(name string) bool {
 			// guards select the software fallback path instead of inline asm.
 			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
 		}
+		'prealloc' {
+			return t.pref != unsafe { nil } && t.pref.prealloc
+		}
 		// Feature flags that are typically false
-		'new_int', 'gcboehm', 'prealloc', 'autofree' {
+		'new_int', 'gcboehm', 'autofree', 'ppc64' {
 			return false
 		}
 		else {

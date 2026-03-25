@@ -249,6 +249,13 @@ fn (mut g Gen) write_preamble() {
 		preamble_includes_full
 	})
 	g.emit_collected_c_directives()
+	if g.pref != unsafe { nil } && g.pref.prealloc {
+		g.sb.writeln('#define _VPREALLOC (1)')
+		// Save the real free() before redefining it as a no-op.
+		// prealloc_vcleanup needs the real free to release arena chunks.
+		g.sb.writeln('static inline void _v_cfree(void *p) { free(p); }')
+		g.sb.writeln('#define free(p) ((void)(p), (void)0)')
+	}
 	g.sb.writeln('')
 
 	// V primitive type aliases

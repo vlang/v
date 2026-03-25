@@ -3078,7 +3078,10 @@ fn (c &Checker) eval_comptime_flag(name string) bool {
 		'builtin_write_buf_to_fd_should_use_c_write' {
 			return c.pref != unsafe { nil } && (c.pref.backend == .arm64 || c.pref.backend == .x64)
 		}
-		'new_int', 'gcboehm', 'prealloc', 'autofree' {
+		'prealloc' {
+			return c.pref != unsafe { nil } && c.pref.prealloc
+		}
+		'new_int', 'gcboehm', 'autofree', 'ppc64' {
 			return false
 		}
 		else {

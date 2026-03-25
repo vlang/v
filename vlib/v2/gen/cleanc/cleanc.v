@@ -461,6 +461,7 @@ fn is_builtin_runtime_keep_file(path string) bool {
 		|| normalized.ends_with('vlib/builtin/builtin.v')
 		|| normalized.ends_with('vlib/builtin/cfns_wrapper.c.v')
 		|| normalized.ends_with('vlib/builtin/allocation.c.v')
+		|| normalized.ends_with('vlib/builtin/prealloc.c.v')
 		|| normalized.ends_with('vlib/builtin/panicing.c.v')
 		|| normalized.ends_with('vlib/builtin/chan_option_result.v')
 		|| normalized.ends_with('vlib/builtin/int.v') || normalized.ends_with('vlib/builtin/rune.v')

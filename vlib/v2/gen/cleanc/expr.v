@@ -3128,7 +3128,10 @@ fn (g &Gen) eval_comptime_flag(name string) bool {
 		'tinyc' {
 			return g.pref != unsafe { nil } && (g.pref.backend == .arm64 || g.pref.backend == .x64)
 		}
-		'new_int', 'gcboehm', 'prealloc', 'autofree' {
+		'prealloc' {
+			return g.pref != unsafe { nil } && g.pref.prealloc
+		}
+		'new_int', 'gcboehm', 'autofree', 'ppc64' {
 			return false
 		}
 		else {

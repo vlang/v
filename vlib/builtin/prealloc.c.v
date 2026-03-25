@@ -89,6 +89,13 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize, align isize) &VMemoryBl
 
 @[unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
+	unsafe {
+		// Lazy per-thread initialization: when g_memory_block is thread-local,
+		// new threads start with a null pointer and need their own arena.
+		if g_memory_block == nil {
+			g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		}
+	}
 	$if prealloc_trace_malloc ? {
 		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
 			g_memory_block.id, n, align)

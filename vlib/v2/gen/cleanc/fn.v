@@ -1457,6 +1457,11 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		g.sb.writeln('g_main_argc = ___argc;')
 		g.write_indent()
 		g.sb.writeln('g_main_argv = (void*)___argv;')
+		// Prealloc arena initialization (must run before any V allocations)
+		if g.pref != unsafe { nil } && g.pref.prealloc {
+			g.write_indent()
+			g.sb.writeln('prealloc_vinit();')
+		}
 		// GC initialization (translated from Go's runtime GC init)
 		if g.pref != unsafe { nil } && g.pref.gc_mode == .vgc {
 			g.write_indent()
@@ -2131,6 +2136,11 @@ fn (g &Gen) is_simple_addressable(expr ast.Expr) bool {
 
 fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
+	// nil is a null pointer — emit NULL directly, never wrap in compound literal
+	if base_arg is ast.Ident && base_arg.name == 'nil' {
+		g.sb.write_string('NULL')
+		return
+	}
 	if g.can_take_address(base_arg) {
 		g.sb.write_string('&')
 		g.expr(base_arg)
@@ -2300,6 +2310,19 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	if fn_name in ['ui__EventMngr__add_receiver', 'ui__EventMngr__rm_receiver'] && idx == 1 {
 		if g.gen_interface_cast('ui__Widget', base_arg) {
+			return
+		}
+	}
+	// nil is always a valid pointer value (NULL) — never wrap it
+	if (base_arg is ast.Ident && base_arg.name == 'nil') || base_arg is ast.Type {
+		if ptr_params := g.fn_param_is_ptr[fn_name] {
+			if idx < ptr_params.len && ptr_params[idx] {
+				g.sb.write_string('NULL')
+				return
+			}
+		}
+		if base_arg is ast.Ident && base_arg.name == 'nil' {
+			g.sb.write_string('NULL')
 			return
 		}
 	}
@@ -3592,6 +3615,11 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		// Handle C.puts, C.putchar etc.
 		if lhs.lhs is ast.Ident && lhs.lhs.name == 'C' {
 			name = lhs.rhs.name
+			// With prealloc, free() is redefined as a no-op macro.
+			// C.free calls in prealloc_vcleanup need the real free via _v_cfree.
+			if name == 'free' && g.pref != unsafe { nil } && g.pref.prealloc {
+				name = '_v_cfree'
+			}
 			g.sb.write_string('${name}(')
 			for i in 0 .. args.len {
 				arg := args[i]
