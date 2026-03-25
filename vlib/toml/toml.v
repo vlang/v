@@ -202,6 +202,11 @@ fn encode_struct[T](typ T) map[string]Any {
 	return mp
 }
 
+fn voidptr_to_toml_string[T](value T) string {
+	ptr := unsafe { voidptr(&value) }
+	return unsafe { '0x${ptr_str(*(&voidptr(ptr)))}' }
+}
+
 fn to_any[T](value T) Any {
 	$if T is $enum {
 		return Any(int(value))
@@ -247,6 +252,9 @@ fn to_any[T](value T) Any {
 		}
 		return mmap
 	} $else {
+		if typeof(value).name == 'voidptr' {
+			return Any(voidptr_to_toml_string(value))
+		}
 		return Any('${value}')
 	}
 }

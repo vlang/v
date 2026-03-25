@@ -86,15 +86,19 @@ pub fn (b Read) get_path() string {
 		return b.long_path.get_path()
 	}
 
-	mut str := []u8{}
+	mut str := []u8{cap: b.prefix_len + b.path_len + 1}
 	if b.prefix_len > 0 {
-		str << b.prefix_buf[0..b.prefix_len]
+		for i in 0 .. b.prefix_len {
+			str << b.prefix_buf[i]
+		}
 	}
 	if b.prefix_len > 0 && b.separator {
 		str << `/`
 	}
 	if b.path_len > 0 {
-		str << b.path_buf[0..b.path_len]
+		for i in 0 .. b.path_len {
+			str << b.path_buf[i]
+		}
 	}
 	return str.bytestr()
 }
