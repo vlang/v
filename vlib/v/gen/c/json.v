@@ -215,8 +215,8 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-				g.gen_struct_enc_dec(utyp, ast.TypeInfo(psym.info), ret_styp, mut enc, mut
-					dec, '')
+				gen_struct_root_validation(ret_styp, mut dec)
+				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec, '')
 			} else if psym.kind == .enum {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
@@ -250,6 +250,7 @@ ${enc_fn_dec} {
 			if sym.info !is ast.Struct {
 				g.json_error(utyp, 'json: ${sym.name} is not struct')
 			}
+			gen_struct_root_validation(ret_styp, mut dec)
 			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec, '')
 		}
 		// cJSON_delete
@@ -386,6 +387,12 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 		enc.writeln('\to = ${encode_name}(val);')
 		dec.writeln('\tres = ${dec_name}(root);')
 	}
+}
+
+fn gen_struct_root_validation(ret_styp string, mut dec strings.Builder) {
+	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root)) {')
+	dec.writeln('\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0} };')
+	dec.writeln('\t}')
 }
 
 @[inline]
