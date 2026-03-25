@@ -5184,9 +5184,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					} else {
 						field.typ
 					}
-					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-						&& is_option && smartcasts.len > 0
-						&& !smartcasts[0].has_flag(.generic) {
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && is_option
+						&& smartcasts.len > 0 && !smartcasts[0].has_flag(.generic) {
 						unwrapped_sc := resolved_scope_field_typ.clear_flag(.option)
 						if unwrapped_sc.idx() != smartcasts[0].idx() {
 							smartcasts[0] = unwrapped_sc
@@ -5414,7 +5413,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_opt_or_res {
 		// When the option variable is a pointer (e.g. mut param, auto-heap),
 		// use -> instead of . to access the data member.
-		if node.expr_type.is_ptr() || (node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)) {
+		if node.expr_type.is_ptr()
+			|| (node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)) {
 			g.write('->data)')
 		} else {
 			g.write('.data)')
@@ -6340,8 +6340,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			obj_smartcasts := resolved_var.smartcasts.clone()
 			resolved_var = *scope_var
 			has_resolved_var = true
-			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-				&& obj_smartcasts.len > 0
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && obj_smartcasts.len > 0
 				&& obj_smartcasts.any(it.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(it)) {
 				resolved_var.smartcasts = obj_smartcasts
@@ -6689,7 +6688,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface] {
-									g.write('${dot}_${g.get_sumtype_variant_name(typ, cast_sym)}')
+									g.write('${dot}_${g.get_sumtype_variant_name(typ,
+										cast_sym)}')
 								}
 								if i != 0 && unwrap_sumtype {
 									g.write(')')

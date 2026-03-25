@@ -205,8 +205,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 						if param.typ.has_flag(.generic)
 							|| g.type_has_unresolved_generic_parts(param.typ) {
 							mut muttable := unsafe { &ast.Table(g.table) }
-							if resolved := muttable.convert_generic_type(param.typ,
-								orig_fn.generic_names, g.cur_concrete_types)
+							if resolved := muttable.convert_generic_type(param.typ, orig_fn.generic_names,
+								g.cur_concrete_types)
 							{
 								fn_var_type = resolved
 							}

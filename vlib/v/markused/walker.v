@@ -1134,8 +1134,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				w.fn_by_name(method.fkey())
 			}
 		} else if resolved_left_type.has_flag(.generic)
-			|| (w.cur_fn != '' && w.cur_fn.contains('_T_'))
-		{
+			|| (w.cur_fn != '' && w.cur_fn.contains('_T_')) {
 			if w.cur_fn != '' {
 				for concrete_types in w.current_fn_concrete_types_list() {
 					for concrete_type in concrete_types {

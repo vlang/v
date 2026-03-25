@@ -3881,11 +3881,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			prev_cur_lambda := c.table.cur_lambda
 			c.inside_lambda = true
 			c.table.cur_lambda = unsafe { &node }
-			defer(fn) {
-				c.inside_lambda = prev_inside_lambda
-				c.table.cur_lambda = prev_cur_lambda
-			}
-			return c.lambda_expr(mut node, c.expected_type)
+			ret_type := c.lambda_expr(mut node, c.expected_type)
+			c.inside_lambda = prev_inside_lambda
+			c.table.cur_lambda = prev_cur_lambda
+			return ret_type
 		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
@@ -4898,8 +4897,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		mut info_typ := info.typ
 		if node.kind == .variable {
 			if current_var := node.scope.find_var(node.name) {
-				if c.table.cur_fn != unsafe { nil }
-					&& c.table.cur_fn.generic_names.len > 0
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 					info_typ = current_var.typ
 				}
@@ -5317,8 +5315,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 	has_generic_parts := c.type_has_unresolved_generic_parts(to_type_)
 		|| to_type_.has_flag(.generic)
 	scope_smartcast_type := if c.table.cur_fn != unsafe { nil }
-		&& c.table.cur_fn.generic_names.len > 0
-		&& has_generic_parts {
+		&& c.table.cur_fn.generic_names.len > 0 && has_generic_parts {
 		if sym.kind == .interface && c.table.sym(target_type).kind != .interface {
 			to_type_.ref()
 		} else {

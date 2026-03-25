@@ -343,10 +343,9 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut expected_elem_type := node.elem_type
 	if node.elem_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
 		generic_names := c.effective_fn_generic_names(c.table.cur_fn)
-		if generic_names.len > 0
-			&& c.table.cur_concrete_types.len == generic_names.len {
-			expected_elem_type = c.table.unwrap_generic_type(node.elem_type,
-				generic_names, c.table.cur_concrete_types)
+		if generic_names.len > 0 && c.table.cur_concrete_types.len == generic_names.len {
+			expected_elem_type = c.table.unwrap_generic_type(node.elem_type, generic_names,
+				c.table.cur_concrete_types)
 		}
 	}
 	c.expected_type = expected_elem_type

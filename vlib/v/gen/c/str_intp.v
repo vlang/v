@@ -446,8 +446,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_` || (g.cur_fn != unsafe { nil }
-					&& g.cur_concrete_types.len > 0) {
+				if node_.fmts[i] == `_`
+					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)

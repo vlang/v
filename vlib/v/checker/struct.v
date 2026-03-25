@@ -130,7 +130,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
 				if field.typ.is_ptr() != field.default_expr_typ.is_ptr() {
-						def_expr_pos := field.default_expr.pos()
+					def_expr_pos := field.default_expr.pos()
 					match field.default_expr {
 						ast.CallExpr {
 							err_desc := if field.typ.is_ptr() { 'is' } else { 'is not' }
@@ -948,7 +948,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							exp_unwrapped := c.unwrap_generic(exp_type)
 							if c.table.type_to_str(got_unwrapped) == c.table.type_to_str(exp_unwrapped) {
 								// Same concrete type by name, different index - accept
-							} else if field_info.typ.has_flag(.generic) || exp_type != field_info.typ {
+							} else if field_info.typ.has_flag(.generic)
+								|| exp_type != field_info.typ {
 								c.error('cannot assign `${c.table.type_to_str(got_unwrapped)}` to struct field `${field_info.name}` with type `${c.table.type_to_str(exp_unwrapped)}`',
 									init_field.expr.pos())
 							} else {

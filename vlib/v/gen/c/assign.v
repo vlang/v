@@ -683,8 +683,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// unwraps it. Clear the option flag in that case.
 				if val is ast.SelectorExpr && resolved_val_type.has_flag(.option) {
 					scope := g.file.scope.innermost(val.pos.pos)
-					field := scope.find_struct_field(val.expr.str(), val.expr_type,
-						val.field_name)
+					field := scope.find_struct_field(val.expr.str(), val.expr_type, val.field_name)
 					if field != unsafe { nil } && field.smartcasts.len > 0 {
 						resolved_val_type = resolved_val_type.clear_flag(.option)
 					}

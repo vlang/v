@@ -1196,8 +1196,7 @@ fn (mut g Gen) closure_inherited_var_type(node ast.AnonFn, var ast.Param) ast.Ty
 		if scope_var := node.decl.scope.parent.find_var(var.name) {
 			// If the scope variable has smartcasts and is a sumtype, use the
 			// smartcast variant type instead of the original sumtype.
-			if scope_var.smartcasts.len > 0
-				&& g.table.type_kind(scope_var.typ) == .sum_type {
+			if scope_var.smartcasts.len > 0 && g.table.type_kind(scope_var.typ) == .sum_type {
 				return g.unwrap_generic(g.recheck_concrete_type(scope_var.smartcasts.last()))
 			}
 			// Only use resolved_expr_type for generic type resolution.
@@ -2083,8 +2082,8 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 				return_type.clear_option_and_result()
 			}
 		}
-		if final_left_sym.kind == .array && !(left_sym.kind == .alias
-			&& left_sym.has_method(node.name)) && (node.name == 'get'
+		if final_left_sym.kind == .array && !(left_sym.has_method(node.name)
+			|| left_sym.has_method_with_generic_parent(node.name)) && (node.name == 'get'
 			|| node.kind in [.first, .last, .pop_left, .pop, .map, .filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted, .sorted_with_compare]) {
 			return_type := g.resolved_array_builtin_method_return_type(node, left_type,
 				node.return_type)
@@ -2157,6 +2156,7 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 						continue
 					}
 					slot := rec_len + generic_arg_idx
+					generic_arg_idx++
 					mut resolved_arg_type := ast.void_type
 					if arg.expr is ast.Ident && arg.expr.obj is ast.Var
 						&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param {
@@ -2173,13 +2173,15 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 						&& !param.typ.is_ptr() {
 						resolved_arg_type = resolved_arg_type.deref()
 					}
+					if resolved_arg_type.clear_option_and_result() == ast.none_type {
+						continue
+					}
 					if resolved_arg_type != 0 && resolved_arg_type != ast.void_type
 						&& !resolved_arg_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(resolved_arg_type)
 						&& slot < concrete_types.len {
 						concrete_types[slot] = resolved_arg_type
 					}
-					generic_arg_idx++
 				}
 			}
 
@@ -2437,8 +2439,7 @@ fn (mut g Gen) resolved_generic_call_arg_type(arg ast.CallArg) ast.Type {
 		// In comptime variant loops, a smartcast variable's type is dynamically
 		// resolved per variant iteration. Don't override it with the generic param
 		// resolution (which gives the sumtype, not the variant).
-		is_comptime_smartcast := arg.expr.obj is ast.Var
-			&& arg.expr.obj.ct_type_var == .smartcast
+		is_comptime_smartcast := arg.expr.obj is ast.Var && arg.expr.obj.ct_type_var == .smartcast
 			&& g.comptime.comptime_for_variant_var.len > 0
 		if !is_comptime_smartcast {
 			resolved_current_type = g.resolve_current_fn_generic_param_type(arg.expr.name)
@@ -3162,8 +3163,9 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 		left_sym2 := g.table.sym(left_type)
 		if !left_sym2.has_method(node.name) {
-			_, embed_types := g.table.find_method_from_embeds(left_sym2,
-				node.name) or { ast.Fn{}, []ast.Type{} }
+			_, embed_types := g.table.find_method_from_embeds(left_sym2, node.name) or {
+				ast.Fn{}, []ast.Type{}
+			}
 			if embed_types.len > 0 {
 				unwrapped_rec_type = embed_types.last()
 				typ_sym = g.table.sym(unwrapped_rec_type)
@@ -3171,7 +3173,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		} else if left_type != unwrapped_rec_type {
 			// left_type has the method directly; use it instead of stale receiver type
 			unwrapped_rec_type = left_type
-			typ_sym = left_sym2
+			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
 	} else if node.from_embed_types.len > 0 && !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = node.from_embed_types.last()
@@ -3345,8 +3347,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			use_builtin_array_sort = method.params.len == 1
 		}
 	}
-	if final_left_sym.kind == .array
-		&& (!(left_sym.has_method(method_name)) || use_builtin_array_sort || method_name == 'get') {
+	if final_left_sym.kind == .array && (!(left_sym.has_method(method_name)
+		|| left_sym.has_method_with_generic_parent(method_name))
+		|| use_builtin_array_sort) {
 		if g.gen_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
@@ -4286,8 +4289,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut print_arg_typ := if is_print && node.args.len > 0 { node.args[0].typ } else { ast.void_type }
 	// In generic contexts, AST-stored types may be stale from a previous
 	// instantiation. Use resolved_expr_type for Ident expressions.
-	if is_print && node.args.len > 0 && g.cur_fn != unsafe { nil }
-		&& g.cur_concrete_types.len > 0 && node.args[0].expr is ast.Ident {
+	if is_print && node.args.len > 0 && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+		&& node.args[0].expr is ast.Ident {
 		resolved := g.resolved_expr_type(node.args[0].expr, node.args[0].typ)
 		if resolved != 0 {
 			print_arg_typ = resolved

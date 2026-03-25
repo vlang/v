@@ -122,9 +122,20 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
-		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
-		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
-		if unwrap_option {
+		unwrap_opt_or_res := match expr {
+			ast.CallExpr, ast.ComptimeCall, ast.ComptimeSelector, ast.InfixExpr, ast.PrefixExpr,
+			ast.SelectorExpr {
+				expr.or_block.kind != .absent
+			}
+			ast.Ident, ast.IndexExpr {
+				expr.or_expr.kind != .absent
+			}
+			else {
+				false
+			}
+		}
+		exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
+		if unwrap_opt_or_res {
 			typ = exp_typ
 		}
 		is_dump_expr := expr is ast.DumpExpr
@@ -206,7 +217,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 			}
 		}
-		if unwrap_option {
+		if unwrap_opt_or_res {
 			g.expr(expr)
 		} else {
 			if temp_var_needed {

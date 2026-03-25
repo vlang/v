@@ -389,8 +389,8 @@ fn (mut g Gen) resolve_selector_smartcast_type(node ast.SelectorExpr) ast.Type {
 	scope := g.file.scope.innermost(node.pos.pos)
 	field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name)
 	if field != unsafe { nil } && field.smartcasts.len > 0 {
-		resolved_sc := g.unwrap_generic(g.recheck_concrete_type(
-			g.exposed_smartcast_type(field.orig_type, field.smartcasts.last(), field.is_mut)))
+		resolved_sc := g.unwrap_generic(g.recheck_concrete_type(g.exposed_smartcast_type(field.orig_type,
+			field.smartcasts.last(), field.is_mut)))
 		if resolved_sc != 0 {
 			return resolved_sc
 		}
@@ -409,8 +409,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					&& expr.name == g.cur_fn.receiver.name {
 					// In generic contexts, prefer resolving from the receiver declaration
 					// since scope types may be stale from a previous checker instantiation
-					if g.cur_concrete_types.len > 0
-						&& (g.cur_fn.receiver.typ.has_flag(.generic)
+					if g.cur_concrete_types.len > 0 && (g.cur_fn.receiver.typ.has_flag(.generic)
 						|| g.type_has_unresolved_generic_parts(g.cur_fn.receiver.typ)) {
 						resolved_receiver_type := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
 						if resolved_receiver_type != 0 {
@@ -444,8 +443,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				// relying on scope types which may be stale from a different
 				// generic instantiation.
 				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-					&& expr.obj.smartcasts.len > 0
-					&& expr.obj.smartcasts.any(it.has_flag(.generic)
+					&& expr.obj.smartcasts.len > 0 && expr.obj.smartcasts.any(it.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(it)) {
 					obj_smartcast_type := g.exposed_smartcast_type(expr.obj.orig_type,
 						expr.obj.smartcasts.last(), expr.obj.is_mut)
