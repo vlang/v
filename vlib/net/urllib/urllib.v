@@ -449,12 +449,12 @@ pub fn parse(rawurl string) !URL {
 	return url
 }
 
-// parse_request_uri parses rawurl into a URL structure. It assumes that
-// rawurl was received in an HTTP request, so the rawurl is interpreted
-// only as an absolute URI or an absolute path.
+// parse_request_uri parses rawurl into a URL structure for an HTTP request.
+// It accepts only absolute URIs or absolute paths and preserves leading `//`
+// sequences as part of the path for request targets.
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
-fn parse_request_uri(rawurl string) !URL {
+pub fn parse_request_uri(rawurl string) !URL {
 	return parse_url(rawurl, true)
 }
 
