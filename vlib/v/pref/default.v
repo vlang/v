@@ -96,6 +96,14 @@ pub fn (mut p Preferences) defines_map_unique_keys() string {
 	return skeys.join(',')
 }
 
+fn (mut p Preferences) disable_tcc_shared_backtraces() {
+	if p.is_shared && p.ccompiler_type == .tinyc && 'no_backtrace' !in p.compile_defines_all {
+		// TCC shared libraries should not depend on TCC's backtrace runtime symbols.
+		p.parse_define('no_backtrace')
+	}
+}
+
+// fill_with_defaults initializes unset preferences and derives build options from them.
 pub fn (mut p Preferences) fill_with_defaults() {
 	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
@@ -182,6 +190,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
+	p.disable_tcc_shared_backtraces()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
 	p.is_vsh = p.path.ends_with('.vsh') || p.raw_vsh_tmp_prefix != ''

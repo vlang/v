@@ -137,3 +137,20 @@ fn test_generate_c_project_creates_build_files() {
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
 }
+
+fn test_tcc_shared_builds_disable_backtraces() {
+	mut shared_prefs := &pref.Preferences{
+		path:      'libfoo.v'
+		is_shared: true
+		ccompiler: 'tinyc'
+	}
+	shared_prefs.fill_with_defaults()
+	assert 'no_backtrace' in shared_prefs.compile_defines_all
+
+	mut regular_prefs := &pref.Preferences{
+		path:      'main.v'
+		ccompiler: 'tinyc'
+	}
+	regular_prefs.fill_with_defaults()
+	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
