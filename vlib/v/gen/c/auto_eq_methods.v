@@ -6,41 +6,46 @@ import strings
 import v.ast
 
 fn (mut g Gen) equality_fn(typ ast.Type) string {
-	g.needed_equality_fns << typ.set_nr_muls(0)
-	t1 := g.unwrap_generic(typ)
-	t2 := t1.set_nr_muls(0)
-	st2 := g.styp(t2)
+	eq_key := g.eq_fn_key(typ)
+	g.needed_equality_fns << eq_key
+	st2 := g.styp(eq_key)
 	res := st2.replace('struct ', '')
 	return res
 }
 
+@[inline]
+fn (mut g Gen) eq_fn_key(typ ast.Type) ast.Type {
+	return g.unwrap_generic(typ).set_nr_muls(0)
+}
+
 fn (mut g Gen) gen_equality_fns() {
 	for needed_typ in g.needed_equality_fns {
-		if needed_typ in g.generated_eq_fns {
+		eq_key := g.eq_fn_key(needed_typ)
+		if eq_key in g.generated_eq_fns {
 			continue
 		}
-		sym := g.table.sym(needed_typ)
+		sym := g.table.sym(eq_key)
 		match sym.kind {
 			.sum_type {
-				g.gen_sumtype_equality_fn(needed_typ)
+				g.gen_sumtype_equality_fn(eq_key)
 			}
 			.struct {
-				g.gen_struct_equality_fn(needed_typ)
+				g.gen_struct_equality_fn(eq_key)
 			}
 			.array {
-				g.gen_array_equality_fn(needed_typ)
+				g.gen_array_equality_fn(eq_key)
 			}
 			.array_fixed {
-				g.gen_fixed_array_equality_fn(needed_typ)
+				g.gen_fixed_array_equality_fn(eq_key)
 			}
 			.map {
-				g.gen_map_equality_fn(needed_typ)
+				g.gen_map_equality_fn(eq_key)
 			}
 			.alias {
-				g.gen_alias_equality_fn(needed_typ)
+				g.gen_alias_equality_fn(eq_key)
 			}
 			.interface {
-				g.gen_interface_equality_fn(needed_typ)
+				g.gen_interface_equality_fn(eq_key)
 			}
 			else {
 				verror('could not generate equality function for type ${sym.kind}')
@@ -53,7 +58,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return ptr_styp
 	}
@@ -177,7 +182,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	fn_name := ptr_styp.replace('struct ', '')
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return fn_name
 	}
@@ -294,7 +299,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return ptr_styp
 	}
@@ -354,7 +359,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return ptr_styp
 	}
@@ -437,7 +442,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	left_typ := g.unwrap(left_type)
 	ptr_styp := g.styp(left_typ.typ.set_nr_muls(0))
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return ptr_styp
 	}
@@ -516,7 +521,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
 	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return ptr_styp
 	}
@@ -613,7 +618,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	idx_fn := g.styp(left.typ.set_nr_muls(0).clear_flag(.option))
 	fn_name := ptr_styp.replace('interface ', '')
 
-	left_no_ptr := left_type.set_nr_muls(0)
+	left_no_ptr := g.eq_fn_key(left_type)
 	if left_no_ptr in g.generated_eq_fns {
 		return fn_name
 	}
