@@ -1121,6 +1121,7 @@ fn has_exponent_number_syntax(str string) bool {
 	return false
 }
 
+<<<<<<< HEAD
 fn scientific_number_to_integer_string(str string) !string {
 	if !has_exponent_number_syntax(str) {
 		return str
