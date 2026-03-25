@@ -116,6 +116,12 @@ fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats
 	}
 }
 
+fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data []T) {
+	for element in data {
+		pg_stmt_match(mut types, mut vals, mut lens, mut formats, orm.Primitive(element))
+	}
+}
+
 fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data orm.Primitive) {
 	match data {
 		bool {
@@ -218,9 +224,49 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 0 // ignored
 		}
 		[]orm.Primitive {
-			for element in data {
-				pg_stmt_match(mut types, mut vals, mut lens, mut formats, element)
-			}
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]bool {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]f32 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]f64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i16 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i8 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]int {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]string {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]time.Time {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u16 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u32 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u8 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]orm.InfixType {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
 		}
 	}
 }

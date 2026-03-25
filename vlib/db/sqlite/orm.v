@@ -148,6 +148,19 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 	}
 }
 
+fn bind_array[T](stmt Stmt, mut c &int, data []T) int {
+	mut err := 0
+	for element in data {
+		tmp_err := bind(stmt, mut c, orm.Primitive(element))
+		c++
+		if tmp_err != 0 {
+			err = tmp_err
+			break
+		}
+	}
+	return err
+}
+
 // Universal bind function
 fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 	mut err := 0
@@ -174,14 +187,49 @@ fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 			err = stmt.bind_null(c)
 		}
 		[]orm.Primitive {
-			for element in data {
-				tmp_err := bind(stmt, mut c, element)
-				c++
-				if tmp_err != 0 {
-					err = tmp_err
-					break
-				}
-			}
+			err = bind_array(stmt, mut c, data)
+		}
+		[]bool {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]f32 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]f64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i16 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i8 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]int {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]string {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]time.Time {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u16 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u32 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u8 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]orm.InfixType {
+			err = bind_array(stmt, mut c, data)
 		}
 	}
 	return err
