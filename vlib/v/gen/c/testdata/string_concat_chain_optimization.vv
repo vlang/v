@@ -1,0 +1,12 @@
+fn join_three(a string, b string, c string) string {
+	return a + b + c
+}
+
+fn join_four(a string, b string, c string, d string) string {
+	return a + b + c + d
+}
+
+fn main() {
+	assert join_three('a', 'b', 'c') == 'abc'
+	assert join_four('a', 'b', 'c', 'd') == 'abcd'
+}
