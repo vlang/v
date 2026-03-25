@@ -3271,6 +3271,25 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		return
 	}
+	if got_sym.kind == .interface && exp_sym.kind == .interface
+		&& got_type.idx() != expected_type.idx() {
+		g.write('I_${got_sym.cname}_as_I_${exp_sym.cname}(')
+		if got_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(expr)
+		g.write(')')
+		mut info := got_sym.info as ast.Interface
+		exp_info := exp_sym.info as ast.Interface
+		lock info.conversions {
+			if expected_type !in info.conversions {
+				info.conversions[expected_type] = info.types.filter(it in exp_info.types)
+			}
+		}
+		mut got_interface_sym := g.table.sym(got_type)
+		got_interface_sym.info = info
+		return
+	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
 		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
@@ -8227,11 +8246,10 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 
 		mut info := expr_type_sym.info as ast.Interface
+		sym_info := sym.info as ast.Interface
 		lock info.conversions {
 			if node.typ !in info.conversions {
-				left_variants := g.table.iface_types[expr_type_sym.name]
-				right_variants := g.table.iface_types[sym.name]
-				info.conversions[node.typ] = left_variants.filter(it in right_variants)
+				info.conversions[node.typ] = info.types.filter(it in sym_info.types)
 			}
 		}
 		expr_type_sym.info = info

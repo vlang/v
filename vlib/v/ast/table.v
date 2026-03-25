@@ -1742,7 +1742,9 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	}
 	mut inter_sym := t.sym(inter_typ)
 	if sym.kind == .interface && inter_sym.kind == .interface {
-		return false
+		inter_info := inter_sym.info as Interface
+		return inter_info.methods.len == 0 && inter_info.fields.len == 0
+			&& inter_info.embeds.len == 0
 	}
 	if mut inter_sym.info is Interface {
 		attrs := unsafe { t.interfaces[inter_typ].attrs }
