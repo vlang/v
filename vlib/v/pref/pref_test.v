@@ -52,6 +52,35 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn new_wasm_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .wasm
+		os:      .browser
+		arch:    .wasm32
+	}
+}
+
+fn test_wasm_backend_filters_backend_specific_files() {
+	prefs := new_wasm_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'mod.c.v',
+		'mod.js.v',
+		'mod.v',
+		'mod.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'mod.v'),
+		os.join_path(dir, 'mod.wasm.v'),
+	]
+}
+
+fn test_wasm_backend_skips_modules_with_only_c_and_js_variants() {
+	prefs := new_wasm_preferences()
+	filtered := prefs.should_compile_filtered_files('sus', ['sus.c.v', 'sus.js.v'])
+	assert filtered.len == 0
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
