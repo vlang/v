@@ -81,6 +81,14 @@ sql db {
 }!
 ```
 
+> [!TIP]
+> This guide uses the built-in `db.sqlite` module. If you want SQLite without first installing
+> system-level SQLite development files, the V team also maintains the
+> [`sqlite`](https://vpm.vlang.io/packages/sqlite) VPM package.
+>
+> Install it with `v install sqlite` and change `import db.sqlite` to `import sqlite`.
+> The package keeps the same API while bundling SQLite for you.
+
 When you need to reference the table, simply pass the struct itself.
 
 ```v ignore

@@ -5639,19 +5639,20 @@ instead:
 - Fedora/RHEL: `sudo dnf -y install sqlite-devel`
 - Arch: `sudo pacman -S sqlite`
 
-### Using the self contained SQLite module
-V also maintains a separate `sqlite` module, that wraps an SQLite amalgamation, but otherwise
-has the same API as the `db.sqlite` module. Its benefit, is that with it, you do not need to
-install a separate system level sqlite package/library on your system (which can be hard on
-some systems like windows, or systems with musl for example).
-Its negative is that it can make your compilations a bit slower (since it compiles SQLite
-from C, in addition to your own code).
+### Using the `sqlite` VPM package
+V also maintains the [`sqlite`](https://vpm.vlang.io/packages/sqlite) VPM package.
+It wraps an SQLite amalgamation, but otherwise has the same API as `db.sqlite`.
 
-To use it, do:
+Its benefit is that you do not need to install a separate system-level SQLite package or
+library on your system, which can be harder on Windows or musl-based systems.
+Its downside is that it can make compilation a bit slower, since it compiles SQLite from C
+in addition to your own code.
+
+To install it, run:
 ```sh
 v install sqlite
 ```
-and later, in your code, use this:
+Then, in your code, use this:
 ```v ignore
 import sqlite
 ```
