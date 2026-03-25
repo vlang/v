@@ -78,8 +78,6 @@ $if emscripten ? {
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 
-@[use_once]
-#define SOKOL_IMPL
 // TODO: should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
 //#define SOKOL_NO_ENTRY
 #flag linux   -DSOKOL_NO_ENTRY
@@ -108,12 +106,22 @@ $if !no_sokol_app ? {
 		#define SOKOL_FORCE_EGL
 	}
 
+	$if macos {
+		$if sharedlive ? {
+		} $else {
+			// The live-reload dylib should reuse the host app's sokol_app symbols on macOS.
+			#define SOKOL_APP_IMPL
+		}
+	} $else {
+		#define SOKOL_APP_IMPL
+	}
+
 	@[use_once]
 	#include "sokol_app.h"
 }
 
 @[use_once]
-#define SOKOL_IMPL
+#define SOKOL_GFX_IMPL
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
