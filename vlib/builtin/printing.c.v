@@ -86,8 +86,8 @@ pub fn flush_stderr() {
 // Note 2: most libc implementations, have logic that use line buffering for stdout, when the output
 // stream is connected to an interactive device, like a terminal, and otherwise fully buffer it,
 // which is good for the output performance for programs that can produce a lot of output (like
-// filters, or cat etc), but bad for latency. Normally, it is usually what you want, so it is the
-// default for V programs too.
+// filters, or cat etc), but bad for latency. V uses unbuffered stdout by default on the common C
+// backends, to make print and println visible immediately even when stdout is redirected.
 // See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
 // See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
 pub fn unbuffer_stdout() {
@@ -99,7 +99,7 @@ pub fn unbuffer_stdout() {
 	}
 }
 
-// print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
+// print prints a message to stdout.
 @[manualfree]
 pub fn print(s string) {
 	$if builtin_print_use_fprintf ? {
@@ -118,7 +118,7 @@ pub fn print(s string) {
 	}
 }
 
-// println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
+// println prints a message with a line end, to stdout.
 @[if !noprintln ?; manualfree]
 pub fn println(s string) {
 	$if builtin_print_use_fprintf ? {
