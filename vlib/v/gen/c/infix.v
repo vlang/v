@@ -66,11 +66,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		.right_shift {
 			g.write('(')
-			if g.pref.translated || g.file.is_translated {
-				g.gen_plain_infix_expr(node)
-			} else {
-				g.gen_safe_shift_expr(node)
-			}
+			g.gen_plain_infix_expr(node)
 			g.write(')')
 		}
 		.and, .logical_or {
@@ -1239,11 +1235,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		}
 	} else {
 		g.write('(')
-		if g.pref.translated || g.file.is_translated {
-			g.gen_plain_infix_expr(node)
-		} else {
-			g.gen_safe_shift_expr(node)
-		}
+		g.gen_plain_infix_expr(node)
 		g.write(')')
 	}
 }

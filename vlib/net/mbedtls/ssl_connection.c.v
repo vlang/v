@@ -298,7 +298,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	}
 
 	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		unsafe { nil })
+		C.mbedtls_net_recv_timeout)
 
 	ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
