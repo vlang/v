@@ -1,0 +1,122 @@
+name: Database CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/db_ci.yml'
+      - 'examples/**'
+      - 'doc/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/db_ci.yml'
+      - 'examples/**'
+      - 'doc/**'
+
+concurrency:
+  group: db-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-driver-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 12345678
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p12345678"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=24
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install mysql client headers
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libmariadb-dev
+      - name: Run mysql driver tests
+        run: ./v -d network -d started_mysqld -silent test vlib/db/mysql/
+
+  postgres-driver-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: 12345678
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=24
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install postgres client headers
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libpq-dev
+      - name: Run postgres driver tests
+        run: ./v -d network -d started_postgres -silent test vlib/db/pg/
+
+  mssql-driver-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: Vlang12345678!
+        ports:
+          - 1433:1433
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install ODBC dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y unixodbc unixodbc-dev tdsodbc
+      - name: Detect FreeTDS ODBC driver
+        id: odbc
+        run: |
+          driver="$(odbcinst -q -d | tr -d '[]' | grep -m1 FreeTDS || true)"
+          if [ -z "$driver" ]; then
+            odbcinst -q -d
+            exit 1
+          fi
+          echo "name=$driver" >> "$GITHUB_OUTPUT"
+      - name: Wait for sql server
+        run: |
+          for _ in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Run mssql driver tests
+        env:
+          VMSSQL_CONN_STR: "Driver={${{ steps.odbc.outputs.name }}};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TDS_Version=7.4;ClientCharset=UTF-8"
+        run: ./v -d network -d started_mssql -silent test vlib/db/mssql/

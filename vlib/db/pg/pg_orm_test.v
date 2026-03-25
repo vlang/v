@@ -59,6 +59,7 @@ fn test_pg_orm() {
 	defer {
 		db.close() or {}
 	}
+	db.exec('create extension if not exists pgcrypto') or { panic(err) }
 	table := orm.Table{
 		name: 'Test'
 	}

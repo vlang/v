@@ -11,7 +11,7 @@ fn test_prep() {
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	}
 
@@ -69,7 +69,7 @@ fn test_stmt_bind_result_buffer_without_bind_res() {
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	}
 

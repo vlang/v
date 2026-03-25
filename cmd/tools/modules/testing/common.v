@@ -955,6 +955,9 @@ pub const is_started_mysqld = find_started_process('mysqld') or { '' }
 // is_started_postgres is true, when the test runner determines that there is a running postgres server
 pub const is_started_postgres = find_started_process('postgres') or { '' }
 
+// is_started_mssql is true, when the test runner determines that there is a running sql server
+pub const is_started_mssql = find_started_process('sqlservr') or { '' }
+
 // is_started_redis is true, when the test runner determines that there is a running redis server
 pub const is_started_redis = find_started_process('redis-server') or { '' }
 
@@ -969,6 +972,9 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_started_postgres != '' {
 		defines << 'started_postgres'
+	}
+	if is_started_mssql != '' {
+		defines << 'started_mssql'
 	}
 	if is_started_redis != '' {
 		defines << 'started_redis'
