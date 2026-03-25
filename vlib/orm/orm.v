@@ -928,6 +928,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 					}
 				}
 				'references' {
+					nullable = true
 					if attr.arg == '' {
 						if field.name.ends_with('_id') {
 							references_table = field.name.trim_right('_id')

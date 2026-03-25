@@ -32,3 +32,50 @@ fn test_references_constraint() {
 
 	assert pragma_result.len == 3
 }
+
+struct Member {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+struct Team {
+	id        int @[primary; sql: serial]
+	name      string
+	member_id int @[references: 'Member(id)']
+}
+
+fn test_omitted_references_field_inserts_null() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('PRAGMA foreign_keys=ON')!
+
+	sql db {
+		create table Member
+		create table Team
+	}!
+
+	team := Team{
+		name: 'unassigned'
+	}
+
+	sql db {
+		insert team into Team
+	}!
+
+	rows := db.exec('select member_id from Team where id = 1')!
+	assert rows.len == 1
+	assert rows[0].vals[0] == ''
+
+	invalid_team := Team{
+		name:      'invalid'
+		member_id: 0
+	}
+
+	mut failed := false
+	sql db {
+		insert invalid_team into Team
+	} or { failed = true }
+	assert failed
+}

@@ -340,9 +340,18 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name)
 
+	mut insert_fields := []ast.StructField{cap: fields.len}
 	for field in fields {
 		c.check_orm_struct_field_attrs(node, field)
+		// Preserve SQL NULL/default handling for omitted reference fields instead of
+		// inserting the V zero value and violating foreign key constraints.
+		if field.attrs.contains('references')
+			&& c.check_field_of_inserting_struct_is_uninitialized(node, field.name) {
+			continue
+		}
+		insert_fields << field
 	}
+	fields = insert_fields.clone()
 
 	mut sub_structs := map[int]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)

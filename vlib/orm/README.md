@@ -6,7 +6,8 @@ regardless of the DB driver you decide to use.
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined
-with `NOT NULL` at table creation.
+with `NOT NULL` at table creation, except scalar foreign keys declared with `@[references]`, which
+default to nullable so omitted relations can be stored as `NULL`.
 
 ```v ignore
 struct Foo {
