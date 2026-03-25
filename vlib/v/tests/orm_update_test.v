@@ -1,4 +1,5 @@
 import db.sqlite
+import time
 
 struct Person {
 	name   string
@@ -8,11 +9,6 @@ struct Person {
 enum Height as u8 {
 	tall
 	small
-}
-
-struct Account {
-	id     string @[primary]
-	status u8
 }
 
 fn test_main() {
@@ -45,30 +41,48 @@ fn test_main() {
 	assert rows.len == 2
 }
 
-fn test_update_with_if_expr() {
-	db := sqlite.connect(':memory:')!
+@[table: 'orm_update_users']
+struct OrmUpdateUser {
+pub:
+	id         string @[primary]
+	name       string
+	updated_at time.Time @[sql_type: 'TIMESTAMP']
+}
+
+struct OrmUpdateReq {
+	updated_at ?time.Time
+}
+
+fn test_orm_update_with_option_selector_or_block() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
 
 	sql db {
-		create table Account
+		create table OrmUpdateUser
 	}!
 
-	account := Account{
-		id:     'acc-1'
-		status: 0
+	user := OrmUpdateUser{
+		id:         '100'
+		name:       'Alice'
+		updated_at: time.unix(1_700_000_000)
 	}
 	sql db {
-		insert account into Account
+		insert user into OrmUpdateUser
 	}!
 
-	req_status := true
+	req := OrmUpdateReq{}
+	expected_updated_at := time.unix(1_700_000_123)
+
 	sql db {
-		update Account set status = if req_status { 1 } else { 0 } where id == 'acc-1'
+		update OrmUpdateUser set updated_at = req.updated_at or { expected_updated_at } where id == '100'
 	}!
 
 	rows := sql db {
-		select from Account where id == 'acc-1'
+		select from OrmUpdateUser where id == '100'
 	}!
 
 	assert rows.len == 1
-	assert rows[0].status == 1
+	assert rows[0].updated_at.unix() == expected_updated_at.unix()
 }
