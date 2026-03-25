@@ -4557,6 +4557,31 @@ fn (mut c Checker) smartcast_wrapper_field_name(wrapper_type ast.Type, to_type a
 	return none
 }
 
+fn integer_literal_from_pointer_cast_expr(expr ast.Expr) ?ast.IntegerLiteral {
+	return match expr {
+		ast.IntegerLiteral {
+			expr
+		}
+		ast.Ident {
+			match expr.obj {
+				ast.GlobalField, ast.ConstField, ast.Var {
+					if expr.obj.expr is ast.IntegerLiteral {
+						expr.obj.expr
+					} else {
+						none
+					}
+				}
+				else {
+					none
+				}
+			}
+		}
+		else {
+			none
+		}
+	}
+}
+
 fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
@@ -4616,6 +4641,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
+	number_to_type_ref_cast_outside_unsafe := from_type.is_number() && to_type.is_ptr()
+		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated
 	c.markused_castexpr(mut node, to_type, mut final_to_sym)
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
@@ -4724,28 +4751,13 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.info is ast.Alias {
 			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
-		if mut node.expr is ast.IntegerLiteral {
-			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
-				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+		if int_lit := integer_literal_from_pointer_cast_expr(node.expr) {
+			if int_lit.val.int() == 0 && number_to_type_ref_cast_outside_unsafe {
+				tt := c.table.type_to_str(to_type)
+				c.error('cannot null cast a struct pointer, use ${tt}(unsafe { nil })',
 					node.pos)
-			} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+			} else if number_to_type_ref_cast_outside_unsafe {
 				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
-			}
-		} else if mut node.expr is ast.Ident {
-			match mut node.expr.obj {
-				ast.GlobalField, ast.ConstField, ast.Var {
-					if mut node.expr.obj.expr is ast.IntegerLiteral {
-						if node.expr.obj.expr.val.int() == 0 && !c.pref.translated
-							&& !c.file.is_translated {
-							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
-								node.pos)
-						} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
-							c.error('cannot cast int to a struct pointer outside `unsafe`',
-								node.pos)
-						}
-					}
-				}
-				else {}
 			}
 		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
@@ -4880,14 +4892,22 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	// if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
 	// Do not allow `&u8(unsafe { nil })` etc, force nil or voidptr cast
-	if from_type.is_number() && to_type.is_ptr() && !c.inside_unsafe && !c.pref.translated
-		&& !c.file.is_translated && to_sym.kind != .sum_type {
+	if number_to_type_ref_cast_outside_unsafe && !(to_sym.kind == .struct && final_to_is_ptr)
+		&& c.table.sym(to_type.idx_type()).kind != .placeholder {
 		if from_sym.language != .c {
 			ne_name := node.expr.str()
 			if !ne_name.starts_with('C.') {
-				// TODO make an error
-				c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
-					node.pos)
+				tt := c.table.type_to_str(to_type)
+				if int_lit := integer_literal_from_pointer_cast_expr(node.expr) {
+					if int_lit.val.int() == 0 {
+						c.error('cannot null cast a pointer, use ${tt}(unsafe { nil })',
+							node.pos)
+					} else {
+						c.error('cannot cast a number to `${tt}` outside `unsafe`', node.pos)
+					}
+				} else {
+					c.error('cannot cast a number to `${tt}` outside `unsafe`', node.pos)
+				}
 			}
 		}
 	}
