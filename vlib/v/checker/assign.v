@@ -789,8 +789,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						right.pos())
 				}
 			}
-			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign,
-			.right_shift_assign {
+			.and_assign, .or_assign, .xor_assign {
+				left_final_sym := c.table.final_sym(left_type_unwrapped)
+				if left_final_sym.info is ast.Enum && left_final_sym.info.is_flag {
+					// `@[flag]` tagged enums support compound bitwise assignment.
+				} else if !left_sym.is_int() && !left_final_sym.is_int() {
+					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
+						left.pos())
+				} else if !right_sym.is_int() && !c.table.final_sym(right_type_unwrapped).is_int() {
+					c.error('operator ${node.op.str()} not defined on right operand type `${right_sym.name}`',
+						right.pos())
+				}
+			}
+			.mod_assign, .left_shift_assign, .right_shift_assign {
 				if !left_sym.is_int() && !c.table.final_sym(left_type_unwrapped).is_int() {
 					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
 						left.pos())
