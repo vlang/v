@@ -294,6 +294,39 @@ struct StringifyModReplacement {
 	weight int
 }
 
+fn is_qualified_name_boundary(c u8) bool {
+	return !(c.is_letter() || c.is_digit() || c == `_` || c == `.`)
+}
+
+fn replace_qualified_name_based_on_alias(input string, mod string, alias string) string {
+	if mod.len == 0 || !input.contains(mod) {
+		return input
+	}
+	mut start := 0
+	mut changed := false
+	mut sb := strings.new_builder(input.len)
+	for {
+		idx := input.index_after(mod, start) or { break }
+		end := idx + mod.len
+		before_ok := idx == 0 || is_qualified_name_boundary(input[idx - 1])
+		after_ok := end == input.len || input[end] == `.` || is_qualified_name_boundary(input[end])
+		if before_ok && after_ok {
+			sb.write_string(input[start..idx])
+			sb.write_string(alias)
+			start = end
+			changed = true
+			continue
+		}
+		sb.write_string(input[start..end])
+		start = end
+	}
+	if !changed {
+		return input
+	}
+	sb.write_string(input[start..])
+	return sb.str()
+}
+
 fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
 	if m2a.len == 0 || -1 == input.index_u8(`.`) {
 		// a simple typename, like `string` or `[]bool`; no module aliasings apply,
@@ -341,7 +374,7 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 		// r.mod: `v.token` | r.alias: `xyz` | res: `v.token.Abc`                -> `xyz.Abc`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `v.ast.AliasTypeDecl`        -> `ast.AliasTypeDecl`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `[]v.ast.InterfaceEmbedding` -> `[]ast.InterfaceEmbedding`
-		res = res.replace(r.mod, r.alias)
+		res = replace_qualified_name_based_on_alias(res, r.mod, r.alias)
 	}
 	return res
 }

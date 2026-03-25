@@ -1,0 +1,11 @@
+module main
+
+import cmod as cm
+
+fn returns_struct() !&C.cmod_struct_t {
+	return unsafe { &C.cmod_struct_t(nil) }
+}
+
+fn main() {
+	println(returns_struct()!)
+}
