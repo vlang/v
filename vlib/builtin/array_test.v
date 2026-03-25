@@ -353,6 +353,14 @@ fn test_push_many() {
 	assert a[5] == 6
 }
 
+fn test_push_many_self_append_with_growth() {
+	mut a := [u8(`a`), `b`, `c`]
+	a << a
+	assert a.bytestr() == 'abcabc'
+	a << a
+	assert a.bytestr() == 'abcabcabcabc'
+}
+
 fn test_reverse() {
 	a := [1, 2, 3, 4]
 	b := ['test', 'array', 'reverse']
