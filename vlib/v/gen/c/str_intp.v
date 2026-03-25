@@ -297,7 +297,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
+	} else if !typ.has_option_or_result() && typ_sym.kind == .interface
+		&& (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
