@@ -247,7 +247,15 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 	}
 
 	for i, item in val {
-		encoder.encode_value(item)
+		$if T is $pointer {
+			if voidptr(item) == unsafe { nil } {
+				encoder.encode_null()
+			} else {
+				unsafe { encoder.encode_pointer_array_item(item) }
+			}
+		} $else {
+			encoder.encode_value(item)
+		}
 		if i < val.len - 1 {
 			encoder.output << `,`
 			if encoder.prettify {
@@ -262,6 +270,11 @@ fn (mut encoder Encoder) encode_array[T](val []T) {
 	}
 
 	encoder.output << `]`
+}
+
+@[unsafe]
+fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
+	encoder.encode_struct(item)
 }
 
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
