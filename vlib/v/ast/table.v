@@ -143,7 +143,9 @@ pub fn (mut t Table) free() {
 	}
 }
 
-pub const fn_type_escape_seq = [' ', '', '(', '_', ')', '']
+pub const fn_type_escape_seq = ['...', 'variadic_', '&', 'ref_', '[', '_T_', ']', '', ', ', '_',
+	',', '_', '(', '_', ')', '', ' ', '_', '?', 'option_', '!', 'result_', '|', '_or_', '<', '_',
+	'>', '']
 pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
@@ -177,38 +179,53 @@ __global global_table = &Table(unsafe { nil })
 pub fn (t &Table) fn_type_signature(f &Fn) string {
 	mut sig := ''
 	for i, arg in f.params {
-		typ := arg.typ.set_nr_muls(0)
-		if arg.is_mut {
-			sig += 'mut_'
-		}
-		sig += t.sym(typ).cname.to_lower_ascii()
+		sig += t.fn_type_signature_part(f, i, arg)
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
 	}
 	if f.return_type != 0 && f.return_type != void_type {
-		sym := t.sym(f.return_type)
-		opt := if f.return_type.has_flag(.option) { 'option_' } else { '' }
-		res := if f.return_type.has_flag(.result) { 'result_' } else { '' }
-
-		sig += '__${opt}${res}${sym.cname}'
+		sig += '__${util.no_dots(t.type_to_str(f.return_type)).replace_each(fn_type_escape_seq)}'
 	}
 	return sig
 }
 
+fn (t &Table) fn_type_signature_part(f &Fn, i int, arg Param) string {
+	mut typ := arg.typ
+	mut sig := ''
+	if arg.is_mut {
+		if typ.is_ptr() {
+			typ = typ.deref()
+		}
+		sig += 'mut '
+	}
+	if i == f.params.len - 1 && f.is_variadic {
+		sig += '...'
+	}
+	sig += t.type_to_str(typ)
+	return util.no_dots(sig).replace_each(fn_type_escape_seq)
+}
+
 // fn_type_source_signature generates the signature of a function which looks like in the V source
 pub fn (t &Table) fn_type_source_signature(f &Fn) string {
+	import_aliases := map[string]string{}
 	mut sig := '('
 	for i, arg in f.params {
+		mut typ := arg.typ
 		if arg.is_mut {
+			if typ.is_ptr() {
+				typ = typ.deref()
+			}
 			sig += 'mut '
 		}
 		// Note: arg name is only added for fmt, else it would causes errors with generics
 		if t.is_fmt && arg.name != '' {
 			sig += '${arg.name} '
 		}
-		arg_type_sym := t.sym(arg.typ)
-		sig += arg_type_sym.name
+		if i == f.params.len - 1 && f.is_variadic {
+			sig += '...'
+		}
+		sig += t.type_to_str_using_aliases(typ, import_aliases)
 		if i < f.params.len - 1 {
 			sig += ', '
 		}
@@ -219,14 +236,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	} else if f.return_type == rvoid_type {
 		sig += ' !'
 	} else if f.return_type != void_type && f.return_type != 0 {
-		return_type_sym := t.sym(f.return_type)
-		if f.return_type.has_flag(.option) {
-			sig += ' ?${return_type_sym.name}'
-		} else if f.return_type.has_flag(.result) {
-			sig += ' !${return_type_sym.name}'
-		} else {
-			sig += ' ${return_type_sym.name}'
-		}
+		sig += ' ${t.type_to_str_using_aliases(f.return_type, import_aliases)}'
 	}
 	return sig
 }
