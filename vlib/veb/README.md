@@ -662,6 +662,10 @@ pub mut:
 In veb middleware functions take a `mut` parameter with the type of your context struct
 and must return `bool`. We have full access to modify our Context struct!
 
+Middleware handlers can also be bound methods, such as `app.session_middleware`.
+That lets middleware read or update fields on your app struct and reuse resources that
+live on it.
+
 The return value indicates to veb whether it can continue or has to stop. If we send a
 response to the client in a middleware function veb has to stop, so we return `false`.
 
@@ -709,6 +713,31 @@ fn main() {
 	app.use(handler: check_cookie_policy)
 
 	// Pass the App and context type and start the web server on port 8080
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+If your middleware needs access to app state or shared resources, register a bound
+method instead of a free function:
+
+```v ignore
+@[heap]
+pub struct App {
+	veb.Middleware[Context]
+mut:
+	request_count int
+}
+
+pub fn (mut app App) session_middleware(mut ctx Context) bool {
+	app.request_count++
+	ctx.res.header.add_custom('X-Request-Count', app.request_count.str()) or { return false }
+	return true
+}
+
+fn main() {
+	mut app := &App{}
+	app.use(handler: app.session_middleware)
+	app.route_use('/admin/:path...', handler: app.session_middleware)
 	veb.run[App, Context](mut app, 8080)
 }
 ```
