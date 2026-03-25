@@ -28,6 +28,13 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
 EXE_EXT := .exe
+# GNU make defaults CC to `cc`, but mingw32-make installations often only
+# provide `gcc`. Switch only the implicit default and preserve explicit CC=...
+ifneq ($(filter $(origin CC),default file),)
+ifeq ($(CC),cc)
+CC := gcc
+endif
+endif
 endif
 
 ifeq ($(_SYS),Linux)
