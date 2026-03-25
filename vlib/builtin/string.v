@@ -1700,21 +1700,26 @@ pub fn (s string) to_upper() string {
 	return runes.string()
 }
 
-// is_upper returns `true` if all characters in the string are uppercase.
+// is_upper returns `true` if all ASCII letters in the string are uppercase,
+// and the string contains at least one uppercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
 // See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {
-	if s == '' || s[0].is_digit() {
+	if s == '' {
 		return false
 	}
+	mut has_upper := false
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
 		}
+		if s[i] >= `A` && s[i] <= `Z` {
+			has_upper = true
+		}
 	}
-	return true
+	return has_upper
 }
 
 // capitalize returns the string with the first character capitalized.

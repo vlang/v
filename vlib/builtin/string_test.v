@@ -1125,6 +1125,9 @@ fn test_upper() {
 	s = 'HI'
 	assert s.is_upper()
 	assert s.to_upper() == 'HI'
+	s = '1, 2, 3, 4 GO!'
+	assert s.is_upper()
+	assert s.to_upper() == '1, 2, 3, 4 GO!'
 	s = '123'
 	assert !s.is_upper()
 	assert s.to_upper() == '123'
