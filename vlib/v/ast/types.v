@@ -482,7 +482,9 @@ pub fn (ts &TypeSymbol) scoped_name() string {
 
 @[inline]
 pub fn (ts &TypeSymbol) scoped_cname() string {
-	return if ts.info is Struct && ts.info.scoped_name != '' {
+	// Concrete generic structs should always use their escaped C name.
+	return if ts.info is Struct && ts.info.scoped_name != '' && !ts.info.scoped_name.contains('[')
+		&& !ts.info.scoped_name.contains(']') {
 		ts.info.scoped_name.replace('.', '__')
 	} else {
 		ts.cname

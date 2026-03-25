@@ -50,3 +50,13 @@ fn test_update_sym_by_idx() {
 	assert new_alias_size == b_new_size
 	assert new_alias_sym.size == b_new_size // make sure that `new_alias_sym` is now updated too (since it is a pointer to a symbol value stored in the table)
 }
+
+fn test_scoped_cname_prefers_escaped_cname_for_generic_scoped_names() {
+	sym := ast.TypeSymbol{
+		cname: 'x__json2__Node_T_x__json2__ValueInfo'
+		info:  ast.Struct{
+			scoped_name: 'x.json2.Node[x.json2.ValueInfo]'
+		}
+	}
+	assert sym.scoped_cname() == 'x__json2__Node_T_x__json2__ValueInfo'
+}
