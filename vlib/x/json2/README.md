@@ -80,6 +80,57 @@ fn main() {
 }
 ```
 
+#### iterative token scanning
+
+`x.json2` now exposes low-level scanners that let you process JSON token by
+token instead of materializing the whole tree first.
+
+Use `new_scanner()` for in-memory strings:
+
+```v
+import x.json2
+
+fn main() {
+	mut scanner := json2.new_scanner('{"items":[1,2,3]}')
+	for {
+		token := scanner.next()!
+		if token.is_eof() {
+			break
+		}
+		println('${token.kind}: ${token.literal()}')
+	}
+}
+```
+
+Use `new_reader_scanner()` to stream tokens from a file or any `io.Reader`:
+
+```v
+import os
+import x.json2
+
+fn main() {
+	mut file := os.open('huge.json')!
+	defer {
+		file.close()
+	}
+
+	mut scanner := json2.new_reader_scanner(reader: file)
+	defer {
+		scanner.free()
+	}
+
+	for {
+		token := scanner.next()!
+		if token.is_eof() {
+			break
+		}
+		if token.kind == .str && token.literal() == 'id' {
+			println('found an id key')
+		}
+	}
+}
+```
+
 #### Casting `Any` type / Navigating
 
 ```v
