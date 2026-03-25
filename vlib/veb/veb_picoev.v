@@ -37,6 +37,7 @@ $if !new_veb ? {
 		// reserve space for read and write buffers
 		pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * max_read + 1) }
 		defer { unsafe { free(pico_context.buf) } }
+		pico_context.body_buffers = [][]u8{len: picoev.max_fds}
 		pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 		pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 		pico_context.string_responses = []StringResponse{len: picoev.max_fds}
@@ -181,6 +182,26 @@ $if !new_veb ? {
 			idx += 2
 		}
 		return error('invalid chunked body')
+	}
+
+	@[inline]
+	fn append_request_body(mut params RequestParams, fd int, chunk []u8, expected_len int) {
+		if chunk.len == 0 {
+			return
+		}
+		if params.body_buffers[fd].cap == 0 {
+			initial_cap := if expected_len > 0 { expected_len } else { chunk.len }
+			params.body_buffers[fd] = []u8{cap: initial_cap}
+		}
+		params.body_buffers[fd] << chunk
+	}
+
+	@[inline; manualfree]
+	fn finalize_request_body(mut params RequestParams, fd int) string {
+		body := params.body_buffers[fd].bytestr()
+		unsafe { params.body_buffers[fd].free() }
+		params.body_buffers[fd] = []u8{}
+		return body
 	}
 
 	// handle_write_file reads data from a file and sends that data over the socket.
@@ -433,17 +454,17 @@ $if !new_veb ? {
 					return
 				} else if n < bytes_to_read || params.idx[fd] + n < content_length_i {
 					// request is incomplete wait until the socket becomes ready to read again
-					// TODO: change this to a memcpy function?
-					req.data += buf[0..n].bytestr()
+					append_request_body(mut params, fd, buf[0..n], content_length_i)
 					params.incomplete_requests[fd] = req
 					params.idx[fd] += n
 					$if trace_handle_read ? {
-						eprintln('>>>>> request is NOT complete, fd: ${fd} | n: ${n} | req.data.len: ${req.data.len} | params.idx[fd]: ${params.idx[fd]}')
+						eprintln('>>>>> request is NOT complete, fd: ${fd} | n: ${n} | body_buffer.len: ${params.body_buffers[fd].len} | params.idx[fd]: ${params.idx[fd]}')
 					}
 					return
 				} else {
 					// request is complete: n = bytes_to_read
-					req.data += buf[0..n].bytestr()
+					append_request_body(mut params, fd, buf[0..n], content_length_i)
+					req.data = finalize_request_body(mut params, fd)
 					params.idx[fd] += n
 					$if trace_handle_read ? {
 						eprintln('>>>>> request is NOW COMPLETE, fd: ${fd} | n: ${n} | req.data.len: ${req.data.len}')
