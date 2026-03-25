@@ -131,6 +131,7 @@ fn (mut d DenseArray) zeros_to_end() {
 		d.deletes = 0
 		// TODO: reallocate instead as more deletes are likely
 		free(d.all_deleted)
+		d.all_deleted = nil
 	}
 	d.len = count
 	old_cap := d.cap
