@@ -200,3 +200,51 @@ fn test_stdin_write() {
 	p.signal_kill()
 	p.close()
 }
+
+fn test_pipe_read_while_process_is_alive() {
+	eprintln(@FN)
+	mut p := os.new_process(test_os_process)
+	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
+	p.set_redirect_stdio()
+	p.run()
+	mut stdout_output := ''
+	mut stderr_output := ''
+	mut timeout := 0
+	for p.is_alive() && timeout < echo_wait_timeout * 1000 / 20 {
+		if out := p.pipe_read(.stdout) {
+			stdout_output += out
+		}
+		if err := p.pipe_read(.stderr) {
+			stderr_output += err
+		}
+		if stdout_output.len > 0 && stderr_output.len > 0 {
+			break
+		}
+		time.sleep(20 * time.millisecond)
+		timeout++
+	}
+	p.wait()
+	p.close()
+	assert stdout_output.contains('stdout, start'), stdout_output
+	assert stderr_output.contains('stderr, start'), stderr_output
+}
+
+fn test_pipe_read_returns_none_after_eof() {
+	eprintln(@FN)
+	mut p := os.new_process(test_os_process)
+	p.set_args(['-timeout_ms', '120', '-period_ms', '50'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	_ = p.stdout_slurp()
+	_ = p.stderr_slurp()
+	assert !p.is_pending(.stdout)
+	assert !p.is_pending(.stderr)
+	if out := p.pipe_read(.stdout) {
+		assert false, 'expected none after stdout EOF, got `${out}`'
+	}
+	if err := p.pipe_read(.stderr) {
+		assert false, 'expected none after stderr EOF, got `${err}`'
+	}
+	p.close()
+}
