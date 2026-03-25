@@ -6110,6 +6110,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			}
 		}
 	} else {
+		if g.write_array_data_ptr_cast(node, node_typ) {
+			return
+		}
 		styp := g.styp(node_typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO: handle the type in fn casts, not just exprs
@@ -6199,6 +6202,28 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) write_array_data_ptr_cast(node ast.CastExpr, node_typ ast.Type) bool {
+	if !node_typ.is_ptr() || node_typ.is_voidptr() || node.expr !is ast.PrefixExpr {
+		return false
+	}
+	prefix := node.expr as ast.PrefixExpr
+	if prefix.op != .amp {
+		return false
+	}
+	final_node_sym := g.table.final_sym(node_typ)
+	if final_node_sym.kind == .array || node_typ.deref().idx() == ast.array_type_idx
+		|| final_node_sym.name == 'array' {
+		return false
+	}
+	if g.table.final_sym(prefix.right_type).kind != .array {
+		return false
+	}
+	g.write('(${g.styp(node_typ)})((')
+	g.expr(prefix.right)
+	g.write(').data)')
+	return true
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
