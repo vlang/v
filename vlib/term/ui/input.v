@@ -228,6 +228,7 @@ pub:
 	window_title         string
 	hide_cursor          bool
 	capture_events       bool
+	mouse_enabled        bool
 	use_alternate_buffer bool = true
 	skip_init_checks     bool
 	// All kill signals to set up exit listeners on:

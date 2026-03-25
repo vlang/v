@@ -70,7 +70,7 @@ fn (mut ctx Context) termios_setup() ! {
 		ctx.flush()
 	}
 
-	if ctx.cfg.window_title != '' && ctx.supports_window_title {
+	if ctx.cfg.window_title != '' {
 		print('\x1b]0;${ctx.cfg.window_title}\x07')
 		flush_stdout()
 	}
@@ -81,37 +81,32 @@ fn (mut ctx Context) termios_setup() ! {
 		tios.c_cc[C.VTIME] = 1
 		tios.c_cc[C.VMIN] = 0
 		termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut tios)
-		if ctx.supports_sync_updates {
-			// feature-test the SU spec
-			sx, sy := get_cursor_position()
-			print('${bsu}${esu}')
-			flush_stdout()
-			ex, ey := get_cursor_position()
-			if sx == ex && sy == ey {
-				// the terminal either ignored or handled the sequence properly, enable SU
-				ctx.enable_su = true
-			} else {
-				ctx.draw_line(sx, sy, ex, ey)
-				ctx.set_cursor_position(sx, sy)
-				ctx.flush()
-			}
+		// feature-test the SU spec
+		sx, sy := get_cursor_position()
+		print('${bsu}${esu}')
+		flush_stdout()
+		ex, ey := get_cursor_position()
+		if sx == ex && sy == ey {
+			// the terminal either ignored or handled the sequence properly, enable SU
+			ctx.enable_su = true
+		} else {
+			ctx.draw_line(sx, sy, ex, ey)
+			ctx.set_cursor_position(sx, sy)
+			ctx.flush()
 		}
-		// linux console only advertises the base palette, so keep using the standard SGR colors there.
-		if ctx.enable_ansi256 {
-			// feature-test rgb (truecolor) support
-			ctx.enable_rgb = supports_truecolor()
-		}
+		// feature-test rgb (truecolor) support
+		ctx.enable_rgb = supports_truecolor()
 	}
 	// Prevent stdin from blocking by making its read time 0
 	tios.c_cc[C.VTIME] = 0
 	tios.c_cc[C.VMIN] = 0
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut tios)
-	// enable mouse input
-	if ctx.supports_sgr_mouse {
+	if ctx.cfg.mouse_enabled {
+		// enable mouse input
 		print('\x1b[?1003h\x1b[?1006h')
 		flush_stdout()
 	}
-	if ctx.cfg.use_alternate_buffer && ctx.supports_alternate_buffer {
+	if ctx.cfg.use_alternate_buffer {
 		// switch to the alternate buffer
 		print('\x1b[?1049h')
 		flush_stdout()
@@ -210,19 +205,11 @@ fn termios_reset() {
 	// C.TCSANOW ??
 	mut startup := termios_at_startup
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut startup)
+	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
+	flush_stdout()
 	c := ctx_ptr
-	if unsafe { c != 0 } {
-		if c.supports_sgr_mouse {
-			print('\x1b[?1003l\x1b[?1006l')
-		}
-		print('\x1b[?25h')
-		flush_stdout()
-		if c.cfg.use_alternate_buffer && c.supports_alternate_buffer {
-			print('\x1b[?1049l')
-		}
-	} else {
-		print('\x1b[?25h')
-		flush_stdout()
+	if unsafe { c != 0 } && c.cfg.use_alternate_buffer {
+		print('\x1b[?1049l')
 	}
 	os.flush()
 }
