@@ -82,3 +82,24 @@ pub struct BS{}
 	assert executable in after_compile_file_list
 	assert os.execute('./${executable}').output.trim_space() == 'AS{}=>BS{}'
 }
+
+fn test_thirdparty_object_build_with_multiline_cflags() {
+	mut env := os.environ()
+	existing_cflags := if 'CFLAGS' in env { env['CFLAGS'] } else { '' }
+	env['CFLAGS'] = if existing_cflags == '' {
+		'-DTHIRDPARTY_MULTILINE_1=1\n-DTHIRDPARTY_MULTILINE_2=1'
+	} else {
+		'${existing_cflags}\n-DTHIRDPARTY_MULTILINE_1=1\n-DTHIRDPARTY_MULTILINE_2=1'
+	}
+	mut p := os.new_process(vexe)
+	p.set_work_folder(@VEXEROOT)
+	p.set_args(['run', os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'project_with_c_code',
+		'main.v')])
+	p.set_environment(env)
+	p.set_redirect_stdio()
+	p.wait()
+	stdout := p.stdout_slurp()
+	stderr := p.stderr_slurp()
+	p.close()
+	assert p.code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
+}

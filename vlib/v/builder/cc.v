@@ -1559,7 +1559,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	current_folder := os.getwd()
 	os.chdir(v.pref.vroot) or {}
 
-	cc_options := if source_kind == .asm {
+	mut str_args := if source_kind == .asm {
 		'-o ${os.quoted_path(opath)} -c ${os.quoted_path(source_file)}'
 	} else {
 		mut all_options := []string{cap: 4}
@@ -1568,7 +1568,12 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		all_options << '-o ${v.tcc_quoted_path(opath)}'
 		all_options << '-c ${v.tcc_quoted_path(source_file)}'
 		cpp_file := source_kind == .cpp
-		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+		all_thirdparty_options := v.thirdparty_object_args(v.ccoptions, all_options, cpp_file)
+		if v.pref.no_rsp {
+			all_thirdparty_options.join(' ').replace('\n', ' ')
+		} else {
+			all_thirdparty_options.join(' ')
+		}
 	}
 
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
@@ -1579,7 +1584,15 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		}
 		ccompiler = v.pref.cppcompiler
 	}
-	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
+	mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
+	mut response_file := ''
+	if !v.pref.no_rsp && source_kind != .asm {
+		response_file = '${opath}.rsp'
+		response_file_content := str_args.replace('\\', '\\\\')
+		rspexpr := '@${response_file}'
+		cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
+		write_response_file(response_file, response_file_content)
+	}
 	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
@@ -1595,6 +1608,9 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		eprintln('>           cmd: ${cmd}')
 		verror(res.output)
 		return
+	}
+	if response_file != '' && !v.ccoptions.debug_mode {
+		os.rm(response_file) or {}
 	}
 	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or {
 		panic(err)
