@@ -6,6 +6,7 @@ import time
 
 const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
 const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
+const default_mbedtls_client_read_timeout = mbedtls_client_read_timeout_ms * time.millisecond
 
 fn init_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) ! {
 	$if trace_ssl ? {
@@ -137,16 +138,17 @@ pub struct SSLConn {
 pub:
 	config SSLConnectConfig
 pub mut:
-	server_fd C.mbedtls_net_context
-	ssl       C.mbedtls_ssl_context
-	conf      C.mbedtls_ssl_config
-	certs     &SSLCerts = unsafe { nil }
-	ctr_drbg  C.mbedtls_ctr_drbg_context
-	entropy   C.mbedtls_entropy_context
-	handle    int
-	duration  time.Duration
-	opened    bool
-	ip        string
+	server_fd    C.mbedtls_net_context
+	ssl          C.mbedtls_ssl_context
+	conf         C.mbedtls_ssl_config
+	certs        &SSLCerts = unsafe { nil }
+	ctr_drbg     C.mbedtls_ctr_drbg_context
+	entropy      C.mbedtls_entropy_context
+	handle       int
+	duration     time.Duration
+	opened       bool
+	ip           string
+	read_timeout time.Duration
 
 	owns_socket bool
 }
@@ -354,6 +356,31 @@ pub:
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
 	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
+
+	read_timeout time.Duration = default_mbedtls_client_read_timeout // the SSL client read timeout
+}
+
+fn ssl_read_timeout_ms(timeout time.Duration) u32 {
+	timeout_ms := timeout.milliseconds()
+	if timeout_ms <= 0 {
+		return 0
+	}
+	if timeout_ms > i64(max_u32) {
+		return max_u32
+	}
+	return u32(timeout_ms)
+}
+
+// read_timeout returns the current SSL read timeout.
+pub fn (s &SSLConn) read_timeout() time.Duration {
+	return s.read_timeout
+}
+
+// set_read_timeout sets the SSL read timeout for subsequent operations.
+pub fn (mut s SSLConn) set_read_timeout(timeout time.Duration) {
+	s.read_timeout = timeout
+	s.duration = timeout
+	C.mbedtls_ssl_conf_read_timeout(&s.conf, ssl_read_timeout_ms(timeout))
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
@@ -362,7 +389,9 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		eprintln(@METHOD)
 	}
 	mut conn := &SSLConn{
-		config: config
+		config:       config
+		duration:     config.read_timeout
+		read_timeout: config.read_timeout
 	}
 	conn.init()!
 	return conn
@@ -419,9 +448,9 @@ fn (mut s SSLConn) init() ! {
 			ret)
 	}
 	$if trace_mbedtls_timeouts ? {
-		dump(mbedtls_client_read_timeout_ms)
+		dump(s.read_timeout)
 	}
-	C.mbedtls_ssl_conf_read_timeout(&s.conf, mbedtls_client_read_timeout_ms)
+	s.set_read_timeout(s.read_timeout)
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
@@ -507,7 +536,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('net.mbedtls SSLConn.connect, ssl connection was already open')
 	}
 	s.handle = tcp_conn.sock.handle
-	s.duration = 30 * time.second
+	s.set_read_timeout(tcp_conn.read_timeout())
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_set_hostname failed to set hostname',
@@ -533,7 +562,6 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	if s.opened {
 		return error('net.mbedtls SSLConn.dial, the ssl connection was already open')
 	}
-	s.duration = 30 * time.second
 
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
@@ -623,7 +651,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: C.MBEDTLS_ERR_SSL_TIMEOUT')
 					}
-					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, did not receive any data within ${mbedtls_client_read_timeout_ms}ms. compile with `-d mbedtls_client_read_timeout_ms=100000` to set a higher timeout',
+					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, did not receive any data within ${s.read_timeout.milliseconds()}ms. Use conn.set_read_timeout(...) to increase the timeout',
 						res)
 				}
 				else {
