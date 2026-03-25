@@ -1,42 +1,49 @@
-vlib/v/checker/tests/immutable_to_mutable_err.vv:10:20: notice: condition is always true
-    8 | fn main() {
-    9 |     arr := [1, 2, 3] // declared as immutable!
-   10 |     mut arr_mut := if true { arr } else { []int{} }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:15:20: notice: condition is always true
+   13 | fn main() {
+   14 |     arr := [1, 2, 3] // declared as immutable!
+   15 |     mut arr_mut := if true { arr } else { []int{} }
       |                       ~~~~
-   11 |     mut arr_mut2 := match true {
-   12 |         true { arr }
-vlib/v/checker/tests/immutable_to_mutable_err.vv:10:27: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
-    8 | fn main() {
-    9 |     arr := [1, 2, 3] // declared as immutable!
-   10 |     mut arr_mut := if true { arr } else { []int{} }
+   16 |     mut arr_mut2 := match true {
+   17 |         true { arr }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:15:27: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+   13 | fn main() {
+   14 |     arr := [1, 2, 3] // declared as immutable!
+   15 |     mut arr_mut := if true { arr } else { []int{} }
       |                              ~~~
-   11 |     mut arr_mut2 := match true {
-   12 |         true { arr }
-vlib/v/checker/tests/immutable_to_mutable_err.vv:12:3: notice: match is always true
-   10 |     mut arr_mut := if true { arr } else { []int{} }
-   11 |     mut arr_mut2 := match true {
-   12 |         true { arr }
+   16 |     mut arr_mut2 := match true {
+   17 |         true { arr }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:17:3: notice: match is always true
+   15 |     mut arr_mut := if true { arr } else { []int{} }
+   16 |     mut arr_mut2 := match true {
+   17 |         true { arr }
       |         ~~~~
-   13 |         else { [0] }
-   14 |     }
-vlib/v/checker/tests/immutable_to_mutable_err.vv:12:10: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
-   10 |     mut arr_mut := if true { arr } else { []int{} }
-   11 |     mut arr_mut2 := match true {
-   12 |         true { arr }
+   18 |         else { [0] }
+   19 |     }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:17:10: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+   15 |     mut arr_mut := if true { arr } else { []int{} }
+   16 |     mut arr_mut2 := match true {
+   17 |         true { arr }
       |                ~~~
-   13 |         else { [0] }
-   14 |     }
-vlib/v/checker/tests/immutable_to_mutable_err.vv:22:15: error: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
-   20 | 
-   21 |     a := Test{}
-   22 |     mut arr_mut3 := a.foo
-      |                  ~~
-   23 |     arr_mut3[0] = 999
-   24 |     assert a.foo == [1, 2, 3]
-vlib/v/checker/tests/immutable_to_mutable_err.vv:26:15: error: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
-   24 |     assert a.foo == [1, 2, 3]
+   18 |         else { [0] }
+   19 |     }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:27:15: error: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
    25 | 
-   26 |     mut arr_mut4 := a.bar
+   26 |     a := Test{}
+   27 |     mut arr_mut3 := a.foo
       |                  ~~
-   27 |     arr_mut4[0] = 999
-   28 |     assert a.bar == [1, 2, 3]
+   28 |     arr_mut3[0] = 999
+   29 |     assert a.foo == [1, 2, 3]
+vlib/v/checker/tests/immutable_to_mutable_err.vv:31:15: error: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
+   29 |     assert a.foo == [1, 2, 3]
+   30 | 
+   31 |     mut arr_mut4 := a.bar
+      |                  ~~
+   32 |     arr_mut4[0] = 999
+   33 |     assert a.bar == [1, 2, 3]
+vlib/v/checker/tests/immutable_to_mutable_err.vv:39:5: error: `s2.list` aliases mutable data from an immutable value, clone it first (or use `unsafe`)
+   37 |     }
+   38 |     mut s2 := s
+   39 |     s2.list[0] = 'bbb'
+      |        ~~~~
+   40 | 
+   41 |     _ := a.bar

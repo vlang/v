@@ -1026,13 +1026,164 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 	return ares
 }
 
+fn (mut c Checker) expr_is_immutable_source(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return match expr.obj {
+				ast.Var { !expr.obj.is_mut }
+				ast.ConstField { true }
+				else { false }
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr_type == 0 {
+				return false
+			}
+			typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
+			match typ_sym.kind {
+				.struct {
+					if field_info := c.table.find_field_with_embeds(typ_sym, expr.field_name) {
+						return !field_info.is_mut || c.expr_is_immutable_source(expr.expr)
+					}
+				}
+				.interface {
+					interface_info := typ_sym.info as ast.Interface
+					if field_info := interface_info.find_field(expr.field_name) {
+						return !field_info.is_mut || c.expr_is_immutable_source(expr.expr)
+					}
+				}
+				.sum_type {
+					sumtype_info := typ_sym.info as ast.SumType
+					if field_info := sumtype_info.find_sum_type_field(expr.field_name) {
+						return !field_info.is_mut || c.expr_is_immutable_source(expr.expr)
+					}
+				}
+				else {}
+			}
+			return c.expr_is_immutable_source(expr.expr)
+		}
+		ast.IndexExpr {
+			return c.expr_is_immutable_source(expr.left)
+		}
+		ast.ParExpr {
+			return c.expr_is_immutable_source(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) type_contains_mutable_aliasing(typ ast.Type, mut checked_types []ast.Type) bool {
+	unwrapped_typ := c.unwrap_generic(typ.clear_option_and_result())
+	if unwrapped_typ == 0 {
+		return false
+	}
+	if unwrapped_typ.has_flag(.shared_f) || unwrapped_typ.is_any_kind_of_pointer() {
+		return true
+	}
+	if unwrapped_typ in checked_types {
+		return false
+	}
+	checked_types << unwrapped_typ
+	sym := c.table.sym(unwrapped_typ)
+	match sym.info {
+		ast.Alias {
+			return c.type_contains_mutable_aliasing(sym.info.parent_type, mut checked_types)
+		}
+		ast.Array, ast.Map, ast.Interface {
+			return true
+		}
+		ast.ArrayFixed {
+			return c.type_contains_mutable_aliasing(sym.info.elem_type, mut checked_types)
+		}
+		ast.Struct {
+			if sym.kind == .struct && sym.language == .v {
+				for field in c.table.struct_fields(sym) {
+					if !field.is_mut {
+						continue
+					}
+					if c.type_contains_mutable_aliasing(field.typ, mut checked_types) {
+						return true
+					}
+				}
+			}
+		}
+		ast.SumType {
+			for variant in sym.info.variants {
+				if c.type_contains_mutable_aliasing(variant, mut checked_types) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var && expr.obj.is_mut && expr.obj.expr is ast.Ident {
+				mut checked_types := []ast.Type{}
+				if c.type_contains_mutable_aliasing(expr.obj.typ, mut checked_types) {
+					return c.expr_is_immutable_source(expr.obj.expr)
+				}
+			}
+			return false
+		}
+		ast.SelectorExpr {
+			if expr.expr_type == 0 {
+				return false
+			}
+			typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
+			match typ_sym.kind {
+				.struct {
+					if field_info := c.table.find_field_with_embeds(typ_sym, expr.field_name) {
+						mut checked_types := []ast.Type{}
+						return field_info.is_mut
+							&& c.type_contains_mutable_aliasing(field_info.typ, mut checked_types)
+							&& c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+					}
+				}
+				.interface {
+					interface_info := typ_sym.info as ast.Interface
+					if field_info := interface_info.find_field(expr.field_name) {
+						mut checked_types := []ast.Type{}
+						return field_info.is_mut
+							&& c.type_contains_mutable_aliasing(field_info.typ, mut checked_types)
+							&& c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+					}
+				}
+				.sum_type {
+					sumtype_info := typ_sym.info as ast.SumType
+					if field_info := sumtype_info.find_sum_type_field(expr.field_name) {
+						mut checked_types := []ast.Type{}
+						return field_info.is_mut
+							&& c.type_contains_mutable_aliasing(field_info.typ, mut checked_types)
+							&& c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+					}
+				}
+				else {}
+			}
+			return false
+		}
+		ast.ParExpr {
+			return c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // fail_if_immutable_to_mutable checks if there is a immutable reference on right-side of assignment for mutable var
 fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
+	if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+		return true
+	}
 	match right {
 		ast.Ident {
-			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
-				return true
-			}
 			if right.obj is ast.Var {
 				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr() {
 					c.note('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
@@ -1048,9 +1199,6 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			}
 		}
 		ast.IfExpr {
-			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
-				return true
-			}
 			for branch in right.branches {
 				stmts := branch.stmts.filter(it is ast.ExprStmt)
 				if stmts.len > 0 {
@@ -1060,9 +1208,6 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			}
 		}
 		ast.MatchExpr {
-			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
-				return true
-			}
 			for branch in right.branches {
 				stmts := branch.stmts.filter(it is ast.ExprStmt)
 				if stmts.len > 0 {
@@ -1157,6 +1302,12 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				return to_lock, pos
 			}
 			left_sym := c.table.sym(expr.left_type)
+			if !c.inside_unsafe && left_sym.kind == .array
+				&& c.expr_is_mutable_alias_of_immutable_source(expr.left) {
+				c.error('`${expr.left}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)',
+					expr.left.pos())
+				return '', expr.pos
+			}
 			mut elem_type := ast.no_type
 			mut kind := ''
 			match left_sym.info {
