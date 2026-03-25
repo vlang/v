@@ -51,7 +51,7 @@ pub fn read_all(config ReadAllConfig) ![]u8 {
 	for {
 		new_read := r.read(mut b[read..]) or { break }
 		read += new_read
-		if !read_till_eof && read == 0 {
+		if !read_till_eof && new_read == 0 {
 			break
 		}
 		if b.len == read {
