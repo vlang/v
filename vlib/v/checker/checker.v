@@ -1475,6 +1475,9 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
+					if c.table.type_has_implicit_str_method(utyp, imethod) {
+						continue
+					}
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
 					are_methods_implemented = false

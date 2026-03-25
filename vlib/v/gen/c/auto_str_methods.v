@@ -1093,6 +1093,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if sym.info is ast.Struct && !g.pref.new_generic_solver {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
+			if sym.is_builtin() && !field_fn_name.starts_with('builtin__') {
+				field_fn_name = 'builtin__${field_fn_name}'
+			}
 			field_fn_name
 		} else {
 			g.get_str_fn(ftyp_noshared)

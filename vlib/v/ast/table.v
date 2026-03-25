@@ -277,6 +277,39 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	return ''
 }
 
+// is_compatible_auto_str_method returns true when `method` matches the compiler-generated
+// `str() string` signature.
+pub fn (t &Table) is_compatible_auto_str_method(method &Fn) bool {
+	return method.name == 'str' && method.return_type == string_type && method.params.len == 1
+		&& !method.params[0].is_mut
+}
+
+// type_has_implicit_str_method returns true when `typ` can satisfy `method`
+// through the compiler-generated `str() string`.
+pub fn (t &Table) type_has_implicit_str_method(typ Type, method &Fn) bool {
+	if !t.is_compatible_auto_str_method(method) {
+		return false
+	}
+	if typ.has_option_or_result() {
+		return false
+	}
+	if typ.is_any_kind_of_pointer() {
+		return false
+	}
+	sym := t.sym(typ.clear_flag(.variadic))
+	if sym.has_method_with_generic_parent('str') {
+		return false
+	}
+	match sym.info {
+		Alias, Array, ArrayFixed, Enum, FnType, Struct, Map, MultiReturn, SumType, Chan, Thread {
+			return sym.name != 'nil'
+		}
+		else {
+			return false
+		}
+	}
+}
+
 pub fn (t &Table) find_fn(name string) ?Fn {
 	if f := t.fns[name] {
 		return f
@@ -1789,6 +1822,9 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 					}
 				}
 				else {}
+			}
+			if t.type_has_implicit_str_method(typ, imethod) {
+				continue
 			}
 			return false
 		}
