@@ -1919,7 +1919,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 			func.params = func.params.clone()
 			for mut param in func.params {
 				if param.typ.has_flag(.generic) {
-					if typ := t.convert_generic_type(param.typ, generic_names, to_types) {
+					if typ := t.convert_generic_param_type(param, generic_names, to_types) {
 						param.typ = typ
 						if typ.has_flag(.generic) {
 							has_generic = true
@@ -2107,6 +2107,37 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 	return none
 }
 
+fn (mut t Table) lower_mut_param_type(typ Type) Type {
+	mut lowered := if typ.is_ptr() && t.sym(typ).kind == .struct {
+		typ.ref()
+	} else {
+		typ.set_nr_muls(1)
+	}
+	if lowered.has_flag(.option) {
+		lowered = lowered.set_flag(.option_mut_param_t)
+	}
+	return lowered
+}
+
+pub fn (mut t Table) convert_generic_param_type(param Param, generic_names []string, to_types []Type) ?Type {
+	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
+		&& to_types.all(!it.has_flag(.generic)) {
+		if typ := t.convert_generic_type(param.orig_typ, generic_names, to_types) {
+			return t.lower_mut_param_type(typ)
+		}
+	}
+	return t.convert_generic_type(param.typ, generic_names, to_types)
+}
+
+pub fn (mut t Table) unwrap_generic_param_type(param Param, generic_names []string, concrete_types []Type) Type {
+	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
+		&& concrete_types.all(!it.has_flag(.generic)) {
+		return t.lower_mut_param_type(t.unwrap_generic_type(param.orig_typ, generic_names,
+			concrete_types))
+	}
+	return t.unwrap_generic_type(param.typ, generic_names, concrete_types)
+}
+
 fn generic_names_push_with_filter(mut to_names []string, from_names []string) {
 	for name in from_names {
 		if name !in to_names {
@@ -2215,8 +2246,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			mut has_generic := false
 			for i, param in unwrapped_fn.params {
 				if param.typ.has_flag(.generic) {
-					unwrapped_fn.params[i].typ = t.unwrap_generic_type_ex(param.typ, generic_names,
-						concrete_types, recheck_concrete_types)
+					unwrapped_fn.params[i].typ = t.unwrap_generic_param_type(param, generic_names,
+						concrete_types)
 					has_generic = true
 				}
 			}
@@ -2447,7 +2478,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					method.return_type = unwrap_typ
 				}
 				for mut param in method.params {
-					if unwrap_typ := t.convert_generic_type(param.typ, gn_names, concrete_types) {
+					if unwrap_typ := t.convert_generic_param_type(param, gn_names, concrete_types) {
 						param.typ = unwrap_typ
 					}
 				}
@@ -2611,7 +2642,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 							method.params = method.params.clone()
 							for mut param in method.params {
-								if pt := t.convert_generic_type(param.typ, generic_names,
+								if pt := t.convert_generic_param_type(param, generic_names,
 									info.concrete_types)
 								{
 									param.typ = pt
@@ -2694,7 +2725,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					function.params = function.params.clone()
 					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
-							if t_typ := t.convert_generic_type(param.typ, function.generic_names,
+							if t_typ := t.convert_generic_param_type(param, function.generic_names,
 								info.concrete_types)
 							{
 								param.typ = t_typ

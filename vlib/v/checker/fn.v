@@ -108,6 +108,22 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		return
 	}
 	node.ninstances++
+	mut old_params := []ast.Param{}
+	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == node.generic_names.len
+		&& c.table.cur_concrete_types.all(!it.has_flag(.generic)) {
+		old_params = node.params.clone()
+		for i, param in old_params {
+			if !param.typ.has_flag(.generic) {
+				continue
+			}
+			if typ := c.table.convert_generic_param_type(param, node.generic_names, c.table.cur_concrete_types) {
+				node.params[i].typ = typ
+				if mut v := node.scope.find_var(param.name) {
+					v.typ = typ
+				}
+			}
+		}
+	}
 	// save all the state that fn_decl or inner  statements/expressions
 	// could potentially modify, since functions can be nested, due to
 	// anonymous function support, and ensure that it is restored, when
@@ -125,6 +141,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.inside_unsafe = node.is_unsafe
 	c.returns = false
 	defer {
+		if old_params.len > 0 {
+			node.params = old_params
+			for param in old_params {
+				if mut v := node.scope.find_var(param.name) {
+					v.typ = param.typ
+				}
+			}
+		}
 		c.stmt_level = prev_stmt_level
 		c.fn_level--
 		c.returns = prev_returns
@@ -1613,7 +1637,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			&& c.table.cur_fn.generic_names.len > 0
 			&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 			mut unwrapped := param
-			unwrapped.typ = c.table.unwrap_generic_type(param.typ, c.table.cur_fn.generic_names,
+			unwrapped.typ = c.table.unwrap_generic_param_type(param, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
@@ -2017,7 +2041,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			if param.typ.has_flag(.generic) {
-				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
+				if unwrap_typ := c.table.convert_generic_param_type(param, func.generic_names,
 					concrete_types)
 				{
 					c.expected_type = unwrap_typ
@@ -2034,7 +2058,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			})
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
-				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
+				if unwrap_typ := c.table.convert_generic_param_type(param, func.generic_names,
 					concrete_types)
 				{
 					utyp := c.unwrap_generic(typ)
@@ -2763,7 +2787,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			} else {
 				concrete_types
 			}
-			if exp_utyp := c.table.convert_generic_type(exp_arg_typ, method.generic_names,
+			if exp_utyp := c.table.convert_generic_param_type(param, method.generic_names,
 				method_concrete_types)
 			{
 				exp_arg_typ = exp_utyp

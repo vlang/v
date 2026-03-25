@@ -880,6 +880,17 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
+		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic) {
+			mut surface_typ := g.unwrap_generic(param.orig_typ)
+			typ = if surface_typ.is_ptr() && g.table.sym(surface_typ).kind == .struct {
+				surface_typ.ref()
+			} else {
+				surface_typ.set_nr_muls(1)
+			}
+			if typ.has_flag(.option) {
+				typ = typ.set_flag(.option_mut_param_t)
+			}
+		}
 		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) {
 			typ = typ.set_flag(.option_mut_param_t).set_nr_muls(param.typ.nr_muls() - 1)
 		}

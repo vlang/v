@@ -1101,6 +1101,10 @@ fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
 fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	mut arg_inferred := []int{}
+	has_concrete_caller_types := c.table.cur_fn == unsafe { nil }
+		|| c.table.cur_fn.generic_names.len == 0
+		|| (c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len
+		&& c.table.cur_concrete_types.all(!it.has_flag(.generic)))
 	for gi, gt_name in func.generic_names {
 		// skip known types
 		if gi < node.concrete_types.len {
@@ -1151,18 +1155,25 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				break
 			}
 			arg := node.args[arg_i]
-			param_sym := c.table.sym(param.typ)
+			param_infer_typ := if has_concrete_caller_types && param.is_mut
+				&& !param.typ.has_flag(.variadic) && param.orig_typ != 0
+				&& param.orig_typ.has_flag(.generic) {
+				param.orig_typ
+			} else {
+				param.typ
+			}
+			param_sym := c.table.sym(param_infer_typ)
 
-			if (param.typ.has_flag(.option) && arg.typ.has_flag(.option))
-				|| (param.typ.has_flag(.result) && arg.typ.has_flag(.result)) {
-				param_inner := param.typ.clear_option_and_result()
+			if (param_infer_typ.has_flag(.option) && arg.typ.has_flag(.option))
+				|| (param_infer_typ.has_flag(.result) && arg.typ.has_flag(.result)) {
+				param_inner := param_infer_typ.clear_option_and_result()
 				if param_inner.has_flag(.generic) && c.table.sym(param_inner).name == gt_name {
 					typ = arg.typ.clear_option_and_result()
 					if param_inner.nr_muls() > 0 && typ.nr_muls() > 0 {
 						typ = typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) && param_sym.name == gt_name {
+			} else if param_infer_typ.has_flag(.generic) && param_sym.name == gt_name {
 				typ = ast.mktyp(arg.typ)
 				if typ == ast.nil_type {
 					typ = ast.voidptr_type
@@ -1185,12 +1196,16 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-				if arg.expr.is_auto_deref_var() {
+				if arg.expr.is_auto_deref_var() && param_infer_typ.nr_muls() > 0 {
+					typ = typ.deref()
+				}
+				if has_concrete_caller_types && param.is_mut && param_infer_typ.nr_muls() == 0
+					&& typ.is_ptr() && c.table.final_sym(typ).kind == .struct {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
-				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {
-					param_muls := param.typ.nr_muls()
+				if param_infer_typ.nr_muls() > 0 && typ.nr_muls() > 0 {
+					param_muls := param_infer_typ.nr_muls()
 					arg_muls := typ.nr_muls()
 					typ = if arg_muls >= param_muls {
 						typ.set_nr_muls(arg_muls - param_muls)
@@ -1198,14 +1213,14 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ.set_nr_muls(0)
 					}
 				}
-			} else if param.typ.has_flag(.generic) {
+			} else if param_infer_typ.has_flag(.generic) {
 				arg_typ := if c.table.sym(arg.typ).kind == .any {
 					c.unwrap_generic(arg.typ)
 				} else {
 					arg.typ
 				}
 				arg_sym := c.table.final_sym(arg_typ)
-				if param.typ.has_flag(.variadic) {
+				if param_infer_typ.has_flag(.variadic) {
 					typ = ast.mktyp(arg_typ)
 				} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
@@ -1319,10 +1334,15 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					&& arg.expr is ast.Ident && arg_i !in arg_inferred {
 					var_name := arg.expr.name
 					for k, cur_param in c.table.cur_fn.params {
-						if !cur_param.typ.has_flag(.generic) || k < gi || cur_param.name != var_name {
+						if k < gi || cur_param.name != var_name {
 							continue
 						}
-						typ = cur_param.typ
+						typ = if has_concrete_caller_types && cur_param.typ.has_flag(.generic) {
+							c.table.unwrap_generic_param_type(cur_param, c.table.cur_fn.generic_names,
+								c.table.cur_concrete_types)
+						} else {
+							cur_param.typ
+						}
 						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
 						if cparam_type_sym.kind == .array {
 							typ = c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
