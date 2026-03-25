@@ -1635,8 +1635,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 					return false, false
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
-				typ := c.unwrap_generic(c.expr(mut cond))
-				if cond.obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
+				mut ident_expr := ast.Expr(cond)
+				typ := c.unwrap_generic(c.expr(mut ident_expr))
+				resolved_obj := if mut ident_expr is ast.Ident {
+					ident_expr.obj
+				} else {
+					cond.obj
+				}
+				if resolved_obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
 					if !c.inside_ct_attr {
 						c.error('unknown var: `${cname}`', cond.pos)
 						return false, false
@@ -1644,7 +1650,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 					c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
 					return false, false
 				}
-				expr := c.find_obj_definition(cond.obj) or {
+				expr := c.find_obj_definition(resolved_obj) or {
 					c.error(err.msg(), cond.pos)
 					return false, false
 				}

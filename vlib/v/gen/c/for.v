@@ -378,6 +378,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		op_field := g.dot_or_ptr(node.cond_type)
 
 		mut cond_var := ''
+		// Check if the cond has an or-block that unwraps the option
+		cond_has_or_block := (node.cond is ast.SelectorExpr && node.cond.or_block.kind != .absent)
+			|| (node.cond is ast.CallExpr && node.cond.or_block.kind != .absent)
+			|| (node.cond is ast.IndexExpr && node.cond.or_expr.kind != .absent)
+		if cond_has_or_block {
+			node.cond_type = node.cond_type.clear_flag(.option)
+		}
 		cond_is_option := node.cond_type.has_flag(.option)
 		if (node.cond is ast.Ident && !cond_is_option)
 			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {

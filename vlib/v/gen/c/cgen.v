@@ -3416,7 +3416,9 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 @[inline]
 fn (g &Gen) can_reuse_sumtype_variant_storage(exp ast.Type, got_is_ptr bool) bool {
 	// `&SumType(value)` must copy value variants unless the cast is borrowing a mutable argument.
-	return exp.is_ptr() && (got_is_ptr || g.expected_arg_mut)
+	// When expected_arg_mut is set, the caller wraps with ADDR() and passes back a pointer,
+	// so the variant storage can be reused (no copy needed).
+	return g.expected_arg_mut || (exp.is_ptr() && (got_is_ptr || g.expected_arg_mut))
 }
 
 fn (mut g Gen) expr_has_stable_interface_cast_address(expr ast.Expr) bool {
@@ -3552,7 +3554,15 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool
 	if do_cast {
 		g.write('(${styp})')
 	}
+	// Temporarily clear inside_struct_init and assign_op so that cast expressions
+	// for fixed array aliases generate proper compound literal casts
+	old_inside_struct_init := g.inside_struct_init
+	old_assign_op := g.assign_op
+	g.inside_struct_init = false
+	g.assign_op = .unknown
 	g.expr(expr)
+	g.inside_struct_init = old_inside_struct_init
+	g.assign_op = old_assign_op
 	g.writeln(', sizeof(${styp}));')
 	g.write(stmt_str)
 	return tmp_var
@@ -3687,16 +3697,27 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				}
 			}
-			// For auto-heap variables in generic contexts, ident() suppresses the (*t)
-			// deref, so g.expr(t) generates `t` (already a pointer in C).
-			// Treat got_is_ptr as true to prevent adding a spurious `&`.
+			// For auto-heap variables in generic contexts, the variable is
+			// already a pointer in C. Treat got_is_ptr as true to prevent
+			// adding a spurious `&`, and suppress the auto-heap deref in
+			// g.expr() so it emits `t` (the pointer) instead of `(*t)`.
 			mut effective_got_is_ptr := got_is_ptr
+			mut suppress_auto_heap_deref := false
 			if !got_is_ptr && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 				&& expr is ast.Ident && g.resolved_ident_is_auto_heap(expr) {
 				effective_got_is_ptr = true
+				suppress_auto_heap_deref = true
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-				effective_got_is_ptr, false, got_styp)
+			if suppress_auto_heap_deref {
+				old_inside_assign_fn_var := g.inside_assign_fn_var
+				g.inside_assign_fn_var = true
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
+					effective_got_is_ptr, false, got_styp)
+				g.inside_assign_fn_var = old_inside_assign_fn_var
+			} else {
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
+					effective_got_is_ptr, false, got_styp)
+			}
 		}
 		return
 	}
@@ -5165,10 +5186,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 						&& is_option && smartcasts.len > 0
-						&& !smartcasts.last().has_flag(.generic) {
+						&& !smartcasts[0].has_flag(.generic) {
 						unwrapped_sc := resolved_scope_field_typ.clear_flag(.option)
-						if unwrapped_sc.idx() != smartcasts.last().idx() {
-							smartcasts = [unwrapped_sc]
+						if unwrapped_sc.idx() != smartcasts[0].idx() {
+							smartcasts[0] = unwrapped_sc
 						}
 					}
 					nested_unwrap := is_option && smartcasts.len > 1
@@ -5391,7 +5412,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write(')')
 	}
 	if is_opt_or_res {
-		g.write('.data)')
+		// When the option variable is a pointer (e.g. mut param, auto-heap),
+		// use -> instead of . to access the data member.
+		if node.expr_type.is_ptr() || (node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)) {
+			g.write('->data)')
+		} else {
+			g.write('.data)')
+		}
 	}
 	if is_as_cast {
 		g.write(')')
@@ -5399,7 +5426,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	// struct embedding
 	mut has_embed := false
 	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
-		if selector_embed_types.len > 0 {
+		if selector_embed_types.len > 0 && sym.info is ast.Aggregate {
+			// For aggregate types, check per-variant whether the field is
+			// direct or accessed through an embed. The checker sets
+			// from_embed_types based on whichever variant needed the embed,
+			// but other variants may have the field directly.
+			agg_sym := g.table.sym(sym.info.types[g.aggregate_type_idx])
+			if !g.table.struct_has_field(agg_sym, field_name) {
+				has_embed = node.from_embed_types.len > 0
+				g.write_selector_expr_embed_name(node, node.from_embed_types)
+			}
+		} else if selector_embed_types.len > 0 {
 			has_embed = true
 			g.write_selector_expr_embed_name(node, selector_embed_types)
 		} else if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
@@ -5494,11 +5531,22 @@ fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type)
 			return resolved_current_type
 		}
 	}
+	if node.expr is ast.IndexExpr {
+		// For typeof(arr[0]), resolve the element type from the array's resolved type
+		left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+		unwrapped := g.unwrap_generic(left_type)
+		if unwrapped != 0 {
+			elem_type := g.table.value_type(unwrapped)
+			if elem_type != 0 {
+				return elem_type
+			}
+		}
+	}
 	resolved_type := g.type_resolver.typeof_type(node.expr, default_type)
 	if resolved_type == ast.void_type_idx {
-		return default_type
+		return g.unwrap_generic(default_type)
 	}
-	return resolved_type
+	return g.unwrap_generic(resolved_type)
 }
 
 fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
@@ -5580,11 +5628,12 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 	} else {
 		lhs_expr_type
 	}
+	is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
 	for i, embed in embed_types {
 		embed_sym := g.table.sym(embed)
 		embed_name := embed_sym.embed_name()
 		is_left_ptr := if i == 0 {
-			resolved_selector_expr_type.is_ptr() && !is_shared
+			(resolved_selector_expr_type.is_ptr() || is_auto_heap) && !is_shared
 		} else {
 			embed_types[i - 1].is_ptr()
 		}
@@ -6426,7 +6475,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 					if or_value_type != 0 {
 						or_value_type
 					} else {
-						g.get_comptime_for_var_type(node, node.info.typ)
+						// In generic contexts, scope types may be stale from a previous
+						// instantiation. Resolve via the parameter type instead.
+						resolved_param_typ := g.resolve_current_fn_generic_param_type(node.name)
+						if resolved_param_typ != 0 {
+							resolved_param_typ.clear_option_and_result()
+						} else {
+							g.get_comptime_for_var_type(node, node.info.typ)
+						}
 					}
 				} else {
 					g.get_comptime_for_var_type(node, node.info.typ)
@@ -6489,7 +6545,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			}
 			emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
-				&& !g.inside_selector_lhs
+				&& !g.inside_selector_lhs && !g.is_assign_lhs
 			if emit_auto_heap_deref {
 				g.write('(*(')
 			}
@@ -6633,7 +6689,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface] {
-									g.write('${dot}_${cast_sym.cname}')
+									g.write('${dot}_${g.get_sumtype_variant_name(typ, cast_sym)}')
 								}
 								if i != 0 && unwrap_sumtype {
 									g.write(')')
@@ -6676,7 +6732,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-	if is_auto_heap && !g.inside_assign_fn_var && !g.inside_selector_lhs {
+	if is_auto_heap && !g.inside_assign_fn_var && !g.inside_selector_lhs && !g.is_assign_lhs {
 		g.write('))')
 		if is_option && node.or_expr.kind != .absent {
 			g.write('.data')

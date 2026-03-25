@@ -45,7 +45,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.expected_type = c.expr(mut expr)
 				c.is_index_assign = old_is_index_assign
 			}
+			if is_decl && node.left[i] is ast.Ident && (node.left[i] as ast.Ident).is_mut()
+				&& right is ast.StructInit && (right as ast.StructInit).is_anon {
+				c.anon_struct_should_be_mut = true
+			}
 			mut right_type := c.expr(mut right)
+			c.anon_struct_should_be_mut = false
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 			}

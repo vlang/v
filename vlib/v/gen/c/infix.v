@@ -116,9 +116,19 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			if resolved_left != 0 {
 				left_type = resolved_left
 			}
+		} else if node.left is ast.SelectorExpr {
+			resolved_left := g.resolve_selector_smartcast_type(node.left)
+			if resolved_left != 0 {
+				left_type = resolved_left
+			}
 		}
 		if node.right is ast.Ident {
 			resolved_right := g.resolved_expr_type(node.right, node.right_type)
+			if resolved_right != 0 {
+				right_type = resolved_right
+			}
+		} else if node.right is ast.SelectorExpr {
+			resolved_right := g.resolve_selector_smartcast_type(node.right)
 			if resolved_right != 0 {
 				right_type = resolved_right
 			}
@@ -232,8 +242,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.expr(node.right)
 		}
 		g.write(')')
-	} else if left.unaliased.idx() == right.unaliased.idx()
-		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface] {
+	} else if (left.unaliased.idx() == right.unaliased.idx()
+		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface])
+		|| (left.unaliased_sym.kind == .array_fixed && right.unaliased_sym.kind == .array_fixed) {
 		if g.pref.translated && !g.is_builtin_mod {
 			g.gen_plain_infix_expr(node)
 			return
@@ -1162,8 +1173,9 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if node.right is ast.Ident && node.right.or_expr.kind != .absent {
 			cur_line := g.go_before_last_stmt().trim_space()
 			right_var = g.new_tmp_var()
-			g.write('${g.styp(right.typ)} ${right_var} = ')
-			g.op_arg(ast.Expr(node.right), method.params[1].typ, right.typ)
+			unwrapped_right_typ := right.typ.clear_option_and_result()
+			g.write('${g.styp(unwrapped_right_typ)} ${right_var} = ')
+			g.op_arg(ast.Expr(node.right), method.params[1].typ, unwrapped_right_typ)
 			g.writeln(';')
 			g.write(cur_line)
 		}
@@ -1322,7 +1334,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			&& !elem_is_option && !prevent_push_many {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
-			mut expected_push_many_atype := resolved_left.typ
+			// The push macro needs the plain array type (not option/result),
+			// since it declares a temp var of that type.
+			mut expected_push_many_atype := resolved_left.typ.clear_option_and_result()
 			is_shared := expected_push_many_atype.has_flag(.shared_f)
 			if !expected_push_many_atype.is_ptr() {
 				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &

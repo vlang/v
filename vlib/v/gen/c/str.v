@@ -124,6 +124,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+		if unwrap_option {
+			typ = exp_typ
+		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)

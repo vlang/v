@@ -1418,8 +1418,20 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
-		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-			pos)
+		// allow if the source interface embeds the target interface
+		mut embeds_target := false
+		if typ_sym.info is ast.Interface {
+			for embed in typ_sym.info.embeds {
+				if embed.idx() == interface_type.idx() {
+					embeds_target = true
+					break
+				}
+			}
+		}
+		if !embeds_target {
+			c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+				pos)
+		}
 	}
 	interface_sym := c.table.sym(interface_type)
 	mut interface_generic_names := []string{}
@@ -1878,6 +1890,17 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					}
 					if last_stmt_typ == ast.none_type_idx && ret_type.has_flag(.option) {
 						return
+					}
+					// allow returning a custom error type in `or {}` block of a result function
+					if ret_type.has_flag(.result) {
+						last_sym := c.table.sym(last_stmt_typ)
+						if last_sym.kind == .struct {
+							if last_sym.info is ast.Struct {
+								if last_sym.info.embeds.any(c.table.type_to_str(it) == 'Error') {
+									return
+								}
+							}
+						}
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
@@ -4228,7 +4251,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct && final_to_is_ptr) {
 		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum, .bool, .i8, .u8, .char]))
+			&& final_from_sym.kind in [.enum, .bool, .i8, .u8, .char, .rune])
+			&& !(final_to_sym.is_number() && final_from_sym.is_number()))
 			|| (final_to_sym.kind == .struct
 			&& from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx]) {
 			ft := c.table.type_to_str(from_type)
@@ -4872,11 +4896,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// second use
 		info := node.info as ast.IdentVar
 		mut info_typ := info.typ
-		if node.kind == .variable && c.table.cur_fn != unsafe { nil }
-			&& c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+		if node.kind == .variable {
 			if current_var := node.scope.find_var(node.name) {
-				info_typ = current_var.typ
+				if c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+					info_typ = current_var.typ
+				}
 				if current_var.smartcasts.len > 0 && !c.prevent_sum_type_unwrapping_once {
 					info_typ = c.exposed_smartcast_type(current_var.orig_type, current_var.smartcasts.last(),
 						current_var.is_mut)
@@ -6974,6 +7000,7 @@ pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 			ret_sym := c.table.sym(stmt.return_type)
 			if ret_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(ret_sym.info) {
 				mut size_expr := ret_sym.info.size_expr
+				old_ret_type := stmt.return_type
 				old_typ := c.cast_fixed_array_ret(stmt.return_type, c.table.final_sym(stmt.return_type))
 				stmt.return_type = c.eval_array_fixed_sizes(mut size_expr, 0, ret_sym.info.elem_type)
 				new_sym := c.table.sym(stmt.return_type)
@@ -6981,6 +7008,15 @@ pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 				typ_sym.name = new_sym.name
 				typ_sym.cname = new_sym.cname
 				typ_sym.info = new_sym.info
+				// Also update the fn_ret variant if it's different from old_typ
+				if old_ret_type.idx() != old_typ.idx() {
+					new_ret_sym := c.table.sym(c.cast_to_fixed_array_ret(stmt.return_type,
+						c.table.final_sym(stmt.return_type)))
+					mut ret_typ_sym := c.table.type_symbols[old_ret_type.idx()]
+					ret_typ_sym.name = new_ret_sym.name
+					ret_typ_sym.cname = new_ret_sym.cname
+					ret_typ_sym.info = new_ret_sym.info
+				}
 			}
 		} else if mut stmt is ast.TypeDecl { // alias
 			mut alias_decl := stmt

@@ -690,11 +690,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				}
 				resolved_val_sym := g.table.final_sym(resolved_val_type)
-				if resolved_val_sym.kind == .array && !resolved_val_type.is_ptr() {
+				if resolved_val_sym.kind == .array && !resolved_val_type.is_ptr()
+					&& g.table.sym(resolved_val_type).kind != .alias {
 					resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_sym.array_info().elem_type))
 					if resolved_elem_type != 0 && !resolved_elem_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(resolved_elem_type) {
-						resolved_val_type = g.table.find_or_register_array(resolved_elem_type)
+						mut new_arr_type := ast.idx_to_type(g.table.find_or_register_array(resolved_elem_type))
+						// Preserve option/result flags from the original resolved type
+						if resolved_val_type.has_flag(.option) {
+							new_arr_type = new_arr_type.set_flag(.option)
+						}
+						if resolved_val_type.has_flag(.result) {
+							new_arr_type = new_arr_type.set_flag(.result)
+						}
+						resolved_val_type = new_arr_type
 					}
 				}
 				// Preserve shared/atomic flags from the original declaration.

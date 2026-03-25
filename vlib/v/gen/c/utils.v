@@ -379,6 +379,25 @@ fn (mut g Gen) resolved_or_block_value_type(or_expr ast.OrExpr) ast.Type {
 	return 0
 }
 
+// resolve_selector_smartcast_type resolves the final smartcast type for a
+// selector expression in generic contexts. When a field like `val.field` has
+// nested smartcasts (e.g., option unwrap then sumtype variant), the scope
+// stores these smartcasts but they may reference stale types from a previous
+// generic instantiation. This function re-resolves them using current concrete
+// types to determine the correct final type.
+fn (mut g Gen) resolve_selector_smartcast_type(node ast.SelectorExpr) ast.Type {
+	scope := g.file.scope.innermost(node.pos.pos)
+	field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name)
+	if field != unsafe { nil } && field.smartcasts.len > 0 {
+		resolved_sc := g.unwrap_generic(g.recheck_concrete_type(
+			g.exposed_smartcast_type(field.orig_type, field.smartcasts.last(), field.is_mut)))
+		if resolved_sc != 0 {
+			return resolved_sc
+		}
+	}
+	return 0
+}
+
 fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
 	match expr {
 		ast.ParExpr {

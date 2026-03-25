@@ -1194,6 +1194,12 @@ fn (mut g Gen) closure_inherited_var_type(node ast.AnonFn, var ast.Param) ast.Ty
 	}
 	if node.decl.scope != unsafe { nil } && node.decl.scope.parent != unsafe { nil } {
 		if scope_var := node.decl.scope.parent.find_var(var.name) {
+			// If the scope variable has smartcasts and is a sumtype, use the
+			// smartcast variant type instead of the original sumtype.
+			if scope_var.smartcasts.len > 0
+				&& g.table.type_kind(scope_var.typ) == .sum_type {
+				return g.unwrap_generic(g.recheck_concrete_type(scope_var.smartcasts.last()))
+			}
 			// Only use resolved_expr_type for generic type resolution.
 			// For non-generic types, scope_var.typ is already correct and
 			// resolved_expr_type can produce wrong pointer levels (e.g. adding
@@ -3134,7 +3140,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	mut left_sym := g.table.sym(left_type)
 	if left_type != 0 && left_type != g.unwrap_generic(node.receiver_type)
-		&& left_sym.has_method(node.name) {
+		&& left_sym.has_method(node.name) && node.from_embed_types.len == 0 {
 		unwrapped_rec_type = left_type
 		typ_sym = left_sym
 	}
@@ -3253,6 +3259,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			|| unaliased_left_sym.has_method_with_generic_parent(method_name) {
 			unwrapped_rec_type = unaliased_left_type
 			receiver_type = unaliased_left_type.derive(node.receiver_type).clear_flag(.generic)
+		}
+	}
+	// For interface methods inherited via embedding, the receiver_type was changed
+	// to the parent interface, but the C function uses the original defining interface.
+	unwrapped_rec_sym := g.table.sym(unwrapped_rec_type)
+	if unwrapped_rec_sym.kind == .interface {
+		if em := unwrapped_rec_sym.find_method(raw_method_name) {
+			if em.from_embedded_type != 0 {
+				unwrapped_rec_type = em.from_embedded_type
+			}
 		}
 	}
 	typ_sym := g.table.sym(unwrapped_rec_type)
@@ -5461,6 +5477,18 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			if arg.expr is ast.Ident && arg.expr.obj is ast.Var {
 				if arg.expr.obj.smartcasts.len > 0 && !arg_typ.has_option_or_result() {
 					arg_typ = arg.expr.obj.smartcasts.last()
+				}
+			}
+			// If the argument is a smartcast variable whose original type is option
+			// and matches the expected option type, pass the option value directly.
+			if arg.expr is ast.Ident {
+				if scope_var := arg.expr.scope.find_var(arg.expr.name) {
+					if scope_var.smartcasts.len > 0 && scope_var.orig_type.has_flag(.option)
+						&& expected_type.has_flag(.option)
+						&& g.unwrap_generic(scope_var.orig_type).idx() == g.unwrap_generic(expected_type).idx() {
+						g.write(c_name(arg.expr.name))
+						return
+					}
 				}
 			}
 			g.expr_with_opt(arg.expr, arg_typ, expected_type)

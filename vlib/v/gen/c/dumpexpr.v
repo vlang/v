@@ -129,6 +129,15 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			expr_type = current_fn_ident_type
 			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 		}
+		if expr_type.is_ptr() && expr_type.has_flag(.option) {
+			if scope_var := node.expr.scope.find_var(node.expr.name) {
+				if scope_var.typ.has_flag(.option_mut_param_t) {
+					expr_type = scope_var.typ
+					name = g.styp(expr_type.clear_flags(.shared_f, .result, .option_mut_param_t)).replace('*',
+						'')
+				}
+			}
+		}
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
 		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
