@@ -194,8 +194,8 @@ fn main() {
 
 fn invoke_help_and_exit(remaining []string) {
 	match remaining.len {
-		0, 1 { help.print_and_exit('default') }
-		2 { help.print_and_exit(remaining[1]) }
+		0, 1 { help.print_and_exit('default', exit_code: 0) }
+		2 { help.print_and_exit(remaining[1], exit_code: 0) }
 		else {}
 	}
 	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
