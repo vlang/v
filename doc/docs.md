@@ -2506,7 +2506,7 @@ mut p := Point{
 	y: 20
 }
 println(p.x) // Struct fields are accessed using a dot
-// Alternative literal syntax
+// Alternative positional syntax; values follow the field declaration order.
 p = Point{10, 20}
 assert p.x == 10
 ```
@@ -2610,29 +2610,31 @@ _ = Foo{}
 
 ### Short struct literal syntax
 
+Here "short" means omitting the field names and relying on the struct field
+order, so `Point{10, 20}` is a shorter form of `Point{x: 10, y: 20}`.
+
 ```v
 struct Point {
 	x int
 	y int
 }
 
-mut p := Point{
-	x: 10
-	y: 20
-}
-p = Point{
+long_form := Point{
 	x: 30
 	y: 4
 }
-assert p.y == 4
-//
-// array: first element defines type of array
+short_form := Point{30, 4}
+assert short_form == long_form
+
+// Arrays still use `Point{...}` for each element.
+// The short part is omitting field names, not the struct type name.
 points := [Point{10, 20}, Point{20, 30}, Point{40, 50}]
 println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}]
 ```
 
-Omitting the struct name also works for returning a struct literal or passing one
-as a function argument.
+When the expected type is already known, V can also omit the struct name entirely
+when returning a struct literal or passing one as a function argument. That is a
+separate shorthand from the positional `Point{10, 20}` syntax above.
 
 ### Struct update syntax
 
