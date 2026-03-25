@@ -120,6 +120,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				node.expr_types << typ
 			}
 		}
+		if node.alias_type != ast.void_type {
+			return node.alias_type
+		}
 		return node.typ
 	}
 
