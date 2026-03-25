@@ -131,17 +131,12 @@ pub fn (re &RE) match_string(in_txt string) (int, int) {
 			end = in_txt.len
 		}
 
-		if start >= 0 && end > start {
-			if (re.flag & f_ms) != 0 && start > 0 {
-				return no_match_found, 0
+		if start >= 0 && end >= start {
+			ok, _ := re.check_anchors(in_txt, start, end)
+			if ok {
+				return start, end
 			}
-			if (re.flag & f_me) != 0 && end < in_txt.len {
-				if in_txt[end] in new_line_list {
-					return start, end
-				}
-				return no_match_found, 0
-			}
-			return start, end
+			return no_match_found, 0
 		}
 		return start, end
 	}
@@ -203,7 +198,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 	// re.flag |= f_src  // enable search mode
 
 	mut i := 0
-	for i < in_txt.len {
+	for i <= in_txt.len {
 		mut s := -1
 		mut e := -1
 		unsafe {
@@ -211,7 +206,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
 
-			if s >= 0 && e > s {
+			if s >= 0 && e >= s {
 				abs_start := i + s
 				abs_end := i + e
 				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
@@ -248,7 +243,7 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	if i < 0 {
 		return -1, -1
 	}
-	for i < in_txt.len {
+	for i <= in_txt.len {
 		//--- speed references ---
 
 		mut s := -1
@@ -261,7 +256,7 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 		//------------------------
 		// s,e = re.find_imp(in_txt[i..])
 		//------------------------
-		if s >= 0 && e > s {
+		if s >= 0 && e >= s {
 			abs_start := i + s
 			abs_end := i + e
 			ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
@@ -304,7 +299,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}
 
-	for i < in_txt.len {
+	for i <= in_txt.len {
 		mut s := -1
 		mut e := -1
 		unsafe {
@@ -313,7 +308,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
-			if s >= 0 && e > s {
+			if s >= 0 && e >= s {
 				abs_start := i + s
 				abs_end := i + e
 				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
@@ -326,7 +321,11 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 				}
 				res << abs_start
 				res << abs_end
-				i += e
+				if e > s {
+					i += e
+				} else {
+					i++
+				}
 				continue
 			}
 			/*
@@ -378,7 +377,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 	mut i := 0
 	mut res := []string{}
 
-	for i < in_txt.len {
+	for i <= in_txt.len {
 		mut s := -1
 		mut e := -1
 		unsafe {
@@ -387,7 +386,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
-			if s >= 0 && e > s {
+			if s >= 0 && e >= s {
 				abs_start := i + s
 				abs_end := i + e
 				ok, stop_scan := re.check_anchors(in_txt, abs_start, abs_end)
@@ -402,7 +401,11 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
 				// println("Found: ${s}:${e} [${tmp_str[s..e]}]")
 				res << tmp_str[s..tmp_e]
-				i += e
+				if e > s {
+					i += e
+				} else {
+					i++
+				}
 				continue
 			}
 		}

@@ -399,8 +399,8 @@ const find_all_test_suite = [
 	Test_find_all{
 		"ab",
 		r"[^\n]*",
-		[0, 2],
-		['ab']
+		[0, 2, 2, 2],
+		['ab', '']
 	},
 	Test_find_all{
 		"ab",
@@ -411,8 +411,20 @@ const find_all_test_suite = [
 	Test_find_all{
 		"ab",
 		r"([^\n]|a)*",
-		[0, 2],
-		['ab']
+		[0, 2, 2, 2],
+		['ab', '']
+	},
+	Test_find_all{
+		"",
+		r"a*",
+		[0, 0],
+		['']
+	},
+	Test_find_all{
+		"b",
+		r"a*",
+		[0, 0, 1, 1],
+		['', '']
 	}
 ]
 
@@ -709,6 +721,29 @@ fn test_regex() {
 	if debug {
 		println('DONE!')
 	}
+}
+
+fn test_zero_length_find_matches() {
+	mut re := regex.regex_opt(r'a*') or { panic(err) }
+	start_1, end_1 := re.match_string('')
+	assert start_1 == 0
+	assert end_1 == 0
+	start_2, end_2 := re.match_string('b')
+	assert start_2 == 0
+	assert end_2 == 0
+	start_3, end_3 := re.find('')
+	assert start_3 == 0
+	assert end_3 == 0
+	start_4, end_4 := re.find('b')
+	assert start_4 == 0
+	assert end_4 == 0
+	start_5, end_5 := re.find_from('b', 1)
+	assert start_5 == 1
+	assert end_5 == 1
+	assert re.find_all('') == [0, 0]
+	assert re.find_all('b') == [0, 0, 1, 1]
+	assert re.find_all_str('') == ['']
+	assert re.find_all_str('b') == ['', '']
 }
 
 // test regex_base function

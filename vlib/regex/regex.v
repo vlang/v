@@ -2753,6 +2753,9 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 	// println("Check end of text!")
 	// Check the results
+	if ist == ist_prog_end && state.first_match < 0 {
+		return state.i, state.i
+	}
 	if state.match_index >= 0 {
 		if state.group_index < 0 {
 			if re.prog[state.pc].ist == ist_prog_end {
