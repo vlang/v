@@ -184,7 +184,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
-	cond_sym := g.table.sym(node.cond_type)
+	cond_sym := g.table.final_sym(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
