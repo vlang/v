@@ -262,8 +262,9 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
+	bundled_tcc := usable_bundled_tcc_compiler(os.dir(vexe_path()), p.is_musl)
 	if p.ccompiler == 'tcc' {
-		p.ccompiler = default_tcc_compiler()
+		p.ccompiler = if bundled_tcc != '' { bundled_tcc } else { 'tcc' }
 		return
 	}
 	if p.ccompiler == '' {
@@ -276,19 +277,37 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		if p.is_prod {
 			return
 		}
-		p.ccompiler = default_tcc_compiler()
+		p.ccompiler = bundled_tcc
 		return
 	}
 }
 
+fn usable_bundled_tcc_compiler(vroot string, is_musl bool) string {
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.exists(vtccexe) {
+		return ''
+	}
+	if is_musl {
+		tcc_probe := os.execute('${os.quoted_path(vtccexe)} -v')
+		if tcc_probe.exit_code != 0 {
+			return ''
+		}
+	}
+	return vtccexe
+}
+
+fn host_uses_musl() bool {
+	$if linux {
+		return os.execute('ldd --version').output.contains('musl')
+	}
+	return false
+}
+
+// default_tcc_compiler returns the bundled TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	if os.exists(vtccexe) {
-		return vtccexe
-	}
-	return ''
+	return usable_bundled_tcc_compiler(vroot, host_uses_musl())
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
