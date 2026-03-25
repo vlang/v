@@ -3,6 +3,9 @@
 V has a powerful, concise ORM baked in! Create tables, insert records, manage relationships, all
 regardless of the DB driver you decide to use.
 
+Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, and
+H2-backed connections with the built-in ORM dialect helpers.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined

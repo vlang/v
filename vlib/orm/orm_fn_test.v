@@ -63,6 +63,15 @@ fn test_orm_stmt_gen_insert_default_values_pg() {
 	assert converted.data.len == 0
 }
 
+fn test_orm_stmt_gen_h2_insert_default_values() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, _ := orm.orm_stmt_gen(.h2, table, '"', .insert, false, '?', 1, orm.QueryData{},
+		orm.QueryData{})
+	assert query == 'INSERT INTO "Test" DEFAULT VALUES;'
+}
+
 fn test_orm_stmt_gen_delete() {
 	table := orm.Table{
 		name: 'Test'
@@ -408,6 +417,53 @@ fn test_orm_table_gen() {
 		},
 	], sql_type_from_v, false) or { panic(err) }
 	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
+}
+
+fn test_orm_table_gen_h2() {
+	table := orm.Table{
+		name:  'test_table'
+		attrs: [
+			VAttribute{
+				name:    'comment'
+				has_arg: true
+				arg:     'test table'
+				kind:    .string
+			},
+		]
+	}
+	query := orm.orm_table_gen(.h2, table, '"', true, 0, [
+		orm.TableField{
+			name:  'id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name: 'primary'
+				},
+				VAttribute{
+					name:    'sql'
+					has_arg: true
+					arg:     'serial'
+					kind:    .plain
+				},
+			]
+		},
+		orm.TableField{
+			name:  'name'
+			typ:   typeof[string]().idx
+			attrs: [
+				VAttribute{
+					name:    'comment'
+					has_arg: true
+					arg:     'display name'
+					kind:    .string
+				},
+				VAttribute{
+					name: 'index'
+				},
+			]
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert query == 'CREATE TABLE IF NOT EXISTS "test_table" ("id" SERIAL NOT NULL, "name" TEXT NOT NULL, PRIMARY KEY("id"));\nCOMMENT ON TABLE "test_table" IS \'test table\';\nCOMMENT ON COLUMN "test_table"."name" IS \'display name\';\nCREATE INDEX "idx_test_table" ON "test_table" ("name");'
 }
 
 fn reset_tenant_filter() {
