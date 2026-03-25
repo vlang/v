@@ -9,7 +9,12 @@ fn test_main() {
 	a := MyParams{}
 	t := r.type_of(a)
 	if t.sym.info is r.Struct {
-		assert t.sym.info.fields[0].attrs[2] == 'xdoc=String to use as simulated FPGA version in Version responses. Must be in the form "a.bb.cccc"'
+		assert t.sym.info.fields[0].attrs[2] == VAttribute{
+			name:    'xdoc'
+			has_arg: true
+			arg:     'String to use as simulated FPGA version in Version responses. Must be in the form "a.bb.cccc"'
+			kind:    .string
+		}
 	} else {
 		assert false
 	}
