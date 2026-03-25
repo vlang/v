@@ -648,13 +648,13 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		}
 		ast.Ident {
 			info := expr.info as ast.IdentVar
-			g.write_orm_primitive(info.typ, expr)
+			g.write_orm_primitive(orm_expr_effective_type(expr, info.typ), expr)
 		}
 		ast.SelectorExpr {
-			g.write_orm_primitive(expr.typ, expr)
+			g.write_orm_primitive(orm_expr_effective_type(expr, expr.typ), expr)
 		}
 		ast.CallExpr {
-			g.write_orm_primitive(expr.return_type, expr)
+			g.write_orm_primitive(orm_expr_effective_type(expr, expr.return_type), expr)
 		}
 		ast.Nil {
 			g.write_orm_primitive(ast.none_type, expr)
@@ -667,6 +667,35 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		}
 		else {
 			verror('ORM: ${expr.type_name()} is not supported')
+		}
+	}
+}
+
+fn orm_expr_effective_type(expr ast.Expr, typ ast.Type) ast.Type {
+	return match expr {
+		ast.CallExpr {
+			if expr.or_block.kind != .absent {
+				typ.clear_option_and_result()
+			} else {
+				typ
+			}
+		}
+		ast.Ident {
+			if expr.or_expr.kind != .absent {
+				typ.clear_option_and_result()
+			} else {
+				typ
+			}
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind != .absent {
+				typ.clear_option_and_result()
+			} else {
+				typ
+			}
+		}
+		else {
+			typ
 		}
 	}
 }
