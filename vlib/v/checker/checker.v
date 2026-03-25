@@ -2077,6 +2077,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 
 	if has_field {
 		is_used_outside := !c.inside_recheck && sym.mod != c.mod
+		if is_used_outside && sym.language == .c && !sym.is_pub {
+			c.ensure_type_exists(typ, node.pos)
+			return field.typ
+		}
 		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
