@@ -823,15 +823,45 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 	}
 }
 
+fn (mut p Parser) find_or_register_placeholder_generic_type(sym &ast.TypeSymbol) ast.Type {
+	generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(), 'struct_init_generic_types') or {
+		return ast.no_type
+	}
+	mut sym_name := sym.name + '<'
+	for i, gt in generic_names {
+		sym_name += gt
+		if i != generic_names.len - 1 {
+			sym_name += ','
+		}
+	}
+	sym_name += '>'
+	existing_idx := p.table.type_idxs[sym_name]
+	if existing_idx > 0 {
+		return ast.new_type(existing_idx)
+	}
+	idx := p.table.register_sym(ast.TypeSymbol{
+		...*sym
+		name:          sym_name
+		rname:         sym.name
+		parent_idx:    sym.idx
+		generic_types: p.init_generic_types.clone()
+	})
+	return ast.new_type(idx)
+}
+
 fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
 	mut idx := p.table.find_type_idx_fn_scoped(name, p.cur_fn_scope)
 	if idx > 0 {
 		mut typ := ast.new_type(idx)
 		sym := p.table.sym(typ)
+		if sym.kind == .placeholder && p.consume_init_generic_types && p.init_generic_types.len > 0 {
+			return p.find_or_register_placeholder_generic_type(sym)
+		}
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
-				if p.init_generic_types.len > 0 && sym.info.generic_types.len > 0
+				if p.consume_init_generic_types && p.init_generic_types.len > 0
+					&& sym.info.generic_types.len > 0
 					&& p.init_generic_types != sym.info.generic_types {
 					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
@@ -871,7 +901,8 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 				}
 			}
 			ast.FnType {
-				if p.init_generic_types.len > 0 && sym.info.func.generic_names.len > 0 {
+				if p.consume_init_generic_types && p.init_generic_types.len > 0
+					&& sym.info.func.generic_names.len > 0 {
 					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
 					if generic_names != sym.info.func.generic_names {
@@ -918,6 +949,9 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, name, language)
+	if p.consume_init_generic_types && p.init_generic_types.len > 0 {
+		return p.find_or_register_placeholder_generic_type(p.table.sym(ast.new_type(idx)))
+	}
 	return ast.new_type(idx)
 }
 
@@ -1051,6 +1085,10 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 			}
 		})
 		return ast.new_type(idx)
+	}
+	p.consume_init_generic_types = true
+	defer {
+		p.consume_init_generic_types = false
 	}
 	return p.find_type_or_add_placeholder(name, .v).set_flag(.generic)
 }

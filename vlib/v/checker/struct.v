@@ -422,13 +422,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			t_sym := c.table.sym(t.typ)
 			if t_sym.info is ast.Interface {
 				if t_sym.info.is_generic {
-					itype_name := c.table.type_to_str(t.typ)
-					if !itype_name.contains('[') {
+					if t_sym.generic_types.len == 0 {
 						c.error('missing generic type on ${t_sym.name}', t.pos)
-					}
-					if itype_name.contains('<') {
+					} else {
 						struct_generic_letters := node.generic_types.map(c.table.type_to_str(it))
-						unknown_letters := itype_name.all_after('<').all_before('>').split(',').filter(it !in struct_generic_letters)
+						unknown_letters := t_sym.generic_types.filter(it.has_flag(.generic)).map(c.table.type_to_str(it)).filter(it !in struct_generic_letters)
 						if unknown_letters.len > 0 {
 							c.error('unknown generic type ${unknown_letters.first()}',
 								t.pos)

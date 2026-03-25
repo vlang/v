@@ -931,6 +931,25 @@ pub fn (mut t Table) update_sym_by_idx(existing_idx int, sym &TypeSymbol) {
 	}
 }
 
+fn (mut t Table) promote_placeholder_generic_children(parent_idx int, sym TypeSymbol) {
+	for i, child in t.type_symbols {
+		if child.kind != .placeholder || child.parent_idx != parent_idx
+			|| child.generic_types.len == 0 {
+			continue
+		}
+		t.update_sym_by_idx(i, &TypeSymbol{
+			...sym
+			name:          child.name
+			cname:         child.cname
+			ngname:        child.ngname
+			rname:         if child.rname == '' { sym.name } else { child.rname }
+			parent_idx:    parent_idx
+			methods:       child.methods
+			generic_types: child.generic_types.clone()
+		})
+	}
+}
+
 fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx int) int {
 	existing_symbol := t.type_symbols[existing_idx]
 	$if trace_rewrite_already_registered_symbol ? {
@@ -944,6 +963,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 			idx:        existing_idx
 			is_builtin: existing_symbol.is_builtin
 		}
+		t.promote_placeholder_generic_children(existing_idx, typ)
 		return existing_idx
 	}
 	// Override the already registered builtin types with the actual
@@ -2337,7 +2357,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					}
 				}
 			}
-			nrt = '${ts.name}['
+			base_name := if ts.ngname == '' { ts.name } else { ts.ngname }
+			nrt = '${base_name}['
 			c_nrt = '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
 				if ct := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
@@ -2469,12 +2490,13 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
 			new_idx := t.register_sym(
-				kind:   .struct
-				name:   nrt
-				cname:  util.no_dots(c_nrt)
-				mod:    ts.mod
-				info:   info
-				is_pub: ts.is_pub
+				kind:       .struct
+				name:       nrt
+				cname:      util.no_dots(c_nrt)
+				parent_idx: typ.idx()
+				mod:        ts.mod
+				info:       info
+				is_pub:     ts.is_pub
 			)
 			if final_concrete_types.len > 0 {
 				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
@@ -2505,12 +2527,13 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			info.fields = fields
 			info.variants = variants
 			new_idx := t.register_sym(
-				kind:   .sum_type
-				name:   nrt
-				cname:  util.no_dots(c_nrt)
-				mod:    ts.mod
-				info:   info
-				is_pub: ts.is_pub
+				kind:       .sum_type
+				name:       nrt
+				cname:      util.no_dots(c_nrt)
+				parent_idx: typ.idx()
+				mod:        ts.mod
+				info:       info
+				is_pub:     ts.is_pub
 			)
 			if final_concrete_types.len > 0 {
 				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
@@ -2548,12 +2571,13 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			info.fields = fields
 			info.methods = imethods
 			new_idx := t.register_sym(
-				kind:   .interface
-				name:   nrt
-				cname:  util.no_dots(c_nrt)
-				mod:    ts.mod
-				info:   info
-				is_pub: ts.is_pub
+				kind:       .interface
+				name:       nrt
+				cname:      util.no_dots(c_nrt)
+				parent_idx: typ.idx()
+				mod:        ts.mod
+				info:       info
+				is_pub:     ts.is_pub
 			)
 			mut ts_copy := t.sym(idx_to_type(new_idx))
 			for method in all_methods {

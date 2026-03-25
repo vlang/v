@@ -1632,10 +1632,21 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
+						base_name := if sym.ngname == '' {
+							strip_extra_struct_types(res)
+						} else {
+							sym.ngname
+						}
+						res = t.shorten_user_defined_typenames(base_name, import_aliases)
+						generic_types := if sym.generic_types.len > 0 {
+							sym.generic_types
+						} else {
+							sym.info.generic_types
+						}
 						res += '['
-						for i, gtyp in sym.info.generic_types {
-							res += t.sym(gtyp).name
-							if i != sym.info.generic_types.len - 1 {
+						for i, gtyp in generic_types {
+							res += t.type_to_str_using_aliases(gtyp, import_aliases)
+							if i != generic_types.len - 1 {
 								res += ', '
 							}
 						}
