@@ -92,6 +92,14 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				next_on_newline = true
 				continue
 			}
+			if l.starts_with('>') {
+				if !last_ends_with_lb {
+					comment += '\n'
+				}
+				comment += l + '\n'
+				next_on_newline = true
+				continue
+			}
 			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
 				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')

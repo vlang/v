@@ -61,3 +61,12 @@ pub mut:
 	}
 	assert pipeline_container.tags == ['@[heap]']
 }
+
+fn test_merge_doc_comments_keeps_blockquotes_on_separate_lines() {
+	comments := [
+		doc.DocComment{
+			text: '> **Note**\n> line one\n> line two'
+		},
+	]
+	assert doc.merge_doc_comments(comments).trim_space() == '> **Note**\n> line one\n> line two'
+}
