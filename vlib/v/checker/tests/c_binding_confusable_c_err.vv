@@ -1,0 +1,6 @@
+fn С.destroy_context(context u32)
+
+pub fn destroy_context(context u32) {
+	C.destroy_context(context)
+}
+
