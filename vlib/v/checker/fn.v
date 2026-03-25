@@ -522,6 +522,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					} else if node.return_type != ast.bool_type && node.name in ['<', '=='] {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
+						if node.return_type.has_option_or_result() {
+							c.error('return type cannot be Option or Result', node.return_type_pos)
+						} else if node.name in ['+', '-', '*', '%', '/']
+							&& node.return_type != receiver_type {
+							srtype := c.table.type_to_str(receiver_type)
+							c.error('operator `${node.name}` methods on primitive aliases should return `${srtype}`',
+								node.return_type_pos)
+						}
 						// aliases of primitive types are explicitly allowed
 					} else if receiver_type != param_type {
 						srtype := c.table.type_to_str(receiver_type)
