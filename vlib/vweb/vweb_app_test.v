@@ -18,6 +18,12 @@ struct Article {
 	text  string
 }
 
+@[table: 'log']
+struct LogEntry {
+	id    int @[primary; sql: serial]
+	event string
+}
+
 fn test_a_vweb_application_compiles() {
 	vweb.run(&App{}, 18081)
 }
@@ -48,6 +54,17 @@ pub fn (mut app App) new_article() vweb.Result {
 	} or {}
 
 	return app.redirect('/')
+}
+
+@['/log'; post]
+pub fn (mut app App) new_log_entry() vweb.Result {
+	entry := &LogEntry{
+		event: 'post /log'
+	}
+	sql app.db {
+		insert entry into LogEntry
+	} or {}
+	return app.text('post /log')
 }
 
 fn (mut app App) time() vweb.Result {
