@@ -351,3 +351,43 @@ fn test_prepare_uses_fetch_config_timeouts() {
 	assert req.read_timeout == 123 * time.millisecond
 	assert req.write_timeout == 456 * time.millisecond
 }
+
+fn test_get_does_not_wait_for_timeout_when_chunked_body_is_complete() {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	t := spawn fn (mut listener net.TcpListener) {
+		mut conn := listener.accept() or {
+			listener.close() or {}
+			return
+		}
+		defer {
+			conn.close() or {}
+			listener.close() or {}
+		}
+
+		mut request_buf := []u8{len: 2048}
+		_ = conn.read(mut request_buf) or { return }
+		response := 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\nok\r\n0\r\n\r\n'
+		conn.write(response.bytes()) or { return }
+
+		conn.set_read_timeout(5 * time.second)
+		mut drain_buf := []u8{len: 128}
+		for {
+			n := conn.read(mut drain_buf) or { break }
+			if n <= 0 {
+				break
+			}
+		}
+	}(mut listener)
+
+	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
+	req.read_timeout = 2 * time.second
+	start := time.now()
+	res := req.do()!
+	elapsed := time.since(start)
+	t.wait()
+
+	assert res.status() == .ok
+	assert res.body == 'ok'
+	assert elapsed < time.second
+}
