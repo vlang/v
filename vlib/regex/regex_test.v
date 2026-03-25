@@ -711,6 +711,31 @@ fn test_regex() {
 	}
 }
 
+fn test_case_insensitive_flag() {
+	mut re := regex.regex_opt(r'hello') or { panic(err) }
+	re.flag |= regex.f_ci
+	start1, end1 := re.match_string('HeLLo')
+	assert start1 == 0
+	assert end1 == 5
+
+	mut class_re := regex.regex_opt(r'^[A-Z]+$') or { panic(err) }
+	class_re.flag |= regex.f_ci
+	start2, end2 := class_re.match_string('abcXYZ')
+	assert start2 == 0
+	assert end2 == 6
+
+	mut neg_class_re := regex.regex_opt(r'^[^a]+$') or { panic(err) }
+	neg_class_re.flag |= regex.f_ci
+	start3, _ := neg_class_re.match_string('A')
+	assert start3 == -1
+
+	mut validator_re := regex.regex_opt(r'^\a+$') or { panic(err) }
+	validator_re.flag |= regex.f_ci
+	start4, end4 := validator_re.match_string('AbC')
+	assert start4 == 0
+	assert end4 == 3
+}
+
 // test regex_base function
 fn test_regex_func() {
 	query := r'\d\dabcd'
