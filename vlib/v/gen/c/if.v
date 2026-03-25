@@ -432,17 +432,24 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 					if branch.cond.vars.len == 1 {
 						left_var_name := c_name(branch.cond.vars[0].name)
-						if is_auto_heap {
-							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
+						dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+							'.'
+						} else {
+							'-> '
+						}
+						guard_typ := g.unwrap_generic(branch.cond.expr_type.clear_option_and_result())
+						guard_is_heap_obj := g.table.final_sym(guard_typ).is_heap()
+							&& !guard_typ.is_ptr()
+						if guard_is_heap_obj {
+							g.writeln('\t${base_type}* ${left_var_name} = (${base_type}*)${var_name}${dot_or_ptr}data;')
+						} else if is_auto_heap {
+							// Non-heap structs still need a dedicated heap copy when the guard value escapes.
+							// `@[heap]` structs already live behind the option data pointer and must not be copied.
+							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}${dot_or_ptr}data);')
 						} else if base_type.starts_with('Array_fixed') {
 							g.writeln('\t${base_type} ${left_var_name} = {0};')
 							g.writeln('memcpy(${left_var_name}, (${base_type}*)${var_name}.data, sizeof(${base_type}));')
 						} else {
-							dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
-								'.'
-							} else {
-								'-> '
-							}
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
 								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())

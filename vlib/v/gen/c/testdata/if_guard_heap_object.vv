@@ -1,0 +1,17 @@
+@[heap]
+struct HeapImage {
+mut:
+	id int
+}
+
+fn create_image() ?HeapImage {
+	return HeapImage{
+		id: 42
+	}
+}
+
+fn main() {
+	if img := create_image() {
+		println(img.id)
+	}
+}

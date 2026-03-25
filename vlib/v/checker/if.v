@@ -276,11 +276,18 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if var.name == '_' {
 						continue
 					}
+					unwrapped_guard_typ := branch.cond.expr_type.clear_option_and_result()
 					if w := branch.scope.find_var(var.name) {
 						if var.name !in branch.scope.objects {
 							branch.scope.objects[var.name] = w
 						}
-						branch.scope.update_var_type(var.name, branch.cond.expr_type.clear_option_and_result())
+						branch.scope.update_var_type(var.name, unwrapped_guard_typ)
+						if !unwrapped_guard_typ.is_ptr()
+							&& c.table.sym(unwrapped_guard_typ).is_heap() {
+							if mut guard_var := branch.scope.find_var(var.name) {
+								guard_var.is_auto_heap = true
+							}
+						}
 					}
 				}
 			}
