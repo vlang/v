@@ -206,6 +206,9 @@ pub fn (mut p Process) pipe_read(pkind ChildProcessPipeKind) ?string {
 		return none
 	}
 	res := p._read_from(pkind)
+	if res.len == 0 {
+		return none
+	}
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
 	}

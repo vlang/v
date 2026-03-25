@@ -4,6 +4,7 @@ module os
 
 $if !windows {
 	#include <sys/select.h>
+	#include <sys/ioctl.h>
 }
 
 $if windows {
@@ -81,6 +82,7 @@ pub:
 }
 
 fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
+fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
@@ -90,6 +92,14 @@ fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 // fd_is_pending returns true, when there is pending data, waiting to be read from file descriptor `fd`.
 // If the file descriptor is closed, or if reading from it, will block (there is no data), fd_is_pending returns false.
 pub fn fd_is_pending(fd int) bool {
+	if fd == -1 {
+		return false
+	}
+	mut bytes_avail := int(0)
+	// `select` marks EOF as readable, while `FIONREAD` reports the number of unread bytes.
+	if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
+		return bytes_avail > 0
+	}
 	read_set := C.fd_set{}
 	C.FD_ZERO(&read_set)
 	C.FD_SET(fd, &read_set)
