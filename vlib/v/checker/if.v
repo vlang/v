@@ -49,6 +49,18 @@ fn (mut c Checker) is_always_true_self_comparison(cond ast.Expr) bool {
 	return false
 }
 
+fn (c &Checker) is_interface_smartcast_sumtype_variant(expr ast.Expr, expected_type ast.Type, got_type ast.Type) bool {
+	sum_type := expected_type.clear_option_and_result()
+	if c.table.type_kind(sum_type) != .sum_type || !got_type.is_ptr() {
+		return false
+	}
+	if expr is ast.Ident && expr.obj is ast.Var {
+		return c.table.is_interface_var(expr.obj)
+			&& c.table.is_sumtype_or_in_variant(sum_type, got_type.deref())
+	}
+	return false
+}
+
 // gen_branch_context_string generate current branches context string.
 // context include generic types, `$for`.
 fn (mut c Checker) gen_branch_context_string() string {
@@ -447,6 +459,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								}
 							}
 						}
+						if c.is_interface_smartcast_sumtype_variant(stmt.expr, former_expected_type,
+							stmt.typ)
+						{
+							node.is_expr = true
+							node.typ = former_expected_type.clear_option_and_result()
+							unsafe {
+								goto end_if
+							}
+						}
 						if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
 							node.typ = former_expected_type
 							unsafe {
@@ -489,7 +510,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					} else {
 						if !node.typ.has_option_or_result() && !node.typ.has_flag(.shared_f)
 							&& stmt.typ != ast.voidptr_type
-							&& stmt.typ.nr_muls() != node.typ.nr_muls() {
+							&& stmt.typ.nr_muls() != node.typ.nr_muls()
+							&& !c.is_interface_smartcast_sumtype_variant(stmt.expr, node.typ, stmt.typ) {
 							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 								node.pos)
 						}
@@ -498,7 +520,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.is_expr = true
 						}
 						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
-							&& stmt.typ != ast.voidptr_type {
+							&& stmt.typ != ast.voidptr_type
+							&& !c.is_interface_smartcast_sumtype_variant(stmt.expr, node.typ, stmt.typ) {
 							if stmt.typ.is_ptr() != node.typ.is_ptr() {
 								c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 									node.pos)
