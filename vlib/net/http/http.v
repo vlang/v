@@ -4,6 +4,7 @@
 module http
 
 import net.urllib
+import time
 
 const max_redirects = 16 // safari max - other browsers allow up to 20
 
@@ -14,16 +15,18 @@ const bufsize = 64 * 1024
 // FetchConfig holds configuration data for the fetch function.
 pub struct FetchConfig {
 pub mut:
-	url        string
-	method     Method = .get
-	header     Header
-	data       string
-	params     map[string]string
-	cookies    map[string]string
-	user_agent string  = 'v.http'
-	user_ptr   voidptr = unsafe { nil }
-	verbose    bool
-	proxy      &HttpProxy = unsafe { nil }
+	url           string
+	method        Method = .get
+	header        Header
+	data          string
+	params        map[string]string
+	cookies       map[string]string
+	user_agent    string  = 'v.http'
+	user_ptr      voidptr = unsafe { nil }
+	verbose       bool
+	proxy         &HttpProxy = unsafe { nil }
+	read_timeout  i64        = 30 * time.second // timeout for reading the response; currently not used for direct https requests
+	write_timeout i64        = 30 * time.second // timeout for writing the request; currently not used for direct https requests
 
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
@@ -175,6 +178,8 @@ pub fn prepare(config FetchConfig) !Request {
 		user_ptr:               config.user_ptr
 		verbose:                config.verbose
 		validate:               config.validate
+		read_timeout:           config.read_timeout
+		write_timeout:          config.write_timeout
 		verify:                 config.verify
 		cert:                   config.cert
 		proxy:                  config.proxy

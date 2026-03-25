@@ -341,3 +341,13 @@ fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
 	assert res.body == 'ok'
 	assert elapsed < time.second
 }
+
+fn test_prepare_uses_fetch_config_timeouts() {
+	req := http.prepare(
+		url:           'http://example.com'
+		read_timeout:  123 * time.millisecond
+		write_timeout: 456 * time.millisecond
+	)!
+	assert req.read_timeout == 123 * time.millisecond
+	assert req.write_timeout == 456 * time.millisecond
+}
