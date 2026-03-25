@@ -1742,6 +1742,22 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	)
 }
 
+fn (t &Table) generic_fn_inst_name(sym &TypeSymbol, concrete_types []Type) string {
+	mut name := sym.name + '['
+	for i, concrete_type in concrete_types {
+		concrete_sym := t.sym(concrete_type)
+		if concrete_type.is_ptr() {
+			name += '&'.repeat(concrete_type.nr_muls())
+		}
+		name += concrete_sym.name
+		if i < concrete_types.len - 1 {
+			name += ', '
+		}
+	}
+	name += ']'
+	return name
+}
+
 pub fn (mut t Table) add_placeholder_type(name string, cname string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
@@ -2299,6 +2315,13 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 					if otyp := t.convert_generic_type(param.orig_typ, generic_names, to_types) {
 						param.orig_typ = otyp
 					}
+				}
+			}
+			if !sym.info.is_anon && !has_generic {
+				inst_name := t.generic_fn_inst_name(sym, to_types)
+				idx := t.find_type_idx(inst_name)
+				if idx > 0 {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 				}
 			}
 			func.name = ''
@@ -3217,6 +3240,13 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				has_generic = true
 			}
 			if has_generic {
+				if !ts.info.is_anon {
+					inst_name := t.generic_fn_inst_name(ts, concrete_types)
+					idx := t.find_type_idx(inst_name)
+					if idx > 0 {
+						return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+					}
+				}
 				// Clear the name so find_or_register_fn_type registers a new anonymous fn
 				// type with the resolved concrete param/return types, instead of returning
 				// the existing generic fn type entry (matched by name).
@@ -3529,6 +3559,121 @@ fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, con
 	}
 }
 
+fn (mut t Table) specialize_generic_fn_method_type(typ Type, parent_type Type, concrete_type Type, generic_names []string, concrete_types []Type) Type {
+	if typ.clear_flag(.generic).idx() == parent_type.clear_flag(.generic).idx() {
+		return concrete_type.derive(typ).clear_flag(.generic)
+	}
+	sym := t.sym(typ)
+	match sym.info {
+		Array {
+			dims, elem_type := t.get_array_dims(sym.info)
+			elem_typ := t.specialize_generic_fn_method_type(elem_type, parent_type, concrete_type,
+				generic_names, concrete_types)
+			if elem_typ != elem_type {
+				idx := t.find_or_register_array_with_dims(elem_typ, dims)
+				if elem_typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		ArrayFixed {
+			elem_typ := t.specialize_generic_fn_method_type(sym.info.elem_type, parent_type,
+				concrete_type, generic_names, concrete_types)
+			if elem_typ != sym.info.elem_type {
+				idx := t.find_or_register_array_fixed(elem_typ, sym.info.size, None{},
+					false)
+				if elem_typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		Chan {
+			elem_typ := t.specialize_generic_fn_method_type(sym.info.elem_type, parent_type,
+				concrete_type, generic_names, concrete_types)
+			if elem_typ != sym.info.elem_type {
+				idx := t.find_or_register_chan(elem_typ, elem_typ.nr_muls() > 0)
+				if elem_typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		Thread {
+			ret_typ := t.specialize_generic_fn_method_type(sym.info.return_type, parent_type,
+				concrete_type, generic_names, concrete_types)
+			if ret_typ != sym.info.return_type {
+				idx := t.find_or_register_thread(ret_typ)
+				if ret_typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		MultiReturn {
+			mut resolved_types := []Type{cap: sym.info.types.len}
+			mut type_changed := false
+			for ret_typ in sym.info.types {
+				resolved_typ := t.specialize_generic_fn_method_type(ret_typ, parent_type,
+					concrete_type, generic_names, concrete_types)
+				if resolved_typ != ret_typ {
+					type_changed = true
+				}
+				resolved_types << resolved_typ
+			}
+			if type_changed {
+				idx := t.find_or_register_multi_return(resolved_types)
+				if resolved_types.any(it.has_flag(.generic)) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		Map {
+			key_typ := t.specialize_generic_fn_method_type(sym.info.key_type, parent_type,
+				concrete_type, generic_names, concrete_types)
+			value_typ := t.specialize_generic_fn_method_type(sym.info.value_type, parent_type,
+				concrete_type, generic_names, concrete_types)
+			if key_typ != sym.info.key_type || value_typ != sym.info.value_type {
+				idx := t.find_or_register_map(key_typ, value_typ)
+				if key_typ.has_flag(.generic) || value_typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
+				}
+				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+			}
+		}
+		else {}
+	}
+	if typ.has_flag(.generic) {
+		if resolved_typ := t.convert_generic_type(typ, generic_names, concrete_types) {
+			return resolved_typ
+		}
+	}
+	return typ
+}
+
+fn (mut t Table) specialize_generic_fn_type_methods(parent_type Type, mut concrete_sym TypeSymbol, generic_names []string, concrete_types []Type) {
+	parent_sym := t.sym(parent_type)
+	if parent_sym.info !is FnType || parent_sym.methods.len == 0 {
+		return
+	}
+	concrete_type := idx_to_type(concrete_sym.idx)
+	concrete_sym.methods = []Fn{}
+	for method in parent_sym.methods {
+		mut concrete_method := method.new_method_with_receiver_type(concrete_type)
+		concrete_method.generic_names = method.generic_names.clone()
+		concrete_method.return_type = t.specialize_generic_fn_method_type(method.return_type,
+			parent_type, concrete_type, generic_names, concrete_types)
+		for i in 1 .. concrete_method.params.len {
+			concrete_method.params[i].typ = t.specialize_generic_fn_method_type(method.params[i].typ,
+				parent_type, concrete_type, generic_names, concrete_types)
+		}
+		concrete_method.receiver_type = concrete_method.params[0].typ
+		concrete_sym.register_method(concrete_method)
+	}
+}
+
 // generic struct instantiations to concrete types
 pub fn (mut t Table) generic_insts_to_concrete() {
 	for mut sym in t.type_symbols {
@@ -3750,8 +3895,17 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						...parent_info
 						func: function
 					}
+					sym.parent_idx = info.parent_idx
 					sym.is_pub = true
 					sym.kind = parent.kind
+					sym.generic_types = info.concrete_types.clone()
+					for method in parent.methods {
+						if method.generic_names.len == info.concrete_types.len {
+							t.register_fn_concrete_types(method.fkey(), info.concrete_types)
+						}
+					}
+					t.specialize_generic_fn_type_methods(new_type(info.parent_idx).set_flag(.generic), mut
+						sym, parent_info.func.generic_names, info.concrete_types)
 				}
 				else {}
 			}
