@@ -1384,6 +1384,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 		// XTODO document
 		if typ != 0 {
+			if node.concrete_types.len == 0 && typ.has_flag(.generic)
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
+				&& node.name == c.table.cur_fn.receiver.name
+				&& c.table.cur_fn.receiver.typ.has_flag(.generic)
+				&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+				if fn_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
+					c.table.cur_concrete_types)
+				{
+					typ = fn_typ
+					node.fn_var_type = fn_typ
+				}
+			}
 			generic_vts := c.table.final_sym(typ)
 			if generic_vts.info is ast.FnType {
 				func = generic_vts.info.func
@@ -2607,6 +2619,18 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			} else if !rec_is_generic && rec_concrete_types.len > 0
 				&& method_generic_names_len == rec_concrete_types.len {
 				node.concrete_types = rec_concrete_types
+			}
+		}
+		ast.FnType {
+			if rec_sym.parent_idx > 0 {
+				parent_sym := c.table.sym(ast.idx_to_type(rec_sym.parent_idx))
+				if parent_sym.info is ast.FnType {
+					rec_concrete_types = rec_sym.generic_types.clone()
+					if rec_concrete_types.len > 0
+						&& method_generic_names_len == rec_concrete_types.len {
+						node.concrete_types = rec_concrete_types
+					}
+				}
 			}
 		}
 		else {}
