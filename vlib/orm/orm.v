@@ -146,6 +146,7 @@ pub mut:
 
 pub enum SQLDialect {
 	default
+	h2
 	mysql
 	pg
 	sqlite
@@ -678,7 +679,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 			are_values_empty := values.len == 0
 
-			if sql_dialect == .sqlite && are_values_empty {
+			if sql_dialect in [.sqlite, .h2] && are_values_empty {
 				str += 'DEFAULT VALUES'
 			} else {
 				str += '('
@@ -1093,7 +1094,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 	str += ';'
 
-	if sql_dialect == .pg {
+	if sql_dialect in [.pg, .h2] {
 		if table_comment != '' {
 			str += "\nCOMMENT ON TABLE \"${table.name}\" IS '${table_comment}';"
 		}
@@ -1101,7 +1102,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
 		}
 	}
-	if (sql_dialect == .pg || sql_dialect == .sqlite) && index_fields.len > 0 {
+	if sql_dialect in [.pg, .sqlite, .h2] && index_fields.len > 0 {
 		str += '\nCREATE INDEX "idx_${table.name}" ON "${table.name}" ("'
 		str += index_fields.join('","')
 		str += '");'
