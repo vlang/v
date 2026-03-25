@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_missing_mut_section_colon_err.vv:5:2: error: missing `:` after `mut` in struct
+    3 | 
+    4 | struct Bar {
+    5 |     mut foos []Foo
+      |     ~~~
+    6 | }
+    7 |
