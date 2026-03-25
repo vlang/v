@@ -61,6 +61,21 @@ fn test_with_stats_and_several_test_files() {
 	assert res.output.contains('3 asserts'), res.output
 	assert res.output.contains('2 passed, 2 total'), res.output
 	assert res.output.count('OK') == 6, res.output
+	run_1 := '1_test.v\n     OK'
+	run_2 := '2_test.v\n     OK'
+	summary_1 := 'Summary for running V tests in "1_test.v"'
+	summary_2 := 'Summary for running V tests in "2_test.v"'
+	run_1_idx := res.output.index(run_1) or { -1 }
+	run_2_idx := res.output.index(run_2) or { -1 }
+	summary_1_idx := res.output.index(summary_1) or { -1 }
+	summary_2_idx := res.output.index(summary_2) or { -1 }
+	assert run_1_idx != -1, res.output
+	assert run_2_idx != -1, res.output
+	assert summary_1_idx != -1, res.output
+	assert summary_2_idx != -1, res.output
+	assert run_1_idx < summary_1_idx, res.output
+	assert run_2_idx < summary_2_idx, res.output
+	assert summary_1_idx < run_2_idx || summary_2_idx < run_1_idx, res.output
 }
 
 fn test_partial_failure() {
