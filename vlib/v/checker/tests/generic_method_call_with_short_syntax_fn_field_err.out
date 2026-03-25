@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_method_call_with_short_syntax_fn_field_err.vv:33:10: error: cannot assign to field `handler`: expected `fn (mut Context) bool`, not `Options[Context]`
+   31 | fn main() {
+   32 |     mut app := &App{}
+   33 |     app.use(handler: create_options(mut app))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   34 | }
