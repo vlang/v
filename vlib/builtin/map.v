@@ -895,5 +895,14 @@ pub fn (m &map) free() {
 		m.key_eq_fn = nil
 		m.clone_fn = nil
 		m.free_fn = nil
+		m.key_values.cap = 0
+		m.key_values.len = 0
+		m.key_values.deletes = 0
+		m.even_index = 0
+		m.cached_hashbits = 0
+		m.shift = 0
+		m.extra_metas = 0
+		m.has_string_keys = false
+		m.len = 0
 	}
 }
