@@ -548,6 +548,11 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 				field.pos)
 			continue
 		}
+		if c.orm_field_uses_anon_struct(field_typ) {
+			c.orm_error('field `${field.name}` uses an anonymous struct type, which ORM does not support; use a named struct, or skip it with `@[skip]` or `@[sql: \'-\']`',
+				field.pos)
+			continue
+		}
 		field_sym := c.table.sym(field_typ)
 		final_field_typ := c.table.final_type(field_typ)
 		is_primitive := final_field_typ.is_string() || final_field_typ.is_bool()
@@ -594,6 +599,21 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 	}
 	c.orm_table_fields[table_name] = fields
 	return fields
+}
+
+fn (c &Checker) orm_field_uses_anon_struct(field_typ ast.Type) bool {
+	final_field_typ := c.table.final_type(field_typ.clear_flag(.option))
+	field_sym := c.table.sym(final_field_typ)
+	if field_sym.kind == .struct && field_sym.info is ast.Struct && field_sym.info.is_anon {
+		return true
+	}
+	if field_sym.kind != .array {
+		return false
+	}
+	array_info := field_sym.array_info()
+	elem_typ := c.table.final_type(array_info.elem_type.clear_flag(.option))
+	elem_sym := c.table.sym(elem_typ)
+	return elem_sym.kind == .struct && elem_sym.info is ast.Struct && elem_sym.info.is_anon
 }
 
 // check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type checks that an expression is compile-time

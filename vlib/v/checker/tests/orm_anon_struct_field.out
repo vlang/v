@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_anon_struct_field.vv:5:2: error: ORM: field `name` uses an anonymous struct type, which ORM does not support; use a named struct, or skip it with `@[skip]` or `@[sql: '-']`
+    3 | struct Foo {
+    4 |     id   int @[primary; serial]
+    5 |     name struct {
+      |     ~~~~~~~~~~~~~
+    6 |         id    int @[primary; serial]
+    7 |         first string
