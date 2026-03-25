@@ -201,51 +201,50 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 // Write functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_write_png(filename &char, w i32, h i32, comp i32, buffer &u8, stride_in_bytes i32) i32
-fn C.stbi_write_bmp(filename &char, w i32, h i32, comp i32, buffer &u8) i32
-fn C.stbi_write_tga(filename &char, w i32, h i32, comp i32, buffer &u8) i32
-fn C.stbi_write_jpg(filename &char, w i32, h i32, comp i32, buffer &u8, quality i32) i32
+fn C.stbi_write_png(filename &char, w i32, h i32, nr_channels i32, buffer &u8, stride_in_bytes i32) i32
+fn C.stbi_write_bmp(filename &char, w i32, h i32, nr_channels i32, buffer &u8) i32
+fn C.stbi_write_tga(filename &char, w i32, h i32, nr_channels i32, buffer &u8) i32
+fn C.stbi_write_jpg(filename &char, w i32, h i32, nr_channels i32, buffer &u8, quality i32) i32
 
-// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &u8) int // buffer &u8 => buffer &f32
+// fn C.stbi_write_hdr(filename &char, w int, h int, nr_channels int, buffer &u8) int // buffer &u8 => buffer &f32
 
-// stbi_write_png write on path a PNG file
-// row_stride_in_bytes is usually equal to: w * comp
-// comp is the number of channels
-pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_in_bytes int) ! {
-	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
+// stbi_write_png writes a PNG file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+// `row_stride_in_bytes` is usually `w * nr_channels`.
+pub fn stbi_write_png(path string, w int, h int, nr_channels int, buf &u8, row_stride_in_bytes int) ! {
+	if 0 == C.stbi_write_png(&char(path.str), w, h, nr_channels, buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a BMP file
-// comp is the number of channels
-pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
+// stbi_write_bmp writes a BMP file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+pub fn stbi_write_bmp(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_bmp(&char(path.str), w, h, nr_channels, buf) {
 		return error('stbi_image failed to write bmp file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a TGA file
-// comp is the number of channels
-pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
+// stbi_write_tga writes a TGA file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+pub fn stbi_write_tga(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_tga(&char(path.str), w, h, nr_channels, buf) {
 		return error('stbi_image failed to write tga file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a JPG file
-// quality select the compression quality of the JPG
-// quality is between 1 and 100. Higher quality looks better but results in a bigger image.
-// comp is the number of channels
-pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ! {
-	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
+// stbi_write_jpg writes a JPG file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+// `quality` controls the JPG compression quality and must be between 1 and 100.
+pub fn stbi_write_jpg(path string, w int, h int, nr_channels int, buf &u8, quality int) ! {
+	if 0 == C.stbi_write_jpg(&char(path.str), w, h, nr_channels, buf, quality) {
 		return error('stbi_image failed to write jpg file to "${path}"')
 	}
 }
 
 /*
-pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
+pub fn stbi_write_hdr(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_hdr(&char(path.str), w , h , nr_channels , buf){
 		return error('stbi_image failed to write hdr file to "${path}"')
 	}
 }
