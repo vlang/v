@@ -1730,6 +1730,28 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
+fn (mut c Checker) unwrap_generic_concrete_type(typ ast.Type) ast.Type {
+	utyp := c.unwrap_generic(typ)
+	if !c.needs_unwrap_generic_type(typ) || c.table.sym(utyp).kind != .placeholder {
+		return utyp
+	}
+	if c.inside_generic_struct_init {
+		generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+		return c.table.unwrap_generic_type(typ, generic_names, c.cur_struct_concrete_types)
+	}
+	if c.table.cur_fn != unsafe { nil } {
+		resolved := c.table.unwrap_generic_type(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		if c.table.sym(resolved).kind != .placeholder {
+			return resolved
+		}
+		if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {
+			return c.table.unwrap_generic_type(typ, c.table.cur_lambda.func.decl.generic_names,
+				c.table.cur_lambda.call_ctx.concrete_types)
+		}
+	}
+	return utyp
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	mut resolved_interface_type := c.unwrap_generic(interface_type)
 	if typ == resolved_interface_type {
@@ -1738,7 +1760,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${resolved_interface_type.debug()} (`${c.table.type_to_str(resolved_interface_type)}`)')
 	}
-	utyp := c.unwrap_generic(typ)
+	utyp := c.unwrap_generic_concrete_type(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.final_sym(resolved_interface_type)
