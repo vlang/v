@@ -2862,6 +2862,11 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 							g.writeln('${g.styp(varg_type)} ${tmp_var};')
 							g.write('builtin___option_ok((${base_type}[]) {')
 						}
+						elem_sym := g.table.sym(arr_info.elem_type)
+						is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
+						if is_iface_or_sumtype {
+							g.inside_cast_in_heap++
+						}
 						g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 						for j in arg_nr .. args.len {
 							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
@@ -2871,6 +2876,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 							}
 						}
 						g.write('}))')
+						if is_iface_or_sumtype {
+							g.inside_cast_in_heap--
+						}
 						if is_option {
 							g.writeln(' }, (${option_name}*)&${tmp_var}, sizeof(${base_type}));')
 							g.write(tmp)
