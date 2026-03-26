@@ -217,7 +217,7 @@ fn test_connection_send_early_data_disabled() {
 	}
 
 	conn.send_early_data(4, 'test'.bytes()) or {
-		assert err.msg().contains('cannot send early data')
+		assert err.msg().contains('0-RTT not available')
 		println('✓ Connection.send_early_data disabled test passed')
 		return
 	}

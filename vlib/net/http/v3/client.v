@@ -1,85 +1,7 @@
 module v3
 
-// HTTP/3 client, types, and framing (RFC 9114).
+// HTTP/3 client (RFC 9114).
 import net.quic
-
-// max_data_frame_size is the maximum payload size for a single DATA frame (16KB),
-// matching the HTTP/2 default. Bodies larger than this are split into multiple frames
-// to respect QUIC stream flow control limits (RFC 9114 §4.1).
-pub const max_data_frame_size = 16384
-
-// FrameType represents HTTP/3 frame types.
-pub enum FrameType as u64 {
-	data         = 0x0
-	headers      = 0x1
-	cancel_push  = 0x3
-	settings     = 0x4
-	push_promise = 0x5
-	goaway       = 0x7
-	max_push_id  = 0xd
-}
-
-// Frame represents an HTTP/3 frame.
-pub struct Frame {
-pub mut:
-	frame_type FrameType
-	length     u64
-	payload    []u8
-}
-
-// Settings holds HTTP/3 settings.
-pub struct Settings {
-pub mut:
-	max_field_section_size   u64 = 65536
-	qpack_max_table_capacity u64 = 4096
-	qpack_blocked_streams    u64 = 100
-}
-
-// Method represents HTTP methods for HTTP/3 requests.
-// This enum is duplicated from net.http.Method because V does not allow
-// circular imports — net.http imports net.http.v3, so net.http.v3 cannot
-// import net.http. A future solution could use a shared types module
-// (e.g., net.http.common) imported by both.
-pub enum Method {
-	get
-	post
-	put
-	patch
-	delete
-	head
-	options
-}
-
-// str returns the HTTP method as a string.
-pub fn (m Method) str() string {
-	return match m {
-		.get { 'GET' }
-		.post { 'POST' }
-		.put { 'PUT' }
-		.patch { 'PATCH' }
-		.delete { 'DELETE' }
-		.head { 'HEAD' }
-		.options { 'OPTIONS' }
-	}
-}
-
-// Request represents an HTTP/3 request.
-pub struct Request {
-pub:
-	method  Method
-	url     string
-	host    string
-	data    string
-	headers map[string]string
-}
-
-// Response represents an HTTP/3 response.
-pub struct Response {
-pub:
-	status_code int
-	headers     map[string]string
-	body        string
-}
 
 // Client represents an HTTP/3 client.
 pub struct Client {
@@ -130,24 +52,35 @@ To enable HTTP/3:
 		migration_enabled: true
 	}
 
+	verify_alpn(&c.quic_conn.crypto_ctx) or {
+		c.quic_conn.close()
+		return err
+	}
+
+	c.setup_initial_streams()
+
+	return c
+}
+
+// verify_alpn checks that the ALPN negotiated protocol is "h3" (RFC 9114 §3.3).
+fn verify_alpn(crypto_ctx &quic.CryptoContext) ! {
+	alpn := crypto_ctx.get_alpn_selected()
+	if alpn != none {
+		if alpn != 'h3' {
+			return error('HTTP/3 ALPN mismatch: expected "h3", got "${alpn}"')
+		}
+	} else {
+		$if debug {
+			eprintln('warning: ALPN not available — cannot verify h3 negotiation')
+		}
+	}
+}
+
+// setup_initial_streams opens unidirectional streams and sends initial SETTINGS.
+fn (mut c Client) setup_initial_streams() {
 	c.uni.open_streams(mut c.quic_conn) or {
 		$if debug {
 			eprintln('warning: failed to open unidirectional streams: ${err}')
-		}
-	}
-
-	// RFC 9114 §3.3: ALPN verification post-handshake.
-	// The QUIC connection is configured with alpn: ['h3'], but the underlying
-	// CryptoContext (OpenSSL-based) does not currently expose
-	// SSL_get0_alpn_selected(), so we cannot verify the negotiated protocol
-	// at runtime. If the server does not support h3, the TLS handshake will
-	// fail because no common ALPN can be negotiated.
-	// TODO: expose CryptoContext.get_alpn_selected() and assert == "h3".
-
-	// Send initial SETTINGS on the control stream
-	c.send_settings() or {
-		$if debug {
-			eprintln('warning: failed to send initial SETTINGS: ${err}')
 		}
 	}
 
@@ -158,7 +91,11 @@ To enable HTTP/3:
 	// a background reader on the control stream, which is not yet implemented.
 	// Until then, the client's encoder uses its default peer capacity.
 
-	return c
+	c.send_settings() or {
+		$if debug {
+			eprintln('warning: failed to send initial SETTINGS: ${err}')
+		}
+	}
 }
 
 // request sends an HTTP/3 request and returns the response.
@@ -305,37 +242,6 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 	return headers, body
 }
 
-// create_data_frames splits a request body into DATA frames respecting max_data_frame_size.
-// Returns an empty-payload DATA frame when the body is empty to signal stream end.
-fn create_data_frames(data string) []Frame {
-	if data.len == 0 {
-		return [
-			Frame{
-				frame_type: .data
-				length:     0
-				payload:    []u8{}
-			},
-		]
-	}
-	mut frames := []Frame{cap: data.len / max_data_frame_size + 1}
-	mut offset := 0
-	for offset < data.len {
-		end := if offset + max_data_frame_size > data.len {
-			data.len
-		} else {
-			offset + max_data_frame_size
-		}
-		chunk := data[offset..end].bytes()
-		frames << Frame{
-			frame_type: .data
-			length:     u64(chunk.len)
-			payload:    chunk
-		}
-		offset = end
-	}
-	return frames
-}
-
 // close shuts down the HTTP/3 client and QUIC connection, sending
 // H3_NO_ERROR (0x0100) as the application error code per RFC 9114 §5.2.
 pub fn (mut c Client) close() {
@@ -385,26 +291,4 @@ pub fn (mut c Client) send_goaway(stream_id u64) ! {
 	data << payload
 
 	c.quic_conn.send(ctrl_id, data)!
-}
-
-// HeaderField represents a header name-value pair.
-pub struct HeaderField {
-pub:
-	name  string
-	value string
-}
-
-// frame_type_from_u64 converts a u64 to a FrameType, returning none for
-// unknown types so callers can silently ignore them (RFC 9114 §7.2.8).
-pub fn frame_type_from_u64(val u64) ?FrameType {
-	return match val {
-		0x0 { .data }
-		0x1 { .headers }
-		0x3 { .cancel_push }
-		0x4 { .settings }
-		0x5 { .push_promise }
-		0x7 { .goaway }
-		0xd { .max_push_id }
-		else { none }
-	}
 }

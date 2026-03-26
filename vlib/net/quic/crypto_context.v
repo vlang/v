@@ -88,6 +88,8 @@ fn C.SSL_provide_quic_data(ssl SSL, level int, data &u8, len u64) int
 fn C.SSL_process_quic_post_handshake(ssl SSL) int
 fn C.SSL_is_init_finished(ssl SSL) int
 
+fn C.SSL_get0_alpn_selected(ssl SSL, data &&u8, len_ &u32)
+
 fn C.EVP_CIPHER_CTX_new() EVP_CIPHER_CTX
 fn C.EVP_CIPHER_CTX_free(ctx EVP_CIPHER_CTX)
 
@@ -228,4 +230,19 @@ pub fn (mut ctx CryptoContext) do_handshake() !bool {
 // is_handshake_complete checks if handshake is complete
 pub fn (ctx CryptoContext) is_handshake_complete() bool {
 	return C.SSL_is_init_finished(ctx.ssl) != 0
+}
+
+// get_alpn_selected returns the ALPN protocol selected during TLS handshake.
+// Returns none if no SSL context exists or no ALPN was negotiated.
+pub fn (ctx &CryptoContext) get_alpn_selected() ?string {
+	if ctx.ssl == unsafe { nil } {
+		return none
+	}
+	data := &u8(unsafe { nil })
+	len_ := u32(0)
+	C.SSL_get0_alpn_selected(ctx.ssl, &data, &len_)
+	if data == unsafe { nil } || len_ == 0 {
+		return none
+	}
+	return unsafe { tos(data, int(len_)) }
 }

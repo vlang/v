@@ -90,10 +90,6 @@ pub fn new_server(config ServerConfig) !Server {
 	}
 }
 
-// default_cid_len is the default connection ID length in bytes used by
-// the server for parsing short header DCID fields (RFC 9000 §5.2).
-const default_cid_len = 18
-
 // listen_and_serve starts the server and begins accepting QUIC connections.
 pub fn (mut s Server) listen_and_serve() ! {
 	s.running = true
@@ -142,65 +138,16 @@ pub fn (mut s Server) stop() {
 			}
 		}
 		conn.quic_conn.close()
+		conn.free()
 	}
 	s.mu.unlock()
 
 	s.udp_socket.close() or {}
 }
 
-// extract_dcid_from_packet extracts the destination connection ID from a QUIC
-// packet header as a hex string. For short headers (bit 7 = 0), DCID starts at
-// byte 1 with length cid_len. For long headers (bit 7 = 1), byte 5 holds the
-// DCID length and DCID starts at byte 6 (RFC 9000 §5.2).
-pub fn extract_dcid_from_packet(packet []u8, cid_len int) !string {
-	if packet.len < 2 {
-		return error('packet too short to extract DCID')
-	}
-
-	is_long := (packet[0] & 0x80) != 0
-
-	if is_long {
-		return extract_dcid_long_header(packet)
-	}
-	return extract_dcid_short_header(packet, cid_len)
-}
-
-// extract_dcid_short_header reads DCID from a short header packet where the
-// DCID starts at byte 1 and has the given cid_len (RFC 9000 §17.3).
-fn extract_dcid_short_header(packet []u8, cid_len int) !string {
-	end := 1 + cid_len
-	if packet.len < end {
-		return error('packet too short for short header DCID (need ${end}, have ${packet.len})')
-	}
-	return bytes_to_hex(packet[1..end])
-}
-
-// extract_dcid_long_header reads DCID from a long header packet where byte 5
-// holds the DCID length and DCID starts at byte 6 (RFC 9000 §17.2).
-fn extract_dcid_long_header(packet []u8) !string {
-	if packet.len < 6 {
-		return error('packet too short for long header DCID length field')
-	}
-	dcid_len := int(packet[5])
-	end := 6 + dcid_len
-	if packet.len < end {
-		return error('packet too short for long header DCID (need ${end}, have ${packet.len})')
-	}
-	if dcid_len == 0 {
-		return ''
-	}
-	return bytes_to_hex(packet[6..end])
-}
-
-// bytes_to_hex converts a byte slice to a lowercase hex string.
-fn bytes_to_hex(data []u8) string {
-	hex_chars := '0123456789abcdef'
-	mut result := []u8{cap: data.len * 2}
-	for b in data {
-		result << hex_chars[b >> 4]
-		result << hex_chars[b & 0x0f]
-	}
-	return result.bytestr()
+// free releases OpenSSL resources held by the server connection's crypto context.
+fn (mut conn ServerConnection) free() {
+	conn.crypto_ctx.free()
 }
 
 // build_goaway_shutdown_frames builds the 2-phase GOAWAY frame pair for graceful
@@ -210,36 +157,6 @@ pub fn (s &Server) build_goaway_shutdown_frames(mut conn ServerConnection) [][]u
 	initial := build_goaway_frame(max_varint) or { return [][]u8{} }
 	final_frame := build_goaway_frame(conn.next_client_stream_id) or { return [][]u8{} }
 	return [initial, final_frame]
-}
-
-// lookup_or_create_connection finds an existing connection by DCID or creates
-// a new one. Uses CID-based lookup per RFC 9000 §5.2; falls back to creating
-// a new connection for unknown CIDs (initial packets).
-fn (mut s Server) lookup_or_create_connection(packet []u8, addr net.Addr) !&ServerConnection {
-	addr_str := '${addr.str()}'
-	dcid := extract_dcid_from_packet(packet, default_cid_len) or { '' }
-
-	s.mu.lock()
-	if dcid.len > 0 {
-		if mut existing := s.connections[dcid] {
-			s.mu.unlock()
-			return existing
-		}
-	}
-
-	new_conn := s.create_connection(addr_str) or {
-		s.mu.unlock()
-		return error('failed to create connection: ${err}')
-	}
-
-	cid_key := if dcid.len > 0 {
-		dcid
-	} else {
-		bytes_to_hex(new_conn.quic_conn.conn_id)
-	}
-	s.connections[cid_key] = new_conn
-	s.mu.unlock()
-	return new_conn
 }
 
 fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
@@ -335,108 +252,4 @@ fn send_server_settings(mut conn ServerConnection) ! {
 	data << payload
 
 	conn.quic_conn.send(ctrl_id, data)!
-}
-
-fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
-	decrypted := s.decrypt_incoming_packet(mut conn, packet) or {
-		eprintln('Failed to decrypt packet: ${err}')
-		return
-	}
-
-	mut idx := 0
-	mut current_stream_id := u64(0)
-
-	for idx < decrypted.len {
-		frame_type_val, bytes_read := decode_varint(decrypted[idx..]) or {
-			eprintln('Failed to decode frame type: ${err}')
-			return
-		}
-		idx += bytes_read
-
-		frame_length, bytes_read2 := decode_varint(decrypted[idx..]) or {
-			eprintln('Failed to decode frame length: ${err}')
-			return
-		}
-		idx += bytes_read2
-
-		if idx + int(frame_length) > decrypted.len {
-			eprintln('Incomplete frame')
-			return
-		}
-
-		payload := decrypted[idx..idx + int(frame_length)]
-		idx += int(frame_length)
-
-		frame_type := frame_type_from_u64(frame_type_val) or { continue }
-
-		if frame_type == .headers {
-			conn.mu.lock()
-			current_stream_id = conn.next_client_stream_id
-			conn.next_client_stream_id += 4
-			conn.mu.unlock()
-		}
-
-		s.dispatch_server_frame(mut conn, frame_type, current_stream_id, payload)
-	}
-}
-
-fn (mut s Server) decrypt_incoming_packet(mut conn ServerConnection, packet []u8) ![]u8 {
-	base_iv := if conn.crypto_ctx.rx_iv.len == 12 {
-		conn.crypto_ctx.rx_iv
-	} else {
-		[]u8{len: 12}
-	}
-
-	conn.mu.lock()
-	pkt_num := if conn.crypto_ctx.rx_hp_key.len > 0 {
-		extracted_pn, _, _ := conn.crypto_ctx.extract_and_unprotect_pn(packet, conn.quic_conn.conn_id.len) or {
-			pn := conn.rx_packet_number
-			conn.rx_packet_number++
-			conn.mu.unlock()
-			return conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pn)
-		}
-		conn.rx_packet_number = extracted_pn + 1
-		conn.mu.unlock()
-		extracted_pn
-	} else {
-		pn := conn.rx_packet_number
-		conn.rx_packet_number++
-		conn.mu.unlock()
-		pn
-	}
-
-	return conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pkt_num)
-}
-
-fn (mut s Server) dispatch_server_frame(mut conn ServerConnection, frame_type FrameType, stream_id u64, payload []u8) {
-	match frame_type {
-		.headers {
-			s.handle_headers_frame(mut conn, stream_id, payload) or {
-				eprintln('Failed to handle HEADERS frame: ${err}')
-			}
-		}
-		.data {
-			s.handle_data_frame(mut conn, stream_id, payload) or {
-				eprintln('Failed to handle DATA frame: ${err}')
-			}
-		}
-		.settings {
-			s.handle_settings_frame(mut conn, payload) or {
-				eprintln('Failed to handle SETTINGS frame: ${err}')
-			}
-		}
-		.goaway {
-			if payload.len > 0 {
-				goaway_id, _ := decode_varint(payload) or {
-					eprintln('Failed to decode GOAWAY stream ID: ${err}')
-					return
-				}
-				conn.last_peer_goaway_stream_id = goaway_id
-				$if debug {
-					eprintln('Received GOAWAY with stream ID ${goaway_id}')
-				}
-			}
-		}
-		else {}
-	}
 }

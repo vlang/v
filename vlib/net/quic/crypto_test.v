@@ -3,6 +3,55 @@ module quic
 
 import os
 
+fn test_get_alpn_selected_nil_ssl_returns_none() {
+	// No handshake done — SSL is nil, so get_alpn_selected should return none
+	ctx := CryptoContext{
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	result := ctx.get_alpn_selected()
+	assert result == none, 'get_alpn_selected should return none when ssl is nil'
+}
+
+fn test_get_alpn_selected_no_alpn_returns_none() {
+	// SSL object exists but no ALPN negotiated (no handshake)
+	ssl_ctx := C.SSL_CTX_new(C.TLS_client_method())
+	if ssl_ctx == unsafe { nil } {
+		assert false, 'failed to create SSL_CTX'
+		return
+	}
+	ssl := C.SSL_new(ssl_ctx)
+	if ssl == unsafe { nil } {
+		C.SSL_CTX_free(ssl_ctx)
+		assert false, 'failed to create SSL'
+		return
+	}
+	defer {
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+	}
+
+	ctx := CryptoContext{
+		ssl:           ssl
+		ssl_ctx:       ssl_ctx
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	// No handshake done, so no ALPN selected
+	result := ctx.get_alpn_selected()
+	assert result == none, 'get_alpn_selected should return none when no ALPN negotiated'
+}
+
 fn test_load_certificate_file_not_found() {
 	result := load_certificate('/nonexistent/cert.pem') or {
 		assert err.msg().contains('not found')

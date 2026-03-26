@@ -15,7 +15,7 @@ mut:
 
 fn (mut s Server) run_frame_loop(mut conn ServerConn, mut ctx ConnContext) u32 {
 	mut state := LoopState{
-		decoder: new_decoder()
+		decoder: new_decoder_with_limit(65536)
 	}
 
 	for {
@@ -91,7 +91,7 @@ fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnC
 fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, mut decoder Decoder, cs ClientSettings, mut cont ContinuationState) {
 	stream_id := frame.header.stream_id
 	if stream_id == 0 {
-		eprintln('[HTTP/2] HEADERS on stream 0 (protocol error)')
+		send_goaway_and_close(mut conn, 0, .protocol_error, 'HEADERS on stream 0') or {}
 		return
 	}
 	if streams.len >= int(s.config.max_concurrent_streams) {
@@ -109,7 +109,7 @@ fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]Server
 		return
 	}
 	raw_decoded := decoder.decode(hf.headers) or {
-		eprintln('[HTTP/2] Header decode error: ${err}')
+		send_goaway_and_close(mut conn, stream_id, .compression_error, 'header decode error: ${err}') or {}
 		return
 	}
 	decoded := join_cookie_headers(raw_decoded)
@@ -242,14 +242,6 @@ fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mu
 	ctx.write_mu.unlock()
 }
 
-// ContinuationState tracks server-side CONTINUATION frame accumulation per stream.
-struct ContinuationState {
-mut:
-	stream_id        u32
-	raw_header_block []u8
-	count            int
-}
-
 fn send_goaway_and_close(mut conn ServerConn, last_stream_id u32, error_code ErrorCode, debug_msg string) ! {
 	goaway := GoAwayFrame{
 		last_stream_id: last_stream_id
@@ -259,53 +251,4 @@ fn send_goaway_and_close(mut conn ServerConn, last_stream_id u32, error_code Err
 	frame_bytes := goaway.to_frame().encode()
 	conn.write(frame_bytes) or {}
 	return error('GOAWAY sent: ${debug_msg}')
-}
-
-fn handle_continuation_in_loop(frame Frame, mut cont ContinuationState, mut streams map[u32]ServerStreamState, mut conn ServerConn, mut ctx ConnContext, mut decoder Decoder, highest_stream_id u32, cs ClientSettings, mut s Server) ! {
-	stream_id := frame.header.stream_id
-	if stream_id == 0 {
-		return send_goaway_and_close(mut conn, highest_stream_id, .protocol_error, 'CONTINUATION on stream 0')
-	}
-	cont.count++
-	if cont.count > max_continuation_frames {
-		cont = ContinuationState{}
-		return send_goaway_and_close(mut conn, highest_stream_id, .enhance_your_calm,
-			'CONTINUATION flood')
-	}
-	if cont.raw_header_block.len + frame.payload.len > max_header_block_size {
-		cont = ContinuationState{}
-		return send_goaway_and_close(mut conn, highest_stream_id, .enhance_your_calm,
-			'header block too large')
-	}
-	cont.stream_id = stream_id
-	cont.raw_header_block << frame.payload
-	if !frame.header.has_flag(.end_headers) {
-		return
-	}
-	decoded := decoder.decode(cont.raw_header_block) or {
-		cont = ContinuationState{}
-		send_rst_stream(mut conn, stream_id, .compression_error) or {}
-		return
-	}
-	cont = ContinuationState{}
-	apply_decoded_headers(decoded, stream_id, mut streams, mut ctx, mut conn, cs, mut
-		s)
-}
-
-fn apply_decoded_headers(raw_decoded []HeaderField, stream_id u32, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, cs ClientSettings, mut s Server) {
-	decoded := join_cookie_headers(raw_decoded)
-	validate_request_headers(decoded) or {
-		$if trace_http2 ? {
-			eprintln('[HTTP/2] Malformed request on stream ${stream_id}: ${err}')
-		}
-		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
-		return
-	}
-	method, path, header_map := extract_pseudo_headers(decoded)
-	streams[stream_id] = ServerStreamState{
-		method:     method
-		path:       path
-		header_map: header_map.clone()
-	}
-	ctx.flow.init_stream(stream_id, cs.initial_window_size)
 }

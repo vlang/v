@@ -2,7 +2,9 @@ module v3
 
 // Server-side HTTP/3 frame handlers and request processing.
 
-fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
+// decode_and_validate_headers decodes QPACK headers from the payload and
+// validates them per RFC 9114 §4.1.2 and §4.2.
+fn decode_and_validate_headers(mut conn ServerConnection, payload []u8) ![]HeaderField {
 	conn.mu.lock()
 	headers := conn.decoder.decode(payload) or {
 		conn.mu.unlock()
@@ -12,8 +14,21 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64,
 
 	// RFC 9114 §4.2: reject header field names containing uppercase letters
 	validate_header_names_lowercase(headers)!
+	// RFC 9114 §4.1.2: validate pseudo-headers and forbidden headers
+	validate_h3_request_headers(headers)!
+
+	return headers
+}
+
+fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
+	headers := decode_and_validate_headers(mut conn, payload)!
 
 	conn.mu.lock()
+	// RFC 9114 §4.6: enforce MAX_CONCURRENT_STREAMS limit
+	if stream_id !in conn.streams && conn.streams.len >= int(s.config.max_concurrent_streams) {
+		conn.mu.unlock()
+		return error('H3_ID_ERROR: MAX_CONCURRENT_STREAMS limit reached (${s.config.max_concurrent_streams})')
+	}
 	mut stream := conn.streams[stream_id] or {
 		new_stream := &ServerStream{
 			id: stream_id
@@ -184,11 +199,11 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 	conn.mu.lock()
 	pkt_num := conn.tx_packet_number
 	conn.tx_packet_number++
-	conn.mu.unlock()
-
 	encrypted := conn.crypto_ctx.encrypt_packet(frame_data, []u8{}, base_iv, pkt_num) or {
+		conn.mu.unlock()
 		return error('failed to encrypt response: ${err}')
 	}
+	conn.mu.unlock()
 
 	conn.quic_conn.send_with_crypto(stream_id, encrypted, &conn.crypto_ctx) or {
 		return error('failed to send response: ${err}')

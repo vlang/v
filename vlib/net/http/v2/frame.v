@@ -80,6 +80,16 @@ pub mut:
 	payload []u8
 }
 
+// SettingId represents setting identifiers per RFC 7540 Section 6.5.2.
+pub enum SettingId as u16 {
+	header_table_size      = 0x1
+	enable_push            = 0x2
+	max_concurrent_streams = 0x3
+	initial_window_size    = 0x4
+	max_frame_size         = 0x5
+	max_header_list_size   = 0x6
+}
+
 // parse_frame_header parses the 9-byte HTTP/2 frame header from raw bytes.
 // Returns none if the data is too short or the frame type is unknown.
 pub fn parse_frame_header(data []u8) ?FrameHeader {
@@ -118,16 +128,6 @@ pub fn (h FrameHeader) encode() []u8 {
 @[inline]
 pub fn (h FrameHeader) has_flag(flag FrameFlags) bool {
 	return (h.flags & u8(flag)) != 0
-}
-
-// SettingId represents setting identifiers per RFC 7540 Section 6.5.2.
-pub enum SettingId as u16 {
-	header_table_size      = 0x1
-	enable_push            = 0x2
-	max_concurrent_streams = 0x3
-	initial_window_size    = 0x4
-	max_frame_size         = 0x5
-	max_header_list_size   = 0x6
 }
 
 // parse_frame parses a complete HTTP/2 frame from raw bytes.
@@ -258,53 +258,5 @@ pub fn frame_type_from_byte(b u8) ?FrameType {
 		0x8 { FrameType.window_update }
 		0x9 { FrameType.continuation }
 		else { none }
-	}
-}
-
-// new_settings_ack_frame creates a SETTINGS ACK frame per RFC 7540 §6.5.
-pub fn new_settings_ack_frame() Frame {
-	return Frame{
-		header:  FrameHeader{
-			length:     0
-			frame_type: .settings
-			flags:      u8(FrameFlags.ack)
-			stream_id:  0
-		}
-		payload: []u8{}
-	}
-}
-
-// validate_setting_value validates a single setting value per RFC 7540 §6.5.2.
-pub fn validate_setting_value(id SettingId, value u32) ! {
-	match id {
-		.enable_push {
-			if value > 1 {
-				return error('PROTOCOL_ERROR: ENABLE_PUSH must be 0 or 1')
-			}
-		}
-		.max_frame_size {
-			if value < default_frame_size || value > max_frame_size {
-				return error('PROTOCOL_ERROR: max_frame_size ${value} outside valid range ${default_frame_size}..${max_frame_size}')
-			}
-		}
-		.initial_window_size {
-			if value > 0x7fffffff {
-				return error('FLOW_CONTROL_ERROR: initial_window_size ${value} exceeds maximum 2^31-1')
-			}
-		}
-		else {}
-	}
-}
-
-// setting_id_from_u16 validates and converts a u16 to a SettingId enum value.
-pub fn setting_id_from_u16(id u16) !SettingId {
-	return match id {
-		0x1 { .header_table_size }
-		0x2 { .enable_push }
-		0x3 { .max_concurrent_streams }
-		0x4 { .initial_window_size }
-		0x5 { .max_frame_size }
-		0x6 { .max_header_list_size }
-		else { error('unknown settings id: 0x${id:04x}') }
 	}
 }
