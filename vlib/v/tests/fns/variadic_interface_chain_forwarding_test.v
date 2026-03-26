@@ -18,7 +18,7 @@ fn process_params(params []Value) string {
 				result << 'i32:${param}'
 			}
 			[]u8 {
-				result << '[]u8:${param.len}'
+				result << '[]u8:${param}'
 			}
 			else {
 				result << 'unknown'
@@ -45,7 +45,9 @@ fn (mut stmt Statement) execute(params ...Value) !string {
 fn (stmt Statement) close() ! {}
 
 fn (mut t Transaction) prepare(query string) !Statement {
-	return Statement{ handle: 1 }
+	return Statement{
+		handle: 1
+	}
 }
 
 fn (mut t Transaction) execute(query string, params ...Value) !string {
@@ -89,7 +91,9 @@ fn test_variadic_interface_forwarding_with_match() ! {
 	conditions, mut params := get_conditions(p)
 	params = arrays.concat(params, p.offset, p.fetch)
 
-	mut tx := Transaction{ handle: 1 }
+	mut tx := Transaction{
+		handle: 1
+	}
 	result := tx.execute('SELECT * FROM users WHERE ${conditions}', ...params)!
 	assert result == 'string:info@peony.com, i32:0, i32:10', 'got: ${result}'
 }
@@ -103,7 +107,9 @@ fn test_variadic_interface_forwarding_single_param() ! {
 
 	conditions, params := get_conditions(p)
 
-	mut tx := Transaction{ handle: 1 }
+	mut tx := Transaction{
+		handle: 1
+	}
 	result := tx.execute('SELECT COUNT(*) FROM users WHERE ${conditions}', ...params)!
 	assert result == 'string:info@peony.com', 'got: ${result}'
 }
@@ -114,9 +120,11 @@ fn test_variadic_interface_forwarding_with_byte_arrays() ! {
 
 	mut params := [Value(user_id_bin), email]
 
-	mut tx := Transaction{ handle: 1 }
+	mut tx := Transaction{
+		handle: 1
+	}
 	result := tx.execute('INSERT INTO users', ...params)!
-	assert result == '[]u8:4, string:info@peony.com', 'got: ${result}'
+	assert result == '[]u8:&[1, 2, 3, 4], string:info@peony.com', 'got: ${result}'
 }
 
 fn test_variadic_interface_forwarding_repeated() ! {
@@ -131,7 +139,9 @@ fn test_variadic_interface_forwarding_repeated() ! {
 		conditions, mut params := get_conditions(p)
 		params = arrays.concat(params, p.offset, p.fetch)
 
-		mut tx := Transaction{ handle: 1 }
+		mut tx := Transaction{
+			handle: 1
+		}
 		result := tx.execute('SELECT * FROM users WHERE ${conditions}', ...params)!
 		assert result == 'string:info@peony.com, string:admin, i32:5, i32:20', 'got: ${result}'
 	}
