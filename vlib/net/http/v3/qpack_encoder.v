@@ -5,10 +5,11 @@ module v3
 // Encoder handles QPACK encoding.
 pub struct Encoder {
 mut:
-	dynamic_table   DynamicTable
-	max_blocked     u64
-	blocked_streams int
-	instruction_buf []u8
+	dynamic_table           DynamicTable
+	max_blocked             u64
+	blocked_streams         int
+	instruction_buf         []u8
+	peer_max_table_capacity int = -1
 }
 
 // new_qpack_encoder creates a new QPACK encoder for HTTP/3 header compression.
@@ -53,6 +54,16 @@ pub fn (mut e Encoder) acknowledge_stream() {
 	}
 }
 
+// set_peer_max_table_capacity sets the maximum dynamic table capacity
+// advertised by the peer. When set to 0 the encoder will force literal
+// encoding for all headers, avoiding any dynamic table insertions.
+pub fn (mut e Encoder) set_peer_max_table_capacity(capacity int) {
+	e.peer_max_table_capacity = capacity
+	if capacity >= 0 {
+		e.dynamic_table.resize(capacity)
+	}
+}
+
 // pending_instructions returns any encoder stream instructions generated during the last encode
 // and clears the internal buffer.
 pub fn (mut e Encoder) pending_instructions() []u8 {
@@ -71,7 +82,8 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 
 	base := int(e.dynamic_table.insert_count)
 	mut max_abs_ref := -1
-	force_literal := e.blocked_streams >= int(e.max_blocked)
+	peer_forbids_dynamic := e.peer_max_table_capacity == 0
+	force_literal := e.blocked_streams >= int(e.max_blocked) || peer_forbids_dynamic
 
 	for header in headers {
 		encoded, abs_ref := e.encode_field(header, base, force_literal)

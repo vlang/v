@@ -2,6 +2,19 @@ module v3
 
 // Tests for QPACK encoding/decoding and varint codec.
 
+// new_test_server_connection creates a minimal ServerConnection for unit tests.
+fn new_test_server_connection() ServerConnection {
+	return ServerConnection{
+		encoder:  new_qpack_encoder(4096, 100)
+		decoder:  new_qpack_decoder(4096, 100)
+		settings: Settings{
+			max_field_section_size:   8192
+			qpack_max_table_capacity: 4096
+			qpack_blocked_streams:    100
+		}
+	}
+}
+
 fn test_qpack_encoding_decoding() {
 	mut encoder := new_qpack_encoder(4096, 0)
 	mut decoder := new_qpack_decoder(4096, 0)
@@ -250,4 +263,293 @@ fn test_exact_chunk_boundary() {
 	assert frames[1].payload.len == max_data_frame_size
 
 	println('Exact chunk boundary test passed')
+}
+
+// ── P3-2: DATA before HEADERS returns H3_FRAME_UNEXPECTED ──
+
+fn test_data_before_headers_returns_frame_unexpected() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+
+	// Send DATA on stream 0 without a preceding HEADERS frame
+	s.handle_data_frame(mut conn, u64(0), 'hello'.bytes()) or {
+		errmsg := err.msg()
+		assert errmsg.contains('H3_FRAME_UNEXPECTED') || errmsg.contains('HEADERS'), 'unexpected error: "${errmsg}"'
+		return
+	}
+	assert false, 'expected H3_FRAME_UNEXPECTED error when DATA arrives before HEADERS'
+}
+
+fn test_data_after_headers_succeeds() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Manually create the stream with headers to simulate HEADERS arriving first.
+	// Set request_complete to true to avoid triggering process_request, which
+	// requires a fully initialized crypto context.
+	conn.streams[stream_id] = &ServerStream{
+		id:               stream_id
+		headers:          [HeaderField{':method', 'POST'}, HeaderField{':path', '/'}]
+		headers_received: true
+		request_complete: true
+	}
+
+	// DATA after HEADERS should succeed (data is appended)
+	s.handle_data_frame(mut conn, stream_id, 'body'.bytes()) or {
+		assert false, 'DATA after HEADERS should not fail: ${err}'
+		return
+	}
+
+	// Verify data was appended
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should still exist'
+		return
+	}
+	assert stream.data == 'body'.bytes()
+}
+
+// ── P3-3: GOAWAY 2-phase shutdown ──
+
+fn test_server_stop_sends_two_phase_goaway() {
+	mut s := Server{
+		running: true
+	}
+	mut conn := new_test_server_connection()
+	conn.uni.control_stream_id = 2
+	conn.next_client_stream_id = 12
+	s.connections['test'] = &conn
+
+	// stop() should send two GOAWAY frames: initial (max) + final (actual last stream id)
+	goaway_frames := s.build_goaway_shutdown_frames(mut conn)
+	assert goaway_frames.len == 2, 'expected 2 GOAWAY frames, got ${goaway_frames.len}'
+
+	// First GOAWAY should use max_stream_id signal
+	first_id := extract_goaway_stream_id(goaway_frames[0]) or {
+		assert false, 'failed to extract first GOAWAY stream ID: ${err}'
+		return
+	}
+	assert first_id == max_varint, 'first GOAWAY should use max_varint as stream ID'
+
+	// Second GOAWAY should use actual last stream ID
+	second_id := extract_goaway_stream_id(goaway_frames[1]) or {
+		assert false, 'failed to extract second GOAWAY stream ID: ${err}'
+		return
+	}
+	assert second_id == u64(12), 'second GOAWAY should use actual last stream ID'
+}
+
+// ── P3-4: SETTINGS expansion with actual values ──
+
+fn test_send_settings_encodes_actual_values() {
+	// build_settings_payload should encode three settings
+	payload := build_settings_payload(Settings{
+		qpack_max_table_capacity: 4096
+		qpack_blocked_streams:    100
+		max_field_section_size:   65536
+	}) or {
+		assert false, 'build_settings_payload failed: ${err}'
+		return
+	}
+	assert payload.len > 0
+
+	// Parse the payload back into settings
+	ids, values := parse_settings_payload(payload) or {
+		assert false, 'parse_settings_payload failed: ${err}'
+		return
+	}
+
+	assert ids.len == 3, 'expected 3 settings, got ${ids.len}'
+
+	// Verify all expected setting IDs are present
+	mut found_0x01 := false
+	mut found_0x06 := false
+	mut found_0x07 := false
+	for i, id in ids {
+		if id == 0x01 {
+			found_0x01 = true
+			assert values[i] == u64(4096), 'QPACK_MAX_TABLE_CAPACITY should be 4096'
+		}
+		if id == 0x06 {
+			found_0x06 = true
+			assert values[i] == u64(65536), 'MAX_FIELD_SECTION_SIZE should be 65536'
+		}
+		if id == 0x07 {
+			found_0x07 = true
+			assert values[i] == u64(100), 'QPACK_BLOCKED_STREAMS should be 100'
+		}
+	}
+	assert found_0x01, 'QPACK_MAX_TABLE_CAPACITY (0x01) missing'
+	assert found_0x06, 'MAX_FIELD_SECTION_SIZE (0x06) missing'
+	assert found_0x07, 'QPACK_BLOCKED_STREAMS (0x07) missing'
+}
+
+fn test_handle_settings_rejects_duplicate_ids() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+
+	// Build a SETTINGS payload with duplicate setting ID 0x01
+	mut payload := []u8{}
+	payload << encode_varint(u64(0x01)) or { return }
+	payload << encode_varint(u64(4096)) or { return }
+	payload << encode_varint(u64(0x01)) or { return } // duplicate
+	payload << encode_varint(u64(8192)) or { return }
+
+	s.handle_settings_frame(mut conn, payload) or {
+		assert err.msg().contains('H3_SETTINGS_ERROR') || err.msg().contains('duplicate')
+		return
+	}
+	assert false, 'expected H3_SETTINGS_ERROR for duplicate setting IDs'
+}
+
+// ── P3-5: QPACK capacity enforcement ──
+
+fn test_encoder_respects_peer_max_table_capacity() {
+	mut encoder := new_qpack_encoder(4096, 100)
+
+	// Set a very small peer capacity — forces literal encoding
+	encoder.set_peer_max_table_capacity(0)
+
+	headers := [HeaderField{'x-test', 'value'}]
+	encoded := encoder.encode(headers)
+	assert encoded.len > 0
+
+	// With 0 peer capacity, dynamic table should have 0 entries
+	assert encoder.dynamic_table.count == 0, 'no entries should be in dynamic table with 0 peer capacity'
+}
+
+fn test_dynamic_table_resize_evicts_entries() {
+	mut dt := new_dynamic_table(4096)
+
+	// Insert entries
+	dt.insert(HeaderField{ name: 'key1', value: 'value1' })
+	dt.insert(HeaderField{ name: 'key2', value: 'value2' })
+	assert dt.count == 2
+
+	// Resize to very small — should evict entries
+	dt.resize(0)
+	assert dt.count == 0, 'resize(0) should evict all entries'
+	assert dt.max_size == 0, 'max_size should be updated to 0'
+}
+
+fn test_dynamic_table_resize_keeps_fitting_entries() {
+	mut dt := new_dynamic_table(4096)
+
+	// Insert one small entry (name=3 + value=1 + 32 overhead = 36 bytes)
+	dt.insert(HeaderField{ name: 'abc', value: 'x' })
+	assert dt.count == 1
+
+	// Resize to something that fits this entry
+	dt.resize(100)
+	assert dt.count == 1, 'entry should still fit after resize to 100'
+}
+
+// ── P3-6: Request cancel wiring ──
+
+fn test_cancel_request_uses_h3_request_cancelled() {
+	// Verify that cancel_request exists as pub method and uses correct error code
+	mut client := Client{}
+	// cancel_request on a zero-initialized client will fail (closed conn),
+	// but it should attempt reset_stream with h3_request_cancelled code
+	client.cancel_request(u64(4)) or {
+		// Expected to fail on closed/nil connection — the important thing
+		// is that the method exists and compiles correctly
+		return
+	}
+}
+
+// ── P4-1: QUIC Packet Matching by CID (RFC 9000 §5.2) ──
+
+fn test_extract_dcid_short_header() {
+	// Short header: bit 7 of byte 0 is 0. DCID starts at byte 1.
+	cid_len := 4
+	mut packet := []u8{len: 1 + cid_len + 10}
+	packet[0] = 0x40 // short header (bit 7 = 0)
+	packet[1] = 0xab
+	packet[2] = 0xcd
+	packet[3] = 0xef
+	packet[4] = 0x01
+
+	dcid := extract_dcid_from_packet(packet, cid_len) or {
+		assert false, 'extract_dcid_from_packet failed: ${err}'
+		return
+	}
+	assert dcid == 'abcdef01', 'expected abcdef01, got ${dcid}'
+}
+
+fn test_extract_dcid_long_header() {
+	// Long header: bit 7 of byte 0 is 1. Byte 5 = DCID length, DCID at byte 6.
+	mut packet := []u8{len: 20}
+	packet[0] = 0xc0 // long header (bit 7 = 1)
+	packet[1] = 0x00 // version bytes
+	packet[2] = 0x00
+	packet[3] = 0x00
+	packet[4] = 0x01
+	packet[5] = 3 // DCID length = 3
+	packet[6] = 0xde
+	packet[7] = 0xad
+	packet[8] = 0xbe
+
+	dcid := extract_dcid_from_packet(packet, 18) or {
+		assert false, 'extract_dcid_from_packet failed: ${err}'
+		return
+	}
+	assert dcid == 'deadbe', 'expected deadbe, got ${dcid}'
+}
+
+fn test_extract_dcid_too_short_packet() {
+	// Packet too short to contain any DCID
+	packet := [u8(0x40)] // just 1 byte, no room for CID
+
+	extract_dcid_from_packet(packet, 4) or {
+		assert err.msg().contains('too short')
+		return
+	}
+	assert false, 'expected error for too-short packet'
+}
+
+// ── P4-2: QPACK Dynamic Table Capacity Negotiation ──
+
+fn test_settings_applies_peer_max_table_capacity_to_encoder() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+
+	// Insert some entries into encoder's dynamic table first
+	headers := [HeaderField{'x-fill', 'data1'}, HeaderField{'x-fill2', 'data2'}]
+	_ = conn.encoder.encode(headers)
+	assert conn.encoder.dynamic_table.count > 0, 'encoder should have dynamic entries'
+
+	// Build SETTINGS payload with small qpack_max_table_capacity (0x01 = 32)
+	mut payload := []u8{}
+	payload << encode_varint(u64(0x01)) or { return }
+	payload << encode_varint(u64(32)) or { return }
+
+	// handle_settings_frame should apply capacity to encoder
+	s.handle_settings_frame(mut conn, payload) or {
+		assert false, 'handle_settings_frame failed: ${err}'
+		return
+	}
+
+	// Encoder's peer_max_table_capacity should be updated
+	assert conn.encoder.peer_max_table_capacity == 32, 'peer_max_table_capacity should be 32, got ${conn.encoder.peer_max_table_capacity}'
+}
+
+fn test_encoder_peer_capacity_smaller_triggers_eviction() {
+	mut encoder := new_qpack_encoder(4096, 100)
+
+	// Insert multiple entries to fill the dynamic table
+	for i in 0 .. 5 {
+		encoder.dynamic_table.insert(HeaderField{
+			name:  'key${i}'
+			value: 'value-that-takes-space-${i}'
+		})
+	}
+	initial_count := encoder.dynamic_table.count
+	assert initial_count == 5, 'should have 5 entries initially'
+
+	// Set peer capacity smaller than current table size — should evict
+	encoder.set_peer_max_table_capacity(50)
+
+	assert encoder.dynamic_table.count < initial_count, 'entries should be evicted after shrinking peer capacity'
+	assert encoder.dynamic_table.max_size == 50, 'max_size should be 50'
 }

@@ -80,8 +80,10 @@ fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnC
 			state.streams.delete(frame.header.stream_id)
 		}
 		else {
-			return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
-				'unsupported frame type')
+			// RFC 7540 §5.5: Implementations MUST ignore and discard frames of unknown type.
+			$if trace_http2 ? {
+				eprintln('[HTTP/2] Ignoring unknown frame type: 0x${u8(frame.header.frame_type):02x} on stream ${frame.header.stream_id}')
+			}
 		}
 	}
 }
@@ -106,8 +108,16 @@ fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]Server
 		cont.count = 0
 		return
 	}
-	decoded := decoder.decode(hf.headers) or {
+	raw_decoded := decoder.decode(hf.headers) or {
 		eprintln('[HTTP/2] Header decode error: ${err}')
+		return
+	}
+	decoded := join_cookie_headers(raw_decoded)
+	validate_request_headers(decoded) or {
+		$if trace_http2 ? {
+			eprintln('[HTTP/2] Malformed request on stream ${stream_id}: ${err}')
+		}
+		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
 		return
 	}
 	method, path, header_map := extract_pseudo_headers(decoded)
@@ -282,7 +292,15 @@ fn handle_continuation_in_loop(frame Frame, mut cont ContinuationState, mut stre
 		s)
 }
 
-fn apply_decoded_headers(decoded []HeaderField, stream_id u32, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, cs ClientSettings, mut s Server) {
+fn apply_decoded_headers(raw_decoded []HeaderField, stream_id u32, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, cs ClientSettings, mut s Server) {
+	decoded := join_cookie_headers(raw_decoded)
+	validate_request_headers(decoded) or {
+		$if trace_http2 ? {
+			eprintln('[HTTP/2] Malformed request on stream ${stream_id}: ${err}')
+		}
+		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
+		return
+	}
 	method, path, header_map := extract_pseudo_headers(decoded)
 	streams[stream_id] = ServerStreamState{
 		method:     method

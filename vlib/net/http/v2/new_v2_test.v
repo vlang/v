@@ -155,3 +155,96 @@ fn test_client_max_concurrent_streams_error() {
 	}
 	assert false, 'expected error when at max concurrent streams limit'
 }
+
+// --- Task P2-2: INITIAL_WINDOW_SIZE delta adjustment (RFC 7540 §6.9.2) ---
+
+fn test_initial_window_size_change_adjusts_existing_streams() {
+	// When INITIAL_WINDOW_SIZE changes via SETTINGS, all existing stream
+	// windows must be adjusted by delta (new - old) per RFC 7540 §6.9.2.
+	mut conn := Connection{}
+	conn.remote_settings.initial_window_size = 65535
+
+	conn.streams[u32(1)] = &Stream{
+		id:          1
+		state:       .open
+		window_size: 65535
+	}
+	conn.streams[u32(3)] = &Stream{
+		id:          3
+		state:       .open
+		window_size: 50000
+	}
+
+	// Server sends new INITIAL_WINDOW_SIZE = 131070 (delta = +65535)
+	pairs := [SettingPair{
+		id:    .initial_window_size
+		value: 131070
+	}]
+	conn.apply_remote_settings(pairs) or {
+		assert false, 'apply_remote_settings should not error: ${err}'
+		return
+	}
+
+	s1 := conn.streams[u32(1)] or {
+		assert false, 'stream 1 not found'
+		return
+	}
+	assert s1.window_size == i64(65535 + 65535), 'stream 1 window should be adjusted by delta +65535, got ${s1.window_size}'
+
+	s3 := conn.streams[u32(3)] or {
+		assert false, 'stream 3 not found'
+		return
+	}
+	assert s3.window_size == i64(50000 + 65535), 'stream 3 window should be adjusted by delta +65535, got ${s3.window_size}'
+}
+
+fn test_initial_window_size_decrease_adjusts_streams() {
+	mut conn := Connection{}
+	conn.remote_settings.initial_window_size = 65535
+
+	conn.streams[u32(1)] = &Stream{
+		id:          1
+		state:       .open
+		window_size: 65535
+	}
+
+	// Server decreases INITIAL_WINDOW_SIZE to 32767 (delta = -32768)
+	pairs := [SettingPair{
+		id:    .initial_window_size
+		value: 32767
+	}]
+	conn.apply_remote_settings(pairs) or {
+		assert false, 'apply_remote_settings should not error: ${err}'
+		return
+	}
+
+	s1 := conn.streams[u32(1)] or {
+		assert false, 'stream 1 not found'
+		return
+	}
+	assert s1.window_size == i64(65535 - 32768), 'stream 1 window should decrease by delta, got ${s1.window_size}'
+}
+
+fn test_initial_window_size_overflow_returns_error() {
+	// If adjusting a stream window would exceed 2^31-1, the connection
+	// must return FLOW_CONTROL_ERROR per RFC 7540 §6.9.2.
+	mut conn := Connection{}
+	conn.remote_settings.initial_window_size = 65535
+
+	conn.streams[u32(1)] = &Stream{
+		id:          1
+		state:       .open
+		window_size: 0x7fffffff - 10
+	}
+
+	// Delta = 0x7fffffff - 65535, which added to stream 1's window overflows
+	pairs := [SettingPair{
+		id:    .initial_window_size
+		value: 0x7fffffff
+	}]
+	conn.apply_remote_settings(pairs) or {
+		assert err.msg().contains('FLOW_CONTROL_ERROR'), 'expected FLOW_CONTROL_ERROR, got: ${err}'
+		return
+	}
+	assert false, 'should return FLOW_CONTROL_ERROR when stream window overflows'
+}

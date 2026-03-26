@@ -157,28 +157,42 @@ pub fn (f Frame) encode() []u8 {
 
 // read_frame_from reads and parses an HTTP/2 frame from any connection.
 // It reads the 9-byte header, validates the frame size, reads the payload,
-// and returns the assembled Frame.
+// and returns the assembled Frame. Unknown frame types are silently skipped
+// per RFC 7540 §5.5.
 pub fn read_frame_from(mut conn ServerConn, max_frame_size u32) !Frame {
-	mut header_buf := []u8{len: frame_header_size}
-	read_exact(mut conn, mut header_buf, frame_header_size)!
+	for {
+		mut header_buf := []u8{len: frame_header_size}
+		read_exact(mut conn, mut header_buf, frame_header_size)!
 
-	header := parse_frame_header(header_buf) or {
-		return error('unknown frame type, frame discarded')
-	}
+		raw_length := (u32(header_buf[0]) << 16) | (u32(header_buf[1]) << 8) | u32(header_buf[2])
 
-	if header.length > max_frame_size {
-		return error('frame size ${header.length} exceeds max_frame_size ${max_frame_size}')
-	}
+		if raw_length > max_frame_size {
+			return error('frame size ${raw_length} exceeds max_frame_size ${max_frame_size}')
+		}
 
-	mut payload := []u8{len: int(header.length)}
-	if header.length > 0 {
-		read_exact(mut conn, mut payload, int(header.length))!
-	}
+		header := parse_frame_header(header_buf) or {
+			// Unknown frame type: read and discard payload, then continue to next frame.
+			$if trace_http2 ? {
+				eprintln('[HTTP/2] Skipping unknown frame type byte 0x${header_buf[3]:02x}, discarding ${raw_length} bytes')
+			}
+			if raw_length > 0 {
+				mut discard := []u8{len: int(raw_length)}
+				read_exact(mut conn, mut discard, int(raw_length))!
+			}
+			continue
+		}
 
-	return Frame{
-		header:  header
-		payload: payload
+		mut payload := []u8{len: int(header.length)}
+		if header.length > 0 {
+			read_exact(mut conn, mut payload, int(header.length))!
+		}
+
+		return Frame{
+			header:  header
+			payload: payload
+		}
 	}
+	return error('unreachable')
 }
 
 // validate validates frame constraints per RFC 7540.

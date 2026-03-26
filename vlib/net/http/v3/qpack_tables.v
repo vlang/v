@@ -478,6 +478,21 @@ fn (mut dt DynamicTable) insert(field HeaderField) {
 	dt.insert_count++
 }
 
+// resize changes the maximum dynamic table size and evicts entries as needed
+// to fit within new_max_size (RFC 9204 §3.2.2).
+fn (mut dt DynamicTable) resize(new_max_size int) {
+	dt.max_size = new_max_size
+	cap := dt.entries.len
+	if cap == 0 {
+		return
+	}
+	for dt.size > dt.max_size && dt.count > 0 {
+		dt.size -= dt.entries[dt.head].size
+		dt.head = (dt.head + 1) % cap
+		dt.count--
+	}
+}
+
 fn (dt &DynamicTable) get(index int) ?HeaderField {
 	if index < 0 || index >= dt.count {
 		return none

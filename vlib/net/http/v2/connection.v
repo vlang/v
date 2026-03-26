@@ -105,6 +105,7 @@ fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 				c.remote_settings.max_concurrent_streams = pair.value
 			}
 			.initial_window_size {
+				c.adjust_stream_windows(pair.value)!
 				c.remote_settings.initial_window_size = pair.value
 			}
 			.max_frame_size {
@@ -114,6 +115,23 @@ fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 				c.remote_settings.max_header_list_size = pair.value
 			}
 		}
+	}
+}
+
+// adjust_stream_windows adjusts all existing stream windows by the delta between
+// the new and old INITIAL_WINDOW_SIZE per RFC 7540 §6.9.2.
+fn (mut c Connection) adjust_stream_windows(new_value u32) ! {
+	old_value := c.remote_settings.initial_window_size
+	if new_value == old_value {
+		return
+	}
+	delta := i64(new_value) - i64(old_value)
+	for _, mut stream in c.streams {
+		new_size := stream.window_size + delta
+		if new_size > 0x7fffffff {
+			return error('FLOW_CONTROL_ERROR: stream ${stream.id} window size ${new_size} exceeds 2^31-1 after INITIAL_WINDOW_SIZE adjustment (RFC 7540 §6.9.2)')
+		}
+		stream.window_size = new_size
 	}
 }
 

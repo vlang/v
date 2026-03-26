@@ -86,12 +86,16 @@ fn test_identify_peer_stream_duplicate_decoder_error() {
 }
 
 fn test_identify_peer_stream_unknown_type() {
+	// RFC 9114 §6.2.3: unknown stream types must be silently ignored (no error)
 	mut m := UniStreamManager{}
 	m.identify_peer_stream(3, u64(0xFF)) or {
-		assert err.msg().contains('unknown')
+		assert false, 'unknown stream type should not return error: ${err}'
 		return
 	}
-	assert false, 'expected unknown stream type error'
+	// No peer stream should be registered
+	assert m.peer_control_stream_id == i64(-1)
+	assert m.peer_encoder_stream_id == i64(-1)
+	assert m.peer_decoder_stream_id == i64(-1)
 }
 
 fn test_identify_all_three_peer_streams() {

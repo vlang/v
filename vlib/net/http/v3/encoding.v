@@ -83,3 +83,52 @@ pub fn decode_string(data []u8) !(string, int) {
 	str_data := data[bytes_read..total_bytes]
 	return str_data.bytestr(), total_bytes
 }
+
+// build_settings_payload encodes HTTP/3 settings into a SETTINGS frame payload
+// containing QPACK_MAX_TABLE_CAPACITY (0x01), MAX_FIELD_SECTION_SIZE (0x06),
+// and QPACK_BLOCKED_STREAMS (0x07) per RFC 9114 §7.2.4.
+pub fn build_settings_payload(s Settings) ![]u8 {
+	mut payload := []u8{cap: 30}
+	payload << encode_varint(u64(0x01))!
+	payload << encode_varint(s.qpack_max_table_capacity)!
+	payload << encode_varint(u64(0x06))!
+	payload << encode_varint(s.max_field_section_size)!
+	payload << encode_varint(u64(0x07))!
+	payload << encode_varint(s.qpack_blocked_streams)!
+	return payload
+}
+
+// parse_settings_payload decodes a SETTINGS frame payload into parallel arrays
+// of setting IDs and values. Used for testing and validation.
+pub fn parse_settings_payload(payload []u8) !([]u64, []u64) {
+	mut ids := []u64{cap: 8}
+	mut values := []u64{cap: 8}
+	mut idx := 0
+	for idx < payload.len {
+		id, br1 := decode_varint(payload[idx..])!
+		idx += br1
+		val, br2 := decode_varint(payload[idx..])!
+		idx += br2
+		ids << id
+		values << val
+	}
+	return ids, values
+}
+
+// build_goaway_frame builds an encoded GOAWAY frame with the given stream ID.
+pub fn build_goaway_frame(stream_id u64) ![]u8 {
+	payload := encode_varint(stream_id)!
+	mut data := []u8{cap: 20}
+	data << encode_varint(u64(FrameType.goaway))!
+	data << encode_varint(u64(payload.len))!
+	data << payload
+	return data
+}
+
+// extract_goaway_stream_id extracts the stream ID from an encoded GOAWAY frame.
+pub fn extract_goaway_stream_id(data []u8) !u64 {
+	_, br1 := decode_varint(data)! // frame type
+	_, br2 := decode_varint(data[br1..])! // length
+	stream_id, _ := decode_varint(data[br1 + br2..])!
+	return stream_id
+}

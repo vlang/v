@@ -68,7 +68,10 @@ pub fn (mut m UniStreamManager) identify_peer_stream(stream_id u64, stream_type 
 			m.peer_decoder_stream_id = i64(stream_id)
 		}
 		else {
-			return error('unknown unidirectional stream type: 0x${stream_type:02x}')
+			// RFC 9114 §6.2.3: unknown stream types must be silently ignored
+			$if debug {
+				eprintln('ignoring unknown unidirectional stream type: 0x${stream_type:02x} (RFC 9114 §6.2.3)')
+			}
 		}
 	}
 }

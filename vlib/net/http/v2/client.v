@@ -83,15 +83,17 @@ fn (mut c Client) send_request_headers(req Request, stream_id u32, mut stream St
 		HeaderField{':path', req.url},
 		HeaderField{':authority', req.host},
 	]
-	for key, value in req.headers {
+	filtered := filter_connection_specific_headers(req.headers)
+	for key, value in filtered {
 		headers << HeaderField{key.to_lower(), value}
 	}
 
-	encoded_headers := c.conn.encoder.encode(headers)
+	split_headers := split_cookie_headers(headers)
+	encoded_headers := c.conn.encoder.encode(split_headers)
 
 	$if trace_http2 ? {
-		eprintln('[HTTP/2] HPACK encoded ${headers.len} headers -> ${encoded_headers.len} bytes: ${encoded_headers.hex()}')
-		for h in headers {
+		eprintln('[HTTP/2] HPACK encoded ${split_headers.len} headers -> ${encoded_headers.len} bytes: ${encoded_headers.hex()}')
+		for h in split_headers {
 			eprintln('[HTTP/2]   ${h.name}: ${h.value}')
 		}
 	}
@@ -112,7 +114,8 @@ fn (mut c Client) send_request_headers(req Request, stream_id u32, mut stream St
 	}
 
 	c.conn.write_frame(headers_frame)!
-	stream.state = if req.data.len == 0 { .half_closed_local } else { .open }
+	end_stream := req.data.len == 0
+	stream.state = stream.state.next_on_send(.headers, end_stream)
 }
 
 fn (mut c Client) send_data_frames(data string, stream_id u32, mut stream Stream) ! {
@@ -148,7 +151,7 @@ fn (mut c Client) send_data_frames(data string, stream_id u32, mut stream Stream
 		c.conn.remote_window_size -= i64(chunk.len)
 		stream.window_size -= i64(chunk.len)
 	}
-	stream.state = .half_closed_local
+	stream.state = stream.state.next_on_send(.data, true)
 }
 
 fn (c Client) response_timeout_duration() time.Duration {

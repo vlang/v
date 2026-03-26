@@ -70,6 +70,7 @@ mut:
 	data             []u8
 	closed           bool
 	request_complete bool
+	headers_received bool
 }
 
 // new_server creates an HTTP/3 server with the given configuration.
@@ -88,6 +89,10 @@ pub fn new_server(config ServerConfig) !Server {
 		running:    false
 	}
 }
+
+// default_cid_len is the default connection ID length in bytes used by
+// the server for parsing short header DCID fields (RFC 9000 §5.2).
+const default_cid_len = 18
 
 // listen_and_serve starts the server and begins accepting QUIC connections.
 pub fn (mut s Server) listen_and_serve() ! {
@@ -111,35 +116,130 @@ pub fn (mut s Server) listen_and_serve() ! {
 			continue
 		}
 
-		addr_str := '${addr.str()}'
-		s.mu.lock()
-		mut conn := s.connections[addr_str] or {
-			new_conn := s.create_connection(addr_str) or {
-				eprintln('Failed to create connection: ${err}')
-				s.mu.unlock()
-				continue
-			}
-			s.connections[addr_str] = new_conn
-			new_conn
-		}
-		s.mu.unlock()
-
 		packet_data := buf[..n].clone()
+		mut conn := s.lookup_or_create_connection(packet_data, addr) or {
+			eprintln('Failed to handle connection: ${err}')
+			continue
+		}
+
 		spawn s.handle_packet(mut conn, packet_data)
 	}
 }
 
-// stop stops the server and closes all active connections.
+// stop stops the server gracefully using 2-phase GOAWAY (RFC 9114 §5.2).
+// Phase 1: GOAWAY with max_varint signals "stopping soon" to peers.
+// Phase 2: GOAWAY with the actual last processed stream ID.
 pub fn (mut s Server) stop() {
 	s.running = false
 
 	s.mu.lock()
 	for _, mut conn in s.connections {
+		goaway_frames := s.build_goaway_shutdown_frames(mut conn)
+		if conn.uni.control_stream_id >= 0 {
+			ctrl_id := u64(conn.uni.control_stream_id)
+			for frame_data in goaway_frames {
+				conn.quic_conn.send(ctrl_id, frame_data) or {}
+			}
+		}
 		conn.quic_conn.close()
 	}
 	s.mu.unlock()
 
 	s.udp_socket.close() or {}
+}
+
+// extract_dcid_from_packet extracts the destination connection ID from a QUIC
+// packet header as a hex string. For short headers (bit 7 = 0), DCID starts at
+// byte 1 with length cid_len. For long headers (bit 7 = 1), byte 5 holds the
+// DCID length and DCID starts at byte 6 (RFC 9000 §5.2).
+pub fn extract_dcid_from_packet(packet []u8, cid_len int) !string {
+	if packet.len < 2 {
+		return error('packet too short to extract DCID')
+	}
+
+	is_long := (packet[0] & 0x80) != 0
+
+	if is_long {
+		return extract_dcid_long_header(packet)
+	}
+	return extract_dcid_short_header(packet, cid_len)
+}
+
+// extract_dcid_short_header reads DCID from a short header packet where the
+// DCID starts at byte 1 and has the given cid_len (RFC 9000 §17.3).
+fn extract_dcid_short_header(packet []u8, cid_len int) !string {
+	end := 1 + cid_len
+	if packet.len < end {
+		return error('packet too short for short header DCID (need ${end}, have ${packet.len})')
+	}
+	return bytes_to_hex(packet[1..end])
+}
+
+// extract_dcid_long_header reads DCID from a long header packet where byte 5
+// holds the DCID length and DCID starts at byte 6 (RFC 9000 §17.2).
+fn extract_dcid_long_header(packet []u8) !string {
+	if packet.len < 6 {
+		return error('packet too short for long header DCID length field')
+	}
+	dcid_len := int(packet[5])
+	end := 6 + dcid_len
+	if packet.len < end {
+		return error('packet too short for long header DCID (need ${end}, have ${packet.len})')
+	}
+	if dcid_len == 0 {
+		return ''
+	}
+	return bytes_to_hex(packet[6..end])
+}
+
+// bytes_to_hex converts a byte slice to a lowercase hex string.
+fn bytes_to_hex(data []u8) string {
+	hex_chars := '0123456789abcdef'
+	mut result := []u8{cap: data.len * 2}
+	for b in data {
+		result << hex_chars[b >> 4]
+		result << hex_chars[b & 0x0f]
+	}
+	return result.bytestr()
+}
+
+// build_goaway_shutdown_frames builds the 2-phase GOAWAY frame pair for graceful
+// shutdown per RFC 9114 §5.2. Returns two encoded GOAWAY frames: first with
+// max_varint (initial signal), second with the actual last stream ID.
+pub fn (s &Server) build_goaway_shutdown_frames(mut conn ServerConnection) [][]u8 {
+	initial := build_goaway_frame(max_varint) or { return [][]u8{} }
+	final_frame := build_goaway_frame(conn.next_client_stream_id) or { return [][]u8{} }
+	return [initial, final_frame]
+}
+
+// lookup_or_create_connection finds an existing connection by DCID or creates
+// a new one. Uses CID-based lookup per RFC 9000 §5.2; falls back to creating
+// a new connection for unknown CIDs (initial packets).
+fn (mut s Server) lookup_or_create_connection(packet []u8, addr net.Addr) !&ServerConnection {
+	addr_str := '${addr.str()}'
+	dcid := extract_dcid_from_packet(packet, default_cid_len) or { '' }
+
+	s.mu.lock()
+	if dcid.len > 0 {
+		if mut existing := s.connections[dcid] {
+			s.mu.unlock()
+			return existing
+		}
+	}
+
+	new_conn := s.create_connection(addr_str) or {
+		s.mu.unlock()
+		return error('failed to create connection: ${err}')
+	}
+
+	cid_key := if dcid.len > 0 {
+		dcid
+	} else {
+		bytes_to_hex(new_conn.quic_conn.conn_id)
+	}
+	s.connections[cid_key] = new_conn
+	s.mu.unlock()
+	return new_conn
 }
 
 fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {

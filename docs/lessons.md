@@ -70,3 +70,19 @@ Format: `[DATE] CONTEXT — LESSON`
 - **Context:** QPACK DynamicTable used `array.delete(0)` which is O(n) due to element shifting.
 - **Discovery:** Replace array.delete(0) (O(n) shift) with ring buffer (head/count/modular arithmetic) for O(1) front eviction. Pre-allocate capacity to avoid resizing.
 - **Rule:** For any FIFO structure requiring front-eviction, use ring buffer pattern: `entries[head % capacity]`, increment head on evict.
+
+## L14: ACT Phase Is Decision, Not Implementation
+- **Context**: PDCA workflow
+- **Lesson**: ACT phase decides whether to proceed to SCRIBE or loop back to DO. It does NOT directly implement fixes. Implementation belongs in the DO phase.
+
+## L15: CONTINUATION Flood (CVE-2024-27316)
+- **Context**: HTTP/2 security
+- **Lesson**: CONTINUATION frames without limits allow memory exhaustion. Always enforce frame count + total size limits. This is a known CVE class.
+
+## L16: HeadersFrame.from_frame() Required Before Decode
+- **Context**: HTTP/2 server HEADERS handling
+- **Lesson**: Raw frame.payload includes PADDED and PRIORITY bytes. Must call HeadersFrame.from_frame() to strip them before HPACK decoding. Chrome always sets PRIORITY flag.
+
+## L17: Mid-Stream SETTINGS Must Be Applied
+- **Context**: HTTP/2 client
+- **Lesson**: Settings received mid-connection must be applied (not just ACKed). Missing this causes the client to use stale max_frame_size, max_concurrent_streams etc.

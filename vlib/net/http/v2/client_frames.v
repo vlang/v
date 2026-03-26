@@ -3,6 +3,14 @@ module v2
 // Client-side frame dispatch during response reading.
 
 fn (mut c Client) handle_response_frame(frame Frame, mut stream Stream, stream_id u32) ! {
+	if frame.header.stream_id == stream_id {
+		if !stream.state.can_recv(frame.header.frame_type) {
+			$if trace_http2 ? {
+				eprintln('[HTTP/2] WARNING: received ${frame.header.frame_type} in state ${stream.state} on stream ${stream_id}')
+			}
+		}
+	}
+
 	match frame.header.frame_type {
 		.headers {
 			c.handle_headers_frame(frame, mut stream, stream_id)!
@@ -54,15 +62,16 @@ fn (mut c Client) handle_headers_frame(frame Frame, mut stream Stream, stream_id
 
 	if hf.end_headers {
 		headers := c.conn.decoder.decode(hf.headers)!
+		validate_response_headers(headers)!
 		stream.headers << headers
 		stream.end_headers = true
 	} else {
 		stream.raw_header_block << hf.headers
 	}
 
+	stream.state = stream.state.next_on_recv(.headers, hf.end_stream)
 	if hf.end_stream {
 		stream.end_stream = true
-		stream.state = .half_closed_remote
 	}
 }
 
@@ -83,6 +92,7 @@ fn (mut c Client) handle_continuation_frame(frame Frame, mut stream Stream, stre
 
 	if frame.header.has_flag(.end_headers) {
 		headers := c.conn.decoder.decode(stream.raw_header_block)!
+		validate_response_headers(headers)!
 		stream.headers << headers
 		stream.raw_header_block = []u8{}
 		stream.continuation_count = 0
@@ -124,7 +134,7 @@ fn (mut c Client) handle_data_frame(frame Frame, mut stream Stream, stream_id u3
 
 	if frame.header.has_flag(.end_stream) {
 		stream.end_stream = true
-		stream.state = .closed
+		stream.state = stream.state.next_on_recv(.data, true)
 	}
 }
 

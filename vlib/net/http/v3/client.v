@@ -30,7 +30,7 @@ pub mut:
 // Settings holds HTTP/3 settings.
 pub struct Settings {
 pub mut:
-	max_field_section_size   u64
+	max_field_section_size   u64 = 65536
 	qpack_max_table_capacity u64 = 4096
 	qpack_blocked_streams    u64 = 100
 }
@@ -136,6 +136,14 @@ To enable HTTP/3:
 		}
 	}
 
+	// RFC 9114 §3.3: ALPN verification post-handshake.
+	// The QUIC connection is configured with alpn: ['h3'], but the underlying
+	// CryptoContext (OpenSSL-based) does not currently expose
+	// SSL_get0_alpn_selected(), so we cannot verify the negotiated protocol
+	// at runtime. If the server does not support h3, the TLS handshake will
+	// fail because no common ALPN can be negotiated.
+	// TODO: expose CryptoContext.get_alpn_selected() and assert == "h3".
+
 	// Send initial SETTINGS on the control stream
 	c.send_settings() or {
 		$if debug {
@@ -143,10 +151,20 @@ To enable HTTP/3:
 		}
 	}
 
+	// NOTE: The client does not currently read the server's SETTINGS from the
+	// control stream after initial setup. When the server sends SETTINGS with
+	// QPACK_MAX_TABLE_CAPACITY, the client's encoder should call
+	// set_peer_max_table_capacity() to respect the peer's limit. This requires
+	// a background reader on the control stream, which is not yet implemented.
+	// Until then, the client's encoder uses its default peer capacity.
+
 	return c
 }
 
 // request sends an HTTP/3 request and returns the response.
+// After sending all frames (HEADERS + DATA), the QUIC layer signals
+// end-of-stream (FIN) implicitly — ngtcp2 marks the stream write-side
+// as complete when no more data is written before reading the response.
 pub fn (mut c Client) request(req Request) !Response {
 	stream_id := c.next_stream_id
 	c.next_stream_id += 4
@@ -268,6 +286,7 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 		match frame_type {
 			.headers {
 				headers = c.qpack_decoder.decode(payload)!
+				validate_header_names_lowercase(headers)!
 			}
 			.data {
 				body << payload
@@ -317,27 +336,41 @@ fn create_data_frames(data string) []Frame {
 	return frames
 }
 
-// close shuts down the HTTP/3 client and QUIC connection.
+// close shuts down the HTTP/3 client and QUIC connection, sending
+// H3_NO_ERROR (0x0100) as the application error code per RFC 9114 §5.2.
 pub fn (mut c Client) close() {
 	c.send_goaway(c.next_stream_id) or {}
-	c.quic_conn.close()
+	c.quic_conn.close_with_error(u64(H3ErrorCode.h3_no_error), '') or { c.quic_conn.close() }
 }
 
-// send_settings sends an HTTP/3 SETTINGS frame on the control stream.
+// cancel_request cancels an in-flight HTTP/3 request by resetting its QUIC
+// stream with H3_REQUEST_CANCELLED (RFC 9114 §4.1.1). The peer will receive
+// a RESET_STREAM frame and should discard any partial response.
+pub fn (mut c Client) cancel_request(stream_id u64) ! {
+	c.quic_conn.reset_stream(stream_id, u64(H3ErrorCode.h3_request_cancelled))!
+}
+
+// send_settings sends an HTTP/3 SETTINGS frame with actual client
+// settings (RFC 9114 §7.2.4) on the control stream.
 pub fn (mut c Client) send_settings() ! {
 	if c.uni.control_stream_id < 0 {
 		return error('control stream not opened')
 	}
 	ctrl_id := u64(c.uni.control_stream_id)
 
+	payload := build_settings_payload(c.settings)!
+
 	mut data := []u8{}
 	data << encode_varint(u64(FrameType.settings))!
-	data << encode_varint(u64(0))!
+	data << encode_varint(u64(payload.len))!
+	data << payload
 
 	c.quic_conn.send(ctrl_id, data)!
 }
 
-// send_goaway sends a GOAWAY frame on the control stream.
+// send_goaway sends a GOAWAY frame on the control stream. The stream_id
+// indicates the highest stream ID that might have been processed. Peers
+// should use H3 error codes from H3ErrorCode when closing the connection.
 pub fn (mut c Client) send_goaway(stream_id u64) ! {
 	if c.uni.control_stream_id < 0 {
 		return error('control stream not opened')
@@ -361,8 +394,9 @@ pub:
 	value string
 }
 
-// frame_type_from_u64 converts a u64 to a FrameType.
-pub fn frame_type_from_u64(val u64) !FrameType {
+// frame_type_from_u64 converts a u64 to a FrameType, returning none for
+// unknown types so callers can silently ignore them (RFC 9114 §7.2.8).
+pub fn frame_type_from_u64(val u64) ?FrameType {
 	return match val {
 		0x0 { .data }
 		0x1 { .headers }
@@ -371,6 +405,6 @@ pub fn frame_type_from_u64(val u64) !FrameType {
 		0x5 { .push_promise }
 		0x7 { .goaway }
 		0xd { .max_push_id }
-		else { error('unknown HTTP/3 frame type: 0x${val:x}') }
+		else { none }
 	}
 }

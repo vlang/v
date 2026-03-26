@@ -10,6 +10,9 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64,
 	}
 	conn.mu.unlock()
 
+	// RFC 9114 §4.2: reject header field names containing uppercase letters
+	validate_header_names_lowercase(headers)!
+
 	conn.mu.lock()
 	mut stream := conn.streams[stream_id] or {
 		new_stream := &ServerStream{
@@ -19,6 +22,7 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64,
 		new_stream
 	}
 	stream.headers << headers
+	stream.headers_received = true
 	local_headers := stream.headers.clone()
 	conn.mu.unlock()
 
@@ -49,7 +53,11 @@ fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, pa
 	conn.mu.lock()
 	mut stream := conn.streams[stream_id] or {
 		conn.mu.unlock()
-		return error('stream ${stream_id} not found')
+		return error('H3_FRAME_UNEXPECTED: DATA received on stream ${stream_id} before HEADERS (RFC 9114 §4.1)')
+	}
+	if !stream.headers_received {
+		conn.mu.unlock()
+		return error('H3_FRAME_UNEXPECTED: DATA before HEADERS on stream ${stream_id} (RFC 9114 §4.1)')
 	}
 	stream.data << payload
 	already_done := stream.request_complete
@@ -65,17 +73,30 @@ fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, pa
 
 fn (mut s Server) handle_settings_frame(mut conn ServerConnection, payload []u8) ! {
 	mut idx := 0
+	mut seen_ids := []u64{cap: 8}
 	for idx < payload.len {
 		setting_id, bytes_read := decode_varint(payload[idx..])!
 		idx += bytes_read
+
+		if setting_id in seen_ids {
+			return error('H3_SETTINGS_ERROR: duplicate setting ID 0x${setting_id:02x} (RFC 9114 §7.2.4)')
+		}
+		seen_ids << setting_id
 
 		setting_value, bytes_read2 := decode_varint(payload[idx..])!
 		idx += bytes_read2
 
 		match setting_id {
-			0x01 { conn.settings.qpack_max_table_capacity = setting_value }
-			0x06 { conn.settings.max_field_section_size = setting_value }
-			0x07 { conn.settings.qpack_blocked_streams = setting_value }
+			0x01 {
+				conn.settings.qpack_max_table_capacity = setting_value
+				conn.encoder.set_peer_max_table_capacity(int(setting_value))
+			}
+			0x06 {
+				conn.settings.max_field_section_size = setting_value
+			}
+			0x07 {
+				conn.settings.qpack_blocked_streams = setting_value
+			}
 			else {}
 		}
 	}
