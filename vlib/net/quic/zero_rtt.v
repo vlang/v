@@ -1,13 +1,9 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
 import sync
 import time
 
-// 0-RTT (Zero Round Trip Time) Connection Resumption
-// Allows clients to send data in the first flight without waiting for handshake completion
+// 0-RTT connection resumption for sending early data before handshake completion.
 
 // SessionTicket represents a session ticket for 0-RTT resumption
 pub struct SessionTicket {
@@ -77,7 +73,6 @@ pub fn (mut sc SessionCache) cleanup() {
 	sc.mu.lock()
 	now := time.now()
 
-	// Filter in-place instead of building removal list
 	mut new_tickets := map[string]SessionTicket{}
 	for server_name, ticket in sc.tickets {
 		age := now - ticket.creation_time

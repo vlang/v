@@ -1,9 +1,6 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// Test for HTTP/2 frame encoding/decoding
+// Tests for HTTP/2 frame encoding, decoding, validation, and typed frame conversions.
 
 fn test_frame_header_encode_decode() {
 	header := FrameHeader{
@@ -76,7 +73,6 @@ fn test_settings_frame() {
 	assert decoded.payload.len == payload.len
 }
 
-// test_frame_type_from_byte_known verifies that known frame type bytes are parsed correctly
 fn test_frame_type_from_byte_known() {
 	assert frame_type_from_byte(0x0) or {
 		assert false, 'expected .data'
@@ -92,38 +88,27 @@ fn test_frame_type_from_byte_known() {
 	} == .continuation
 }
 
-// test_frame_type_from_byte_unknown verifies that unknown frame type bytes return none (RFC 7540 §4.1)
 fn test_frame_type_from_byte_unknown() {
-	// Per RFC 7540 §4.1: unknown frame types MUST be ignored, not errored
 	result := frame_type_from_byte(0xff)
 	assert result == none
 }
 
-// test_parse_frame_header_unknown_type verifies that parse_frame_header skips frames with unknown types
 fn test_parse_frame_header_unknown_type() {
-	// Build a 9-byte header with unknown type 0xfe
 	mut raw := []u8{len: 9}
-	raw[0] = 0 // length high
-	raw[1] = 0 // length mid
-	raw[2] = 5 // length low  (5 bytes payload)
-	raw[3] = 0xfe // unknown type
-	raw[4] = 0 // flags
-	raw[5] = 0 // stream_id high
+	raw[0] = 0
+	raw[1] = 0
+	raw[2] = 5
+	raw[3] = 0xfe
+	raw[4] = 0
+	raw[5] = 0
 	raw[6] = 0
 	raw[7] = 0
-	raw[8] = 1 // stream_id = 1
-	// parse_frame_header must NOT return an error; it returns none for unknown types
-	header := parse_frame_header(raw) or {
-		// Returning none is acceptable (unknown type skipped)
-		return
-	}
-	// If it returns a value, that is also fine if the caller decides to accept a zero-value
-	// This case should not be reached with an unknown type
+	raw[8] = 1
+	header := parse_frame_header(raw) or { return }
 	_ = header
 }
 
 fn test_frame_validation() {
-	// Valid DATA frame
 	valid_frame := Frame{
 		header:  FrameHeader{
 			length:     10
@@ -136,7 +121,6 @@ fn test_frame_validation() {
 
 	valid_frame.validate() or { assert false, 'Valid frame should not fail validation' }
 
-	// Invalid: DATA frame on stream 0
 	invalid_frame := Frame{
 		header:  FrameHeader{
 			length:     10
@@ -154,14 +138,9 @@ fn test_frame_validation() {
 	assert false, 'Invalid frame should fail validation'
 }
 
-// test_parse_settings_payload_valid verifies that a well-formed SETTINGS payload
-// is parsed into the correct SettingPair slice.
 fn test_parse_settings_payload_valid() {
-	// Build payload: header_table_size=8192, max_concurrent_streams=200
 	mut payload := []u8{}
-	// SETTINGS_HEADER_TABLE_SIZE (0x0001) = 8192 (0x00002000)
 	payload << [u8(0x00), 0x01, 0x00, 0x00, 0x20, 0x00]
-	// SETTINGS_MAX_CONCURRENT_STREAMS (0x0003) = 200 (0x000000C8)
 	payload << [u8(0x00), 0x03, 0x00, 0x00, 0x00, 0xC8]
 
 	pairs := parse_settings_payload(payload) or {
@@ -176,13 +155,9 @@ fn test_parse_settings_payload_valid() {
 	assert pairs[1].value == 200
 }
 
-// test_parse_settings_payload_skips_unknown verifies that unknown setting IDs
-// are silently skipped per RFC 7540 §6.5.2.
 fn test_parse_settings_payload_skips_unknown() {
 	mut payload := []u8{}
-	// Unknown setting 0x00FF = 42
 	payload << [u8(0x00), 0xFF, 0x00, 0x00, 0x00, 0x2A]
-	// SETTINGS_MAX_FRAME_SIZE (0x0005) = 32768
 	payload << [u8(0x00), 0x05, 0x00, 0x00, 0x80, 0x00]
 
 	pairs := parse_settings_payload(payload) or {
@@ -190,13 +165,11 @@ fn test_parse_settings_payload_skips_unknown() {
 		return
 	}
 
-	// Unknown setting skipped, only max_frame_size remains
 	assert pairs.len == 1
 	assert pairs[0].id == .max_frame_size
 	assert pairs[0].value == 32768
 }
 
-// test_parse_settings_payload_empty verifies empty payload returns empty slice.
 fn test_parse_settings_payload_empty() {
 	pairs := parse_settings_payload([]) or {
 		assert false, 'parse_settings_payload failed on empty: ${err}'
@@ -205,9 +178,7 @@ fn test_parse_settings_payload_empty() {
 	assert pairs.len == 0
 }
 
-// test_parse_settings_payload_incomplete rejects a truncated setting.
 fn test_parse_settings_payload_incomplete() {
-	// Only 4 bytes — not a complete 6-byte setting
 	payload := [u8(0x00), 0x01, 0x00, 0x00]
 	parse_settings_payload(payload) or {
 		assert err.msg().contains('incomplete')
@@ -216,7 +187,6 @@ fn test_parse_settings_payload_incomplete() {
 	assert false, 'Should have rejected incomplete settings payload'
 }
 
-// test_data_frame_roundtrip verifies DataFrame from_frame/to_frame conversion.
 fn test_data_frame_roundtrip() {
 	payload := 'Hello HTTP/2'.bytes()
 	original := Frame{
@@ -244,12 +214,10 @@ fn test_data_frame_roundtrip() {
 	assert back.header.has_flag(.end_stream)
 }
 
-// test_settings_frame_roundtrip verifies SettingsFrame from_frame/to_frame conversion.
 fn test_settings_frame_roundtrip() {
-	// Build a SETTINGS payload with two settings
 	mut payload := []u8{}
-	payload << [u8(0x00), 0x01, 0x00, 0x00, 0x20, 0x00] // header_table_size=8192
-	payload << [u8(0x00), 0x03, 0x00, 0x00, 0x00, 0xC8] // max_concurrent_streams=200
+	payload << [u8(0x00), 0x01, 0x00, 0x00, 0x20, 0x00]
+	payload << [u8(0x00), 0x03, 0x00, 0x00, 0x00, 0xC8]
 
 	original := Frame{
 		header:  FrameHeader{
@@ -270,7 +238,6 @@ fn test_settings_frame_roundtrip() {
 	assert sf.settings[u16(SettingId.max_concurrent_streams)] == 200
 }
 
-// test_ping_frame_roundtrip verifies PingFrame from_frame/to_frame conversion.
 fn test_ping_frame_roundtrip() {
 	ping_data := [u8(1), 2, 3, 4, 5, 6, 7, 8]!
 	original := Frame{
@@ -296,14 +263,10 @@ fn test_ping_frame_roundtrip() {
 	assert back.payload == [u8(1), 2, 3, 4, 5, 6, 7, 8]
 }
 
-// test_goaway_frame_from_frame verifies GoAwayFrame from_frame conversion.
 fn test_goaway_frame_from_frame() {
 	mut payload := []u8{}
-	// last_stream_id = 5
 	payload << [u8(0x00), 0x00, 0x00, 0x05]
-	// error_code = 0 (no_error)
 	payload << [u8(0x00), 0x00, 0x00, 0x00]
-	// debug_data
 	payload << 'test'.bytes()
 
 	original := Frame{
@@ -325,9 +288,7 @@ fn test_goaway_frame_from_frame() {
 	assert gf.debug_data == 'test'.bytes()
 }
 
-// test_window_update_frame_from_frame verifies WindowUpdateFrame from_frame conversion.
 fn test_window_update_frame_from_frame() {
-	// window_increment = 32768
 	payload := [u8(0x00), 0x00, 0x80, 0x00]
 	original := Frame{
 		header:  FrameHeader{
@@ -347,8 +308,6 @@ fn test_window_update_frame_from_frame() {
 	assert wf.window_increment == 32768
 }
 
-// test_apply_window_update_connection_level verifies that applying a WINDOW_UPDATE
-// frame with stream_id=0 updates the connection-level remote_window_size.
 fn test_apply_window_update_connection_level() {
 	mut conn := Connection{
 		remote_window_size: 65535
@@ -360,7 +319,7 @@ fn test_apply_window_update_connection_level() {
 			flags:      0
 			stream_id:  0
 		}
-		payload: [u8(0x00), 0x00, 0x80, 0x00] // increment = 32768
+		payload: [u8(0x00), 0x00, 0x80, 0x00]
 	}
 	conn.apply_window_update(wu_frame) or {
 		assert false, 'apply_window_update failed: ${err}'
@@ -369,8 +328,6 @@ fn test_apply_window_update_connection_level() {
 	assert conn.remote_window_size == 65535 + 32768, 'expected ${65535 + 32768}, got ${conn.remote_window_size}'
 }
 
-// test_apply_window_update_stream_level verifies that applying a WINDOW_UPDATE
-// frame with a specific stream_id updates the stream's window_size.
 fn test_apply_window_update_stream_level() {
 	mut stream := &Stream{
 		id:          3
@@ -390,7 +347,7 @@ fn test_apply_window_update_stream_level() {
 			flags:      0
 			stream_id:  3
 		}
-		payload: [u8(0x00), 0x01, 0x00, 0x00] // increment = 65536
+		payload: [u8(0x00), 0x01, 0x00, 0x00]
 	}
 	conn.apply_window_update(wu_frame) or {
 		assert false, 'apply_window_update failed: ${err}'
@@ -403,17 +360,13 @@ fn test_apply_window_update_stream_level() {
 	assert updated_stream.window_size == 65535 + 65536, 'expected ${65535 + 65536}, got ${updated_stream.window_size}'
 }
 
-// test_split_data_for_flow_control verifies that split_data_for_window produces
-// correct chunks that respect the available window size.
 fn test_split_data_for_flow_control() {
-	data := []u8{len: 100, init: u8(0x41)} // 100 bytes of 'A'
+	data := []u8{len: 100, init: u8(0x41)}
 
-	// When window is larger than data, single chunk
 	chunks := split_data_for_window(data, 200, 16384)
 	assert chunks.len == 1, 'expected 1 chunk when window > data, got ${chunks.len}'
 	assert chunks[0].len == 100
 
-	// When window is smaller than data, split into multiple chunks
 	chunks2 := split_data_for_window(data, 30, 16384)
 	mut total := 0
 	for chunk in chunks2 {
@@ -422,7 +375,6 @@ fn test_split_data_for_flow_control() {
 	}
 	assert total == 100, 'total bytes mismatch: want 100, got ${total}'
 
-	// When max_frame_size limits chunk size more than window
 	chunks3 := split_data_for_window(data, 200, 25)
 	for chunk in chunks3 {
 		assert chunk.len <= 25, 'chunk exceeds max_frame_size: ${chunk.len} > 25'
@@ -434,22 +386,19 @@ fn test_split_data_for_flow_control() {
 	assert total3 == 100, 'total bytes mismatch: want 100, got ${total3}'
 }
 
-// test_split_data_for_flow_control_zero_window verifies that zero window returns empty.
 fn test_split_data_for_flow_control_zero_window() {
 	data := []u8{len: 50, init: u8(0x42)}
 	chunks := split_data_for_window(data, 0, 16384)
 	assert chunks.len == 0, 'expected 0 chunks when window is 0, got ${chunks.len}'
 }
 
-// test_priority_frame_roundtrip verifies PriorityFrame from_frame/to_frame conversion.
 fn test_priority_frame_roundtrip() {
-	// Build PRIORITY frame: exclusive=true, stream_dep=3, weight=15
 	mut payload := []u8{len: 5}
-	payload[0] = 0x80 // exclusive bit + stream_dep high byte
+	payload[0] = 0x80
 	payload[1] = 0x00
 	payload[2] = 0x00
-	payload[3] = 0x03 // stream_dep = 3
-	payload[4] = 15 // weight
+	payload[3] = 0x03
+	payload[4] = 15
 
 	original := Frame{
 		header:  FrameHeader{
@@ -475,12 +424,11 @@ fn test_priority_frame_roundtrip() {
 	assert back.header.stream_id == 5
 	assert back.payload.len == 5
 	back_raw := (u32(back.payload[0]) << 24) | (u32(back.payload[1]) << 16) | (u32(back.payload[2]) << 8) | u32(back.payload[3])
-	assert back_raw & 0x80000000 != 0 // exclusive preserved
-	assert back_raw & 0x7fffffff == 3 // stream_dependency preserved
-	assert back.payload[4] == 15 // weight preserved
+	assert back_raw & 0x80000000 != 0
+	assert back_raw & 0x7fffffff == 3
+	assert back.payload[4] == 15
 }
 
-// test_priority_frame_non_exclusive verifies PriorityFrame with exclusive=false.
 fn test_priority_frame_non_exclusive() {
 	payload := [u8(0x00), 0x00, 0x00, 0x07, u8(255)]
 	original := Frame{
@@ -502,7 +450,6 @@ fn test_priority_frame_non_exclusive() {
 	assert pf.weight == 255
 }
 
-// test_priority_frame_wrong_type verifies PriorityFrame.from_frame rejects non-PRIORITY frames.
 fn test_priority_frame_wrong_type() {
 	original := Frame{
 		header:  FrameHeader{
@@ -520,8 +467,6 @@ fn test_priority_frame_wrong_type() {
 	assert false, 'Should have rejected non-PRIORITY frame'
 }
 
-// test_new_settings_ack_frame verifies the factory creates a correct SETTINGS ACK frame
-// per RFC 7540 §6.5: ACK flag set, empty payload, stream 0, settings type.
 fn test_new_settings_ack_frame() {
 	frame := new_settings_ack_frame()
 	assert frame.header.frame_type == .settings
@@ -531,7 +476,6 @@ fn test_new_settings_ack_frame() {
 	assert frame.payload.len == 0
 }
 
-// test_new_settings_ack_frame_validates verifies the ACK frame passes frame validation.
 fn test_new_settings_ack_frame_validates() {
 	frame := new_settings_ack_frame()
 	frame.validate() or {
@@ -540,8 +484,6 @@ fn test_new_settings_ack_frame_validates() {
 	}
 }
 
-// test_validate_setting_value_max_frame_size_below_minimum verifies that max_frame_size
-// below 16384 is rejected per RFC 7540 §6.5.2.
 fn test_validate_setting_value_max_frame_size_below_minimum() {
 	validate_setting_value(.max_frame_size, 16383) or {
 		assert err.msg().contains('PROTOCOL_ERROR')
@@ -550,8 +492,6 @@ fn test_validate_setting_value_max_frame_size_below_minimum() {
 	assert false, 'max_frame_size below 16384 should be rejected'
 }
 
-// test_validate_setting_value_max_frame_size_above_maximum verifies that max_frame_size
-// above 2^24-1 is rejected per RFC 7540 §6.5.2.
 fn test_validate_setting_value_max_frame_size_above_maximum() {
 	validate_setting_value(.max_frame_size, 16777216) or {
 		assert err.msg().contains('PROTOCOL_ERROR')
@@ -560,23 +500,17 @@ fn test_validate_setting_value_max_frame_size_above_maximum() {
 	assert false, 'max_frame_size above 16777215 should be rejected'
 }
 
-// test_validate_setting_value_max_frame_size_at_boundaries verifies boundary values
-// for max_frame_size are accepted per RFC 7540 §6.5.2.
 fn test_validate_setting_value_max_frame_size_at_boundaries() {
-	// Minimum valid: 16384 (2^14)
 	validate_setting_value(.max_frame_size, 16384) or {
 		assert false, 'max_frame_size 16384 should be valid: ${err}'
 		return
 	}
-	// Maximum valid: 16777215 (2^24 - 1)
 	validate_setting_value(.max_frame_size, 16777215) or {
 		assert false, 'max_frame_size 16777215 should be valid: ${err}'
 		return
 	}
 }
 
-// test_validate_setting_value_initial_window_size_overflow verifies that initial_window_size
-// above 2^31-1 is rejected per RFC 7540 §6.5.2.
 fn test_validate_setting_value_initial_window_size_overflow() {
 	validate_setting_value(.initial_window_size, 2147483648) or {
 		assert err.msg().contains('FLOW_CONTROL_ERROR')
@@ -585,24 +519,18 @@ fn test_validate_setting_value_initial_window_size_overflow() {
 	assert false, 'initial_window_size above 2^31-1 should be rejected'
 }
 
-// test_validate_setting_value_initial_window_size_valid verifies valid initial_window_size
-// values are accepted per RFC 7540 §6.5.2.
 fn test_validate_setting_value_initial_window_size_valid() {
-	// Maximum valid: 2^31 - 1
 	validate_setting_value(.initial_window_size, 2147483647) or {
 		assert false, 'initial_window_size 2^31-1 should be valid: ${err}'
 		return
 	}
-	// Default: 65535
 	validate_setting_value(.initial_window_size, 65535) or {
 		assert false, 'initial_window_size 65535 should be valid: ${err}'
 		return
 	}
 }
 
-// test_rst_stream_frame_from_frame verifies RstStreamFrame from_frame conversion.
 fn test_rst_stream_frame_from_frame() {
-	// error_code = 0x8 (cancel)
 	payload := [u8(0x00), 0x00, 0x00, 0x08]
 	original := Frame{
 		header:  FrameHeader{

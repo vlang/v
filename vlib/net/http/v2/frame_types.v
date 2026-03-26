@@ -1,12 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
 // Structured frame type definitions and their conversion methods.
 
 // error_code_from_u32 converts a raw u32 to an ErrorCode enum value.
-// Unknown error codes default to internal_error.
 pub fn error_code_from_u32(code u32) ErrorCode {
 	return match code {
 		0x0 { .no_error }
@@ -74,7 +70,7 @@ pub fn (df DataFrame) to_frame() Frame {
 pub struct HeadersFrame {
 pub mut:
 	stream_id   u32
-	headers     []u8 // Encoded header block
+	headers     []u8
 	end_stream  bool
 	end_headers bool
 	padded      bool
@@ -395,7 +391,7 @@ pub fn (rf RstStreamFrame) to_frame() Frame {
 	}
 }
 
-// SettingPair holds a single parsed HTTP/2 setting key-value pair from a SETTINGS frame.
+// SettingPair holds a single parsed HTTP/2 setting key-value pair.
 pub struct SettingPair {
 pub:
 	id    SettingId
@@ -403,7 +399,6 @@ pub:
 }
 
 // parse_settings_payload parses the 6-byte key-value pairs from a SETTINGS frame payload.
-// Unknown setting IDs are silently skipped per RFC 7540 §6.5.2.
 pub fn parse_settings_payload(payload []u8) ![]SettingPair {
 	if payload.len % 6 != 0 {
 		return error('invalid SETTINGS frame: incomplete setting (${payload.len} bytes is not a multiple of 6)')
@@ -418,7 +413,7 @@ pub fn parse_settings_payload(payload []u8) ![]SettingPair {
 		idx += 6
 
 		setting_id := setting_id_from_u16(raw_id) or {
-			// Per RFC 7540 §6.5.2, unknown settings must be ignored
+			// Unknown settings are silently skipped per RFC 7540 §6.5.2
 			continue
 		}
 		pairs << SettingPair{

@@ -1,6 +1,3 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
 // ngtcp2 C library bindings for QUIC support
@@ -163,7 +160,7 @@ pub mut:
 	glitch_ratelim_rate            u64
 }
 
-// Version info (Moved up to be available for Transport Params)
+// Ngtcp2VersionInfo holds ngtcp2 version information.
 pub struct Ngtcp2VersionInfo {
 pub mut:
 	chosen_version        u32
@@ -362,9 +359,7 @@ fn C.SSL_set_tlsext_host_name(ssl voidptr, name &char) int
 // Timestamp helper
 fn C.ngtcp2_timestamp() u64
 
-// V wrapper functions
-
-// conn_client_new creates a new QUIC client connection
+// conn_client_new creates a new QUIC client connection.
 pub fn conn_client_new(dcid &Ngtcp2CidStruct, scid &Ngtcp2CidStruct, path &Ngtcp2PathStruct, version u32, callbacks &Ngtcp2CallbacksStruct, settings &Ngtcp2SettingsStruct, params &Ngtcp2TransportParamsStruct, user_data voidptr) !voidptr {
 	mut conn := unsafe { nil }
 	rv := C.ngtcp2_conn_client_new(&conn, dcid, scid, path, version, callbacks, settings,
@@ -465,16 +460,11 @@ pub fn conn_get_handshake_completed(conn voidptr) bool {
 }
 
 // conn_get_expiry returns the next expiry time for the connection in nanoseconds.
-// The caller should compare this against the current monotonic clock and call
-// conn_handle_expiry when the deadline is reached.
 pub fn conn_get_expiry(conn voidptr) u64 {
 	return C.ngtcp2_conn_get_expiry(conn)
 }
 
-// conn_handle_expiry notifies ngtcp2 that the timer for this connection has fired.
-// ts must be the current time in nanoseconds (use time.sys_mono_now()).
-// After calling this, invoke conn_write_pkt to send any retransmission packets
-// that ngtcp2 may have queued as a result.
+// conn_handle_expiry notifies ngtcp2 that the connection timer has fired.
 pub fn conn_handle_expiry(conn voidptr, ts u64) ! {
 	rv := C.ngtcp2_conn_handle_expiry(conn, ts)
 	if rv != 0 {

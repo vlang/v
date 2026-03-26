@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module http
 
-// The versions listed here are the most common ones.
+// HTTP protocol version definitions and conversions.
+
+// Version enumerates supported HTTP protocol versions.
 pub enum Version {
 	unknown
 	v1_1
@@ -12,6 +11,7 @@ pub enum Version {
 	v1_0
 }
 
+// str returns the standard HTTP version string.
 pub fn (v Version) str() string {
 	return match v {
 		.v1_1 { 'HTTP/1.1' }
@@ -22,8 +22,8 @@ pub fn (v Version) str() string {
 	}
 }
 
+// version_from_str parses an HTTP version string into a Version.
 pub fn version_from_str(v string) Version {
-	// println('VERSION FROM STR v="${v.to_lower()}"')
 	return match v.to_lower() {
 		'http/1.1' { Version.v1_1 }
 		'http/2.0', 'http/2' { Version.v2_0 }
@@ -33,7 +33,7 @@ pub fn version_from_str(v string) Version {
 	}
 }
 
-// protos returns the version major and minor numbers
+// protos returns the version major and minor numbers.
 pub fn (v Version) protos() (int, int) {
 	match v {
 		.v1_1 { return 1, 1 }
@@ -44,7 +44,7 @@ pub fn (v Version) protos() (int, int) {
 	}
 }
 
-// alpn_proto returns the ALPN protocol identifier for this version
+// alpn_proto returns the ALPN protocol identifier for this version.
 pub fn (v Version) alpn_proto() string {
 	return match v {
 		.v1_1 { 'http/1.1' }
@@ -55,7 +55,7 @@ pub fn (v Version) alpn_proto() string {
 	}
 }
 
-// version_from_alpn converts an ALPN protocol identifier to a Version
+// version_from_alpn converts an ALPN protocol identifier to a Version.
 pub fn version_from_alpn(proto string) Version {
 	return match proto {
 		'h2' { Version.v2_0 }

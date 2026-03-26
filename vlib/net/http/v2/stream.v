@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// Stream represents an HTTP/2 stream with flow control
+// HTTP/2 stream state and lifecycle (RFC 7540 §5.1).
+
+// Stream represents an HTTP/2 stream with flow control.
 pub struct Stream {
 pub mut:
 	id          u32
@@ -18,7 +17,7 @@ pub mut:
 	raw_header_block []u8
 }
 
-// StreamState represents HTTP/2 stream states per RFC 7540 Section 5.1
+// StreamState represents HTTP/2 stream states per RFC 7540 Section 5.1.
 pub enum StreamState {
 	idle
 	reserved_local

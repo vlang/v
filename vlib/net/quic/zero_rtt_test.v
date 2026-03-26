@@ -1,4 +1,4 @@
-// 0-RTT Connection Resumption Tests
+// Tests for 0-RTT connection resumption.
 module quic
 
 import time
@@ -33,7 +33,6 @@ fn test_session_cache_store_and_get() {
 fn test_session_cache_expiration() {
 	mut cache := new_session_cache()
 
-	// Create expired ticket (25 hours ago)
 	old_time := time.now().add(-25 * time.hour)
 	mut ticket := SessionTicket{
 		ticket:          [u8(1), 2, 3, 4, 5]
@@ -47,7 +46,6 @@ fn test_session_cache_expiration() {
 
 	cache.store('example.com', ticket)
 
-	// Should not retrieve expired ticket
 	retrieved := cache.get('example.com')
 	assert retrieved == none
 
@@ -88,10 +86,8 @@ fn test_zero_rtt_max_early_data_limit() {
 
 	mut conn := new_zero_rtt_connection(config)
 
-	// Try to send more than max_early_data
 	large_data := []u8{len: 200}
 	result := conn.add_early_data(large_data, 1) or {
-		// Should fail
 		assert err.msg().contains('exceeds maximum')
 		println('✓ 0-RTT max early data limit test passed')
 		return
@@ -114,11 +110,9 @@ fn test_zero_rtt_accept_reject() {
 		return
 	}
 
-	// Test accept
 	conn.accept()
 	assert conn.state == .accepted
 
-	// Test reject
 	mut conn2 := new_zero_rtt_connection(config)
 	conn2.add_early_data(data, 1) or {
 		assert false, 'Failed to add early data'
@@ -137,11 +131,9 @@ fn test_anti_replay_cache() {
 
 	token := 'unique-token-123'
 
-	// First check should succeed
 	result1 := cache.check_and_store(token)
 	assert result1 == true
 
-	// Second check with same token should fail (replay detected)
 	result2 := cache.check_and_store(token)
 	assert result2 == false
 

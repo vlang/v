@@ -1,3 +1,4 @@
+// Integration tests for QUIC connection management.
 module quic
 
 import net
@@ -89,14 +90,11 @@ fn test_connection_is_0rtt_checks_state() {
 	mut conn := Connection{
 		remote_addr: '127.0.0.1:4433'
 	}
-	// Default state should be disabled -> false
 	assert conn.is_0rtt_available() == false
 
-	// After acceptance, should be true
 	conn.zero_rtt.state = .accepted
 	assert conn.is_0rtt_available() == true
 
-	// After rejection, should be false
 	conn.zero_rtt.state = .rejected
 	assert conn.is_0rtt_available() == false
 
@@ -156,7 +154,6 @@ fn test_connection_save_session_ticket() {
 
 	conn.save_session_ticket(ticket)
 
-	// Verify ticket was stored in the shared cache
 	retrieved := cache.get('127.0.0.1') or {
 		assert false, 'Failed to retrieve saved ticket'
 		return
@@ -180,7 +177,6 @@ fn test_connection_save_session_ticket_nil_cache() {
 		ticket_lifetime: 86400
 	}
 
-	// Should not panic with nil cache
 	conn.save_session_ticket(ticket)
 
 	println('✓ Connection.save_session_ticket nil cache test passed')
@@ -221,7 +217,6 @@ fn test_connection_send_early_data_disabled() {
 	}
 
 	conn.send_early_data(4, 'test'.bytes()) or {
-		// Expected: cannot send when disabled
 		assert err.msg().contains('cannot send early data')
 		println('✓ Connection.send_early_data disabled test passed')
 		return
@@ -262,13 +257,11 @@ fn test_connection_complete_migration() {
 		migration:   new_connection_migration(addrs[0], remote_addrs[0])
 	}
 
-	// Probe new path
 	conn.migration.probe_path(addrs[0], new_remote_addrs[0]) or {
 		assert false, 'Failed to probe path: ${err}'
 		return
 	}
 
-	// Get the challenge for the probed path
 	last_path := conn.migration.alternative_paths.last()
 	pk := path_to_key(last_path)
 	challenge := conn.migration.pending_challenges[pk] or {
@@ -276,12 +269,10 @@ fn test_connection_complete_migration() {
 		return
 	}
 
-	// Create matching response
 	response := PathResponse{
 		data: challenge.data
 	}
 
-	// Complete migration
 	conn.complete_migration(response) or {
 		assert false, 'Complete migration failed: ${err}'
 		return
@@ -335,7 +326,6 @@ fn test_connection_migrate_connection() {
 		migration:   new_connection_migration(addrs[0], remote_addrs[0])
 	}
 
-	// Migrate to new address
 	conn.migrate_connection('10.0.0.1:4433') or {
 		println('  ⚠️ Skipping test: ${err}')
 		return

@@ -1,15 +1,9 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
+// QUIC TLS 1.3 handshake using ngtcp2 crypto callbacks.
 import time
 
-// QUIC Handshake Implementation
-// Uses ngtcp2's built-in TLS 1.3 handshake via crypto callbacks.
-// The ngtcp2_crypto_ossl callbacks handle the actual TLS operations.
-
-// HandshakeState represents the state of the QUIC handshake
+// HandshakeState represents the state of the QUIC handshake.
 pub enum HandshakeState {
 	initial
 	handshake_in_progress
@@ -17,10 +11,7 @@ pub enum HandshakeState {
 	failed
 }
 
-// perform_handshake performs the QUIC handshake using ngtcp2 callbacks.
-// The crypto callbacks (client_initial, recv_crypto_data, etc.) drive
-// the TLS 1.3 handshake automatically through ngtcp2_conn_write_pkt
-// and ngtcp2_conn_read_pkt.
+// perform_handshake performs the client-side QUIC TLS 1.3 handshake.
 pub fn (mut c Connection) perform_handshake() ! {
 	if c.closed {
 		return error('connection closed')
@@ -34,10 +25,9 @@ pub fn (mut c Connection) perform_handshake() ! {
 		eprintln('[QUIC] Starting client handshake...')
 	}
 
-	// Handshake loop: write initial packet, then read/write until complete
 	max_attempts := 50
 	for attempt := 0; attempt < max_attempts; attempt++ {
-		ts := u64(time.now().unix_milli()) * 1000000 // nanoseconds
+		ts := u64(time.now().unix_milli()) * 1000000
 		mut pi := Ngtcp2PktInfo{}
 
 		c.send_handshake_packet(ts, mut pi)!
@@ -64,7 +54,7 @@ pub fn (mut c Connection) perform_handshake() ! {
 	return error('handshake timeout after ${max_attempts} attempts')
 }
 
-// perform_handshake_server performs server-side QUIC handshake
+// perform_handshake_server performs the server-side QUIC handshake.
 pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file string) ! {
 	if c.closed {
 		return error('connection closed')
@@ -78,7 +68,6 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 		eprintln('[QUIC] Starting server handshake...')
 	}
 
-	// Server handshake loop
 	max_attempts := 50
 	for attempt := 0; attempt < max_attempts; attempt++ {
 		ts := u64(time.now().unix_milli()) * 1000000
@@ -100,7 +89,6 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 	return error('server handshake timeout')
 }
 
-// send_handshake_packet writes and sends a single handshake packet via UDP.
 fn (mut c Connection) send_handshake_packet(ts u64, mut pi Ngtcp2PktInfo) ! {
 	nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or {
 		return error('failed to write handshake packet: ${err}')
@@ -113,8 +101,6 @@ fn (mut c Connection) send_handshake_packet(ts u64, mut pi Ngtcp2PktInfo) ! {
 	}
 }
 
-// recv_handshake_packet reads a packet from the peer and processes it.
-// Timeout and discarded packets are silently handled; fatal errors are propagated.
 fn (mut c Connection) recv_handshake_packet(ts u64, mut pi Ngtcp2PktInfo, role string) ! {
 	c.udp_socket.set_read_timeout(2 * time.second)
 	n, _ := c.udp_socket.read(mut c.recv_buf) or {
@@ -140,7 +126,7 @@ fn (mut c Connection) recv_handshake_packet(ts u64, mut pi Ngtcp2PktInfo, role s
 	}
 }
 
-// send_with_crypto sends data with encryption via ngtcp2 callbacks
+// send_with_crypto sends data with encryption via ngtcp2 callbacks.
 pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx &CryptoContext) ! {
 	if c.closed {
 		return error('connection closed')
@@ -150,7 +136,6 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 		return error('handshake not completed')
 	}
 
-	// Write stream data (ngtcp2 handles encryption via callbacks)
 	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
@@ -163,12 +148,11 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 		}
 	}
 
-	// Update stream data
 	mut stream := c.streams[stream_id] or { return error('stream not found') }
 	stream.data << data
 }
 
-// recv_with_crypto receives data with decryption via ngtcp2 callbacks
+// recv_with_crypto receives data with decryption via ngtcp2 callbacks.
 pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoContext) ![]u8 {
 	if c.closed {
 		return error('connection closed')
@@ -178,14 +162,12 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 		return error('handshake not completed')
 	}
 
-	// Read packet from UDP
 	n, _ := c.udp_socket.read(mut c.recv_buf) or { return error('failed to read packet: ${err}') }
 
 	if n == 0 {
 		return []u8{}
 	}
 
-	// Process packet with ngtcp2 (handles decryption via callbacks)
 	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
@@ -196,7 +178,6 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 		return error('failed to read packet: ${err}')
 	}
 
-	// Return stream data
 	stream := c.streams[stream_id] or { return error('stream not found') }
 	return stream.data.clone()
 }

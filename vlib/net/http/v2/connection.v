@@ -1,35 +1,30 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
+// HTTP/2 connection management, settings exchange, and frame I/O.
 import net.ssl
 
-// Connection represents an HTTP/2 connection with full duplex streaming over TLS
+// Connection represents an HTTP/2 connection with full duplex streaming over TLS.
 pub struct Connection {
 mut:
-	ssl_conn           &ssl.SSLConn = unsafe { nil }
-	encoder            Encoder
-	decoder            Decoder
-	streams            map[u32]&Stream
-	next_stream_id     u32 = 1
-	settings           Settings
-	remote_settings    Settings
-	window_size        i64 = 65535
-	remote_window_size i64 = 65535
-	last_stream_id     u32
-	closed             bool
-	// Flow control: track inbound data to replenish the receive window
+	ssl_conn             &ssl.SSLConn = unsafe { nil }
+	encoder              Encoder
+	decoder              Decoder
+	streams              map[u32]&Stream
+	next_stream_id       u32 = 1
+	settings             Settings
+	remote_settings      Settings
+	window_size          i64 = 65535
+	remote_window_size   i64 = 65535
+	last_stream_id       u32
+	closed               bool
 	recv_window          i64 = 65535
 	recv_window_consumed i64
 }
 
-// write_settings sends a SETTINGS frame to configure connection parameters
+// write_settings sends a SETTINGS frame to configure connection parameters.
 pub fn (mut c Connection) write_settings() ! {
-	// Pre-allocate payload with exact size (5 settings * 6 bytes each = 30 bytes)
 	mut payload := []u8{cap: 30}
 
-	// Helper function to encode a setting
 	encode_setting := fn (mut payload []u8, id SettingId, value u32) {
 		payload << u8(u16(id) >> 8)
 		payload << u8(u16(id))
@@ -39,7 +34,6 @@ pub fn (mut c Connection) write_settings() ! {
 		payload << u8(value)
 	}
 
-	// Encode each setting
 	encode_setting(mut payload, .header_table_size, c.settings.header_table_size)
 	encode_setting(mut payload, .enable_push, if c.settings.enable_push { u32(1) } else { u32(0) })
 	encode_setting(mut payload, .max_concurrent_streams, c.settings.max_concurrent_streams)
@@ -59,11 +53,8 @@ pub fn (mut c Connection) write_settings() ! {
 	c.write_frame(frame)!
 }
 
-// read_settings reads and processes a SETTINGS frame from the server,
-// skipping over non-SETTINGS frames (e.g. WINDOW_UPDATE) that may precede it.
+// read_settings reads and processes a SETTINGS frame from the server.
 pub fn (mut c Connection) read_settings() ! {
-	// Limit the number of frames to read before receiving SETTINGS
-	// to prevent infinite loop if the server never sends one.
 	max_frames := 10
 	for frame_count := 0; frame_count < max_frames; frame_count++ {
 		frame := c.read_frame()!
@@ -79,7 +70,6 @@ pub fn (mut c Connection) read_settings() ! {
 				return
 			}
 			.window_update {
-				// WINDOW_UPDATE on stream 0 adjusts the connection window
 				if frame.header.stream_id == 0 && frame.payload.len >= 4 {
 					increment := (u32(frame.payload[0]) << 24) | (u32(frame.payload[1]) << 16) | (u32(frame.payload[2]) << 8) | u32(frame.payload[3])
 					c.remote_window_size += i64(increment & 0x7fffffff)
@@ -90,7 +80,6 @@ pub fn (mut c Connection) read_settings() ! {
 				return error(extract_goaway_error(frame.payload))
 			}
 			else {
-				// Skip unexpected frames during setup
 				continue
 			}
 		}
@@ -98,8 +87,6 @@ pub fn (mut c Connection) read_settings() ! {
 	return error('did not receive SETTINGS frame within ${max_frames} frames')
 }
 
-// apply_remote_settings applies received setting pairs to the connection's remote settings.
-// Validates each value per RFC 7540 §6.5.2 before applying.
 fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 	for pair in pairs {
 		validate_setting_value(pair.id, pair.value)!
@@ -114,12 +101,10 @@ fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 	}
 }
 
-// write_settings_ack sends a SETTINGS ACK frame to acknowledge received settings.
 fn (mut c Connection) write_settings_ack() ! {
 	c.write_frame(new_settings_ack_frame())!
 }
 
-// extract_goaway_error builds an error message from a GOAWAY frame payload.
 fn extract_goaway_error(payload []u8) string {
 	mut error_code := u32(0)
 	if payload.len >= 8 {
@@ -133,7 +118,7 @@ fn extract_goaway_error(payload []u8) string {
 	return 'server sent GOAWAY (error code: ${error_code}, debug: ${debug_data})'
 }
 
-// write_frame writes an HTTP/2 frame to the TLS connection
+// write_frame writes an HTTP/2 frame to the TLS connection.
 pub fn (mut c Connection) write_frame(frame Frame) ! {
 	data := frame.encode()
 	$if trace_http2 ? {
@@ -142,17 +127,15 @@ pub fn (mut c Connection) write_frame(frame Frame) ! {
 	c.ssl_conn.write(data)!
 }
 
-// read_frame reads an HTTP/2 frame from the TLS connection
+// read_frame reads an HTTP/2 frame from the TLS connection.
 pub fn (mut c Connection) read_frame() !Frame {
 	mut header_buf := []u8{len: frame_header_size}
 	read_exact(mut c.ssl_conn, mut header_buf, frame_header_size)!
 
 	header := parse_frame_header(header_buf) or {
-		// Per RFC 7540 §4.1: unknown frame type — discard this frame
 		return error('unknown frame type, frame discarded')
 	}
 
-	// Reject frames exceeding the negotiated max frame size (DoS protection)
 	if header.length > c.remote_settings.max_frame_size {
 		return error('frame size ${header.length} exceeds max_frame_size ${c.remote_settings.max_frame_size}')
 	}

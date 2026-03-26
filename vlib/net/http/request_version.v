@@ -1,52 +1,23 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module http
 
+// HTTP version negotiation and multi-version request dispatch.
 import net.urllib
 import net.http.v2
 import net.http.v3
 
-// negotiate_version selects the HTTP version for a request.
-//
-// When req.version is explicitly set, that value is honoured directly.
-// For plain HTTP the function falls back to HTTP/1.1 because HTTP/2 and
-// HTTP/3 both require TLS.
-// For HTTPS it defaults to HTTP/2, which has the broadest server support.
-// HTTP/3 (QUIC) is still experimental and its QUIC transport layer is not
-// yet fully implemented in V.
-//
-// NOTE: ALPN result inspection is now available via
-// SSLConn.get_alpn_selected(), which returns the server-selected protocol
-// after TLS handshake (both mbedtls and openssl backends).
-//
-// TODO: Integrate get_alpn_selected() into this negotiation flow:
-//   1. Perform TLS handshake with ALPN extension: ['h3', 'h2', 'http/1.1']
-//   2. Call ssl_conn.get_alpn_selected() to read the negotiated protocol
-//   3. Return the matching Version enum value
 fn (req &Request) negotiate_version(url urllib.URL) Version {
-	// If version is explicitly set, use it
 	if req.version != .unknown {
 		return req.version
 	}
 
-	// Only HTTPS supports HTTP/2 and HTTP/3
 	if url.scheme != 'https' {
 		return .v1_1
 	}
 
-	// Default to HTTP/2 for HTTPS connections.
-	// HTTP/2 is more widely supported than HTTP/3, and the HTTP/3 module
-	// is still experimental (QUIC transport is not complete).
 	return .v2_0
 }
 
-// to_v2_method bridges the net.http.Method and v2.Method duplicate enums by
-// converting a net.http.Method value to its v2 equivalent.
-//
-// TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
-// These three definitions should eventually be unified into a single enum
-// in net.http once the cross-module import story is settled.
+// Method enums are duplicated across net.http, v2, and v3 due to circular import constraints.
 fn to_v2_method(m Method) v2.Method {
 	return match m {
 		.get { v2.Method.get }
@@ -60,12 +31,7 @@ fn to_v2_method(m Method) v2.Method {
 	}
 }
 
-// to_v3_method bridges the net.http.Method and v3.Method duplicate enums by
-// converting a net.http.Method value to its v3 equivalent.
-//
-// TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
-// These three definitions should eventually be unified into a single enum
-// in net.http once the cross-module import story is settled.
+// Method enums are duplicated across net.http, v2, and v3 due to circular import constraints.
 fn to_v3_method(m Method) v3.Method {
 	return match m {
 		.get { v3.Method.get }
@@ -79,9 +45,6 @@ fn to_v3_method(m Method) v3.Method {
 	}
 }
 
-// build_headers_map builds a string-keyed headers map from the request,
-// injecting user-agent and content-length when absent.
-// Used by both do_http2 and do_http3.
 fn (req &Request) build_headers_map() map[string]string {
 	mut headers_map := map[string]string{}
 	for key in req.header.keys() {
@@ -90,35 +53,29 @@ fn (req &Request) build_headers_map() map[string]string {
 			headers_map[key] = values.join('; ')
 		}
 	}
-	// Add user-agent if not present
 	if 'user-agent' !in headers_map {
 		headers_map['user-agent'] = req.user_agent
 	}
-	// Add content-length if there's a body
 	if req.data.len > 0 && 'content-length' !in headers_map {
 		headers_map['content-length'] = req.data.len.str()
 	}
 	return headers_map
 }
 
-// build_request_path returns the full path (with optional query string) for
-// the request URL.
 fn build_request_path(url urllib.URL) string {
 	p := url.escaped_path().trim_left('/')
 	return if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 }
 
-// do_http2 performs an HTTP/2 request
 fn (req &Request) do_http2(url urllib.URL) !Response {
 	host_name := url.hostname()
 	mut nport := url.port().int()
 	if nport == 0 {
-		nport = 443 // HTTPS default
+		nport = 443
 	}
 
 	address := '${host_name}:${nport}'
 
-	// Create HTTP/2 client
 	mut client := v2.new_client(address) or { return error('HTTP/2 connection failed: ${err}') }
 
 	defer {
@@ -133,10 +90,8 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 		headers: req.build_headers_map()
 	}
 
-	// Send request
 	v2_resp := client.request(v2_req) or { return error('HTTP/2 request failed: ${err}') }
 
-	// Convert v2.Response to http.Response
 	mut resp_header := new_header()
 	for key, value in v2_resp.headers {
 		resp_header.add_custom(key, value) or {}
@@ -149,17 +104,15 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 	}
 }
 
-// do_http3 performs an HTTP/3 request
 fn (req &Request) do_http3(url urllib.URL) !Response {
 	host_name := url.hostname()
 	mut nport := url.port().int()
 	if nport == 0 {
-		nport = 443 // HTTPS default
+		nport = 443
 	}
 
 	address := '${host_name}:${nport}'
 
-	// Create HTTP/3 client
 	mut client := v3.new_client(address) or { return error('HTTP/3 connection failed: ${err}') }
 
 	defer {
@@ -174,10 +127,8 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 		headers: req.build_headers_map()
 	}
 
-	// Send request
 	v3_resp := client.request(v3_req) or { return error('HTTP/3 request failed: ${err}') }
 
-	// Convert v3.Response to http.Response
 	mut resp_header := new_header()
 	for key, value in v3_resp.headers {
 		resp_header.add_custom(key, value) or {}

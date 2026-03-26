@@ -1,11 +1,7 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// HPACK static table and lookup maps (RFC 7541 Appendix A)
+// HPACK static table and lookup maps (RFC 7541 Appendix A).
 
-// Static table entries (RFC 7541 Appendix A)
 const static_table = [
 	HeaderField{'', ''},
 	HeaderField{':authority', ''},
@@ -71,28 +67,23 @@ const static_table = [
 	HeaderField{'www-authenticate', ''},
 ]
 
-// Static table lookup maps for O(1) access
-// Map from "name:value" to index (for exact matches)
 const static_table_exact_map = build_exact_map()
 
-// Map from "name" to list of indices (for name-only matches)
 const static_table_name_map = build_name_map()
 
-// build_exact_map builds a map for exact header matches
 fn build_exact_map() map[string]int {
 	mut m := map[string]int{}
 	for i, entry in static_table {
 		if entry.name != '' {
 			key := '${entry.name}:${entry.value}'
 			if key !in m {
-				m[key] = i // static_table[0] is a dummy; real entries start at index 1
+				m[key] = i
 			}
 		}
 	}
 	return m
 }
 
-// build_name_map builds a map for name-only matches
 fn build_name_map() map[string][]int {
 	mut m := map[string][]int{}
 	for i, entry in static_table {
@@ -100,7 +91,7 @@ fn build_name_map() map[string][]int {
 			if entry.name !in m {
 				m[entry.name] = []int{}
 			}
-			m[entry.name] << i // static_table[0] is a dummy; real entries start at index 1
+			m[entry.name] << i
 		}
 	}
 	return m

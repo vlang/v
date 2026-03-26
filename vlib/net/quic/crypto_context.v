@@ -1,11 +1,6 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
-// TLS 1.3 crypto context for ngtcp2.
-// This module holds the CryptoContext struct, its constructors, free/handshake
-// methods, and shared OpenSSL type aliases / C declarations.
+// TLS 1.3 crypto context management for QUIC connections.
 
 #flag -lssl
 #flag -lcrypto
@@ -65,7 +60,7 @@ pub mut:
 	rx_hp_key []u8
 }
 
-// --- SSL/TLS C function declarations ---
+// SSL/TLS C function declarations
 
 fn C.SSL_CTX_new(method &SSL_METHOD) SSL_CTX
 fn C.SSL_CTX_free(ctx SSL_CTX)

@@ -1,15 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// Performance optimizations for HTTP/2 implementation
+// HPACK encoding with buffer reuse and Huffman optimization.
 
 // encode_optimized performs HPACK encoding with buffer reuse for better performance.
-// It searches the static and dynamic tables for exact or name-only matches and
-// uses RFC 7541-compliant multi-byte integer encoding for indices >= 127.
-// Updates the dynamic table when emitting literal representations.
-// Returns the number of bytes written to the buffer.
 pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int {
 	mut offset := 0
 
@@ -17,7 +10,6 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 		mut found_exact_idx := 0
 		mut found_name_idx := 0
 
-		// O(1) static table lookup using precomputed maps
 		exact_key := '${header.name}:${header.value}'
 		if exact_key in static_table_exact_map {
 			found_exact_idx = static_table_exact_map[exact_key]
@@ -25,7 +17,6 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 			found_name_idx = static_table_name_map[header.name][0]
 		}
 
-		// Search dynamic table if no static exact match found
 		if found_exact_idx == 0 {
 			for i := 0; i < e.dynamic_table.entries.len; i++ {
 				entry := e.dynamic_table.entries[i]
@@ -52,17 +43,12 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 	return offset
 }
 
-// encode_optimized_indexed writes an indexed header field to the buffer (RFC 7541 §6.1).
-// Returns the number of bytes written.
 fn encode_optimized_indexed(idx int, mut buf []u8, offset int) int {
 	encoded_len := encode_integer(u64(idx), 7, mut buf, offset)
 	buf[offset] |= 0x80
 	return encoded_len
 }
 
-// encode_optimized_literal writes a literal header field to the buffer (RFC 7541 §6.2.1).
-// When name_idx > 0, uses indexed name; otherwise encodes the name fresh.
-// Returns the new offset after writing.
 fn encode_optimized_literal(field HeaderField, name_idx int, mut buf []u8, offset int) int {
 	mut pos := offset
 	if name_idx > 0 {
@@ -81,9 +67,7 @@ fn encode_optimized_literal(field HeaderField, name_idx int, mut buf []u8, offse
 	return pos
 }
 
-// encode_integer encodes a variable-length integer using fast encoding.
-// Returns the number of bytes written to the buffer, or 0 if the buffer
-// is too small to hold the encoded integer at the given offset.
+// encode_integer encodes a variable-length HPACK integer into the buffer.
 pub fn encode_integer(value u64, prefix_bits u8, mut buf []u8, offset int) int {
 	max_prefix := (u64(1) << prefix_bits) - 1
 
@@ -118,9 +102,6 @@ pub fn encode_integer(value u64, prefix_bits u8, mut buf []u8, offset int) int {
 	return pos - offset + 1
 }
 
-// encode_optimized_string encodes a string into the buffer using Huffman coding when
-// it produces a shorter representation (RFC 7541 §5.2), otherwise uses literal encoding.
-// Returns the new offset after writing.
 fn encode_optimized_string(s string, mut buf []u8, start_offset int) int {
 	mut offset := start_offset
 	raw_bytes := s.bytes()
@@ -128,10 +109,9 @@ fn encode_optimized_string(s string, mut buf []u8, start_offset int) int {
 	huffman_len := (huffman_bits + 7) / 8
 
 	if huffman_len < s.len {
-		// Huffman is shorter — use it
 		encoded := encode_huffman(raw_bytes)
 		len_bytes := encode_integer(u64(huffman_len), 7, mut buf, offset)
-		buf[offset] |= 0x80 // set Huffman bit
+		buf[offset] |= 0x80
 		offset += len_bytes
 		for b in encoded {
 			if offset >= buf.len {
@@ -141,7 +121,6 @@ fn encode_optimized_string(s string, mut buf []u8, start_offset int) int {
 			offset++
 		}
 	} else {
-		// Literal is same size or shorter
 		len_bytes := encode_integer(u64(s.len), 7, mut buf, offset)
 		offset += len_bytes
 		for b in raw_bytes {

@@ -1,7 +1,3 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
-
 // C helper functions for QUIC/ngtcp2 integration
 // Provides callback implementations and crypto setup
 

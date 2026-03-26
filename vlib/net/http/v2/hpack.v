@@ -1,60 +1,49 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// HPACK - Header Compression for HTTP/2 (RFC 7541)
+// HPACK header compression for HTTP/2 (RFC 7541).
 
-// HeaderField represents a name-value pair
+// HeaderField represents a name-value pair.
 pub struct HeaderField {
 pub mut:
 	name  string
 	value string
 }
 
-// size returns the size of the header field in bytes (RFC 7541 Section 4.1)
+// size returns the size of the header field in bytes (RFC 7541 Section 4.1).
 pub fn (h HeaderField) size() int {
 	return 32 + h.name.len + h.value.len
 }
 
 // DynamicTable represents the HPACK dynamic table.
-// HPACK uses LIFO ordering per RFC 7541 §2.3.3: the newest entry is always at
-// index 0 (front of array). Older entries are pushed toward higher indices and
-// evicted from the back. This is the opposite of QPACK (HTTP/3), which uses
-// absolute/relative indexing with entries appended to the back.
+// Uses LIFO ordering per RFC 7541 §2.3.3: newest entry at index 0.
 pub struct DynamicTable {
 mut:
 	entries  []HeaderField
 	size     int
-	max_size int = 4096 // Default from RFC 7541
+	max_size int = 4096
 }
 
 // add adds an entry to the dynamic table, evicting oldest entries as needed (RFC 7541 §4.4).
-// If the new entry alone exceeds max_size, the table is emptied and the entry is not added.
 pub fn (mut dt DynamicTable) add(field HeaderField) {
 	entry_size := field.size()
 
-	// Per RFC 7541 §4.4: if the new entry is larger than max_size, empty the table
 	if entry_size > dt.max_size {
 		dt.entries = []HeaderField{}
 		dt.size = 0
 		return
 	}
 
-	// Evict oldest entries (from end of array) until there is room
 	for dt.size + entry_size > dt.max_size && dt.entries.len > 0 {
 		removed := dt.entries.pop()
 		dt.size -= removed.size()
 	}
 
-	// Add new entry at the beginning (newest = index 1).
-	// insert(0) is O(n), but max_size enforcement keeps the array small
-	// (default 4096 bytes → at most ~128 entries), so this is acceptable.
+	// insert(0) is O(n), but max_size keeps the array small (~128 entries max)
 	dt.entries.insert(0, field)
 	dt.size += entry_size
 }
 
-// get retrieves an entry from the dynamic table (1-indexed)
+// get retrieves an entry from the dynamic table (1-indexed).
 pub fn (dt DynamicTable) get(index int) ?HeaderField {
 	if index < 1 || index > dt.entries.len {
 		return none
@@ -62,62 +51,56 @@ pub fn (dt DynamicTable) get(index int) ?HeaderField {
 	return dt.entries[index - 1]
 }
 
-// set_max_size updates the maximum size of the dynamic table
+// set_max_size updates the maximum size of the dynamic table.
 pub fn (mut dt DynamicTable) set_max_size(size int) {
 	dt.max_size = size
 
-	// Evict entries if necessary
 	for dt.size > dt.max_size && dt.entries.len > 0 {
 		removed := dt.entries.pop()
 		dt.size -= removed.size()
 	}
 }
 
-// Encoder encodes headers using HPACK
+// Encoder encodes headers using HPACK.
 pub struct Encoder {
 mut:
 	dynamic_table DynamicTable
 }
 
-// new_encoder creates a new HPACK encoder
+// new_encoder creates a new HPACK encoder.
 pub fn new_encoder() Encoder {
 	return Encoder{
 		dynamic_table: DynamicTable{}
 	}
 }
 
-// Decoder decodes headers using HPACK
+// Decoder decodes headers using HPACK.
 pub struct Decoder {
 mut:
 	dynamic_table DynamicTable
 }
 
-// new_decoder creates a new HPACK decoder
+// new_decoder creates a new HPACK decoder.
 pub fn new_decoder() Decoder {
 	return Decoder{
 		dynamic_table: DynamicTable{}
 	}
 }
 
-// get_indexed retrieves a header field from static or dynamic table
 fn get_indexed(dynamic_table &DynamicTable, index int) ?HeaderField {
 	if index == 0 {
 		return none
 	}
 
-	// Static table (index directly corresponds to array position since static_table[0] is dummy)
 	if index < static_table.len {
 		return static_table[index]
 	}
 
-	// Dynamic table
 	dynamic_index := index - static_table.len + 1
 	return dynamic_table.get(dynamic_index)
 }
 
-// encode_hpack_integer encodes an integer using HPACK integer representation
 fn encode_hpack_integer(value int, prefix_bits int) []u8 {
-	// Pre-allocate with capacity for worst case (5 bytes for 32-bit int)
 	mut result := []u8{cap: 5}
 	max_prefix := (1 << prefix_bits) - 1
 
@@ -137,7 +120,6 @@ fn encode_hpack_integer(value int, prefix_bits int) []u8 {
 	return result
 }
 
-// decode_integer decodes an integer using HPACK integer representation
 fn decode_integer(data []u8, prefix_bits int) !(int, int) {
 	if data.len == 0 {
 		return error('empty data')
@@ -174,7 +156,6 @@ fn decode_integer(data []u8, prefix_bits int) !(int, int) {
 	return error('incomplete integer')
 }
 
-// encode_string encodes a string (with optional Huffman coding)
 fn encode_string(s string, huffman bool) []u8 {
 	if huffman {
 		huffman_encoded := encode_huffman(s.bytes())
@@ -195,7 +176,6 @@ fn encode_string(s string, huffman bool) []u8 {
 	}
 }
 
-// decode_string decodes a string (with optional Huffman coding)
 fn decode_string(data []u8) !(string, int) {
 	if data.len == 0 {
 		return error('empty data')
@@ -218,31 +198,27 @@ fn decode_string(data []u8) !(string, int) {
 	return str_data.bytestr(), bytes_read + length
 }
 
-// encode encodes a list of header fields
+// encode encodes a list of header fields.
 pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
-	// Pre-allocate result with estimated size
 	mut estimated_size := 0
 	for header in headers {
-		estimated_size += header.name.len + header.value.len + 10 // +10 for encoding overhead
+		estimated_size += header.name.len + header.value.len + 10
 	}
 	mut result := []u8{cap: estimated_size}
 
 	for header in headers {
 		mut found_index := 0
 		mut found_name_index := 0
-		// Try exact match in static table using hashmap (O(1))
 		exact_key := '${header.name}:${header.value}'
 		if exact_key in static_table_exact_map {
 			found_index = static_table_exact_map[exact_key]
 		}
-		// If no exact match, try name-only match in static table
 		if found_index == 0 && header.name in static_table_name_map {
 			indices := static_table_name_map[header.name]
 			if indices.len > 0 {
-				found_name_index = indices[0] // Use first match
+				found_name_index = indices[0]
 			}
 		}
-		// Search dynamic table (still linear, but typically much smaller)
 		if found_index == 0 {
 			for i := 0; i < e.dynamic_table.entries.len; i++ {
 				entry := e.dynamic_table.entries[i]
@@ -270,7 +246,6 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	return result
 }
 
-// encode_indexed_field writes an indexed header field representation (RFC 7541 §6.1).
 fn encode_indexed_field(idx int, mut result []u8) {
 	encoded := encode_hpack_integer(idx, 7)
 	result << (encoded[0] | 0x80)
@@ -279,7 +254,6 @@ fn encode_indexed_field(idx int, mut result []u8) {
 	}
 }
 
-// encode_literal_indexed_name writes a literal header with indexed name (RFC 7541 §6.2.1).
 fn encode_literal_indexed_name(name_idx int, field HeaderField, mut result []u8) {
 	encoded := encode_hpack_integer(name_idx, 6)
 	result << (encoded[0] | 0x40)
@@ -289,16 +263,12 @@ fn encode_literal_indexed_name(name_idx int, field HeaderField, mut result []u8)
 	result << encode_string(field.value, true)
 }
 
-// encode_literal_new_name writes a literal header with new name (RFC 7541 §6.2.1).
 fn encode_literal_new_name(field HeaderField, mut result []u8) {
 	result << u8(0x40)
 	result << encode_string(field.name, true)
 	result << encode_string(field.value, true)
 }
 
-// decode_literal_field decodes a literal header field (name + value) from the data.
-// prefix_bits controls the integer prefix size for the name index.
-// Returns the decoded HeaderField and the number of bytes consumed.
 fn decode_literal_field(dynamic_table &DynamicTable, data []u8, prefix_bits int) !(HeaderField, int) {
 	mut idx := 0
 	index, bytes_read := decode_integer(data, prefix_bits)!
@@ -320,7 +290,7 @@ fn decode_literal_field(dynamic_table &DynamicTable, data []u8, prefix_bits int)
 	return HeaderField{name, value}, idx
 }
 
-// decode decodes a header block
+// decode decodes a header block.
 pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	mut headers := []HeaderField{}
 	mut idx := 0
@@ -329,7 +299,6 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 		first_byte := data[idx]
 
 		if (first_byte & 0x80) != 0 {
-			// Indexed header field (RFC 7541 Section 6.1)
 			index, bytes_read := decode_integer(data[idx..], 7)!
 			idx += bytes_read
 
@@ -338,24 +307,19 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 			}
 			headers << field
 		} else if (first_byte & 0x40) != 0 {
-			// Literal header field with incremental indexing (RFC 7541 Section 6.2.1)
 			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 6)!
 			idx += consumed
 			headers << field
 			d.dynamic_table.add(field)
 		} else if (first_byte & 0x20) != 0 {
-			// Dynamic table size update (RFC 7541 Section 6.3)
 			size, bytes_read := decode_integer(data[idx..], 5)!
 			idx += bytes_read
 			d.dynamic_table.set_max_size(size)
 		} else if (first_byte & 0xf0) == 0x10 {
-			// Literal Header Field Never Indexed (RFC 7541 §6.2.3)
 			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 4)!
 			idx += consumed
-			// Never add to dynamic table; preserve never-indexed semantics
 			headers << field
 		} else {
-			// Literal header field without indexing (RFC 7541 Section 6.2.2)
 			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 4)!
 			idx += consumed
 			headers << field

@@ -1,8 +1,6 @@
 module v2
 
 // Tests for server outbound flow control (RFC 7540 §6.9).
-// Verifies OutboundFlowControl tracks peer windows, rejects zero increments,
-// detects overflow, and adjusts windows on SETTINGS changes.
 
 fn test_outbound_flow_control_default_values() {
 	fc := OutboundFlowControl{}
@@ -31,7 +29,6 @@ fn test_outbound_flow_control_update_stream_window() {
 
 fn test_outbound_flow_control_zero_increment_connection_error() {
 	mut fc := OutboundFlowControl{}
-	// RFC 7540 §6.9.1: increment of 0 is PROTOCOL_ERROR
 	fc.update_connection_window(u32(0)) or {
 		assert err.msg().contains('PROTOCOL_ERROR'), 'zero increment should be PROTOCOL_ERROR'
 		return
@@ -52,7 +49,6 @@ fn test_outbound_flow_control_zero_increment_stream_error() {
 fn test_outbound_flow_control_connection_window_overflow() {
 	mut fc := OutboundFlowControl{}
 	fc.connection_window = 0x7fffffff - 10
-	// Increment that would exceed 2^31-1
 	fc.update_connection_window(u32(20)) or {
 		assert err.msg().contains('FLOW_CONTROL_ERROR'), 'overflow should be FLOW_CONTROL_ERROR'
 		return
@@ -76,7 +72,6 @@ fn test_outbound_flow_control_available_window() {
 	fc.connection_window = 1000
 	fc.init_stream(u32(1), u32(65535))
 	fc.stream_windows[u32(1)] = 500
-	// Available window should be min(connection, stream)
 	assert fc.available_window(u32(1)) == i64(500), 'available should be min of connection and stream'
 
 	fc.stream_windows[u32(1)] = 2000
@@ -86,7 +81,6 @@ fn test_outbound_flow_control_available_window() {
 fn test_outbound_flow_control_available_window_unknown_stream() {
 	mut fc := OutboundFlowControl{}
 	fc.connection_window = 1000
-	// Unknown stream returns 0
 	assert fc.available_window(u32(99)) == i64(0), 'unknown stream should return 0'
 }
 
@@ -102,10 +96,8 @@ fn test_outbound_flow_control_consume() {
 
 fn test_outbound_flow_control_adjust_initial_window_size() {
 	mut fc := OutboundFlowControl{}
-	// Simulate two open streams
 	fc.init_stream(u32(1), u32(65535))
 	fc.init_stream(u32(3), u32(65535))
-	// Client changes initial_window_size from 65535 to 131070 (delta = +65535)
 	fc.adjust_initial_window_size(u32(65535), u32(131070))
 	assert fc.stream_windows[u32(1)] == i64(131070), 'stream 1 should be adjusted by delta'
 	assert fc.stream_windows[u32(3)] == i64(131070), 'stream 3 should be adjusted by delta'
@@ -114,7 +106,6 @@ fn test_outbound_flow_control_adjust_initial_window_size() {
 fn test_outbound_flow_control_adjust_initial_window_size_decrease() {
 	mut fc := OutboundFlowControl{}
 	fc.init_stream(u32(1), u32(65535))
-	// Client decreases initial_window_size from 65535 to 32767 (delta = -32768)
 	fc.adjust_initial_window_size(u32(65535), u32(32767))
 	assert fc.stream_windows[u32(1)] == i64(32767), 'stream 1 should decrease by delta'
 }

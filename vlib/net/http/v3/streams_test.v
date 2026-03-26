@@ -1,9 +1,6 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
-// === Stream type constants ===
+// Tests for HTTP/3 unidirectional stream management and encoder instruction generation.
 
 fn test_stream_type_constants() {
 	assert control_stream_type == u64(0x00)
@@ -12,11 +9,8 @@ fn test_stream_type_constants() {
 	assert qpack_decoder_stream_type == u64(0x03)
 }
 
-// === UniStreamManager initialization ===
-
 fn test_uni_stream_manager_initial_state() {
 	m := UniStreamManager{}
-	// All stream IDs start at -1 (not opened)
 	assert m.control_stream_id == i64(-1)
 	assert m.encoder_stream_id == i64(-1)
 	assert m.decoder_stream_id == i64(-1)
@@ -24,8 +18,6 @@ fn test_uni_stream_manager_initial_state() {
 	assert m.peer_encoder_stream_id == i64(-1)
 	assert m.peer_decoder_stream_id == i64(-1)
 }
-
-// === identify_peer_stream ===
 
 fn test_identify_peer_control_stream() {
 	mut m := UniStreamManager{}
@@ -60,7 +52,6 @@ fn test_identify_peer_stream_duplicate_control_error() {
 		assert false, 'first call should succeed'
 		return
 	}
-	// Second control stream must be rejected per RFC 9114 §6.2
 	m.identify_peer_stream(7, control_stream_type) or {
 		assert err.msg().contains('duplicate')
 		return
@@ -96,7 +87,6 @@ fn test_identify_peer_stream_duplicate_decoder_error() {
 
 fn test_identify_peer_stream_unknown_type() {
 	mut m := UniStreamManager{}
-	// Push stream type (0x01) is not accepted from peers in this context
 	m.identify_peer_stream(3, u64(0xFF)) or {
 		assert err.msg().contains('unknown')
 		return
@@ -123,14 +113,11 @@ fn test_identify_all_three_peer_streams() {
 	assert m.peer_decoder_stream_id == i64(11)
 }
 
-// === Stream type varint encoding ===
-
 fn test_encode_stream_type_control() {
 	data := encode_stream_type(control_stream_type) or {
 		assert false, 'encode failed: ${err}'
 		return
 	}
-	// 0x00 encoded as varint is a single byte
 	assert data == [u8(0x00)]
 }
 
@@ -149,8 +136,6 @@ fn test_encode_stream_type_decoder() {
 	}
 	assert data == [u8(0x03)]
 }
-
-// === has_peer_control_stream / all_peer_streams_identified ===
 
 fn test_has_peer_control_stream_false_initially() {
 	m := UniStreamManager{}
@@ -177,13 +162,9 @@ fn test_all_peer_streams_identified_true_when_complete() {
 	assert m.all_peer_streams_identified() == true
 }
 
-// === QPACK encoder stream instruction generation (Task 4) ===
-
 fn test_generate_set_capacity_instruction() {
-	// SetCapacity instruction should be generated for initial sync
 	data := generate_set_capacity_instruction(4096)
 	assert data.len > 0
-	// Verify it decodes back correctly
 	decoded, _ := decode_set_dynamic_table_capacity(data) or {
 		assert false, 'decode failed: ${err}'
 		return
@@ -202,28 +183,22 @@ fn test_generate_set_capacity_instruction_zero() {
 }
 
 fn test_generate_encoder_instructions_static_name() {
-	// Encoding a header with a static table name match should produce
-	// an InsertWithNameRef instruction
 	header := HeaderField{
 		name:  ':path'
 		value: '/test/resource'
 	}
 	instructions := generate_encoder_instruction(header)
 	assert instructions.len > 0
-	// Should decode as InsertWithNameRef (first bit pattern: 1XXXXXXX)
 	assert (instructions[0] & 0x80) != 0
 }
 
 fn test_generate_encoder_instructions_literal() {
-	// Encoding a header with no static table name match should produce
-	// an InsertWithoutNameRef instruction
 	header := HeaderField{
 		name:  'x-custom-header'
 		value: 'custom-value'
 	}
 	instructions := generate_encoder_instruction(header)
 	assert instructions.len > 0
-	// Should decode as InsertWithoutNameRef (first bit pattern: 01XXXXXX)
 	assert (instructions[0] & 0x40) != 0
 }
 

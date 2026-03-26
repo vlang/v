@@ -1,8 +1,8 @@
+// Tests for QUIC crypto operations.
 module quic
 
 import os
 
-// test_load_certificate_file_not_found tests error when file doesn't exist
 fn test_load_certificate_file_not_found() {
 	result := load_certificate('/nonexistent/cert.pem') or {
 		assert err.msg().contains('not found')
@@ -11,7 +11,6 @@ fn test_load_certificate_file_not_found() {
 	assert false, 'Should have returned error for nonexistent file'
 }
 
-// test_load_private_key_file_not_found tests error when file doesn't exist
 fn test_load_private_key_file_not_found() {
 	result := load_private_key('/nonexistent/key.pem') or {
 		assert err.msg().contains('not found')
@@ -20,7 +19,6 @@ fn test_load_private_key_file_not_found() {
 	assert false, 'Should have returned error for nonexistent file'
 }
 
-// test_load_certificate_invalid_format tests error for non-PEM files
 fn test_load_certificate_invalid_format() {
 	// Create a temporary file with invalid content
 	temp_file := os.join_path(os.temp_dir(), 'test_invalid_cert.pem')
@@ -39,7 +37,6 @@ fn test_load_certificate_invalid_format() {
 	assert false, 'Should have returned error for invalid PEM format'
 }
 
-// test_load_private_key_invalid_format tests error for non-PEM files
 fn test_load_private_key_invalid_format() {
 	temp_file := os.join_path(os.temp_dir(), 'test_invalid_key.pem')
 	os.write_file(temp_file, 'This is not a valid PEM private key') or {
@@ -57,7 +54,6 @@ fn test_load_private_key_invalid_format() {
 	assert false, 'Should have returned error for invalid PEM format'
 }
 
-// test_load_certificate_valid_pem tests loading a valid PEM certificate
 fn test_load_certificate_valid_pem() {
 	temp_file := os.join_path(os.temp_dir(), 'test_valid_cert.pem')
 	valid_cert := '-----BEGIN CERTIFICATE-----
@@ -85,7 +81,6 @@ eGFtcGxlLmNvbSBbVEVTVCBPTkxZXTAeFw0yNDAyMDMwMDAwMDBaFw0yNTAyMDMw
 	println('✓ Valid certificate loading test passed')
 }
 
-// test_load_private_key_valid_pem tests loading various valid PEM private key formats
 fn test_load_private_key_valid_pem() {
 	// Test RSA private key format
 	temp_file := os.join_path(os.temp_dir(), 'test_valid_rsa_key.pem')
@@ -109,7 +104,6 @@ MIIEpAIBAAKCAQEAu7jSEqUfWxJD8jMpUJZVkXLfPNvE8gvJYXcGXMhTqHQpZTgO
 	assert result.len > 0
 	assert result.bytestr().contains('BEGIN RSA PRIVATE KEY')
 
-	// Test EC private key format
 	temp_file2 := os.join_path(os.temp_dir(), 'test_valid_ec_key.pem')
 	valid_ec_key := '-----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIKbFObJ8iJR7LVQx1vXQGH3cXZLKlEzXMKfZwXNXH8XwoAoGCCqGSM49
@@ -131,7 +125,6 @@ AwEHoUQDQgAE8LJvXl/Fz8HwVgJTQPPZxDz8EhZ8Y8CLXWK3sxdZaV8KZnBPVB4Z
 	assert result2.len > 0
 	assert result2.bytestr().contains('BEGIN EC PRIVATE KEY')
 
-	// Test generic PRIVATE KEY format
 	temp_file3 := os.join_path(os.temp_dir(), 'test_valid_key.pem')
 	valid_key := '-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC7uNISpR9bEkPy
@@ -156,10 +149,6 @@ MylQllWRct8828TyC8lhdwZcyFOodCllOA7wXaEt8vA2p9V3vCRf1ylUv/kG9fNA
 	println('✓ Valid private key loading tests passed (RSA, EC, and generic formats)')
 }
 
-// --- derive_traffic_keys tests ---
-
-// test_derive_traffic_keys_produces_correct_lengths verifies that derived keys
-// and IVs have the expected sizes per RFC 9001 §5.1 (AES-128-GCM).
 fn test_derive_traffic_keys_produces_correct_lengths() {
 	// Derive initial secrets from a known DCID as key material
 	dcid := [u8(0x83), 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08]
@@ -190,8 +179,6 @@ fn test_derive_traffic_keys_produces_correct_lengths() {
 	assert ctx.rx_iv.len == 12, 'rx_iv must be 12 bytes (GCM nonce), got ${ctx.rx_iv.len}'
 }
 
-// test_derive_traffic_keys_deterministic verifies that the same secrets always
-// produce the same derived keys (HKDF is deterministic).
 fn test_derive_traffic_keys_deterministic() {
 	dcid := [u8(0x01), 0x02, 0x03, 0x04]
 	tx_secret, rx_secret := derive_initial_secrets(dcid, false) or {
@@ -235,8 +222,6 @@ fn test_derive_traffic_keys_deterministic() {
 	assert ctx1.rx_iv == ctx2.rx_iv, 'rx_iv derivation must be deterministic'
 }
 
-// test_derive_traffic_keys_empty_secret_errors verifies that empty secrets
-// are rejected with an error.
 fn test_derive_traffic_keys_empty_secret_errors() {
 	mut ctx := CryptoContext{
 		tx_secret:     []u8{}
@@ -256,18 +241,16 @@ fn test_derive_traffic_keys_empty_secret_errors() {
 	assert false, 'derive_traffic_keys should error on empty tx_secret'
 }
 
-// test_encrypt_decrypt_roundtrip_with_derived_keys verifies that server-encrypted
-// data can be decrypted by the client when both use properly derived keys.
 fn test_encrypt_decrypt_roundtrip_with_derived_keys() {
 	dcid := [u8(0x83), 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08]
 
-	// Server-side: tx_secret = server_secret, rx_secret = client_secret
+	// Server: tx_secret = server_secret, rx_secret = client_secret
 	server_tx, server_rx := derive_initial_secrets(dcid, true) or {
 		assert false, 'derive_initial_secrets (server) failed: ${err}'
 		return
 	}
 
-	// Client-side: tx_secret = client_secret, rx_secret = server_secret
+	// Client: tx_secret = client_secret, rx_secret = server_secret
 	client_tx, client_rx := derive_initial_secrets(dcid, false) or {
 		assert false, 'derive_initial_secrets (client) failed: ${err}'
 		return
@@ -323,10 +306,6 @@ fn test_encrypt_decrypt_roundtrip_with_derived_keys() {
 	assert decrypted == plaintext, 'round-trip must recover original plaintext'
 }
 
-// --- extract_packet_number tests ---
-
-// test_extract_packet_number_short_header_1byte verifies extraction of a 1-byte
-// packet number from a short header (first byte bit 7 = 0).
 fn test_extract_packet_number_short_header_1byte() {
 	dcid_len := 8
 	// Short header: 0b0100_0000 (form=0, fixed=1, pn_len bits = 0b00 → 1 byte PN)
@@ -346,8 +325,6 @@ fn test_extract_packet_number_short_header_1byte() {
 	assert pn == 7, 'expected packet_number 7, got ${pn}'
 }
 
-// test_extract_packet_number_short_header_2byte verifies extraction of a 2-byte
-// packet number from a short header.
 fn test_extract_packet_number_short_header_2byte() {
 	dcid_len := 4
 	// pn_length_bits = 0b01 → PN len = 2
@@ -368,8 +345,6 @@ fn test_extract_packet_number_short_header_2byte() {
 	assert pn == 258, 'expected packet_number 258, got ${pn}'
 }
 
-// test_extract_packet_number_short_header_4byte verifies extraction of a 4-byte
-// packet number from a short header.
 fn test_extract_packet_number_short_header_4byte() {
 	dcid_len := 8
 	// pn_length_bits = 0b11 → PN len = 4
@@ -392,8 +367,6 @@ fn test_extract_packet_number_short_header_4byte() {
 	assert pn == 66051, 'expected packet_number 66051, got ${pn}'
 }
 
-// test_extract_packet_number_long_header verifies extraction from a long header
-// (first byte bit 7 = 1). Long headers encode DCID length at byte 5.
 fn test_extract_packet_number_long_header() {
 	dcid_len := 8
 	scid_len := 8
@@ -433,7 +406,6 @@ fn test_extract_packet_number_long_header() {
 	assert pn == 773, 'expected packet_number 773, got ${pn}'
 }
 
-// test_extract_packet_number_empty_data_errors verifies error on empty data.
 fn test_extract_packet_number_empty_data_errors() {
 	extract_packet_number([]u8{}, 0) or {
 		assert err.msg().len > 0, 'error should have a message'
@@ -442,10 +414,6 @@ fn test_extract_packet_number_empty_data_errors() {
 	assert false, 'extract_packet_number should error on empty data'
 }
 
-// --- extract_and_unprotect_pn tests ---
-
-// test_extract_and_unprotect_pn_zero_hp_key_errors verifies that an empty
-// rx_hp_key causes an error, since HP removal requires a valid key.
 fn test_extract_and_unprotect_pn_zero_hp_key_errors() {
 	ctx := CryptoContext{
 		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
@@ -469,9 +437,6 @@ fn test_extract_and_unprotect_pn_zero_hp_key_errors() {
 	assert false, 'extract_and_unprotect_pn should error when rx_hp_key is empty'
 }
 
-// test_extract_and_unprotect_pn_roundtrip builds an unprotected short-header
-// packet, manually applies header protection, then verifies that
-// extract_and_unprotect_pn() correctly recovers the original packet number.
 fn test_extract_and_unprotect_pn_roundtrip() {
 	dcid_len := 8
 	pn_offset := 1 + dcid_len // = 9 for short header

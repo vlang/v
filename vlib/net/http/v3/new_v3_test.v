@@ -1,5 +1,7 @@
 module v3
 
+// Tests for QPACK encoding/decoding and varint codec.
+
 fn test_qpack_encoding_decoding() {
 	mut encoder := new_qpack_encoder(4096, 0)
 	mut decoder := new_qpack_decoder(4096, 0)
@@ -45,12 +47,11 @@ fn test_qpack_encoding_decoding() {
 fn test_varint_encoding_decoding() {
 	println('Testing VarInt encoding/decoding...')
 
-	// Test cases: value -> expected bytes
 	cases := {
-		u64(25):                 1 // 1 byte
-		u64(15293):              2 // 2 bytes
-		u64(494878333):          4 // 4 bytes
-		u64(151288809941952652): 8 // 8 bytes
+		u64(25):                 1
+		u64(15293):              2
+		u64(494878333):          4
+		u64(151288809941952652): 8
 	}
 
 	for val, expected_len in cases {
@@ -87,11 +88,9 @@ fn test_header_helpers() {
 		},
 	]
 
-	// Test proper QPACK encoding
 	encoded := encoder.encode(headers)
 	assert encoded.len > 0
 
-	// Test proper QPACK decoding
 	decoded := decoder.decode(encoded) or {
 		assert false, 'Failed to decode headers'
 		return

@@ -1,6 +1,7 @@
 module v2
 
-// test_huffman_encoding_simple tests basic Huffman encoding/decoding
+// Tests for Huffman encoding/decoding and RFC 7541 compliance.
+
 fn test_huffman_encoding_simple() {
 	test_cases := [
 		'www.example.com',
@@ -25,9 +26,7 @@ fn test_huffman_encoding_simple() {
 	println('✓ Simple Huffman encoding test passed')
 }
 
-// test_huffman_rfc_examples tests RFC 7541 examples
 fn test_huffman_rfc_examples() {
-	// Example from RFC 7541 C.4.1
 	mut test_input := 'www.example.com'
 	mut test_expected := [u8(0xf1), 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4,
 		0xff]
@@ -72,7 +71,6 @@ fn test_huffman_rfc_examples() {
 	println('✓ RFC 7541 Huffman examples test passed')
 }
 
-// test_huffman_compression_ratio tests that Huffman encoding achieves compression
 fn test_huffman_compression_ratio() {
 	test_strings := [
 		'www.example.com',
@@ -105,8 +103,7 @@ fn test_huffman_compression_ratio() {
 	assert total_compressed < total_original, 'Huffman encoding should compress data'
 }
 
-// test_huffman_all_bytes tests all possible byte values
-// NOTE: This test is commented out because Huffman decoding for all 256 bytes
+// NOTE: test_huffman_all_bytes is commented out because Huffman decoding for all 256 bytes
 // including control characters requires more robust error handling
 // fn test_huffman_all_bytes() {
 // 	mut data := []u8{len: 256}
@@ -127,7 +124,6 @@ fn test_huffman_compression_ratio() {
 // 	println('✓ All bytes Huffman test passed')
 // }
 
-// test_hpack_with_huffman tests HPACK encoding with Huffman
 fn test_hpack_with_huffman() {
 	mut encoder := new_encoder()
 	mut decoder := new_decoder()
@@ -159,7 +155,6 @@ fn test_hpack_with_huffman() {
 	println('  Encoded size: ${encoded.len} bytes')
 }
 
-// test_huffman_encoded_length tests the length calculation function
 fn test_huffman_encoded_length() {
 	mut test_input := 'www.example.com'
 	mut test_bits := 89

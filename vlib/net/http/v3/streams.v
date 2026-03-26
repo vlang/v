@@ -1,20 +1,14 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
+// HTTP/3 unidirectional stream management (RFC 9114 §6.2).
 import net.quic
 
-// HTTP/3 unidirectional stream types (RFC 9114 §6.2).
 pub const control_stream_type = u64(0x00)
 pub const push_stream_type = u64(0x01)
 pub const qpack_encoder_stream_type = u64(0x02)
 pub const qpack_decoder_stream_type = u64(0x03)
 
 // UniStreamManager tracks unidirectional stream IDs for an HTTP/3 connection.
-// Each connection opens 3 mandatory streams (control, QPACK encoder, QPACK decoder)
-// and receives 3 from the peer. Per RFC 9114 §6.2, duplicate stream types are
-// a connection error.
 pub struct UniStreamManager {
 mut:
 	control_stream_id i64 = -1
@@ -26,17 +20,13 @@ pub mut:
 	peer_decoder_stream_id i64 = -1
 }
 
-// open_streams opens the 3 required unidirectional streams (control, QPACK
-// encoder, QPACK decoder) on the QUIC connection and sends the stream type
-// varint as the first data on each.
+// open_streams opens the 3 required unidirectional streams on the QUIC connection.
 pub fn (mut m UniStreamManager) open_streams(mut conn quic.Connection) ! {
-	// Control stream
 	ctrl_id := conn.open_uni_stream() or { return error('failed to open control stream: ${err}') }
 	ctrl_type := encode_stream_type(control_stream_type)!
 	conn.send(u64(ctrl_id), ctrl_type)!
 	m.control_stream_id = ctrl_id
 
-	// QPACK encoder stream
 	enc_id := conn.open_uni_stream() or {
 		return error('failed to open QPACK encoder stream: ${err}')
 	}
@@ -44,7 +34,6 @@ pub fn (mut m UniStreamManager) open_streams(mut conn quic.Connection) ! {
 	conn.send(u64(enc_id), enc_type)!
 	m.encoder_stream_id = enc_id
 
-	// QPACK decoder stream
 	dec_id := conn.open_uni_stream() or {
 		return error('failed to open QPACK decoder stream: ${err}')
 	}
@@ -53,9 +42,7 @@ pub fn (mut m UniStreamManager) open_streams(mut conn quic.Connection) ! {
 	m.decoder_stream_id = dec_id
 }
 
-// identify_peer_stream registers an incoming unidirectional stream from the
-// peer. Returns an error for duplicate stream types (RFC 9114 §6.2) or
-// unknown/unsupported types.
+// identify_peer_stream registers an incoming unidirectional stream from the peer.
 pub fn (mut m UniStreamManager) identify_peer_stream(stream_id u64, stream_type u64) ! {
 	match stream_type {
 		control_stream_type {
@@ -98,9 +85,7 @@ pub fn (m &UniStreamManager) all_peer_streams_identified() bool {
 		&& m.peer_decoder_stream_id != -1
 }
 
-// generate_set_capacity_instruction creates a SetDynamicTableCapacity encoder
-// stream instruction. Sent on the QPACK encoder stream when the connection
-// opens to inform the peer decoder of the dynamic table capacity.
+// generate_set_capacity_instruction creates a SetDynamicTableCapacity encoder stream instruction.
 pub fn generate_set_capacity_instruction(capacity int) []u8 {
 	instr := SetDynamicTableCapacity{
 		capacity: capacity
@@ -108,12 +93,8 @@ pub fn generate_set_capacity_instruction(capacity int) []u8 {
 	return instr.encode()
 }
 
-// generate_encoder_instruction creates an encoder stream instruction for
-// inserting a header field into the peer's dynamic table. Uses
-// InsertWithNameRef when the header name is in the static table, otherwise
-// InsertWithoutNameRef.
+// generate_encoder_instruction creates an encoder stream instruction for a header field.
 pub fn generate_encoder_instruction(header HeaderField) []u8 {
-	// Check if the name exists in the static table
 	if header.name in qpack_static_name_map {
 		indices := qpack_static_name_map[header.name]
 		if indices.len > 0 {
@@ -125,7 +106,6 @@ pub fn generate_encoder_instruction(header HeaderField) []u8 {
 			return instr.encode()
 		}
 	}
-	// Literal name insertion
 	instr := InsertWithoutNameRef{
 		name:  header.name
 		value: header.value

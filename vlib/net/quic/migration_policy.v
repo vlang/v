@@ -1,8 +1,6 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
+// Migration policy and controller for QUIC connection migration decisions.
 import net
 import time
 

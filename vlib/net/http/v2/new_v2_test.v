@@ -1,5 +1,7 @@
 module v2
 
+// Tests for HPACK and frame serialization basics.
+
 fn test_hpack_encoding_decoding() {
 	mut encoder := new_encoder()
 	mut decoder := new_decoder()

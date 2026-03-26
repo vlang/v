@@ -1,14 +1,9 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
+// HTTP/3 client, types, and framing (RFC 9114).
 import net.quic
 
-// HTTP/3 implementation (RFC 9114)
-// HTTP/3 uses QUIC as the transport protocol
-
-// FrameType represents HTTP/3 frame types
+// FrameType represents HTTP/3 frame types.
 pub enum FrameType as u64 {
 	data         = 0x0
 	headers      = 0x1
@@ -19,7 +14,7 @@ pub enum FrameType as u64 {
 	max_push_id  = 0xd
 }
 
-// Frame represents an HTTP/3 frame
+// Frame represents an HTTP/3 frame.
 pub struct Frame {
 pub mut:
 	frame_type FrameType
@@ -27,7 +22,7 @@ pub mut:
 	payload    []u8
 }
 
-// Settings holds HTTP/3 settings
+// Settings holds HTTP/3 settings.
 pub struct Settings {
 pub mut:
 	max_field_section_size   u64
@@ -50,7 +45,7 @@ pub enum Method {
 	options
 }
 
-// str returns the string representation of the HTTP method
+// str returns the HTTP method as a string.
 pub fn (m Method) str() string {
 	return match m {
 		.get { 'GET' }
@@ -63,7 +58,7 @@ pub fn (m Method) str() string {
 	}
 }
 
-// Request represents a simplified HTTP request for v3
+// Request represents an HTTP/3 request.
 pub struct Request {
 pub:
 	method  Method
@@ -73,7 +68,7 @@ pub:
 	headers map[string]string
 }
 
-// Response represents a simplified HTTP response
+// Response represents an HTTP/3 response.
 pub struct Response {
 pub:
 	status_code int
@@ -81,7 +76,7 @@ pub:
 	body        string
 }
 
-// Client represents an HTTP/3 client
+// Client represents an HTTP/3 client.
 pub struct Client {
 mut:
 	address           string
@@ -96,9 +91,8 @@ mut:
 	uni               UniStreamManager
 }
 
-// new_client creates a new HTTP/3 client and establishes a QUIC connection
+// new_client creates an HTTP/3 client and establishes a QUIC connection.
 pub fn new_client(address string) !Client {
-	// Try to create QUIC connection
 	quic_conn := quic.new_connection(
 		remote_addr: address
 		alpn:        ['h3']
@@ -131,13 +125,11 @@ To enable HTTP/3:
 	}
 }
 
-// request sends an HTTP/3 request and returns the response from the server
+// request sends an HTTP/3 request and returns the response.
 pub fn (mut c Client) request(req Request) !Response {
-	// Allocate stream ID (client-initiated bidirectional: 0, 4, 8, 12, ...)
 	stream_id := c.next_stream_id
-	c.next_stream_id += 4 // RFC 9114: client-initiated bidirectional streams increment by 4
+	c.next_stream_id += 4
 
-	// Build headers with capacity
 	mut headers := []HeaderField{cap: 4 + req.headers.len}
 	headers << HeaderField{
 		name:  ':method'
@@ -156,7 +148,6 @@ pub fn (mut c Client) request(req Request) !Response {
 		value: req.host
 	}
 
-	// Add custom headers
 	for key, value in req.headers {
 		headers << HeaderField{
 			name:  key.to_lower()
@@ -164,10 +155,8 @@ pub fn (mut c Client) request(req Request) !Response {
 		}
 	}
 
-	// Encode headers using QPACK
 	encoded_headers := c.qpack_encoder.encode(headers)
 
-	// Send HEADERS frame
 	headers_frame := Frame{
 		frame_type: .headers
 		length:     u64(encoded_headers.len)
@@ -176,7 +165,6 @@ pub fn (mut c Client) request(req Request) !Response {
 
 	c.send_frame(stream_id, headers_frame)!
 
-	// Send DATA frame if there's a body
 	if req.data.len > 0 {
 		data_frame := Frame{
 			frame_type: .data
@@ -187,30 +175,23 @@ pub fn (mut c Client) request(req Request) !Response {
 		c.send_frame(stream_id, data_frame)!
 	}
 
-	// Read response
 	return c.read_response(stream_id)!
 }
 
-// send_frame sends an HTTP/3 frame on a stream
 fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
-	// Encode frame
 	mut data := []u8{}
 
-	// Variable-length integer encoding for type and length
 	data << encode_varint(u64(frame.frame_type))!
 	data << encode_varint(frame.length)!
 	data << frame.payload
 
-	// Send on QUIC stream
 	c.quic_conn.send(stream_id, data)!
 }
 
-// read_response reads the HTTP/3 response
 fn (mut c Client) read_response(stream_id u64) !Response {
 	data := c.quic_conn.recv(stream_id)!
 	headers, body := c.parse_response_frames(data)!
 
-	// Build response
 	mut status_code := 200
 	mut response_headers := map[string]string{}
 
@@ -229,8 +210,6 @@ fn (mut c Client) read_response(stream_id u64) !Response {
 	}
 }
 
-// parse_response_frames parses HTTP/3 frames from raw data, extracting
-// response headers and body payload.
 fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 	mut idx := 0
 	mut headers := []HeaderField{}
@@ -250,65 +229,48 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 		payload := data[idx..idx + int(frame_length)]
 		idx += int(frame_length)
 
-		frame_type := frame_type_from_u64(frame_type_val) or {
-			// Ignore unknown frame types per RFC 9114
-			continue
-		}
+		frame_type := frame_type_from_u64(frame_type_val) or { continue }
 
 		match frame_type {
 			.headers {
-				// Use proper QPACK Decoder for consistency with encoder (Issue #17)
 				headers = c.qpack_decoder.decode(payload)!
 			}
 			.data {
 				body << payload
 			}
 			.goaway {
-				// Server initiated graceful shutdown; stop processing
 				break
 			}
-			else {
-				// Ignore unknown frames per RFC 9114 §9
-			}
+			else {}
 		}
 	}
 
 	return headers, body
 }
 
-// close closes the HTTP/3 client and terminates the QUIC connection
+// close shuts down the HTTP/3 client and QUIC connection.
 pub fn (mut c Client) close() {
-	// Send GOAWAY to signal graceful shutdown (best-effort; ignore errors)
 	c.send_goaway(c.next_stream_id) or {}
 	c.quic_conn.close()
 }
 
-// send_settings sends an HTTP/3 SETTINGS frame on the control stream (RFC 9114 §6.2.1).
-// An empty SETTINGS frame is valid and means all settings use their default values.
-// This must be called once after connection setup.
+// send_settings sends an HTTP/3 SETTINGS frame on the control stream.
 pub fn (mut c Client) send_settings() ! {
-	// Use the control stream from UniStreamManager; fall back to stream 2
-	// if open_streams() has not been called yet.
 	ctrl_id := if c.uni.control_stream_id >= 0 {
 		u64(c.uni.control_stream_id)
 	} else {
 		u64(2)
 	}
 
-	// Stream type byte for control stream (0x00)
 	mut data := []u8{}
-	data << encode_varint(u64(0x00))! // control stream type
-
-	// SETTINGS frame: type=0x04, length=0 (empty body — all defaults)
+	data << encode_varint(u64(0x00))!
 	data << encode_varint(u64(FrameType.settings))!
-	data << encode_varint(u64(0))! // length = 0
+	data << encode_varint(u64(0))!
 
 	c.quic_conn.send(ctrl_id, data)!
 }
 
-// send_goaway sends a GOAWAY frame on the control stream (RFC 9114 §7.2.6).
-// stream_id is the highest request stream ID the server will process.
-// Clients send GOAWAY to initiate graceful shutdown of the connection.
+// send_goaway sends a GOAWAY frame on the control stream.
 pub fn (mut c Client) send_goaway(stream_id u64) ! {
 	ctrl_id := if c.uni.control_stream_id >= 0 {
 		u64(c.uni.control_stream_id)
@@ -325,15 +287,14 @@ pub fn (mut c Client) send_goaway(stream_id u64) ! {
 	c.quic_conn.send(ctrl_id, data)!
 }
 
-// HeaderField represents a name-value pair
+// HeaderField represents a header name-value pair.
 pub struct HeaderField {
 pub:
 	name  string
 	value string
 }
 
-// frame_type_from_u64 validates and converts a u64 to a FrameType enum value.
-// Returns an error for unrecognized frame type values.
+// frame_type_from_u64 converts a u64 to a FrameType.
 pub fn frame_type_from_u64(val u64) !FrameType {
 	return match val {
 		0x0 { .data }

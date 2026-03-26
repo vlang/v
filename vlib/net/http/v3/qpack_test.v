@@ -1,11 +1,11 @@
-// QPACK Header Compression Tests
 module v3
+
+// Tests for QPACK header compression, stream instructions, Huffman encoding, and dynamic table.
 
 fn test_qpack_static_table_indexed() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test encoding :method GET (static table index 17)
 	headers := [
 		HeaderField{
 			name:  ':method'
@@ -32,7 +32,6 @@ fn test_qpack_literal_with_name_ref() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test encoding :path with custom value
 	headers := [
 		HeaderField{
 			name:  ':path'
@@ -59,7 +58,6 @@ fn test_qpack_literal_without_name_ref() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test encoding custom header
 	headers := [
 		HeaderField{
 			name:  'x-custom-header'
@@ -86,7 +84,6 @@ fn test_qpack_multiple_headers() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test encoding multiple headers
 	headers := [
 		HeaderField{
 			name:  ':method'
@@ -134,7 +131,6 @@ fn test_qpack_multiple_headers() {
 fn test_qpack_compression_ratio() {
 	mut encoder := new_qpack_encoder(4096, 100)
 
-	// Test compression efficiency
 	headers := [
 		HeaderField{
 			name:  ':method'
@@ -166,10 +162,9 @@ fn test_qpack_compression_ratio() {
 		},
 	]
 
-	// Calculate original size
 	mut original_size := 0
 	for header in headers {
-		original_size += header.name.len + header.value.len + 2 // +2 for ": "
+		original_size += header.name.len + header.value.len + 2
 	}
 
 	encoded := encoder.encode(headers)
@@ -181,7 +176,6 @@ fn test_qpack_compression_ratio() {
 	println('Compressed size: ${compressed_size} bytes')
 	println('Compression ratio: ${compression_ratio:.2f}x')
 
-	// Should achieve at least 2x compression
 	assert compression_ratio > 2.0
 
 	println('✓ QPACK compression ratio test passed')
@@ -194,7 +188,7 @@ fn test_qpack_empty_headers() {
 	headers := []HeaderField{}
 
 	encoded := encoder.encode(headers)
-	assert encoded.len == 2 // Just the prefix bytes
+	assert encoded.len == 2
 
 	decoded := decoder.decode(encoded) or {
 		assert false, 'Decoding failed: ${err}'
@@ -210,7 +204,6 @@ fn test_qpack_large_header_value() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test with large header value
 	large_value := 'x'.repeat(1000)
 	headers := [
 		HeaderField{
@@ -220,7 +213,7 @@ fn test_qpack_large_header_value() {
 	]
 
 	encoded := encoder.encode(headers)
-	assert encoded.len > 800 // Huffman-compressed 'x'×1000 ≈ 892 bytes
+	assert encoded.len > 800
 
 	decoded := decoder.decode(encoded) or {
 		assert false, 'Decoding failed: ${err}'
@@ -234,8 +227,6 @@ fn test_qpack_large_header_value() {
 	println('✓ QPACK large header value test passed')
 }
 
-// === Task 1: RIC and Delta Base tests ===
-
 fn test_ric_zero_for_static_only() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
@@ -246,7 +237,6 @@ fn test_ric_zero_for_static_only() {
 	}]
 	encoded := encoder.encode(headers)
 
-	// RIC must be 0 for static-only encoding
 	assert encoded[0] == 0x00
 	assert encoded[1] == 0x00
 
@@ -263,7 +253,6 @@ fn test_ric_nonzero_with_dynamic_reference() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// First encode: literal, populates dynamic table
 	h := [HeaderField{
 		name:  'x-test'
 		value: 'abc'
@@ -274,13 +263,9 @@ fn test_ric_nonzero_with_dynamic_reference() {
 		return
 	}
 
-	// Second encode: references dynamic table → RIC > 0
 	enc2 := encoder.encode(h)
 
-	// RIC = abs_idx(0) + 1 = 1
-	// MaxEntries = 4096/32 = 128, EncodedRIC = (1 % 256) + 1 = 2
 	assert enc2[0] == 0x02
-	// Base = 1, DeltaBase = 1 - 1 = 0, S=0
 	assert enc2[1] == 0x00
 
 	decoded := decoder.decode(enc2) or {
@@ -296,7 +281,6 @@ fn test_ric_delta_base_positive() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Insert 3 entries via literal encoding
 	h1 := [HeaderField{
 		name:  'x-a'
 		value: 'a1'
@@ -318,11 +302,10 @@ fn test_ric_delta_base_positive() {
 		}
 	}
 
-	// Reference first entry (abs_idx=0, RIC=1, Base=3, DeltaBase=2)
 	enc := encoder.encode(h1)
 
-	assert enc[0] == 0x02 // EncodedRIC = (1%256)+1 = 2
-	assert enc[1] == 0x02 // DeltaBase = 3-1 = 2, S=0
+	assert enc[0] == 0x02
+	assert enc[1] == 0x02
 
 	decoded := decoder.decode(enc) or {
 		assert false, 'Reference decode failed: ${err}'
@@ -349,7 +332,6 @@ fn test_section_prefix_roundtrip() {
 		max_cap := tc[2]
 
 		encoded := encode_section_prefix(ric, base, max_cap)
-		// For decoding, total_inserts = base (synchronized tables)
 		dec_ric, dec_base, _ := decode_section_prefix(encoded, max_cap, base) or {
 			assert false, 'Prefix decode failed for ric=${ric} base=${base}: ${err}'
 			return
@@ -364,7 +346,6 @@ fn test_qpack_special_characters() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Test with special characters
 	headers := [
 		HeaderField{
 			name:  'x-test'
@@ -390,8 +371,6 @@ fn test_qpack_special_characters() {
 
 	println('✓ QPACK special characters test passed')
 }
-
-// === Task 2: Stream Instruction tests ===
 
 fn test_encoder_stream_insert_with_static_name_ref() {
 	instr := InsertWithNameRef{
@@ -507,7 +486,6 @@ fn test_decoder_stream_insert_count_increment() {
 }
 
 fn test_stream_instructions_large_values() {
-	// Test with values exceeding single-byte prefix
 	ack := SectionAcknowledgment{
 		stream_id: 200
 	}
@@ -529,15 +507,10 @@ fn test_stream_instructions_large_values() {
 	assert dec_cap.capacity == 8192
 }
 
-// === Task 3: Huffman Encoding tests ===
-
 fn test_huffman_encoding_typical_header() {
-	// 'www.example.com' compresses well with Huffman
 	encoded := encode_qpack_string('www.example.com')
-	// Huffman flag should be set (MSB of first byte)
 	assert (encoded[0] & 0x80) != 0
 
-	// Roundtrip must be lossless
 	decoded, _ := decode_qpack_string(encoded) or {
 		assert false, 'Huffman decode failed: ${err}'
 		return
@@ -566,21 +539,15 @@ fn test_huffman_encoding_roundtrip() {
 }
 
 fn test_huffman_shorter_than_literal() {
-	// Typical HTTP header values should compress with Huffman
 	s := 'application/json'
 	literal_len := s.len
 	encoded := encode_qpack_string(s)
-	// Encoded length includes length prefix, but Huffman data should
-	// be shorter than literal data
-	// Remove prefix bytes to compare data only
 	is_huffman := (encoded[0] & 0x80) != 0
 	assert is_huffman, 'Expected Huffman encoding for "${s}"'
-	// Total encoded should be shorter than literal (1 prefix byte + literal bytes)
 	assert encoded.len < 1 + literal_len
 }
 
 fn test_huffman_full_encode_decode_roundtrip() {
-	// Full encoder/decoder roundtrip with Huffman
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
@@ -612,16 +579,11 @@ fn test_huffman_full_encode_decode_roundtrip() {
 	}
 }
 
-// === Task 4: Blocked Streams tests ===
-
 fn test_blocked_stream_ric_exceeds_known() {
 	mut decoder := new_qpack_decoder(4096, 100)
-	// Decoder has known_insert_count=0, no entries
-	// Craft data with RIC=5 using encode_section_prefix
 	mut data := encode_section_prefix(5, 5, 4096)
-	data << u8(0xc0 | 17) // :method GET (static indexed)
+	data << u8(0xc0 | 17)
 
-	// Should error because decoder needs 5 inserts but has 0
 	result := decoder.decode(data) or {
 		assert err.msg().contains('blocked')
 		return
@@ -633,7 +595,6 @@ fn test_blocked_stream_after_acknowledge() {
 	mut encoder := new_qpack_encoder(4096, 100)
 	mut decoder := new_qpack_decoder(4096, 100)
 
-	// Build up dynamic table entries via literal encoding
 	h := [HeaderField{
 		name:  'x-test'
 		value: 'val1'
@@ -644,16 +605,11 @@ fn test_blocked_stream_after_acknowledge() {
 		return
 	}
 
-	// Decoder now has insert_count=1, known_insert_count=0
-	// But decode also updates the dynamic table, so it works
-	// Now encode a reference that requires RIC > 0
 	enc2 := encoder.encode(h)
 
-	// Acknowledge the inserts so decoder's known_insert_count catches up
 	decoder.acknowledge_insert(1)
 	assert decoder.known_insert_count == 1
 
-	// Now decode should work
 	decoded := decoder.decode(enc2) or {
 		assert false, 'Post-acknowledge decode failed: ${err}'
 		return
@@ -664,7 +620,6 @@ fn test_blocked_stream_after_acknowledge() {
 }
 
 fn test_encoder_blocked_streams_limit() {
-	// Encoder with max_blocked=2
 	mut encoder := new_qpack_encoder(4096, 2)
 	mut decoder := new_qpack_decoder(4096, 2)
 
@@ -673,33 +628,27 @@ fn test_encoder_blocked_streams_limit() {
 		value: 'v1'
 	}]
 
-	// First encode: literal (no dynamic refs yet)
 	enc1 := encoder.encode(h)
 	_ := decoder.decode(enc1) or {
 		assert false, 'Decode 1 failed: ${err}'
 		return
 	}
 
-	// Second encode: uses dynamic ref → blocked_streams becomes 1
 	enc2 := encoder.encode(h)
-	assert enc2[0] != 0x00 // RIC is non-zero
+	assert enc2[0] != 0x00
 
-	// Third encode: uses dynamic ref → blocked_streams becomes 2
 	enc3 := encoder.encode(h)
-	assert enc3[0] != 0x00 // RIC is non-zero
+	assert enc3[0] != 0x00
 
-	// Fourth encode: blocked_streams >= max_blocked → falls back to literal
 	enc4 := encoder.encode(h)
-	assert enc4[0] == 0x00 // RIC is 0 (literal encoding, no dynamic refs)
+	assert enc4[0] == 0x00
 
-	// After acknowledging, dynamic refs resume
 	encoder.acknowledge_stream()
 	enc5 := encoder.encode(h)
-	assert enc5[0] != 0x00 // RIC is non-zero again
+	assert enc5[0] != 0x00
 }
 
 fn test_encoder_zero_max_blocked_forces_literal() {
-	// max_blocked=0 means no blocked streams allowed → always literal
 	mut encoder := new_qpack_encoder(4096, 0)
 	mut decoder := new_qpack_decoder(4096, 0)
 
@@ -708,18 +657,15 @@ fn test_encoder_zero_max_blocked_forces_literal() {
 		value: 'v1'
 	}]
 
-	// First encode: literal
 	enc1 := encoder.encode(h)
 	_ := decoder.decode(enc1) or {
 		assert false, 'Decode failed: ${err}'
 		return
 	}
 
-	// Second encode: even though dynamic table has entry, should use literal
 	enc2 := encoder.encode(h)
-	assert enc2[0] == 0x00 // RIC is 0 (forced literal)
+	assert enc2[0] == 0x00
 
-	// Roundtrip still works
 	decoded := decoder.decode(enc2) or {
 		assert false, 'Literal decode failed: ${err}'
 		return
@@ -729,21 +675,17 @@ fn test_encoder_zero_max_blocked_forces_literal() {
 	assert decoded[0].value == 'v1'
 }
 
-// === Task 5: Ring buffer DynamicTable tests ===
-
 fn test_dynamic_table_eviction_correctness() {
-	// Table fits exactly 3 entries of size 34 (1 + 1 + 32 overhead)
 	mut dt := new_dynamic_table(102)
 
-	dt.insert(HeaderField{ name: 'a', value: '1' }) // abs 0
-	dt.insert(HeaderField{ name: 'b', value: '2' }) // abs 1
-	dt.insert(HeaderField{ name: 'c', value: '3' }) // abs 2
-	dt.insert(HeaderField{ name: 'd', value: '4' }) // abs 3, evicts 'a'
-	dt.insert(HeaderField{ name: 'e', value: '5' }) // abs 4, evicts 'b'
+	dt.insert(HeaderField{ name: 'a', value: '1' })
+	dt.insert(HeaderField{ name: 'b', value: '2' })
+	dt.insert(HeaderField{ name: 'c', value: '3' })
+	dt.insert(HeaderField{ name: 'd', value: '4' })
+	dt.insert(HeaderField{ name: 'e', value: '5' })
 
 	assert dt.insert_count == 5
 
-	// Relative index: newest first
 	e0 := dt.get(0) or {
 		assert false, 'get(0) failed'
 		return
@@ -765,12 +707,10 @@ fn test_dynamic_table_eviction_correctness() {
 	assert e2.name == 'c'
 	assert e2.value == '3'
 
-	// Evicted entries must not be accessible
 	if _ := dt.get(3) {
 		assert false, 'get(3) should fail for evicted entry'
 	}
 
-	// Absolute index: 0,1 evicted; 2,3,4 present
 	if _ := dt.get_by_absolute(0) {
 		assert false, 'abs 0 should be evicted'
 	}
@@ -798,17 +738,14 @@ fn test_dynamic_table_eviction_correctness() {
 }
 
 fn test_dynamic_table_wraparound() {
-	// Table fits exactly 2 entries of size 34
 	mut dt := new_dynamic_table(68)
 
-	// Insert 10 entries, causing many evictions and ring buffer wrap-arounds
 	for i in 0 .. 10 {
 		dt.insert(HeaderField{ name: '${i}', value: 'v' })
 	}
 
 	assert dt.insert_count == 10
 
-	// Only last 2 entries remain: name='8' and name='9'
 	e0 := dt.get(0) or {
 		assert false, 'get(0) failed'
 		return
@@ -825,7 +762,6 @@ fn test_dynamic_table_wraparound() {
 		assert false, 'get(2) should fail — only 2 entries fit'
 	}
 
-	// Absolute: only 8 and 9 valid
 	if _ := dt.get_by_absolute(7) {
 		assert false, 'abs 7 should be evicted'
 	}

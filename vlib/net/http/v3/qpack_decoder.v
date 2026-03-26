@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
-// Decoder handles QPACK decoding
+// QPACK header compression decoder (RFC 9204).
+
+// Decoder handles QPACK decoding.
 pub struct Decoder {
 mut:
 	dynamic_table      DynamicTable
@@ -11,7 +10,7 @@ mut:
 	known_insert_count int
 }
 
-// new_qpack_decoder creates a new QPACK decoder with the specified table capacity and blocked streams limit.
+// new_qpack_decoder creates a new QPACK decoder with the specified capacity and blocked streams limit.
 pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 	return Decoder{
 		dynamic_table:      new_dynamic_table(max_table_capacity)
@@ -21,14 +20,10 @@ pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 }
 
 // acknowledge_insert updates the decoder's known insert count.
-// Called when the decoder has processed encoder stream instructions.
 pub fn (mut d Decoder) acknowledge_insert(count int) {
 	d.known_insert_count += count
 }
 
-// decode_section_prefix decodes the QPACK section prefix.
-// Returns (required_insert_count, base, bytes_consumed).
-// Per RFC 9204 §4.5.1.
 fn decode_section_prefix(data []u8, max_table_capacity int, total_inserts int) !(int, int, int) {
 	if data.len < 2 {
 		return error('QPACK data too short for prefix')
@@ -76,7 +71,6 @@ fn decode_section_prefix(data []u8, max_table_capacity int, total_inserts int) !
 }
 
 // decode decodes QPACK-encoded headers into header fields.
-// Handles static/dynamic indexed (relative and post-base) and literal forms.
 pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	if data.len < 2 {
 		return error('QPACK data too short')
@@ -84,7 +78,6 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 
 	ric, base, prefix_bytes := decode_section_prefix(data, d.dynamic_table.max_size, int(d.dynamic_table.insert_count))!
 
-	// Blocked stream check: decoder needs at least RIC inserts
 	if ric > 0 && ric > d.known_insert_count && ric > int(d.dynamic_table.insert_count) {
 		return error('blocked: need insert count ${ric}, have ${d.known_insert_count}')
 	}
@@ -101,38 +94,29 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	return headers
 }
 
-// decode_field_line decodes a single QPACK field line at position i in data.
-// Returns the decoded header field and the number of bytes consumed.
 fn (mut d Decoder) decode_field_line(data []u8, i int, base int) !(HeaderField, int) {
 	first_byte := data[i]
 
 	if (first_byte & 0x80) != 0 {
 		if (first_byte & 0x40) != 0 {
-			// 11XXXXXX: Indexed Field Line — static table
 			index, bytes_read := d.decode_indexed_field_line(data[i..])!
 			return static_table[index], bytes_read
 		}
-		// 10XXXXXX: Indexed Field Line — dynamic table (relative)
 		return d.decode_indexed_dynamic_relative(data[i..], base)
 	} else if (first_byte & 0x40) != 0 {
 		if (first_byte & 0x10) != 0 {
-			// 01X1XXXX: Literal with Name Reference — static table
 			return d.decode_literal_name_ref(data[i..])
 		}
-		// 01X0XXXX: Literal with Name Reference — dynamic table (relative)
 		header, bytes_read := d.decode_literal_name_ref_dynamic_relative(data[i..], base)!
 		d.dynamic_table.insert(header)
 		return header, bytes_read
 	} else if (first_byte & 0x20) != 0 {
-		// 001XXXXX: Literal without Name Reference
 		header, bytes_read := d.decode_literal_no_ref(data[i..])!
 		d.dynamic_table.insert(header)
 		return header, bytes_read
 	} else if (first_byte & 0x10) != 0 {
-		// 0001XXXX: Post-Base Indexed Field Line — dynamic table
 		return d.decode_indexed_dynamic(data[i..], base)
 	} else {
-		// 0000XXXX: Post-Base Literal with Name Reference — dynamic table
 		header, bytes_read := d.decode_literal_name_ref_dynamic(data[i..], base)!
 		d.dynamic_table.insert(header)
 		return header, bytes_read
@@ -150,10 +134,8 @@ fn (d Decoder) decode_indexed_field_line(data []u8) !(int, int) {
 		return index_prefix, 1
 	}
 
-	// Multi-byte index
 	index_val, len := decode_prefixed_integer(data, 6)!
 
-	// static table check
 	if index_val >= static_table.len {
 		return error('Static table index out of range: ${index_val}')
 	}
@@ -161,8 +143,6 @@ fn (d Decoder) decode_indexed_field_line(data []u8) !(int, int) {
 	return index_val, len
 }
 
-// decode_indexed_dynamic_relative decodes a dynamic indexed field line with relative
-// index: 10XXXXXX (RFC 9204 §4.5.2, T=0). Computes absolute index as base - index - 1.
 fn (d Decoder) decode_indexed_dynamic_relative(data []u8, base int) !(HeaderField, int) {
 	index, bytes_read := decode_prefixed_integer(data, 6)!
 	abs_idx := base - index - 1
@@ -172,7 +152,6 @@ fn (d Decoder) decode_indexed_dynamic_relative(data []u8, base int) !(HeaderFiel
 	return field, bytes_read
 }
 
-// decode_indexed_dynamic decodes a post-base indexed field line (0001XXXX).
 fn (d Decoder) decode_indexed_dynamic(data []u8, base int) !(HeaderField, int) {
 	index, bytes_read := decode_prefixed_integer(data, 4)!
 	abs_idx := base + index
@@ -183,7 +162,6 @@ fn (d Decoder) decode_indexed_dynamic(data []u8, base int) !(HeaderField, int) {
 }
 
 fn (d Decoder) decode_literal_name_ref(data []u8) !(HeaderField, int) {
-	// Use decode_prefixed_integer to parse the 4-bit name index
 	index, idx := decode_prefixed_integer(data, 4)!
 
 	if index >= static_table.len {
@@ -198,8 +176,6 @@ fn (d Decoder) decode_literal_name_ref(data []u8) !(HeaderField, int) {
 	}, idx + bytes_read
 }
 
-// decode_literal_name_ref_dynamic_relative decodes a literal with dynamic name
-// reference using relative index: 01X0XXXX (RFC 9204 §4.5.5, T=0).
 fn (d Decoder) decode_literal_name_ref_dynamic_relative(data []u8, base int) !(HeaderField, int) {
 	index, idx := decode_prefixed_integer(data, 4)!
 	abs_idx := base - index - 1
@@ -213,7 +189,6 @@ fn (d Decoder) decode_literal_name_ref_dynamic_relative(data []u8, base int) !(H
 	}, idx + bytes_read
 }
 
-// decode_literal_name_ref_dynamic decodes a post-base literal with dynamic name reference (0000XXXX).
 fn (d Decoder) decode_literal_name_ref_dynamic(data []u8, base int) !(HeaderField, int) {
 	index, idx := decode_prefixed_integer(data, 3)!
 	abs_idx := base + index

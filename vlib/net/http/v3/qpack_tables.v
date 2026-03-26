@@ -1,9 +1,7 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
-// QPACK Static Table (RFC 9204 Appendix A)
+// QPACK static table, lookup maps, and dynamic table (RFC 9204).
+
 const static_table = [
 	HeaderField{
 		name:  ':authority'
@@ -403,14 +401,10 @@ const static_table = [
 	},
 ]
 
-// QPACK static table lookup maps for O(1) access
-// Map from "name:value" to index (for exact matches)
 const qpack_static_exact_map = build_qpack_exact_map()
 
-// Map from "name" to list of indices (for name-only matches)
 const qpack_static_name_map = build_qpack_name_map()
 
-// build_qpack_exact_map builds a map for exact header matches
 fn build_qpack_exact_map() map[string]int {
 	mut m := map[string]int{}
 	for i, entry in static_table {
@@ -422,7 +416,6 @@ fn build_qpack_exact_map() map[string]int {
 	return m
 }
 
-// build_qpack_name_map builds a map for name-only matches
 fn build_qpack_name_map() map[string][]int {
 	mut m := map[string][]int{}
 	for i, entry in static_table {
@@ -434,24 +427,16 @@ fn build_qpack_name_map() map[string][]int {
 	return m
 }
 
-// DynamicTableEntry represents an entry in the dynamic table
 struct DynamicTableEntry {
 	field HeaderField
-	size  int // Size in bytes (name.len + value.len + 32)
+	size  int
 }
 
-// DynamicTable manages the dynamic table for QPACK.
-// QPACK uses absolute indexing per RFC 9204 §3.2: entries are appended to the
-// back of the array (newest at the highest absolute index). References use
-// absolute or relative indices, unlike HPACK (HTTP/2) which inserts newest
-// entries at index 0 (LIFO ordering per RFC 7541 §2.3.3).
-//
-// Internally uses a ring buffer for O(1) eviction instead of O(n) array shifts.
 struct DynamicTable {
 mut:
 	entries      []DynamicTableEntry
-	head         int // index of the oldest entry in the ring buffer
-	count        int // number of valid entries currently stored
+	head         int
+	count        int
 	size         int
 	max_size     int
 	insert_count u64
@@ -469,8 +454,6 @@ fn new_dynamic_table(max_size int) DynamicTable {
 	}
 }
 
-// insert adds a header field to the dynamic table, evicting oldest entries as
-// needed. Uses ring buffer indexing for O(1) eviction.
 fn (mut dt DynamicTable) insert(field HeaderField) {
 	entry_size := field.name.len + field.value.len + 32
 	cap := dt.entries.len
@@ -479,14 +462,12 @@ fn (mut dt DynamicTable) insert(field HeaderField) {
 		return
 	}
 
-	// Evict oldest entries until there is room
 	for dt.size + entry_size > dt.max_size && dt.count > 0 {
 		dt.size -= dt.entries[dt.head].size
 		dt.head = (dt.head + 1) % cap
 		dt.count--
 	}
 
-	// Add new entry at the tail of the ring buffer
 	tail := (dt.head + dt.count) % cap
 	dt.entries[tail] = DynamicTableEntry{
 		field: field
@@ -497,7 +478,6 @@ fn (mut dt DynamicTable) insert(field HeaderField) {
 	dt.insert_count++
 }
 
-// get returns the entry at the given relative index (newest = 0).
 fn (dt &DynamicTable) get(index int) ?HeaderField {
 	if index < 0 || index >= dt.count {
 		return none
@@ -507,8 +487,6 @@ fn (dt &DynamicTable) get(index int) ?HeaderField {
 	return dt.entries[actual_idx].field
 }
 
-// get_by_absolute returns the entry at the given absolute index.
-// The absolute index is the insertion-order index assigned when an entry was added.
 fn (dt &DynamicTable) get_by_absolute(abs_index int) ?HeaderField {
 	first_abs := int(dt.insert_count) - dt.count
 	j := abs_index - first_abs

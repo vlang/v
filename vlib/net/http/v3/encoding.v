@@ -1,16 +1,11 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
-// Common encoding/decoding utilities for HTTP/3 (RFC 9000)
+// Variable-length integer and string encoding utilities (RFC 9000).
 
-// max_varint is the maximum value encodable as a QUIC variable-length integer (2^62 - 1).
+// max_varint is the maximum value encodable as a QUIC variable-length integer.
 pub const max_varint = u64(0x3FFF_FFFF_FFFF_FFFF)
 
-// encode_varint encodes a variable-length integer using QUIC varint encoding.
-// Supports values from 0 to max_varint (2^62-1) with 1, 2, 4, or 8 byte encodings.
-// Returns an error if value exceeds max_varint.
+// encode_varint encodes a value using QUIC variable-length integer encoding.
 pub fn encode_varint(value u64) ![]u8 {
 	if value > max_varint {
 		return error('varint value ${value} exceeds maximum 62-bit value (max_varint)')
@@ -27,8 +22,7 @@ pub fn encode_varint(value u64) ![]u8 {
 	}
 }
 
-// decode_varint decodes a QUIC variable-length integer.
-// Returns the decoded value and the number of bytes read.
+// decode_varint decodes a QUIC variable-length integer, returning the value and bytes read.
 pub fn decode_varint(data []u8) !(u64, int) {
 	if data.len == 0 {
 		return error('empty data for varint decoding')
@@ -39,11 +33,9 @@ pub fn decode_varint(data []u8) !(u64, int) {
 
 	match prefix {
 		0 {
-			// 1-byte encoding (6-bit value)
 			return u64(first & 0x3f), 1
 		}
 		1 {
-			// 2-byte encoding (14-bit value)
 			if data.len < 2 {
 				return error('incomplete 2-byte varint')
 			}
@@ -51,7 +43,6 @@ pub fn decode_varint(data []u8) !(u64, int) {
 			return value, 2
 		}
 		2 {
-			// 4-byte encoding (30-bit value)
 			if data.len < 4 {
 				return error('incomplete 4-byte varint')
 			}
@@ -59,7 +50,6 @@ pub fn decode_varint(data []u8) !(u64, int) {
 			return value, 4
 		}
 		3 {
-			// 8-byte encoding (62-bit value)
 			if data.len < 8 {
 				return error('incomplete 8-byte varint')
 			}
@@ -72,7 +62,7 @@ pub fn decode_varint(data []u8) !(u64, int) {
 	}
 }
 
-// encode_string encodes a string with varint length prefix.
+// encode_string encodes a string with a varint length prefix.
 pub fn encode_string(s string) ![]u8 {
 	bytes := s.bytes()
 	mut result := []u8{cap: 8 + bytes.len}
@@ -81,8 +71,7 @@ pub fn encode_string(s string) ![]u8 {
 	return result
 }
 
-// decode_string decodes a varint length-prefixed string.
-// Returns the decoded string and the number of bytes read.
+// decode_string decodes a varint length-prefixed string, returning the string and bytes read.
 pub fn decode_string(data []u8) !(string, int) {
 	length, bytes_read := decode_varint(data)!
 

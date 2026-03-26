@@ -1,19 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v3
 
 // QPACK encoder and decoder stream instructions (RFC 9204 §4.3, §4.4).
-// Encoder stream (unidirectional type 0x02) carries instructions to update
-// the decoder's dynamic table. Decoder stream (unidirectional type 0x03)
-// carries acknowledgments and flow control signals back to the encoder.
 
-// --- Encoder Stream Instructions (RFC 9204 §4.3.1) ---
-
-// InsertWithNameRef inserts a new entry into the dynamic table using a name
-// reference from the static or dynamic table. Wire format:
-//   1T NNNNNN — T=1 static, T=0 dynamic; N = name index (6-bit prefix)
-//   followed by value string.
+// InsertWithNameRef inserts a dynamic table entry using a static or dynamic name reference.
 pub struct InsertWithNameRef {
 pub:
 	is_static  bool
@@ -21,10 +10,9 @@ pub:
 	value      string
 }
 
-// encode serialises the instruction onto the encoder stream.
+// encode serialises the InsertWithNameRef instruction.
 pub fn (i InsertWithNameRef) encode() []u8 {
 	mut result := []u8{cap: 10 + i.value.len}
-	// First byte: 1T NNNNNN
 	flag := if i.is_static { u8(0xc0) } else { u8(0x80) }
 	if i.name_index < 64 {
 		result << flag | u8(i.name_index)
@@ -52,19 +40,16 @@ pub fn decode_insert_with_name_ref(data []u8) !(InsertWithNameRef, int) {
 	}, idx + vlen
 }
 
-// InsertWithoutNameRef inserts a new entry with a literal name and value.
-// Wire format: 01 NNNNNN — N = name length (5-bit prefix with H flag),
-// followed by name string, then value string.
+// InsertWithoutNameRef inserts a dynamic table entry with a literal name and value.
 pub struct InsertWithoutNameRef {
 pub:
 	name  string
 	value string
 }
 
-// encode serialises the instruction onto the encoder stream.
+// encode serialises the InsertWithoutNameRef instruction.
 pub fn (i InsertWithoutNameRef) encode() []u8 {
 	mut result := []u8{cap: 10 + i.name.len + i.value.len}
-	// First byte: 01 XXXXXX — use 0x40 as base; name follows with 5-bit prefix
 	name_bytes := i.name.bytes()
 	mut name_len := encode_integer(name_bytes.len, 5)
 	name_len[0] |= 0x40
@@ -93,7 +78,6 @@ pub fn decode_insert_without_name_ref(data []u8) !(InsertWithoutNameRef, int) {
 }
 
 // Duplicate duplicates an existing dynamic table entry.
-// Wire format: 000 XXXXX — 5-bit prefix for relative index.
 pub struct Duplicate {
 pub:
 	index int
@@ -102,8 +86,6 @@ pub:
 // encode serialises the Duplicate instruction.
 pub fn (d Duplicate) encode() []u8 {
 	mut result := encode_integer(d.index, 5)
-	// High 3 bits must be 000 — encode_integer for 5-bit prefix
-	// already leaves bits 7-5 as 0 for values < 31.
 	return result
 }
 
@@ -119,7 +101,6 @@ pub fn decode_duplicate(data []u8) !(Duplicate, int) {
 }
 
 // SetDynamicTableCapacity sets the dynamic table capacity.
-// Wire format: 001 XXXXX — 5-bit prefix for capacity.
 pub struct SetDynamicTableCapacity {
 pub:
 	capacity int
@@ -143,10 +124,7 @@ pub fn decode_set_dynamic_table_capacity(data []u8) !(SetDynamicTableCapacity, i
 	}, bytes_read
 }
 
-// --- Decoder Stream Instructions (RFC 9204 §4.4.1) ---
-
-// SectionAcknowledgment acknowledges processing of a header block
-// on the given stream. Wire format: 1 XXXXXXX — 7-bit stream ID prefix.
+// SectionAcknowledgment acknowledges processing of a header block on a stream.
 pub struct SectionAcknowledgment {
 pub:
 	stream_id int
@@ -171,7 +149,6 @@ pub fn decode_section_acknowledgment(data []u8) !(SectionAcknowledgment, int) {
 }
 
 // StreamCancellation cancels all references to a stream.
-// Wire format: 01 XXXXXX — 6-bit stream ID prefix.
 pub struct StreamCancellation {
 pub:
 	stream_id int
@@ -195,8 +172,7 @@ pub fn decode_stream_cancellation(data []u8) !(StreamCancellation, int) {
 	}, bytes_read
 }
 
-// InsertCountIncrement signals that the decoder has processed additional
-// dynamic table inserts. Wire format: 00 XXXXXX — 6-bit increment prefix.
+// InsertCountIncrement signals that the decoder has processed additional dynamic table inserts.
 pub struct InsertCountIncrement {
 pub:
 	increment int

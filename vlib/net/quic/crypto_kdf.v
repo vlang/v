@@ -1,15 +1,11 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
-// HKDF key derivation functions for QUIC.
-// Implements RFC 9001 Section 5.1–5.2: Initial Secrets and Traffic Keys.
+// HKDF key derivation for QUIC initial secrets and traffic keys.
 
 // EVP_PKEY_HKDF is the NID for HKDF key derivation (OpenSSL NID_hkdf = 1036).
 const evp_pkey_hkdf = 1036
 
-// --- HKDF C function declarations ---
+// HKDF C function declarations
 
 fn C.EVP_sha256() &EVP_MD
 fn C.EVP_sha384() &EVP_MD
@@ -23,17 +19,14 @@ fn C.EVP_PKEY_CTX_set1_hkdf_key(ctx EVP_PKEY_CTX, key &u8, keylen int) int
 fn C.EVP_PKEY_CTX_add1_hkdf_info(ctx EVP_PKEY_CTX, info &u8, infolen int) int
 fn C.EVP_PKEY_derive(ctx EVP_PKEY_CTX, key &u8, keylen &u64) int
 
-// derive_initial_secrets derives initial secrets for QUIC.
-// RFC 9001 Section 5.2: Initial Secrets
+// derive_initial_secrets derives initial QUIC secrets per RFC 9001 §5.2.
 pub fn derive_initial_secrets(dcid []u8, is_server bool) !([]u8, []u8) {
 	// QUIC initial salt per RFC 9001 Section 5.2 (QUIC version 1)
 	initial_salt := [u8(0x38), 0x76, 0x2c, 0xf7, 0xf5, 0x59, 0x34, 0xb3, 0x4d, 0x17, 0x9a, 0xe6,
 		0xa4, 0xc8, 0x0c, 0xad, 0xcc, 0xbb, 0x7f, 0x0a]
 
-	// Extract initial secret using HKDF-Extract
 	initial_secret := hkdf_extract(initial_salt, dcid)!
 
-	// Derive client and server secrets
 	client_label := 'client in'.bytes()
 	server_label := 'server in'.bytes()
 
@@ -47,7 +40,7 @@ pub fn derive_initial_secrets(dcid []u8, is_server bool) !([]u8, []u8) {
 	}
 }
 
-// hkdf_extract performs HKDF-Extract
+// hkdf_extract performs HKDF-Extract.
 fn hkdf_extract(salt []u8, ikm []u8) ![]u8 {
 	pctx := C.EVP_PKEY_CTX_new_id(evp_pkey_hkdf, unsafe { nil })
 	if pctx == unsafe { nil } {
@@ -87,28 +80,22 @@ fn hkdf_extract(salt []u8, ikm []u8) ![]u8 {
 	return out[..int(outlen)]
 }
 
-// hkdf_expand_label performs HKDF-Expand-Label for TLS 1.3
 fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
-	// Build HkdfLabel structure
 	mut hkdf_label := []u8{}
 
-	// Length (2 bytes)
 	hkdf_label << u8(length >> 8)
 	hkdf_label << u8(length)
 
-	// Label length and label (prefixed with "tls13 ")
 	mut full_label := 'tls13 '.bytes()
 	full_label << label
 	hkdf_label << u8(full_label.len)
 	hkdf_label << full_label
 
-	// Context length and context
 	hkdf_label << u8(context.len)
 	if context.len > 0 {
 		hkdf_label << context
 	}
 
-	// Perform HKDF-Expand
 	pctx := C.EVP_PKEY_CTX_new_id(evp_pkey_hkdf, unsafe { nil })
 	if pctx == unsafe { nil } {
 		return error('failed to create PKEY context')
@@ -147,9 +134,7 @@ fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
 	return out[..int(outlen)]
 }
 
-// derive_traffic_keys derives AES-128-GCM keys and IVs from the traffic secrets
-// per RFC 9001 §5.1. Must be called after tx_secret and rx_secret are set.
-// Populates tx_key (16B), tx_iv (12B), rx_key (16B), rx_iv (12B).
+// derive_traffic_keys derives AES-128-GCM keys and IVs per RFC 9001 §5.1.
 pub fn (mut ctx CryptoContext) derive_traffic_keys() ! {
 	if ctx.tx_secret.len == 0 {
 		return error('tx_secret is empty: set traffic secrets before deriving keys')

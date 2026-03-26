@@ -1,15 +1,10 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
+// QUIC connection management and configuration using ngtcp2.
 import net
 import time
 
-// QUIC connection implementation using ngtcp2
-// This replaces the placeholder implementation with a real QUIC connection
-
-// Connection represents a QUIC connection using ngtcp2
+// Connection represents a QUIC connection backed by ngtcp2.
 pub struct Connection {
 pub mut:
 	remote_addr    string
@@ -17,30 +12,20 @@ pub mut:
 	streams        map[u64]&Stream
 	next_stream_id u64 = 1
 	closed         bool
-	// ngtcp2 connection handle
-	ngtcp2_conn voidptr
-	// UDP socket
-	udp_socket net.UdpConn
-	// Connection state
+	ngtcp2_conn    voidptr
+	udp_socket     net.UdpConn
 	handshake_done bool
-	// Packet buffer
-	send_buf []u8
-	recv_buf []u8
-	// TLS/crypto context
-	crypto_ctx CryptoContext
-	// Network path (persistent for the connection lifetime)
-	path Ngtcp2PathStruct
-	// Per-connection address storage; path.local.addr and path.remote.addr
-	// point into this struct, so it must outlive path.
-	path_addrs QuicPathAddrs
-	// Connection migration subsystem
-	migration ConnectionMigration
-	// 0-RTT resumption subsystem
-	zero_rtt      ZeroRTTConnection
-	session_cache &SessionCache = unsafe { nil }
+	send_buf       []u8
+	recv_buf       []u8
+	crypto_ctx     CryptoContext
+	path           Ngtcp2PathStruct
+	path_addrs     QuicPathAddrs
+	migration      ConnectionMigration
+	zero_rtt       ZeroRTTConnection
+	session_cache  &SessionCache = unsafe { nil }
 }
 
-// Stream represents a QUIC stream
+// Stream represents a QUIC stream.
 pub struct Stream {
 pub mut:
 	id     u64
@@ -48,25 +33,23 @@ pub mut:
 	closed bool
 }
 
-// ConnectionConfig holds QUIC connection configuration
+// ConnectionConfig holds QUIC connection configuration.
 pub struct ConnectionConfig {
 pub:
-	remote_addr string
-	alpn        []string = ['h3']
-	enable_0rtt bool
-	// Session cache for 0-RTT resumption (shared across connections)
-	session_cache &SessionCache = unsafe { nil }
-	// Connection limits
-	max_stream_data_bidi_local  u64 = 1048576  // 1MB
-	max_stream_data_bidi_remote u64 = 1048576  // 1MB
-	max_stream_data_uni         u64 = 1048576  // 1MB
-	max_data                    u64 = 10485760 // 10MB
-	max_streams_bidi            u64 = 100
-	max_streams_uni             u64 = 100
-	max_idle_timeout            u64 = 30000 // 30 seconds (milliseconds)
+	remote_addr                 string
+	alpn                        []string = ['h3']
+	enable_0rtt                 bool
+	session_cache               &SessionCache = unsafe { nil }
+	max_stream_data_bidi_local  u64           = 1048576
+	max_stream_data_bidi_remote u64           = 1048576
+	max_stream_data_uni         u64           = 1048576
+	max_data                    u64           = 10485760
+	max_streams_bidi            u64           = 100
+	max_streams_uni             u64           = 100
+	max_idle_timeout            u64           = 30000
 }
 
-// new_connection creates a new QUIC connection using ngtcp2 library
+// new_connection creates a new QUIC client connection using ngtcp2.
 pub fn new_connection(config ConnectionConfig) !Connection {
 	addr_parts := config.remote_addr.split(':')
 	if addr_parts.len != 2 {
@@ -95,7 +78,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		conn_id:       ngtcp2_setup.conn_id
 		ngtcp2_conn:   ngtcp2_setup.ngtcp2_conn
 		udp_socket:    ngtcp2_setup.udp_socket
-		send_buf:      []u8{len: 65536} // 64KB buffer
+		send_buf:      []u8{len: 65536}
 		recv_buf:      []u8{len: 65536}
 		crypto_ctx:    crypto_ctx
 		path:          ngtcp2_setup.path
@@ -106,9 +89,6 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	}
 }
 
-// Ngtcp2ConnectionSetup holds the results of ngtcp2 connection setup.
-// Returned by setup_ngtcp2 so that callers can access mutable fields
-// (e.g. udp_socket) for error-path cleanup.
 struct Ngtcp2ConnectionSetup {
 pub mut:
 	ngtcp2_conn voidptr
@@ -118,15 +98,11 @@ pub mut:
 	conn_id     []u8
 }
 
-// setup_ngtcp2 handles CID generation, DNS resolution, callback setup,
-// settings/params configuration, and ngtcp2_conn creation.
-// On error, all partially-created resources are cleaned up internally.
 fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2ConnectionSetup {
 	mut udp_socket := net.dial_udp('${host}:${port}') or {
 		return error('failed to create UDP socket: ${err}')
 	}
 
-	// Generate connection IDs using crypto-quality random
 	mut dcid := Ngtcp2CidStruct{
 		datalen: 18
 	}
@@ -155,7 +131,7 @@ fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2Connectio
 
 	settings := configure_ngtcp2_settings()
 	params := configure_transport_params(config)
-	quic_version := u32(0x00000001) // QUIC version 1 (RFC 9000)
+	quic_version := u32(0x00000001)
 
 	ngtcp2_conn := conn_client_new(&dcid, &scid, &path, quic_version, &callbacks, &settings,
 		&params, unsafe { nil }) or {
@@ -172,8 +148,6 @@ fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2Connectio
 	}
 }
 
-// configure_ngtcp2_settings initializes ngtcp2 settings with defaults and
-// the current timestamp.
 fn configure_ngtcp2_settings() Ngtcp2SettingsStruct {
 	mut settings := Ngtcp2SettingsStruct{
 		qlog_write:         unsafe { nil }
@@ -185,12 +159,10 @@ fn configure_ngtcp2_settings() Ngtcp2SettingsStruct {
 		pmtud_probes:       unsafe { nil }
 	}
 	settings_default(&settings)
-	settings.initial_ts = u64(time.now().unix_milli()) * 1000000 // ms to ns
+	settings.initial_ts = u64(time.now().unix_milli()) * 1000000
 	return settings
 }
 
-// configure_transport_params creates transport parameters from the connection
-// configuration, applying user-specified limits for streams and data.
 fn configure_transport_params(config ConnectionConfig) Ngtcp2TransportParamsStruct {
 	mut params := Ngtcp2TransportParamsStruct{
 		version_info: Ngtcp2VersionInfo{
@@ -204,11 +176,10 @@ fn configure_transport_params(config ConnectionConfig) Ngtcp2TransportParamsStru
 	params.initial_max_data = config.max_data
 	params.initial_max_streams_bidi = config.max_streams_bidi
 	params.initial_max_streams_uni = config.max_streams_uni
-	params.max_idle_timeout = config.max_idle_timeout * 1000000 // ms to ns
+	params.max_idle_timeout = config.max_idle_timeout * 1000000
 	return params
 }
 
-// init_migration_subsystem initializes the connection migration subsystem
 fn init_migration_subsystem(host string) ConnectionMigration {
 	mig_local := net.resolve_addrs('0.0.0.0', .ip, .udp) or { []net.Addr{} }
 	mig_remote := net.resolve_addrs(host, .ip, .udp) or { []net.Addr{} }
@@ -218,7 +189,6 @@ fn init_migration_subsystem(host string) ConnectionMigration {
 	return ConnectionMigration{}
 }
 
-// init_zero_rtt_subsystem initializes the 0-RTT resumption subsystem
 fn init_zero_rtt_subsystem(config ConnectionConfig, host string) ZeroRTTConnection {
 	if config.enable_0rtt && config.session_cache != unsafe { nil } {
 		mut sc := config.session_cache
@@ -235,16 +205,11 @@ fn init_zero_rtt_subsystem(config ConnectionConfig, host string) ZeroRTTConnecti
 }
 
 // get_expiry returns the next timer expiry time for the connection in nanoseconds.
-// Compare the returned value against time.sys_mono_now() to decide when to
-// call handle_expiry.
 pub fn get_expiry(conn &Connection) u64 {
 	return conn_get_expiry(conn.ngtcp2_conn)
 }
 
 // handle_expiry notifies ngtcp2 that the connection timer has fired.
-// ts is the current monotonic time in nanoseconds (time.sys_mono_now()).
-// After calling this, invoke write_pkt or conn_write_pkt to flush any
-// retransmission packets that ngtcp2 has queued as a result of the expiry.
 pub fn handle_expiry(mut conn Connection) ! {
 	if conn.closed {
 		return error('connection closed')
@@ -256,11 +221,7 @@ pub fn handle_expiry(mut conn Connection) ! {
 	conn_handle_expiry(conn.ngtcp2_conn, ts)!
 }
 
-// check_and_handle_timers checks whether the connection timer has expired and,
-// if so, calls handle_expiry to process it.  After this returns without error,
-// the caller should send any pending packets via write_pkt so that ngtcp2
-// retransmissions and keep-alives are delivered to the peer.
-// Returns true when handle_expiry was invoked (timer fired), false otherwise.
+// check_and_handle_timers checks whether the timer has expired and processes it. Returns true if the timer fired.
 pub fn check_and_handle_timers(mut conn Connection) !bool {
 	if conn.closed {
 		return error('connection closed')

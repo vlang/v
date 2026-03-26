@@ -1,4 +1,4 @@
-// Connection Migration Tests
+// Tests for QUIC connection migration.
 module quic
 
 import net
@@ -68,7 +68,6 @@ fn test_connection_migration_probe_path() {
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 
-	// Probe new path
 	new_local_addrs := net.resolve_addrs('10.0.0.50', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
@@ -114,7 +113,6 @@ fn test_connection_migration_max_paths() {
 	mut migration := new_connection_migration(local_addr, remote_addr)
 	migration.max_paths = 2
 
-	// Add paths up to limit
 	new_local1_addrs := net.resolve_addrs('10.0.0.50', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
@@ -154,7 +152,6 @@ fn test_connection_migration_max_paths() {
 	}
 	new_local3 := new_local3_addrs[0]
 	migration.probe_path(new_local3, remote_addr) or {
-		// Expected to fail due to max paths limit
 		println('✓ Connection migration max paths test passed')
 		return
 	}
@@ -185,15 +182,12 @@ fn test_path_degradation_detection() {
 
 	migration := new_connection_migration(local_addr, remote_addr)
 
-	// Test high packet loss
 	degraded1 := migration.detect_path_degradation(0.06, 100 * time.millisecond)
 	assert degraded1 == true
 
-	// Test high RTT
 	degraded2 := migration.detect_path_degradation(0.01, 600 * time.millisecond)
 	assert degraded2 == true
 
-	// Test good conditions
 	degraded3 := migration.detect_path_degradation(0.01, 50 * time.millisecond)
 	assert degraded3 == false
 
@@ -223,7 +217,6 @@ fn test_migration_stats() {
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 
-	// Add some migration events
 	event1 := MigrationEvent{
 		reason:    .network_change
 		old_path:  migration.current_path

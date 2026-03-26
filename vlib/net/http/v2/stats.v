@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module v2
 
-// Statistics for performance monitoring
+// Performance monitoring statistics for HTTP/2 requests.
+
+// Stats holds performance statistics.
 pub struct Stats {
 pub mut:
 	total_requests       u64
@@ -36,7 +35,7 @@ pub fn (mut s Stats) record_request(success bool, bytes_sent int, bytes_received
 	}
 }
 
-// avg_time_ms calculates and returns the average request time in milliseconds.
+// avg_time_ms returns the average request time in milliseconds.
 pub fn (s Stats) avg_time_ms() f64 {
 	if s.total_requests == 0 {
 		return 0.0
@@ -44,7 +43,7 @@ pub fn (s Stats) avg_time_ms() f64 {
 	return f64(s.total_time_ms) / f64(s.total_requests)
 }
 
-// success_rate calculates and returns the request success rate as a percentage.
+// success_rate returns the request success rate as a percentage.
 pub fn (s Stats) success_rate() f64 {
 	if s.total_requests == 0 {
 		return 0.0

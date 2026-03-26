@@ -1,6 +1,3 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module quic
 
 import crypto.rand
@@ -8,8 +5,7 @@ import net
 import sync
 import time
 
-// Connection Migration allows QUIC connections to survive network changes
-// (e.g., WiFi to cellular, IP address changes)
+// QUIC connection migration for surviving network path changes.
 
 // ConnectionID represents a QUIC connection ID
 pub struct ConnectionID {
@@ -31,7 +27,6 @@ pub fn (cid &ConnectionID) equals(other ConnectionID) bool {
 	if cid.length != other.length {
 		return false
 	}
-	// Use bulk comparison instead of byte-by-byte
 	if cid.length == 0 {
 		return true
 	}
@@ -150,10 +145,8 @@ pub fn (mut cm ConnectionMigration) probe_path(local_addr net.Addr, remote_addr 
 		return error('Maximum number of paths reached')
 	}
 
-	// Create new path
 	mut new_path := new_path_info(local_addr, remote_addr)
 
-	// Generate PATH_CHALLENGE
 	challenge := generate_path_challenge() or {
 		cm.mu.unlock()
 		return error('failed to generate path challenge: ${err}')
@@ -161,7 +154,6 @@ pub fn (mut cm ConnectionMigration) probe_path(local_addr net.Addr, remote_addr 
 	path_key := path_to_key(new_path)
 	cm.pending_challenges[path_key] = challenge
 
-	// Add to alternative paths
 	cm.alternative_paths << new_path
 	cm.state = .probing
 
@@ -175,9 +167,7 @@ pub fn (mut cm ConnectionMigration) validate_path(path PathInfo, response PathRe
 	path_key := path_to_key(path)
 
 	if challenge := cm.pending_challenges[path_key] {
-		// Verify response matches challenge
 		if response.data == challenge.data {
-			// Mark path as validated
 			for mut alt_path in cm.alternative_paths {
 				if paths_equal(alt_path, path) {
 					alt_path.validated = true
@@ -203,12 +193,10 @@ pub fn (mut cm ConnectionMigration) migrate_to_path(new_path PathInfo) !bool {
 
 	old_path := cm.current_path
 
-	// Switch to new path
 	cm.current_path = new_path
 	cm.current_path.active = true
 	cm.state = .migrating
 
-	// Record migration event
 	event := MigrationEvent{
 		reason:    .manual
 		old_path:  old_path
@@ -218,7 +206,6 @@ pub fn (mut cm ConnectionMigration) migrate_to_path(new_path PathInfo) !bool {
 	}
 	cm.migration_history << event
 
-	// Remove from alternative paths
 	cm.alternative_paths = cm.alternative_paths.filter(!paths_equal(it, new_path))
 
 	cm.state = .completed
@@ -233,15 +220,12 @@ pub fn (mut cm ConnectionMigration) handle_network_change(new_local_addr net.Add
 		return
 	}
 
-	// Check if local address actually changed
 	if addrs_equal(new_local_addr, cm.current_path.local_addr) {
 		return
 	}
 
-	// Probe new path
 	new_path := cm.probe_path(new_local_addr, cm.current_path.remote_addr)!
 
-	// Record event
 	event := MigrationEvent{
 		reason:    .network_change
 		old_path:  cm.current_path
@@ -260,11 +244,9 @@ pub fn (mut cm ConnectionMigration) handle_nat_rebinding(new_remote_addr net.Add
 		return
 	}
 
-	// Update current path with new remote address
 	old_path := cm.current_path
 	cm.current_path.remote_addr = new_remote_addr
 
-	// Record event
 	event := MigrationEvent{
 		reason:    .nat_rebinding
 		old_path:  old_path
@@ -278,8 +260,7 @@ pub fn (mut cm ConnectionMigration) handle_nat_rebinding(new_remote_addr net.Add
 
 // detect_path_degradation checks if current path quality has degraded
 pub fn (cm &ConnectionMigration) detect_path_degradation(packet_loss_rate f64, rtt time.Duration) bool {
-	// Simple heuristics for path degradation
-	high_loss := packet_loss_rate > 0.05 // 5% packet loss
+	high_loss := packet_loss_rate > 0.05
 	high_rtt := rtt > 500 * time.millisecond
 
 	return high_loss || high_rtt
@@ -302,14 +283,11 @@ pub fn (cm &ConnectionMigration) select_best_path() ?PathInfo {
 
 // cleanup_paths removes invalid or old paths
 pub fn (mut cm ConnectionMigration) cleanup_paths() {
-	// Keep validated paths, or unvalidated paths that are still within the probe timeout window.
 	cm.alternative_paths = cm.alternative_paths.filter(it.validated
 		|| time.since(it.created_at) < cm.probe_timeout)
 
-	// Clean up all pending challenges (they correspond to paths that may no longer exist).
 	mut to_remove := []string{}
 	for key, _ in cm.pending_challenges {
-		// Remove challenges older than timeout
 		to_remove << key
 	}
 
@@ -339,8 +317,6 @@ pub fn (cm &ConnectionMigration) get_migration_stats() MigrationStats {
 
 	return stats
 }
-
-// Helper functions
 
 fn generate_path_challenge() !PathChallenge {
 	// RFC 9000 §8.2.1: PATH_CHALLENGE data must be 8 cryptographically random bytes.

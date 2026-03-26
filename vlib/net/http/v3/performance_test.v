@@ -1,11 +1,9 @@
-// HTTP/3 Performance Test
-// Tests the optimizations we just made to QPACK and QUIC components
 module v3
 
+// Performance benchmarks for QPACK encoding and compression.
 import time
 
 fn test_qpack_encoding_performance() {
-	// Create test headers
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/'},
@@ -17,7 +15,6 @@ fn test_qpack_encoding_performance() {
 
 	mut encoder := new_qpack_encoder(4096, 100)
 
-	// Benchmark encoding
 	iterations := 10000
 	start := time.now()
 
@@ -33,11 +30,10 @@ fn test_qpack_encoding_performance() {
 	println('  Average time: ${avg_time:.2f} μs')
 	println('  Headers per second: ${f64(iterations) / f64(elapsed.seconds()):.0f}')
 
-	assert avg_time < 50.0 // Should be faster than 50μs with hashmap optimization
+	assert avg_time < 50.0
 }
 
 fn test_qpack_static_table_lookup() {
-	// Test that hashmap lookups work correctly
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':method', 'POST'},
@@ -47,16 +43,12 @@ fn test_qpack_static_table_lookup() {
 
 	mut encoder := new_qpack_encoder(4096, 100)
 
-	// First encoding should use static table
 	encoded1 := encoder.encode(headers)
 
-	// Verify the encoding is correct
 	assert encoded1.len > 0
-	// First two bytes are Required Insert Count and Delta Base
 	assert encoded1[0] == 0x00
 	assert encoded1[1] == 0x00
-	// Third byte should be indexed (11XXXXXX pattern for static indexed)
-	assert encoded1[2] & 0xc0 == 0xc0 // Check bits 7-6 are both 1
+	assert encoded1[2] & 0xc0 == 0xc0
 
 	println('\nQPACK Static Table Lookup Test:')
 	println('  Headers encoded: ${headers.len}')
@@ -65,7 +57,6 @@ fn test_qpack_static_table_lookup() {
 }
 
 fn test_qpack_integer_encoding() {
-	// Test integer encoding performance
 	iterations := 100000
 	start := time.now()
 
@@ -81,11 +72,10 @@ fn test_qpack_integer_encoding() {
 	println('  Average time: ${avg_time:.3f} μs')
 	println('  Integers per second: ${f64(iterations) / f64(elapsed.seconds()):.0f}')
 
-	assert avg_time < 1.0 // Should be sub-microsecond with pre-allocation
+	assert avg_time < 1.0
 }
 
 fn test_qpack_string_encoding() {
-	// Test string encoding performance
 	test_string := 'user-agent'
 	iterations := 50000
 	start := time.now()
@@ -103,11 +93,10 @@ fn test_qpack_string_encoding() {
 	println('  Average time: ${avg_time:.3f} μs')
 	println('  Strings per second: ${f64(iterations) / f64(elapsed.seconds()):.0f}')
 
-	assert avg_time < 2.0 // Should be fast with pre-allocation
+	assert avg_time < 2.0
 }
 
 fn test_qpack_compression_ratio() {
-	// Test compression effectiveness
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/api/v1/users'},
@@ -121,10 +110,9 @@ fn test_qpack_compression_ratio() {
 		HeaderField{'pragma', 'no-cache'},
 	]
 
-	// Calculate original size
 	mut original_size := 0
 	for header in headers {
-		original_size += header.name.len + header.value.len + 2 // +2 for separators
+		original_size += header.name.len + header.value.len + 2
 	}
 
 	mut encoder := new_qpack_encoder(4096, 100)
@@ -139,11 +127,10 @@ fn test_qpack_compression_ratio() {
 	println('  Compression ratio: ${compression_ratio:.2f}x')
 	println('  Bandwidth savings: ${((1.0 - f64(encoded.len) / f64(original_size)) * 100.0):.1f}%')
 
-	assert compression_ratio > 1.5 // Should achieve at least 1.5x compression
+	assert compression_ratio > 1.5
 }
 
 fn test_qpack_repeated_headers() {
-	// Test performance with repeated headers (common in HTTP/3)
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/'},
@@ -153,7 +140,6 @@ fn test_qpack_repeated_headers() {
 
 	mut encoder := new_qpack_encoder(4096, 100)
 
-	// Encode same headers multiple times
 	iterations := 1000
 	start := time.now()
 
@@ -169,6 +155,5 @@ fn test_qpack_repeated_headers() {
 	println('  Average time: ${avg_time:.2f} μs')
 	println('  Requests per second: ${f64(iterations) / f64(elapsed.seconds()):.0f}')
 
-	// With hashmap lookup, repeated headers should be very fast
 	assert avg_time < 10.0
 }
