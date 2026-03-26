@@ -36,6 +36,10 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 	if node.is_method {
 		receiver_type := c.recheck_concrete_type(node.receiver.typ)
 		if mut receiver_var := c.fn_scope.find_var(node.receiver.name) {
+			if receiver_var.generic_typ == 0 && (node.receiver.typ.has_flag(.generic)
+				|| c.type_has_unresolved_generic_parts(node.receiver.typ)) {
+				receiver_var.generic_typ = node.receiver.typ
+			}
 			receiver_var.typ = receiver_type
 			receiver_var.orig_type = ast.no_type
 			receiver_var.smartcasts = []
@@ -45,6 +49,10 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 	for param in node.params {
 		param_type := c.recheck_concrete_type(param.typ)
 		if mut param_var := c.fn_scope.find_var(param.name) {
+			if param_var.generic_typ == 0 && (param.typ.has_flag(.generic)
+				|| c.type_has_unresolved_generic_parts(param.typ)) {
+				param_var.generic_typ = param.typ
+			}
 			param_var.typ = param_type
 			param_var.orig_type = ast.no_type
 			param_var.smartcasts = []
@@ -969,6 +977,10 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 					true)
 			}
 			if mut param_var := node.decl.scope.find_var(param.name) {
+				if param_var.generic_typ == 0 && (param.typ.has_flag(.generic)
+					|| c.type_has_unresolved_generic_parts(param.typ)) {
+					param_var.generic_typ = param.typ
+				}
 				param_var.typ = param_type
 			}
 		}
@@ -1274,6 +1286,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				mut kind := sym.kind
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
+				} else if sym.kind == .generic_inst && sym.info is ast.GenericInst {
+					parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
+					kind = parent_sym.kind
 				}
 				if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
 					c.error('${fn_name}: expected sum type, struct, map or array, found ${kind}',

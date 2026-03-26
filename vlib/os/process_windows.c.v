@@ -32,10 +32,10 @@ fn failed_cfn_report_error(ok bool, label string) {
 
 fn close_valid_handle(p voidptr) {
 	h := &&u32(p)
-	if *h != &u32(unsafe { nil }) {
+	if *h != null_u32_ptr() {
 		C.CloseHandle(*h)
 		unsafe {
-			*h = &u32(nil)
+			*h = null_u32_ptr()
 		}
 	}
 }
@@ -70,19 +70,19 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin_read:   unsafe { nil }
-		child_stdin_write:  unsafe { nil }
-		child_stdout_read:  unsafe { nil }
-		child_stdout_write: unsafe { nil }
-		child_stderr_read:  unsafe { nil }
-		child_stderr_write: unsafe { nil }
+		child_stdin_read:   null_u32_ptr()
+		child_stdin_write:  null_u32_ptr()
+		child_stdout_read:  null_u32_ptr()
+		child_stdout_write: null_u32_ptr()
+		child_stderr_read:  null_u32_ptr()
+		child_stderr_write: null_u32_ptr()
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
-		lp_reserved2: unsafe { nil }
-		lp_reserved:  unsafe { nil }
-		lp_desktop:   unsafe { nil }
-		lp_title:     unsafe { nil }
+		lp_reserved2: null_u8_ptr()
+		lp_reserved:  null_u16_ptr()
+		lp_desktop:   null_u16_ptr()
+		lp_title:     null_u16_ptr()
 		cb:           sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
@@ -130,7 +130,7 @@ fn (mut p Process) win_spawn_process() int {
 		creation_flags |= C.CREATE_NEW_PROCESS_GROUP
 	}
 
-	mut work_folder_ptr := voidptr(unsafe { nil })
+	mut work_folder_ptr := null_voidptr()
 	if p.work_folder != '' {
 		work_folder_ptr = p.work_folder.to_wide()
 		to_be_freed << work_folder_ptr
@@ -138,7 +138,7 @@ fn (mut p Process) win_spawn_process() int {
 
 	mut env_block := []u16{}
 	if p.env.len > 0 {
-		mut env_ptr := &u16(unsafe { nil })
+		mut env_ptr := null_u16_ptr()
 
 		for e in p.env {
 			// e should in `ABC=123` format
@@ -260,7 +260,7 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	if unsafe { wdata == 0 } {
 		return '', 0
 	}
-	mut rhandle := &u32(unsafe { nil })
+	mut rhandle := null_u32_ptr()
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}
@@ -271,8 +271,8 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 		return '', 0
 	}
 	mut bytes_avail := int(0)
-	if !C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, voidptr(&bytes_avail),
-		unsafe { nil }) {
+	if !C.PeekNamedPipe(rhandle, null_voidptr(), int(0), null_voidptr(), voidptr(&bytes_avail),
+		null_voidptr()) {
 		return '', 0
 	}
 	if bytes_avail == 0 {
@@ -292,7 +292,7 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	if unsafe { wdata == 0 } {
 		return false
 	}
-	mut rhandle := &u32(unsafe { nil })
+	mut rhandle := null_u32_ptr()
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}
@@ -314,7 +314,7 @@ fn (mut p Process) win_slurp(idx int) string {
 	if unsafe { wdata == 0 } {
 		return ''
 	}
-	mut rhandle := &u32(unsafe { nil })
+	mut rhandle := null_u32_ptr()
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}

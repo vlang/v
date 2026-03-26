@@ -876,6 +876,7 @@ run them via `v file.v` instead',
 			p.scope.register(ast.Var{
 				name:          param.name
 				typ:           param.typ
+				generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
 				is_mut:        param.is_mut
 				is_auto_deref: param.is_mut
 				is_stack_obj:  is_stack_obj
@@ -1234,6 +1235,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.scope.register(ast.Var{
 			name:          param.name
 			typ:           param.typ
+			generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
 			is_mut:        param.is_mut
 			is_auto_deref: param.is_mut
 			pos:           param.pos

@@ -61,9 +61,15 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 }
 
 fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
-	mut array_type := g.unwrap(node.typ)
+	base_array_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
+	base_elem_typ := if node.generic_elem_type != 0 {
+		node.generic_elem_type
+	} else {
+		node.elem_type
+	}
+	mut array_type := g.unwrap(g.recheck_concrete_type(base_array_typ))
 	mut array_styp := ''
-	elem_type := g.unwrap(node.elem_type)
+	elem_type := g.unwrap(g.recheck_concrete_type(base_elem_typ))
 	mut expr_types := node.expr_types.clone()
 	mut shared_styp := '' // only needed for shared &[]{...}
 	is_amp := g.is_amp
@@ -98,7 +104,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			default_expr_type := if inferred_elem_type != ast.void_type {
 				inferred_elem_type
 			} else {
-				node.elem_type
+				base_elem_typ
 			}
 			mut resolved_expr_type := ast.void_type
 			if expr is ast.Ident {
@@ -711,6 +717,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
 	is_auto_heap := expr is ast.CastExpr && (expr.expr is ast.Ident && expr.expr.is_auto_heap())
 	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array,
 		is_auto_heap)
@@ -1178,20 +1185,37 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.return_type)
-	if sym.kind !in [.array_fixed, .array] {
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
+	if left_sym.kind !in [.array_fixed, .array] {
 		verror('filter() requires an array')
 	}
-	info := sym.info as ast.Array
-	styp := g.styp(node.return_type)
-	left_sym := g.table.final_sym(node.left_type)
-	elem_type_str := g.styp(info.elem_type)
-	noscan := g.check_noscan(info.elem_type)
+	left_is_array := left_sym.kind == .array
+	left_elem_type := if left_is_array {
+		(left_sym.info as ast.Array).elem_type
+	} else {
+		(left_sym.info as ast.ArrayFixed).elem_type
+	}
+	left_elem_type_str := g.styp(left_elem_type)
+	mut resolved_return_type := g.resolve_return_type(node)
+	if g.table.final_sym(g.unwrap_generic(resolved_return_type)).kind !in [.array_fixed, .array] {
+		resolved_return_type = resolved_left_type
+	}
+	return_sym := g.table.final_sym(g.unwrap_generic(resolved_return_type))
+	return_elem_type := if return_sym.kind == .array {
+		(return_sym.info as ast.Array).elem_type
+	} else {
+		(return_sym.info as ast.ArrayFixed).elem_type
+	}
+	styp := g.styp(resolved_return_type)
+	return_elem_type_str := g.styp(return_elem_type)
+	noscan := g.check_noscan(return_elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
-	g.writeln('${past.tmp_var} = builtin____new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${elem_type_str}));\n')
+	g.writeln('${past.tmp_var} = builtin____new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${return_elem_type_str}));\n')
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, left_elem_type)
 
 	mut closure_var := ''
 	if mut expr is ast.AnonFn {
@@ -1204,7 +1228,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, left_sym.kind == .array,
+	g.write_prepared_var(var_name, left_elem_type, left_elem_type_str, past.tmp_var, i, left_is_array,
 		false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -1770,7 +1794,8 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1783,6 +1808,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, elem_type)
 
 	mut closure_var := ''
 	if mut expr is ast.AnonFn {
@@ -1862,7 +1888,8 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1875,6 +1902,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, elem_type)
 
 	mut closure_var := ''
 	if mut expr is ast.AnonFn {
@@ -1954,7 +1982,8 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.final_sym(node.left_type)
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
 	left_is_array := sym.kind == .array
 	elem_type := if left_is_array {
 		(sym.info as ast.Array).elem_type
@@ -1969,6 +1998,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, elem_type)
 
 	mut closure_var := ''
 	if mut expr is ast.AnonFn {
@@ -2215,6 +2245,25 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 
 fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 	return if mut expr is ast.LambdaExpr { expr.params[0].name } else { 'it' }
+}
+
+fn (mut g Gen) refresh_array_expr_param_type(expr ast.Expr, var_name string, elem_type ast.Type) {
+	if var_name == '' || elem_type == 0 || g.file.scope == unsafe { nil } {
+		return
+	}
+	mut scope := g.file.scope.innermost(expr.pos().pos)
+	if scope == unsafe { nil } {
+		scope = g.file.scope
+	}
+	if scope == unsafe { nil } {
+		return
+	}
+	if mut v := scope.find_var(var_name) {
+		v.typ = g.unwrap_generic(g.recheck_concrete_type(elem_type))
+		v.orig_type = ast.no_type
+		v.smartcasts = []
+		v.is_unwrapped = false
+	}
 }
 
 const wrap_at_array_element = 0x0F

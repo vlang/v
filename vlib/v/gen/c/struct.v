@@ -10,6 +10,16 @@ const skip_struct_init = ['struct stat', 'struct addrinfo']
 fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
+	base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
+	$if trace_ci_fixes ? {
+		if g.file.path.contains('generic_method_short_struct_arg_cgen_test.v')
+			|| g.file.path.contains('/.vmodules/vtl/src/iter.v') {
+			node_type_str := if node.typ == 0 { '<none>' } else { g.table.type_to_str(node.typ) }
+			generic_type_str := if node.generic_typ == 0 { '<none>' } else { g.table.type_to_str(node.generic_typ) }
+			base_type_str := if base_node_typ == 0 { '<none>' } else { g.table.type_to_str(base_node_typ) }
+			eprintln('cgen struct_init fn=${if g.cur_fn == unsafe { nil } { '<nil>' } else { g.cur_fn.name }} node.typ=${node_type_str} generic_typ=${generic_type_str} base=${base_type_str} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))} active=${g.active_call_generic_names}:${g.active_call_concrete_types.map(g.table.type_to_str(it))} short=${node.is_short_syntax}')
+		}
+	}
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
 		is_update_tmp_var = true
 
@@ -25,11 +35,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		g.write(s)
 	}
-	unalised_typ := g.table.unaliased_type(node.typ)
+	unalised_typ := g.table.unaliased_type(base_node_typ)
 	styp := if g.table.sym(unalised_typ).language == .v {
 		g.styp(unalised_typ).replace('*', '')
 	} else {
-		g.styp(node.typ)
+		g.styp(base_node_typ)
 	}
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in skip_struct_init {
@@ -37,7 +47,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(3)
 		return
 	}
-	resolved_node_type := g.recheck_concrete_type(node.typ)
+	resolved_node_type := g.recheck_concrete_type(base_node_typ)
 	unwrapped_typ := g.unwrap_generic(resolved_node_type)
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
@@ -73,7 +83,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_anon = sym.info.is_anon
 	}
 	is_generic_default := sym.kind !in [.struct, .array_fixed, .generic_inst]
-		&& node.typ.has_flag(.generic) // T{}
+		&& base_node_typ.has_flag(.generic) // T{}
 	is_array := sym.kind in [.array_fixed, .array]
 	if sym.kind == .array_fixed {
 		arr_info := sym.array_fixed_info()

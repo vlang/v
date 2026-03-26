@@ -15,7 +15,7 @@ This module requires OpenSSL 3.5 or newer.
 
 ## Example
 
-```v
+```v ignore
 import x.crypto.mldsa
 
 fn main() {
@@ -30,4 +30,3 @@ fn main() {
 	pb.free()
 }
 ```
-

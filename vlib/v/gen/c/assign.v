@@ -398,6 +398,46 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
 		}
+		if is_decl {
+			resolved_decl_type := g.resolved_expr_type(val, var_type)
+			$if trace_ci_fixes ? {
+				if g.file.path.contains('comptime_for_in_options_struct_test.v')
+					&& left is ast.Ident && left.name == 'w' {
+					g.writeln('/*trace_decl_w before=${g.table.type_to_str(var_type)} right=${g.table.type_to_str(val_type)} resolved=${g.table.type_to_str(resolved_decl_type)} expr=${typeof(val).name}*/')
+				}
+			}
+			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type {
+				var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
+				val_type = var_type
+				node.left_types[i] = var_type
+				if i < node.right_types.len {
+					node.right_types[i] = val_type
+				}
+				if mut left is ast.Ident {
+					if mut left.obj is ast.Var {
+						left.obj.typ = var_type
+						if !var_type.has_option_or_result() {
+							left.obj.orig_type = ast.no_type
+							left.obj.smartcasts = []
+							left.obj.is_unwrapped = false
+						}
+						if left.obj.ct_type_var != .no_comptime {
+							g.type_resolver.update_ct_type(left.name, var_type)
+						}
+					}
+					if left.scope != unsafe { nil } {
+						if mut scope_var := left.scope.find_var(left.name) {
+							scope_var.typ = var_type
+							if !var_type.has_option_or_result() {
+								scope_var.orig_type = ast.no_type
+								scope_var.smartcasts = []
+								scope_var.is_unwrapped = false
+							}
+						}
+					}
+				}
+			}
+		}
 		mut cur_indexexpr := -1
 		consider_int_overflow := g.do_int_overflow_checks && g.unwrap_generic(var_type).is_int()
 		is_safe_add_assign := node.op == .plus_assign && consider_int_overflow
@@ -696,7 +736,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				resolved_val_sym := g.table.final_sym(resolved_val_type)
 				if resolved_val_sym.kind == .array && !resolved_val_type.is_ptr()
 					&& g.table.sym(resolved_val_type).kind != .alias {
-					resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_sym.array_info().elem_type))
+					mut resolved_elem_type := g.unwrap_generic(g.recheck_concrete_type(resolved_val_sym.array_info().elem_type))
+					if resolved_elem_type == ast.int_literal_type {
+						resolved_elem_type = ast.int_type
+					} else if resolved_elem_type == ast.float_literal_type {
+						resolved_elem_type = ast.f64_type
+					}
 					if resolved_elem_type != 0 && !resolved_elem_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(resolved_elem_type) {
 						mut new_arr_type := ast.idx_to_type(g.table.find_or_register_array(resolved_elem_type))
@@ -1613,6 +1658,24 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			if mut lx is ast.Ident && lx.kind != .blank_ident {
 				if mut lx.obj is ast.Var && i < mr_types.len {
 					lx.obj.typ = mr_types[i]
+					if !mr_types[i].has_option_or_result() {
+						lx.obj.orig_type = ast.no_type
+						lx.obj.smartcasts = []
+						lx.obj.is_unwrapped = false
+					}
+					if lx.obj.ct_type_var != .no_comptime {
+						g.type_resolver.update_ct_type(lx.name, mr_types[i])
+					}
+				}
+				if i < mr_types.len && lx.scope != unsafe { nil } {
+					if mut scope_var := lx.scope.find_var(lx.name) {
+						scope_var.typ = mr_types[i]
+						if !mr_types[i].has_option_or_result() {
+							scope_var.orig_type = ast.no_type
+							scope_var.smartcasts = []
+							scope_var.is_unwrapped = false
+						}
+					}
 				}
 			}
 		}
@@ -1752,7 +1815,14 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				}
 			}
 			ast.IndexExpr {
-				sym := g.table.sym(g.table.unaliased_type(left.left_type))
+				mut container_type := left.left_type
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					resolved_container_type := g.resolved_expr_type(left.left, left.left_type)
+					if resolved_container_type != 0 {
+						container_type = g.unwrap_generic(g.recheck_concrete_type(resolved_container_type))
+					}
+				}
+				sym := g.table.sym(g.table.unaliased_type(container_type))
 				if sym.kind == .array {
 					info := sym.info as ast.Array
 					elem_sym := g.table.sym(info.elem_type)

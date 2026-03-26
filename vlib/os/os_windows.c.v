@@ -118,6 +118,26 @@ fn wide_ptr_to_string(wstr &u16) string {
 	return unsafe { string_from_wide(wstr) }
 }
 
+@[inline]
+fn null_u8_ptr() &u8 {
+	return unsafe { nil }
+}
+
+@[inline]
+fn null_u16_ptr() &u16 {
+	return unsafe { nil }
+}
+
+@[inline]
+fn null_u32_ptr() &u32 {
+	return unsafe { nil }
+}
+
+@[inline]
+fn null_voidptr() voidptr {
+	return unsafe { nil }
+}
+
 pub struct C._utimbuf {
 	actime  i64
 	modtime i64
@@ -288,7 +308,7 @@ const max_error_code = 15841
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-	mut buf := unsafe { nil }
+	mut buf := null_voidptr()
 	// Check for code overflow
 	if code > u32(max_error_code) {
 		return buf
@@ -330,9 +350,9 @@ pub fn execute(cmd string) Result {
 // user provided escape sequences.
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
-	mut child_stdin := &u32(unsafe { nil })
-	mut child_stdout_read := &u32(unsafe { nil })
-	mut child_stdout_write := &u32(unsafe { nil })
+	mut child_stdin := null_u32_ptr()
+	mut child_stdout_read := null_u32_ptr()
+	mut child_stdout_write := null_u32_ptr()
 	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
@@ -358,10 +378,10 @@ pub fn raw_execute(cmd string) Result {
 	}
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
-		lp_reserved2: unsafe { nil }
-		lp_reserved:  unsafe { nil }
-		lp_desktop:   unsafe { nil }
-		lp_title:     unsafe { nil }
+		lp_reserved2: null_u8_ptr()
+		lp_reserved:  null_u16_ptr()
+		lp_desktop:   null_u16_ptr()
+		lp_title:     null_u16_ptr()
 		cb:           sizeof(StartupInfo)
 		h_std_input:  child_stdin
 		h_std_output: child_stdout_write

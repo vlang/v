@@ -501,8 +501,51 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 
 fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool, mut inited_fields []string) ast.Type {
 	util.timing_start(@METHOD)
+	old_expected_type := c.expected_type
 	defer {
+		c.expected_type = old_expected_type
 		util.timing_measure_cumulative(@METHOD)
+	}
+	source_typ := if node.is_short_syntax && c.expected_type != ast.void_type {
+		c.expected_type
+	} else if node.typ != ast.void_type {
+		node.typ
+	} else {
+		c.expected_type
+	}
+	mut source_generic_typ := source_typ
+	source_sym := c.table.sym(c.unwrap_generic(source_typ))
+	if source_sym.kind == .generic_inst && source_sym.info is ast.GenericInst {
+		source_generic_typ = ast.new_type(source_sym.info.parent_idx).derive(source_typ).set_flag(.generic)
+	} else if source_sym.info is ast.Struct && source_sym.info.parent_type != 0
+		&& source_sym.info.concrete_types.len > 0 {
+		source_generic_typ = source_sym.info.parent_type.derive(source_typ).set_flag(.generic)
+	}
+	if node.generic_typ == 0 && source_generic_typ != ast.void_type
+		&& (source_generic_typ.has_flag(.generic)
+		|| c.type_has_unresolved_generic_parts(source_generic_typ)) {
+		node.generic_typ = source_generic_typ
+	}
+	if c.has_active_generic_recheck_context() {
+		if !node.is_short_syntax && node.generic_typ != 0 {
+			resolved_generic_typ := c.recheck_concrete_type(node.generic_typ)
+			if resolved_generic_typ != 0 && resolved_generic_typ != ast.void_type {
+				node.typ = resolved_generic_typ
+			}
+		}
+	}
+	if node.is_short_syntax && c.has_active_generic_recheck_context() {
+		node.typ = ast.void_type
+	}
+	$if trace_ci_fixes ? {
+		if (c.file.path.contains('/.vmodules/vtl/src/iter.v')
+			|| c.file.path.contains('generic_method_short_struct_arg_cgen_test.v'))
+			&& node.is_short_syntax {
+			expected_type_str := if c.expected_type == 0 { '<none>' } else { c.table.type_to_str(c.expected_type) }
+			node_type_str := if node.typ == 0 { '<none>' } else { c.table.type_to_str(node.typ) }
+			generic_type_str := if node.generic_typ == 0 { '<none>' } else { c.table.type_to_str(node.generic_typ) }
+			eprintln('struct_init short file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } { '<none>' } else { c.table.cur_fn.name }} expected=${expected_type_str} node_typ=${node_type_str} generic_typ=${generic_type_str} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+		}
 	}
 	if node.typ == ast.void_type {
 		// short syntax `foo(key:val, key2:val2)`
@@ -818,6 +861,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				c.expected_type = exp_type
 				got_type = c.expr(mut init_field.expr)
+				$if trace_ci_fixes ? {
+					if c.file.path.contains('/eventbus/') {
+						eprintln('struct_init eventbus fn=${c.table.cur_fn.name} field=${field_name} exp=${c.table.type_to_str(exp_type)} got=${c.table.type_to_str(got_type)} expr=${init_field.expr}')
+					}
+				}
 				$if trace_ci_fixes ? {
 					if c.table.cur_fn != unsafe { nil } && (c.table.cur_fn.name.contains('do')
 						|| c.table.cur_fn.name.contains('insert')

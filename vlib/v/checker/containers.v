@@ -12,13 +12,77 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			eprintln('array_init ${c.table.cur_fn.name} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} elem_pos=${node.elem_type_pos} exprs=${node.exprs.len} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
 		}
 	}
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 && node.exprs.len > 0
-		&& !node.is_fixed {
-		node.typ = ast.void_type
-		node.elem_type = ast.void_type
+	is_inferred_array_literal := node.exprs.len > 0 && !node.is_fixed && !node.has_cap
+		&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
+		&& node.generic_typ == 0 && node.generic_elem_type == 0
+	if c.has_active_generic_recheck_context() {
+		is_untyped_empty_array := node.exprs.len == 0 && !node.is_fixed && !node.has_cap
+			&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
+		$if trace_ci_fixes ? {
+			if c.file.path.contains('/eventbus/') {
+				eprintln('array_init file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } { '<none>' } else { c.table.cur_fn.name }} active=${c.has_active_generic_recheck_context()} expected=${c.table.type_to_str(c.expected_type)} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} empty=${is_untyped_empty_array}')
+			}
+		}
+		if node.generic_typ == 0 && node.typ != ast.void_type
+			&& (node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)) {
+			node.generic_typ = node.typ
+		}
+		if node.generic_elem_type == 0 && node.elem_type != ast.void_type
+			&& (node.elem_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(node.elem_type)) {
+			node.generic_elem_type = node.elem_type
+		}
+		if (node.typ == ast.void_type || is_untyped_empty_array) && c.expected_type != ast.void_type {
+			expected_array_typ := c.recheck_concrete_type(c.expected_type.clear_option_and_result())
+			expected_array_sym := c.table.final_sym(expected_array_typ)
+			match expected_array_sym.info {
+				ast.Array {
+					node.typ = expected_array_typ
+					node.elem_type = expected_array_sym.info.elem_type
+				}
+				ast.ArrayFixed {
+					node.typ = expected_array_typ
+					node.elem_type = expected_array_sym.info.elem_type
+				}
+				else {}
+			}
+			$if trace_ci_fixes ? {
+				if c.file.path.contains('/eventbus/') {
+					eprintln('array_init expected apply expected=${c.table.type_to_str(expected_array_typ)} new_typ=${c.table.type_to_str(node.typ)} new_elem=${c.table.type_to_str(node.elem_type)}')
+				}
+			}
+		}
+		base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
+		base_elem_type := if node.generic_elem_type != 0 {
+			node.generic_elem_type
+		} else {
+			node.elem_type
+		}
+		if base_node_typ != ast.void_type {
+			resolved_node_typ := c.recheck_concrete_type(base_node_typ)
+			if resolved_node_typ != 0 && resolved_node_typ != ast.void_type {
+				node.typ = resolved_node_typ
+			}
+		}
+		if base_elem_type != ast.void_type {
+			resolved_elem_type := c.recheck_concrete_type(base_elem_type)
+			if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
+				node.elem_type = resolved_elem_type
+			}
+		}
+	}
+	if c.has_active_generic_recheck_context() && node.exprs.len > 0 && !node.is_fixed {
 		node.expr_types = []
 		node.init_type = ast.void_type
 		node.has_callexpr = false
+		if node.typ == ast.void_type || node.elem_type == ast.void_type
+			|| is_inferred_array_literal
+			|| node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)
+			|| node.elem_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(node.elem_type) {
+			node.typ = ast.void_type
+			node.elem_type = ast.void_type
+		}
 		$if trace_ci_fixes ? {
 			if c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
 				eprintln('array_init reset ${c.table.cur_fn.name} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')

@@ -2046,6 +2046,14 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
 		return true
 	}
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		resolved_rec_type := g.resolved_expr_type(left_node, node.left_type)
+		if resolved_rec_type != 0 && resolved_rec_type != ast.void_type {
+			g.gen_expr_to_string(left_node,
+				g.unwrap_generic(g.recheck_concrete_type(resolved_rec_type)))
+			return true
+		}
+	}
 	g.get_str_fn(rec_type)
 	return false
 }
@@ -2953,6 +2961,12 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 					continue
 				}
 				mut var := obj
+				if var.generic_typ != 0 {
+					refreshed_generic_type := g.unwrap_generic(g.recheck_concrete_type(var.generic_typ))
+					if refreshed_generic_type != 0 {
+						var.typ = refreshed_generic_type
+					}
+				}
 				has_smartcast_state := var.orig_type != ast.no_type || var.smartcasts.len > 0
 					|| var.is_unwrapped
 				if var.is_inherited && scope_.parent != unsafe { nil } && !has_smartcast_state {
@@ -2963,11 +2977,16 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 						var.is_unwrapped = parent_var.is_unwrapped
 					}
 				} else if var.expr !is ast.EmptyExpr {
-					if !(var.expr is ast.Ident && var.expr.name == name) {
+					should_resolve_expr_type := var.typ == 0 || var.typ == ast.void_type
+						|| var.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(var.typ)
+					if should_resolve_expr_type && !(var.expr is ast.Ident && var.expr.name == name) {
 						resolved_type := g.resolved_expr_type(var.expr, var.typ)
 						if resolved_type != 0 {
 							var.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_type))
 						}
+					} else if var.typ != 0 {
+						var.typ = g.unwrap_generic(g.recheck_concrete_type(var.typ))
 					}
 					if !has_smartcast_state {
 						var.orig_type = ast.no_type
@@ -3218,6 +3237,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 			}
 		}
+		ast.IndexExpr {
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved := g.resolved_expr_type(node.left, node.left_type)
+				if resolved != 0 && resolved != left_type {
+					left_type = g.unwrap_generic(resolved)
+				}
+			}
+		}
+		ast.CallExpr, ast.ParExpr, ast.PostfixExpr {
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved := g.resolved_expr_type(node.left, node.left_type)
+				if resolved != 0 && resolved != left_type {
+					left_type = g.unwrap_generic(resolved)
+				}
+			}
+		}
 		else {}
 	}
 	if left_type == g.unwrap_generic(node.left_type) {
@@ -3441,6 +3476,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			method_name)
 	}
 	parent_method_generic_names_len := parent_generic_method.generic_names.len
+	$if trace_ci_fixes ? {
+		if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
+			eprintln('method start ${method_name}: raw=${raw_method_name} left=${g.table.type_to_str(left_type)} receiver=${g.table.type_to_str(receiver_type)} unwrapped=${g.table.type_to_str(unwrapped_rec_type)} left_node=${g.table.type_to_str(node.left_type)} node.ct=${node.concrete_types.map(g.table.type_to_str(it))} node.raw=${node.raw_concrete_types.map(g.table.type_to_str(it))} recv.ct=${receiver_concrete_types.map(g.table.type_to_str(it))}')
+		}
+	}
 	$if trace_method_generics ? {
 		if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 			'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
@@ -3654,6 +3694,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 				'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
 				eprintln('>>> method_call pre-name: ${method_name} | concrete_types: ${concrete_types.map(g.table.type_to_str(it))} | receiver_concrete_types: ${receiver_concrete_types.map(g.table.type_to_str(it))} | has_method: ${has_method} | method_generic_names_len: ${method_generic_names_len} | full_method_generic_names: ${full_method_generic_names} | name_before: ${name}')
+			}
+		}
+		$if trace_ci_fixes ? {
+			if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
+				eprintln('method pre-name ${method_name}: raw=${raw_method_name} concrete=${concrete_types.map(g.table.type_to_str(it))} recv.ct=${receiver_concrete_types.map(g.table.type_to_str(it))} has_method=${has_method} method_names=${full_method_generic_names} name_before=${name}')
 			}
 		}
 		name_already_specialized := specialized_suffix != '' && name.ends_with(specialized_suffix)
@@ -3892,7 +3937,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					raw_name_concrete_types.clone()
 				} else if placeholder_raw_name_concrete_types.len > 0 {
 					placeholder_raw_name_concrete_types
-				} else if recovered_concrete_types.len > 0 {
+				} else if recovered_concrete_types.len > 0
+					&& (concrete_types.len == 0 || concrete_types.any(it == ast.void_type
+					|| it.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(it))) {
 					recovered_concrete_types.clone()
 				} else {
 					g.method_name_concrete_types(name_fkey, concrete_types, receiver_concrete_types)
@@ -3911,6 +3959,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					eprintln('>>> method_call named: ${method_name} | name_concrete_types: ${name_concrete_types.map(g.table.type_to_str(it))} | final_name: ${name}')
 				}
 			}
+			$if trace_ci_fixes ? {
+				if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
+					eprintln('method named ${method_name}: raw=${raw_method_name} name.ct=${name_concrete_types.map(g.table.type_to_str(it))} final=${name}')
+				}
+			}
 		} else if !(node.kind == .str && receiver_concrete_types.len > 0)
 			&& !name_already_specialized {
 			name = g.generic_fn_name(concrete_types, name)
@@ -3918,6 +3971,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 					'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
 					eprintln('>>> method_call named no-method: ${method_name} | concrete_types: ${concrete_types.map(g.table.type_to_str(it))} | final_name: ${name}')
+				}
+			}
+			$if trace_ci_fixes ? {
+				if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
+					eprintln('method named no-method ${method_name}: raw=${raw_method_name} concrete=${concrete_types.map(g.table.type_to_str(it))} final=${name}')
 				}
 			}
 		}
@@ -5274,6 +5332,18 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
 			|| g.unwrap_generic(resolved_arg_typ) != g.unwrap_generic(arg_typ)) {
 			arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+		}
+	}
+	$if trace_ci_fixes ? {
+		if g.file.path.contains('comptime_for_in_options_struct_test.v') && arg.expr is ast.Ident
+			&& arg.expr.name == 'w' {
+			arg_name := if arg_typ == 0 { '0' } else { g.table.type_to_str(arg_typ) }
+			expected_name := if expected_type == 0 {
+				'0'
+			} else {
+				g.table.type_to_str(expected_type)
+			}
+			eprintln('ref_or_deref_arg w: arg=${arg_name} expected=${expected_name} expr_typ=${g.table.type_to_str(arg.typ)}')
 		}
 	}
 	// Array slice expressions (e.g. b[..8]) always return a value in C (via builtin__array_slice),

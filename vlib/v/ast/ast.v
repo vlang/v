@@ -531,6 +531,7 @@ pub mut:
 	pre_comments         []Comment
 	typ_str              string // 'Foo'
 	typ                  Type   // the type of this struct
+	generic_typ          Type   // original generic struct type; reused for later concrete instantiations
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
 	update_expr_pos      token.Pos
@@ -997,6 +998,7 @@ pub mut:
 	is_index_var  bool // index loop var
 	expr          Expr
 	typ           Type
+	generic_typ   Type   // original generic declaration type; reused for later concrete instantiations
 	orig_type     Type   // original sumtype type; 0 if it's not a sumtype
 	smartcasts    []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
@@ -1710,16 +1712,18 @@ pub:
 	has_init           bool
 	has_index          bool // true if temp variable index is used
 pub mut:
-	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr     Expr   // len: expr
-	cap_expr     Expr   // cap: expr
-	init_expr    Expr   // init: expr
-	expr_types   []Type // [Dog, Cat] // also used for interface_types
-	elem_type    Type   // element type
-	init_type    Type   // init: value type
-	typ          Type   // array type
-	alias_type   Type   // alias type
-	has_callexpr bool   // has expr which needs tmp var to initialize it
+	exprs             []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr          Expr   // len: expr
+	cap_expr          Expr   // cap: expr
+	init_expr         Expr   // init: expr
+	expr_types        []Type // [Dog, Cat] // also used for interface_types
+	elem_type         Type   // element type
+	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
+	init_type         Type   // init: value type
+	typ               Type   // array type
+	generic_typ       Type   // original generic array type; reused for later concrete instantiations
+	alias_type        Type   // alias type
+	has_callexpr      bool   // has expr which needs tmp var to initialize it
 }
 
 pub struct ArrayDecompose {

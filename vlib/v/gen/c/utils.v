@@ -139,17 +139,107 @@ fn (mut g Gen) is_expr_smartcast_to_sumtype(expr ast.Expr, expected_sumtype ast.
 }
 
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
-	scope := if g.file.scope != unsafe { nil } {
-		g.file.scope.innermost(expr.pos.pos)
+	mut scope := if expr.scope != unsafe { nil } {
+		expr.scope.innermost(expr.pos.pos)
 	} else {
 		expr.scope
+	}
+	if scope == unsafe { nil } || scope.find_var(expr.name) == none {
+		scope = if g.file.scope != unsafe { nil } {
+			g.file.scope.innermost(expr.pos.pos)
+		} else {
+			expr.scope
+		}
 	}
 	if scope == unsafe { nil } {
 		return 0
 	}
-	if v := scope.find_var(expr.name) {
+	if mut v := scope.find_var(expr.name) {
+		mut refreshed_expr_type := ast.Type(0)
+		if v.generic_typ != 0 {
+			refreshed_generic_type := g.unwrap_generic(g.recheck_concrete_type(v.generic_typ))
+			if refreshed_generic_type != 0 {
+				v.typ = refreshed_generic_type
+				v.orig_type = ast.no_type
+				v.smartcasts = []
+				v.is_unwrapped = false
+			}
+		}
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !v.is_arg
+			&& v.expr !is ast.EmptyExpr && v.pos.pos > 0 && v.pos.pos < expr.pos.pos
+			&& !(v.expr is ast.Ident && v.expr.name == expr.name) {
+			resolved_expr_type := g.resolved_expr_type(v.expr, v.typ)
+			if resolved_expr_type != 0 {
+				refreshed_expr_type = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
+				$if trace_ci_fixes ? {
+					if g.file.path.contains('comptime_for_in_options_struct_test.v')
+						&& expr.name in ['v', 'w'] {
+						current_name := if v.typ == 0 { '0' } else { g.table.type_to_str(v.typ) }
+						resolved_name := if refreshed_expr_type == 0 {
+							'0'
+						} else {
+							g.table.type_to_str(refreshed_expr_type)
+						}
+						orig_name := if v.orig_type == 0 { '0' } else { g.table.type_to_str(v.orig_type) }
+						eprintln('resolved_scope_var_type refresh ${expr.name}: current=${current_name} expr=${typeof(v.expr).name} resolved=${resolved_name} unwrapped=${v.is_unwrapped} orig=${orig_name}')
+					}
+				}
+				if v.is_unwrapped && refreshed_expr_type.has_option_or_result() {
+					v.orig_type = refreshed_expr_type
+					v.typ = refreshed_expr_type.clear_option_and_result()
+				} else {
+					v.typ = refreshed_expr_type
+					if !v.is_unwrapped && v.smartcasts.len == 0 {
+						v.orig_type = ast.no_type
+					}
+				}
+			}
+		}
+		if (v.is_unwrapped || v.smartcasts.len > 0) && scope.parent != unsafe { nil } {
+			if mut parent_v := scope.parent.find_var(expr.name) {
+				if parent_v.generic_typ != 0 {
+					refreshed_parent_type := g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+					if refreshed_parent_type != 0 {
+						parent_v.typ = refreshed_parent_type
+					}
+				}
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !parent_v.is_arg
+					&& parent_v.expr !is ast.EmptyExpr && parent_v.pos.pos > 0
+					&& parent_v.pos.pos < expr.pos.pos
+					&& !(parent_v.expr is ast.Ident && parent_v.expr.name == expr.name) {
+					resolved_parent_expr_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
+					if resolved_parent_expr_type != 0 {
+						parent_v.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_parent_expr_type))
+					}
+				}
+				if v.is_unwrapped {
+					parent_orig_type := if parent_v.orig_type != ast.no_type
+						&& parent_v.orig_type.has_option_or_result() {
+						parent_v.orig_type
+					} else {
+						parent_v.typ
+					}
+					if parent_orig_type.has_option_or_result() {
+						v.orig_type = parent_orig_type
+						v.typ = parent_orig_type.clear_option_and_result()
+					}
+				} else if v.smartcasts.len > 0 && parent_v.typ != 0 && v.orig_type == ast.no_type {
+					v.orig_type = if parent_v.orig_type != ast.no_type {
+						parent_v.orig_type
+					} else {
+						parent_v.typ
+					}
+				}
+			}
+		}
 		if v.is_inherited && scope.parent != unsafe { nil } {
-			if parent_v := scope.parent.find_var(expr.name) {
+			if mut parent_v := scope.parent.find_var(expr.name) {
+				if parent_v.generic_typ != 0 {
+					refreshed_parent_type := g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+					if refreshed_parent_type != 0 {
+						parent_v.typ = refreshed_parent_type
+					}
+				}
 				if parent_v.smartcasts.len > 0 {
 					smartcast_type := if parent_v.ct_type_var == .smartcast {
 						g.type_resolver.get_type(expr)
@@ -177,6 +267,32 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 				g.exposed_smartcast_type(v.orig_type, v.smartcasts.last(), v.is_mut)
 			}
 			return g.unwrap_generic(g.recheck_concrete_type(smartcast_type))
+		}
+		if v.is_unwrapped {
+			$if trace_ci_fixes ? {
+				if g.file.path.contains('comptime_for_in_options_struct_test.v')
+					&& expr.name in ['v', 'w'] {
+					typ_name := if v.typ == 0 { '0' } else { g.table.type_to_str(v.typ) }
+					orig_name := if v.orig_type == 0 { '0' } else { g.table.type_to_str(v.orig_type) }
+					refreshed_name := if refreshed_expr_type == 0 {
+						'0'
+					} else {
+						g.table.type_to_str(refreshed_expr_type)
+					}
+					eprintln('resolved_scope_var_type unwrapped ${expr.name}: typ=${typ_name} orig=${orig_name} refreshed=${refreshed_name}')
+				}
+			}
+			if refreshed_expr_type != 0 && refreshed_expr_type.has_option_or_result() {
+				return g.unwrap_generic(g.recheck_concrete_type(refreshed_expr_type.clear_option_and_result()))
+			}
+			unwrapped_type := if v.orig_type != ast.no_type && v.orig_type.has_option_or_result() {
+				v.orig_type.clear_option_and_result()
+			} else {
+				v.typ.clear_option_and_result()
+			}
+			if unwrapped_type != 0 && unwrapped_type != ast.void_type {
+				return g.unwrap_generic(g.recheck_concrete_type(unwrapped_type))
+			}
 		}
 		if v.typ != 0 {
 			return g.unwrap_generic(g.recheck_concrete_type(v.typ))
@@ -402,6 +518,12 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 	match expr {
 		ast.ParExpr {
 			return g.resolved_expr_type(expr.expr, default_typ)
+		}
+		ast.CTempVar {
+			if expr.typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			}
+			return g.resolved_expr_type(expr.orig, default_typ)
 		}
 		ast.Ident {
 			if expr.obj is ast.Var {
@@ -717,13 +839,19 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			}
 		}
 		ast.ArrayInit {
-			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && expr.typ != 0
+			base_array_typ := if expr.generic_typ != 0 { expr.generic_typ } else { expr.typ }
+			base_elem_typ := if expr.generic_elem_type != 0 {
+				expr.generic_elem_type
+			} else {
+				expr.elem_type
+			}
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && base_array_typ != 0
 				&& expr.exprs.len > 0 && !expr.is_fixed {
-				array_type := g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+				array_type := g.unwrap_generic(g.recheck_concrete_type(base_array_typ))
 				if g.table.final_sym(array_type).kind == .array {
 					mut inferred_elem_type := ast.void_type
 					for i, elem_expr in expr.exprs {
-						mut default_elem_type := expr.elem_type
+						mut default_elem_type := base_elem_typ
 						if default_elem_type == 0 {
 							default_elem_type = g.table.value_type(array_type)
 						}
@@ -753,13 +881,14 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					}
 				}
 			}
-			if expr.typ != 0 {
-				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			if base_array_typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(base_array_typ))
 			}
 		}
 		ast.StructInit {
-			if expr.typ != 0 {
-				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+			base_struct_typ := if expr.generic_typ != 0 { expr.generic_typ } else { expr.typ }
+			if base_struct_typ != 0 {
+				return g.unwrap_generic(g.recheck_concrete_type(base_struct_typ))
 			}
 		}
 		ast.MapInit {

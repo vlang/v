@@ -107,31 +107,14 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	mut left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
 	mut right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
-	// In generic function contexts, AST-stored types may be stale from
-	// a previous instantiation. Use resolved_expr_type for Ident expressions
-	// (variables/params) where stale scope types are the actual problem.
 	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-		if node.left is ast.Ident {
-			resolved_left := g.resolved_expr_type(node.left, node.left_type)
-			if resolved_left != 0 {
-				left_type = resolved_left
-			}
-		} else if node.left is ast.SelectorExpr {
-			resolved_left := g.resolve_selector_smartcast_type(node.left)
-			if resolved_left != 0 {
-				left_type = resolved_left
-			}
+		resolved_left := g.resolved_expr_type(node.left, node.left_type)
+		if resolved_left != 0 {
+			left_type = resolved_left
 		}
-		if node.right is ast.Ident {
-			resolved_right := g.resolved_expr_type(node.right, node.right_type)
-			if resolved_right != 0 {
-				right_type = resolved_right
-			}
-		} else if node.right is ast.SelectorExpr {
-			resolved_right := g.resolve_selector_smartcast_type(node.right)
-			if resolved_right != 0 {
-				right_type = resolved_right
-			}
+		resolved_right := g.resolved_expr_type(node.right, node.right_type)
+		if resolved_right != 0 {
+			right_type = resolved_right
 		}
 	}
 	left := g.unwrap(left_type)
@@ -1240,6 +1223,12 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		if concrete_left_type != 0 {
 			resolved_left = g.unwrap(concrete_left_type)
 		}
+		if node.left is ast.Ident {
+			scope_left_type := g.resolved_scope_var_type(node.left)
+			if scope_left_type != 0 {
+				resolved_left = g.unwrap(scope_left_type)
+			}
+		}
 		array_info := if resolved_left.unaliased_sym.kind == .array {
 			resolved_left.unaliased_sym.info as ast.Array
 		} else {
@@ -1306,6 +1295,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		if resolved_right_type == 0 {
 			resolved_right_type = g.unwrap_generic(right_type)
 		}
+		needs_explicit_deref := node.right is ast.Ident && resolved_right_type.is_ptr()
+			&& !elem_type.is_ptr()
 		rhs_is_any_value := elem_sym.kind == .any
 		mut rhs_is_interface_value := elem_sym.kind == .interface
 			&& g.table.does_type_implement_interface(resolved_right_type, elem_type)
@@ -1349,6 +1340,18 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 			if is_shared {
 				expected_push_many_atype = expected_push_many_atype.clear_flag(.shared_f)
+			}
+			expected_push_many_sym := g.table.final_sym(g.unwrap_generic(expected_push_many_atype))
+			if expected_push_many_sym.kind == .array {
+				mut push_many_elem_type := g.unwrap_generic(g.recheck_concrete_type(expected_push_many_sym.array_info().elem_type))
+				if push_many_elem_type == ast.int_literal_type {
+					push_many_elem_type = ast.int_type
+				} else if push_many_elem_type == ast.float_literal_type {
+					push_many_elem_type = ast.f64_type
+				}
+				if push_many_elem_type != expected_push_many_sym.array_info().elem_type {
+					expected_push_many_atype = ast.idx_to_type(g.table.find_or_register_array(push_many_elem_type))
+				}
 			}
 			old_inside_left_shift := g.inside_left_shift
 			g.inside_left_shift = true
@@ -1418,7 +1421,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					tmpvar := g.expr_with_var(node.right, elem_type, false)
 					g.fixed_array_var_init(tmpvar, false, fixed_info.elem_type, fixed_info.size)
 				} else {
-					g.expr_with_cast(node.right, right.typ, elem_type)
+					rhs_expr := g.expr_string_with_cast(node.right, right.typ, elem_type)
+					if needs_explicit_deref && !rhs_expr.trim_space().starts_with('*') {
+						g.write('*')
+					}
+					g.write(rhs_expr)
 				}
 				if needs_clone {
 					g.write(')')

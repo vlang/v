@@ -22,11 +22,23 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut save_right := ast.empty_expr
 
 	if mut node.expr is ast.InfixExpr {
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+		mut left_expr_type := node.expr.left_type
+		mut right_expr_type := node.expr.right_type
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			resolved_left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+			if resolved_left_type != 0 {
+				left_expr_type = resolved_left_type
+			}
+			resolved_right_type := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+			if resolved_right_type != 0 {
+				right_expr_type = resolved_right_type
+			}
+		}
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, left_expr_type) {
 			save_left = node.expr.left
 			node.expr.left = subst_expr
 		}
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, right_expr_type) {
 			save_right = node.expr.right
 			node.expr.right = subst_expr
 		}
@@ -178,21 +190,14 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind,
 			} else {
 				node.expr.right_type
 			}
-			// In generic contexts, AST-stored types may be stale from a previous
-			// instantiation. Use resolved_expr_type for Ident expressions
-			// (variables/params) where stale scope types are the actual problem.
 			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-				if node.expr.left is ast.Ident {
-					resolved_left := g.resolved_expr_type(node.expr.left, node.expr.left_type)
-					if resolved_left != 0 {
-						left_type = resolved_left
-					}
+				resolved_left := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+				if resolved_left != 0 {
+					left_type = resolved_left
 				}
-				if node.expr.right is ast.Ident {
-					resolved_right := g.resolved_expr_type(node.expr.right, node.expr.right_type)
-					if resolved_right != 0 {
-						right_type = resolved_right
-					}
+				resolved_right := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+				if resolved_right != 0 {
+					right_type = resolved_right
 				}
 			}
 			g.write('\t${metaname}.lvalue = ')

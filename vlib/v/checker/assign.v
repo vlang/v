@@ -263,7 +263,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// Generic rechecks reuse the same AST nodes, so cached rhs types for
 			// identifiers/selectors can be stale across concrete instantiations.
 			needs_rhs_recheck := c.comptime.has_comptime_expr(node.right[i])
-				|| node.right[i] in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ComptimeSelector, ast.PrefixExpr, ast.CastExpr]
+				|| node.right[i] in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ComptimeSelector, ast.PrefixExpr, ast.CastExpr, ast.UnsafeExpr]
 			if needs_rhs_recheck {
 				mut expr := mut node.right[i]
 				right_type := c.expr(mut expr)
@@ -450,6 +450,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						match mut left.obj {
 							ast.Var {
 								left.obj.typ = left_type
+								if is_decl && node.left.len == node.right.len && i < node.right.len {
+									left.obj.expr = node.right[i]
+								}
+								if is_decl && left.obj.generic_typ == 0
+									&& (left_type.has_flag(.generic)
+									|| c.type_has_unresolved_generic_parts(left_type)) {
+									left.obj.generic_typ = left_type
+									if left.scope != unsafe { nil } {
+										if mut scope_var := left.scope.find_var(left.name) {
+											scope_var.generic_typ = left_type
+										}
+									}
+								}
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
 								}
@@ -471,6 +484,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									c.change_flags_if_comptime_expr(mut left, right)
 									if left.scope != unsafe { nil } {
 										left.scope.update_var_type(left.name, left.obj.typ)
+										if node.left.len == node.right.len && i < node.right.len {
+											if mut scope_var := left.scope.find_var(left.name) {
+												scope_var.expr = node.right[i]
+											}
+										}
 									}
 								}
 							}

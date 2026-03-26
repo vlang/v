@@ -423,15 +423,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
 			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
-				typeof_expr := expr.expr as ast.TypeOf
-				if typeof_expr.expr is ast.Ident {
-					ident_name := (typeof_expr.expr as ast.Ident).name
-					if obj := typeof_expr.expr.scope.find(ident_name) {
-						if obj is ast.Var {
-							field_typ = obj.typ
-						}
-					}
-				}
+				field_typ = ast.string_type
 			}
 		}
 		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
@@ -519,6 +511,18 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
+		$if trace_ci_fixes ? {
+			if g.file.path.contains('comptime_for_in_options_struct_test.v')
+				|| g.file.path.contains('comptime_map_fields_decode_test.v') {
+				g.write('/*trace_str_intp expr=')
+				g.write(node.exprs[i].str().replace('*/', '* /'))
+				g.write(' typ=')
+				g.write(g.table.type_to_str(node.expr_types[i]).replace('*/', '* /'))
+				g.write(' fmt=')
+				g.write(ft_str)
+				g.write('*/')
+			}
+		}
 		g.write2('0x', ft_u64.hex())
 		g.write2(', {.d_', ft_str)
 		g.write(' = ')

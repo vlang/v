@@ -5525,6 +5525,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 }
 
 fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type) ast.Type {
+	resolved_expr_type := g.resolved_expr_type(node.expr, default_type)
+	if resolved_expr_type != 0 && resolved_expr_type != ast.void_type {
+		return g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
+	}
 	if node.expr is ast.Ident {
 		resolved_current_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 		if resolved_current_type != 0 {
@@ -6378,16 +6382,45 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 		node_info_is_option = node.info.is_option
-		if has_resolved_var && node.or_expr.kind == .absent
-			&& !resolved_var.typ.has_option_or_result() {
-			node_info_is_option = false
+		if node.or_expr.kind == .absent {
+			resolved_scope_type := g.resolved_scope_var_type(node)
+			if resolved_scope_type != 0 && (!has_resolved_var
+				|| (!resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0)) {
+				if has_resolved_var {
+					resolved_var.typ = resolved_scope_type
+				}
+				if !resolved_scope_type.has_option_or_result() {
+					node_info_is_option = false
+				}
+			} else if has_resolved_var && !resolved_var.typ.has_option_or_result() {
+				node_info_is_option = false
+			}
 		}
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs
 				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime, .aggregate] {
-				comptime_type := g.type_resolver.get_type(node)
-				mut runtime_type := node.obj.typ
-				if node.name in g.type_resolver.type_map {
+				resolved_scope_type := g.resolved_scope_var_type(node)
+				mut comptime_type := g.type_resolver.get_type(node)
+				if node.or_expr.kind == .absent && resolved_scope_type != 0
+					&& !resolved_scope_type.has_option_or_result()
+					&& (comptime_type == 0 || comptime_type == ast.void_type
+					|| comptime_type.has_option_or_result()
+					|| comptime_type.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(comptime_type)) {
+					comptime_type = resolved_scope_type
+				}
+				prefer_scope_runtime_type := resolved_scope_type != 0
+					&& (!has_resolved_var
+					|| (!resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0
+					&& resolved_var.orig_type == ast.no_type))
+				mut runtime_type := if prefer_scope_runtime_type {
+					resolved_scope_type
+				} else if has_resolved_var && resolved_var.typ != 0 {
+					resolved_var.typ
+				} else {
+					node.obj.typ
+				}
+				if !prefer_scope_runtime_type && node.name in g.type_resolver.type_map {
 					resolved_runtime_type := g.type_resolver.get_ct_type_or_default(node.name,
 						runtime_type)
 					if resolved_runtime_type != 0 && resolved_runtime_type != ast.void_type {

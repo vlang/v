@@ -753,8 +753,11 @@ pub fn (mut v Builder) tcc_quoted_path(p string) string {
 }
 
 fn (v &Builder) rsp_safe_arg(arg string) string {
-	if v.ccoptions.cc == .tcc && arg.starts_with('-B') && arg.len > 2 && arg[2..].contains(' ') {
-		return '-B"${arg[2..]}"'
+	if arg.starts_with('-B') && arg.len > 2 {
+		path := arg[2..]
+		if path.contains(' ') && !path.starts_with('"') {
+			return '-B"${path}"'
+		}
 	}
 	return arg
 }

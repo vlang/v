@@ -2800,6 +2800,8 @@ fn (mut t Table) convert_generic_default_expr(expr Expr, generic_names []string,
 		StructInit {
 			return Expr(StructInit{
 				...expr
+				generic_typ:      t.convert_generic_expr_type(expr.generic_typ, generic_names,
+					concrete_types)
 				typ:              t.convert_generic_expr_type(expr.typ, generic_names,
 					concrete_types)
 				update_expr:      t.convert_generic_default_expr(expr.update_expr, generic_names,
