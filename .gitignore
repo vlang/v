@@ -160,3 +160,13 @@ bench/vectors/obj
 autofuzz.log
 .project.gf
 .aider*
+
+# ignore temporary build/lock files
+*.lock
+
+# ignore serena agent working directory
+.serena/*
+CHANGELOG.md
+v
+vnew
+vnew.*

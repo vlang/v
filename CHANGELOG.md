@@ -1,3 +1,78 @@
+## HTTP/2, HTTP/3 & QUIC Protocol Compliance and Security Fixes
+*02 Mar 2026*
+
+#### Security fixes
+- QUIC crypto: Replace XOR-based header protection with proper AES-ECB per RFC 9001 §5.4
+- QUIC crypto: Use packet-number-derived nonces instead of random IVs per RFC 9001 §5.3
+- QUIC crypto: Fix initial_salt to match RFC 9001 v1 specification
+- QUIC stubs: Remove static global addresses, use per-connection allocation for concurrent safety
+- QUIC migration: Use crypto-random for path challenge tokens (was deterministic i*17)
+
+#### Protocol compliance fixes
+- HTTP/2 server: Add read_exact loop for reliable frame header reads
+- HTTP/2 client: Implement WINDOW_UPDATE flow control to prevent deadlock on large responses
+- HTTP/2 client: Add CONTINUATION frame support for large header blocks
+- HTTP/2 client: Send proper last_stream_id in GOAWAY frames
+- HTTP/2 frame: Ignore unknown frame types per RFC 7540 (was returning error)
+- HTTP/2 hpack: Handle 'never indexed' (0x10) representation per RFC 7541 §6.2.3
+- HTTP/2 hpack: Enforce dynamic table max size with eviction
+- HTTP/2 optimization: Fix encode_optimized for header indices >= 128
+- HTTP/3 client: Fix initial stream_id from 1 to 0 (client bidi: 0, 4, 8...)
+- HTTP/3 client: Use QPACK Decoder consistently (was mixing simplified/full decode)
+- HTTP/3 client: Add GOAWAY and SETTINGS exchange support
+- HTTP/3 server: Use proper atomic stream ID counter (was fabricating IDs)
+- HTTP/3 server: Fix double request processing
+- HTTP/3 server: Add mutex synchronization for connection state
+- HTTP/3 server: Use QPACK Encoder for response headers
+- HTTP/3 qpack: Implement Huffman decoding (was returning error)
+- HTTP/3 qpack: Wire DynamicTable to Encoder and Decoder
+- HTTP/3 encoding: Add 62-bit varint validation
+- QUIC ngtcp2: Add timer handling (get_expiry, handle_expiry, check_and_handle_timers)
+- QUIC migration: Fix cleanup_paths broken time comparison logic
+- Integration: Default to HTTP/2 for HTTPS (was incorrectly defaulting to HTTP/3)
+- Integration: Extract helper functions to deduplicate do_http2/do_http3
+
+#### Performance improvements
+- HTTP/2 huffman: Implement trie-based decode — O(n) per message (was O(n × 256 × max_bits))
+- HTTP/2 hpack: Document insert(0) bounded by max table size
+- HTTP/2 client: Add stream cleanup after response (prevents unbounded memory growth)
+- HTTP/2 client: Add configurable response timeout (default 30s)
+
+#### Code quality
+- HTTP/2 server: Replace println() with `$if debug {` eprintln() guards
+- QUIC handshake: Replace println() with `$if trace_quic ? {` eprintln() guards
+- HTTP/2 optimization: Remove dead code (fast_string_equal)
+- HTTP/3 qpack: Remove duplicate decode_integer function
+- HTTP/2 frame: Add RFC reference doc comments to frame structs
+- Type documentation: Add doc comments explaining v2/v3 Method mirror relationship
+- QUIC zero_rtt: Add integration and thread-safety TODO comments
+
+#### New tests
+- HTTP/2: huffman_trie_test.v (5 tests), hpack_test.v (+4), frame_test.v (+3), optimization_test.v (+4)
+- HTTP/3: v3_test.v (+10 encoding validation tests)
+
+## V 0.5.1
+*13 Feb 2026*
+
+#### New features
+- Add HTTP/2 client with TLS + ALPN `h2` negotiation via mbedtls
+- Add HTTP/3 client with QUIC/ngtcp2 integration
+- Add mbedtls ALPN protocol negotiation support for `ssl_connection`
+- Add QUIC callback initialization and ngtcp2 crypto integration
+- Add `examples/http2/02_simple_client.v` HTTP/2 client demo
+- Add `examples/http3/01_simple_client.v` HTTP/3 client demo
+
+#### Bug fixes
+- Fix HPACK static table indexing off-by-one bug in HTTP/2 header compression
+- Fix Huffman decoder overflow in HTTP/2 HPACK decoding
+- Fix mbedtls ALPN memory safety: copy V strings to C heap for stable pointers
+- Fix `quic_stubs.c` global state: use per-connection malloc instead of shared globals
+- Fix `quic_stubs.c` NULL hostname validation before use
+- Fix HTTP/2 PUSH_PROMISE rejection per RFC 7540 §8.2
+- Fix `BufferPool.put()` buffer clearing bug
+- Fix `read_settings()` infinite loop risk by limiting to max 10 frames
+- Add `trace_quic` debug logging for discarded packets
+
 ## V 0.5.0
 *31 Dec 2025*
 

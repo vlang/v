@@ -24,7 +24,7 @@ pub struct Request {
 mut:
 	cookies map[string]string
 pub mut:
-	version    Version = .v1_1
+	version    Version = .unknown
 	method     Method  = .get
 	header     Header
 	host       string
@@ -145,20 +145,40 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			nport = 443
 		}
 	}
-	// println('fetch $method, $scheme, $host_name, $nport, $path ')
+
+	// Negotiate HTTP version (ALPN or explicit)
+	negotiated_version := req.negotiate_version(url)
+
+	// Route to appropriate HTTP version handler
 	if scheme == 'https' && req.proxy == unsafe { nil } {
-		// println('ssl_do( $nport, $method, $host_name, $path )')
-		for i in 0 .. req.max_retries {
-			res := req.ssl_do(nport, method, host_name, path) or {
-				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
-					return err
+		// Try HTTP/2 or HTTP/3 first for HTTPS
+		match negotiated_version {
+			.v3_0 {
+				// Try HTTP/3
+				res := req.do_http3(url) or {
+					// Fallback to HTTP/2
+					req.do_http2(url) or {
+						// Fallback to HTTP/1.1
+						return req.ssl_do_with_retry(nport, method, host_name, path)!
+					}
 				}
-				continue
+				return res
 			}
-			return res
+			.v2_0 {
+				// Try HTTP/2
+				res := req.do_http2(url) or {
+					// Fallback to HTTP/1.1
+					return req.ssl_do_with_retry(nport, method, host_name, path)!
+				}
+				return res
+			}
+			else {
+				// Use HTTP/1.1
+				return req.ssl_do_with_retry(nport, method, host_name, path)!
+			}
 		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
-		// println('http_do( $nport, $method, $host_name, $path )')
+		// HTTP only supports HTTP/1.1
 		for i in 0 .. req.max_retries {
 			res := req.http_do('${host_name}:${nport}', method, path) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
@@ -180,6 +200,20 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
+}
+
+// ssl_do_with_retry performs SSL request with retry logic
+fn (req &Request) ssl_do_with_retry(nport int, method Method, host_name string, path string) !Response {
+	for i in 0 .. req.max_retries {
+		res := req.ssl_do(nport, method, host_name, path) or {
+			if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+				return err
+			}
+			continue
+		}
+		return res
+	}
+	return error('http.request.ssl_do_with_retry: max retries exceeded')
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
