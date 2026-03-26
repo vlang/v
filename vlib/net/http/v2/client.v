@@ -80,6 +80,38 @@ pub fn (mut c Client) request(req Request) !Response {
 }
 
 fn (mut c Client) send_request_headers(req Request, stream_id u32, mut stream Stream) ! {
+	headers := build_request_header_fields(req)
+	encoded_headers := c.conn.encoder.encode(headers)
+
+	$if trace_http2 ? {
+		eprintln('[HTTP/2] HPACK encoded ${headers.len} headers -> ${encoded_headers.len} bytes: ${encoded_headers.hex()}')
+		for h in headers {
+			eprintln('[HTTP/2]   ${h.name}: ${h.value}')
+		}
+	}
+
+	mut flags := u8(FrameFlags.end_headers)
+	if req.data.len == 0 {
+		flags |= u8(FrameFlags.end_stream)
+	}
+
+	headers_frame := Frame{
+		header:  FrameHeader{
+			length:     u32(encoded_headers.len)
+			frame_type: .headers
+			flags:      flags
+			stream_id:  stream_id
+		}
+		payload: encoded_headers
+	}
+
+	c.conn.write_frame(headers_frame)!
+	end_stream := req.data.len == 0
+	stream.state = stream.state.next_on_send(.headers, end_stream)
+}
+
+// build_request_header_fields assembles pseudo-headers and user headers for an HTTP/2 request.
+fn build_request_header_fields(req Request) []HeaderField {
 	mut headers := [
 		HeaderField{
 			name:  ':method'
@@ -105,35 +137,7 @@ fn (mut c Client) send_request_headers(req Request, stream_id u32, mut stream St
 			value: value
 		}
 	}
-
-	split_headers := split_cookie_headers(headers)
-	encoded_headers := c.conn.encoder.encode(split_headers)
-
-	$if trace_http2 ? {
-		eprintln('[HTTP/2] HPACK encoded ${split_headers.len} headers -> ${encoded_headers.len} bytes: ${encoded_headers.hex()}')
-		for h in split_headers {
-			eprintln('[HTTP/2]   ${h.name}: ${h.value}')
-		}
-	}
-
-	mut flags := u8(FrameFlags.end_headers)
-	if req.data.len == 0 {
-		flags |= u8(FrameFlags.end_stream)
-	}
-
-	headers_frame := Frame{
-		header:  FrameHeader{
-			length:     u32(encoded_headers.len)
-			frame_type: .headers
-			flags:      flags
-			stream_id:  stream_id
-		}
-		payload: encoded_headers
-	}
-
-	c.conn.write_frame(headers_frame)!
-	end_stream := req.data.len == 0
-	stream.state = stream.state.next_on_send(.headers, end_stream)
+	return split_cookie_headers(headers)
 }
 
 fn (mut c Client) send_data_frames(data string, stream_id u32, mut stream Stream) ! {

@@ -116,18 +116,24 @@ fn parse_goaway_payload(payload []u8) !ControlFrameResult {
 
 // apply_peer_settings updates the client with peer-advertised settings.
 // Calls set_peer_max_table_capacity on the QPACK encoder when capacity changes.
+// Mutex-protected because this runs on a spawned goroutine.
 pub fn apply_peer_settings(mut c Client, settings Settings) {
+	c.state_mu.lock()
 	c.settings.max_field_section_size = settings.max_field_section_size
 	c.settings.qpack_blocked_streams = settings.qpack_blocked_streams
 	if settings.qpack_max_table_capacity != c.settings.qpack_max_table_capacity {
 		c.settings.qpack_max_table_capacity = settings.qpack_max_table_capacity
 		c.qpack_encoder.set_peer_max_table_capacity(int(settings.qpack_max_table_capacity))
 	}
+	c.state_mu.unlock()
 }
 
 // apply_goaway records the peer's GOAWAY stream ID on the client.
+// Mutex-protected because this runs on a spawned goroutine.
 pub fn apply_goaway(mut c Client, goaway_id u64) {
+	c.state_mu.lock()
 	c.last_peer_goaway_stream_id = goaway_id
+	c.state_mu.unlock()
 }
 
 // read_peer_control_stream reads frames from the peer's control stream in a loop.

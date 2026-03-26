@@ -45,27 +45,27 @@ pub fn (mut ctx CryptoContext) encrypt_packet(plaintext []u8, ad []u8, base_iv [
 		}
 	}
 
-	mut ciphertext := []u8{len: plaintext.len + 16}
-	if C.EVP_EncryptUpdate(ctx.tx_cipher_ctx, ciphertext.data, &outlen, plaintext.data,
-		plaintext.len) != 1 {
+	// Single allocation: plaintext + 16-byte tag space.
+	mut result := []u8{len: plaintext.len + gcm_tag_len}
+	if C.EVP_EncryptUpdate(ctx.tx_cipher_ctx, result.data, &outlen, plaintext.data, plaintext.len) != 1 {
 		return error('failed to encrypt')
 	}
 
 	mut final_len := 0
 	unsafe {
-		if C.EVP_EncryptFinal_ex(ctx.tx_cipher_ctx, &u8(ciphertext.data) + outlen, &final_len) != 1 {
+		if C.EVP_EncryptFinal_ex(ctx.tx_cipher_ctx, &u8(result.data) + outlen, &final_len) != 1 {
 			return error('failed to finalize encryption')
 		}
 	}
 	ciphertext_len := outlen + final_len
-	// Append GCM auth tag so decrypt_packet can verify integrity (RFC 5116).
-	mut tag := []u8{len: gcm_tag_len}
-	if C.EVP_CIPHER_CTX_ctrl(ctx.tx_cipher_ctx, evp_ctrl_gcm_get_tag, gcm_tag_len, tag.data) != 1 {
-		return error('failed to get GCM auth tag')
+	// Retrieve GCM auth tag directly into the trailing 16 bytes (RFC 5116).
+	unsafe {
+		if C.EVP_CIPHER_CTX_ctrl(ctx.tx_cipher_ctx, evp_ctrl_gcm_get_tag, gcm_tag_len,
+			&u8(result.data) + ciphertext_len) != 1 {
+			return error('failed to get GCM auth tag')
+		}
 	}
-	mut result := ciphertext[..ciphertext_len].clone()
-	result << tag
-	return result
+	return result[..ciphertext_len + gcm_tag_len]
 }
 
 // decrypt_packet decrypts a QUIC packet using AES-128-GCM per RFC 9001 §5.3.

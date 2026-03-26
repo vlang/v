@@ -16,6 +16,8 @@ pub mut:
 	max_stream_data        u64 = 1048576
 	max_data               u64 = 10485760
 	max_idle_timeout       u64 = 30000
+	max_connections        int = 1000
+	max_request_body_size  int = 10_485_760
 }
 
 // ServerRequest represents an HTTP/3 server request.

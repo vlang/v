@@ -77,6 +77,11 @@ fn (mut s Server) lookup_or_create_connection(packet []u8, addr net.Addr) !&Serv
 		}
 	}
 
+	if s.connections.len >= s.config.max_connections {
+		s.mu.unlock()
+		return error('H3_EXCESSIVE_LOAD: max connections limit reached (${s.config.max_connections})')
+	}
+
 	new_conn := s.create_connection(addr_str) or {
 		s.mu.unlock()
 		return error('failed to create connection: ${err}')

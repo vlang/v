@@ -56,6 +56,7 @@ fn (mut s Server) handle_settings(mut conn ServerConn, frame Frame, mut client_s
 		ctx.encoder.set_max_table_size(int(client_settings.header_table_size))
 	}
 	if client_settings.initial_window_size != old_initial_window {
+		ctx.flow.check_initial_window_overflow(old_initial_window, client_settings.initial_window_size)!
 		ctx.flow.adjust_initial_window_size(old_initial_window, client_settings.initial_window_size)
 	}
 

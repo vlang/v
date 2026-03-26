@@ -17,8 +17,10 @@ pub:
 	write_timeout          time.Duration = 30 * time.second
 	// TLS configuration: when both are set, uses TLS with ALPN "h2";
 	// when empty, runs in plain TCP h2c mode.
-	cert_file string
-	key_file  string
+	cert_file             string
+	key_file              string
+	max_connections       int = 1000
+	max_request_body_size int = 10_485_760
 }
 
 // ServerRequest represents an HTTP/2 request.
@@ -113,6 +115,12 @@ pub fn (mut s Server) listen_and_serve() ! {
 			}
 			continue
 		}
+
+		if s.at_connection_limit() {
+			conn.close() or {}
+			continue
+		}
+
 		conn.set_read_timeout(s.config.read_timeout)
 		conn.set_write_timeout(s.config.write_timeout)
 
@@ -137,6 +145,11 @@ fn (mut s Server) listen_and_serve_tls() ! {
 			if s.running {
 				eprintln('[HTTP/2] TLS Accept error: ${err}')
 			}
+			continue
+		}
+
+		if s.at_connection_limit() {
+			conn.close() or {}
 			continue
 		}
 
@@ -235,6 +248,18 @@ fn (mut s Server) register_connection(conn ServerConn) {
 	s.conn_mu.lock()
 	s.connections << conn
 	s.conn_mu.unlock()
+}
+
+// at_connection_limit checks whether the server has reached max_connections.
+fn (mut s Server) at_connection_limit() bool {
+	max := s.config.max_connections
+	if max <= 0 {
+		return false
+	}
+	s.conn_mu.lock()
+	count := s.connections.len
+	s.conn_mu.unlock()
+	return count >= max
 }
 
 fn (mut s Server) deregister_connection(conn ServerConn) {

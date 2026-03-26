@@ -77,18 +77,16 @@ fn (mut s Server) dispatch_server_frame(mut conn ServerConnection, frame_type Fr
 	match frame_type {
 		.headers {
 			s.handle_headers_frame(mut conn, stream_id, payload) or {
-				eprintln('Failed to handle HEADERS frame: ${err}')
+				close_on_h3_error(mut conn, err)
 			}
 		}
 		.data {
 			s.handle_data_frame(mut conn, stream_id, payload) or {
-				eprintln('Failed to handle DATA frame: ${err}')
+				close_on_h3_error(mut conn, err)
 			}
 		}
 		.settings {
-			s.handle_settings_frame(mut conn, payload) or {
-				eprintln('Failed to handle SETTINGS frame: ${err}')
-			}
+			s.handle_settings_frame(mut conn, payload) or { close_on_h3_error(mut conn, err) }
 		}
 		.goaway {
 			if payload.len > 0 {
@@ -104,4 +102,31 @@ fn (mut s Server) dispatch_server_frame(mut conn ServerConnection, frame_type Fr
 		}
 		else {}
 	}
+}
+
+// close_on_h3_error maps an error message to an H3ErrorCode and closes the
+// QUIC connection with the appropriate application error code (RFC 9114 §8).
+fn close_on_h3_error(mut conn ServerConnection, err IError) {
+	error_code := map_h3_error(err.msg())
+	conn.quic_conn.close_with_error(u64(error_code), err.msg()) or { conn.quic_conn.close() }
+}
+
+// map_h3_error extracts an H3ErrorCode from an error message string.
+fn map_h3_error(msg string) H3ErrorCode {
+	if msg.contains('H3_SETTINGS_ERROR') {
+		return .h3_settings_error
+	}
+	if msg.contains('H3_FRAME_UNEXPECTED') {
+		return .h3_frame_unexpected
+	}
+	if msg.contains('H3_ID_ERROR') {
+		return .h3_id_error
+	}
+	if msg.contains('H3_MESSAGE_ERROR') {
+		return .h3_message_error
+	}
+	if msg.contains('H3_MISSING_SETTINGS') {
+		return .h3_missing_settings
+	}
+	return .h3_general_protocol_error
 }

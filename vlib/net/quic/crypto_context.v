@@ -134,11 +134,25 @@ pub fn new_crypto_context_client(alpn []string) !CryptoContext {
 
 	C.SSL_set_connect_state(ssl)
 
+	tx_ctx := C.EVP_CIPHER_CTX_new()
+	if tx_ctx == unsafe { nil } {
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+		return error('failed to create TX cipher context')
+	}
+	rx_ctx := C.EVP_CIPHER_CTX_new()
+	if rx_ctx == unsafe { nil } {
+		C.EVP_CIPHER_CTX_free(tx_ctx)
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+		return error('failed to create RX cipher context')
+	}
+
 	return CryptoContext{
 		ssl_ctx:       ssl_ctx
 		ssl:           ssl
-		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
-		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		tx_cipher_ctx: tx_ctx
+		rx_cipher_ctx: rx_ctx
 	}
 }
 
@@ -186,11 +200,25 @@ pub fn new_crypto_context_server(cert_file string, key_file string, alpn []strin
 
 	C.SSL_set_accept_state(ssl)
 
+	tx_ctx := C.EVP_CIPHER_CTX_new()
+	if tx_ctx == unsafe { nil } {
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+		return error('failed to create TX cipher context')
+	}
+	rx_ctx := C.EVP_CIPHER_CTX_new()
+	if rx_ctx == unsafe { nil } {
+		C.EVP_CIPHER_CTX_free(tx_ctx)
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+		return error('failed to create RX cipher context')
+	}
+
 	return CryptoContext{
 		ssl_ctx:       ssl_ctx
 		ssl:           ssl
-		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
-		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		tx_cipher_ctx: tx_ctx
+		rx_cipher_ctx: rx_ctx
 	}
 }
 

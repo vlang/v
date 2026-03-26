@@ -74,6 +74,11 @@ fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, pa
 		conn.mu.unlock()
 		return error('H3_FRAME_UNEXPECTED: DATA before HEADERS on stream ${stream_id} (RFC 9114 §4.1)')
 	}
+	max_body := s.config.max_request_body_size
+	if max_body > 0 && stream.data.len + payload.len > max_body {
+		conn.mu.unlock()
+		return error('H3_EXCESSIVE_LOAD: request body exceeds max size (${max_body})')
+	}
 	stream.data << payload
 	already_done := stream.request_complete
 	if !already_done {

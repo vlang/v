@@ -44,12 +44,7 @@ fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnC
 			}
 		}
 		.headers {
-			sid := frame.header.stream_id
-			if sid > 0 && sid > state.highest_stream_id {
-				state.highest_stream_id = sid
-			}
-			s.handle_headers_in_loop(frame, mut state.streams, mut ctx, mut conn, mut
-				state.decoder, state.client_settings, mut state.continuation_state)
+			s.dispatch_headers_frame(frame, mut conn, mut ctx, mut state)
 		}
 		.data {
 			state.conn_bytes_received = s.handle_data_in_loop(frame, mut state.streams, mut
@@ -86,6 +81,16 @@ fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnC
 			}
 		}
 	}
+}
+
+// dispatch_headers_frame tracks the highest stream ID and delegates to handle_headers_in_loop.
+fn (mut s Server) dispatch_headers_frame(frame Frame, mut conn ServerConn, mut ctx ConnContext, mut state LoopState) {
+	sid := frame.header.stream_id
+	if sid > 0 && sid > state.highest_stream_id {
+		state.highest_stream_id = sid
+	}
+	s.handle_headers_in_loop(frame, mut state.streams, mut ctx, mut conn, mut state.decoder,
+		state.client_settings, mut state.continuation_state)
 }
 
 fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, mut decoder Decoder, cs ClientSettings, mut cont ContinuationState) {
@@ -148,6 +153,13 @@ fn (mut s Server) handle_data_in_loop(frame Frame, mut streams map[u32]ServerStr
 		return conn_bytes_received
 	}
 	data_len := u32(df.data.len)
+	max_body := s.config.max_request_body_size
+	if max_body > 0 && streams[stream_id].body.len + int(data_len) > max_body {
+		send_rst_stream(mut conn, stream_id, .refused_stream) or {}
+		ctx.flow.remove_stream(stream_id)
+		streams.delete(stream_id)
+		return conn_bytes_received
+	}
 	streams[stream_id].body << df.data
 
 	mut updated_bytes := conn_bytes_received + data_len
