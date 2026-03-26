@@ -2979,6 +2979,8 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 					should_resolve_expr_type := var.typ == 0 || var.typ == ast.void_type
 						|| var.typ.has_flag(.generic)
 						|| g.type_has_unresolved_generic_parts(var.typ)
+						|| (var.expr is ast.StructInit && var.expr.typ_str.len > 0
+						&& g.current_fn_generic_names().index(var.expr.typ_str.all_after_last('.')) >= 0)
 					if should_resolve_expr_type && !(var.expr is ast.Ident && var.expr.name == name) {
 						resolved_type := g.resolved_expr_type(var.expr, var.typ)
 						if resolved_type != 0 {

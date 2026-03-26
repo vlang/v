@@ -434,31 +434,53 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		if is_decl {
 			resolved_decl_type := g.resolved_expr_type(val, var_type)
 			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type {
-				var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
-				val_type = var_type
-				node.left_types[i] = var_type
-				if i < node.right_types.len {
-					node.right_types[i] = val_type
+				mut resolved_unwrapped := g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
+				// Don't propagate pointer flag from auto-deref mut parameters.
+				// `mut e := expr` where expr is a mut param should create a value copy.
+				if resolved_unwrapped.is_ptr() && !var_type.is_ptr() {
+					resolved_unwrapped = resolved_unwrapped.deref()
 				}
-				if mut left is ast.Ident {
-					if mut left.obj is ast.Var {
-						left.obj.typ = var_type
-						if !var_type.has_option_or_result() {
-							left.obj.orig_type = ast.no_type
-							left.obj.smartcasts = []
-							left.obj.is_unwrapped = false
-						}
-						if left.obj.ct_type_var != .no_comptime {
-							g.type_resolver.update_ct_type(left.name, var_type)
-						}
+				// Skip when resolved type is a parent sumtype of a smartcast variant.
+				// This happens in match arms where the RHS uses a smartcast variable
+				// (e.g. `mut info := ts.info` inside `match ts.info { Struct { ... } }`).
+				resolved_sym := g.table.sym(resolved_unwrapped)
+				var_sym := g.table.sym(var_type)
+				is_sumtype_reversal := resolved_sym.kind == .sum_type
+					&& resolved_unwrapped != var_type && var_sym.kind != .sum_type
+				// Don't downgrade a specific map/array type (e.g. map[int]SqlExpr)
+				// to the base map/array type. This happens when .clone() etc.
+				// return the base type but the checker already has a specific type.
+				is_base_container_downgrade := (resolved_unwrapped == ast.map_type
+					&& var_sym.kind == .map && var_type != ast.map_type)
+					|| (resolved_unwrapped == ast.array_type
+					&& var_sym.kind == .array && var_type != ast.array_type)
+				if !is_sumtype_reversal && !is_base_container_downgrade {
+					var_type = resolved_unwrapped
+					val_type = var_type
+					node.left_types[i] = var_type
+					if i < node.right_types.len {
+						node.right_types[i] = val_type
 					}
-					if left.scope != unsafe { nil } {
-						if mut scope_var := left.scope.find_var(left.name) {
-							scope_var.typ = var_type
+					if mut left is ast.Ident {
+						if mut left.obj is ast.Var {
+							left.obj.typ = var_type
 							if !var_type.has_option_or_result() {
-								scope_var.orig_type = ast.no_type
-								scope_var.smartcasts = []
-								scope_var.is_unwrapped = false
+								left.obj.orig_type = ast.no_type
+								left.obj.smartcasts = []
+								left.obj.is_unwrapped = false
+							}
+							if left.obj.ct_type_var != .no_comptime {
+								g.type_resolver.update_ct_type(left.name, var_type)
+							}
+						}
+						if left.scope != unsafe { nil } {
+							if mut scope_var := left.scope.find_var(left.name) {
+								scope_var.typ = var_type
+								if !var_type.has_option_or_result() {
+									scope_var.orig_type = ast.no_type
+									scope_var.smartcasts = []
+									scope_var.is_unwrapped = false
+								}
 							}
 						}
 					}

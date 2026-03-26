@@ -610,7 +610,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 							&& expr.obj.expr is ast.StructInit {
 							generic_names := g.current_fn_generic_names()
-							struct_init_typ_str := expr.obj.expr.typ_str
+							struct_init_typ_str := expr.obj.expr.typ_str.all_after_last('.')
 							idx := generic_names.index(struct_init_typ_str)
 							if idx >= 0 && idx < g.cur_concrete_types.len {
 								return g.cur_concrete_types[idx]
@@ -894,6 +894,17 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			}
 		}
 		ast.StructInit {
+			// For `T{}` where T is a generic parameter, typ_str preserves the
+			// original name (e.g. 'main.T') even after the type has been resolved
+			// to a concrete type. Use it to look up the current concrete type.
+			if expr.typ_str.len > 0 && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				generic_names := g.current_fn_generic_names()
+				short_name := expr.typ_str.all_after_last('.')
+				idx := generic_names.index(short_name)
+				if idx >= 0 && idx < g.cur_concrete_types.len {
+					return g.cur_concrete_types[idx]
+				}
+			}
 			base_struct_typ := if expr.generic_typ != 0 { expr.generic_typ } else { expr.typ }
 			if base_struct_typ != 0 {
 				return g.unwrap_generic(g.recheck_concrete_type(base_struct_typ))

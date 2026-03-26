@@ -992,9 +992,11 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 
 fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	// Check whether the inner function definition is before the call
-	if var := node.scope.find_var(node.name) {
-		if var.expr is ast.AnonFn && var.pos.pos > node.pos.pos {
-			c.error('unknown function: ${node.name}', node.pos)
+	if node.scope != unsafe { nil } {
+		if var := node.scope.find_var(node.name) {
+			if var.expr is ast.AnonFn && var.pos.pos > node.pos.pos {
+				c.error('unknown function: ${node.name}', node.pos)
+			}
 		}
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.

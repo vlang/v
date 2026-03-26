@@ -5538,11 +5538,11 @@ fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type)
 	if node.expr is ast.IndexExpr {
 		// For typeof(arr[0]), resolve the element type from the array's resolved type
 		left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
-		unwrapped := g.unwrap_generic(left_type)
+		unwrapped := g.unwrap_generic(g.recheck_concrete_type(left_type))
 		if unwrapped != 0 {
 			elem_type := g.table.value_type(unwrapped)
 			if elem_type != 0 {
-				return elem_type
+				return g.unwrap_generic(g.recheck_concrete_type(elem_type))
 			}
 		}
 	}

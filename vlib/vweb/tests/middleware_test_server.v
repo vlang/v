@@ -8,7 +8,8 @@ struct App {
 	vweb.Context
 	timeout       int
 	global_config shared Config
-	middlewares   map[string][]vweb.Middleware
+pub:
+	middlewares map[string][]vweb.Middleware
 }
 
 struct Config {

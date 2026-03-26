@@ -63,13 +63,24 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 						expr_type = resolved_ident_type
 					} else {
 						// For variables assigned from generic expressions
-						// (e.g. `x := opt_val or { T{} }`), scope types may be
-						// stale. Try resolving through the variable's init expression.
-						re := g.resolved_expr_type(node.expr, expr_type)
-						if re != 0 {
-							expr_type = re
-						} else {
-							expr_type = g.unwrap_generic(node.expr.info.typ)
+						// (e.g. `a := T{}`), scope types may be stale from a
+						// previous generic instantiation. Look up the variable's
+						// init expression and resolve through generic params.
+						if node.expr.obj is ast.Var && node.expr.obj.expr is ast.StructInit {
+							generic_names := g.current_fn_generic_names()
+							short_name := node.expr.obj.expr.typ_str.all_after_last('.')
+							idx := generic_names.index(short_name)
+							if idx >= 0 && idx < g.cur_concrete_types.len {
+								expr_type = g.cur_concrete_types[idx]
+							}
+						}
+						if expr_type == node.expr_type {
+							re := g.resolved_expr_type(node.expr, expr_type)
+							if re != 0 {
+								expr_type = re
+							} else {
+								expr_type = g.unwrap_generic(node.expr.info.typ)
+							}
 						}
 					}
 				}
@@ -107,6 +118,31 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 					}
 					break
 				}
+				ct_var := node.expr.obj.ct_type_var
+				if ct_var == .generic_param || ct_var == .generic_var {
+					if scope_var := node.expr.scope.find_var(node.expr.name) {
+						if scope_var.ct_type_var == .smartcast {
+							// The scope var was updated to smartcast (e.g. inside
+							// `if val is v` in a comptime $for variants loop).
+							// Use the comptime variant type directly.
+							ctyp := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+								scope_var.typ)
+							expr_type = if scope_var.is_unwrapped {
+								ctyp.clear_flag(.option)
+							} else {
+								ctyp
+							}
+							break
+						} else if scope_var.ct_type_var == ct_var
+							&& g.cur_fn != unsafe { nil }
+							&& g.cur_fn.generic_names.len > 0 {
+							// For generic_param/generic_var, node.obj.typ is a stale
+							// copy from checker time. Use the refreshed scope var.
+							expr_type = scope_var.typ
+							break
+						}
+					}
+				}
 			}
 			expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
 			break
@@ -124,10 +160,20 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		name = name[3..]
 	}
 	if node.expr is ast.Ident {
-		current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
-		if current_fn_ident_type != 0 {
-			expr_type = current_fn_ident_type
-			name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+		// Don't override with the generic param type when inside a comptime
+		// variant smartcast, as the variant type is more specific.
+		mut is_comptime_smartcast := false
+		if node.expr.ct_expr && node.expr.obj is ast.Var {
+			if scope_var := node.expr.scope.find_var(node.expr.name) {
+				is_comptime_smartcast = scope_var.ct_type_var == .smartcast
+			}
+		}
+		if !is_comptime_smartcast {
+			current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+			if current_fn_ident_type != 0 {
+				expr_type = current_fn_ident_type
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+			}
 		}
 		if expr_type.is_ptr() && expr_type.has_flag(.option) {
 			if scope_var := node.expr.scope.find_var(node.expr.name) {

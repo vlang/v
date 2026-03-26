@@ -1048,6 +1048,19 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	g.prevent_sum_type_unwrapping_once = false
 
 	mut typ := g.type_resolver.get_type(node.expr)
+	if node.expr is ast.Ident && node.expr.obj is ast.Var {
+		ct_var := node.expr.obj.ct_type_var
+		if ct_var == .generic_param || ct_var == .generic_var {
+			if scope_var := node.expr.scope.find_var(node.expr.name) {
+				if scope_var.ct_type_var == ct_var
+					&& g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+					// For generic_param/generic_var, node.obj.typ is a stale
+					// copy from checker time. Use the refreshed scope var.
+					typ = scope_var.typ
+				}
+			}
+		}
+	}
 	if node.expr.is_auto_deref_var() {
 		if node.expr is ast.Ident {
 			if node.expr.obj is ast.Var {

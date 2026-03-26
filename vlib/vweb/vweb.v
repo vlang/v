@@ -454,6 +454,7 @@ mut:
 pub type Middleware = fn (mut Context) bool
 
 interface MiddlewareInterface {
+pub:
 	middlewares map[string][]Middleware
 }
 
