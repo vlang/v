@@ -31,23 +31,23 @@ rm -rf /tmp/v2_cleanc_obj_cache
 
 echo "=== 1/14: ARM64 self-host hello world ==="
 backup_v2_src
-"${v1_compiler}" -skip-unused -cc cc -o v2 v2.v
+"${v1_compiler}" -cc cc -o v2 v2.v
 restore_v2_src
-./v2 -backend arm64 -gc none -nocache -o v3 v2.v
-./v3 -backend arm64 -o hello_arm hello.v
+./v2 --no-parallel -backend arm64 -gc none -nocache -o v3 v2.v
+./v3 --no-parallel -backend arm64 -o hello_arm hello.v
 ./hello_arm
 rm -f v3 hello_arm
 
 echo ""
 echo "=== 2/14: ARM64 self-host chain (v2->v3->v4->v5->v6) ==="
 echo "  Building v3 from v2..."
-./v2 -nocache -gc none -backend arm64 -o v3_chain v2.v
+./v2 --no-parallel -nocache -gc none -backend arm64 -o v3_chain v2.v
 echo "  Building v4 from v3..."
-./v3_chain -nocache -gc none -backend arm64 -o v4_chain v2.v
+./v3_chain --no-parallel -nocache -gc none -backend arm64 -o v4_chain v2.v
 echo "  Building v5 from v4..."
-./v4_chain -nocache -gc none -backend arm64 -o v5_chain v2.v
+./v4_chain --no-parallel -nocache -gc none -backend arm64 -o v5_chain v2.v
 echo "  Building v6 from v5..."
-./v5_chain -nocache -gc none -backend arm64 -o v6_chain v2.v
+./v5_chain --no-parallel -nocache -gc none -backend arm64 -o v6_chain v2.v
 V5_SIZE=$(wc -c < v5_chain)
 V6_SIZE=$(wc -c < v6_chain)
 if [ "$V5_SIZE" -eq "$V6_SIZE" ]; then
