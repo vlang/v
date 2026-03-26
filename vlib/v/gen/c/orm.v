@@ -37,6 +37,15 @@ fn (g &Gen) orm_primitive_field_name(typ ast.Type) string {
 	return vint2int(sym.cname)
 }
 
+fn (g &Gen) orm_primitive_variant_field_name(typ ast.Type) string {
+	final_typ := g.table.final_type(typ.clear_flag(.option))
+	sym := g.table.sym(final_typ)
+	if sym.kind == .enum {
+		return 'i64'
+	}
+	return vint2int(sym.cname)
+}
+
 enum SqlExprSide {
 	left
 	right
@@ -90,7 +99,8 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
 		node.or_expr, table_attrs)
 
-	g.write2(left, 'orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object)')
+	g.write2(left,
+		'orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object)')
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
@@ -149,8 +159,7 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 		g.write_orm_create_table(node, table_name, connection_var_name, result_var_name,
 			table_attrs)
 	} else if node.kind == .drop {
-		g.write_orm_drop_table(node, table_name, connection_var_name, result_var_name,
-			table_attrs)
+		g.write_orm_drop_table(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .insert {
 		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr,
 			table_attrs)
@@ -361,7 +370,8 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 	}
 
-	g.writeln2('),', '.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+	g.writeln2('),',
+		'.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
 
 	if node.update_exprs.len > 0 {
 		g.indent++
@@ -616,8 +626,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			arr.fields = fff.clone()
 			unsafe { fff.free() }
-			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
-				last_ids, res_, id_name, fkeys[i], or_expr)
+			g.write_orm_insert_with_last_ids(arr, connection_var_name,
+				g.get_table_name_by_struct_type(arr.table_expr.typ), last_ids, res_, id_name,
+				fkeys[i], or_expr)
 			g.indent--
 			g.writeln('}')
 		}
@@ -875,8 +886,8 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.write_orm_where_expr(expr.left, mut fields, mut parentheses, mut kinds, mut
-				data, mut is_and)
+			g.write_orm_where_expr(expr.left, mut fields, mut parentheses, mut kinds, mut data, mut
+				is_and)
 			mut kind := match expr.op {
 				.ne {
 					'orm__OperationKind__neq'
@@ -938,8 +949,8 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 		}
 		ast.ParExpr {
 			mut par := [fields.len]
-			g.write_orm_where_expr(expr.expr, mut fields, mut parentheses, mut kinds, mut
-				data, mut is_and)
+			g.write_orm_where_expr(expr.expr, mut fields, mut parentheses, mut kinds, mut data, mut
+				is_and)
 			par << fields.len - 1
 			parentheses << par
 		}
@@ -1089,7 +1100,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('NULL')
 	}
 	g.indent--
-	g.writeln2('),', '.types = builtin__new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
+	g.writeln2('),',
+		'.types = builtin__new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
 	g.indent++
 
 	if types.len > 0 {
@@ -1172,7 +1184,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		} else {
 			node.aggregate_field_type
 		}
-		primitive_field_name := g.orm_primitive_field_name(aggregate_type)
+		primitive_field_name := g.orm_primitive_variant_field_name(aggregate_type)
 		aggregate_value_styp := g.styp(aggregate_type.clear_flag(.option))
 		if node.aggregate_kind == .count {
 			g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = 0;')

@@ -42,3 +42,18 @@ fn test_c_error_missing_libatomic_marker_with_regular_c_error() {
 	assert c_error_missing_libatomic_marker(c_output) == ''
 	assert !c_error_looks_like_missing_libatomic(c_output)
 }
+
+fn test_c_error_missing_library_name_with_macos_ld_output() {
+	c_output := "ld: library 'mbedtls' not found\nclang: error: linker command failed with exit code 1\n"
+	assert c_error_missing_library_name(c_output) == 'mbedtls'
+}
+
+fn test_c_error_missing_library_name_with_gnu_ld_output() {
+	c_output := '/usr/bin/ld: cannot find -lssl\ncollect2: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'ssl'
+}
+
+fn test_c_error_missing_library_name_with_regular_c_error() {
+	c_output := "error: unknown type name 'my_missing_type'"
+	assert c_error_missing_library_name(c_output) == ''
+}

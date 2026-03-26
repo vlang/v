@@ -935,25 +935,6 @@ pub fn (mut t Table) update_sym_by_idx(existing_idx int, sym &TypeSymbol) {
 	}
 }
 
-fn (mut t Table) promote_placeholder_generic_children(parent_idx int, sym TypeSymbol) {
-	for i, child in t.type_symbols {
-		if child.kind != .placeholder || child.parent_idx != parent_idx
-			|| child.generic_types.len == 0 {
-			continue
-		}
-		t.update_sym_by_idx(i, &TypeSymbol{
-			...sym
-			name:          child.name
-			cname:         child.cname
-			ngname:        child.ngname
-			rname:         if child.rname == '' { sym.name } else { child.rname }
-			parent_idx:    parent_idx
-			methods:       child.methods
-			generic_types: child.generic_types.clone()
-		})
-	}
-}
-
 fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx int) int {
 	existing_symbol := t.type_symbols[existing_idx]
 	$if trace_rewrite_already_registered_symbol ? {
@@ -967,7 +948,6 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 			idx:        existing_idx
 			is_builtin: existing_symbol.is_builtin
 		}
-		t.promote_placeholder_generic_children(existing_idx, typ)
 		return existing_idx
 	}
 	// Override the already registered builtin types with the actual

@@ -27,7 +27,7 @@ fn test_client_timeout_configures_tcp_conn() ! {
 	port := listener.addr()!.port()!
 	done := chan bool{}
 	spawn smtp_timeout_test_server(mut listener, done)
-	mut client := new_client(Client{
+	mut client := new_client(Config{
 		server:  '127.0.0.1'
 		port:    int(port)
 		timeout: timeout

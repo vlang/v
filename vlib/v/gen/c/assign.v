@@ -44,8 +44,8 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 				var_expr_name := c_name(var_expr.str())
 				if last_stmt.expr is ast.Ident && last_stmt.expr.or_expr.kind != .absent {
 					g.write('${var_expr_name} = ')
-					g.expr_with_opt_or_block(last_stmt.expr, last_stmt.typ, var_expr,
-						ret_typ, in_heap)
+					g.expr_with_opt_or_block(last_stmt.expr, last_stmt.typ, var_expr, ret_typ,
+						in_heap)
 				} else {
 					g.gen_or_block_stmts(var_expr_name, '', stmts, ret_typ, false, scope,
 						expr.pos())
@@ -189,8 +189,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 	} else {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, unwrapped_expr_typ, unwrapped_ret_typ, tmp_out_var,
-			true)
+		g.expr_with_tmp_var(expr, unwrapped_expr_typ, unwrapped_ret_typ, tmp_out_var, true)
 		return tmp_out_var
 	}
 	return ''
@@ -356,7 +355,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		val := node.right[i]
 		if is_decl && g.cur_concrete_types.len > 0 && val is ast.CallExpr
 			&& val.return_type_generic != 0 {
-			resolved_val_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+			mut resolved_val_type := g.resolve_return_type(val).clear_option_and_result()
+			if resolved_val_type == ast.void_type || resolved_val_type.has_flag(.generic) {
+				resolved_val_type =
+					g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+			}
 			if resolved_val_type != ast.void_type && !resolved_val_type.has_flag(.generic) {
 				var_type = ast.mktyp(resolved_val_type)
 				val_type = resolved_val_type
@@ -447,11 +450,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							left.obj.typ = var_type
 						}
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
-						if val.return_type_generic != 0
-							&& val.return_type_generic.has_flag(.generic) {
-							mut fn_ret_type := g.unwrap_generic(val.return_type_generic).clear_option_and_result()
+						if val.return_type_generic != 0 {
+							mut fn_ret_type := g.resolve_return_type(val).clear_option_and_result()
 							if fn_ret_type == ast.void_type || fn_ret_type.has_flag(.generic) {
-								fn_ret_type = g.resolve_return_type(val)
+								fn_ret_type =
+									g.unwrap_generic(val.return_type_generic).clear_option_and_result()
 							}
 							if fn_ret_type != ast.void_type {
 								var_type = fn_ret_type
@@ -469,15 +472,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							&& val.name == 'map' && val.args.len > 0
 							&& val.args[0].expr is ast.AsCast
 							&& val.args[0].expr.typ.has_flag(.generic) {
-							var_type = g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
+							var_type =
+								g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
 							val_type = var_type
 							left.obj.typ = var_type
 							g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
 						&& val.left_ct_expr {
-						ctyp := g.type_resolver.promote_type(g.unwrap_generic(g.type_resolver.get_type(val.left)),
-							g.unwrap_generic(g.type_resolver.get_type_or_default(val.right,
+						ctyp := g.type_resolver.promote_type(g.unwrap_generic(g.type_resolver.get_type(val.left)), g.unwrap_generic(g.type_resolver.get_type_or_default(val.right,
 							val.right_type)))
 						if ctyp != ast.void_type {
 							ct_type_var := g.comptime.get_ct_type_var(val.left)
@@ -561,8 +564,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 					if (is_decl || blank_assign) && left is ast.Ident {
-						sig := g.fn_var_signature(val.typ, val.decl.return_type, val.decl.params.map(it.typ),
-							ident.name)
+						sig := g.fn_var_signature(val.typ, val.decl.return_type,
+							val.decl.params.map(it.typ), ident.name)
 						g.write(sig + ' = ')
 					} else {
 						g.is_assign_lhs = true
@@ -1093,7 +1096,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
 							|| gen_or {
-							g.expr_with_opt_or_block(val, val_type, left, var_type, is_option_auto_heap)
+							g.expr_with_opt_or_block(val, val_type, left, var_type,
+								is_option_auto_heap)
 						} else if val is ast.ArrayInit {
 							cvar_name := c_name(ident.name)
 							if val.is_fixed && ident.name in g.defer_vars {
@@ -1124,8 +1128,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else if val in [ast.MatchExpr, ast.IfExpr]
 							&& unaliased_right_sym.info is ast.ArrayFixed {
 							tmp_var := g.expr_with_var(val, var_type, false)
-							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
-								unaliased_right_sym.info.size)
+							g.fixed_array_var_init(tmp_var, false,
+								unaliased_right_sym.info.elem_type, unaliased_right_sym.info.size)
 						} else if is_large_struct_heap && val is ast.StructInit {
 							// For large structs, use vcalloc directly to avoid stack overflow
 							// from compound literals on the stack
@@ -1280,7 +1284,8 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			field_sym := g.table.sym(field_type)
 			if field_sym.info is ast.Map {
 				map_info := field_sym.info as ast.Map
-				ret_type = g.table.find_or_register_multi_return([map_info.key_type, map_info.value_type])
+				ret_type =
+					g.table.find_or_register_multi_return([map_info.key_type, map_info.value_type])
 				ret_sym = *g.table.sym(ret_type)
 			}
 		}
@@ -1378,7 +1383,8 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		} else {
 			g.expr(lx)
 			if sym.kind == .array_fixed {
-				g.writeln2(';', 'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
+				g.writeln2(';',
+					'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
 				if cur_indexexpr != -1 {
 					if is_auto_heap {

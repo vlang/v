@@ -274,7 +274,7 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	}
 	g.auto_str_funcs.writeln('\t} else {')
 
-	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
+	tmp_str := str_intp_sub('error: %%', 'builtin__IError_str(it.err)')
 	g.auto_str_funcs.writeln('\t\tres = ${tmp_str};')
 	g.auto_str_funcs.writeln('\t}')
 

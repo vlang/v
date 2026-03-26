@@ -79,6 +79,25 @@ fn c_error_looks_like_missing_libatomic(c_output string) bool {
 	return c_error_missing_libatomic_marker(c_output) != ''
 }
 
+fn c_error_missing_library_name(c_output string) string {
+	for line in c_output.split_into_lines() {
+		if line.contains("library '") && line.contains("' not found") {
+			return line.all_after("library '").all_before("' not found")
+		}
+		for marker in [
+			'cannot find -l',
+			'unable to find library -l',
+			'library not found for -l',
+		] {
+			if line.contains(marker) {
+				lib_name := line.all_after(marker).trim_space()
+				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ')
+			}
+		}
+	}
+	return ''
+}
+
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
@@ -107,9 +126,15 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		return
 	}
 	libatomic_marker := c_error_missing_libatomic_marker(res.output)
+	missing_library_name := if libatomic_marker == '' {
+		c_error_missing_library_name(res.output)
+	} else {
+		''
+	}
 	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
-			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
+			emessage :=
+				res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
 			verror(emessage)
 		}
 	}
@@ -178,6 +203,12 @@ C error found while compiling generated C code.
 The C toolchain could not find `libatomic`, which V needs for `sync.stdatomic` with this compiler on this platform.
 Install the system package that provides `libatomic` and retry.
 On CentOS/RHEL, that is usually `libatomic` or `libatomic-devel`.${more_suggestions}')
+	}
+	if missing_library_name != '' {
+		verror('
+==================
+C library `${missing_library_name}` was not found while linking the generated program.
+Please install the corresponding development package/libraries and make sure the linker can find it.${more_suggestions}')
 	}
 	verror('
 ==================
@@ -707,8 +738,8 @@ fn (mut v Builder) setup_output_name() {
 		}
 	}
 	if v.pref.build_mode == .build_module {
-		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path,
-			'.o', v.pref.path) // v.out_name
+		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path, '.o',
+			v.pref.path) // v.out_name
 		if v.pref.is_verbose {
 			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
@@ -1015,7 +1046,8 @@ pub fn (mut v Builder) cc() {
 			v.show_c_compiler_output(ccompiler, res)
 		}
 		os.chdir(original_pwd) or {}
-		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
+		vcache.dlog('| Builder.' + @FN,
+			'>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
@@ -1443,7 +1475,8 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
-					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value, rest_of_module_flags)
+					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value,
+						rest_of_module_flags)
 					continue
 				}
 			}
@@ -1552,9 +1585,8 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or {
-		panic(err)
-	}
+	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path,
+		get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or { panic(err) }
 	if v.pref.show_cc {
 		println('>> OBJECT FILE compilation cmd: ${cmd}')
 	}
@@ -1655,7 +1687,8 @@ pub fn (mut v Builder) quote_compiler_name(name string) string {
 
 fn write_response_file(response_file string, response_file_content string) {
 	$if windows {
-		os.write_file_array(response_file, string_to_ansi_not_null_terminated(response_file_content)) or {
+		os.write_file_array(response_file,
+			string_to_ansi_not_null_terminated(response_file_content)) or {
 			write_response_file_error(response_file_content, err)
 		}
 	} $else {

@@ -12,6 +12,29 @@ mut:
 	typ ast.Type
 }
 
+fn (mut g JsGen) ensure_autostr_helpers() {
+	if g.generated_autostr_helpers {
+		return
+	}
+	g.generated_autostr_helpers = true
+	g.definitions.writeln('const builtin__autostr_type_stack_max_depth = 64;')
+	g.definitions.writeln('let builtin__g_autostr_type_stack = Array(builtin__autostr_type_stack_max_depth).fill(0);')
+	g.definitions.writeln('let builtin__g_autostr_type_stack_len = 0;')
+	g.definitions.writeln('function builtin__autostr_type_in_stack(typ) {')
+	g.definitions.writeln('\tfor (let i = 0; i < builtin__g_autostr_type_stack_len; ++i) {')
+	g.definitions.writeln('\t\tif (builtin__g_autostr_type_stack[i] === typ) return true;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn false;')
+	g.definitions.writeln('}')
+	g.definitions.writeln('function builtin__autostr_type_push(typ) {')
+	g.definitions.writeln('\tif (builtin__g_autostr_type_stack_len >= builtin__autostr_type_stack_max_depth) return;')
+	g.definitions.writeln('\tbuiltin__g_autostr_type_stack[builtin__g_autostr_type_stack_len++] = typ;')
+	g.definitions.writeln('}')
+	g.definitions.writeln('function builtin__autostr_type_pop() {')
+	g.definitions.writeln('\tif (builtin__g_autostr_type_stack_len > 0) builtin__g_autostr_type_stack_len--;')
+	g.definitions.writeln('}')
+}
+
 fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0).clear_flag(.variadic)
 	if g.pref.nofloat {
@@ -719,6 +742,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 	}
 	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	if !allow_circular {
+		g.ensure_autostr_helpers()
 		fn_builder.writeln('\tif (builtin__autostr_type_in_stack(${type_idx})) {')
 		fn_builder.writeln('\t\treturn new string("<circular>")')
 		fn_builder.writeln('\t}')

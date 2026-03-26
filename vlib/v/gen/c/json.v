@@ -385,7 +385,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 }
 
 fn gen_struct_root_validation(ret_styp string, mut dec strings.Builder) {
-	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root)) {')
+	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root) && !cJSON_IsArray(root)) {')
 	dec.writeln('\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0} };')
 	dec.writeln('\t}')
 }

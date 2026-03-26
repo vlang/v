@@ -85,13 +85,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 				// ... look relative to the source file:
 				escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path), escaped_path))
 				if !os.exists(escaped_path) {
-					c.error('"${escaped_path}" does not exist so it cannot be embedded',
-						node.pos)
+					c.error('"${escaped_path}" does not exist so it cannot be embedded', node.pos)
 					return ast.string_type
 				}
 				if !os.is_file(escaped_path) {
-					c.error('"${escaped_path}" is not a file so it cannot be embedded',
-						node.pos)
+					c.error('"${escaped_path}" is not a file so it cannot be embedded', node.pos)
 					return ast.string_type
 				}
 			} else {
@@ -244,8 +242,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			}
 			idx := node.args_var.int()
 			if idx < 0 || idx >= sym.info.types.len {
-				c.error('index ${idx} out of range of ${sym.info.types.len} return types',
-					node.pos)
+				c.error('index ${idx} out of range of ${sym.info.types.len} return types', node.pos)
 				return ast.void_type
 			}
 			return sym.info.types[idx]
@@ -611,7 +608,8 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 
 // comptime const eval
 fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
-	return c.eval_comptime_const_expr_with_locals(expr, nlevel, map[string]ast.ComptTimeConstValue{})
+	return c.eval_comptime_const_expr_with_locals(expr, nlevel,
+		map[string]ast.ComptTimeConstValue{})
 }
 
 fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
@@ -926,8 +924,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 				} else {
 					last_stmt := branch.stmts.last()
 					if last_stmt is ast.ExprStmt {
-						return c.eval_comptime_const_expr_with_locals(last_stmt.expr,
-							nlevel + 1, local_values)
+						return c.eval_comptime_const_expr_with_locals(last_stmt.expr, nlevel + 1,
+							local_values)
 					}
 				}
 			}
@@ -1161,12 +1159,13 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 }
 
 fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, expr ast.Expr) bool {
+	mut resolved_left_type := c.unwrap_generic(left_type)
 	if expr is ast.ComptimeType {
-		return c.type_resolver.is_comptime_type(left_type, expr as ast.ComptimeType)
+		return c.type_resolver.is_comptime_type(resolved_left_type, expr as ast.ComptimeType)
 	} else if expr is ast.TypeNode {
 		typ := c.get_expr_type(expr)
 		right_type := c.unwrap_generic(typ)
-		if c.type_resolver.bind_matching_generic_type(left_type, right_type) {
+		if c.type_resolver.bind_matching_generic_type(resolved_left_type, right_type) {
 			return true
 		}
 		right_sym := c.table.sym(right_type)
@@ -1174,8 +1173,8 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 			c.error('unknown type `${right_sym.name}`', expr.pos)
 		}
 		if right_sym.kind == .interface && right_sym.info is ast.Interface {
-			return left_type.has_flag(.option) == right_type.has_flag(.option)
-				&& c.table.does_type_implement_interface(left_type, right_type)
+			return resolved_left_type.has_flag(.option) == right_type.has_flag(.option)
+				&& c.table.does_type_implement_interface(resolved_left_type, right_type)
 		}
 		if right_sym.info is ast.FnType && c.comptime.comptime_for_method_var == left_name {
 			return c.table.fn_signature(right_sym.info.func,
@@ -1186,7 +1185,7 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 				type_only:     true
 			)
 		} else {
-			return left_type == right_type
+			return resolved_left_type == right_type
 		}
 	}
 	return false
@@ -1220,8 +1219,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 		}
 		ast.ParExpr {
 			sb.write_string('(')
-			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.expr, mut
-				sb)
+			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.expr, mut sb)
 			sb.write_string(')')
 			return is_true_result, multi_pass_stmts
 		}
@@ -1231,8 +1229,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				return false, false
 			}
 			sb.write_string(cond.op.str())
-			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.right, mut
-				sb)
+			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.right, mut sb)
 			return !is_true_result, multi_pass_stmts
 		}
 		ast.PostfixExpr {
@@ -1328,8 +1325,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 							} else if cond.op == .ne {
 								is_true = left_str != right_str
 							} else {
-								c.error('string type only support `==` and `!=` operator',
-									cond.pos)
+								c.error('string type only support `==` and `!=` operator', cond.pos)
 								return false, false
 							}
 							sb.write_string('${is_true}')
@@ -1498,7 +1494,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 										left_name := (cond.left.expr as ast.Ident).name
 										if c.comptime.inside_comptime_for
 											&& left_name == c.comptime.comptime_for_method_var {
-											left_type_idx := c.comptime.comptime_for_method_ret_type.idx()
+											left_type_idx :=
+												c.comptime.comptime_for_method_ret_type.idx()
 											match cond.op {
 												.eq {
 													is_true = left_type_idx == cond.right.val.i64()
@@ -1585,8 +1582,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 									return is_true, true
 								}
 								else {
-									c.error('sizeof() can only compare with int type',
-										cond.pos)
+									c.error('sizeof() can only compare with int type', cond.pos)
 									return false, false
 								}
 							}

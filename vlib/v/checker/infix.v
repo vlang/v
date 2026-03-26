@@ -51,6 +51,16 @@ fn (mut c Checker) adjust_infix_int_literal_promotion(left ast.Expr, right ast.E
 	return promoted_type
 }
 
+fn (c &Checker) alias_supports_ordered_comparison(sym ast.TypeSymbol, op token.Kind) bool {
+	if sym.kind != .alias {
+		return false
+	}
+	if sym.has_method_with_generic_parent(op.str()) {
+		return true
+	}
+	return op in [.gt, .ge, .le] && sym.has_method_with_generic_parent('<')
+}
+
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -111,8 +121,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					// search last `n is ast.Ident` in the left
 					from_type := c.expr(mut left_node.right.left)
 					to_type := c.expr(mut left_node.right.right)
-					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type,
-						to_type)
+					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type, to_type)
 				}
 			}
 			if left_node.op == .key_is {
@@ -324,8 +333,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder))
 					&& !right_final_sym.is_heap() {
 					rt := c.table.sym(right_type).name
-					c.error('cannot compare with `nil` because `${rt}` is not a pointer',
-						node.pos)
+					c.error('cannot compare with `nil` because `${rt}` is not a pointer', node.pos)
 				}
 			}
 
@@ -339,8 +347,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder))
 					&& !left_final_sym.is_heap() {
 					lt := c.table.sym(left_type).name
-					c.error('cannot compare with `nil` because `${lt}` is not a pointer',
-						node.pos)
+					c.error('cannot compare with `nil` because `${lt}` is not a pointer', node.pos)
 				}
 			}
 		}
@@ -559,8 +566,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(unwrapped_left_type)
 				unalias_right_type := c.table.unalias_num_type(unwrapped_right_type)
-				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type, unalias_right_type,
-					left_sym.kind, right_sym.kind)
+				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type,
+					unalias_right_type, left_sym.kind, right_sym.kind)
 				promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
 					unaliased_left_type, unalias_right_type, promoted_type)
 				// subtract pointers is allowed in unsafe block
@@ -590,8 +597,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							right_sym.name
 						}
 						if node.op == .mod {
-							c.error('float modulo not allowed, use math.fmod() instead',
-								pos)
+							c.error('float modulo not allowed, use math.fmod() instead', pos)
 						} else {
 							c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
 								pos)
@@ -626,12 +632,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.gt, .lt, .ge, .le {
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
-			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(node.op.str()) {
+			if left_sym.kind == .alias && !c.alias_supports_ordered_comparison(left_sym, node.op) {
 				left_sym = c.table.final_sym(unwrapped_left_type)
 			}
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if right_sym.kind == .alias && !right_sym.has_method_with_generic_parent(node.op.str()) {
+			if right_sym.kind == .alias && !c.alias_supports_ordered_comparison(right_sym, node.op) {
 				right_sym = c.table.final_sym(unwrapped_right_type)
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
@@ -813,13 +819,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				} else if left_final_sym.kind !in [.interface, .sum_type]
 					&& !c.comptime.is_comptime(node.left) {
-					c.error('`${op}` can only be used with interfaces and sum types',
-						node.pos) // can be used in sql too, but keep err simple
+					c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants
 						&& c.unwrap_generic(typ) !in left_sym.info.variants {
-						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',
-							right_pos)
+						c.error('`${left_sym.name}` has no variant `${right_sym.name}`', right_pos)
 					}
 				} else if left_sym.info is ast.Interface {
 					if typ_sym.kind != .interface && !c.type_implements(typ, left_type, right_pos) {
@@ -1231,8 +1235,7 @@ fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Typ
 		}
 		if left_is_option && right_is_option {
 			if node.op !in [.eq, .ne] {
-				c.error('`?${opt}` cannot be used as `${nopt}`, unwrap the option first',
-					pos)
+				c.error('`?${opt}` cannot be used as `${nopt}`, unwrap the option first', pos)
 			}
 			return
 		}
