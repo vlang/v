@@ -445,58 +445,77 @@ struct DynamicTableEntry {
 // back of the array (newest at the highest absolute index). References use
 // absolute or relative indices, unlike HPACK (HTTP/2) which inserts newest
 // entries at index 0 (LIFO ordering per RFC 7541 §2.3.3).
+//
+// Internally uses a ring buffer for O(1) eviction instead of O(n) array shifts.
 struct DynamicTable {
 mut:
 	entries      []DynamicTableEntry
+	head         int // index of the oldest entry in the ring buffer
+	count        int // number of valid entries currently stored
 	size         int
 	max_size     int
 	insert_count u64
 }
 
 fn new_dynamic_table(max_size int) DynamicTable {
+	cap := max_entries(max_size)
 	return DynamicTable{
-		entries:      []DynamicTableEntry{}
+		entries:      []DynamicTableEntry{len: cap}
+		head:         0
+		count:        0
 		size:         0
 		max_size:     max_size
 		insert_count: 0
 	}
 }
 
+// insert adds a header field to the dynamic table, evicting oldest entries as
+// needed. Uses ring buffer indexing for O(1) eviction.
 fn (mut dt DynamicTable) insert(field HeaderField) {
 	entry_size := field.name.len + field.value.len + 32
+	cap := dt.entries.len
 
-	// Evict entries if necessary
-	for dt.size + entry_size > dt.max_size && dt.entries.len > 0 {
-		removed := dt.entries[0]
-		dt.entries.delete(0)
-		dt.size -= removed.size
+	if cap == 0 || entry_size > dt.max_size {
+		return
 	}
 
-	// Add new entry
-	if entry_size <= dt.max_size {
-		dt.entries << DynamicTableEntry{
-			field: field
-			size:  entry_size
-		}
-		dt.size += entry_size
-		dt.insert_count++
+	// Evict oldest entries until there is room
+	for dt.size + entry_size > dt.max_size && dt.count > 0 {
+		dt.size -= dt.entries[dt.head].size
+		dt.head = (dt.head + 1) % cap
+		dt.count--
 	}
+
+	// Add new entry at the tail of the ring buffer
+	tail := (dt.head + dt.count) % cap
+	dt.entries[tail] = DynamicTableEntry{
+		field: field
+		size:  entry_size
+	}
+	dt.count++
+	dt.size += entry_size
+	dt.insert_count++
 }
 
+// get returns the entry at the given relative index (newest = 0).
 fn (dt &DynamicTable) get(index int) ?HeaderField {
-	if index < 0 || index >= dt.entries.len {
+	if index < 0 || index >= dt.count {
 		return none
 	}
-	return dt.entries[dt.entries.len - 1 - index].field
+	cap := dt.entries.len
+	actual_idx := (dt.head + dt.count - 1 - index) % cap
+	return dt.entries[actual_idx].field
 }
 
 // get_by_absolute returns the entry at the given absolute index.
 // The absolute index is the insertion-order index assigned when an entry was added.
 fn (dt &DynamicTable) get_by_absolute(abs_index int) ?HeaderField {
-	first_abs := int(dt.insert_count) - dt.entries.len
+	first_abs := int(dt.insert_count) - dt.count
 	j := abs_index - first_abs
-	if j < 0 || j >= dt.entries.len {
+	if j < 0 || j >= dt.count {
 		return none
 	}
-	return dt.entries[j].field
+	cap := dt.entries.len
+	actual_idx := (dt.head + j) % cap
+	return dt.entries[actual_idx].field
 }

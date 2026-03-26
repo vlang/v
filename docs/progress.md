@@ -50,3 +50,33 @@ Chronological record of completed work.
 - Server TLS type abstraction (`ServerConn` interface for SSLConn/TcpConn)
 - DER certificate format support
 - Full QPACK dynamic table eviction policy
+
+---
+
+## Architecture & Medium-Priority Fixes — 2026-03-26
+
+### Completed
+- [x] A1: encode_optimized O(n)→O(1) hashmap lookup
+- [x] A2: SETTINGS ACK DRY — new_settings_ack_frame() factory
+- [x] A3: max_frame_size validation on read (DoS prevention)
+- [x] A4: SETTINGS range validation (RFC 7540 §6.5.2)
+- [x] A5: QPACK DynamicTable ring buffer (O(1) eviction)
+- [x] A6: PN extraction + header protection pipeline (RFC 9001 §5.4)
+- [x] B1: Server TLS via ServerConn interface + SSLListener
+- [x] B2: ALPN get_alpn_selected() — mbedtls + OpenSSL backends
+- [x] B3: Server outbound flow control (WINDOW_UPDATE + enforcement)
+- [x] C1+C2: Doc comments (Method enum, ServerConnection)
+
+### Test Results
+- HTTP/2: 9/9 pass
+- HTTP/3: 5/5 pass
+- QUIC: 5/5 pass
+
+### QA Scores
+- HTTP/3+QUIC: 86/100 (B) — APPROVED
+- HTTP/2: 77.8/100 (C+) → ACT fixes applied (projected ~84)
+
+### Remaining (tracked as follow-up)
+- server.v 303 lines (borderline)
+- run_frame_loop 56 lines (borderline)
+- v3/client.v 348, v3/server.v 358 (pre-existing)

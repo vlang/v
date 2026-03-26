@@ -520,6 +520,86 @@ fn test_priority_frame_wrong_type() {
 	assert false, 'Should have rejected non-PRIORITY frame'
 }
 
+// test_new_settings_ack_frame verifies the factory creates a correct SETTINGS ACK frame
+// per RFC 7540 §6.5: ACK flag set, empty payload, stream 0, settings type.
+fn test_new_settings_ack_frame() {
+	frame := new_settings_ack_frame()
+	assert frame.header.frame_type == .settings
+	assert frame.header.flags == u8(FrameFlags.ack)
+	assert frame.header.stream_id == 0
+	assert frame.header.length == 0
+	assert frame.payload.len == 0
+}
+
+// test_new_settings_ack_frame_validates verifies the ACK frame passes frame validation.
+fn test_new_settings_ack_frame_validates() {
+	frame := new_settings_ack_frame()
+	frame.validate() or {
+		assert false, 'SETTINGS ACK frame should be valid: ${err}'
+		return
+	}
+}
+
+// test_validate_setting_value_max_frame_size_below_minimum verifies that max_frame_size
+// below 16384 is rejected per RFC 7540 §6.5.2.
+fn test_validate_setting_value_max_frame_size_below_minimum() {
+	validate_setting_value(.max_frame_size, 16383) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		return
+	}
+	assert false, 'max_frame_size below 16384 should be rejected'
+}
+
+// test_validate_setting_value_max_frame_size_above_maximum verifies that max_frame_size
+// above 2^24-1 is rejected per RFC 7540 §6.5.2.
+fn test_validate_setting_value_max_frame_size_above_maximum() {
+	validate_setting_value(.max_frame_size, 16777216) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		return
+	}
+	assert false, 'max_frame_size above 16777215 should be rejected'
+}
+
+// test_validate_setting_value_max_frame_size_at_boundaries verifies boundary values
+// for max_frame_size are accepted per RFC 7540 §6.5.2.
+fn test_validate_setting_value_max_frame_size_at_boundaries() {
+	// Minimum valid: 16384 (2^14)
+	validate_setting_value(.max_frame_size, 16384) or {
+		assert false, 'max_frame_size 16384 should be valid: ${err}'
+		return
+	}
+	// Maximum valid: 16777215 (2^24 - 1)
+	validate_setting_value(.max_frame_size, 16777215) or {
+		assert false, 'max_frame_size 16777215 should be valid: ${err}'
+		return
+	}
+}
+
+// test_validate_setting_value_initial_window_size_overflow verifies that initial_window_size
+// above 2^31-1 is rejected per RFC 7540 §6.5.2.
+fn test_validate_setting_value_initial_window_size_overflow() {
+	validate_setting_value(.initial_window_size, 2147483648) or {
+		assert err.msg().contains('FLOW_CONTROL_ERROR')
+		return
+	}
+	assert false, 'initial_window_size above 2^31-1 should be rejected'
+}
+
+// test_validate_setting_value_initial_window_size_valid verifies valid initial_window_size
+// values are accepted per RFC 7540 §6.5.2.
+fn test_validate_setting_value_initial_window_size_valid() {
+	// Maximum valid: 2^31 - 1
+	validate_setting_value(.initial_window_size, 2147483647) or {
+		assert false, 'initial_window_size 2^31-1 should be valid: ${err}'
+		return
+	}
+	// Default: 65535
+	validate_setting_value(.initial_window_size, 65535) or {
+		assert false, 'initial_window_size 65535 should be valid: ${err}'
+		return
+	}
+}
+
 // test_rst_stream_frame_from_frame verifies RstStreamFrame from_frame conversion.
 fn test_rst_stream_frame_from_frame() {
 	// error_code = 0x8 (cancel)

@@ -53,7 +53,9 @@ mut:
 	running     bool
 }
 
-// ServerConnection represents a single HTTP/3 connection
+// ServerConnection represents a single HTTP/3 client connection on the server side.
+// It manages the QUIC transport, QPACK codec state, stream tracking, crypto context,
+// and packet numbering for one connected peer. Protected by mutex for concurrent access.
 struct ServerConnection {
 mut:
 	quic_conn   quic.Connection
@@ -79,10 +81,13 @@ mut:
 	mu               sync.Mutex
 	encoder          Encoder
 	decoder          Decoder
-	uni              UniStreamManager
+	// uni manages the HTTP/3 unidirectional control streams (control, QPACK encoder,
+	// QPACK decoder) required by RFC 9114 §6.2.
+	uni UniStreamManager
 }
 
-// ServerStream represents a single HTTP/3 stream on the server
+// ServerStream represents a single HTTP/3 request stream on the server side.
+// It accumulates headers and data frames for one client request, tracked by stream ID.
 struct ServerStream {
 mut:
 	id      u64
@@ -290,6 +295,10 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 
 // decrypt_incoming_packet derives the base IV, extracts the packet number,
 // and decrypts the incoming QUIC packet.
+// When HP keys are available (rx_hp_key derived), the packet number is
+// extracted via the RFC 9001 §5.4 pipeline: remove header protection first,
+// then read the PN. When HP keys are not yet available (during the handshake),
+// a monotonic counter is used as a fallback.
 fn (mut s Server) decrypt_incoming_packet(mut conn ServerConnection, packet []u8) ![]u8 {
 	// Prefer the derived rx_iv from traffic keys;
 	// fall back to a zero IV when keys have not been derived yet.
@@ -299,21 +308,26 @@ fn (mut s Server) decrypt_incoming_packet(mut conn ServerConnection, packet []u8
 		[]u8{len: 12}
 	}
 
-	// Try to extract the packet number from the QUIC header. Falls back to
-	// the monotonic counter when extraction fails (e.g. header protection
-	// is still applied or the packet uses a non-standard format).
-	extracted_pn, _ := quic.extract_packet_number(packet, conn.quic_conn.conn_id.len) or {
-		u64(0), 0
-	}
-
 	conn.mu.lock()
-	pkt_num := if extracted_pn != 0 {
+	pkt_num := if conn.crypto_ctx.rx_hp_key.len > 0 {
+		// HP keys derived: use the proper RFC 9001 §5.4 pipeline
+		extracted_pn, _, _ := conn.crypto_ctx.extract_and_unprotect_pn(packet, conn.quic_conn.conn_id.len) or {
+			// Fall back to monotonic counter on extraction failure
+			pn := conn.rx_packet_number
+			conn.rx_packet_number++
+			conn.mu.unlock()
+			return conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pn)
+		}
+		conn.rx_packet_number = extracted_pn + 1
+		conn.mu.unlock()
 		extracted_pn
 	} else {
-		conn.rx_packet_number
+		// No HP keys yet (handshake phase): use monotonic counter
+		pn := conn.rx_packet_number
+		conn.rx_packet_number++
+		conn.mu.unlock()
+		pn
 	}
-	conn.rx_packet_number++
-	conn.mu.unlock()
 
 	return conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pkt_num)
 }

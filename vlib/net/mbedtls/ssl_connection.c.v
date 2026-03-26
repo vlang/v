@@ -759,3 +759,13 @@ fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
 }
+
+// get_alpn_selected returns the ALPN protocol selected during TLS handshake.
+// Returns none if no protocol was negotiated.
+pub fn (mut s SSLConn) get_alpn_selected() ?string {
+	result := C.mbedtls_ssl_get_alpn_protocol(&s.ssl)
+	if result == unsafe { nil } {
+		return none
+	}
+	return unsafe { result.vstring() }
+}

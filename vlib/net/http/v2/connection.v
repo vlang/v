@@ -74,7 +74,7 @@ pub fn (mut c Connection) read_settings() ! {
 					return
 				}
 				pairs := parse_settings_payload(frame.payload)!
-				c.apply_remote_settings(pairs)
+				c.apply_remote_settings(pairs)!
 				c.write_settings_ack()!
 				return
 			}
@@ -99,8 +99,10 @@ pub fn (mut c Connection) read_settings() ! {
 }
 
 // apply_remote_settings applies received setting pairs to the connection's remote settings.
-fn (mut c Connection) apply_remote_settings(pairs []SettingPair) {
+// Validates each value per RFC 7540 §6.5.2 before applying.
+fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 	for pair in pairs {
+		validate_setting_value(pair.id, pair.value)!
 		match pair.id {
 			.header_table_size { c.remote_settings.header_table_size = pair.value }
 			.enable_push { c.remote_settings.enable_push = pair.value != 0 }
@@ -114,16 +116,7 @@ fn (mut c Connection) apply_remote_settings(pairs []SettingPair) {
 
 // write_settings_ack sends a SETTINGS ACK frame to acknowledge received settings.
 fn (mut c Connection) write_settings_ack() ! {
-	ack_frame := Frame{
-		header:  FrameHeader{
-			length:     0
-			frame_type: .settings
-			flags:      u8(FrameFlags.ack)
-			stream_id:  0
-		}
-		payload: []u8{}
-	}
-	c.write_frame(ack_frame)!
+	c.write_frame(new_settings_ack_frame())!
 }
 
 // extract_goaway_error builds an error message from a GOAWAY frame payload.
@@ -152,16 +145,21 @@ pub fn (mut c Connection) write_frame(frame Frame) ! {
 // read_frame reads an HTTP/2 frame from the TLS connection
 pub fn (mut c Connection) read_frame() !Frame {
 	mut header_buf := []u8{len: frame_header_size}
-	read_exact(mut c.ssl_conn, mut header_buf)!
+	read_exact(mut c.ssl_conn, mut header_buf, frame_header_size)!
 
 	header := parse_frame_header(header_buf) or {
 		// Per RFC 7540 §4.1: unknown frame type — discard this frame
 		return error('unknown frame type, frame discarded')
 	}
 
+	// Reject frames exceeding the negotiated max frame size (DoS protection)
+	if header.length > c.remote_settings.max_frame_size {
+		return error('frame size ${header.length} exceeds max_frame_size ${c.remote_settings.max_frame_size}')
+	}
+
 	mut payload := []u8{len: int(header.length)}
 	if header.length > 0 {
-		read_exact(mut c.ssl_conn, mut payload)!
+		read_exact(mut c.ssl_conn, mut payload, int(header.length))!
 	}
 
 	$if trace_http2 ? {
@@ -171,23 +169,5 @@ pub fn (mut c Connection) read_frame() !Frame {
 	return Frame{
 		header:  header
 		payload: payload
-	}
-}
-
-// read_exact reads exactly buf.len bytes from the SSL connection.
-// SSL read may return fewer bytes than requested, so this loops until full.
-fn read_exact(mut conn ssl.SSLConn, mut buf []u8) ! {
-	mut total := 0
-	for total < buf.len {
-		n := conn.read(mut buf[total..]) or {
-			if total == 0 {
-				return err
-			}
-			return error('unexpected EOF after ${total} of ${buf.len} bytes')
-		}
-		if n == 0 {
-			return error('unexpected EOF after ${total} of ${buf.len} bytes')
-		}
-		total += n
 	}
 }

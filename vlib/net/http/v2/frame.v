@@ -235,6 +235,40 @@ pub fn frame_type_from_byte(b u8) ?FrameType {
 	}
 }
 
+// new_settings_ack_frame creates a SETTINGS ACK frame per RFC 7540 §6.5.
+// The returned frame has type=SETTINGS, ACK flag set, stream_id=0, and empty payload.
+pub fn new_settings_ack_frame() Frame {
+	return Frame{
+		header:  FrameHeader{
+			length:     0
+			frame_type: .settings
+			flags:      u8(FrameFlags.ack)
+			stream_id:  0
+		}
+		payload: []u8{}
+	}
+}
+
+// validate_setting_value validates a single setting value per RFC 7540 §6.5.2.
+// Returns an error for out-of-range values:
+// - SETTINGS_MAX_FRAME_SIZE must be between 16384 and 16777215
+// - SETTINGS_INITIAL_WINDOW_SIZE must not exceed 2^31-1
+pub fn validate_setting_value(id SettingId, value u32) ! {
+	match id {
+		.max_frame_size {
+			if value < default_frame_size || value > max_frame_size {
+				return error('PROTOCOL_ERROR: max_frame_size ${value} outside valid range ${default_frame_size}..${max_frame_size}')
+			}
+		}
+		.initial_window_size {
+			if value > 0x7fffffff {
+				return error('FLOW_CONTROL_ERROR: initial_window_size ${value} exceeds maximum 2^31-1')
+			}
+		}
+		else {}
+	}
+}
+
 // setting_id_from_u16 validates and converts a u16 to a SettingId enum value.
 // Returns an error for unrecognized setting identifiers.
 pub fn setting_id_from_u16(id u16) !SettingId {

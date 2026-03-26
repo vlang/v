@@ -55,3 +55,18 @@ Format: `[DATE] CONTEXT — LESSON`
 - **Context:** QUIC packet number extraction returned garbage values.
 - **Discovery:** RFC 9001 Section 5.4 requires header protection to be removed before extracting the packet number. Without access to the header protection key, a counter-based fallback is necessary.
 - **Rule:** Implement packet number extraction with a fallback path: prefer header-protection-removal, fall back to monotonic counter when keys are unavailable.
+
+### L11: V Structural Typing for Interface Abstraction
+- **Context:** Needed a `ServerConn` interface to abstract over both `TcpConn` and `SSLConn` for server TLS support.
+- **Discovery:** V's structural typing means any struct with matching method signatures automatically satisfies an interface — no explicit `implements` needed. Used for ServerConn interface that works with both TcpConn and SSLConn.
+- **Rule:** Define interfaces with minimal method sets (read/write/close). V structural typing handles polymorphism automatically.
+
+### L12: OpenSSL ALPN Wire Format
+- **Context:** Implementing `get_alpn_selected()` required understanding the ALPN protocol negotiation setup.
+- **Discovery:** SSL_CTX_set_alpn_protos requires a specific wire format: length-prefixed protocol strings concatenated (e.g., `\x02h2\x08http/1.1`). This is different from the human-readable list.
+- **Rule:** Always use wire format for ALPN protos: `[len][proto][len][proto]...`. Return value 0 = success in OpenSSL.
+
+### L13: Ring Buffer for FIFO with O(1) Eviction
+- **Context:** QPACK DynamicTable used `array.delete(0)` which is O(n) due to element shifting.
+- **Discovery:** Replace array.delete(0) (O(n) shift) with ring buffer (head/count/modular arithmetic) for O(1) front eviction. Pre-allocate capacity to avoid resizing.
+- **Rule:** For any FIFO structure requiring front-eviction, use ring buffer pattern: `entries[head % capacity]`, increment head on evict.

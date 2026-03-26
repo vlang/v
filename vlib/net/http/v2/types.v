@@ -5,10 +5,11 @@ module v2
 
 import time
 
-// Method represents HTTP methods. Duplicated from net.http.Method because
-// net.http imports net.http.v2, creating a circular dependency if v2 were
-// to import net.http back. Only the subset of methods needed for HTTP/2
-// client requests is included here.
+// Method represents HTTP methods for HTTP/2 requests.
+// This enum is duplicated from net.http.Method because V does not allow
+// circular imports — net.http imports net.http.v2, so net.http.v2 cannot
+// import net.http. A future solution could use a shared types module
+// (e.g., net.http.common) imported by both.
 pub enum Method {
 	get
 	post

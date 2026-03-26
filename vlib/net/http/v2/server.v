@@ -4,6 +4,7 @@
 module v2
 
 import net
+import net.mbedtls
 import sync
 import time
 
@@ -84,8 +85,9 @@ mut:
 	config            ServerConfig
 	handler           ?Handler
 	listener          net.TcpListener
+	ssl_listener      &mbedtls.SSLListener = unsafe { nil }
 	running           bool
-	connections       []&net.TcpConn
+	connections       []ServerConn
 	conn_mu           sync.Mutex
 	highest_stream_id u32
 }
@@ -119,20 +121,11 @@ pub fn new_server(config ServerConfig, handler Handler) !&Server {
 // It blocks until stop() is called.
 //
 // In h2c mode (no TLS), uses plain TCP via net.TcpListener.
-//
-// TLS limitation: V's net.mbedtls.SSLListener provides server-side TLS with
-// ALPN support and can be used for h2 over TLS. However, SSLListener.accept()
-// returns mbedtls.SSLConn (not net.TcpConn), which has a different type.
-// Full TLS integration requires abstracting the connection type, which is
-// planned for a future phase. For now, configure TLS via cert_file/key_file
-// in ServerConfig; a clear error is returned until the abstraction is in place.
+// In h2 mode (TLS enabled via cert_file/key_file), uses net.mbedtls.SSLListener
+// with ALPN "h2" negotiation for browser-compatible HTTP/2 (RFC 7540 §3.3).
 pub fn (mut s Server) listen_and_serve() ! {
 	if s.tls {
-		return error('[HTTP/2] TLS mode (h2) is configured but not yet fully integrated. ' +
-			"V's net.mbedtls.SSLListener supports server-side TLS with ALPN, " +
-			'but the HTTP/2 server requires a connection-type abstraction layer ' +
-			'to support both TcpConn and SSLConn. Use h2c mode (omit cert_file/key_file) ' +
-			'or implement the ServerConn interface in a future phase.')
+		return s.listen_and_serve_tls()
 	}
 
 	s.running = true
@@ -147,6 +140,34 @@ pub fn (mut s Server) listen_and_serve() ! {
 			}
 			continue
 		}
+		conn.set_read_timeout(s.config.read_timeout)
+		conn.set_write_timeout(s.config.write_timeout)
+
+		spawn s.handle_connection(mut conn)
+	}
+}
+
+// listen_and_serve_tls starts the HTTP/2 server in TLS mode using
+// net.mbedtls.SSLListener with ALPN "h2" negotiation.
+fn (mut s Server) listen_and_serve_tls() ! {
+	s.ssl_listener = mbedtls.new_ssl_listener(s.config.addr, mbedtls.SSLConnectConfig{
+		cert:           s.config.cert_file
+		cert_key:       s.config.key_file
+		alpn_protocols: ['h2']
+	})!
+
+	s.running = true
+	$if debug {
+		eprintln('[HTTP/2] Server listening on ${s.config.addr} (h2 TLS mode)')
+	}
+
+	for s.running {
+		mut conn := s.ssl_listener.accept() or {
+			if s.running {
+				eprintln('[HTTP/2] TLS Accept error: ${err}')
+			}
+			continue
+		}
 
 		spawn s.handle_connection(mut conn)
 	}
@@ -158,39 +179,37 @@ pub fn (mut s Server) listen_and_serve() ! {
 pub fn (mut s Server) stop() {
 	s.running = false
 	s.send_goaway_to_all()
-	s.listener.close() or {}
+	if s.tls {
+		if s.ssl_listener != unsafe { nil } {
+			s.ssl_listener.shutdown() or {}
+		}
+	} else {
+		s.listener.close() or {}
+	}
 }
 
-// read_exact_tcp reads exactly `needed` bytes from a TCP connection into buf[0..needed].
-// It loops on partial reads as required for TCP streams (TCP is a stream protocol and
-// a single read() call may return fewer bytes than requested).
+// read_exact reads exactly `needed` bytes from a connection into buf[0..needed].
+// It loops on partial reads as required for stream-oriented transports (TCP/TLS
+// may return fewer bytes than requested in a single read() call).
 // Returns the number of bytes read (always == needed on success).
 // Returns an error if the connection closes or an I/O error occurs before needed bytes arrive.
-fn read_exact_tcp(mut conn net.TcpConn, mut buf []u8, needed int) !int {
+fn read_exact(mut conn ServerConn, mut buf []u8, needed int) !int {
 	mut total := 0
 	for total < needed {
-		n := conn.read(mut buf[total..needed]) or { return error('read_exact_tcp: ${err}') }
+		n := conn.read(mut buf[total..needed]) or { return error('read_exact: ${err}') }
 		if n == 0 {
-			return error('read_exact_tcp: connection closed after ${total}/${needed} bytes')
+			return error('read_exact: connection closed after ${total}/${needed} bytes')
 		}
 		total += n
 	}
 	return total
 }
 
-// ConnContext holds shared per-connection state needed by spawned handlers.
-// Heap-allocated so spawned threads can safely reference it.
-struct ConnContext {
-mut:
-	encoder  Encoder
-	write_mu sync.Mutex
-	wg       sync.WaitGroup
-}
-
-// handle_connection handles a single client TCP connection with full HTTP/2
+// handle_connection handles a single client connection with full HTTP/2
 // stream multiplexing. Frames are read sequentially (single reader), while
 // completed request handlers are dispatched concurrently via spawn.
-fn (mut s Server) handle_connection(mut conn net.TcpConn) {
+// Accepts any connection satisfying ServerConn (TcpConn for h2c, SSLConn for h2).
+fn (mut s Server) handle_connection(mut conn ServerConn) {
 	mut ctx := &ConnContext{
 		encoder: new_encoder()
 	}
@@ -229,11 +248,10 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 
 // read_preface reads and validates the HTTP/2 connection preface from the client.
 // Returns an error if the preface is missing or invalid (RFC 7540 §3.5).
-fn (mut s Server) read_preface(mut conn net.TcpConn) ! {
+fn (mut s Server) read_preface(mut conn ServerConn) ! {
 	mut preface_buf := []u8{len: preface.len}
-	conn.set_read_timeout(s.config.read_timeout)
 
-	read_exact_tcp(mut conn, mut preface_buf, preface.len) or {
+	read_exact(mut conn, mut preface_buf, preface.len) or {
 		return error('failed to read preface: ${err}')
 	}
 
@@ -247,22 +265,21 @@ fn (mut s Server) read_preface(mut conn net.TcpConn) ! {
 }
 
 // exchange_settings sends the server SETTINGS and reads the client's SETTINGS ACK.
-fn (mut s Server) exchange_settings(mut conn net.TcpConn) ! {
+fn (mut s Server) exchange_settings(mut conn ServerConn) ! {
 	s.write_settings(mut conn)!
 }
 
 // register_connection adds a connection to the active connections list.
-fn (mut s Server) register_connection(conn net.TcpConn) {
+fn (mut s Server) register_connection(conn ServerConn) {
 	s.conn_mu.lock()
-	s.connections << &conn
+	s.connections << conn
 	s.conn_mu.unlock()
 }
 
 // deregister_connection removes a connection from the active connections list.
-fn (mut s Server) deregister_connection(conn net.TcpConn) {
+fn (mut s Server) deregister_connection(conn ServerConn) {
 	s.conn_mu.lock()
-	conn_ptr := &conn
-	s.connections = s.connections.filter(it != conn_ptr)
+	s.connections = s.connections.filter(it != conn)
 	s.conn_mu.unlock()
 }
 
@@ -271,7 +288,7 @@ fn (mut s Server) deregister_connection(conn net.TcpConn) {
 fn (mut s Server) send_goaway_to_all() {
 	s.conn_mu.lock()
 	last_stream := s.highest_stream_id
-	conns := s.connections.clone()
+	mut conns := s.connections.clone()
 	s.conn_mu.unlock()
 
 	goaway := GoAwayFrame{
@@ -280,8 +297,7 @@ fn (mut s Server) send_goaway_to_all() {
 	}
 	frame_bytes := goaway.to_frame().encode()
 
-	for c in conns {
-		mut conn := c
-		conn.write(frame_bytes) or {}
+	for mut c in conns {
+		c.write(frame_bytes) or {}
 	}
 }

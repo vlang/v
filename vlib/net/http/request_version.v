@@ -16,20 +16,11 @@ import net.http.v3
 // HTTP/3 (QUIC) is still experimental and its QUIC transport layer is not
 // yet fully implemented in V.
 //
-// TODO: True ALPN-based version negotiation is not yet possible.
-// V's net.ssl module (both mbedtls and openssl backends) configures ALPN
-// protocol lists during TLS handshake via SSLConnectConfig.alpn_protocols,
-// but does NOT expose the server-selected protocol after handshake completion.
-// Neither SSLConn nor the underlying backends provide a method like
-// get_alpn_selected() or selected_protocol().
+// NOTE: ALPN result inspection is now available via
+// SSLConn.get_alpn_selected(), which returns the server-selected protocol
+// after TLS handshake (both mbedtls and openssl backends).
 //
-// Current behavior: the HTTP/2 client sets alpn_protocols: ['h2'] before
-// connecting, which tells the server we prefer h2. If the server does not
-// support h2, the TLS handshake may still succeed (falling back to no ALPN),
-// and the subsequent HTTP/2 connection preface will fail at the protocol
-// level. This is acceptable until the V SSL API adds ALPN result inspection.
-//
-// Correct approach (once API is available):
+// TODO: Integrate get_alpn_selected() into this negotiation flow:
 //   1. Perform TLS handshake with ALPN extension: ['h3', 'h2', 'http/1.1']
 //   2. Call ssl_conn.get_alpn_selected() to read the negotiated protocol
 //   3. Return the matching Version enum value
@@ -50,7 +41,8 @@ fn (req &Request) negotiate_version(url urllib.URL) Version {
 	return .v2_0
 }
 
-// to_v2_method converts a net.http.Method to the v2 module's Method enum.
+// to_v2_method bridges the net.http.Method and v2.Method duplicate enums by
+// converting a net.http.Method value to its v2 equivalent.
 //
 // TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
 // These three definitions should eventually be unified into a single enum
@@ -68,7 +60,8 @@ fn to_v2_method(m Method) v2.Method {
 	}
 }
 
-// to_v3_method converts a net.http.Method to the v3 module's Method enum.
+// to_v3_method bridges the net.http.Method and v3.Method duplicate enums by
+// converting a net.http.Method value to its v3 equivalent.
 //
 // TODO: Method is duplicated across net.http, net.http.v2, and net.http.v3.
 // These three definitions should eventually be unified into a single enum

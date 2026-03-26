@@ -131,6 +131,63 @@ fn test_encode_optimized_huffman_newname() {
 	assert decoded[0].value == 'abc123def456'
 }
 
+// test_encode_optimized_static_name_only_match verifies that when a header's name is
+// in the static table but its value is not, encode_optimized uses the name-only index
+// to produce a "literal with indexed name" representation.
+fn test_encode_optimized_static_name_only_match() {
+	mut encoder := new_encoder()
+	mut decoder := new_decoder()
+	mut buf := []u8{len: 4096}
+
+	// ':method PATCH' — name ':method' is in static table (indices 2,3)
+	// but value 'PATCH' is not, so we get name-only match with index 2.
+	// Literal with incremental indexing: 0x40 | 2 = 0x42
+	headers := [HeaderField{':method', 'PATCH'}]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0, 'must produce output for :method PATCH'
+	assert buf[0] == 0x42, 'expected literal+indexed-name byte 0x42, got 0x${buf[0].hex()}'
+
+	encoded := buf[..n].clone()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'HPACK decode failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == ':method'
+	assert decoded[0].value == 'PATCH'
+}
+
+// test_encode_optimized_mixed_match_types verifies that encode_optimized correctly
+// handles a mix of exact matches, name-only matches, and new-name headers in a single
+// call, producing decodable output for all.
+fn test_encode_optimized_mixed_match_types() {
+	mut encoder := new_encoder()
+	mut decoder := new_decoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [
+		HeaderField{':method', 'GET'}, // exact match (static index 2)
+		HeaderField{':status', '201'}, // name-only match (:status at index 8)
+		HeaderField{'x-request-id', 'abc'}, // no match (new name)
+		HeaderField{':path', '/api/v1'}, // name-only match (:path at index 4)
+		HeaderField{':scheme', 'https'}, // exact match (static index 7)
+	]
+
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0
+
+	encoded := buf[..n].clone()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'HPACK decode failed: ${err}'
+		return
+	}
+	assert decoded.len == headers.len, 'header count mismatch: want ${headers.len}, got ${decoded.len}'
+	for i, h in headers {
+		assert decoded[i].name == h.name, 'name mismatch at ${i}: want ${h.name}, got ${decoded[i].name}'
+		assert decoded[i].value == h.value, 'value mismatch at ${i}: want ${h.value}, got ${decoded[i].value}'
+	}
+}
+
 // test_encode_optimized_result_decodable verifies that output from encode_optimized
 // can be decoded back to the original headers by the standard HPACK decoder.
 fn test_encode_optimized_result_decodable() {

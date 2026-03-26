@@ -441,3 +441,95 @@ fn test_extract_packet_number_empty_data_errors() {
 	}
 	assert false, 'extract_packet_number should error on empty data'
 }
+
+// --- extract_and_unprotect_pn tests ---
+
+// test_extract_and_unprotect_pn_zero_hp_key_errors verifies that an empty
+// rx_hp_key causes an error, since HP removal requires a valid key.
+fn test_extract_and_unprotect_pn_zero_hp_key_errors() {
+	ctx := CryptoContext{
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	// Build a minimal packet (short header, 8-byte DCID, 1-byte PN, +20 bytes
+	// of dummy payload so the sample region is present).
+	dcid_len := 8
+	mut pkt := []u8{len: 1 + dcid_len + 1 + 20}
+	pkt[0] = 0x40
+
+	ctx.extract_and_unprotect_pn(pkt, dcid_len) or {
+		assert err.msg().contains('rx_hp_key'), 'error should mention rx_hp_key: ${err}'
+		return
+	}
+	assert false, 'extract_and_unprotect_pn should error when rx_hp_key is empty'
+}
+
+// test_extract_and_unprotect_pn_roundtrip builds an unprotected short-header
+// packet, manually applies header protection, then verifies that
+// extract_and_unprotect_pn() correctly recovers the original packet number.
+fn test_extract_and_unprotect_pn_roundtrip() {
+	dcid_len := 8
+	pn_offset := 1 + dcid_len // = 9 for short header
+	expected_pn := u64(42)
+
+	// Build an unprotected short-header packet:
+	// [first_byte:1][dcid:8][pn:1][dummy_payload:20]
+	// first_byte = 0x40: short header (bit7=0), fixed bit (bit6=1), pn_len_bits=00 → 1 byte
+	total_len := pn_offset + 4 + 16 // pn_offset + max_pn(4) + sample_size(16)
+	mut pkt := []u8{len: total_len}
+	pkt[0] = 0x40
+	// DCID
+	for i in 0 .. dcid_len {
+		pkt[1 + i] = u8(0xAA)
+	}
+	// PN = 42 (1 byte)
+	pkt[pn_offset] = u8(expected_pn)
+	// Fill remaining bytes with dummy payload (used as HP sample source)
+	for i in pn_offset + 1 .. total_len {
+		pkt[i] = u8(0x55)
+	}
+
+	// 16-byte HP key
+	hp_key := [u8(0x01), 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+		0x0e, 0x0f, 0x10]
+
+	// Compute the mask that HP would apply (sample starts at pn_offset + 4)
+	sample := pkt[pn_offset + 4..pn_offset + 4 + 16]
+	mask := aes_ecb_encrypt(hp_key, sample) or {
+		assert false, 'aes_ecb_encrypt failed: ${err}'
+		return
+	}
+
+	// Apply HP manually: mask byte 0 (short header → low 5 bits), mask PN bytes
+	pkt[0] ^= mask[0] & 0x1f
+	pn_len := 1 // we know PN is 1 byte
+	for i in 0 .. pn_len {
+		pkt[pn_offset + i] ^= mask[1 + i]
+	}
+
+	// Now pkt has HP applied. Create CryptoContext with the HP key.
+	ctx := CryptoContext{
+		rx_hp_key:     hp_key
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	pn, extracted_pn_len, unprotected_header := ctx.extract_and_unprotect_pn(pkt, dcid_len) or {
+		assert false, 'extract_and_unprotect_pn failed: ${err}'
+		return
+	}
+
+	assert pn == expected_pn, 'expected PN ${expected_pn}, got ${pn}'
+	assert extracted_pn_len == 1, 'expected pn_len 1, got ${extracted_pn_len}'
+	assert unprotected_header[0] == 0x40, 'first byte should be restored to 0x40, got 0x${unprotected_header[0]:02x}'
+	assert unprotected_header[pn_offset] == u8(expected_pn), 'PN byte should be restored'
+}

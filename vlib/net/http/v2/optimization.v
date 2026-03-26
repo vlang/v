@@ -17,16 +17,12 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 		mut found_exact_idx := 0
 		mut found_name_idx := 0
 
-		// Search static table for exact or name-only match
-		for i, entry in static_table {
-			if entry.name == header.name {
-				if entry.value == header.value {
-					found_exact_idx = i
-					break
-				} else if found_name_idx == 0 {
-					found_name_idx = i
-				}
-			}
+		// O(1) static table lookup using precomputed maps
+		exact_key := '${header.name}:${header.value}'
+		if exact_key in static_table_exact_map {
+			found_exact_idx = static_table_exact_map[exact_key]
+		} else if header.name in static_table_name_map {
+			found_name_idx = static_table_name_map[header.name][0]
 		}
 
 		// Search dynamic table if no static exact match found

@@ -728,3 +728,117 @@ fn test_encoder_zero_max_blocked_forces_literal() {
 	assert decoded[0].name == 'x-custom'
 	assert decoded[0].value == 'v1'
 }
+
+// === Task 5: Ring buffer DynamicTable tests ===
+
+fn test_dynamic_table_eviction_correctness() {
+	// Table fits exactly 3 entries of size 34 (1 + 1 + 32 overhead)
+	mut dt := new_dynamic_table(102)
+
+	dt.insert(HeaderField{ name: 'a', value: '1' }) // abs 0
+	dt.insert(HeaderField{ name: 'b', value: '2' }) // abs 1
+	dt.insert(HeaderField{ name: 'c', value: '3' }) // abs 2
+	dt.insert(HeaderField{ name: 'd', value: '4' }) // abs 3, evicts 'a'
+	dt.insert(HeaderField{ name: 'e', value: '5' }) // abs 4, evicts 'b'
+
+	assert dt.insert_count == 5
+
+	// Relative index: newest first
+	e0 := dt.get(0) or {
+		assert false, 'get(0) failed'
+		return
+	}
+	assert e0.name == 'e'
+	assert e0.value == '5'
+
+	e1 := dt.get(1) or {
+		assert false, 'get(1) failed'
+		return
+	}
+	assert e1.name == 'd'
+	assert e1.value == '4'
+
+	e2 := dt.get(2) or {
+		assert false, 'get(2) failed'
+		return
+	}
+	assert e2.name == 'c'
+	assert e2.value == '3'
+
+	// Evicted entries must not be accessible
+	if _ := dt.get(3) {
+		assert false, 'get(3) should fail for evicted entry'
+	}
+
+	// Absolute index: 0,1 evicted; 2,3,4 present
+	if _ := dt.get_by_absolute(0) {
+		assert false, 'abs 0 should be evicted'
+	}
+	if _ := dt.get_by_absolute(1) {
+		assert false, 'abs 1 should be evicted'
+	}
+
+	a2 := dt.get_by_absolute(2) or {
+		assert false, 'abs 2 failed'
+		return
+	}
+	assert a2.name == 'c'
+
+	a3 := dt.get_by_absolute(3) or {
+		assert false, 'abs 3 failed'
+		return
+	}
+	assert a3.name == 'd'
+
+	a4 := dt.get_by_absolute(4) or {
+		assert false, 'abs 4 failed'
+		return
+	}
+	assert a4.name == 'e'
+}
+
+fn test_dynamic_table_wraparound() {
+	// Table fits exactly 2 entries of size 34
+	mut dt := new_dynamic_table(68)
+
+	// Insert 10 entries, causing many evictions and ring buffer wrap-arounds
+	for i in 0 .. 10 {
+		dt.insert(HeaderField{ name: '${i}', value: 'v' })
+	}
+
+	assert dt.insert_count == 10
+
+	// Only last 2 entries remain: name='8' and name='9'
+	e0 := dt.get(0) or {
+		assert false, 'get(0) failed'
+		return
+	}
+	assert e0.name == '9'
+
+	e1 := dt.get(1) or {
+		assert false, 'get(1) failed'
+		return
+	}
+	assert e1.name == '8'
+
+	if _ := dt.get(2) {
+		assert false, 'get(2) should fail — only 2 entries fit'
+	}
+
+	// Absolute: only 8 and 9 valid
+	if _ := dt.get_by_absolute(7) {
+		assert false, 'abs 7 should be evicted'
+	}
+
+	a8 := dt.get_by_absolute(8) or {
+		assert false, 'abs 8 failed'
+		return
+	}
+	assert a8.name == '8'
+
+	a9 := dt.get_by_absolute(9) or {
+		assert false, 'abs 9 failed'
+		return
+	}
+	assert a9.name == '9'
+}

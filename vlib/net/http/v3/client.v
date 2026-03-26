@@ -35,8 +35,11 @@ pub mut:
 	qpack_blocked_streams    u64 = 100
 }
 
-// Method represents HTTP methods. Duplicated from net.http.Method due to
-// circular import constraints (net.http imports net.http.v3).
+// Method represents HTTP methods for HTTP/3 requests.
+// This enum is duplicated from net.http.Method because V does not allow
+// circular imports — net.http imports net.http.v3, so net.http.v3 cannot
+// import net.http. A future solution could use a shared types module
+// (e.g., net.http.common) imported by both.
 pub enum Method {
 	get
 	post

@@ -138,14 +138,14 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 fn (e Encoder) find_dynamic_match(header HeaderField) (int, int) {
 	mut dyn_exact_abs := -1
 	mut dyn_name_abs := -1
-	for i := 0; i < e.dynamic_table.entries.len; i++ {
-		entry := e.dynamic_table.entries[e.dynamic_table.entries.len - 1 - i]
+	for i := 0; i < e.dynamic_table.count; i++ {
+		entry := e.dynamic_table.get(i) or { break }
 		abs_idx := int(e.dynamic_table.insert_count) - 1 - i
-		if entry.field.name == header.name {
+		if entry.name == header.name {
 			if dyn_name_abs == -1 {
 				dyn_name_abs = abs_idx
 			}
-			if entry.field.value == header.value {
+			if entry.value == header.value {
 				dyn_exact_abs = abs_idx
 				break
 			}

@@ -90,7 +90,85 @@ fn apply_hp_mask(header []u8, mask []u8) ![]u8 {
 	return protected
 }
 
-// extract_packet_number extracts the packet number from a QUIC packet header.
+// extract_and_unprotect_pn removes header protection and extracts the packet number.
+// Per RFC 9001 §5.4, header protection must be removed before the packet number
+// can be read. This function implements the full pipeline:
+//   1. Determine PN offset from the header structure
+//   2. Get the HP sample (16 bytes at pn_offset + 4, per RFC 9001 §5.4.2)
+//   3. Compute the HP mask via AES-ECB(rx_hp_key, sample)
+//   4. Unmask byte 0 to determine PN length, then unmask PN bytes
+//   5. Return (packet_number, pn_length, unprotected_header)
+// Returns an error when rx_hp_key is not set or the packet is too short.
+pub fn (ctx CryptoContext) extract_and_unprotect_pn(packet []u8, dcid_len int) !(u64, int, []u8) {
+	if ctx.rx_hp_key.len == 0 {
+		return error('rx_hp_key is empty: header protection keys not derived')
+	}
+	if packet.len == 0 {
+		return error('packet data is empty')
+	}
+
+	first_byte := packet[0]
+	is_long := (first_byte & 0x80) != 0
+
+	// 1. Determine PN offset (same logic as extract_packet_number)
+	mut pn_offset := 0
+	if is_long {
+		if packet.len < 6 {
+			return error('long header too short')
+		}
+		dcid_l := int(packet[5])
+		if packet.len < 7 + dcid_l {
+			return error('long header too short for DCID')
+		}
+		scid_l := int(packet[6 + dcid_l])
+		pn_offset = 7 + dcid_l + scid_l
+	} else {
+		pn_offset = 1 + dcid_len
+	}
+
+	// 2. HP sample: 16 bytes starting at pn_offset + 4 (RFC 9001 §5.4.2)
+	sample_offset := pn_offset + 4
+	if sample_offset + aes.block_size > packet.len {
+		return error('packet too short for HP sample')
+	}
+	sample := packet[sample_offset..sample_offset + aes.block_size]
+
+	// 3. Compute mask = AES-ECB(rx_hp_key, sample) per RFC 9001 §5.4.1
+	mask := aes_ecb_encrypt(ctx.rx_hp_key, sample)!
+
+	// 4. Unmask byte 0 to determine PN length
+	mut unprotected_byte0 := first_byte
+	if is_long {
+		unprotected_byte0 ^= mask[0] & 0x0f
+	} else {
+		unprotected_byte0 ^= mask[0] & 0x1f
+	}
+	pn_len := int(unprotected_byte0 & 0x03) + 1
+
+	if pn_offset + pn_len > packet.len {
+		return error('packet too short for packet number')
+	}
+
+	// 5. Build unprotected header: byte0 + bytes[1..pn_offset] + unmasked PN
+	header_end := pn_offset + pn_len
+	mut header := packet[..header_end].clone()
+	header[0] = unprotected_byte0
+	for i in 0 .. pn_len {
+		header[pn_offset + i] ^= mask[1 + i]
+	}
+
+	// 6. Extract PN value from unprotected bytes
+	mut pn := u64(0)
+	for i in 0 .. pn_len {
+		pn = (pn << 8) | u64(header[pn_offset + i])
+	}
+
+	return pn, pn_len, header
+}
+
+// extract_packet_number extracts the packet number from an already-unprotected
+// QUIC packet header. If header protection has not been removed yet, use
+// extract_and_unprotect_pn() instead.
 // dcid_len is required for short headers (the DCID length is not encoded
 // in the short header itself). Returns (packet_number, pn_length).
 pub fn extract_packet_number(data []u8, dcid_len int) !(u64, int) {
