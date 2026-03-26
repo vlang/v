@@ -5,8 +5,9 @@ module v2
 // HeaderField represents a name-value pair.
 pub struct HeaderField {
 pub mut:
-	name  string
-	value string
+	name      string
+	value     string
+	sensitive bool // if true, encode as never-indexed (RFC 7541 §6.2.3)
 }
 
 // size returns the size of the header field in bytes (RFC 7541 Section 4.1).

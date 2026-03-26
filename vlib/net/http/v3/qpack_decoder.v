@@ -2,6 +2,20 @@ module v3
 
 // QPACK header compression decoder (RFC 9204).
 
+// BlockedEntry represents a header block waiting for dynamic table updates.
+struct BlockedEntry {
+	stream_id u64
+	data      []u8
+	ric       u64
+}
+
+// DecodedBlock represents a successfully decoded blocked header block.
+pub struct DecodedBlock {
+pub:
+	stream_id u64
+	headers   []HeaderField
+}
+
 // Decoder handles QPACK decoding.
 pub struct Decoder {
 mut:
@@ -9,6 +23,7 @@ mut:
 	max_blocked        u64
 	known_insert_count int
 	ack_buf            []u8
+	blocked_entries    []BlockedEntry
 }
 
 // new_qpack_decoder creates a new QPACK decoder with the specified capacity and blocked streams limit.
@@ -80,16 +95,34 @@ fn decode_section_prefix(data []u8, max_table_capacity int, total_inserts int) !
 }
 
 // decode decodes QPACK-encoded headers into header fields.
+// When the required insert count exceeds the known insert count,
+// the block is queued and a "BLOCKED:" prefixed error is returned.
 pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 	if data.len < 2 {
 		return error('QPACK data too short')
 	}
 
-	ric, base, prefix_bytes := decode_section_prefix(data, d.dynamic_table.max_size, int(d.dynamic_table.insert_count))!
+	ric, _, _ := decode_section_prefix(data, d.dynamic_table.max_size, int(d.dynamic_table.insert_count))!
 
 	if ric > 0 && ric > d.known_insert_count && ric > int(d.dynamic_table.insert_count) {
-		return error('blocked: need insert count ${ric}, have ${d.known_insert_count}')
+		d.blocked_entries << BlockedEntry{
+			stream_id: 0
+			data:      data.clone()
+			ric:       u64(ric)
+		}
+		return error('BLOCKED: stream blocked, need insert count ${ric}, have ${d.known_insert_count}')
 	}
+
+	return d.decode_field_section(data)
+}
+
+// decode_field_section decodes header field lines from a QPACK-encoded block.
+fn (mut d Decoder) decode_field_section(data []u8) ![]HeaderField {
+	if data.len < 2 {
+		return error('QPACK data too short')
+	}
+
+	ric, base, prefix_bytes := decode_section_prefix(data, d.dynamic_table.max_size, int(d.dynamic_table.insert_count))!
 
 	mut headers := []HeaderField{}
 	mut idx := prefix_bytes
@@ -100,7 +133,6 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 		idx += bytes_read
 	}
 
-	// Buffer a section acknowledgment if the block referenced the dynamic table
 	if ric > 0 {
 		ack := SectionAcknowledgment{
 			stream_id: 0
@@ -232,4 +264,35 @@ fn (d Decoder) decode_literal_no_ref(data []u8) !(HeaderField, int) {
 		name:  name
 		value: value
 	}, idx
+}
+
+// blocked_count returns the number of blocked header blocks waiting for dynamic table updates.
+pub fn (d Decoder) blocked_count() int {
+	return d.blocked_entries.len
+}
+
+// process_blocked updates the known insert count and decodes any blocked entries
+// whose required insert count is now satisfied.
+pub fn (mut d Decoder) process_blocked(known_count u64) []DecodedBlock {
+	d.known_insert_count = int(known_count)
+	mut resolved := []DecodedBlock{}
+	mut remaining := []BlockedEntry{}
+
+	for entry in d.blocked_entries {
+		if entry.ric <= known_count {
+			headers := d.decode_field_section(entry.data) or {
+				remaining << entry
+				continue
+			}
+			resolved << DecodedBlock{
+				stream_id: entry.stream_id
+				headers:   headers
+			}
+		} else {
+			remaining << entry
+		}
+	}
+
+	d.blocked_entries = remaining
+	return resolved
 }

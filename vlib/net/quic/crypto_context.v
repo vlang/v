@@ -1,6 +1,7 @@
 module quic
 
 // TLS 1.3 crypto context management for QUIC connections.
+import time
 
 #flag -lssl
 #flag -lcrypto
@@ -62,6 +63,13 @@ pub mut:
 	tx_hp_key []u8
 	rx_hp_key []u8
 }
+
+// Session ticket extraction (RFC 9001 §8)
+fn C.SSL_get1_session(ssl SSL) voidptr
+fn C.SSL_SESSION_get_timeout(session voidptr) i64
+fn C.SSL_SESSION_get_max_early_data(session voidptr) u32
+fn C.i2d_SSL_SESSION(session voidptr, pp &&u8) int
+fn C.SSL_SESSION_free(session voidptr)
 
 // SSL/TLS C function declarations
 
@@ -230,6 +238,42 @@ pub fn (mut ctx CryptoContext) do_handshake() !bool {
 // is_handshake_complete checks if handshake is complete
 pub fn (ctx CryptoContext) is_handshake_complete() bool {
 	return C.SSL_is_init_finished(ctx.ssl) != 0
+}
+
+// extract_session_ticket extracts a TLS session ticket for 0-RTT resumption (RFC 9001 §8).
+// Returns none if the SSL handle is nil or no session is available.
+pub fn (ctx &CryptoContext) extract_session_ticket(server_name string) ?SessionTicket {
+	if ctx.ssl == unsafe { nil } {
+		return none
+	}
+
+	session := C.SSL_get1_session(ctx.ssl)
+	if session == unsafe { nil } {
+		return none
+	}
+
+	timeout := C.SSL_SESSION_get_timeout(session)
+	max_early := C.SSL_SESSION_get_max_early_data(session)
+
+	// Serialize session to DER format
+	der_len := C.i2d_SSL_SESSION(session, unsafe { nil })
+	if der_len <= 0 {
+		C.SSL_SESSION_free(session)
+		return none
+	}
+
+	mut der_buf := []u8{len: int(der_len)}
+	mut p := &u8(der_buf.data)
+	C.i2d_SSL_SESSION(session, &p)
+	C.SSL_SESSION_free(session)
+
+	return SessionTicket{
+		ticket:          der_buf
+		creation_time:   time.now()
+		max_early_data:  max_early
+		server_name:     server_name
+		ticket_lifetime: u32(timeout)
+	}
 }
 
 // get_alpn_selected returns the ALPN protocol selected during TLS handshake.

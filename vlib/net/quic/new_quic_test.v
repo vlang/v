@@ -582,3 +582,57 @@ fn test_flush_early_data_closed_connection() {
 
 	assert false, 'Should have failed on closed connection'
 }
+
+fn test_idle_monitor_initial_state() {
+	println('Testing IdleTimeoutMonitor initial state...')
+	monitor := new_idle_timeout_monitor(30000)
+
+	assert monitor.is_expired() == false
+	assert monitor.idle_timeout_ms == 30000
+	assert monitor.last_activity > 0
+	assert monitor.expired == false
+
+	println('✓ IdleTimeoutMonitor initial state test passed')
+}
+
+fn test_idle_monitor_record_activity() {
+	println('Testing IdleTimeoutMonitor.record_activity...')
+	mut monitor := new_idle_timeout_monitor(30000)
+
+	before := monitor.last_activity
+	time.sleep(1 * time.millisecond)
+	monitor.record_activity()
+
+	assert monitor.last_activity > before
+
+	println('✓ IdleTimeoutMonitor.record_activity test passed')
+}
+
+fn test_idle_monitor_check_expired_with_nil_conn() {
+	println('Testing IdleTimeoutMonitor.check_expired with nil ngtcp2...')
+	mut monitor := new_idle_timeout_monitor(30000)
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+	// ngtcp2_conn is nil by default
+	assert conn.ngtcp2_conn == unsafe { nil }
+
+	result := monitor.check_expired(mut conn)
+	assert result == false
+
+	println('✓ IdleTimeoutMonitor.check_expired nil conn test passed')
+}
+
+fn test_connection_idle_monitor_initialized() {
+	println('Testing Connection idle_monitor initialization...')
+	mut conn := Connection{
+		remote_addr:  '127.0.0.1:4433'
+		idle_monitor: new_idle_timeout_monitor(30000)
+	}
+
+	assert conn.idle_monitor.idle_timeout_ms == 30000
+	assert conn.idle_monitor.is_expired() == false
+	assert conn.idle_monitor.last_activity > 0
+
+	println('✓ Connection idle_monitor initialized test passed')
+}

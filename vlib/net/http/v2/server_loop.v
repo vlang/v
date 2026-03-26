@@ -188,16 +188,28 @@ fn handle_window_update_in_loop(frame Frame, mut ctx ConnContext, mut conn Serve
 	}
 }
 
+// extract_pseudo_headers extracts :method, :path, and regular headers from
+// decoded header fields. For CONNECT requests (RFC 7540 §8.3), :authority
+// is used as the path since :path is absent.
 fn extract_pseudo_headers(decoded []HeaderField) (string, string, map[string]string) {
 	mut method_str := ''
 	mut path := ''
+	mut authority := ''
 	mut headers := map[string]string{}
 	for h in decoded {
 		match h.name {
 			':method' { method_str = h.value }
 			':path' { path = h.value }
+			':authority' { authority = h.value }
 			else { headers[h.name] = h.value }
 		}
+	}
+	// RFC 7540 §8.3: CONNECT uses :authority as its target
+	if method_str == 'CONNECT' && path == '' {
+		path = authority
+	}
+	if authority != '' {
+		headers[':authority'] = authority
 	}
 	return method_str, path, headers
 }

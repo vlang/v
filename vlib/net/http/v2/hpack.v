@@ -7,12 +7,20 @@ pub struct Encoder {
 mut:
 	dynamic_table             DynamicTable
 	pending_table_size_update int = -1 // -1 means no pending update (RFC 7541 §4.2)
+pub mut:
+	never_index_names map[string]bool // header names that must use never-indexed encoding (§6.2.3)
 }
 
 // new_encoder creates a new HPACK encoder.
 pub fn new_encoder() Encoder {
 	return Encoder{
-		dynamic_table: DynamicTable{}
+		dynamic_table:     DynamicTable{}
+		never_index_names: {
+			'authorization':       true
+			'cookie':              true
+			'set-cookie':          true
+			'proxy-authorization': true
+		}
 	}
 }
 
@@ -58,32 +66,15 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	}
 
 	for header in headers {
-		mut found_index := 0
-		mut found_name_index := 0
-		exact_key := '${header.name}:${header.value}'
-		if exact_key in static_table_exact_map {
-			found_index = static_table_exact_map[exact_key]
-		}
-		if found_index == 0 && header.name in static_table_name_map {
-			indices := static_table_name_map[header.name]
-			if indices.len > 0 {
-				found_name_index = indices[0]
-			}
-		}
-		if found_index == 0 {
-			for i := 0; i < e.dynamic_table.entries.len; i++ {
-				entry := e.dynamic_table.entries[i]
-				if entry.name == header.name {
-					if entry.value == header.value {
-						found_index = static_table.len + i
-						break
-					} else if found_name_index == 0 {
-						found_name_index = static_table.len + i
-					}
-				}
-			}
-		}
-		if found_index > 0 {
+		found_index, found_name_index := e.find_header_index(header)
+		if found_index > 0 && found_index < static_table.len {
+			// §6.1: Static table exact match — always use indexed representation.
+			encode_indexed_field(found_index, mut result)
+		} else if header.sensitive || header.name in e.never_index_names {
+			// §6.2.3: Never-indexed — sensitive headers must not be compressed by intermediaries.
+			encode_never_indexed(found_name_index, header, mut result)
+		} else if found_index > 0 {
+			// §6.1: Dynamic table exact match — use indexed representation.
 			encode_indexed_field(found_index, mut result)
 		} else if found_name_index > 0 {
 			encode_literal_indexed_name(found_name_index, header, mut result)
@@ -95,6 +86,37 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	}
 
 	return result
+}
+
+// find_header_index searches static and dynamic tables for a header match.
+// Returns (exact_index, name_only_index) where 0 means not found.
+fn (e &Encoder) find_header_index(header HeaderField) (int, int) {
+	mut found_index := 0
+	mut found_name_index := 0
+	exact_key := '${header.name}:${header.value}'
+	if exact_key in static_table_exact_map {
+		found_index = static_table_exact_map[exact_key]
+	}
+	if found_index == 0 && header.name in static_table_name_map {
+		indices := static_table_name_map[header.name]
+		if indices.len > 0 {
+			found_name_index = indices[0]
+		}
+	}
+	if found_index == 0 {
+		for i := 0; i < e.dynamic_table.entries.len; i++ {
+			entry := e.dynamic_table.entries[i]
+			if entry.name == header.name {
+				if entry.value == header.value {
+					found_index = static_table.len + i
+					break
+				} else if found_name_index == 0 {
+					found_name_index = static_table.len + i
+				}
+			}
+		}
+	}
+	return found_index, found_name_index
 }
 
 fn encode_indexed_field(idx int, mut result []u8) {
@@ -128,6 +150,33 @@ fn emit_table_size_update(size int, mut result []u8) {
 	}
 }
 
+// encode_never_indexed encodes a header as never-indexed (RFC 7541 §6.2.3).
+// Uses 0x10 prefix with 4-bit name index. Does NOT add to the dynamic table.
+// Intermediaries MUST NOT compress these headers.
+fn encode_never_indexed(name_idx int, field HeaderField, mut result []u8) {
+	encode_literal_no_add(0x10, name_idx, field, mut result)
+}
+
+// encode_without_indexing encodes a header without indexing (RFC 7541 §6.2.2).
+// Uses 0x00 prefix with 4-bit name index. Does NOT add to the dynamic table.
+fn encode_without_indexing(name_idx int, field HeaderField, mut result []u8) {
+	encode_literal_no_add(0x00, name_idx, field, mut result)
+}
+
+fn encode_literal_no_add(prefix u8, name_idx int, field HeaderField, mut result []u8) {
+	if name_idx > 0 {
+		encoded := encode_hpack_integer(name_idx, 4)
+		result << (encoded[0] | prefix)
+		if encoded.len > 1 {
+			result << encoded[1..]
+		}
+	} else {
+		result << prefix
+		result << encode_string(field.name, true)
+	}
+	result << encode_string(field.value, true)
+}
+
 fn decode_literal_field(dynamic_table &DynamicTable, data []u8, prefix_bits int) !(HeaderField, int) {
 	mut idx := 0
 	index, bytes_read := decode_integer(data, prefix_bits)!
@@ -146,7 +195,10 @@ fn decode_literal_field(dynamic_table &DynamicTable, data []u8, prefix_bits int)
 	value, bytes_read2 := decode_string(data[idx..])!
 	idx += bytes_read2
 
-	return HeaderField{name, value}, idx
+	return HeaderField{
+		name:  name
+		value: value
+	}, idx
 }
 
 // decode decodes a header block.

@@ -547,3 +547,147 @@ fn test_extract_and_unprotect_pn_roundtrip() {
 	assert unprotected_header[0] == 0x40, 'first byte should be restored to 0x40, got 0x${unprotected_header[0]:02x}'
 	assert unprotected_header[pn_offset] == u8(expected_pn), 'PN byte should be restored'
 }
+
+fn test_derive_traffic_keys_produces_hp_keys_16_bytes() {
+	dcid := [u8(0x83), 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08]
+	tx_secret, rx_secret := derive_initial_secrets(dcid, true) or {
+		assert false, 'derive_initial_secrets failed: ${err}'
+		return
+	}
+
+	mut ctx := CryptoContext{
+		tx_secret:     tx_secret
+		rx_secret:     rx_secret
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	ctx.derive_traffic_keys() or {
+		assert false, 'derive_traffic_keys failed: ${err}'
+		return
+	}
+
+	assert ctx.tx_hp_key.len == 16, 'tx_hp_key must be 16 bytes, got ${ctx.tx_hp_key.len}'
+	assert ctx.rx_hp_key.len == 16, 'rx_hp_key must be 16 bytes, got ${ctx.rx_hp_key.len}'
+}
+
+fn test_derive_traffic_keys_hp_keys_differ_from_traffic_keys() {
+	dcid := [u8(0x83), 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08]
+	tx_secret, rx_secret := derive_initial_secrets(dcid, true) or {
+		assert false, 'derive_initial_secrets failed: ${err}'
+		return
+	}
+
+	mut ctx := CryptoContext{
+		tx_secret:     tx_secret
+		rx_secret:     rx_secret
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	ctx.derive_traffic_keys() or {
+		assert false, 'derive_traffic_keys failed: ${err}'
+		return
+	}
+
+	assert ctx.tx_hp_key != ctx.tx_key, 'tx_hp_key must differ from tx_key'
+	assert ctx.rx_hp_key != ctx.rx_key, 'rx_hp_key must differ from rx_key'
+}
+
+fn test_derive_traffic_keys_hp_keys_deterministic() {
+	dcid := [u8(0x01), 0x02, 0x03, 0x04]
+	tx_secret, rx_secret := derive_initial_secrets(dcid, false) or {
+		assert false, 'derive_initial_secrets failed: ${err}'
+		return
+	}
+
+	mut ctx1 := CryptoContext{
+		tx_secret:     tx_secret
+		rx_secret:     rx_secret
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx1.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx1.rx_cipher_ctx)
+	}
+	ctx1.derive_traffic_keys() or {
+		assert false, 'first derive_traffic_keys failed: ${err}'
+		return
+	}
+
+	mut ctx2 := CryptoContext{
+		tx_secret:     tx_secret
+		rx_secret:     rx_secret
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx2.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx2.rx_cipher_ctx)
+	}
+	ctx2.derive_traffic_keys() or {
+		assert false, 'second derive_traffic_keys failed: ${err}'
+		return
+	}
+
+	assert ctx1.tx_hp_key == ctx2.tx_hp_key, 'tx_hp_key derivation must be deterministic'
+	assert ctx1.rx_hp_key == ctx2.rx_hp_key, 'rx_hp_key derivation must be deterministic'
+}
+
+fn test_extract_session_ticket_nil_ssl() {
+	// CryptoContext with nil ssl — extract_session_ticket should return none
+	ctx := CryptoContext{
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	result := ctx.extract_session_ticket('example.com')
+	assert result == none, 'extract_session_ticket should return none when ssl is nil'
+}
+
+fn test_extract_session_ticket_no_session() {
+	// SSL object exists but no handshake completed — no session to extract
+	ssl_ctx := C.SSL_CTX_new(C.TLS_client_method())
+	if ssl_ctx == unsafe { nil } {
+		assert false, 'failed to create SSL_CTX'
+		return
+	}
+	ssl := C.SSL_new(ssl_ctx)
+	if ssl == unsafe { nil } {
+		C.SSL_CTX_free(ssl_ctx)
+		assert false, 'failed to create SSL'
+		return
+	}
+	defer {
+		C.SSL_free(ssl)
+		C.SSL_CTX_free(ssl_ctx)
+	}
+
+	ctx := CryptoContext{
+		ssl:           ssl
+		ssl_ctx:       ssl_ctx
+		tx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+		rx_cipher_ctx: C.EVP_CIPHER_CTX_new()
+	}
+	defer {
+		C.EVP_CIPHER_CTX_free(ctx.tx_cipher_ctx)
+		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
+	}
+
+	// No handshake done — SSL_get1_session returns NULL
+	result := ctx.extract_session_ticket('example.com')
+	assert result == none, 'extract_session_ticket should return none when no session exists'
+}

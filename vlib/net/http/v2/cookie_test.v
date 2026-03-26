@@ -3,7 +3,10 @@ module v2
 // Tests for RFC 7540 §8.1.2.5 Cookie header splitting and joining.
 
 fn test_split_cookie_single_pair_unchanged() {
-	headers := [HeaderField{'cookie', 'a=1'}]
+	headers := [HeaderField{
+		name:  'cookie'
+		value: 'a=1'
+	}]
 	result := split_cookie_headers(headers)
 	assert result.len == 1
 	assert result[0].name == 'cookie'
@@ -11,7 +14,10 @@ fn test_split_cookie_single_pair_unchanged() {
 }
 
 fn test_split_cookie_multiple_pairs() {
-	headers := [HeaderField{'cookie', 'a=1; b=2'}]
+	headers := [HeaderField{
+		name:  'cookie'
+		value: 'a=1; b=2'
+	}]
 	result := split_cookie_headers(headers)
 	assert result.len == 2
 	assert result[0].name == 'cookie'
@@ -21,7 +27,10 @@ fn test_split_cookie_multiple_pairs() {
 }
 
 fn test_split_cookie_three_pairs() {
-	headers := [HeaderField{'cookie', 'a=1; b=2; c=3'}]
+	headers := [HeaderField{
+		name:  'cookie'
+		value: 'a=1; b=2; c=3'
+	}]
 	result := split_cookie_headers(headers)
 	assert result.len == 3
 	assert result[0].value == 'a=1'
@@ -31,9 +40,18 @@ fn test_split_cookie_three_pairs() {
 
 fn test_split_cookie_non_cookie_headers_pass_through() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{'cookie', 'a=1; b=2'},
-		HeaderField{'accept', 'text/html'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'a=1; b=2'
+		},
+		HeaderField{
+			name:  'accept'
+			value: 'text/html'
+		},
 	]
 	result := split_cookie_headers(headers)
 	assert result.len == 4
@@ -49,8 +67,14 @@ fn test_split_cookie_non_cookie_headers_pass_through() {
 
 fn test_split_cookie_no_cookies() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
 	]
 	result := split_cookie_headers(headers)
 	assert result.len == 2
@@ -59,7 +83,12 @@ fn test_split_cookie_no_cookies() {
 }
 
 fn test_split_cookie_special_characters_preserved() {
-	headers := [HeaderField{'cookie', 'token=abc+def/ghi=; session=xyz%3D123'}]
+	headers := [
+		HeaderField{
+			name:  'cookie'
+			value: 'token=abc+def/ghi=; session=xyz%3D123'
+		},
+	]
 	result := split_cookie_headers(headers)
 	assert result.len == 2
 	assert result[0].value == 'token=abc+def/ghi='
@@ -68,9 +97,18 @@ fn test_split_cookie_special_characters_preserved() {
 
 fn test_join_cookie_multiple_headers() {
 	headers := [
-		HeaderField{'cookie', 'a=1'},
-		HeaderField{'cookie', 'b=2'},
-		HeaderField{'cookie', 'c=3'},
+		HeaderField{
+			name:  'cookie'
+			value: 'a=1'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'b=2'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'c=3'
+		},
 	]
 	result := join_cookie_headers(headers)
 	assert result.len == 1
@@ -79,7 +117,10 @@ fn test_join_cookie_multiple_headers() {
 }
 
 fn test_join_cookie_single_header_unchanged() {
-	headers := [HeaderField{'cookie', 'a=1'}]
+	headers := [HeaderField{
+		name:  'cookie'
+		value: 'a=1'
+	}]
 	result := join_cookie_headers(headers)
 	assert result.len == 1
 	assert result[0].name == 'cookie'
@@ -88,8 +129,14 @@ fn test_join_cookie_single_header_unchanged() {
 
 fn test_join_cookie_no_cookies() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
 	]
 	result := join_cookie_headers(headers)
 	assert result.len == 2
@@ -99,10 +146,22 @@ fn test_join_cookie_no_cookies() {
 
 fn test_join_cookie_preserves_non_cookie_order() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{'cookie', 'a=1'},
-		HeaderField{'accept', 'text/html'},
-		HeaderField{'cookie', 'b=2'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'a=1'
+		},
+		HeaderField{
+			name:  'accept'
+			value: 'text/html'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'b=2'
+		},
 	]
 	result := join_cookie_headers(headers)
 	assert result.len == 3
@@ -113,7 +172,10 @@ fn test_join_cookie_preserves_non_cookie_order() {
 }
 
 fn test_roundtrip_split_then_join() {
-	original := [HeaderField{'cookie', 'a=1; b=2; c=3'}]
+	original := [HeaderField{
+		name:  'cookie'
+		value: 'a=1; b=2; c=3'
+	}]
 	split := split_cookie_headers(original)
 	assert split.len == 3
 	joined := join_cookie_headers(split)
@@ -124,9 +186,18 @@ fn test_roundtrip_split_then_join() {
 
 fn test_roundtrip_with_mixed_headers() {
 	original := [
-		HeaderField{':method', 'GET'},
-		HeaderField{'cookie', 'session=abc; token=xyz'},
-		HeaderField{'accept', '*/*'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  'cookie'
+			value: 'session=abc; token=xyz'
+		},
+		HeaderField{
+			name:  'accept'
+			value: '*/*'
+		},
 	]
 	split := split_cookie_headers(original)
 	joined := join_cookie_headers(split)
@@ -151,7 +222,10 @@ fn test_roundtrip_with_mixed_headers() {
 }
 
 fn test_split_cookie_empty_value() {
-	headers := [HeaderField{'cookie', ''}]
+	headers := [HeaderField{
+		name:  'cookie'
+		value: ''
+	}]
 	result := split_cookie_headers(headers)
 	assert result.len == 1
 	assert result[0].name == 'cookie'

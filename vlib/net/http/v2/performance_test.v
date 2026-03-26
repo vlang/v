@@ -36,12 +36,30 @@ fn test_frame_encoding_performance() {
 
 fn test_hpack_encoding_performance() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{':authority', 'example.com'},
-		HeaderField{'user-agent', 'V-HTTP2-Client/1.0'},
-		HeaderField{'accept', '*/*'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  ':authority'
+			value: 'example.com'
+		},
+		HeaderField{
+			name:  'user-agent'
+			value: 'V-HTTP2-Client/1.0'
+		},
+		HeaderField{
+			name:  'accept'
+			value: '*/*'
+		},
 	]
 
 	mut encoder := new_encoder()
@@ -66,10 +84,22 @@ fn test_hpack_encoding_performance() {
 
 fn test_static_table_lookup() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':method', 'POST'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':method'
+			value: 'POST'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
 	]
 
 	mut encoder := new_encoder()

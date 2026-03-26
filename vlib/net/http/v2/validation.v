@@ -13,9 +13,12 @@ const forbidden_headers = ['connection', 'keep-alive', 'proxy-connection', 'upgr
 
 // validate_request_headers validates HTTP/2 request headers per RFC 7540 §8.1.2.
 // Checks pseudo-header presence, ordering, and forbidden connection-specific headers.
+// CONNECT requests require only :method and :authority (RFC 7540 §8.3).
 pub fn validate_request_headers(headers []HeaderField) ! {
 	mut has_method := false
 	mut has_path := false
+	mut has_authority := false
+	mut is_connect := false
 	mut pseudo_ended := false
 
 	for h in headers {
@@ -28,8 +31,11 @@ pub fn validate_request_headers(headers []HeaderField) ! {
 			}
 			if h.name == ':method' {
 				has_method = true
+				is_connect = h.value == 'CONNECT'
 			} else if h.name == ':path' {
 				has_path = true
+			} else if h.name == ':authority' {
+				has_authority = true
 			}
 		} else {
 			pseudo_ended = true
@@ -40,7 +46,12 @@ pub fn validate_request_headers(headers []HeaderField) ! {
 	if !has_method {
 		return error('PROTOCOL_ERROR: missing required :method pseudo-header')
 	}
-	if !has_path {
+	// RFC 7540 §8.3: CONNECT requires :authority, not :path or :scheme
+	if is_connect {
+		if !has_authority {
+			return error('PROTOCOL_ERROR: CONNECT requires :authority pseudo-header (RFC 7540 §8.3)')
+		}
+	} else if !has_path {
 		return error('PROTOCOL_ERROR: missing required :path pseudo-header')
 	}
 }

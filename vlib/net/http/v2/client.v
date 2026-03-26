@@ -8,8 +8,10 @@ import time
 // Client represents an HTTP/2 client.
 pub struct Client {
 mut:
-	conn   Connection
-	config ClientConfig
+	conn    Connection
+	config  ClientConfig
+	pool    ?&ConnectionPool
+	address string
 }
 
 // new_client creates a new HTTP/2 client with TLS + ALPN 'h2' negotiation.
@@ -48,8 +50,9 @@ pub fn new_client_with_config(address string, config ClientConfig) !Client {
 	conn.read_settings()!
 
 	return Client{
-		conn:   conn
-		config: config
+		conn:    conn
+		config:  config
+		address: address
 	}
 }
 
@@ -78,14 +81,29 @@ pub fn (mut c Client) request(req Request) !Response {
 
 fn (mut c Client) send_request_headers(req Request, stream_id u32, mut stream Stream) ! {
 	mut headers := [
-		HeaderField{':method', req.method.str()},
-		HeaderField{':scheme', 'https'},
-		HeaderField{':path', req.url},
-		HeaderField{':authority', req.host},
+		HeaderField{
+			name:  ':method'
+			value: req.method.str()
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  ':path'
+			value: req.url
+		},
+		HeaderField{
+			name:  ':authority'
+			value: req.host
+		},
 	]
 	filtered := filter_connection_specific_headers(req.headers)
 	for key, value in filtered {
-		headers << HeaderField{key.to_lower(), value}
+		headers << HeaderField{
+			name:  key.to_lower()
+			value: value
+		}
 	}
 
 	split_headers := split_cookie_headers(headers)
@@ -200,7 +218,13 @@ fn (c Client) build_response(stream &Stream) Response {
 }
 
 // close closes the HTTP/2 connection gracefully by sending GOAWAY (RFC 7540 §6.8).
+// If the client belongs to a connection pool, it releases back to the pool instead.
 pub fn (mut c Client) close() {
+	if mut pool := c.pool {
+		pool.release(c.address)
+		return
+	}
+
 	if c.conn.closed {
 		return
 	}
@@ -228,4 +252,13 @@ pub fn (mut c Client) close() {
 	c.conn.write_frame(goaway) or {}
 	c.conn.ssl_conn.shutdown() or {}
 	c.conn.closed = true
+}
+
+// new_pooled_client creates an HTTP/2 client that knows its connection pool.
+// When close() is called, the client releases back to the pool instead of
+// sending GOAWAY.
+pub fn new_pooled_client(pool &ConnectionPool, address string) !Client {
+	mut c := new_client(address)!
+	c.pool = pool
+	return c
 }

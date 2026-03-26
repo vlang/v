@@ -16,6 +16,7 @@ const h3_forbidden_headers = ['connection', 'keep-alive', 'proxy-connection', 't
 pub fn validate_h3_request_headers(headers []HeaderField) ! {
 	mut has_method := false
 	mut has_path := false
+	mut has_authority := false
 	mut is_connect := false
 	mut pseudo_ended := false
 
@@ -32,6 +33,8 @@ pub fn validate_h3_request_headers(headers []HeaderField) ! {
 				is_connect = h.value == 'CONNECT'
 			} else if h.name == ':path' {
 				has_path = true
+			} else if h.name == ':authority' {
+				has_authority = true
 			}
 		} else {
 			pseudo_ended = true
@@ -42,7 +45,12 @@ pub fn validate_h3_request_headers(headers []HeaderField) ! {
 	if !has_method {
 		return error('H3_MESSAGE_ERROR: missing required :method pseudo-header (RFC 9114 §4.1.2)')
 	}
-	if !has_path && !is_connect {
+	// RFC 9114 §4.4: CONNECT requires :authority, not :path or :scheme
+	if is_connect {
+		if !has_authority {
+			return error('H3_MESSAGE_ERROR: CONNECT requires :authority pseudo-header (RFC 9114 §4.4)')
+		}
+	} else if !has_path {
 		return error('H3_MESSAGE_ERROR: missing required :path pseudo-header (RFC 9114 §4.1.2)')
 	}
 }

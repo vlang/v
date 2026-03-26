@@ -100,8 +100,14 @@ fn test_read_frame_from_skips_unknown_type() {
 
 fn test_validate_missing_method() {
 	headers := [
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains(':method')
@@ -112,8 +118,14 @@ fn test_validate_missing_method() {
 
 fn test_validate_missing_path() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':scheme', 'https'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains(':path')
@@ -124,10 +136,22 @@ fn test_validate_missing_path() {
 
 fn test_validate_unknown_pseudo_header() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{':unknown', 'value'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  ':unknown'
+			value: 'value'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('pseudo-header')
@@ -138,9 +162,18 @@ fn test_validate_unknown_pseudo_header() {
 
 fn test_validate_pseudo_header_after_regular() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{'content-type', 'text/html'},
-		HeaderField{':path', '/'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  'content-type'
+			value: 'text/html'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('pseudo-header')
@@ -151,12 +184,30 @@ fn test_validate_pseudo_header_after_regular() {
 
 fn test_validate_valid_headers() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{':authority', 'example.com'},
-		HeaderField{'content-type', 'text/html'},
-		HeaderField{'accept', '*/*'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  ':authority'
+			value: 'example.com'
+		},
+		HeaderField{
+			name:  'content-type'
+			value: 'text/html'
+		},
+		HeaderField{
+			name:  'accept'
+			value: '*/*'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert false, 'valid headers should pass validation, got: ${err}'
@@ -168,10 +219,22 @@ fn test_validate_valid_headers() {
 
 fn test_validate_connection_header_rejected() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'connection', 'keep-alive'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'connection'
+			value: 'keep-alive'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('connection')
@@ -182,10 +245,22 @@ fn test_validate_connection_header_rejected() {
 
 fn test_validate_keep_alive_header_rejected() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'keep-alive', 'timeout=5'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'keep-alive'
+			value: 'timeout=5'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('keep-alive')
@@ -196,10 +271,22 @@ fn test_validate_keep_alive_header_rejected() {
 
 fn test_validate_transfer_encoding_chunked_rejected() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'transfer-encoding', 'chunked'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'transfer-encoding'
+			value: 'chunked'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('transfer-encoding')
@@ -210,10 +297,22 @@ fn test_validate_transfer_encoding_chunked_rejected() {
 
 fn test_validate_transfer_encoding_trailers_allowed() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'transfer-encoding', 'trailers'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'transfer-encoding'
+			value: 'trailers'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert false, 'transfer-encoding: trailers should be allowed, got: ${err}'
@@ -223,10 +322,22 @@ fn test_validate_transfer_encoding_trailers_allowed() {
 
 fn test_validate_upgrade_header_rejected() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'upgrade', 'websocket'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'upgrade'
+			value: 'websocket'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('upgrade')
@@ -237,10 +348,22 @@ fn test_validate_upgrade_header_rejected() {
 
 fn test_validate_proxy_connection_rejected() {
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'proxy-connection', 'keep-alive'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'proxy-connection'
+			value: 'keep-alive'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert err.msg().contains('proxy-connection')
@@ -251,12 +374,30 @@ fn test_validate_proxy_connection_rejected() {
 
 fn test_validate_regular_headers_pass() {
 	headers := [
-		HeaderField{':method', 'POST'},
-		HeaderField{':path', '/api/data'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'content-type', 'application/json'},
-		HeaderField{'accept', 'application/json'},
-		HeaderField{'x-custom', 'value'},
+		HeaderField{
+			name:  ':method'
+			value: 'POST'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/api/data'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'content-type'
+			value: 'application/json'
+		},
+		HeaderField{
+			name:  'accept'
+			value: 'application/json'
+		},
+		HeaderField{
+			name:  'x-custom'
+			value: 'value'
+		},
 	]
 	validate_request_headers(headers) or {
 		assert false, 'regular headers should pass validation, got: ${err}'
@@ -302,7 +443,10 @@ fn test_client_filter_keeps_te_trailers() {
 fn test_validate_response_missing_status() {
 	// Response MUST contain :status pseudo-header.
 	headers := [
-		HeaderField{'content-type', 'text/html'},
+		HeaderField{
+			name:  'content-type'
+			value: 'text/html'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert err.msg().contains(':status')
@@ -314,8 +458,14 @@ fn test_validate_response_missing_status() {
 fn test_validate_response_with_method_pseudo_header() {
 	// Response MUST NOT contain request pseudo-headers like :method.
 	headers := [
-		HeaderField{':status', '200'},
-		HeaderField{':method', 'GET'},
+		HeaderField{
+			name:  ':status'
+			value: '200'
+		},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert err.msg().contains(':method')
@@ -326,8 +476,14 @@ fn test_validate_response_with_method_pseudo_header() {
 
 fn test_validate_response_with_path_pseudo_header() {
 	headers := [
-		HeaderField{':status', '200'},
-		HeaderField{':path', '/'},
+		HeaderField{
+			name:  ':status'
+			value: '200'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert err.msg().contains(':path')
@@ -338,8 +494,14 @@ fn test_validate_response_with_path_pseudo_header() {
 
 fn test_validate_response_with_scheme_pseudo_header() {
 	headers := [
-		HeaderField{':status', '200'},
-		HeaderField{':scheme', 'https'},
+		HeaderField{
+			name:  ':status'
+			value: '200'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert err.msg().contains(':scheme')
@@ -351,8 +513,14 @@ fn test_validate_response_with_scheme_pseudo_header() {
 fn test_validate_response_pseudo_after_regular() {
 	// Pseudo-headers must come before regular headers.
 	headers := [
-		HeaderField{'content-type', 'text/html'},
-		HeaderField{':status', '200'},
+		HeaderField{
+			name:  'content-type'
+			value: 'text/html'
+		},
+		HeaderField{
+			name:  ':status'
+			value: '200'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert err.msg().contains('pseudo-header')
@@ -363,9 +531,18 @@ fn test_validate_response_pseudo_after_regular() {
 
 fn test_validate_response_valid() {
 	headers := [
-		HeaderField{':status', '200'},
-		HeaderField{'content-type', 'text/html'},
-		HeaderField{'content-length', '42'},
+		HeaderField{
+			name:  ':status'
+			value: '200'
+		},
+		HeaderField{
+			name:  'content-type'
+			value: 'text/html'
+		},
+		HeaderField{
+			name:  'content-length'
+			value: '42'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert false, 'valid response should pass validation, got: ${err}'
@@ -376,7 +553,10 @@ fn test_validate_response_valid() {
 fn test_validate_response_valid_no_body_headers() {
 	// Minimal valid response: just :status
 	headers := [
-		HeaderField{':status', '404'},
+		HeaderField{
+			name:  ':status'
+			value: '404'
+		},
 	]
 	validate_response_headers(headers) or {
 		assert false, 'response with only :status should pass validation, got: ${err}'

@@ -867,3 +867,87 @@ fn test_dynamic_table_wraparound() {
 	}
 	assert a9.name == '9'
 }
+
+fn test_decoder_blocked_entry_queued() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	h := [HeaderField{
+		name:  'x-block'
+		value: 'bval'
+	}]
+	_ = encoder.encode(h)
+	enc2 := encoder.encode(h)
+
+	mut decoder := new_qpack_decoder(4096, 100)
+	result := decoder.decode(enc2) or {
+		assert err.msg().starts_with('BLOCKED:'), 'error should start with BLOCKED:, got: ${err.msg()}'
+		assert decoder.blocked_count() == 1
+		return
+	}
+	assert false, 'Expected BLOCKED error, got ${result.len} headers'
+}
+
+fn test_decoder_process_blocked_resolves() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	h := [HeaderField{
+		name:  'x-resolve'
+		value: 'rval'
+	}]
+	_ = encoder.encode(h)
+	enc2 := encoder.encode(h)
+
+	mut decoder := new_qpack_decoder(4096, 100)
+	if hdrs := decoder.decode(enc2) {
+		assert false, 'Expected BLOCKED error, got ${hdrs.len} headers'
+	}
+
+	decoder.dynamic_table.insert(h[0])
+
+	blocks := decoder.process_blocked(1)
+	assert blocks.len == 1, 'Expected 1 resolved block, got ${blocks.len}'
+	assert blocks[0].headers.len == 1
+	assert blocks[0].headers[0].name == 'x-resolve'
+	assert blocks[0].headers[0].value == 'rval'
+	assert decoder.blocked_count() == 0
+}
+
+fn test_decoder_blocked_count() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	h1 := [HeaderField{
+		name:  'x-c1'
+		value: 'v1'
+	}]
+	h2 := [HeaderField{
+		name:  'x-c2'
+		value: 'v2'
+	}]
+	_ = encoder.encode(h1)
+	_ = encoder.encode(h2)
+	enc_h1 := encoder.encode(h1)
+	enc_h2 := encoder.encode(h2)
+
+	mut decoder := new_qpack_decoder(4096, 100)
+	if _ := decoder.decode(enc_h1) {
+		assert false, 'Expected BLOCKED error for h1'
+	}
+	assert decoder.blocked_count() == 1, 'Expected 1 blocked entry after first decode'
+
+	if _ := decoder.decode(enc_h2) {
+		assert false, 'Expected BLOCKED error for h2'
+	}
+	assert decoder.blocked_count() == 2, 'Expected 2 blocked entries after second decode'
+}
+
+fn test_encoder_capacity_change_generates_instruction() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	encoder.set_peer_max_table_capacity(2048)
+	instructions := encoder.pending_instructions()
+	assert instructions.len > 0, 'set_peer_max_table_capacity should generate an instruction'
+}
+
+fn test_encoder_capacity_instruction_correct_format() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	encoder.set_peer_max_table_capacity(1024)
+	instructions := encoder.pending_instructions()
+	assert instructions.len > 0, 'Expected capacity instruction'
+	assert (instructions[0] & 0x20) != 0, 'capacity instruction should have 0x20 prefix bit set'
+}

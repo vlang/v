@@ -98,6 +98,11 @@ fn (mut s Server) handle_settings_frame(mut conn ServerConnection, payload []u8)
 		}
 		seen_ids << setting_id
 
+		// RFC 9114 §7.2.4.1: HTTP/2 setting identifiers are forbidden in HTTP/3
+		if setting_id >= 0x02 && setting_id <= 0x05 {
+			return error('H3_SETTINGS_ERROR: HTTP/2 setting identifier 0x${setting_id:02x} is forbidden in HTTP/3 (RFC 9114 §7.2.4.1)')
+		}
+
 		setting_value, bytes_read2 := decode_varint(payload[idx..])!
 		idx += bytes_read2
 

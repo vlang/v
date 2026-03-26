@@ -23,6 +23,7 @@ pub mut:
 	migration      ConnectionMigration
 	zero_rtt       ZeroRTTConnection
 	session_cache  &SessionCache = unsafe { nil }
+	idle_monitor   IdleTimeoutMonitor
 }
 
 // Stream represents a QUIC stream.
@@ -105,6 +106,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		migration:     init_migration_subsystem(host)
 		zero_rtt:      init_zero_rtt_subsystem(config, host)
 		session_cache: config.session_cache
+		idle_monitor:  new_idle_timeout_monitor(config.max_idle_timeout)
 	}
 }
 
@@ -244,6 +246,19 @@ pub fn check_and_handle_timers(mut conn Connection) !bool {
 	expiry := get_expiry(&conn)
 	if now >= expiry {
 		handle_expiry(mut conn)!
+		return true
+	}
+	return false
+}
+
+// check_idle_timeout checks the idle timeout and closes the connection if expired.
+// Returns true if the connection was closed due to idle timeout.
+pub fn (mut c Connection) check_idle_timeout() bool {
+	if c.closed {
+		return false
+	}
+	if c.idle_monitor.check_expired(mut c) {
+		c.close_with_error(0, 'idle timeout') or {}
 		return true
 	}
 	return false

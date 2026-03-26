@@ -553,3 +553,124 @@ fn test_encoder_peer_capacity_smaller_triggers_eviction() {
 	assert encoder.dynamic_table.count < initial_count, 'entries should be evicted after shrinking peer capacity'
 	assert encoder.dynamic_table.max_size == 50, 'max_size should be 50'
 }
+
+// ── Control Stream Reader (RFC 9114 §6.2.1) ──
+
+fn build_settings_frame_data() ![]u8 {
+	payload := build_settings_payload(Settings{
+		qpack_max_table_capacity: 8192
+		max_field_section_size:   32768
+		qpack_blocked_streams:    50
+	})!
+	mut data := []u8{cap: 30}
+	data << encode_varint(u64(FrameType.settings))!
+	data << encode_varint(u64(payload.len))!
+	data << payload
+	return data
+}
+
+fn test_control_reader_parses_settings() {
+	mut reader := new_control_reader()
+	data := build_settings_frame_data() or {
+		assert false, 'failed to build SETTINGS frame: ${err}'
+		return
+	}
+
+	result := reader.read_control_frame(data) or {
+		assert false, 'read_control_frame failed: ${err}'
+		return
+	}
+
+	assert result.frame_type == .settings
+	s := result.settings or {
+		assert false, 'settings should be present'
+		return
+	}
+
+	assert s.qpack_max_table_capacity == u64(8192)
+	assert s.max_field_section_size == u64(32768)
+	assert s.qpack_blocked_streams == u64(50)
+	assert reader.settings_received == true
+}
+
+fn test_control_reader_first_frame_must_be_settings() {
+	mut reader := new_control_reader()
+
+	// Build a GOAWAY frame instead of SETTINGS
+	goaway_data := build_goaway_frame(u64(4)) or {
+		assert false, 'failed to build GOAWAY frame: ${err}'
+		return
+	}
+
+	reader.read_control_frame(goaway_data) or {
+		assert err.msg().contains('H3_MISSING_SETTINGS')
+		return
+	}
+	assert false, 'expected H3_MISSING_SETTINGS error when first frame is not SETTINGS'
+}
+
+fn test_control_reader_parses_goaway() {
+	mut reader := new_control_reader()
+
+	// First send SETTINGS to satisfy the "first frame" requirement
+	settings_data := build_settings_frame_data() or {
+		assert false, 'failed to build SETTINGS: ${err}'
+		return
+	}
+	reader.read_control_frame(settings_data) or {
+		assert false, 'SETTINGS parse failed: ${err}'
+		return
+	}
+
+	// Now send GOAWAY
+	goaway_data := build_goaway_frame(u64(12)) or {
+		assert false, 'failed to build GOAWAY: ${err}'
+		return
+	}
+	result := reader.read_control_frame(goaway_data) or {
+		assert false, 'GOAWAY parse failed: ${err}'
+		return
+	}
+
+	assert result.frame_type == .goaway
+	gid := result.goaway_id or {
+		assert false, 'goaway_id should be present'
+		return
+	}
+
+	assert gid == u64(12)
+}
+
+fn test_control_reader_ignores_unknown_frames() {
+	mut reader := new_control_reader()
+
+	// First send SETTINGS
+	settings_data := build_settings_frame_data() or {
+		assert false, 'failed to build SETTINGS: ${err}'
+		return
+	}
+	reader.read_control_frame(settings_data) or {
+		assert false, 'SETTINGS parse failed: ${err}'
+		return
+	}
+
+	// Build an unknown frame type (0x21 = reserved/unknown)
+	mut unknown_data := []u8{}
+	unknown_data << encode_varint(u64(0x21)) or {
+		assert false, 'failed to encode unknown frame type'
+		return
+	}
+	payload := [u8(0xaa), 0xbb, 0xcc]
+	unknown_data << encode_varint(u64(payload.len)) or {
+		assert false, 'failed to encode unknown frame length'
+		return
+	}
+	unknown_data << payload
+
+	// Unknown frames must be silently ignored (RFC 9114 §7.2.8)
+	result := reader.read_control_frame(unknown_data) or {
+		assert false, 'unknown frame should not error: ${err}'
+		return
+	}
+	assert result.frame_type == .unknown
+}

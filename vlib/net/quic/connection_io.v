@@ -64,6 +64,8 @@ pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 		return error('failed to read packet: ${err}')
 	}
 
+	c.idle_monitor.record_activity()
+
 	stream := c.streams[stream_id] or { return error('stream not found') }
 	return stream.data.clone()
 }

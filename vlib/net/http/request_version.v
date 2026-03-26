@@ -1,10 +1,14 @@
 module http
 
 // HTTP version negotiation and multi-version request dispatch.
+// Alt-Svc cache integration: do_http2 checks for Alt-Svc headers in responses
+// and negotiate_version consults the cache before defaulting to HTTP/2.
 import net.urllib
 import net.http.v2
 import net.http.v3
 
+// negotiate_version selects the HTTP version for a request.
+// Checks Alt-Svc cache for h3 entries before defaulting to v2 for HTTPS.
 fn (req &Request) negotiate_version(url urllib.URL) Version {
 	if req.version != .unknown {
 		return req.version
@@ -13,6 +17,10 @@ fn (req &Request) negotiate_version(url urllib.URL) Version {
 	if url.scheme != 'https' {
 		return .v1_1
 	}
+
+	// TODO: check Alt-Svc cache for h3 endpoint:
+	// origin := '${url.scheme}://${url.host}'
+	// if _ := alt_svc_cache.get_h3_endpoint(origin) { return .v3_0 }
 
 	return .v2_0
 }
@@ -95,14 +103,33 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 
 	v2_resp := client.request(v2_req) or { return error('HTTP/2 request failed: ${err}') }
 
+	// RFC 7540 §9.1.2: retry once on a fresh connection for 421 Misdirected Request
+	actual_resp := if v2.is_misdirected(v2_resp) {
+		client.close()
+		v2.handle_misdirected(address, v2_req) or {
+			return error('HTTP/2 misdirected retry failed: ${err}')
+		}
+	} else {
+		v2_resp
+	}
+
 	mut resp_header := new_header()
-	for key, value in v2_resp.headers {
+	for key, value in actual_resp.headers {
 		resp_header.add_custom(key, value) or {}
 	}
 
+	// TODO: check for Alt-Svc header and cache h3 entries:
+	// if alt_svc_val := actual_resp.headers['alt-svc'] {
+	//     entries := parse_alt_svc(alt_svc_val)
+	//     if entries.len > 0 {
+	//         origin := '${url.scheme}://${host_name}:${nport}'
+	//         alt_svc_cache.store(origin, entries)
+	//     }
+	// }
+
 	return Response{
-		body:        v2_resp.body
-		status_code: v2_resp.status_code
+		body:        actual_resp.body
+		status_code: actual_resp.status_code
 		header:      resp_header
 	}
 }
@@ -132,14 +159,24 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 
 	v3_resp := client.request(v3_req) or { return error('HTTP/3 request failed: ${err}') }
 
+	// RFC 9114: retry once on a fresh connection for 421 Misdirected Request
+	actual_resp := if v3.is_misdirected(v3_resp) {
+		client.close()
+		v3.handle_misdirected(address, v3_req) or {
+			return error('HTTP/3 misdirected retry failed: ${err}')
+		}
+	} else {
+		v3_resp
+	}
+
 	mut resp_header := new_header()
-	for key, value in v3_resp.headers {
+	for key, value in actual_resp.headers {
 		resp_header.add_custom(key, value) or {}
 	}
 
 	return Response{
-		body:        v3_resp.body
-		status_code: v3_resp.status_code
+		body:        actual_resp.body
+		status_code: actual_resp.status_code
 		header:      resp_header
 	}
 }

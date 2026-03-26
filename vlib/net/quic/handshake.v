@@ -94,10 +94,14 @@ fn (mut c Connection) send_handshake_packet(ts u64, mut pi Ngtcp2PktInfo) ! {
 }
 
 // finalize_zero_rtt handles 0-RTT state after handshake completion.
-// Marks 0-RTT as rejected if still attempting, then flushes accepted early data.
+// Marks 0-RTT as rejected if still attempting, extracts the session ticket
+// for future 0-RTT resumption (RFC 9001 §8), then flushes accepted early data.
 fn (mut c Connection) finalize_zero_rtt() {
 	if c.zero_rtt.state == .attempting {
 		c.zero_rtt.reject()
+	}
+	if ticket := c.crypto_ctx.extract_session_ticket(c.remote_addr) {
+		c.save_session_ticket(ticket)
 	}
 	c.flush_early_data() or {}
 }

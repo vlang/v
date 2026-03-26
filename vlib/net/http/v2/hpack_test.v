@@ -41,7 +41,10 @@ fn test_static_table() {
 fn test_dynamic_table() {
 	mut dt := DynamicTable{}
 
-	field := HeaderField{'custom-header', 'custom-value'}
+	field := HeaderField{
+		name:  'custom-header'
+		value: 'custom-value'
+	}
 	dt.add(field)
 
 	retrieved := dt.get(1) or {
@@ -59,7 +62,10 @@ fn test_dynamic_table_eviction() {
 	}
 
 	for i in 0 .. 10 {
-		field := HeaderField{'header-${i}', 'value-${i}'}
+		field := HeaderField{
+			name:  'header-${i}'
+			value: 'value-${i}'
+		}
 		dt.add(field)
 	}
 
@@ -71,10 +77,22 @@ fn test_encoder_decoder() {
 	mut decoder := new_decoder()
 
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{'custom-header', 'custom-value'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  'custom-header'
+			value: 'custom-value'
+		},
 	]
 
 	encoded := encoder.encode(headers)
@@ -95,7 +113,10 @@ fn test_indexed_header() {
 	mut decoder := new_decoder()
 
 	headers := [
-		HeaderField{':method', 'GET'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
 	]
 
 	encoded := encoder.encode(headers)
@@ -159,7 +180,10 @@ fn test_dynamic_table_add_entry_larger_than_max_size() {
 		max_size: 50
 	}
 
-	big_field := HeaderField{'big-name', 'big-value-that-overflows-max'}
+	big_field := HeaderField{
+		name:  'big-name'
+		value: 'big-value-that-overflows-max'
+	}
 	dt.add(big_field)
 
 	assert dt.entries.len == 0
@@ -171,13 +195,13 @@ fn test_dynamic_table_eviction_order() {
 		max_size: 200
 	}
 
-	dt.add(HeaderField{'first!', '1'})
-	dt.add(HeaderField{'secnd!', '2'})
-	dt.add(HeaderField{'third!', '3'})
-	dt.add(HeaderField{'fourt!', '4'})
-	dt.add(HeaderField{'fifth!', '5'})
+	dt.add(HeaderField{ name: 'first!', value: '1' })
+	dt.add(HeaderField{ name: 'secnd!', value: '2' })
+	dt.add(HeaderField{ name: 'third!', value: '3' })
+	dt.add(HeaderField{ name: 'fourt!', value: '4' })
+	dt.add(HeaderField{ name: 'fifth!', value: '5' })
 
-	dt.add(HeaderField{'sixth!', '6'})
+	dt.add(HeaderField{ name: 'sixth!', value: '6' })
 
 	assert dt.size <= dt.max_size
 	newest := dt.get(1) or {
@@ -195,8 +219,14 @@ fn test_dynamic_table_eviction_order() {
 fn test_decoder_max_header_list_size_enforced() {
 	mut encoder := new_encoder()
 	headers := [
-		HeaderField{'x-large-header', 'a'.repeat(100)},
-		HeaderField{'x-another-header', 'b'.repeat(100)},
+		HeaderField{
+			name:  'x-large-header'
+			value: 'a'.repeat(100)
+		},
+		HeaderField{
+			name:  'x-another-header'
+			value: 'b'.repeat(100)
+		},
 	]
 	encoded := encoder.encode(headers)
 
@@ -213,8 +243,14 @@ fn test_decoder_max_header_list_size_enforced() {
 fn test_decoder_max_header_list_size_unlimited() {
 	mut encoder := new_encoder()
 	headers := [
-		HeaderField{'x-large-header', 'a'.repeat(100)},
-		HeaderField{'x-another-header', 'b'.repeat(100)},
+		HeaderField{
+			name:  'x-large-header'
+			value: 'a'.repeat(100)
+		},
+		HeaderField{
+			name:  'x-another-header'
+			value: 'b'.repeat(100)
+		},
 	]
 	encoded := encoder.encode(headers)
 
@@ -228,7 +264,10 @@ fn test_decoder_max_header_list_size_unlimited() {
 
 fn test_decoder_max_header_list_size_exact_boundary() {
 	mut encoder := new_encoder()
-	headers := [HeaderField{'name', 'value'}]
+	headers := [HeaderField{
+		name:  'name'
+		value: 'value'
+	}]
 	encoded := encoder.encode(headers)
 
 	// Per RFC 7541 §4.1: size = 4 + 5 + 32 = 41
@@ -246,7 +285,10 @@ fn test_encoder_table_size_update_emitted() {
 	mut encoder := new_encoder()
 	encoder.set_max_table_size(2048)
 
-	headers := [HeaderField{':method', 'GET'}]
+	headers := [HeaderField{
+		name:  ':method'
+		value: 'GET'
+	}]
 	encoded := encoder.encode(headers)
 
 	// First byte(s) must be dynamic table size update: 001xxxxx prefix
@@ -263,8 +305,14 @@ fn test_encoder_table_size_update_decoded() {
 	encoder.set_max_table_size(2048)
 
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':path', '/'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
 	]
 	encoded := encoder.encode(headers)
 

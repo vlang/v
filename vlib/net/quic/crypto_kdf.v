@@ -142,7 +142,7 @@ fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
 	return out[..int(outlen)]
 }
 
-// derive_traffic_keys derives AES-128-GCM keys and IVs per RFC 9001 §5.1.
+// derive_traffic_keys derives AES-128-GCM keys, IVs, and header protection keys per RFC 9001 §5.1.
 pub fn (mut ctx CryptoContext) derive_traffic_keys() ! {
 	if ctx.tx_secret.len == 0 {
 		return error('tx_secret is empty: set traffic secrets before deriving keys')
@@ -153,6 +153,8 @@ pub fn (mut ctx CryptoContext) derive_traffic_keys() ! {
 
 	ctx.tx_key = hkdf_expand_label(ctx.tx_secret, 'quic key'.bytes(), []u8{}, 16)!
 	ctx.tx_iv = hkdf_expand_label(ctx.tx_secret, 'quic iv'.bytes(), []u8{}, 12)!
+	ctx.tx_hp_key = hkdf_expand_label(ctx.tx_secret, 'quic hp'.bytes(), []u8{}, 16)!
 	ctx.rx_key = hkdf_expand_label(ctx.rx_secret, 'quic key'.bytes(), []u8{}, 16)!
 	ctx.rx_iv = hkdf_expand_label(ctx.rx_secret, 'quic iv'.bytes(), []u8{}, 12)!
+	ctx.rx_hp_key = hkdf_expand_label(ctx.rx_secret, 'quic hp'.bytes(), []u8{}, 16)!
 }

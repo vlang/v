@@ -17,7 +17,10 @@ fn split_cookie_headers(headers []HeaderField) []HeaderField {
 		}
 		pairs := h.value.split('; ')
 		for pair in pairs {
-			result << HeaderField{'cookie', pair}
+			result << HeaderField{
+				name:  'cookie'
+				value: pair
+			}
 		}
 	}
 	return result
@@ -36,7 +39,10 @@ fn join_cookie_headers(headers []HeaderField) []HeaderField {
 		}
 	}
 	if cookie_values.len > 0 {
-		result << HeaderField{'cookie', cookie_values.join('; ')}
+		result << HeaderField{
+			name:  'cookie'
+			value: cookie_values.join('; ')
+		}
 	}
 	return result
 }

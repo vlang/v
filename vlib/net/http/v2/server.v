@@ -182,14 +182,20 @@ fn (mut s Server) handle_connection(mut conn ServerConn) {
 
 	s.register_connection(conn)
 
-	s.read_preface(mut conn) or {
-		eprintln('[HTTP/2] Preface error: ${err}')
+	upgrade_req := s.negotiate_protocol(mut conn) or {
+		eprintln('[HTTP/2] Protocol negotiation error: ${err}')
 		return
 	}
 
 	s.exchange_settings(mut conn) or {
 		eprintln('[HTTP/2] Settings exchange error: ${err}')
 		return
+	}
+
+	// RFC 7540 §3.2: The upgrade request becomes stream 1, half-closed (remote).
+	if upgrade_req.stream_id > 0 {
+		ctx.wg.add(1)
+		spawn s.dispatch_stream(mut conn, upgrade_req, mut ctx)
 	}
 
 	highest_stream_id := s.run_frame_loop(mut conn, mut ctx)

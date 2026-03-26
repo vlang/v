@@ -129,12 +129,30 @@ fn test_hpack_with_huffman() {
 	mut decoder := new_decoder()
 
 	headers := [
-		HeaderField{':method', 'GET'},
-		HeaderField{':scheme', 'https'},
-		HeaderField{':path', '/'},
-		HeaderField{':authority', 'www.example.com'},
-		HeaderField{'user-agent', 'V HTTP/2 Client'},
-		HeaderField{'accept-encoding', 'gzip, deflate'},
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':authority'
+			value: 'www.example.com'
+		},
+		HeaderField{
+			name:  'user-agent'
+			value: 'V HTTP/2 Client'
+		},
+		HeaderField{
+			name:  'accept-encoding'
+			value: 'gzip, deflate'
+		},
 	]
 
 	encoded := encoder.encode(headers)

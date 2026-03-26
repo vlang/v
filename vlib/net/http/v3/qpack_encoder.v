@@ -55,12 +55,14 @@ pub fn (mut e Encoder) acknowledge_stream() {
 }
 
 // set_peer_max_table_capacity sets the maximum dynamic table capacity
-// advertised by the peer. When set to 0 the encoder will force literal
-// encoding for all headers, avoiding any dynamic table insertions.
+// advertised by the peer and buffers a SetDynamicTableCapacity instruction.
+// When set to 0 the encoder will force literal encoding for all headers,
+// avoiding any dynamic table insertions.
 pub fn (mut e Encoder) set_peer_max_table_capacity(capacity int) {
 	e.peer_max_table_capacity = capacity
 	if capacity >= 0 {
 		e.dynamic_table.resize(capacity)
+		e.instruction_buf << generate_set_capacity_instruction(capacity)
 	}
 }
 

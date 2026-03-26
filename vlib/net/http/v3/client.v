@@ -17,6 +17,8 @@ mut:
 	migration_enabled          bool = true
 	uni                        UniStreamManager
 	last_peer_goaway_stream_id u64
+	control_reader             ControlStreamReader
+	pool                       ?&ClientPool
 }
 
 // new_client creates an HTTP/3 client and establishes a QUIC connection.
@@ -84,18 +86,20 @@ fn (mut c Client) setup_initial_streams() {
 		}
 	}
 
-	// NOTE: The client does not currently read the server's SETTINGS from the
-	// control stream after initial setup. When the server sends SETTINGS with
-	// QPACK_MAX_TABLE_CAPACITY, the client's encoder should call
-	// set_peer_max_table_capacity() to respect the peer's limit. This requires
-	// a background reader on the control stream, which is not yet implemented.
-	// Until then, the client's encoder uses its default peer capacity.
-
 	c.send_settings() or {
 		$if debug {
 			eprintln('warning: failed to send initial SETTINGS: ${err}')
 		}
 	}
+}
+
+// start_control_reader spawns a background reader on the peer's control stream.
+// Call this after setup_initial_streams to read the server's SETTINGS, GOAWAY,
+// and other control frames. The reader applies peer settings to the QPACK encoder
+// via apply_peer_settings and records GOAWAY stream IDs via apply_goaway.
+pub fn (mut c Client) start_control_reader() {
+	c.control_reader = new_control_reader()
+	spawn read_peer_control_stream(mut c)
 }
 
 // request sends an HTTP/3 request and returns the response.
@@ -244,7 +248,12 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 
 // close shuts down the HTTP/3 client and QUIC connection, sending
 // H3_NO_ERROR (0x0100) as the application error code per RFC 9114 §5.2.
+// If the client belongs to a connection pool, it releases back to the pool instead.
 pub fn (mut c Client) close() {
+	if mut pool := c.pool {
+		pool.release(c.address)
+		return
+	}
 	c.send_goaway(c.next_stream_id) or {}
 	c.quic_conn.close_with_error(u64(H3ErrorCode.h3_no_error), '') or { c.quic_conn.close() }
 }
