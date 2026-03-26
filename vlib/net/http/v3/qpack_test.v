@@ -220,7 +220,7 @@ fn test_qpack_large_header_value() {
 	]
 
 	encoded := encoder.encode(headers)
-	assert encoded.len > 1000
+	assert encoded.len > 800 // Huffman-compressed 'x'×1000 ≈ 892 bytes
 
 	decoded := decoder.decode(encoded) or {
 		assert false, 'Decoding failed: ${err}'
@@ -232,6 +232,132 @@ fn test_qpack_large_header_value() {
 	assert decoded[0].value == large_value
 
 	println('✓ QPACK large header value test passed')
+}
+
+// === Task 1: RIC and Delta Base tests ===
+
+fn test_ric_zero_for_static_only() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	headers := [HeaderField{
+		name:  ':method'
+		value: 'GET'
+	}]
+	encoded := encoder.encode(headers)
+
+	// RIC must be 0 for static-only encoding
+	assert encoded[0] == 0x00
+	assert encoded[1] == 0x00
+
+	decoded := decoder.decode(encoded) or {
+		assert false, 'Decoding failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == ':method'
+	assert decoded[0].value == 'GET'
+}
+
+fn test_ric_nonzero_with_dynamic_reference() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	// First encode: literal, populates dynamic table
+	h := [HeaderField{
+		name:  'x-test'
+		value: 'abc'
+	}]
+	enc1 := encoder.encode(h)
+	_ := decoder.decode(enc1) or {
+		assert false, 'First decode failed: ${err}'
+		return
+	}
+
+	// Second encode: references dynamic table → RIC > 0
+	enc2 := encoder.encode(h)
+
+	// RIC = abs_idx(0) + 1 = 1
+	// MaxEntries = 4096/32 = 128, EncodedRIC = (1 % 256) + 1 = 2
+	assert enc2[0] == 0x02
+	// Base = 1, DeltaBase = 1 - 1 = 0, S=0
+	assert enc2[1] == 0x00
+
+	decoded := decoder.decode(enc2) or {
+		assert false, 'Second decode failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'x-test'
+	assert decoded[0].value == 'abc'
+}
+
+fn test_ric_delta_base_positive() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	// Insert 3 entries via literal encoding
+	h1 := [HeaderField{
+		name:  'x-a'
+		value: 'a1'
+	}]
+	h2 := [HeaderField{
+		name:  'x-b'
+		value: 'b1'
+	}]
+	h3 := [HeaderField{
+		name:  'x-c'
+		value: 'c1'
+	}]
+
+	for h in [h1, h2, h3] {
+		enc := encoder.encode(h)
+		_ := decoder.decode(enc) or {
+			assert false, 'Initial decode failed: ${err}'
+			return
+		}
+	}
+
+	// Reference first entry (abs_idx=0, RIC=1, Base=3, DeltaBase=2)
+	enc := encoder.encode(h1)
+
+	assert enc[0] == 0x02 // EncodedRIC = (1%256)+1 = 2
+	assert enc[1] == 0x02 // DeltaBase = 3-1 = 2, S=0
+
+	decoded := decoder.decode(enc) or {
+		assert false, 'Reference decode failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'x-a'
+	assert decoded[0].value == 'a1'
+}
+
+fn test_section_prefix_roundtrip() {
+	cases := [
+		[0, 0, 4096],
+		[1, 1, 4096],
+		[1, 5, 4096],
+		[10, 10, 4096],
+		[5, 20, 4096],
+		[1, 1, 256],
+	]
+
+	for tc in cases {
+		ric := tc[0]
+		base := tc[1]
+		max_cap := tc[2]
+
+		encoded := encode_section_prefix(ric, base, max_cap)
+		// For decoding, total_inserts = base (synchronized tables)
+		dec_ric, dec_base, _ := decode_section_prefix(encoded, max_cap, base) or {
+			assert false, 'Prefix decode failed for ric=${ric} base=${base}: ${err}'
+			return
+		}
+
+		assert dec_ric == ric, 'RIC mismatch: expected ${ric}, got ${dec_ric}'
+		assert dec_base == base, 'Base mismatch: expected ${base}, got ${dec_base}'
+	}
 }
 
 fn test_qpack_special_characters() {
@@ -263,4 +389,342 @@ fn test_qpack_special_characters() {
 	assert decoded[1].value == 'Hello 世界 🌍'
 
 	println('✓ QPACK special characters test passed')
+}
+
+// === Task 2: Stream Instruction tests ===
+
+fn test_encoder_stream_insert_with_static_name_ref() {
+	instr := InsertWithNameRef{
+		is_static:  true
+		name_index: 1
+		value:      '/test'
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_insert_with_name_ref(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.is_static == true
+	assert decoded.name_index == 1
+	assert decoded.value == '/test'
+}
+
+fn test_encoder_stream_insert_with_dynamic_name_ref() {
+	instr := InsertWithNameRef{
+		is_static:  false
+		name_index: 3
+		value:      'dynamic-val'
+	}
+	encoded := instr.encode()
+	decoded, _ := decode_insert_with_name_ref(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert decoded.is_static == false
+	assert decoded.name_index == 3
+	assert decoded.value == 'dynamic-val'
+}
+
+fn test_encoder_stream_insert_without_name_ref() {
+	instr := InsertWithoutNameRef{
+		name:  'x-custom'
+		value: 'test-value'
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_insert_without_name_ref(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.name == 'x-custom'
+	assert decoded.value == 'test-value'
+}
+
+fn test_encoder_stream_duplicate() {
+	instr := Duplicate{
+		index: 5
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_duplicate(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.index == 5
+}
+
+fn test_encoder_stream_set_capacity() {
+	instr := SetDynamicTableCapacity{
+		capacity: 4096
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_set_dynamic_table_capacity(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.capacity == 4096
+}
+
+fn test_decoder_stream_section_ack() {
+	instr := SectionAcknowledgment{
+		stream_id: 42
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_section_acknowledgment(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.stream_id == 42
+}
+
+fn test_decoder_stream_cancellation() {
+	instr := StreamCancellation{
+		stream_id: 7
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_stream_cancellation(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.stream_id == 7
+}
+
+fn test_decoder_stream_insert_count_increment() {
+	instr := InsertCountIncrement{
+		increment: 3
+	}
+	encoded := instr.encode()
+	decoded, bytes_read := decode_insert_count_increment(encoded) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+	assert bytes_read == encoded.len
+	assert decoded.increment == 3
+}
+
+fn test_stream_instructions_large_values() {
+	// Test with values exceeding single-byte prefix
+	ack := SectionAcknowledgment{
+		stream_id: 200
+	}
+	enc_ack := ack.encode()
+	dec_ack, _ := decode_section_acknowledgment(enc_ack) or {
+		assert false, 'Large stream_id decode failed: ${err}'
+		return
+	}
+	assert dec_ack.stream_id == 200
+
+	cap_instr := SetDynamicTableCapacity{
+		capacity: 8192
+	}
+	enc_cap := cap_instr.encode()
+	dec_cap, _ := decode_set_dynamic_table_capacity(enc_cap) or {
+		assert false, 'Large capacity decode failed: ${err}'
+		return
+	}
+	assert dec_cap.capacity == 8192
+}
+
+// === Task 3: Huffman Encoding tests ===
+
+fn test_huffman_encoding_typical_header() {
+	// 'www.example.com' compresses well with Huffman
+	encoded := encode_qpack_string('www.example.com')
+	// Huffman flag should be set (MSB of first byte)
+	assert (encoded[0] & 0x80) != 0
+
+	// Roundtrip must be lossless
+	decoded, _ := decode_qpack_string(encoded) or {
+		assert false, 'Huffman decode failed: ${err}'
+		return
+	}
+	assert decoded == 'www.example.com'
+}
+
+fn test_huffman_encoding_roundtrip() {
+	test_strings := [
+		'application/json',
+		'text/html; charset=utf-8',
+		'gzip, deflate, br',
+		'/api/v1/users',
+		'Mozilla/5.0',
+	]
+
+	for s in test_strings {
+		encoded := encode_qpack_string(s)
+		decoded, bytes_read := decode_qpack_string(encoded) or {
+			assert false, 'Huffman roundtrip failed for "${s}": ${err}'
+			return
+		}
+		assert decoded == s, 'Mismatch for "${s}": got "${decoded}"'
+		assert bytes_read == encoded.len
+	}
+}
+
+fn test_huffman_shorter_than_literal() {
+	// Typical HTTP header values should compress with Huffman
+	s := 'application/json'
+	literal_len := s.len
+	encoded := encode_qpack_string(s)
+	// Encoded length includes length prefix, but Huffman data should
+	// be shorter than literal data
+	// Remove prefix bytes to compare data only
+	is_huffman := (encoded[0] & 0x80) != 0
+	assert is_huffman, 'Expected Huffman encoding for "${s}"'
+	// Total encoded should be shorter than literal (1 prefix byte + literal bytes)
+	assert encoded.len < 1 + literal_len
+}
+
+fn test_huffman_full_encode_decode_roundtrip() {
+	// Full encoder/decoder roundtrip with Huffman
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/api/v1/users'
+		},
+		HeaderField{
+			name:  'content-type'
+			value: 'application/json'
+		},
+	]
+
+	encoded := encoder.encode(headers)
+	decoded := decoder.decode(encoded) or {
+		assert false, 'Full roundtrip decode failed: ${err}'
+		return
+	}
+
+	assert decoded.len == headers.len
+	for i, h in headers {
+		assert decoded[i].name == h.name
+		assert decoded[i].value == h.value
+	}
+}
+
+// === Task 4: Blocked Streams tests ===
+
+fn test_blocked_stream_ric_exceeds_known() {
+	mut decoder := new_qpack_decoder(4096, 100)
+	// Decoder has known_insert_count=0, no entries
+	// Craft data with RIC=5 using encode_section_prefix
+	mut data := encode_section_prefix(5, 5, 4096)
+	data << u8(0xc0 | 17) // :method GET (static indexed)
+
+	// Should error because decoder needs 5 inserts but has 0
+	result := decoder.decode(data) or {
+		assert err.msg().contains('blocked')
+		return
+	}
+	assert false, 'Expected blocked error, got ${result.len} headers'
+}
+
+fn test_blocked_stream_after_acknowledge() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	// Build up dynamic table entries via literal encoding
+	h := [HeaderField{
+		name:  'x-test'
+		value: 'val1'
+	}]
+	enc1 := encoder.encode(h)
+	_ := decoder.decode(enc1) or {
+		assert false, 'First decode failed: ${err}'
+		return
+	}
+
+	// Decoder now has insert_count=1, known_insert_count=0
+	// But decode also updates the dynamic table, so it works
+	// Now encode a reference that requires RIC > 0
+	enc2 := encoder.encode(h)
+
+	// Acknowledge the inserts so decoder's known_insert_count catches up
+	decoder.acknowledge_insert(1)
+	assert decoder.known_insert_count == 1
+
+	// Now decode should work
+	decoded := decoder.decode(enc2) or {
+		assert false, 'Post-acknowledge decode failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'x-test'
+	assert decoded[0].value == 'val1'
+}
+
+fn test_encoder_blocked_streams_limit() {
+	// Encoder with max_blocked=2
+	mut encoder := new_qpack_encoder(4096, 2)
+	mut decoder := new_qpack_decoder(4096, 2)
+
+	h := [HeaderField{
+		name:  'x-custom'
+		value: 'v1'
+	}]
+
+	// First encode: literal (no dynamic refs yet)
+	enc1 := encoder.encode(h)
+	_ := decoder.decode(enc1) or {
+		assert false, 'Decode 1 failed: ${err}'
+		return
+	}
+
+	// Second encode: uses dynamic ref → blocked_streams becomes 1
+	enc2 := encoder.encode(h)
+	assert enc2[0] != 0x00 // RIC is non-zero
+
+	// Third encode: uses dynamic ref → blocked_streams becomes 2
+	enc3 := encoder.encode(h)
+	assert enc3[0] != 0x00 // RIC is non-zero
+
+	// Fourth encode: blocked_streams >= max_blocked → falls back to literal
+	enc4 := encoder.encode(h)
+	assert enc4[0] == 0x00 // RIC is 0 (literal encoding, no dynamic refs)
+
+	// After acknowledging, dynamic refs resume
+	encoder.acknowledge_stream()
+	enc5 := encoder.encode(h)
+	assert enc5[0] != 0x00 // RIC is non-zero again
+}
+
+fn test_encoder_zero_max_blocked_forces_literal() {
+	// max_blocked=0 means no blocked streams allowed → always literal
+	mut encoder := new_qpack_encoder(4096, 0)
+	mut decoder := new_qpack_decoder(4096, 0)
+
+	h := [HeaderField{
+		name:  'x-custom'
+		value: 'v1'
+	}]
+
+	// First encode: literal
+	enc1 := encoder.encode(h)
+	_ := decoder.decode(enc1) or {
+		assert false, 'Decode failed: ${err}'
+		return
+	}
+
+	// Second encode: even though dynamic table has entry, should use literal
+	enc2 := encoder.encode(h)
+	assert enc2[0] == 0x00 // RIC is 0 (forced literal)
+
+	// Roundtrip still works
+	decoded := decoder.decode(enc2) or {
+		assert false, 'Literal decode failed: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'x-custom'
+	assert decoded[0].value == 'v1'
 }

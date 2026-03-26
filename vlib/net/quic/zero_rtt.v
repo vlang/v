@@ -3,13 +3,13 @@
 // that can be found in the LICENSE file.
 module quic
 
+import sync
 import time
 
 // 0-RTT (Zero Round Trip Time) Connection Resumption
 // Allows clients to send data in the first flight without waiting for handshake completion
 
 // SessionTicket represents a session ticket for 0-RTT resumption
-// TODO: integrate with Connection type for 0-RTT resumption support
 pub struct SessionTicket {
 pub mut:
 	ticket          []u8
@@ -29,45 +29,52 @@ pub mut:
 }
 
 // SessionCache manages session tickets for 0-RTT resumption
-// TODO: integrate with Connection type for 0-RTT resumption support
-// TODO: requires synchronization for concurrent use
 pub struct SessionCache {
 mut:
+	mu      &sync.Mutex = sync.new_mutex()
 	tickets map[string]SessionTicket // key: server_name
 	max_age time.Duration = 24 * time.hour
 }
 
-pub fn new_session_cache() SessionCache {
-	return SessionCache{
+// new_session_cache creates a new heap-allocated SessionCache for shared use across connections.
+pub fn new_session_cache() &SessionCache {
+	return &SessionCache{
 		tickets: map[string]SessionTicket{}
 	}
 }
 
-// store stores a session ticket for a server
-// TODO: requires synchronization for concurrent use
+// store stores a session ticket for a server (thread-safe)
 pub fn (mut sc SessionCache) store(server_name string, ticket SessionTicket) {
+	sc.mu.lock()
 	sc.tickets[server_name] = ticket
+	sc.mu.unlock()
 }
 
-// get retrieves a session ticket for a server
-pub fn (sc &SessionCache) get(server_name string) ?SessionTicket {
+// get retrieves a session ticket for a server (thread-safe)
+pub fn (mut sc SessionCache) get(server_name string) ?SessionTicket {
+	sc.mu.lock()
 	if ticket := sc.tickets[server_name] {
 		// Check if ticket is still valid
 		age := time.now() - ticket.creation_time
 		if age.seconds() < ticket.ticket_lifetime {
+			sc.mu.unlock()
 			return ticket
 		}
 	}
+	sc.mu.unlock()
 	return none
 }
 
-// remove removes a session ticket for a server
+// remove removes a session ticket for a server (thread-safe)
 pub fn (mut sc SessionCache) remove(server_name string) {
+	sc.mu.lock()
 	sc.tickets.delete(server_name)
+	sc.mu.unlock()
 }
 
-// cleanup removes expired tickets
+// cleanup removes expired tickets (thread-safe)
 pub fn (mut sc SessionCache) cleanup() {
+	sc.mu.lock()
 	now := time.now()
 
 	// Filter in-place instead of building removal list
@@ -79,10 +86,10 @@ pub fn (mut sc SessionCache) cleanup() {
 		}
 	}
 	sc.tickets = new_tickets.move()
+	sc.mu.unlock()
 }
 
 // ZeroRTTConfig configures 0-RTT behavior
-// TODO: integrate with Connection type for 0-RTT resumption support
 pub struct ZeroRTTConfig {
 pub:
 	enabled        bool = true
@@ -100,8 +107,6 @@ pub enum ZeroRTTState {
 }
 
 // ZeroRTTConnection manages a 0-RTT connection
-// TODO: integrate with Connection type for 0-RTT resumption support
-// TODO: add mutex/atomic protection for concurrent access
 pub struct ZeroRTTConnection {
 pub mut:
 	state          ZeroRTTState
@@ -163,9 +168,9 @@ pub fn (zc &ZeroRTTConnection) get_early_data() []EarlyData {
 }
 
 // AntiReplayCache prevents replay attacks on 0-RTT data
-// TODO: requires synchronization for concurrent use
 pub struct AntiReplayCache {
 mut:
+	mu          &sync.Mutex = sync.new_mutex()
 	seen_tokens map[string]time.Time
 	window      time.Duration = 10 * time.second
 }
@@ -176,14 +181,16 @@ pub fn new_anti_replay_cache() AntiReplayCache {
 	}
 }
 
-// check_and_store checks if a token has been seen and stores it
+// check_and_store checks if a token has been seen and stores it (thread-safe)
 pub fn (mut arc AntiReplayCache) check_and_store(token string) bool {
+	arc.mu.lock()
 	now := time.now()
 
 	// Check if token was seen recently
 	if seen_time := arc.seen_tokens[token] {
 		age := now - seen_time
 		if age < arc.window {
+			arc.mu.unlock()
 			return false // Replay detected
 		}
 	}
@@ -191,15 +198,22 @@ pub fn (mut arc AntiReplayCache) check_and_store(token string) bool {
 	// Store token
 	arc.seen_tokens[token] = now
 
-	// Cleanup old tokens
-	arc.cleanup()
+	// Cleanup old tokens inline to avoid recursive locking
+	arc.cleanup_internal(now)
 
+	arc.mu.unlock()
 	return true
 }
 
-// cleanup removes old tokens from the cache
-fn (mut arc AntiReplayCache) cleanup() {
-	now := time.now()
+// cleanup removes old tokens from the cache (thread-safe)
+pub fn (mut arc AntiReplayCache) cleanup() {
+	arc.mu.lock()
+	arc.cleanup_internal(time.now())
+	arc.mu.unlock()
+}
+
+// cleanup_internal removes old tokens; caller must hold mu
+fn (mut arc AntiReplayCache) cleanup_internal(now time.Time) {
 	mut to_remove := []string{}
 
 	for token, seen_time in arc.seen_tokens {

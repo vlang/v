@@ -35,10 +35,8 @@ pub mut:
 	qpack_blocked_streams    u64 = 100
 }
 
-// Method represents HTTP request methods.
-// Note: this enum mirrors net.http.Method and exists independently to avoid
-// circular imports between net.http and net.http.v3.
-// TODO: Unify with net.http.Method once cross-module import constraints allow.
+// Method represents HTTP methods. Duplicated from net.http.Method due to
+// circular import constraints (net.http imports net.http.v3).
 pub enum Method {
 	get
 	post
@@ -92,6 +90,7 @@ mut:
 	session_cache     quic.SessionCache
 	zero_rtt_enabled  bool = true
 	migration_enabled bool = true
+	uni               UniStreamManager
 }
 
 // new_client creates a new HTTP/3 client and establishes a QUIC connection
@@ -205,24 +204,42 @@ fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
 
 // read_response reads the HTTP/3 response
 fn (mut c Client) read_response(stream_id u64) !Response {
-	// Read frames from QUIC stream
 	data := c.quic_conn.recv(stream_id)!
+	headers, body := c.parse_response_frames(data)!
 
-	// Parse frames
+	// Build response
+	mut status_code := 200
+	mut response_headers := map[string]string{}
+
+	for header in headers {
+		if header.name == ':status' {
+			status_code = header.value.int()
+		} else if !header.name.starts_with(':') {
+			response_headers[header.name] = header.value
+		}
+	}
+
+	return Response{
+		body:        body.bytestr()
+		status_code: status_code
+		headers:     response_headers
+	}
+}
+
+// parse_response_frames parses HTTP/3 frames from raw data, extracting
+// response headers and body payload.
+fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 	mut idx := 0
 	mut headers := []HeaderField{}
 	mut body := []u8{}
 
 	for idx < data.len {
-		// Decode frame type
 		frame_type_val, bytes_read := decode_varint(data[idx..])!
 		idx += bytes_read
 
-		// Decode frame length
 		frame_length, bytes_read2 := decode_varint(data[idx..])!
 		idx += bytes_read2
 
-		// Read payload
 		if idx + int(frame_length) > data.len {
 			return error('incomplete frame')
 		}
@@ -253,23 +270,7 @@ fn (mut c Client) read_response(stream_id u64) !Response {
 		}
 	}
 
-	// Build response
-	mut status_code := 200
-	mut response_headers := map[string]string{}
-
-	for header in headers {
-		if header.name == ':status' {
-			status_code = header.value.int()
-		} else if !header.name.starts_with(':') {
-			response_headers[header.name] = header.value
-		}
-	}
-
-	return Response{
-		body:        body.bytestr()
-		status_code: status_code
-		headers:     response_headers
-	}
+	return headers, body
 }
 
 // close closes the HTTP/3 client and terminates the QUIC connection
@@ -283,8 +284,13 @@ pub fn (mut c Client) close() {
 // An empty SETTINGS frame is valid and means all settings use their default values.
 // This must be called once after connection setup.
 pub fn (mut c Client) send_settings() ! {
-	// Control stream uses stream ID 2 (client-initiated unidirectional, per RFC 9114 §6.2)
-	control_stream_id := u64(2)
+	// Use the control stream from UniStreamManager; fall back to stream 2
+	// if open_streams() has not been called yet.
+	ctrl_id := if c.uni.control_stream_id >= 0 {
+		u64(c.uni.control_stream_id)
+	} else {
+		u64(2)
+	}
 
 	// Stream type byte for control stream (0x00)
 	mut data := []u8{}
@@ -294,14 +300,18 @@ pub fn (mut c Client) send_settings() ! {
 	data << encode_varint(u64(FrameType.settings))!
 	data << encode_varint(u64(0))! // length = 0
 
-	c.quic_conn.send(control_stream_id, data)!
+	c.quic_conn.send(ctrl_id, data)!
 }
 
 // send_goaway sends a GOAWAY frame on the control stream (RFC 9114 §7.2.6).
 // stream_id is the highest request stream ID the server will process.
 // Clients send GOAWAY to initiate graceful shutdown of the connection.
 pub fn (mut c Client) send_goaway(stream_id u64) ! {
-	control_stream_id := u64(2)
+	ctrl_id := if c.uni.control_stream_id >= 0 {
+		u64(c.uni.control_stream_id)
+	} else {
+		u64(2)
+	}
 	payload := encode_varint(stream_id)!
 
 	mut data := []u8{}
@@ -309,7 +319,7 @@ pub fn (mut c Client) send_goaway(stream_id u64) ! {
 	data << encode_varint(u64(payload.len))!
 	data << payload
 
-	c.quic_conn.send(control_stream_id, data)!
+	c.quic_conn.send(ctrl_id, data)!
 }
 
 // HeaderField represents a name-value pair
@@ -317,51 +327,6 @@ pub struct HeaderField {
 pub:
 	name  string
 	value string
-}
-
-// encode_headers encodes headers using QPACK
-fn encode_headers(headers []HeaderField) ![]u8 {
-	// Simplified QPACK encoding
-	// In a real implementation, this would use dynamic/static tables
-	mut result := []u8{}
-
-	for header in headers {
-		// Literal with name and value
-		result << 0x20 // Literal without indexing
-		result << encode_string(header.name)!
-		result << encode_string(header.value)!
-	}
-
-	return result
-}
-
-// decode_headers decodes QPACK-encoded headers
-fn decode_headers(data []u8) ![]HeaderField {
-	mut headers := []HeaderField{}
-	mut idx := 0
-
-	for idx < data.len {
-		// Read instruction byte
-		if idx >= data.len {
-			break
-		}
-
-		instruction := data[idx]
-		idx++
-
-		if (instruction & 0x20) != 0 {
-			// Literal without indexing
-			name, bytes_read := decode_string(data[idx..])!
-			idx += bytes_read
-
-			value, bytes_read2 := decode_string(data[idx..])!
-			idx += bytes_read2
-
-			headers << HeaderField{name, value}
-		}
-	}
-
-	return headers
 }
 
 // frame_type_from_u64 validates and converts a u64 to a FrameType enum value.

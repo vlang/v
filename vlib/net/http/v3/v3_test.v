@@ -90,6 +90,9 @@ fn test_encode_decode_string() {
 }
 
 fn test_encode_decode_headers() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/'},
@@ -97,11 +100,10 @@ fn test_encode_decode_headers() {
 		HeaderField{'custom-header', 'custom-value'},
 	]
 
-	encoded := encode_headers(headers) or {
-		assert false, 'Failed to encode headers: ${err}'
-		return
-	}
-	decoded := decode_headers(encoded) or {
+	encoded := encoder.encode(headers)
+	assert encoded.len > 0
+
+	decoded := decoder.decode(encoded) or {
 		assert false, 'Failed to decode headers'
 		return
 	}

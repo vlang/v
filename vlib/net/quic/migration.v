@@ -5,6 +5,7 @@ module quic
 
 import crypto.rand
 import net
+import sync
 import time
 
 // Connection Migration allows QUIC connections to survive network changes
@@ -88,12 +89,14 @@ pub enum MigrationReason {
 }
 
 // PathChallenge represents a PATH_CHALLENGE frame
-struct PathChallenge {
+pub struct PathChallenge {
+pub:
 	data [8]u8
 }
 
 // PathResponse represents a PATH_RESPONSE frame
-struct PathResponse {
+pub struct PathResponse {
+pub:
 	data [8]u8
 }
 
@@ -109,6 +112,8 @@ pub:
 
 // ConnectionMigration manages connection migration
 pub struct ConnectionMigration {
+mut:
+	mu &sync.Mutex = sync.new_mutex()
 pub mut:
 	enabled            bool = true
 	current_path       PathInfo
@@ -132,13 +137,16 @@ pub fn new_connection_migration(local_addr net.Addr, remote_addr net.Addr) Conne
 	}
 }
 
-// probe_path initiates path validation for a new path
+// probe_path initiates path validation for a new path (thread-safe)
 pub fn (mut cm ConnectionMigration) probe_path(local_addr net.Addr, remote_addr net.Addr) !PathInfo {
+	cm.mu.lock()
 	if !cm.enabled {
+		cm.mu.unlock()
 		return error('Connection migration is disabled')
 	}
 
 	if cm.alternative_paths.len >= cm.max_paths {
+		cm.mu.unlock()
 		return error('Maximum number of paths reached')
 	}
 
@@ -146,21 +154,24 @@ pub fn (mut cm ConnectionMigration) probe_path(local_addr net.Addr, remote_addr 
 	mut new_path := new_path_info(local_addr, remote_addr)
 
 	// Generate PATH_CHALLENGE
-	challenge := generate_path_challenge()
+	challenge := generate_path_challenge() or {
+		cm.mu.unlock()
+		return error('failed to generate path challenge: ${err}')
+	}
 	path_key := path_to_key(new_path)
 	cm.pending_challenges[path_key] = challenge
-
-	// TODO: implement actual PATH_CHALLENGE frame sending over QUIC connection
 
 	// Add to alternative paths
 	cm.alternative_paths << new_path
 	cm.state = .probing
 
+	cm.mu.unlock()
 	return new_path
 }
 
-// validate_path validates a path using PATH_RESPONSE
+// validate_path validates a path using PATH_RESPONSE (thread-safe)
 pub fn (mut cm ConnectionMigration) validate_path(path PathInfo, response PathResponse) !bool {
+	cm.mu.lock()
 	path_key := path_to_key(path)
 
 	if challenge := cm.pending_challenges[path_key] {
@@ -171,18 +182,22 @@ pub fn (mut cm ConnectionMigration) validate_path(path PathInfo, response PathRe
 				if paths_equal(alt_path, path) {
 					alt_path.validated = true
 					cm.state = .validating
+					cm.mu.unlock()
 					return true
 				}
 			}
 		}
 	}
 
+	cm.mu.unlock()
 	return false
 }
 
-// migrate_to_path switches to a new validated path
+// migrate_to_path switches to a new validated path (thread-safe)
 pub fn (mut cm ConnectionMigration) migrate_to_path(new_path PathInfo) !bool {
+	cm.mu.lock()
 	if !new_path.validated {
+		cm.mu.unlock()
 		return error('Cannot migrate to unvalidated path')
 	}
 
@@ -208,6 +223,7 @@ pub fn (mut cm ConnectionMigration) migrate_to_path(new_path PathInfo) !bool {
 
 	cm.state = .completed
 
+	cm.mu.unlock()
 	return true
 }
 
@@ -236,9 +252,11 @@ pub fn (mut cm ConnectionMigration) handle_network_change(new_local_addr net.Add
 	cm.migration_history << event
 }
 
-// handle_nat_rebinding handles NAT rebinding
+// handle_nat_rebinding handles NAT rebinding (thread-safe)
 pub fn (mut cm ConnectionMigration) handle_nat_rebinding(new_remote_addr net.Addr) ! {
+	cm.mu.lock()
 	if !cm.enabled {
+		cm.mu.unlock()
 		return
 	}
 
@@ -255,6 +273,7 @@ pub fn (mut cm ConnectionMigration) handle_nat_rebinding(new_remote_addr net.Add
 		success:   true
 	}
 	cm.migration_history << event
+	cm.mu.unlock()
 }
 
 // detect_path_degradation checks if current path quality has degraded
@@ -321,33 +340,12 @@ pub fn (cm &ConnectionMigration) get_migration_stats() MigrationStats {
 	return stats
 }
 
-// MigrationStats tracks migration statistics
-pub struct MigrationStats {
-pub mut:
-	total_migrations      u64
-	successful_migrations u64
-	network_changes       u64
-	nat_rebindings        u64
-	path_degradations     u64
-	manual_migrations     u64
-	peer_migrations       u64
-}
-
-// success_rate calculates and returns the migration success rate as a fraction.
-pub fn (stats &MigrationStats) success_rate() f64 {
-	if stats.total_migrations == 0 {
-		return 0.0
-	}
-	return f64(stats.successful_migrations) / f64(stats.total_migrations)
-}
-
 // Helper functions
 
-fn generate_path_challenge() PathChallenge {
+fn generate_path_challenge() !PathChallenge {
 	// RFC 9000 §8.2.1: PATH_CHALLENGE data must be 8 cryptographically random bytes.
 	random_bytes := rand.read(8) or {
-		// Fallback: fill with zero bytes on error; caller should treat failure as a probe error.
-		return PathChallenge{}
+		return error('failed to generate PATH_CHALLENGE: RNG failure — ${err}')
 	}
 	mut data := [8]u8{}
 	for i in 0 .. 8 {
@@ -368,49 +366,4 @@ fn paths_equal(p1 PathInfo, p2 PathInfo) bool {
 
 fn addrs_equal(a1 net.Addr, a2 net.Addr) bool {
 	return a1.str() == a2.str()
-}
-
-// MigrationPolicy defines when to trigger migration
-pub struct MigrationPolicy {
-pub:
-	auto_migrate_on_network_change bool          = true
-	auto_migrate_on_degradation    bool          = true
-	packet_loss_threshold          f64           = 0.05 // 5%
-	rtt_threshold                  time.Duration = 500 * time.millisecond
-	probe_interval                 time.Duration = 30 * time.second
-}
-
-// MigrationController manages migration policy and decisions
-pub struct MigrationController {
-pub mut:
-	migration ConnectionMigration
-	policy    MigrationPolicy
-	stats     MigrationStats
-}
-
-// new_migration_controller creates a new migration controller with the given addresses and policy.
-pub fn new_migration_controller(local_addr net.Addr, remote_addr net.Addr, policy MigrationPolicy) MigrationController {
-	return MigrationController{
-		migration: new_connection_migration(local_addr, remote_addr)
-		policy:    policy
-		stats:     MigrationStats{}
-	}
-}
-
-// evaluate evaluates whether migration should be triggered
-pub fn (mut mc MigrationController) evaluate(packet_loss_rate f64, rtt time.Duration) !bool {
-	if !mc.policy.auto_migrate_on_degradation {
-		return false
-	}
-
-	if mc.migration.detect_path_degradation(packet_loss_rate, rtt) {
-		// Try to find better path
-		if best_path := mc.migration.select_best_path() {
-			mc.migration.migrate_to_path(best_path)!
-			mc.stats.successful_migrations++
-			return true
-		}
-	}
-
-	return false
 }

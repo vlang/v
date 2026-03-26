@@ -5,107 +5,6 @@ module v2
 
 // HPACK - Header Compression for HTTP/2 (RFC 7541)
 
-// Static table entries (RFC 7541 Appendix A)
-const static_table = [
-	HeaderField{'', ''},
-	HeaderField{':authority', ''},
-	HeaderField{':method', 'GET'},
-	HeaderField{':method', 'POST'},
-	HeaderField{':path', '/'},
-	HeaderField{':path', '/index.html'},
-	HeaderField{':scheme', 'http'},
-	HeaderField{':scheme', 'https'},
-	HeaderField{':status', '200'},
-	HeaderField{':status', '204'},
-	HeaderField{':status', '206'},
-	HeaderField{':status', '304'},
-	HeaderField{':status', '400'},
-	HeaderField{':status', '404'},
-	HeaderField{':status', '500'},
-	HeaderField{'accept-charset', ''},
-	HeaderField{'accept-encoding', 'gzip, deflate'},
-	HeaderField{'accept-language', ''},
-	HeaderField{'accept-ranges', ''},
-	HeaderField{'accept', ''},
-	HeaderField{'access-control-allow-origin', ''},
-	HeaderField{'age', ''},
-	HeaderField{'allow', ''},
-	HeaderField{'authorization', ''},
-	HeaderField{'cache-control', ''},
-	HeaderField{'content-disposition', ''},
-	HeaderField{'content-encoding', ''},
-	HeaderField{'content-language', ''},
-	HeaderField{'content-length', ''},
-	HeaderField{'content-location', ''},
-	HeaderField{'content-range', ''},
-	HeaderField{'content-type', ''},
-	HeaderField{'cookie', ''},
-	HeaderField{'date', ''},
-	HeaderField{'etag', ''},
-	HeaderField{'expect', ''},
-	HeaderField{'expires', ''},
-	HeaderField{'from', ''},
-	HeaderField{'host', ''},
-	HeaderField{'if-match', ''},
-	HeaderField{'if-modified-since', ''},
-	HeaderField{'if-none-match', ''},
-	HeaderField{'if-range', ''},
-	HeaderField{'if-unmodified-since', ''},
-	HeaderField{'last-modified', ''},
-	HeaderField{'link', ''},
-	HeaderField{'location', ''},
-	HeaderField{'max-forwards', ''},
-	HeaderField{'proxy-authenticate', ''},
-	HeaderField{'proxy-authorization', ''},
-	HeaderField{'range', ''},
-	HeaderField{'referer', ''},
-	HeaderField{'refresh', ''},
-	HeaderField{'retry-after', ''},
-	HeaderField{'server', ''},
-	HeaderField{'set-cookie', ''},
-	HeaderField{'strict-transport-security', ''},
-	HeaderField{'transfer-encoding', ''},
-	HeaderField{'user-agent', ''},
-	HeaderField{'vary', ''},
-	HeaderField{'via', ''},
-	HeaderField{'www-authenticate', ''},
-]
-
-// Static table lookup maps for O(1) access
-// Map from "name:value" to index (for exact matches)
-const static_table_exact_map = build_exact_map()
-
-// Map from "name" to list of indices (for name-only matches)
-const static_table_name_map = build_name_map()
-
-// build_exact_map builds a map for exact header matches
-fn build_exact_map() map[string]int {
-	mut m := map[string]int{}
-	for i, entry in static_table {
-		if entry.name != '' {
-			key := '${entry.name}:${entry.value}'
-			if key !in m {
-				m[key] = i // static_table[0] is a dummy; real entries start at index 1
-			}
-		}
-	}
-	return m
-}
-
-// build_name_map builds a map for name-only matches
-fn build_name_map() map[string][]int {
-	mut m := map[string][]int{}
-	for i, entry in static_table {
-		if entry.name != '' {
-			if entry.name !in m {
-				m[entry.name] = []int{}
-			}
-			m[entry.name] << i // static_table[0] is a dummy; real entries start at index 1
-		}
-	}
-	return m
-}
-
 // HeaderField represents a name-value pair
 pub struct HeaderField {
 pub mut:
@@ -331,13 +230,11 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	for header in headers {
 		mut found_index := 0
 		mut found_name_index := 0
-
 		// Try exact match in static table using hashmap (O(1))
 		exact_key := '${header.name}:${header.value}'
 		if exact_key in static_table_exact_map {
 			found_index = static_table_exact_map[exact_key]
 		}
-
 		// If no exact match, try name-only match in static table
 		if found_index == 0 && header.name in static_table_name_map {
 			indices := static_table_name_map[header.name]
@@ -345,7 +242,6 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 				found_name_index = indices[0] // Use first match
 			}
 		}
-
 		// Search dynamic table (still linear, but typically much smaller)
 		if found_index == 0 {
 			for i := 0; i < e.dynamic_table.entries.len; i++ {
@@ -360,34 +256,68 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 				}
 			}
 		}
-
 		if found_index > 0 {
-			// Indexed header field (RFC 7541 Section 6.1)
-			encoded := encode_hpack_integer(found_index, 7)
-			result << (encoded[0] | 0x80)
-			if encoded.len > 1 {
-				result << encoded[1..]
-			}
+			encode_indexed_field(found_index, mut result)
+		} else if found_name_index > 0 {
+			encode_literal_indexed_name(found_name_index, header, mut result)
+			e.dynamic_table.add(header)
 		} else {
-			// Literal header field with incremental indexing (RFC 7541 Section 6.2.1)
-			if found_name_index > 0 {
-				encoded := encode_hpack_integer(found_name_index, 6)
-				result << (encoded[0] | 0x40)
-				if encoded.len > 1 {
-					result << encoded[1..]
-				}
-			} else {
-				result << u8(0x40)
-				result << encode_string(header.name, true)
-			}
-			result << encode_string(header.value, true)
-
-			// Add to dynamic table
+			encode_literal_new_name(header, mut result)
 			e.dynamic_table.add(header)
 		}
 	}
 
 	return result
+}
+
+// encode_indexed_field writes an indexed header field representation (RFC 7541 §6.1).
+fn encode_indexed_field(idx int, mut result []u8) {
+	encoded := encode_hpack_integer(idx, 7)
+	result << (encoded[0] | 0x80)
+	if encoded.len > 1 {
+		result << encoded[1..]
+	}
+}
+
+// encode_literal_indexed_name writes a literal header with indexed name (RFC 7541 §6.2.1).
+fn encode_literal_indexed_name(name_idx int, field HeaderField, mut result []u8) {
+	encoded := encode_hpack_integer(name_idx, 6)
+	result << (encoded[0] | 0x40)
+	if encoded.len > 1 {
+		result << encoded[1..]
+	}
+	result << encode_string(field.value, true)
+}
+
+// encode_literal_new_name writes a literal header with new name (RFC 7541 §6.2.1).
+fn encode_literal_new_name(field HeaderField, mut result []u8) {
+	result << u8(0x40)
+	result << encode_string(field.name, true)
+	result << encode_string(field.value, true)
+}
+
+// decode_literal_field decodes a literal header field (name + value) from the data.
+// prefix_bits controls the integer prefix size for the name index.
+// Returns the decoded HeaderField and the number of bytes consumed.
+fn decode_literal_field(dynamic_table &DynamicTable, data []u8, prefix_bits int) !(HeaderField, int) {
+	mut idx := 0
+	index, bytes_read := decode_integer(data, prefix_bits)!
+	idx += bytes_read
+
+	mut name := ''
+	if index == 0 {
+		mut name_bytes_read := 0
+		name, name_bytes_read = decode_string(data[idx..])!
+		idx += name_bytes_read
+	} else {
+		field := get_indexed(dynamic_table, index) or { return error('invalid index: ${index}') }
+		name = field.name
+	}
+
+	value, bytes_read2 := decode_string(data[idx..])!
+	idx += bytes_read2
+
+	return HeaderField{name, value}, idx
 }
 
 // decode decodes a header block
@@ -409,25 +339,8 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 			headers << field
 		} else if (first_byte & 0x40) != 0 {
 			// Literal header field with incremental indexing (RFC 7541 Section 6.2.1)
-			index, bytes_read := decode_integer(data[idx..], 6)!
-			idx += bytes_read
-
-			mut name := ''
-			if index == 0 {
-				mut name_bytes_read := 0
-				name, name_bytes_read = decode_string(data[idx..])!
-				idx += name_bytes_read
-			} else {
-				field := get_indexed(&d.dynamic_table, index) or {
-					return error('invalid index: ${index}')
-				}
-				name = field.name
-			}
-
-			value, bytes_read2 := decode_string(data[idx..])!
-			idx += bytes_read2
-
-			field := HeaderField{name, value}
+			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 6)!
+			idx += consumed
 			headers << field
 			d.dynamic_table.add(field)
 		} else if (first_byte & 0x20) != 0 {
@@ -437,49 +350,15 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 			d.dynamic_table.set_max_size(size)
 		} else if (first_byte & 0xf0) == 0x10 {
 			// Literal Header Field Never Indexed (RFC 7541 §6.2.3)
-			// Semantically identical to "without indexing" but intermediaries must
-			// never re-encode this field with indexing (important for sensitive headers).
-			index, bytes_read := decode_integer(data[idx..], 4)!
-			idx += bytes_read
-
-			mut name := ''
-			if index == 0 {
-				mut name_bytes_read := 0
-				name, name_bytes_read = decode_string(data[idx..])!
-				idx += name_bytes_read
-			} else {
-				field := get_indexed(&d.dynamic_table, index) or {
-					return error('invalid index: ${index}')
-				}
-				name = field.name
-			}
-
-			value, bytes_read2 := decode_string(data[idx..])!
-			idx += bytes_read2
-
+			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 4)!
+			idx += consumed
 			// Never add to dynamic table; preserve never-indexed semantics
-			headers << HeaderField{name, value}
+			headers << field
 		} else {
 			// Literal header field without indexing (RFC 7541 Section 6.2.2)
-			index, bytes_read := decode_integer(data[idx..], 4)!
-			idx += bytes_read
-
-			mut name := ''
-			if index == 0 {
-				mut name_bytes_read := 0
-				name, name_bytes_read = decode_string(data[idx..])!
-				idx += name_bytes_read
-			} else {
-				field := get_indexed(&d.dynamic_table, index) or {
-					return error('invalid index: ${index}')
-				}
-				name = field.name
-			}
-
-			value, bytes_read2 := decode_string(data[idx..])!
-			idx += bytes_read2
-
-			headers << HeaderField{name, value}
+			field, consumed := decode_literal_field(&d.dynamic_table, data[idx..], 4)!
+			idx += consumed
+			headers << field
 		}
 	}
 

@@ -40,19 +40,8 @@ pub fn (mut c Connection) perform_handshake() ! {
 		ts := u64(time.now().unix_milli()) * 1000000 // nanoseconds
 		mut pi := Ngtcp2PktInfo{}
 
-		// Write packets (drives the TLS handshake via crypto callbacks)
-		nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or {
-			return error('failed to write handshake packet: ${err}')
-		}
+		c.send_handshake_packet(ts, mut pi)!
 
-		if nwritten > 0 {
-			// Send raw QUIC packet via UDP (already encrypted by ngtcp2)
-			c.udp_socket.write(c.send_buf[..nwritten]) or {
-				return error('failed to send handshake packet: ${err}')
-			}
-		}
-
-		// Check if handshake completed
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
 			$if trace_quic ? {
@@ -61,34 +50,8 @@ pub fn (mut c Connection) perform_handshake() ! {
 			return
 		}
 
-		// Read response from server
-		c.udp_socket.set_read_timeout(2 * time.second)
-		n, _ := c.udp_socket.read(mut c.recv_buf) or {
-			if err.msg().contains('timed out') || err.msg().contains('timeout') {
-				// Timeout: retry writing
-				continue
-			}
-			return error('failed to read packet: ${err}')
-		}
+		c.recv_handshake_packet(ts, mut pi, 'client')!
 
-		if n == 0 {
-			continue
-		}
-
-		// Process received packet (ngtcp2 handles decryption via callbacks)
-		conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
-			err_str := err.msg()
-			// Ignore non-fatal errors during handshake
-			if err_str.contains('DISCARD_PKT') || err_str.contains('discard') {
-				$if trace_quic ? {
-					eprintln('[QUIC] discarded packet during client handshake: ${err_str}')
-				}
-				continue
-			}
-			return error('handshake read error: ${err}')
-		}
-
-		// Check again after processing
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
 			$if trace_quic ? {
@@ -121,39 +84,10 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 		ts := u64(time.now().unix_milli()) * 1000000
 		mut pi := Ngtcp2PktInfo{}
 
-		// Read packet from client
-		c.udp_socket.set_read_timeout(2 * time.second)
-		n, _ := c.udp_socket.read(mut c.recv_buf) or {
-			if err.msg().contains('timed out') || err.msg().contains('timeout') {
-				continue
-			}
-			return error('failed to read packet: ${err}')
-		}
+		c.recv_handshake_packet(ts, mut pi, 'server')!
 
-		if n > 0 {
-			// Process packet
-			conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
-				err_str := err.msg()
-				if err_str.contains('DISCARD_PKT') || err_str.contains('discard') {
-					$if trace_quic ? {
-						eprintln('[QUIC] discarded packet during server handshake: ${err_str}')
-					}
-					continue
-				}
-				return error('server handshake read error: ${err}')
-			}
-		}
+		c.send_handshake_packet(ts, mut pi) or { continue }
 
-		// Write response packets
-		nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or { continue }
-
-		if nwritten > 0 {
-			c.udp_socket.write(c.send_buf[..nwritten]) or {
-				return error('failed to send handshake packet: ${err}')
-			}
-		}
-
-		// Check if handshake completed
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
 			$if trace_quic ? {
@@ -164,6 +98,46 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 	}
 
 	return error('server handshake timeout')
+}
+
+// send_handshake_packet writes and sends a single handshake packet via UDP.
+fn (mut c Connection) send_handshake_packet(ts u64, mut pi Ngtcp2PktInfo) ! {
+	nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or {
+		return error('failed to write handshake packet: ${err}')
+	}
+
+	if nwritten > 0 {
+		c.udp_socket.write(c.send_buf[..nwritten]) or {
+			return error('failed to send handshake packet: ${err}')
+		}
+	}
+}
+
+// recv_handshake_packet reads a packet from the peer and processes it.
+// Timeout and discarded packets are silently handled; fatal errors are propagated.
+fn (mut c Connection) recv_handshake_packet(ts u64, mut pi Ngtcp2PktInfo, role string) ! {
+	c.udp_socket.set_read_timeout(2 * time.second)
+	n, _ := c.udp_socket.read(mut c.recv_buf) or {
+		if err.msg().contains('timed out') || err.msg().contains('timeout') {
+			return
+		}
+		return error('failed to read packet: ${err}')
+	}
+
+	if n == 0 {
+		return
+	}
+
+	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
+		err_str := err.msg()
+		if err_str.contains('DISCARD_PKT') || err_str.contains('discard') {
+			$if trace_quic ? {
+				eprintln('[QUIC] discarded packet during ${role} handshake: ${err_str}')
+			}
+			return
+		}
+		return error('${role} handshake read error: ${err}')
+	}
 }
 
 // send_with_crypto sends data with encryption via ngtcp2 callbacks

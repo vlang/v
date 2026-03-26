@@ -64,19 +64,40 @@ fn decode_qpack_string(data []u8) !(string, int) {
 	return payload.bytestr(), end
 }
 
-// encode_qpack_string encodes a string with length prefix (optimized)
+// encode_qpack_string encodes a string with length prefix, using Huffman encoding
+// when it produces a shorter result (RFC 9204 §4.1.2).
 @[inline]
 fn encode_qpack_string(s string) []u8 {
-	// Pre-allocate with estimated size: length encoding (1-5 bytes) + string bytes
 	bytes := s.bytes()
 	bytes_len := bytes.len
+
+	// Check if Huffman encoding is shorter
+	huffman_bits := v2.huffman_encoded_length(bytes)
+	huffman_len := (huffman_bits + 7) / 8
+
+	if huffman_len < bytes_len {
+		huffman_data := v2.encode_huffman(bytes)
+		mut result := []u8{cap: 5 + huffman_data.len}
+		mut length_prefix := encode_integer(huffman_data.len, 7)
+		length_prefix[0] |= 0x80 // Set Huffman flag
+		result << length_prefix
+		result << huffman_data
+		return result
+	}
+
+	// Literal encoding (no Huffman)
 	mut result := []u8{cap: 5 + bytes_len}
-	// Length prefix (no Huffman encoding for now)
 	result << encode_integer(bytes_len, 7)
 	if bytes_len > 0 {
 		result << bytes
 	}
 	return result
+}
+
+// max_entries computes the maximum number of dynamic table entries for QPACK.
+// Per RFC 9204 §4.5.1: MaxEntries = floor(MaxTableCapacity / 32).
+fn max_entries(max_table_capacity int) int {
+	return max_table_capacity / 32
 }
 
 // encode_integer encodes an integer with N-bit prefix (optimized)

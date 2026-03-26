@@ -4,6 +4,8 @@
 @[has_globals]
 module v2
 
+import sync
+
 // Huffman coding for HPACK (RFC 7541 Appendix B)
 // This implements the static Huffman table from RFC 7541
 
@@ -23,8 +25,11 @@ mut:
 	symbol int // decoded symbol, or huffman_trie_null for internal nodes
 }
 
-// Module-level trie storage; populated once by build_huffman_decode_trie.
+// Module-level trie storage; populated exactly once by ensure_huffman_trie_built.
 __global huffman_decode_trie = []DecodeTrieNode{}
+// Thread-safe once guard to ensure the trie is built exactly once,
+// even when multiple threads call decode_huffman simultaneously.
+__global huffman_trie_once = sync.new_once()
 
 // HuffmanEntry represents a Huffman code entry
 struct HuffmanEntry {
@@ -401,6 +406,33 @@ fn build_huffman_decode_trie() {
 	}
 }
 
+// validate_huffman_padding validates RFC 7541 §5.2 padding rules.
+// Padding must consist of MSB 1-bits and be at most 7 bits.
+fn validate_huffman_padding(bits_remaining int, current_node_idx int) ! {
+	if bits_remaining > 7 {
+		return error('invalid Huffman padding: ${bits_remaining} bits remaining')
+	}
+	if bits_remaining > 0 {
+		// Verify the remaining partial code is all 1-bits by checking that every
+		// step from root to current_node_idx follows only right (1) children.
+		mut check_idx := 0
+		for _ in 0 .. bits_remaining {
+			right_child := huffman_decode_trie[check_idx].right
+			if right_child == huffman_trie_null {
+				return error('invalid Huffman padding')
+			}
+			// A valid padding path must not pass through a symbol leaf.
+			if huffman_decode_trie[right_child].symbol != huffman_trie_null {
+				return error('invalid Huffman padding')
+			}
+			check_idx = right_child
+		}
+		if check_idx != current_node_idx {
+			return error('invalid Huffman padding')
+		}
+	}
+}
+
 // decode_huffman decodes Huffman encoded data by walking the pre-built binary
 // trie (RFC 7541 §5.2). This is O(n) in input bytes, replacing the former
 // O(n × 256) linear table scan.
@@ -409,10 +441,8 @@ pub fn decode_huffman(data []u8) ![]u8 {
 		return []u8{}
 	}
 
-	// Lazy-initialise the trie on first call.
-	if huffman_decode_trie.len == 0 {
-		build_huffman_decode_trie()
-	}
+	// Thread-safe trie initialization — guaranteed to run exactly once.
+	huffman_trie_once.do(build_huffman_decode_trie)
 
 	mut result := []u8{cap: data.len * 2}
 	mut node_idx := 0
@@ -449,29 +479,7 @@ pub fn decode_huffman(data []u8) ![]u8 {
 		}
 	}
 
-	// Any remaining bits must be all-1 padding of at most 7 bits (RFC 7541 §5.2).
-	if bits_since_root > 7 {
-		return error('invalid Huffman padding: ${bits_since_root} bits remaining')
-	}
-	if bits_since_root > 0 {
-		// Verify the remaining partial code is all 1-bits by checking that every
-		// step from root to node_idx follows only right (1) children.
-		mut check_idx := 0
-		for _ in 0 .. bits_since_root {
-			right_child := huffman_decode_trie[check_idx].right
-			if right_child == huffman_trie_null {
-				return error('invalid Huffman padding')
-			}
-			// A valid padding path must not pass through a symbol leaf.
-			if huffman_decode_trie[right_child].symbol != huffman_trie_null {
-				return error('invalid Huffman padding')
-			}
-			check_idx = right_child
-		}
-		if check_idx != node_idx {
-			return error('invalid Huffman padding')
-		}
-	}
+	validate_huffman_padding(bits_since_root, node_idx)!
 
 	return result
 }

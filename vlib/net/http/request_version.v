@@ -16,10 +16,23 @@ import net.http.v3
 // HTTP/3 (QUIC) is still experimental and its QUIC transport layer is not
 // yet fully implemented in V.
 //
-// TODO: Implement real ALPN-based negotiation once TLS integration is
-// available.  The correct approach is to perform a TLS handshake with the
-// ALPN extension advertising ['h3', 'h2', 'http/1.1'] and return the
-// version that the server selects.
+// TODO: True ALPN-based version negotiation is not yet possible.
+// V's net.ssl module (both mbedtls and openssl backends) configures ALPN
+// protocol lists during TLS handshake via SSLConnectConfig.alpn_protocols,
+// but does NOT expose the server-selected protocol after handshake completion.
+// Neither SSLConn nor the underlying backends provide a method like
+// get_alpn_selected() or selected_protocol().
+//
+// Current behavior: the HTTP/2 client sets alpn_protocols: ['h2'] before
+// connecting, which tells the server we prefer h2. If the server does not
+// support h2, the TLS handshake may still succeed (falling back to no ALPN),
+// and the subsequent HTTP/2 connection preface will fail at the protocol
+// level. This is acceptable until the V SSL API adds ALPN result inspection.
+//
+// Correct approach (once API is available):
+//   1. Perform TLS handshake with ALPN extension: ['h3', 'h2', 'http/1.1']
+//   2. Call ssl_conn.get_alpn_selected() to read the negotiated protocol
+//   3. Return the matching Version enum value
 fn (req &Request) negotiate_version(url urllib.URL) Version {
 	// If version is explicitly set, use it
 	if req.version != .unknown {

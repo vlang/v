@@ -69,12 +69,17 @@ mut:
 	// implemented; a real QUIC layer would supply stream IDs directly.
 	next_client_stream_id u64
 	// rx_packet_number is an incrementing counter used as the GCM packet_number
-	// argument to prevent GCM nonce reuse across packets on this connection.
-	// TODO: replace with the actual QUIC packet number from the decrypted header
-	// once full per-packet-key derivation is wired into the handshake.
+	// for decryption nonce derivation. Once full QUIC header parsing is
+	// integrated, this should be replaced with the packet number extracted
+	// from the incoming QUIC packet header via extract_packet_number().
 	rx_packet_number u64
+	// tx_packet_number is a monotonically increasing counter used as the
+	// packet_number for encrypt_packet() nonce derivation (RFC 9000 §17.1).
+	tx_packet_number u64
 	mu               sync.Mutex
 	encoder          Encoder
+	decoder          Decoder
+	uni              UniStreamManager
 }
 
 // ServerStream represents a single HTTP/3 stream on the server
@@ -179,14 +184,41 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 	}
 
 	// Create crypto context
-	crypto_ctx := quic.new_crypto_context_server(s.config.cert_file, s.config.key_file,
+	mut crypto_ctx := quic.new_crypto_context_server(s.config.cert_file, s.config.key_file,
 		['h3']) or { return error('failed to create crypto context: ${err}') }
 
-	// Perform handshake
+	// Perform handshake — abort on failure to prevent unauthenticated connections
 	quic_conn.perform_handshake_server(s.config.cert_file, s.config.key_file) or {
 		eprintln('Handshake failed: ${err}')
-		// Continue anyway, will retry
+		quic_conn.close()
+		return error('handshake failed: ${err}')
 	}
+
+	// Derive initial secrets from the destination connection ID (RFC 9001 §5.2)
+	// Server: tx_secret = server_secret, rx_secret = client_secret
+	server_secret, client_secret := quic.derive_initial_secrets(quic_conn.conn_id, true) or {
+		eprintln('Failed to derive initial secrets: ${err}')
+		// Fall back: leave keys empty — packets will fail decrypt gracefully
+		return &ServerConnection{
+			quic_conn:             quic_conn
+			crypto_ctx:            crypto_ctx
+			remote_addr:           remote_addr
+			next_client_stream_id: 0
+			encoder:               new_qpack_encoder(4096, 100)
+			decoder:               new_qpack_decoder(4096, 100)
+			settings:              Settings{
+				max_field_section_size:   8192
+				qpack_max_table_capacity: 4096
+				qpack_blocked_streams:    100
+			}
+		}
+	}
+
+	crypto_ctx.tx_secret = server_secret
+	crypto_ctx.rx_secret = client_secret
+
+	// Derive AES-128-GCM keys and IVs from the traffic secrets (RFC 9001 §5.1)
+	crypto_ctx.derive_traffic_keys() or { eprintln('Failed to derive traffic keys: ${err}') }
 
 	return &ServerConnection{
 		quic_conn:             quic_conn
@@ -194,6 +226,7 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 		remote_addr:           remote_addr
 		next_client_stream_id: 0
 		encoder:               new_qpack_encoder(4096, 100)
+		decoder:               new_qpack_decoder(4096, 100)
 		settings:              Settings{
 			max_field_section_size:   8192
 			qpack_max_table_capacity: 4096
@@ -206,47 +239,29 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 // Each call runs in its own goroutine; all mutations to conn are protected by
 // conn.mu to prevent data races (Issue #31).
 fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
-	// Decrypt packet.
-	// base_iv is 12 bytes of zeros as a placeholder until proper per-key
-	// IV derivation is wired in from the QUIC handshake.
-	// rx_packet_number is incremented per packet to prevent GCM nonce reuse
-	// (M5 fix — previously always 0, which fatally breaks GCM security).
-	base_iv := []u8{len: 12}
-	conn.mu.lock()
-	pkt_num := conn.rx_packet_number
-	conn.rx_packet_number++
-	conn.mu.unlock()
-	decrypted := conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pkt_num) or {
+	decrypted := s.decrypt_incoming_packet(mut conn, packet) or {
 		eprintln('Failed to decrypt packet: ${err}')
 		return
 	}
 
-	// Parse frames.
-	// NOTE: In a real QUIC implementation, stream_id is carried in the QUIC
-	// STREAM frame header and would be provided by the QUIC layer.  Here we
-	// maintain a per-connection counter that follows RFC 9000 §2.1:
-	//   client-initiated bidirectional: 0, 4, 8, 12, …
-	// current_stream_id is updated inside the mutex whenever a new HEADERS
-	// frame opens a fresh client stream (Issue #6).
+	// Parse frames. current_stream_id is updated inside the mutex whenever
+	// a new HEADERS frame opens a fresh client stream (Issue #6).
 	mut idx := 0
 	mut current_stream_id := u64(0)
 
 	for idx < decrypted.len {
-		// Decode frame type
 		frame_type_val, bytes_read := decode_varint(decrypted[idx..]) or {
 			eprintln('Failed to decode frame type: ${err}')
 			return
 		}
 		idx += bytes_read
 
-		// Decode frame length
 		frame_length, bytes_read2 := decode_varint(decrypted[idx..]) or {
 			eprintln('Failed to decode frame length: ${err}')
 			return
 		}
 		idx += bytes_read2
 
-		// Read payload
 		if idx + int(frame_length) > decrypted.len {
 			eprintln('Incomplete frame')
 			return
@@ -269,26 +284,61 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 			conn.mu.unlock()
 		}
 
-		// Process frame with current stream_id
-		match frame_type {
-			.headers {
-				s.handle_headers_frame(mut conn, current_stream_id, payload) or {
-					eprintln('Failed to handle HEADERS frame: ${err}')
-				}
+		s.dispatch_server_frame(mut conn, frame_type, current_stream_id, payload)
+	}
+}
+
+// decrypt_incoming_packet derives the base IV, extracts the packet number,
+// and decrypts the incoming QUIC packet.
+fn (mut s Server) decrypt_incoming_packet(mut conn ServerConnection, packet []u8) ![]u8 {
+	// Prefer the derived rx_iv from traffic keys;
+	// fall back to a zero IV when keys have not been derived yet.
+	base_iv := if conn.crypto_ctx.rx_iv.len == 12 {
+		conn.crypto_ctx.rx_iv
+	} else {
+		[]u8{len: 12}
+	}
+
+	// Try to extract the packet number from the QUIC header. Falls back to
+	// the monotonic counter when extraction fails (e.g. header protection
+	// is still applied or the packet uses a non-standard format).
+	extracted_pn, _ := quic.extract_packet_number(packet, conn.quic_conn.conn_id.len) or {
+		u64(0), 0
+	}
+
+	conn.mu.lock()
+	pkt_num := if extracted_pn != 0 {
+		extracted_pn
+	} else {
+		conn.rx_packet_number
+	}
+	conn.rx_packet_number++
+	conn.mu.unlock()
+
+	return conn.crypto_ctx.decrypt_packet(packet, []u8{}, base_iv, pkt_num)
+}
+
+// dispatch_server_frame dispatches a parsed HTTP/3 frame to the appropriate
+// handler based on its type.
+fn (mut s Server) dispatch_server_frame(mut conn ServerConnection, frame_type FrameType, stream_id u64, payload []u8) {
+	match frame_type {
+		.headers {
+			s.handle_headers_frame(mut conn, stream_id, payload) or {
+				eprintln('Failed to handle HEADERS frame: ${err}')
 			}
-			.data {
-				s.handle_data_frame(mut conn, current_stream_id, payload) or {
-					eprintln('Failed to handle DATA frame: ${err}')
-				}
+		}
+		.data {
+			s.handle_data_frame(mut conn, stream_id, payload) or {
+				eprintln('Failed to handle DATA frame: ${err}')
 			}
-			.settings {
-				s.handle_settings_frame(mut conn, payload) or {
-					eprintln('Failed to handle SETTINGS frame: ${err}')
-				}
+		}
+		.settings {
+			s.handle_settings_frame(mut conn, payload) or {
+				eprintln('Failed to handle SETTINGS frame: ${err}')
 			}
-			else {
-				// Ignore unknown frames
-			}
+		}
+		else {
+			// Ignore unknown frames
 		}
 	}
 }

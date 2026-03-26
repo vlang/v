@@ -11,8 +11,13 @@ module v3
 // For requests without a body (GET, HEAD, etc.) process_request is called here
 // after verifying that the stream has not already been processed.
 fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
-	// Decode headers using QPACK
-	headers := decode_headers(payload)!
+	// Decode headers using QPACK Decoder for proper static/dynamic table support
+	conn.mu.lock()
+	headers := conn.decoder.decode(payload) or {
+		conn.mu.unlock()
+		return err
+	}
+	conn.mu.unlock()
 
 	// Acquire lock before modifying shared streams map (Issue #31)
 	conn.mu.lock()
@@ -179,10 +184,21 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 		frame_data << response.body
 	}
 
-	// Encrypt packet using a zero base_iv placeholder (12 bytes) until proper
-	// per-key IV derivation from the QUIC handshake is wired in.
-	base_iv := []u8{len: 12}
-	encrypted := conn.crypto_ctx.encrypt_packet(frame_data, []u8{}, base_iv, stream_id) or {
+	// Use derived tx_iv for nonce derivation; fall back to zeros if not derived yet.
+	base_iv := if conn.crypto_ctx.tx_iv.len == 12 {
+		conn.crypto_ctx.tx_iv
+	} else {
+		[]u8{len: 12}
+	}
+
+	// Use monotonically increasing tx_packet_number (RFC 9000 §17.1) instead
+	// of stream_id, which is NOT the QUIC packet number.
+	conn.mu.lock()
+	pkt_num := conn.tx_packet_number
+	conn.tx_packet_number++
+	conn.mu.unlock()
+
+	encrypted := conn.crypto_ctx.encrypt_packet(frame_data, []u8{}, base_iv, pkt_num) or {
 		return error('failed to encrypt response: ${err}')
 	}
 

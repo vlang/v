@@ -69,6 +69,68 @@ fn test_encode_optimized_high_index_multi_byte() {
 	assert buf[0] == 0xff, 'first byte for index >= 128 must be 0xFF (prefix saturated), got 0x${buf[0].hex()}'
 }
 
+// test_encode_optimized_huffman_shorter verifies that encode_optimized uses Huffman
+// encoding for string values when it produces a shorter representation.
+fn test_encode_optimized_huffman_shorter() {
+	mut encoder := new_encoder()
+	mut buf_opt := []u8{len: 4096}
+	mut buf_std := []u8{len: 4096}
+
+	// Use a header with a long ASCII value that benefits from Huffman coding.
+	// 'content-type' is in the static table at index 31 (name only),
+	// so the encoder will emit a literal with indexed name + value.
+	headers := [HeaderField{'content-type', 'application/json'}]
+
+	n_opt := encoder.encode_optimized(headers, mut buf_opt)
+	assert n_opt > 0, 'encode_optimized must produce output'
+
+	// The Huffman-encoded value should set bit 0x80 on the string length byte.
+	// For "literal with indexed name" format: first byte(s) = name index,
+	// then value string. Skip past the name index byte(s) to find the value.
+	// Index 31 with 6-bit prefix: 31 < 63 → single byte 0x40 | 31 = 0x5f
+	// Next byte is the value string length byte — check its Huffman bit.
+	if n_opt > 1 {
+		value_len_byte := buf_opt[1]
+		huffman_bit := (value_len_byte & 0x80) != 0
+		assert huffman_bit, 'expected Huffman bit set on value string length byte, got 0x${value_len_byte.hex()}'
+	}
+
+	// Verify the output is still decodable
+	mut decoder := new_decoder()
+	encoded := buf_opt[..n_opt].clone()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'HPACK decode failed on Huffman-encoded output: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'content-type'
+	assert decoded[0].value == 'application/json'
+}
+
+// test_encode_optimized_huffman_newname verifies Huffman encoding for both name
+// and value in new-name literal headers via encode_optimized.
+fn test_encode_optimized_huffman_newname() {
+	mut encoder := new_encoder()
+	mut decoder := new_decoder()
+	mut buf := []u8{len: 4096}
+
+	// A new-name header not in any table — both name and value will be literals.
+	headers := [HeaderField{'x-trace-id', 'abc123def456'}]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0, 'encode_optimized must produce output'
+
+	// Verify decodability — the decoder handles both Huffman and plain strings
+	encoded := buf[..n].clone()
+	mut dec := new_decoder()
+	decoded := dec.decode(encoded) or {
+		assert false, 'HPACK decode failed on new-name Huffman output: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'x-trace-id'
+	assert decoded[0].value == 'abc123def456'
+}
+
 // test_encode_optimized_result_decodable verifies that output from encode_optimized
 // can be decoded back to the original headers by the standard HPACK decoder.
 fn test_encode_optimized_result_decodable() {

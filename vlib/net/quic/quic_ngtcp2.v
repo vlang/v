@@ -33,6 +33,11 @@ pub mut:
 	// Per-connection address storage; path.local.addr and path.remote.addr
 	// point into this struct, so it must outlive path.
 	path_addrs QuicPathAddrs
+	// Connection migration subsystem
+	migration ConnectionMigration
+	// 0-RTT resumption subsystem
+	zero_rtt      ZeroRTTConnection
+	session_cache &SessionCache = unsafe { nil }
 }
 
 // Stream represents a QUIC stream
@@ -49,6 +54,8 @@ pub:
 	remote_addr string
 	alpn        []string = ['h3']
 	enable_0rtt bool
+	// Session cache for 0-RTT resumption (shared across connections)
+	session_cache &SessionCache = unsafe { nil }
 	// Connection limits
 	max_stream_data_bidi_local  u64 = 1048576  // 1MB
 	max_stream_data_bidi_remote u64 = 1048576  // 1MB
@@ -61,7 +68,6 @@ pub:
 
 // new_connection creates a new QUIC connection using ngtcp2 library
 pub fn new_connection(config ConnectionConfig) !Connection {
-	// Parse remote address
 	addr_parts := config.remote_addr.split(':')
 	if addr_parts.len != 2 {
 		return error('invalid remote address format, expected host:port')
@@ -69,7 +75,53 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	host := addr_parts[0]
 	port := addr_parts[1].int()
 
-	// Create UDP socket
+	mut ngtcp2_setup := setup_ngtcp2(host, port, config)!
+
+	mut crypto_ctx := new_crypto_context_client(config.alpn) or {
+		conn_del(ngtcp2_setup.ngtcp2_conn)
+		ngtcp2_setup.udp_socket.close() or {}
+		return error('failed to create crypto context: ${err}')
+	}
+
+	setup_crypto(ngtcp2_setup.ngtcp2_conn, voidptr(crypto_ctx.ssl), host) or {
+		crypto_ctx.free()
+		conn_del(ngtcp2_setup.ngtcp2_conn)
+		ngtcp2_setup.udp_socket.close() or {}
+		return error('failed to setup crypto: ${err}')
+	}
+
+	return Connection{
+		remote_addr:   config.remote_addr
+		conn_id:       ngtcp2_setup.conn_id
+		ngtcp2_conn:   ngtcp2_setup.ngtcp2_conn
+		udp_socket:    ngtcp2_setup.udp_socket
+		send_buf:      []u8{len: 65536} // 64KB buffer
+		recv_buf:      []u8{len: 65536}
+		crypto_ctx:    crypto_ctx
+		path:          ngtcp2_setup.path
+		path_addrs:    ngtcp2_setup.path_addrs
+		migration:     init_migration_subsystem(host)
+		zero_rtt:      init_zero_rtt_subsystem(config, host)
+		session_cache: config.session_cache
+	}
+}
+
+// Ngtcp2ConnectionSetup holds the results of ngtcp2 connection setup.
+// Returned by setup_ngtcp2 so that callers can access mutable fields
+// (e.g. udp_socket) for error-path cleanup.
+struct Ngtcp2ConnectionSetup {
+pub mut:
+	ngtcp2_conn voidptr
+	path        Ngtcp2PathStruct
+	path_addrs  QuicPathAddrs
+	udp_socket  net.UdpConn
+	conn_id     []u8
+}
+
+// setup_ngtcp2 handles CID generation, DNS resolution, callback setup,
+// settings/params configuration, and ngtcp2_conn creation.
+// On error, all partially-created resources are cleaned up internally.
+fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2ConnectionSetup {
 	mut udp_socket := net.dial_udp('${host}:${port}') or {
 		return error('failed to create UDP socket: ${err}')
 	}
@@ -81,10 +133,15 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	mut scid := Ngtcp2CidStruct{
 		datalen: 18
 	}
-	C.RAND_bytes(&dcid.data[0], 18)
-	C.RAND_bytes(&scid.data[0], 18)
+	if C.RAND_bytes(&dcid.data[0], 18) != 1 {
+		udp_socket.close() or {}
+		return error('failed to generate random DCID: RNG failure')
+	}
+	if C.RAND_bytes(&scid.data[0], 18) != 1 {
+		udp_socket.close() or {}
+		return error('failed to generate random SCID: RNG failure')
+	}
 
-	// Setup path with resolved remote address
 	mut path := Ngtcp2PathStruct{}
 	mut path_addrs := QuicPathAddrs{}
 	rv := C.quic_resolve_and_set_path(&path, &path_addrs, &char(host.str), port)
@@ -93,10 +150,31 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		return error('failed to resolve remote address: ${host}:${port}')
 	}
 
-	// Setup callbacks with ngtcp2_crypto helper implementations
 	mut callbacks := Ngtcp2CallbacksStruct{}
 	C.quic_init_callbacks(&callbacks)
-	// Setup settings
+
+	settings := configure_ngtcp2_settings()
+	params := configure_transport_params(config)
+	quic_version := u32(0x00000001) // QUIC version 1 (RFC 9000)
+
+	ngtcp2_conn := conn_client_new(&dcid, &scid, &path, quic_version, &callbacks, &settings,
+		&params, unsafe { nil }) or {
+		udp_socket.close() or {}
+		return error('failed to create ngtcp2 connection: ${err}')
+	}
+
+	return Ngtcp2ConnectionSetup{
+		ngtcp2_conn: ngtcp2_conn
+		path:        path
+		path_addrs:  path_addrs
+		udp_socket:  udp_socket
+		conn_id:     scid.data[0..int(scid.datalen)].clone()
+	}
+}
+
+// configure_ngtcp2_settings initializes ngtcp2 settings with defaults and
+// the current timestamp.
+fn configure_ngtcp2_settings() Ngtcp2SettingsStruct {
 	mut settings := Ngtcp2SettingsStruct{
 		qlog_write:         unsafe { nil }
 		log_printf:         unsafe { nil }
@@ -108,8 +186,12 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	}
 	settings_default(&settings)
 	settings.initial_ts = u64(time.now().unix_milli()) * 1000000 // ms to ns
+	return settings
+}
 
-	// Setup transport parameters
+// configure_transport_params creates transport parameters from the connection
+// configuration, applying user-specified limits for streams and data.
+fn configure_transport_params(config ConnectionConfig) Ngtcp2TransportParamsStruct {
 	mut params := Ngtcp2TransportParamsStruct{
 		version_info: Ngtcp2VersionInfo{
 			available_versions: unsafe { nil }
@@ -123,210 +205,33 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	params.initial_max_streams_bidi = config.max_streams_bidi
 	params.initial_max_streams_uni = config.max_streams_uni
 	params.max_idle_timeout = config.max_idle_timeout * 1000000 // ms to ns
-
-	// Create ngtcp2 connection (QUIC version 1, RFC 9000)
-	quic_version := u32(0x00000001)
-
-	ngtcp2_conn := conn_client_new(&dcid, &scid, &path, quic_version, &callbacks, &settings,
-		&params, unsafe { nil }) or {
-		udp_socket.close() or {}
-		return error('failed to create ngtcp2 connection: ${err}')
-	}
-
-	// Create crypto context for TLS 1.3
-	mut crypto_ctx := new_crypto_context_client(config.alpn) or {
-		conn_del(ngtcp2_conn)
-		udp_socket.close() or {}
-		return error('failed to create crypto context: ${err}')
-	}
-
-	// Setup crypto integration (ossl_ctx, conn_ref, configure SSL)
-	setup_crypto(ngtcp2_conn, voidptr(crypto_ctx.ssl), host) or {
-		crypto_ctx.free()
-		conn_del(ngtcp2_conn)
-		udp_socket.close() or {}
-		return error('failed to setup crypto: ${err}')
-	}
-
-	return Connection{
-		remote_addr: config.remote_addr
-		conn_id:     scid.data[0..int(scid.datalen)].clone()
-		ngtcp2_conn: ngtcp2_conn
-		udp_socket:  udp_socket
-		send_buf:    []u8{len: 65536} // 64KB buffer
-		recv_buf:    []u8{len: 65536}
-		crypto_ctx:  crypto_ctx
-		path:        path
-		path_addrs:  path_addrs
-	}
+	return params
 }
 
-// send sends data on a QUIC stream with the given stream ID
-pub fn (mut c Connection) send(stream_id u64, data []u8) ! {
-	if c.closed {
-		return error('connection closed')
+// init_migration_subsystem initializes the connection migration subsystem
+fn init_migration_subsystem(host string) ConnectionMigration {
+	mig_local := net.resolve_addrs('0.0.0.0', .ip, .udp) or { []net.Addr{} }
+	mig_remote := net.resolve_addrs(host, .ip, .udp) or { []net.Addr{} }
+	if mig_local.len > 0 && mig_remote.len > 0 {
+		return new_connection_migration(mig_local[0], mig_remote[0])
 	}
+	return ConnectionMigration{}
+}
 
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
-
-	// Check if handshake is complete
-	if !c.handshake_done {
-		c.handshake_done = conn_get_handshake_completed(c.ngtcp2_conn)
-		if !c.handshake_done {
-			return error('handshake not completed')
+// init_zero_rtt_subsystem initializes the 0-RTT resumption subsystem
+fn init_zero_rtt_subsystem(config ConnectionConfig, host string) ZeroRTTConnection {
+	if config.enable_0rtt && config.session_cache != unsafe { nil } {
+		mut sc := config.session_cache
+		if ticket := sc.get(host) {
+			mut zero_rtt_conn := new_zero_rtt_connection(ZeroRTTConfig{
+				enabled:        true
+				max_early_data: ticket.max_early_data
+			})
+			zero_rtt_conn.ticket = ticket
+			return zero_rtt_conn
 		}
 	}
-
-	// Open stream if needed
-	if stream_id !in c.streams {
-		// Stream should already be opened
-		return error('stream ${stream_id} not found')
-	}
-
-	// Write stream data using ngtcp2
-	ts := u64(time.now().unix_milli()) * 1000000
-	mut pi := Ngtcp2PktInfo{}
-
-	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &c.path, &pi, c.send_buf, i64(stream_id),
-		data, ts) or { return error('failed to write stream data: ${err}') }
-
-	// Send packet via UDP
-	if nwritten > 0 {
-		c.udp_socket.write(c.send_buf[..nwritten]) or {
-			return error('failed to send UDP packet: ${err}')
-		}
-	}
-
-	// Update stream data
-	mut stream := c.streams[stream_id] or { return error('stream not found') }
-	stream.data << data
-}
-
-// recv receives data from a QUIC stream with the given stream ID
-pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
-
-	// Read packet from UDP
-	n, _ := c.udp_socket.read(mut c.recv_buf) or {
-		return error('failed to read UDP packet: ${err}')
-	}
-
-	if n == 0 {
-		return []u8{}
-	}
-
-	// Process packet with ngtcp2
-	ts := u64(time.now().unix_milli()) * 1000000
-	mut pi := Ngtcp2PktInfo{}
-
-	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
-		// Non-fatal errors can be ignored
-		if !err_is_fatal(ngtcp2_err_invalid_argument) {
-			return []u8{}
-		}
-		return error('failed to read packet: ${err}')
-	}
-
-	// Return stream data
-	stream := c.streams[stream_id] or { return error('stream not found') }
-	return stream.data.clone()
-}
-
-// open_stream opens a new bidirectional QUIC stream and returns its ID
-pub fn (mut c Connection) open_stream() !u64 {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
-
-	// Open bidirectional stream
-	stream_id := conn_open_bidi_stream(c.ngtcp2_conn, unsafe { nil }) or {
-		return error('failed to open stream: ${err}')
-	}
-
-	// Create stream object
-	c.streams[u64(stream_id)] = &Stream{
-		id: u64(stream_id)
-	}
-
-	return u64(stream_id)
-}
-
-// close_stream closes a QUIC stream with the given stream ID
-pub fn (mut c Connection) close_stream(stream_id u64) ! {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
-
-	// Shutdown stream
-	conn_shutdown_stream(c.ngtcp2_conn, i64(stream_id), 0) or {
-		return error('failed to close stream: ${err}')
-	}
-
-	// Remove from map
-	c.streams.delete(stream_id)
-}
-
-// close closes the QUIC connection and releases all resources
-pub fn (mut c Connection) close() {
-	if c.closed {
-		return
-	}
-
-	c.closed = true
-
-	// Close all streams
-	c.streams.clear()
-
-	// Delete ngtcp2 connection
-	if c.ngtcp2_conn != unsafe { nil } {
-		conn_del(c.ngtcp2_conn)
-		c.ngtcp2_conn = unsafe { nil }
-	}
-
-	// Free crypto context
-	c.crypto_ctx.free()
-
-	// Close UDP socket
-	c.udp_socket.close() or {}
-}
-
-// is_0rtt_available checks if 0-RTT (zero round-trip time) is available for early data
-pub fn (c Connection) is_0rtt_available() bool {
-	// 0-RTT requires session resumption data
-	// This would check if we have valid session tickets
-	return false
-}
-
-// migrate_connection migrates the QUIC connection to a new network path with the given address
-pub fn (mut c Connection) migrate_connection(new_addr string) ! {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	// Connection migration allows maintaining the connection
-	// when the client's IP address changes (e.g., switching networks)
-	c.remote_addr = new_addr
-
-	// In a real implementation, this would:
-	// 1. Send PATH_CHALLENGE frame
-	// 2. Wait for PATH_RESPONSE
-	// 3. Update connection state
+	return ZeroRTTConnection{}
 }
 
 // get_expiry returns the next timer expiry time for the connection in nanoseconds.

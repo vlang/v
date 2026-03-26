@@ -489,3 +489,14 @@ fn (dt &DynamicTable) get(index int) ?HeaderField {
 	}
 	return dt.entries[dt.entries.len - 1 - index].field
 }
+
+// get_by_absolute returns the entry at the given absolute index.
+// The absolute index is the insertion-order index assigned when an entry was added.
+fn (dt &DynamicTable) get_by_absolute(abs_index int) ?HeaderField {
+	first_abs := int(dt.insert_count) - dt.entries.len
+	j := abs_index - first_abs
+	if j < 0 || j >= dt.entries.len {
+		return none
+	}
+	return dt.entries[j].field
+}

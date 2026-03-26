@@ -27,8 +27,12 @@ fn test_http2_server_client_integration() {
 	println('\nTest 2: Multiple concurrent requests')
 	test_concurrent_requests()
 
-	// Test 3: Large response
-	println('\nTest 3: Large response')
+	// Test 3: POST with body (DATA frame accumulation)
+	println('\nTest 3: POST with body')
+	test_post_with_body()
+
+	// Test 4: Large response
+	println('\nTest 4: Large response')
 	test_large_response()
 
 	// Stop server
@@ -87,6 +91,16 @@ fn request_handler(req v2.ServerRequest) v2.ServerResponse {
 					'content-type': 'text/plain'
 				}
 				body:        'Method: ${req.method}\nPath: ${req.path}'.bytes()
+			}
+		}
+		'/echo-body' {
+			// Echo the request body back to the client for DATA accumulation testing
+			return v2.ServerResponse{
+				status_code: 200
+				headers:     {
+					'content-type': 'application/octet-stream'
+				}
+				body:        req.body
 			}
 		}
 		else {
@@ -156,6 +170,24 @@ fn make_request(id int, mut results []string) {
 	result := execute_or_skip('curl --http2-prior-knowledge -s http://localhost:${test_port}/')
 	if result.exit_code == 0 {
 		results[id] = result.output
+	}
+}
+
+fn test_post_with_body() {
+	result := execute_or_skip('curl --version')
+	if result.exit_code != 0 {
+		println('  ⚠ Skipped (curl not available)')
+		return
+	}
+
+	// Test POST with body — verifies DATA frame body accumulation
+	test_body := 'Hello from POST body!'
+	result2 := execute_or_skip('curl --http2-prior-knowledge -s -X POST -d "${test_body}" http://localhost:${test_port}/echo-body')
+	if result2.exit_code == 0 {
+		assert result2.output == test_body, 'Response body should echo back the POST body, got: ${result2.output}'
+		println('  ✓ POST with body test passed')
+	} else {
+		println('  ⚠ Skipped (connection failed)')
 	}
 }
 

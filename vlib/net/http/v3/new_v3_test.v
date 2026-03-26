@@ -73,6 +73,9 @@ fn test_varint_encoding_decoding() {
 fn test_header_helpers() {
 	println('Testing header helpers...')
 
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
 	headers := [
 		HeaderField{
 			name:  ':method'
@@ -84,15 +87,12 @@ fn test_header_helpers() {
 		},
 	]
 
-	// Test simplified encoding (literal)
-	encoded := encode_headers(headers) or {
-		assert false, 'Failed to encode headers: ${err}'
-		return
-	}
+	// Test proper QPACK encoding
+	encoded := encoder.encode(headers)
 	assert encoded.len > 0
 
-	// Test simplified decoding
-	decoded := decode_headers(encoded) or {
+	// Test proper QPACK decoding
+	decoded := decoder.decode(encoded) or {
 		assert false, 'Failed to decode headers'
 		return
 	}

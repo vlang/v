@@ -50,6 +50,7 @@ pub enum ErrorCode as u32 {
 
 // Frame header constants per RFC 7540
 pub const frame_header_size = 9
+
 pub const max_frame_size = 16777215 // 2^24 - 1
 pub const default_frame_size = 16384 // 16KB default
 
@@ -124,44 +125,6 @@ pub fn (h FrameHeader) has_flag(flag FrameFlags) bool {
 	return (h.flags & u8(flag)) != 0
 }
 
-// DataFrame represents the payload of an HTTP/2 DATA frame (RFC 7540 §6.1).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct DataFrame {
-pub mut:
-	stream_id  u32
-	data       []u8
-	end_stream bool
-	padded     bool
-	pad_length u8
-}
-
-// HeadersFrame represents the payload of an HTTP/2 HEADERS frame (RFC 7540 §6.2).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct HeadersFrame {
-pub mut:
-	stream_id   u32
-	headers     []u8 // Encoded header block
-	end_stream  bool
-	end_headers bool
-	padded      bool
-	priority    bool
-	pad_length  u8
-	stream_dep  u32
-	weight      u8
-	exclusive   bool
-}
-
-// SettingsFrame represents the payload of an HTTP/2 SETTINGS frame (RFC 7540 §6.5).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct SettingsFrame {
-pub mut:
-	ack      bool
-	settings map[u16]u32
-}
-
 // SettingId represents setting identifiers per RFC 7540 Section 6.5.2
 pub enum SettingId as u16 {
 	header_table_size      = 0x1
@@ -170,43 +133,6 @@ pub enum SettingId as u16 {
 	initial_window_size    = 0x4
 	max_frame_size         = 0x5
 	max_header_list_size   = 0x6
-}
-
-// PingFrame represents the payload of an HTTP/2 PING frame (RFC 7540 §6.7).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct PingFrame {
-pub mut:
-	ack  bool
-	data [8]u8
-}
-
-// GoAwayFrame represents the payload of an HTTP/2 GOAWAY frame (RFC 7540 §6.8).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct GoAwayFrame {
-pub mut:
-	last_stream_id u32
-	error_code     ErrorCode
-	debug_data     []u8
-}
-
-// WindowUpdateFrame represents the payload of an HTTP/2 WINDOW_UPDATE frame (RFC 7540 §6.9).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct WindowUpdateFrame {
-pub mut:
-	stream_id        u32
-	window_increment u32
-}
-
-// RstStreamFrame represents the payload of an HTTP/2 RST_STREAM frame (RFC 7540 §6.4).
-// Available for structured frame handling.
-// TODO: integrate structured frame types into processing pipeline
-pub struct RstStreamFrame {
-pub mut:
-	stream_id  u32
-	error_code ErrorCode
 }
 
 // parse_frame parses a complete HTTP/2 frame from raw bytes.
@@ -258,14 +184,6 @@ pub fn (f Frame) validate() ! {
 			else {}
 		}
 	}
-}
-
-// encode_frame encodes a frame to bytes using bulk copy for payload.
-// Note: Frame.encode() provides equivalent functionality via method syntax.
-// TODO: consolidate with Frame.encode() once callers are updated
-pub fn encode_frame(frame Frame) []u8 {
-	mut buf := []u8{len: frame_header_size + frame.payload.len}
-	return encode_frame_to_buffer(frame, mut buf)
 }
 
 // encode_frame_to_buffer encodes a frame into a pre-allocated buffer.

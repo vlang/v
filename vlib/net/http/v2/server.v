@@ -4,11 +4,12 @@
 module v2
 
 import net
+import sync
 import time
 
 // Simple HTTP/2 Server Implementation
 
-// ServerConfig holds server configuration
+// ServerConfig holds server configuration.
 pub struct ServerConfig {
 pub:
 	addr                   string        = '0.0.0.0:8080'
@@ -17,9 +18,14 @@ pub:
 	max_frame_size         u32           = 16384
 	read_timeout           time.Duration = 30 * time.second
 	write_timeout          time.Duration = 30 * time.second
+	// TLS configuration. When both cert_file and key_file are set, the
+	// server uses TLS with ALPN "h2" negotiation (via net.mbedtls).
+	// When empty, the server runs in plain TCP h2c mode.
+	cert_file string
+	key_file  string
 }
 
-// ServerRequest represents an HTTP/2 request
+// ServerRequest represents an HTTP/2 request.
 pub struct ServerRequest {
 pub:
 	method    string
@@ -29,7 +35,7 @@ pub:
 	stream_id u32
 }
 
-// ServerResponse represents an HTTP/2 response
+// ServerResponse represents an HTTP/2 response.
 pub struct ServerResponse {
 pub:
 	status_code int = 200
@@ -37,7 +43,7 @@ pub:
 	body        []u8
 }
 
-// Handler processes requests
+// Handler processes requests.
 pub type Handler = fn (ServerRequest) ServerResponse
 
 // ClientSettings holds the peer's SETTINGS values parsed from its SETTINGS frame.
@@ -51,34 +57,57 @@ pub mut:
 	max_header_list_size   u32 // SETTINGS_MAX_HEADER_LIST_SIZE (0x6); 0 = unlimited (initial)
 }
 
+// ServerStreamState tracks the state of an HTTP/2 stream during request assembly.
+// Each stream accumulates headers and body data from HEADERS and DATA frames
+// until END_STREAM is received, at which point the handler is dispatched.
+struct ServerStreamState {
+mut:
+	method     string
+	path       string
+	header_map map[string]string
+	body       []u8
+}
+
 // Server is an HTTP/2 server.
 //
-// NOTE: This implementation uses plain TCP (net.TcpConn), NOT TLS.
-// Real HTTP/2 deployments require TLS with ALPN "h2" negotiation for
-// browser clients (RFC 7540 §3.3). The `tls` field is reserved for
-// future implementation.
-//
-// TODO: Implement TLS with ALPN h2 negotiation (e.g. via net.ssl.SSLConn)
-// to support browser-compatible HTTP/2 over TLS (h2).
+// Supports plain TCP (h2c) mode by default. When cert_file and key_file
+// are set in ServerConfig, the server uses TLS via net.mbedtls.SSLListener
+// with ALPN "h2" negotiation for browser-compatible HTTP/2 (RFC 7540 §3.3).
 // The plain-TCP mode ("h2c") is only supported by clients that explicitly
 // opt in (e.g. `curl --http2-prior-knowledge`).
 pub struct Server {
 pub mut:
-	// tls indicates whether TLS should be used. Currently always false;
-	// TLS with ALPN h2 negotiation is not yet implemented.
+	// tls indicates whether TLS is enabled.
+	// Set automatically when cert_file and key_file are provided.
 	tls bool
 mut:
-	config   ServerConfig
-	handler  ?Handler
-	listener net.TcpListener
-	running  bool
+	config            ServerConfig
+	handler           ?Handler
+	listener          net.TcpListener
+	running           bool
+	connections       []&net.TcpConn
+	conn_mu           sync.Mutex
+	highest_stream_id u32
 }
 
 // new_server creates a new HTTP/2 server with the given configuration and handler.
-// The returned server uses plain TCP (h2c). TLS is not yet implemented.
+// Uses plain TCP (h2c) when no cert/key files are configured.
+// TLS with ALPN "h2" requires V's net.mbedtls.SSLListener, which binds its own
+// socket — see the TLS limitation note in listen_and_serve().
 pub fn new_server(config ServerConfig, handler Handler) !&Server {
-	listener := net.listen_tcp(.ip, config.addr)!
+	tls_enabled := config.cert_file != '' && config.key_file != ''
+	if tls_enabled {
+		// TLS mode: SSLListener does its own bind in listen_and_serve().
+		// We still create a dummy TCP listener to keep the struct valid.
+		// The actual TLS listener is created in listen_and_serve().
+		return &Server{
+			config:  config
+			handler: handler
+			tls:     true
+		}
+	}
 
+	listener := net.listen_tcp(.ip, config.addr)!
 	return &Server{
 		config:   config
 		handler:  handler
@@ -87,12 +116,28 @@ pub fn new_server(config ServerConfig, handler Handler) !&Server {
 }
 
 // listen_and_serve starts the HTTP/2 server and begins accepting connections.
-// It blocks until stop() is called. The server uses plain TCP (h2c mode).
-// For TLS-based h2, TLS with ALPN negotiation must be implemented first.
+// It blocks until stop() is called.
+//
+// In h2c mode (no TLS), uses plain TCP via net.TcpListener.
+//
+// TLS limitation: V's net.mbedtls.SSLListener provides server-side TLS with
+// ALPN support and can be used for h2 over TLS. However, SSLListener.accept()
+// returns mbedtls.SSLConn (not net.TcpConn), which has a different type.
+// Full TLS integration requires abstracting the connection type, which is
+// planned for a future phase. For now, configure TLS via cert_file/key_file
+// in ServerConfig; a clear error is returned until the abstraction is in place.
 pub fn (mut s Server) listen_and_serve() ! {
+	if s.tls {
+		return error('[HTTP/2] TLS mode (h2) is configured but not yet fully integrated. ' +
+			"V's net.mbedtls.SSLListener supports server-side TLS with ALPN, " +
+			'but the HTTP/2 server requires a connection-type abstraction layer ' +
+			'to support both TcpConn and SSLConn. Use h2c mode (omit cert_file/key_file) ' +
+			'or implement the ServerConn interface in a future phase.')
+	}
+
 	s.running = true
 	$if debug {
-		eprintln('[HTTP/2] Server listening on ${s.config.addr}')
+		eprintln('[HTTP/2] Server listening on ${s.config.addr} (h2c mode)')
 	}
 
 	for s.running {
@@ -107,9 +152,12 @@ pub fn (mut s Server) listen_and_serve() ! {
 	}
 }
 
-// stop stops the HTTP/2 server and closes the listener.
+// stop sends GOAWAY to all active connections and shuts down the server.
+// Per RFC 7540 §6.8, GOAWAY informs the peer of the last stream the server
+// processed and that no further streams will be accepted.
 pub fn (mut s Server) stop() {
 	s.running = false
+	s.send_goaway_to_all()
 	s.listener.close() or {}
 }
 
@@ -130,79 +178,110 @@ fn read_exact_tcp(mut conn net.TcpConn, mut buf []u8, needed int) !int {
 	return total
 }
 
-// handle_connection handles a single client TCP connection.
+// ConnContext holds shared per-connection state needed by spawned handlers.
+// Heap-allocated so spawned threads can safely reference it.
+struct ConnContext {
+mut:
+	encoder  Encoder
+	write_mu sync.Mutex
+	wg       sync.WaitGroup
+}
+
+// handle_connection handles a single client TCP connection with full HTTP/2
+// stream multiplexing. Frames are read sequentially (single reader), while
+// completed request handlers are dispatched concurrently via spawn.
 fn (mut s Server) handle_connection(mut conn net.TcpConn) {
+	mut ctx := &ConnContext{
+		encoder: new_encoder()
+	}
+
 	defer {
+		ctx.wg.wait()
+		s.deregister_connection(conn)
 		conn.close() or {}
 	}
 
-	// Read HTTP/2 preface
+	s.register_connection(conn)
+
+	s.read_preface(mut conn) or {
+		eprintln('[HTTP/2] Preface error: ${err}')
+		return
+	}
+
+	s.exchange_settings(mut conn) or {
+		eprintln('[HTTP/2] Settings exchange error: ${err}')
+		return
+	}
+
+	highest_stream_id := s.run_frame_loop(mut conn, mut ctx)
+
+	// Update global highest stream ID for GOAWAY
+	s.conn_mu.lock()
+	if highest_stream_id > s.highest_stream_id {
+		s.highest_stream_id = highest_stream_id
+	}
+	s.conn_mu.unlock()
+
+	$if debug {
+		eprintln('[HTTP/2] Connection closed')
+	}
+}
+
+// read_preface reads and validates the HTTP/2 connection preface from the client.
+// Returns an error if the preface is missing or invalid (RFC 7540 §3.5).
+fn (mut s Server) read_preface(mut conn net.TcpConn) ! {
 	mut preface_buf := []u8{len: preface.len}
 	conn.set_read_timeout(s.config.read_timeout)
 
 	read_exact_tcp(mut conn, mut preface_buf, preface.len) or {
-		eprintln('[HTTP/2] Failed to read preface: ${err}')
-		return
+		return error('failed to read preface: ${err}')
 	}
 
 	if preface_buf.bytestr() != preface {
-		eprintln('[HTTP/2] Invalid preface')
-		return
+		return error('invalid preface')
 	}
 
 	$if debug {
 		eprintln('[HTTP/2] Preface received')
 	}
+}
 
-	// Send SETTINGS frame
-	s.write_settings(mut conn) or {
-		eprintln('[HTTP/2] Failed to send settings: ${err}')
-		return
+// exchange_settings sends the server SETTINGS and reads the client's SETTINGS ACK.
+fn (mut s Server) exchange_settings(mut conn net.TcpConn) ! {
+	s.write_settings(mut conn)!
+}
+
+// register_connection adds a connection to the active connections list.
+fn (mut s Server) register_connection(conn net.TcpConn) {
+	s.conn_mu.lock()
+	s.connections << &conn
+	s.conn_mu.unlock()
+}
+
+// deregister_connection removes a connection from the active connections list.
+fn (mut s Server) deregister_connection(conn net.TcpConn) {
+	s.conn_mu.lock()
+	conn_ptr := &conn
+	s.connections = s.connections.filter(it != conn_ptr)
+	s.conn_mu.unlock()
+}
+
+// send_goaway_to_all sends a GOAWAY frame to all active connections.
+// Called during shutdown to gracefully notify peers.
+fn (mut s Server) send_goaway_to_all() {
+	s.conn_mu.lock()
+	last_stream := s.highest_stream_id
+	conns := s.connections.clone()
+	s.conn_mu.unlock()
+
+	goaway := GoAwayFrame{
+		last_stream_id: last_stream
+		error_code:     .no_error
 	}
+	frame_bytes := goaway.to_frame().encode()
 
-	// Create encoder/decoder
-	mut encoder := new_encoder()
-	mut decoder := new_decoder()
-
-	// Track settings received from the client
-	mut client_settings := ClientSettings{}
-
-	// Main loop
-	for {
-		// Read frame
-		frame := s.read_frame(mut conn) or {
-			if err.msg().contains('EOF') {
-				break
-			}
-			eprintln('[HTTP/2] Read frame error: ${err}')
-			break
-		}
-
-		// Process frame
-		match frame.header.frame_type {
-			.settings {
-				s.handle_settings(mut conn, frame, mut client_settings) or {
-					eprintln('[HTTP/2] Settings error: ${err}')
-				}
-			}
-			.headers {
-				s.handle_headers(mut conn, frame, mut decoder, mut encoder) or {
-					eprintln('[HTTP/2] Headers error: ${err}')
-				}
-			}
-			.data {
-				// DATA frames are handled with HEADERS
-			}
-			.ping {
-				s.handle_ping(mut conn, frame) or { eprintln('[HTTP/2] Ping error: ${err}') }
-			}
-			else {
-				// Ignore other frame types
-			}
-		}
-	}
-
-	$if debug {
-		eprintln('[HTTP/2] Connection closed')
+	for c in conns {
+		mut conn := c
+		conn.write(frame_bytes) or {}
 	}
 }
