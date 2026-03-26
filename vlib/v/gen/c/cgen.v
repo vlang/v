@@ -6402,15 +6402,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 				resolved_scope_type := g.resolved_scope_var_type(node)
 				mut comptime_type := g.type_resolver.get_type(node)
 				if node.or_expr.kind == .absent && resolved_scope_type != 0
-					&& !resolved_scope_type.has_option_or_result()
-					&& (comptime_type == 0 || comptime_type == ast.void_type
+					&& !resolved_scope_type.has_option_or_result() && (comptime_type == 0
+					|| comptime_type == ast.void_type
 					|| comptime_type.has_option_or_result()
 					|| comptime_type.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(comptime_type)) {
 					comptime_type = resolved_scope_type
 				}
-				prefer_scope_runtime_type := resolved_scope_type != 0
-					&& (!has_resolved_var
+				prefer_scope_runtime_type := resolved_scope_type != 0 && (!has_resolved_var
 					|| (!resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0
 					&& resolved_var.orig_type == ast.no_type))
 				mut runtime_type := if prefer_scope_runtime_type {

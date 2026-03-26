@@ -49,8 +49,8 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 	for param in node.params {
 		param_type := c.recheck_concrete_type(param.typ)
 		if mut param_var := c.fn_scope.find_var(param.name) {
-			if param_var.generic_typ == 0 && (param.typ.has_flag(.generic)
-				|| c.type_has_unresolved_generic_parts(param.typ)) {
+			if param_var.generic_typ == 0
+				&& (param.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(param.typ)) {
 				param_var.generic_typ = param.typ
 			}
 			param_var.typ = param_type

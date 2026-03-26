@@ -9,8 +9,8 @@ import v.util
 fn (g &Gen) match_cond_can_use_directly(cond ast.Expr) bool {
 	return (cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
 		&& (cond !is ast.Ident || (cond is ast.Ident && cond.or_expr.kind == .absent)))
-		|| (cond is ast.SelectorExpr && cond.or_block.kind == .absent
-		&& (cond.expr !is ast.CallExpr || (cond.expr as ast.CallExpr).or_block.kind == .absent))
+		|| (cond is ast.SelectorExpr && cond.or_block.kind == .absent && (cond.expr !is ast.CallExpr
+		|| (cond.expr as ast.CallExpr).or_block.kind == .absent))
 }
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {

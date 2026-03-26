@@ -290,7 +290,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								} else {
 									c.table.type_to_str(clear_type)
 								}
-								old_type_str := if w.typ == 0 { '<none>' } else { c.table.type_to_str(w.typ) }
+								old_type_str := if w.typ == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(w.typ)
+								}
 								eprintln('if_guard scope name=${var.name} expr_type=${expr_type_str} clear=${clear_type_str} old=${old_type_str} file=${c.file.path}')
 							}
 						}

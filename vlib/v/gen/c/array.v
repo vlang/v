@@ -1198,7 +1198,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 	left_elem_type_str := g.styp(left_elem_type)
 	mut resolved_return_type := g.resolve_return_type(node)
-	if g.table.final_sym(g.unwrap_generic(resolved_return_type)).kind !in [.array_fixed, .array] {
+	if g.table.final_sym(g.unwrap_generic(resolved_return_type)).kind !in [
+		.array_fixed,
+		.array,
+	] {
 		resolved_return_type = resolved_left_type
 	}
 	return_sym := g.table.final_sym(g.unwrap_generic(resolved_return_type))
@@ -1228,8 +1231,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, left_elem_type, left_elem_type_str, past.tmp_var, i, left_is_array,
-		false)
+	g.write_prepared_var(var_name, left_elem_type, left_elem_type_str, past.tmp_var, i,
+		left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {

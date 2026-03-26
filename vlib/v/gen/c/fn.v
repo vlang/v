@@ -2049,8 +2049,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 		resolved_rec_type := g.resolved_expr_type(left_node, node.left_type)
 		if resolved_rec_type != 0 && resolved_rec_type != ast.void_type {
-			g.gen_expr_to_string(left_node,
-				g.unwrap_generic(g.recheck_concrete_type(resolved_rec_type)))
+			g.gen_expr_to_string(left_node, g.unwrap_generic(g.recheck_concrete_type(resolved_rec_type)))
 			return true
 		}
 	}
@@ -3927,8 +3926,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					raw_name_concrete_types.clone()
 				} else if placeholder_raw_name_concrete_types.len > 0 {
 					placeholder_raw_name_concrete_types
-				} else if recovered_concrete_types.len > 0
-					&& (concrete_types.len == 0 || concrete_types.any(it == ast.void_type
+				} else if recovered_concrete_types.len > 0 && (concrete_types.len == 0
+					|| concrete_types.any(it == ast.void_type
 					|| it.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(it))) {
 					recovered_concrete_types.clone()

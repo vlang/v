@@ -20,7 +20,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
 		$if trace_ci_fixes ? {
 			if c.file.path.contains('/eventbus/') {
-				eprintln('array_init file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } { '<none>' } else { c.table.cur_fn.name }} active=${c.has_active_generic_recheck_context()} expected=${c.table.type_to_str(c.expected_type)} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} empty=${is_untyped_empty_array}')
+				eprintln('array_init file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } {
+					'<none>'
+				} else {
+					c.table.cur_fn.name
+				}} active=${c.has_active_generic_recheck_context()} expected=${c.table.type_to_str(c.expected_type)} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} empty=${is_untyped_empty_array}')
 			}
 		}
 		if node.generic_typ == 0 && node.typ != ast.void_type
@@ -75,8 +79,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		node.expr_types = []
 		node.init_type = ast.void_type
 		node.has_callexpr = false
-		if node.typ == ast.void_type || node.elem_type == ast.void_type
-			|| is_inferred_array_literal
+		if node.typ == ast.void_type || node.elem_type == ast.void_type || is_inferred_array_literal
 			|| node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)
 			|| node.elem_type.has_flag(.generic)
 			|| c.type_has_unresolved_generic_parts(node.elem_type) {

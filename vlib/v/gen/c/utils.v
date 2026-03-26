@@ -180,7 +180,11 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 						} else {
 							g.table.type_to_str(refreshed_expr_type)
 						}
-						orig_name := if v.orig_type == 0 { '0' } else { g.table.type_to_str(v.orig_type) }
+						orig_name := if v.orig_type == 0 {
+							'0'
+						} else {
+							g.table.type_to_str(v.orig_type)
+						}
 						eprintln('resolved_scope_var_type refresh ${expr.name}: current=${current_name} expr=${typeof(v.expr).name} resolved=${resolved_name} unwrapped=${v.is_unwrapped} orig=${orig_name}')
 					}
 				}
@@ -205,8 +209,8 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 				}
 				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !parent_v.is_arg
 					&& parent_v.expr !is ast.EmptyExpr && parent_v.pos.pos > 0
-					&& parent_v.pos.pos < expr.pos.pos
-					&& !(parent_v.expr is ast.Ident && parent_v.expr.name == expr.name) {
+					&& parent_v.pos.pos < expr.pos.pos && !(parent_v.expr is ast.Ident
+					&& parent_v.expr.name == expr.name) {
 					resolved_parent_expr_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
 					if resolved_parent_expr_type != 0 {
 						parent_v.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_parent_expr_type))
@@ -273,7 +277,11 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 				if g.file.path.contains('comptime_for_in_options_struct_test.v')
 					&& expr.name in ['v', 'w'] {
 					typ_name := if v.typ == 0 { '0' } else { g.table.type_to_str(v.typ) }
-					orig_name := if v.orig_type == 0 { '0' } else { g.table.type_to_str(v.orig_type) }
+					orig_name := if v.orig_type == 0 {
+						'0'
+					} else {
+						g.table.type_to_str(v.orig_type)
+					}
 					refreshed_name := if refreshed_expr_type == 0 {
 						'0'
 					} else {

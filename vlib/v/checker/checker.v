@@ -240,7 +240,11 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 	}
 	$if trace_ci_fixes ? {
 		if c.file.path.contains('/datatypes/linked_list.v') {
-			generic_typ_str := if v.generic_typ == 0 { '<none>' } else { c.table.type_to_str(v.generic_typ) }
+			generic_typ_str := if v.generic_typ == 0 {
+				'<none>'
+			} else {
+				c.table.type_to_str(v.generic_typ)
+			}
 			eprintln('refresh_var fn=${c.table.cur_fn.name} var=${v.name} typ=${c.table.type_to_str(v.typ)} gtyp=${generic_typ_str} expr=${v.expr}')
 		}
 	}
@@ -5241,8 +5245,16 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 								}
 								else {}
 							}
-							obj_type_str := if obj.typ == 0 { '<none>' } else { c.table.type_to_str(obj.typ) }
-							resolved_type_str := if typ == 0 { '<none>' } else { c.table.type_to_str(typ) }
+							obj_type_str := if obj.typ == 0 {
+								'<none>'
+							} else {
+								c.table.type_to_str(obj.typ)
+							}
+							resolved_type_str := if typ == 0 {
+								'<none>'
+							} else {
+								c.table.type_to_str(typ)
+							}
 							eprintln('ident name=${node.name} obj.typ=${obj_type_str} resolved=${resolved_type_str} expr_kind=${expr_kind} expr_type=${expr_type_str} smart=${obj.smartcasts.map(c.table.type_to_str(it))} file=${c.file.path}')
 						}
 					}
