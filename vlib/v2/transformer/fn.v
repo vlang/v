@@ -956,15 +956,6 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
-	if (t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic')
-		&& expr.lhs.name() != 'snprintf' && expr.lhs.name() != 'memdup'
-		&& expr.lhs.name() != 'malloc' {
-		is_ga := expr.lhs is ast.GenericArgs
-		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
-		is_sel := expr.lhs is ast.SelectorExpr
-		is_ident := expr.lhs is ast.Ident
-		eprintln('[DBG transform_call_expr ENTRY] fn=${t.cur_fn_name_str} lhs_name=${expr.lhs.name()} is_ga=${is_ga} is_gaoi=${is_gaoi} is_sel=${is_sel} is_ident=${is_ident} args.len=${expr.args.len}')
-	}
 	// Resolve $d('key', default) comptime define calls to their default value.
 	// $d reads from compile-time environment; we just use the default.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
@@ -1526,12 +1517,6 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Default: transform arguments and lhs recursively
 	// This is important for smart cast propagation through method chains
 	// e.g., stmt.name.replace() when stmt is smartcast
-	if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
-		lhs_name := expr.lhs.name()
-		is_ga := expr.lhs is ast.GenericArgs
-		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
-		eprintln('[DBG transform_call default] fn=${t.cur_fn_name_str} lhs_name=${lhs_name} is_ga=${is_ga} is_gaoi=${is_gaoi}')
-	}
 	call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 	// Look up function parameter types for sumtype re-wrapping
 	fn_info := t.lookup_call_fn_info(expr.lhs)
