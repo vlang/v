@@ -3,6 +3,11 @@ module v3
 // HTTP/3 client, types, and framing (RFC 9114).
 import net.quic
 
+// max_data_frame_size is the maximum payload size for a single DATA frame (16KB),
+// matching the HTTP/2 default. Bodies larger than this are split into multiple frames
+// to respect QUIC stream flow control limits (RFC 9114 §4.1).
+pub const max_data_frame_size = 16384
+
 // FrameType represents HTTP/3 frame types.
 pub enum FrameType as u64 {
 	data         = 0x0
@@ -79,16 +84,17 @@ pub:
 // Client represents an HTTP/3 client.
 pub struct Client {
 mut:
-	address           string
-	quic_conn         quic.Connection
-	settings          Settings
-	next_stream_id    u64
-	qpack_encoder     Encoder
-	qpack_decoder     Decoder
-	session_cache     quic.SessionCache
-	zero_rtt_enabled  bool = true
-	migration_enabled bool = true
-	uni               UniStreamManager
+	address                    string
+	quic_conn                  quic.Connection
+	settings                   Settings
+	next_stream_id             u64
+	qpack_encoder              Encoder
+	qpack_decoder              Decoder
+	session_cache              quic.SessionCache
+	zero_rtt_enabled           bool = true
+	migration_enabled          bool = true
+	uni                        UniStreamManager
+	last_peer_goaway_stream_id u64
 }
 
 // new_client creates an HTTP/3 client and establishes a QUIC connection.
@@ -114,7 +120,7 @@ To enable HTTP/3:
 - Complete QUIC handshake and packet handling')
 	}
 
-	return Client{
+	mut c := Client{
 		address:           address
 		quic_conn:         quic_conn
 		qpack_encoder:     new_qpack_encoder(4096, 100)
@@ -123,6 +129,21 @@ To enable HTTP/3:
 		zero_rtt_enabled:  true
 		migration_enabled: true
 	}
+
+	c.uni.open_streams(mut c.quic_conn) or {
+		$if debug {
+			eprintln('warning: failed to open unidirectional streams: ${err}')
+		}
+	}
+
+	// Send initial SETTINGS on the control stream
+	c.send_settings() or {
+		$if debug {
+			eprintln('warning: failed to send initial SETTINGS: ${err}')
+		}
+	}
+
+	return c
 }
 
 // request sends an HTTP/3 request and returns the response.
@@ -130,6 +151,31 @@ pub fn (mut c Client) request(req Request) !Response {
 	stream_id := c.next_stream_id
 	c.next_stream_id += 4
 
+	if c.last_peer_goaway_stream_id > 0 && stream_id > c.last_peer_goaway_stream_id {
+		return error('connection going away, no new streams')
+	}
+
+	encoded_headers := c.encode_request_headers(req)
+	c.flush_encoder_instructions()
+
+	headers_frame := Frame{
+		frame_type: .headers
+		length:     u64(encoded_headers.len)
+		payload:    encoded_headers
+	}
+
+	c.send_frame(stream_id, headers_frame)!
+
+	data_frames := create_data_frames(req.data)
+	for frame in data_frames {
+		c.send_frame(stream_id, frame)!
+	}
+
+	return c.read_response(stream_id)!
+}
+
+// encode_request_headers builds and QPACK-encodes headers for the given request.
+fn (mut c Client) encode_request_headers(req Request) []u8 {
 	mut headers := []HeaderField{cap: 4 + req.headers.len}
 	headers << HeaderField{
 		name:  ':method'
@@ -155,27 +201,15 @@ pub fn (mut c Client) request(req Request) !Response {
 		}
 	}
 
-	encoded_headers := c.qpack_encoder.encode(headers)
+	return c.qpack_encoder.encode(headers)
+}
 
-	headers_frame := Frame{
-		frame_type: .headers
-		length:     u64(encoded_headers.len)
-		payload:    encoded_headers
+// flush_encoder_instructions sends any pending QPACK encoder instructions on the encoder stream.
+fn (mut c Client) flush_encoder_instructions() {
+	instructions := c.qpack_encoder.pending_instructions()
+	if instructions.len > 0 && c.uni.encoder_stream_id >= 0 {
+		c.quic_conn.send(u64(c.uni.encoder_stream_id), instructions) or {}
 	}
-
-	c.send_frame(stream_id, headers_frame)!
-
-	if req.data.len > 0 {
-		data_frame := Frame{
-			frame_type: .data
-			length:     u64(req.data.len)
-			payload:    req.data.bytes()
-		}
-
-		c.send_frame(stream_id, data_frame)!
-	}
-
-	return c.read_response(stream_id)!
 }
 
 fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
@@ -239,6 +273,10 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 				body << payload
 			}
 			.goaway {
+				if payload.len > 0 {
+					goaway_id, _ := decode_varint(payload)!
+					c.last_peer_goaway_stream_id = goaway_id
+				}
 				break
 			}
 			else {}
@@ -246,6 +284,37 @@ fn (mut c Client) parse_response_frames(data []u8) !([]HeaderField, []u8) {
 	}
 
 	return headers, body
+}
+
+// create_data_frames splits a request body into DATA frames respecting max_data_frame_size.
+// Returns an empty-payload DATA frame when the body is empty to signal stream end.
+fn create_data_frames(data string) []Frame {
+	if data.len == 0 {
+		return [
+			Frame{
+				frame_type: .data
+				length:     0
+				payload:    []u8{}
+			},
+		]
+	}
+	mut frames := []Frame{cap: data.len / max_data_frame_size + 1}
+	mut offset := 0
+	for offset < data.len {
+		end := if offset + max_data_frame_size > data.len {
+			data.len
+		} else {
+			offset + max_data_frame_size
+		}
+		chunk := data[offset..end].bytes()
+		frames << Frame{
+			frame_type: .data
+			length:     u64(chunk.len)
+			payload:    chunk
+		}
+		offset = end
+	}
+	return frames
 }
 
 // close shuts down the HTTP/3 client and QUIC connection.
@@ -256,14 +325,12 @@ pub fn (mut c Client) close() {
 
 // send_settings sends an HTTP/3 SETTINGS frame on the control stream.
 pub fn (mut c Client) send_settings() ! {
-	ctrl_id := if c.uni.control_stream_id >= 0 {
-		u64(c.uni.control_stream_id)
-	} else {
-		u64(2)
+	if c.uni.control_stream_id < 0 {
+		return error('control stream not opened')
 	}
+	ctrl_id := u64(c.uni.control_stream_id)
 
 	mut data := []u8{}
-	data << encode_varint(u64(0x00))!
 	data << encode_varint(u64(FrameType.settings))!
 	data << encode_varint(u64(0))!
 
@@ -272,11 +339,11 @@ pub fn (mut c Client) send_settings() ! {
 
 // send_goaway sends a GOAWAY frame on the control stream.
 pub fn (mut c Client) send_goaway(stream_id u64) ! {
-	ctrl_id := if c.uni.control_stream_id >= 0 {
-		u64(c.uni.control_stream_id)
-	} else {
-		u64(2)
+	if c.uni.control_stream_id < 0 {
+		return error('control stream not opened')
 	}
+	ctrl_id := u64(c.uni.control_stream_id)
+
 	payload := encode_varint(stream_id)!
 
 	mut data := []u8{}

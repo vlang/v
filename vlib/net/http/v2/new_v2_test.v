@@ -95,3 +95,63 @@ fn test_frame_serialization() {
 
 	println('Frame test passed')
 }
+
+fn test_client_max_concurrent_streams_check() {
+	mut conn := Connection{}
+	conn.remote_settings.max_concurrent_streams = 2
+
+	// No streams yet
+	assert conn.active_stream_count() == 0
+
+	// Add one stream — below limit
+	conn.streams[u32(1)] = &Stream{
+		id:    1
+		state: .open
+	}
+	assert conn.active_stream_count() == 1
+	assert conn.active_stream_count() < conn.remote_settings.max_concurrent_streams
+
+	// Add second stream — at limit
+	conn.streams[u32(3)] = &Stream{
+		id:    3
+		state: .open
+	}
+	assert conn.active_stream_count() == 2
+	assert conn.active_stream_count() >= conn.remote_settings.max_concurrent_streams
+
+	// Remove a stream — below limit again
+	conn.streams.delete(u32(1))
+	assert conn.active_stream_count() == 1
+	assert conn.active_stream_count() < conn.remote_settings.max_concurrent_streams
+
+	// Verify unlimited when max is 0
+	conn.remote_settings.max_concurrent_streams = 0
+	conn.streams[u32(5)] = &Stream{
+		id:    5
+		state: .open
+	}
+	conn.streams[u32(7)] = &Stream{
+		id:    7
+		state: .open
+	}
+	// With max=0, the check `count >= max && max > 0` should never trigger
+	is_blocked := conn.active_stream_count() >= conn.remote_settings.max_concurrent_streams
+		&& conn.remote_settings.max_concurrent_streams > 0
+	assert !is_blocked, 'max_concurrent_streams=0 should mean unlimited'
+}
+
+fn test_client_max_concurrent_streams_error() {
+	mut conn := Connection{}
+	conn.remote_settings.max_concurrent_streams = 1
+	conn.streams[u32(1)] = &Stream{
+		id:    1
+		state: .open
+	}
+
+	// Verify enforce function returns error at limit
+	enforce_max_concurrent_streams(&conn) or {
+		assert err.msg() == 'max concurrent streams exceeded'
+		return
+	}
+	assert false, 'expected error when at max concurrent streams limit'
+}

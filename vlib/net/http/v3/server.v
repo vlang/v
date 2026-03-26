@@ -43,22 +43,24 @@ mut:
 	udp_socket  net.UdpConn
 	connections map[string]&ServerConnection
 	running     bool
+	mu          sync.Mutex
 }
 
 struct ServerConnection {
 mut:
-	quic_conn             quic.Connection
-	crypto_ctx            quic.CryptoContext
-	streams               map[u64]&ServerStream
-	settings              Settings
-	remote_addr           string
-	next_client_stream_id u64
-	rx_packet_number      u64
-	tx_packet_number      u64
-	mu                    sync.Mutex
-	encoder               Encoder
-	decoder               Decoder
-	uni                   UniStreamManager
+	quic_conn                  quic.Connection
+	crypto_ctx                 quic.CryptoContext
+	streams                    map[u64]&ServerStream
+	settings                   Settings
+	remote_addr                string
+	next_client_stream_id      u64
+	rx_packet_number           u64
+	tx_packet_number           u64
+	mu                         sync.Mutex
+	encoder                    Encoder
+	decoder                    Decoder
+	uni                        UniStreamManager
+	last_peer_goaway_stream_id u64
 }
 
 struct ServerStream {
@@ -110,14 +112,17 @@ pub fn (mut s Server) listen_and_serve() ! {
 		}
 
 		addr_str := '${addr.str()}'
+		s.mu.lock()
 		mut conn := s.connections[addr_str] or {
 			new_conn := s.create_connection(addr_str) or {
 				eprintln('Failed to create connection: ${err}')
+				s.mu.unlock()
 				continue
 			}
 			s.connections[addr_str] = new_conn
 			new_conn
 		}
+		s.mu.unlock()
 
 		packet_data := buf[..n].clone()
 		spawn s.handle_packet(mut conn, packet_data)
@@ -128,9 +133,11 @@ pub fn (mut s Server) listen_and_serve() ! {
 pub fn (mut s Server) stop() {
 	s.running = false
 
+	s.mu.lock()
 	for _, mut conn in s.connections {
 		conn.quic_conn.close()
 	}
+	s.mu.unlock()
 
 	s.udp_socket.close() or {}
 }
@@ -160,19 +167,9 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 
 	server_secret, client_secret := quic.derive_initial_secrets(quic_conn.conn_id, true) or {
 		eprintln('Failed to derive initial secrets: ${err}')
-		return &ServerConnection{
-			quic_conn:             quic_conn
-			crypto_ctx:            crypto_ctx
-			remote_addr:           remote_addr
-			next_client_stream_id: 0
-			encoder:               new_qpack_encoder(4096, 100)
-			decoder:               new_qpack_decoder(4096, 100)
-			settings:              Settings{
-				max_field_section_size:   8192
-				qpack_max_table_capacity: 4096
-				qpack_blocked_streams:    100
-			}
-		}
+		mut conn := new_server_connection(quic_conn, crypto_ctx, remote_addr)
+		open_server_uni_streams(mut conn)
+		return conn
 	}
 
 	crypto_ctx.tx_secret = server_secret
@@ -180,6 +177,13 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 
 	crypto_ctx.derive_traffic_keys() or { eprintln('Failed to derive traffic keys: ${err}') }
 
+	mut conn := new_server_connection(quic_conn, crypto_ctx, remote_addr)
+	open_server_uni_streams(mut conn)
+	return conn
+}
+
+// new_server_connection creates a ServerConnection with default QPACK and settings.
+fn new_server_connection(quic_conn quic.Connection, crypto_ctx quic.CryptoContext, remote_addr string) &ServerConnection {
 	return &ServerConnection{
 		quic_conn:             quic_conn
 		crypto_ctx:            crypto_ctx
@@ -193,6 +197,44 @@ fn (mut s Server) create_connection(remote_addr string) !&ServerConnection {
 			qpack_blocked_streams:    100
 		}
 	}
+}
+
+// open_server_uni_streams opens all 3 unidirectional streams (control, encoder, decoder)
+// and sends initial SETTINGS on the control stream.
+fn open_server_uni_streams(mut conn ServerConnection) {
+	conn.uni.open_streams(mut conn.quic_conn) or {
+		$if debug {
+			eprintln('warning: failed to open server unidirectional streams: ${err}')
+		}
+		return
+	}
+	send_server_settings(mut conn) or {
+		$if debug {
+			eprintln('warning: failed to send server SETTINGS: ${err}')
+		}
+	}
+}
+
+fn send_server_settings(mut conn ServerConnection) ! {
+	if conn.uni.control_stream_id < 0 {
+		return error('server control stream not opened')
+	}
+	ctrl_id := u64(conn.uni.control_stream_id)
+
+	mut payload := []u8{}
+	payload << encode_varint(u64(0x06))!
+	payload << encode_varint(conn.settings.max_field_section_size)!
+	payload << encode_varint(u64(0x01))!
+	payload << encode_varint(conn.settings.qpack_max_table_capacity)!
+	payload << encode_varint(u64(0x07))!
+	payload << encode_varint(conn.settings.qpack_blocked_streams)!
+
+	mut data := []u8{}
+	data << encode_varint(u64(FrameType.settings))!
+	data << encode_varint(u64(payload.len))!
+	data << payload
+
+	conn.quic_conn.send(ctrl_id, data)!
 }
 
 fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
@@ -281,6 +323,18 @@ fn (mut s Server) dispatch_server_frame(mut conn ServerConnection, frame_type Fr
 		.settings {
 			s.handle_settings_frame(mut conn, payload) or {
 				eprintln('Failed to handle SETTINGS frame: ${err}')
+			}
+		}
+		.goaway {
+			if payload.len > 0 {
+				goaway_id, _ := decode_varint(payload) or {
+					eprintln('Failed to decode GOAWAY stream ID: ${err}')
+					return
+				}
+				conn.last_peer_goaway_stream_id = goaway_id
+				$if debug {
+					eprintln('Received GOAWAY with stream ID ${goaway_id}')
+				}
 			}
 		}
 		else {}

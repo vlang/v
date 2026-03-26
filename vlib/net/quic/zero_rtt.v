@@ -111,6 +111,7 @@ pub mut:
 	ticket         ?SessionTicket
 }
 
+// new_zero_rtt_connection creates a ZeroRTTConnection from the given config.
 pub fn new_zero_rtt_connection(config ZeroRTTConfig) ZeroRTTConnection {
 	return ZeroRTTConnection{
 		state:          if config.enabled { ZeroRTTState.attempting } else { ZeroRTTState.disabled }
@@ -170,6 +171,7 @@ mut:
 	window      time.Duration = 10 * time.second
 }
 
+// new_anti_replay_cache creates a new AntiReplayCache with default settings.
 pub fn new_anti_replay_cache() AntiReplayCache {
 	return AntiReplayCache{
 		seen_tokens: map[string]time.Time{}
@@ -233,19 +235,23 @@ pub mut:
 	replay_blocked u64
 }
 
+// record_attempt increments the 0-RTT connection attempt counter.
 pub fn (mut stats ZeroRTTStats) record_attempt() {
 	stats.attempts++
 }
 
+// record_accepted records a successful 0-RTT connection and its byte count.
 pub fn (mut stats ZeroRTTStats) record_accepted(bytes u32) {
 	stats.accepted++
 	stats.bytes_sent += bytes
 }
 
+// record_rejected increments the 0-RTT rejection counter.
 pub fn (mut stats ZeroRTTStats) record_rejected() {
 	stats.rejected++
 }
 
+// record_replay_blocked increments the replay attack blocked counter.
 pub fn (mut stats ZeroRTTStats) record_replay_blocked() {
 	stats.replay_blocked++
 }

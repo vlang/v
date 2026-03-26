@@ -530,6 +530,26 @@ fn test_validate_setting_value_initial_window_size_valid() {
 	}
 }
 
+fn test_validate_setting_value_enable_push_invalid() {
+	validate_setting_value(.enable_push, 2) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		assert err.msg().contains('ENABLE_PUSH')
+		return
+	}
+	assert false, 'ENABLE_PUSH value 2 should be rejected'
+}
+
+fn test_validate_setting_value_enable_push_valid() {
+	validate_setting_value(.enable_push, 0) or {
+		assert false, 'ENABLE_PUSH 0 should be valid: ${err}'
+		return
+	}
+	validate_setting_value(.enable_push, 1) or {
+		assert false, 'ENABLE_PUSH 1 should be valid: ${err}'
+		return
+	}
+}
+
 fn test_rst_stream_frame_from_frame() {
 	payload := [u8(0x00), 0x00, 0x00, 0x08]
 	original := Frame{
@@ -548,4 +568,254 @@ fn test_rst_stream_frame_from_frame() {
 	}
 	assert rf.stream_id == 3
 	assert rf.error_code == .cancel
+}
+
+// --- Fix 3: Padding support tests ---
+
+fn test_dataframe_padding_strip() {
+	// DATA frame with PADDED flag: [pad_length=3] [actual data "Hi"] [3 bytes padding]
+	mut payload := []u8{}
+	payload << u8(3) // pad_length
+	payload << 'Hi'.bytes() // actual data
+	payload << []u8{len: 3, init: 0} // padding
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .data
+			flags:      u8(FrameFlags.padded) | u8(FrameFlags.end_stream)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	df := DataFrame.from_frame(frame) or {
+		assert false, 'DataFrame.from_frame failed: ${err}'
+		return
+	}
+	assert df.padded == true
+	assert df.pad_length == 3
+	assert df.data == 'Hi'.bytes()
+	assert df.end_stream == true
+}
+
+fn test_dataframe_padding_invalid() {
+	// pad_length (200) >= payload.len (5) → PROTOCOL_ERROR
+	mut payload := []u8{}
+	payload << u8(200) // pad_length exceeds remaining
+	payload << [u8(1), 2, 3, 4]
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .data
+			flags:      u8(FrameFlags.padded)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	DataFrame.from_frame(frame) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		return
+	}
+	assert false, 'Should have rejected invalid padding'
+}
+
+fn test_headersframe_padding_strip() {
+	// HEADERS frame with PADDED flag: [pad_length=2] [header block "AB"] [2 bytes padding]
+	mut payload := []u8{}
+	payload << u8(2) // pad_length
+	payload << [u8(0x41), 0x42] // header block fragment "AB"
+	payload << []u8{len: 2, init: 0} // padding
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .headers
+			flags:      u8(FrameFlags.padded) | u8(FrameFlags.end_headers)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	hf := HeadersFrame.from_frame(frame) or {
+		assert false, 'HeadersFrame.from_frame failed: ${err}'
+		return
+	}
+	assert hf.padded == true
+	assert hf.pad_length == 2
+	assert hf.headers == [u8(0x41), 0x42]
+}
+
+fn test_headersframe_padding_priority_and_padding() {
+	// HEADERS with both PADDED + PRIORITY flags:
+	// [pad_length=1] [E+stream_dep(4 bytes)] [weight(1 byte)] [header block "X"] [1 byte padding]
+	mut payload := []u8{}
+	payload << u8(1) // pad_length
+	// priority: exclusive=true, dep=5, weight=10
+	payload << u8(0x80) // exclusive bit + stream_dep high byte
+	payload << u8(0x00)
+	payload << u8(0x00)
+	payload << u8(0x05) // stream_dep = 5
+	payload << u8(10) // weight
+	payload << [u8(0x58)] // header block fragment "X"
+	payload << u8(0) // padding
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .headers
+			flags:      u8(FrameFlags.padded) | u8(FrameFlags.priority_flag) | u8(FrameFlags.end_headers)
+			stream_id:  3
+		}
+		payload: payload
+	}
+
+	hf := HeadersFrame.from_frame(frame) or {
+		assert false, 'HeadersFrame.from_frame failed: ${err}'
+		return
+	}
+	assert hf.padded == true
+	assert hf.priority == true
+	assert hf.pad_length == 1
+	assert hf.exclusive == true
+	assert hf.stream_dep == 5
+	assert hf.weight == 10
+	assert hf.headers == [u8(0x58)]
+}
+
+// --- Fix 2: GOAWAY frame construction test ---
+
+fn test_goaway_frame_construction_with_error_code() {
+	gf := GoAwayFrame{
+		last_stream_id: 7
+		error_code:     .protocol_error
+		debug_data:     'bad frame'.bytes()
+	}
+	frame := gf.to_frame()
+	assert frame.header.frame_type == .goaway
+	assert frame.header.stream_id == 0
+
+	// Round-trip: parse it back
+	parsed := GoAwayFrame.from_frame(frame) or {
+		assert false, 'GoAwayFrame.from_frame failed: ${err}'
+		return
+	}
+	assert parsed.last_stream_id == 7
+	assert parsed.error_code == .protocol_error
+	assert parsed.debug_data == 'bad frame'.bytes()
+}
+
+fn test_goaway_frame_enhance_your_calm() {
+	gf := GoAwayFrame{
+		last_stream_id: 0
+		error_code:     .enhance_your_calm
+		debug_data:     'too many continuations'.bytes()
+	}
+	frame := gf.to_frame()
+	parsed := GoAwayFrame.from_frame(frame) or {
+		assert false, 'GoAwayFrame.from_frame failed: ${err}'
+		return
+	}
+	assert parsed.error_code == .enhance_your_calm
+	assert parsed.debug_data == 'too many continuations'.bytes()
+}
+
+// --- Fix 1: CONTINUATION flood protection constants test ---
+
+fn test_continuation_flood_constants() {
+	// Verify the module-level constants exist and have expected values
+	assert max_continuation_frames == 10
+	assert max_header_block_size == 65536
+}
+
+fn test_dataframe_no_padding_unchanged() {
+	// Non-padded DATA frame should work exactly as before
+	payload := 'Hello'.bytes()
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .data
+			flags:      u8(FrameFlags.end_stream)
+			stream_id:  5
+		}
+		payload: payload
+	}
+
+	df := DataFrame.from_frame(frame) or {
+		assert false, 'DataFrame.from_frame failed: ${err}'
+		return
+	}
+	assert df.padded == false
+	assert df.data == 'Hello'.bytes()
+	assert df.end_stream == true
+}
+
+fn test_headersframe_no_padding_unchanged() {
+	// Non-padded HEADERS frame should work exactly as before
+	payload := [u8(0x82), 0x86]
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .headers
+			flags:      u8(FrameFlags.end_headers)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	hf := HeadersFrame.from_frame(frame) or {
+		assert false, 'HeadersFrame.from_frame failed: ${err}'
+		return
+	}
+	assert hf.padded == false
+	assert hf.headers == [u8(0x82), 0x86]
+}
+
+fn test_dataframe_padding_zero_length() {
+	// DATA frame with PADDED flag but pad_length=0 → all payload is data
+	mut payload := []u8{}
+	payload << u8(0) // pad_length = 0
+	payload << 'Data'.bytes()
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .data
+			flags:      u8(FrameFlags.padded)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	df := DataFrame.from_frame(frame) or {
+		assert false, 'DataFrame.from_frame failed: ${err}'
+		return
+	}
+	assert df.pad_length == 0
+	assert df.data == 'Data'.bytes()
+}
+
+fn test_headersframe_padding_invalid() {
+	// HEADERS frame with pad_length exceeding payload → PROTOCOL_ERROR
+	mut payload := []u8{}
+	payload << u8(100) // pad_length exceeds remaining
+	payload << u8(0x82)
+
+	frame := Frame{
+		header:  FrameHeader{
+			length:     u32(payload.len)
+			frame_type: .headers
+			flags:      u8(FrameFlags.padded) | u8(FrameFlags.end_headers)
+			stream_id:  1
+		}
+		payload: payload
+	}
+
+	HeadersFrame.from_frame(frame) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		return
+	}
+	assert false, 'Should have rejected invalid HEADERS padding'
 }

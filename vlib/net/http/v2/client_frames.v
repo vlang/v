@@ -15,6 +15,8 @@ fn (mut c Client) handle_response_frame(frame Frame, mut stream Stream, stream_i
 		}
 		.settings {
 			if !frame.header.has_flag(.ack) {
+				pairs := parse_settings_payload(frame.payload)!
+				c.conn.apply_remote_settings(pairs)!
 				c.conn.write_settings_ack()!
 			}
 		}
@@ -35,7 +37,9 @@ fn (mut c Client) handle_response_frame(frame Frame, mut stream Stream, stream_i
 			}
 		}
 		.push_promise {
-			return error('received PUSH_PROMISE but push is disabled (RFC 7540 §8.2)')
+			// Per RFC 7540 §8.2: Client sends ENABLE_PUSH=0, server MUST NOT send PUSH_PROMISE.
+			// Server push is intentionally not implemented; receiving PUSH_PROMISE is a protocol violation.
+			return error('PROTOCOL_ERROR: received PUSH_PROMISE but ENABLE_PUSH is disabled (RFC 7540 §8.2)')
 		}
 		else {}
 	}
@@ -67,12 +71,21 @@ fn (mut c Client) handle_continuation_frame(frame Frame, mut stream Stream, stre
 		return
 	}
 
+	stream.continuation_count++
+	if stream.continuation_count > max_continuation_frames {
+		return error('ENHANCE_YOUR_CALM: exceeded ${max_continuation_frames} CONTINUATION frames')
+	}
+	if stream.raw_header_block.len + frame.payload.len > max_header_block_size {
+		return error('ENHANCE_YOUR_CALM: header block size exceeds ${max_header_block_size} bytes')
+	}
+
 	stream.raw_header_block << frame.payload
 
 	if frame.header.has_flag(.end_headers) {
 		headers := c.conn.decoder.decode(stream.raw_header_block)!
 		stream.headers << headers
 		stream.raw_header_block = []u8{}
+		stream.continuation_count = 0
 		stream.end_headers = true
 	}
 }

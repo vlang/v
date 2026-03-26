@@ -2,64 +2,91 @@ module v2
 
 // Frame dispatch loop and request handling for HTTP/2 server connections.
 
+// LoopState holds mutable state for the server frame processing loop.
+struct LoopState {
+mut:
+	decoder             Decoder
+	client_settings     ClientSettings
+	streams             map[u32]ServerStreamState
+	highest_stream_id   u32
+	conn_bytes_received u32
+	continuation_state  ContinuationState
+}
+
 fn (mut s Server) run_frame_loop(mut conn ServerConn, mut ctx ConnContext) u32 {
-	mut decoder := new_decoder()
-	mut client_settings := ClientSettings{}
-	mut streams := map[u32]ServerStreamState{}
-	mut highest_stream_id := u32(0)
-	mut conn_bytes_received := u32(0)
+	mut state := LoopState{
+		decoder: new_decoder()
+	}
 
 	for {
 		frame := s.read_frame(mut conn) or {
 			if err.msg().contains('EOF') {
 				break
 			}
-			eprintln('[HTTP/2] Read frame error: ${err}')
+			send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+				'read frame error: ${err}') or {}
 			break
 		}
 
-		match frame.header.frame_type {
-			.settings {
-				s.handle_settings(mut conn, frame, mut client_settings, mut ctx) or {
-					eprintln('[HTTP/2] Settings error: ${err}')
-				}
-			}
-			.headers {
-				stream_id := frame.header.stream_id
-				if stream_id > 0 && stream_id > highest_stream_id {
-					highest_stream_id = stream_id
-				}
-				s.handle_headers_in_loop(frame, mut streams, mut ctx, mut conn, mut decoder,
-					client_settings)
-			}
-			.data {
-				conn_bytes_received = s.handle_data_in_loop(frame, mut streams, mut ctx, mut
-					conn, conn_bytes_received)
-			}
-			.priority {
-				handle_priority(frame)
-			}
-			.ping {
-				s.handle_ping(mut conn, frame) or { eprintln('[HTTP/2] Ping error: ${err}') }
-			}
-			.window_update {
-				handle_window_update_in_loop(frame, mut ctx, mut conn) or {
-					eprintln('[HTTP/2] WINDOW_UPDATE connection error: ${err}')
-					break
-				}
-			}
-			.rst_stream {
-				ctx.flow.remove_stream(frame.header.stream_id)
-				streams.delete(frame.header.stream_id)
-			}
-			else {}
-		}
+		s.dispatch_frame(frame, mut conn, mut ctx, mut state) or { break }
 	}
 
-	return highest_stream_id
+	return state.highest_stream_id
 }
 
-fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, mut decoder Decoder, cs ClientSettings) {
+// dispatch_frame routes a single frame to the appropriate handler.
+fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnContext, mut state LoopState) ! {
+	match frame.header.frame_type {
+		.settings {
+			s.handle_settings(mut conn, frame, mut state.client_settings, mut ctx) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'settings error: ${err}')
+			}
+		}
+		.headers {
+			sid := frame.header.stream_id
+			if sid > 0 && sid > state.highest_stream_id {
+				state.highest_stream_id = sid
+			}
+			s.handle_headers_in_loop(frame, mut state.streams, mut ctx, mut conn, mut
+				state.decoder, state.client_settings, mut state.continuation_state)
+		}
+		.data {
+			state.conn_bytes_received = s.handle_data_in_loop(frame, mut state.streams, mut
+				ctx, mut conn, state.conn_bytes_received)
+		}
+		.continuation {
+			handle_continuation_in_loop(frame, mut state.continuation_state, mut state.streams, mut
+				conn, mut ctx, mut state.decoder, state.highest_stream_id, state.client_settings, mut
+				s)!
+		}
+		.priority {
+			handle_priority(frame)
+		}
+		.ping {
+			s.handle_ping(mut conn, frame) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'ping error: ${err}')
+			}
+		}
+		.window_update {
+			handle_window_update_in_loop(frame, mut ctx, mut conn) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'window_update error: ${err}')
+			}
+		}
+		.rst_stream {
+			ctx.flow.remove_stream(frame.header.stream_id)
+			state.streams.delete(frame.header.stream_id)
+		}
+		else {
+			return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+				'unsupported frame type')
+		}
+	}
+}
+
+fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, mut decoder Decoder, cs ClientSettings, mut cont ContinuationState) {
 	stream_id := frame.header.stream_id
 	if stream_id == 0 {
 		eprintln('[HTTP/2] HEADERS on stream 0 (protocol error)')
@@ -69,20 +96,21 @@ fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]Server
 		send_rst_stream(mut conn, stream_id, .refused_stream) or {}
 		return
 	}
-	decoded := decoder.decode(frame.payload) or {
+	hf := HeadersFrame.from_frame(frame) or {
+		send_goaway_and_close(mut conn, stream_id, .protocol_error, 'invalid HEADERS frame: ${err}') or {}
+		return
+	}
+	if !hf.end_headers {
+		cont.stream_id = stream_id
+		cont.raw_header_block = hf.headers.clone()
+		cont.count = 0
+		return
+	}
+	decoded := decoder.decode(hf.headers) or {
 		eprintln('[HTTP/2] Header decode error: ${err}')
 		return
 	}
-	mut method := ''
-	mut path := ''
-	mut header_map := map[string]string{}
-	for h in decoded {
-		match h.name {
-			':method' { method = h.value }
-			':path' { path = h.value }
-			else { header_map[h.name] = h.value }
-		}
-	}
+	method, path, header_map := extract_pseudo_headers(decoded)
 	streams[stream_id] = ServerStreamState{
 		method:     method
 		path:       path
@@ -150,6 +178,20 @@ fn handle_window_update_in_loop(frame Frame, mut ctx ConnContext, mut conn Serve
 	}
 }
 
+fn extract_pseudo_headers(decoded []HeaderField) (string, string, map[string]string) {
+	mut method_str := ''
+	mut path := ''
+	mut headers := map[string]string{}
+	for h in decoded {
+		match h.name {
+			':method' { method_str = h.value }
+			':path' { path = h.value }
+			else { headers[h.name] = h.value }
+		}
+	}
+	return method_str, path, headers
+}
+
 fn build_request(stream_id u32, stream ServerStreamState) ServerRequest {
 	return ServerRequest{
 		method:    stream.method
@@ -188,4 +230,64 @@ fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mu
 		eprintln('[HTTP/2] Failed to send response: ${err}')
 	}
 	ctx.write_mu.unlock()
+}
+
+// ContinuationState tracks server-side CONTINUATION frame accumulation per stream.
+struct ContinuationState {
+mut:
+	stream_id        u32
+	raw_header_block []u8
+	count            int
+}
+
+fn send_goaway_and_close(mut conn ServerConn, last_stream_id u32, error_code ErrorCode, debug_msg string) ! {
+	goaway := GoAwayFrame{
+		last_stream_id: last_stream_id
+		error_code:     error_code
+		debug_data:     debug_msg.bytes()
+	}
+	frame_bytes := goaway.to_frame().encode()
+	conn.write(frame_bytes) or {}
+	return error('GOAWAY sent: ${debug_msg}')
+}
+
+fn handle_continuation_in_loop(frame Frame, mut cont ContinuationState, mut streams map[u32]ServerStreamState, mut conn ServerConn, mut ctx ConnContext, mut decoder Decoder, highest_stream_id u32, cs ClientSettings, mut s Server) ! {
+	stream_id := frame.header.stream_id
+	if stream_id == 0 {
+		return send_goaway_and_close(mut conn, highest_stream_id, .protocol_error, 'CONTINUATION on stream 0')
+	}
+	cont.count++
+	if cont.count > max_continuation_frames {
+		cont = ContinuationState{}
+		return send_goaway_and_close(mut conn, highest_stream_id, .enhance_your_calm,
+			'CONTINUATION flood')
+	}
+	if cont.raw_header_block.len + frame.payload.len > max_header_block_size {
+		cont = ContinuationState{}
+		return send_goaway_and_close(mut conn, highest_stream_id, .enhance_your_calm,
+			'header block too large')
+	}
+	cont.stream_id = stream_id
+	cont.raw_header_block << frame.payload
+	if !frame.header.has_flag(.end_headers) {
+		return
+	}
+	decoded := decoder.decode(cont.raw_header_block) or {
+		cont = ContinuationState{}
+		send_rst_stream(mut conn, stream_id, .compression_error) or {}
+		return
+	}
+	cont = ContinuationState{}
+	apply_decoded_headers(decoded, stream_id, mut streams, mut ctx, mut conn, cs, mut
+		s)
+}
+
+fn apply_decoded_headers(decoded []HeaderField, stream_id u32, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, cs ClientSettings, mut s Server) {
+	method, path, header_map := extract_pseudo_headers(decoded)
+	streams[stream_id] = ServerStreamState{
+		method:     method
+		path:       path
+		header_map: header_map.clone()
+	}
+	ctx.flow.init_stream(stream_id, cs.initial_window_size)
 }

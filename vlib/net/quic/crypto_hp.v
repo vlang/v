@@ -68,19 +68,12 @@ fn apply_hp_mask(header []u8, mask []u8) ![]u8 {
 	return protected
 }
 
-// extract_and_unprotect_pn removes header protection and extracts the packet number.
-pub fn (ctx CryptoContext) extract_and_unprotect_pn(packet []u8, dcid_len int) !(u64, int, []u8) {
-	if ctx.rx_hp_key.len == 0 {
-		return error('rx_hp_key is empty: header protection keys not derived')
-	}
-	if packet.len == 0 {
-		return error('packet data is empty')
-	}
-
+// compute_pn_offset computes the packet number offset for the given QUIC packet.
+// Returns the byte offset and whether the packet uses a long header.
+fn compute_pn_offset(packet []u8, dcid_len int) !(int, bool) {
 	first_byte := packet[0]
 	is_long := (first_byte & 0x80) != 0
 
-	mut pn_offset := 0
 	if is_long {
 		if packet.len < 6 {
 			return error('long header too short')
@@ -90,10 +83,22 @@ pub fn (ctx CryptoContext) extract_and_unprotect_pn(packet []u8, dcid_len int) !
 			return error('long header too short for DCID')
 		}
 		scid_l := int(packet[6 + dcid_l])
-		pn_offset = 7 + dcid_l + scid_l
-	} else {
-		pn_offset = 1 + dcid_len
+		return 7 + dcid_l + scid_l, true
 	}
+
+	return 1 + dcid_len, false
+}
+
+// extract_and_unprotect_pn removes header protection and extracts the packet number.
+pub fn (ctx CryptoContext) extract_and_unprotect_pn(packet []u8, dcid_len int) !(u64, int, []u8) {
+	if ctx.rx_hp_key.len == 0 {
+		return error('rx_hp_key is empty: header protection keys not derived')
+	}
+	if packet.len == 0 {
+		return error('packet data is empty')
+	}
+
+	pn_offset, is_long := compute_pn_offset(packet, dcid_len)!
 
 	// HP sample: 16 bytes at pn_offset + 4 (RFC 9001 §5.4.2)
 	sample_offset := pn_offset + 4
@@ -105,7 +110,7 @@ pub fn (ctx CryptoContext) extract_and_unprotect_pn(packet []u8, dcid_len int) !
 	// AES-ECB(rx_hp_key, sample) per RFC 9001 §5.4.1
 	mask := aes_ecb_encrypt(ctx.rx_hp_key, sample)!
 
-	mut unprotected_byte0 := first_byte
+	mut unprotected_byte0 := packet[0]
 	if is_long {
 		unprotected_byte0 ^= mask[0] & 0x0f
 	} else {

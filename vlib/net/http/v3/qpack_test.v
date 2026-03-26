@@ -737,6 +737,95 @@ fn test_dynamic_table_eviction_correctness() {
 	assert a4.name == 'e'
 }
 
+fn test_encoder_generates_instructions() {
+	mut encoder := new_qpack_encoder(4096, 100)
+
+	// Encoding headers with a non-static name triggers a dynamic table insert
+	// which should also buffer the corresponding encoder stream instruction.
+	headers := [
+		HeaderField{
+			name:  'x-custom-instr'
+			value: 'some-value'
+		},
+	]
+	_ = encoder.encode(headers)
+
+	instructions := encoder.pending_instructions()
+	assert instructions.len > 0, 'pending_instructions should be non-empty after dynamic table insert'
+}
+
+fn test_encoder_instructions_cleared_after_read() {
+	mut encoder := new_qpack_encoder(4096, 100)
+
+	headers := [
+		HeaderField{
+			name:  'x-clear-test'
+			value: 'value1'
+		},
+	]
+	_ = encoder.encode(headers)
+
+	first := encoder.pending_instructions()
+	assert first.len > 0, 'first call should return instructions'
+
+	second := encoder.pending_instructions()
+	assert second.len == 0, 'second call should return empty after first read'
+}
+
+fn test_decoder_pending_acknowledgments_after_decode() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+	]
+	encoded := encoder.encode(headers)
+
+	_ = decoder.decode(encoded) or {
+		assert false, 'decode failed: ${err}'
+		return
+	}
+
+	ack := decoder.pending_acknowledgments()
+	// After decoding a header block, the decoder should have a section acknowledgment ready
+	// (only if the block referenced the dynamic table, which this static-only case does not).
+	// So for static-only, ack should be empty.
+	assert ack.len == 0, 'static-only decode should produce no ack instructions'
+}
+
+fn test_decoder_pending_acknowledgments_with_dynamic() {
+	mut encoder := new_qpack_encoder(4096, 100)
+	mut decoder := new_qpack_decoder(4096, 100)
+
+	// First encode inserts into dynamic table
+	h := [HeaderField{
+		name:  'x-ack-test'
+		value: 'val1'
+	}]
+	enc1 := encoder.encode(h)
+	_ = decoder.decode(enc1) or {
+		assert false, 'First decode failed: ${err}'
+		return
+	}
+
+	// Second encode references dynamic table (RIC > 0)
+	enc2 := encoder.encode(h)
+	_ = decoder.decode(enc2) or {
+		assert false, 'Second decode failed: ${err}'
+		return
+	}
+
+	ack := decoder.pending_acknowledgments()
+	// With dynamic table reference, decoder should have buffered a section acknowledgment
+	assert ack.len > 0, 'dynamic-table decode should produce ack instructions'
+
+	ack2 := decoder.pending_acknowledgments()
+	assert ack2.len == 0, 'ack should be cleared after first read'
+}
+
 fn test_dynamic_table_wraparound() {
 	mut dt := new_dynamic_table(68)
 

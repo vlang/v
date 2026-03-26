@@ -3,9 +3,13 @@ module v3
 // HTTP/3 unidirectional stream management (RFC 9114 §6.2).
 import net.quic
 
+// control_stream_type identifies the HTTP/3 control stream (RFC 9114 §6.2.1).
 pub const control_stream_type = u64(0x00)
+// push_stream_type identifies the HTTP/3 push stream (RFC 9114 §6.2.2).
 pub const push_stream_type = u64(0x01)
+// qpack_encoder_stream_type identifies the QPACK encoder stream (RFC 9204 §4.2).
 pub const qpack_encoder_stream_type = u64(0x02)
+// qpack_decoder_stream_type identifies the QPACK decoder stream (RFC 9204 §4.2).
 pub const qpack_decoder_stream_type = u64(0x03)
 
 // UniStreamManager tracks unidirectional stream IDs for an HTTP/3 connection.
@@ -72,6 +76,12 @@ pub fn (mut m UniStreamManager) identify_peer_stream(stream_id u64, stream_type 
 // encode_stream_type encodes a stream type as a QUIC varint.
 pub fn encode_stream_type(stream_type u64) ![]u8 {
 	return encode_varint(stream_type)
+}
+
+// encode_stream_type_byte encodes a stream type as a QUIC varint byte sequence.
+// For small values (0x00–0x3F) this produces a single byte.
+pub fn encode_stream_type_byte(stream_type u64) []u8 {
+	return encode_varint(stream_type) or { [u8(stream_type)] }
 }
 
 // has_peer_control_stream returns true if the peer's control stream has been identified.

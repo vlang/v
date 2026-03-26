@@ -117,6 +117,25 @@ fn (mut s Server) process_request(mut conn ServerConnection, stream &ServerStrea
 	s.send_response(mut conn, stream.id, response)!
 }
 
+// assemble_response_frames builds HTTP/3 HEADERS + optional DATA frames from
+// the encoded headers and response body.
+fn assemble_response_frames(encoded_headers []u8, body []u8) ![]u8 {
+	estimated_size := 20 + encoded_headers.len + body.len
+	mut frame_data := []u8{cap: estimated_size}
+
+	frame_data << encode_varint(u64(FrameType.headers))!
+	frame_data << encode_varint(u64(encoded_headers.len))!
+	frame_data << encoded_headers
+
+	if body.len > 0 {
+		frame_data << encode_varint(u64(FrameType.data))!
+		frame_data << encode_varint(u64(body.len))!
+		frame_data << body
+	}
+
+	return frame_data
+}
+
 fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, response ServerResponse) ! {
 	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
 	resp_headers << HeaderField{':status', response.status_code.str()}
@@ -133,18 +152,7 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 	encoded_headers := conn.encoder.encode(resp_headers)
 	conn.mu.unlock()
 
-	estimated_size := 20 + encoded_headers.len + response.body.len
-	mut frame_data := []u8{cap: estimated_size}
-
-	frame_data << encode_varint(u64(FrameType.headers))!
-	frame_data << encode_varint(u64(encoded_headers.len))!
-	frame_data << encoded_headers
-
-	if response.body.len > 0 {
-		frame_data << encode_varint(u64(FrameType.data))!
-		frame_data << encode_varint(u64(response.body.len))!
-		frame_data << response.body
-	}
+	frame_data := assemble_response_frames(encoded_headers, response.body)!
 
 	base_iv := if conn.crypto_ctx.tx_iv.len == 12 {
 		conn.crypto_ctx.tx_iv

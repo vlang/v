@@ -80,7 +80,9 @@ fn hkdf_extract(salt []u8, ikm []u8) ![]u8 {
 	return out[..int(outlen)]
 }
 
-fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
+// build_hkdf_label constructs a TLS 1.3 HkdfLabel structure (RFC 8446 §7.1)
+// for use as the info parameter in HKDF-Expand.
+fn build_hkdf_label(label []u8, context []u8, length int) []u8 {
 	mut hkdf_label := []u8{}
 
 	hkdf_label << u8(length >> 8)
@@ -95,6 +97,12 @@ fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
 	if context.len > 0 {
 		hkdf_label << context
 	}
+
+	return hkdf_label
+}
+
+fn hkdf_expand_label(secret []u8, label []u8, context []u8, length int) ![]u8 {
+	hkdf_label := build_hkdf_label(label, context, length)
 
 	pctx := C.EVP_PKEY_CTX_new_id(evp_pkey_hkdf, unsafe { nil })
 	if pctx == unsafe { nil } {

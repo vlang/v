@@ -22,6 +22,9 @@ mut:
 }
 
 // write_settings sends a SETTINGS frame to configure connection parameters.
+// The client sends ENABLE_PUSH=0 per RFC 7540 §8.2 because server push
+// (PUSH_PROMISE) is not supported. If a server sends PUSH_PROMISE despite this,
+// the client treats it as a PROTOCOL_ERROR.
 pub fn (mut c Connection) write_settings() ! {
 	mut payload := []u8{cap: 30}
 
@@ -91,12 +94,25 @@ fn (mut c Connection) apply_remote_settings(pairs []SettingPair) ! {
 	for pair in pairs {
 		validate_setting_value(pair.id, pair.value)!
 		match pair.id {
-			.header_table_size { c.remote_settings.header_table_size = pair.value }
-			.enable_push { c.remote_settings.enable_push = pair.value != 0 }
-			.max_concurrent_streams { c.remote_settings.max_concurrent_streams = pair.value }
-			.initial_window_size { c.remote_settings.initial_window_size = pair.value }
-			.max_frame_size { c.remote_settings.max_frame_size = pair.value }
-			.max_header_list_size { c.remote_settings.max_header_list_size = pair.value }
+			.header_table_size {
+				c.remote_settings.header_table_size = pair.value
+				c.encoder.set_max_table_size(int(pair.value))
+			}
+			.enable_push {
+				c.remote_settings.enable_push = pair.value != 0
+			}
+			.max_concurrent_streams {
+				c.remote_settings.max_concurrent_streams = pair.value
+			}
+			.initial_window_size {
+				c.remote_settings.initial_window_size = pair.value
+			}
+			.max_frame_size {
+				c.remote_settings.max_frame_size = pair.value
+			}
+			.max_header_list_size {
+				c.remote_settings.max_header_list_size = pair.value
+			}
 		}
 	}
 }
@@ -129,28 +145,25 @@ pub fn (mut c Connection) write_frame(frame Frame) ! {
 
 // read_frame reads an HTTP/2 frame from the TLS connection.
 pub fn (mut c Connection) read_frame() !Frame {
-	mut header_buf := []u8{len: frame_header_size}
-	read_exact(mut c.ssl_conn, mut header_buf, frame_header_size)!
-
-	header := parse_frame_header(header_buf) or {
-		return error('unknown frame type, frame discarded')
-	}
-
-	if header.length > c.remote_settings.max_frame_size {
-		return error('frame size ${header.length} exceeds max_frame_size ${c.remote_settings.max_frame_size}')
-	}
-
-	mut payload := []u8{len: int(header.length)}
-	if header.length > 0 {
-		read_exact(mut c.ssl_conn, mut payload, int(header.length))!
-	}
+	frame := read_frame_from(mut c.ssl_conn, c.remote_settings.max_frame_size)!
 
 	$if trace_http2 ? {
-		eprintln('[HTTP/2] read frame: type=${header.frame_type} len=${header.length} flags=0x${header.flags:02x} stream=${header.stream_id}')
+		eprintln('[HTTP/2] read frame: type=${frame.header.frame_type} len=${frame.header.length} flags=0x${frame.header.flags:02x} stream=${frame.header.stream_id}')
 	}
 
-	return Frame{
-		header:  header
-		payload: payload
+	return frame
+}
+
+// active_stream_count returns the number of currently active streams.
+pub fn (c &Connection) active_stream_count() u32 {
+	return u32(c.streams.len)
+}
+
+// enforce_max_concurrent_streams returns an error if the connection has reached
+// the peer's max concurrent streams limit (RFC 7540 §6.5.2).
+fn enforce_max_concurrent_streams(conn &Connection) ! {
+	max := conn.remote_settings.max_concurrent_streams
+	if max > 0 && conn.active_stream_count() >= max {
+		return error('max concurrent streams exceeded')
 	}
 }

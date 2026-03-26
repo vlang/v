@@ -4,22 +4,7 @@ module v2
 
 // send_window_update sends a WINDOW_UPDATE frame to increment the receive window.
 pub fn (mut c Connection) send_window_update(stream_id u32, increment u32) ! {
-	payload := [
-		u8(increment >> 24) & 0x7f,
-		u8(increment >> 16),
-		u8(increment >> 8),
-		u8(increment),
-	]
-	frame := Frame{
-		header:  FrameHeader{
-			length:     4
-			frame_type: .window_update
-			flags:      0
-			stream_id:  stream_id
-		}
-		payload: payload
-	}
-	c.write_frame(frame)!
+	c.write_frame(new_window_update_frame(stream_id, increment))!
 }
 
 // apply_window_update parses a WINDOW_UPDATE frame and updates the remote window size.

@@ -55,6 +55,12 @@ pub const max_frame_size = 16777215
 // default_frame_size is the default maximum frame size (16KB).
 pub const default_frame_size = 16384
 
+// max_continuation_frames limits CONTINUATION frames per header block (CVE-2024-27316 mitigation).
+pub const max_continuation_frames = 10
+
+// max_header_block_size limits the accumulated header block size in bytes.
+pub const max_header_block_size = 65536
+
 // preface is the HTTP/2 connection preface string.
 pub const preface = 'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
@@ -149,6 +155,32 @@ pub fn (f Frame) encode() []u8 {
 	return buf
 }
 
+// read_frame_from reads and parses an HTTP/2 frame from any connection.
+// It reads the 9-byte header, validates the frame size, reads the payload,
+// and returns the assembled Frame.
+pub fn read_frame_from(mut conn ServerConn, max_frame_size u32) !Frame {
+	mut header_buf := []u8{len: frame_header_size}
+	read_exact(mut conn, mut header_buf, frame_header_size)!
+
+	header := parse_frame_header(header_buf) or {
+		return error('unknown frame type, frame discarded')
+	}
+
+	if header.length > max_frame_size {
+		return error('frame size ${header.length} exceeds max_frame_size ${max_frame_size}')
+	}
+
+	mut payload := []u8{len: int(header.length)}
+	if header.length > 0 {
+		read_exact(mut conn, mut payload, int(header.length))!
+	}
+
+	return Frame{
+		header:  header
+		payload: payload
+	}
+}
+
 // validate validates frame constraints per RFC 7540.
 pub fn (f Frame) validate() ! {
 	if f.header.length > max_frame_size {
@@ -231,6 +263,11 @@ pub fn new_settings_ack_frame() Frame {
 // validate_setting_value validates a single setting value per RFC 7540 §6.5.2.
 pub fn validate_setting_value(id SettingId, value u32) ! {
 	match id {
+		.enable_push {
+			if value > 1 {
+				return error('PROTOCOL_ERROR: ENABLE_PUSH must be 0 or 1')
+			}
+		}
 		.max_frame_size {
 			if value < default_frame_size || value > max_frame_size {
 				return error('PROTOCOL_ERROR: max_frame_size ${value} outside valid range ${default_frame_size}..${max_frame_size}')

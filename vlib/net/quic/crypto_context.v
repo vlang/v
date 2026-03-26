@@ -21,13 +21,16 @@ type EVP_MD = voidptr
 type EVP_CIPHER_CTX = voidptr
 type EVP_PKEY_CTX = voidptr
 
-// TLS 1.3 constants
+// tls1_3_version is the TLS 1.3 version identifier (RFC 8446).
 pub const tls1_3_version = 0x0304
+// ssl_verify_none disables SSL peer certificate verification.
 pub const ssl_verify_none = 0
+// ssl_verify_peer enables SSL peer certificate verification.
 pub const ssl_verify_peer = 1
 
-// SSL file types
+// ssl_filetype_pem selects PEM-encoded certificate/key files.
 pub const ssl_filetype_pem = 1
+// ssl_filetype_asn1 selects ASN.1/DER-encoded certificate/key files.
 pub const ssl_filetype_asn1 = 2
 
 // CryptoLevel represents the QUIC encryption level (from ngtcp2)

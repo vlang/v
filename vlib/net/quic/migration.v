@@ -27,12 +27,7 @@ pub fn (cid &ConnectionID) equals(other ConnectionID) bool {
 	if cid.length != other.length {
 		return false
 	}
-	if cid.length == 0 {
-		return true
-	}
-	unsafe {
-		return C.memcmp(cid.id.data, other.id.data, cid.length) == 0
-	}
+	return cid.id[..cid.length] == other.id[..other.length]
 }
 
 // str returns the hexadecimal string representation of the ConnectionID.

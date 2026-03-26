@@ -191,3 +191,92 @@ fn test_dynamic_table_eviction_order() {
 	}
 	assert oldest.name != 'first!', 'first! should have been evicted'
 }
+
+fn test_decoder_max_header_list_size_enforced() {
+	mut encoder := new_encoder()
+	headers := [
+		HeaderField{'x-large-header', 'a'.repeat(100)},
+		HeaderField{'x-another-header', 'b'.repeat(100)},
+	]
+	encoded := encoder.encode(headers)
+
+	// Per RFC 7541 §4.1: size = name.len + value.len + 32 per field
+	// field 1: 14 + 100 + 32 = 146, field 2: 16 + 100 + 32 = 148, total: 294
+	mut decoder := new_decoder_with_limit(200)
+	decoder.decode(encoded) or {
+		assert err.msg().contains('header list size')
+		return
+	}
+	assert false, 'expected error for exceeding max_header_list_size'
+}
+
+fn test_decoder_max_header_list_size_unlimited() {
+	mut encoder := new_encoder()
+	headers := [
+		HeaderField{'x-large-header', 'a'.repeat(100)},
+		HeaderField{'x-another-header', 'b'.repeat(100)},
+	]
+	encoded := encoder.encode(headers)
+
+	mut decoder := new_decoder()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'default decoder should not limit header size: ${err}'
+		return
+	}
+	assert decoded.len == headers.len
+}
+
+fn test_decoder_max_header_list_size_exact_boundary() {
+	mut encoder := new_encoder()
+	headers := [HeaderField{'name', 'value'}]
+	encoded := encoder.encode(headers)
+
+	// Per RFC 7541 §4.1: size = 4 + 5 + 32 = 41
+	mut decoder := new_decoder_with_limit(41)
+	decoded := decoder.decode(encoded) or {
+		assert false, 'headers at exact limit should pass: ${err}'
+		return
+	}
+	assert decoded.len == 1
+	assert decoded[0].name == 'name'
+	assert decoded[0].value == 'value'
+}
+
+fn test_encoder_table_size_update_emitted() {
+	mut encoder := new_encoder()
+	encoder.set_max_table_size(2048)
+
+	headers := [HeaderField{':method', 'GET'}]
+	encoded := encoder.encode(headers)
+
+	// First byte(s) must be dynamic table size update: 001xxxxx prefix
+	assert encoded.len > 0
+	assert (encoded[0] & 0xe0) == 0x20, 'first byte should have 001xxxxx pattern for table size update, got 0x${encoded[0]:02x}'
+
+	// After encoding, pending update should be consumed
+	encoded2 := encoder.encode(headers)
+	assert (encoded2[0] & 0xe0) != 0x20, 'second encode should not emit table size update'
+}
+
+fn test_encoder_table_size_update_decoded() {
+	mut encoder := new_encoder()
+	encoder.set_max_table_size(2048)
+
+	headers := [
+		HeaderField{':method', 'GET'},
+		HeaderField{':path', '/'},
+	]
+	encoded := encoder.encode(headers)
+
+	mut decoder := new_decoder()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'failed to decode headers with table size update: ${err}'
+		return
+	}
+	assert decoded.len == headers.len
+	assert decoded[0].name == ':method'
+	assert decoded[0].value == 'GET'
+	assert decoded[1].name == ':path'
+	assert decoded[1].value == '/'
+	assert decoder.dynamic_table.max_size == 2048
+}

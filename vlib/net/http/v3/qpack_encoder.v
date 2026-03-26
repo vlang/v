@@ -8,6 +8,7 @@ mut:
 	dynamic_table   DynamicTable
 	max_blocked     u64
 	blocked_streams int
+	instruction_buf []u8
 }
 
 // new_qpack_encoder creates a new QPACK encoder for HTTP/3 header compression.
@@ -52,6 +53,14 @@ pub fn (mut e Encoder) acknowledge_stream() {
 	}
 }
 
+// pending_instructions returns any encoder stream instructions generated during the last encode
+// and clears the internal buffer.
+pub fn (mut e Encoder) pending_instructions() []u8 {
+	result := e.instruction_buf.clone()
+	e.instruction_buf.clear()
+	return result
+}
+
 // encode encodes headers using QPACK compression for HTTP/3.
 pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	mut estimated_size := 10
@@ -65,44 +74,11 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	force_literal := e.blocked_streams >= int(e.max_blocked)
 
 	for header in headers {
-		exact_key := '${header.name}:${header.value}'
-		if exact_key in qpack_static_exact_map {
-			body << encode_indexed_static(qpack_static_exact_map[exact_key])
-			continue
+		encoded, abs_ref := e.encode_field(header, base, force_literal)
+		body << encoded
+		if abs_ref > max_abs_ref {
+			max_abs_ref = abs_ref
 		}
-
-		mut dyn_exact_abs := -1
-		mut dyn_name_abs := -1
-		if !force_literal {
-			dyn_exact_abs, dyn_name_abs = e.find_dynamic_match(header)
-		}
-
-		if dyn_exact_abs >= 0 {
-			if dyn_exact_abs > max_abs_ref {
-				max_abs_ref = dyn_exact_abs
-			}
-			body << encode_dynamic_indexed(dyn_exact_abs, base)
-			continue
-		}
-
-		if header.name in qpack_static_name_map {
-			indices := qpack_static_name_map[header.name]
-			if indices.len > 0 {
-				body << e.encode_with_name_ref(header, indices[0], base, true)
-				continue
-			}
-		}
-
-		if dyn_name_abs >= 0 {
-			if dyn_name_abs > max_abs_ref {
-				max_abs_ref = dyn_name_abs
-			}
-			body << e.encode_with_name_ref(header, dyn_name_abs, base, false)
-			continue
-		}
-
-		body << encode_literal_without_name_ref(header.name, header.value)
-		e.dynamic_table.insert(header)
 	}
 
 	if max_abs_ref >= 0 {
@@ -116,6 +92,40 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	result << prefix
 	result << body
 	return result
+}
+
+// encode_field encodes a single header field and returns the encoded bytes
+// along with the absolute dynamic table reference index (-1 if none used).
+fn (mut e Encoder) encode_field(header HeaderField, base int, force_literal bool) ([]u8, int) {
+	exact_key := '${header.name}:${header.value}'
+	if exact_key in qpack_static_exact_map {
+		return encode_indexed_static(qpack_static_exact_map[exact_key]), -1
+	}
+
+	mut dyn_exact_abs := -1
+	mut dyn_name_abs := -1
+	if !force_literal {
+		dyn_exact_abs, dyn_name_abs = e.find_dynamic_match(header)
+	}
+
+	if dyn_exact_abs >= 0 {
+		return encode_dynamic_indexed(dyn_exact_abs, base), dyn_exact_abs
+	}
+
+	if header.name in qpack_static_name_map {
+		indices := qpack_static_name_map[header.name]
+		if indices.len > 0 {
+			return e.encode_with_name_ref(header, indices[0], base, true), -1
+		}
+	}
+
+	if dyn_name_abs >= 0 {
+		return e.encode_with_name_ref(header, dyn_name_abs, base, false), dyn_name_abs
+	}
+
+	e.dynamic_table.insert(header)
+	e.buffer_insert_instruction(header)
+	return encode_literal_without_name_ref(header.name, header.value), -1
 }
 
 fn (e Encoder) find_dynamic_match(header HeaderField) (int, int) {
@@ -148,6 +158,7 @@ fn (mut e Encoder) encode_with_name_ref(header HeaderField, name_idx int, base i
 	if is_static {
 		result := encode_literal_with_name_ref_static(name_idx, header.value)
 		e.dynamic_table.insert(header)
+		e.buffer_insert_instruction(header)
 		return result
 	}
 	mut result := []u8{}
@@ -157,7 +168,14 @@ fn (mut e Encoder) encode_with_name_ref(header HeaderField, name_idx int, base i
 		result = encode_literal_with_name_ref_dynamic(name_idx - base, header.value)
 	}
 	e.dynamic_table.insert(header)
+	e.buffer_insert_instruction(header)
 	return result
+}
+
+// buffer_insert_instruction appends the corresponding encoder stream instruction
+// for a header that was just inserted into the dynamic table.
+fn (mut e Encoder) buffer_insert_instruction(header HeaderField) {
+	e.instruction_buf << generate_encoder_instruction(header)
 }
 
 @[inline]

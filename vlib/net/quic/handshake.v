@@ -13,13 +13,8 @@ pub enum HandshakeState {
 
 // perform_handshake performs the client-side QUIC TLS 1.3 handshake.
 pub fn (mut c Connection) perform_handshake() ! {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
+	c.ensure_open()!
+	c.ensure_conn()!
 
 	$if trace_quic ? {
 		eprintln('[QUIC] Starting client handshake...')
@@ -27,13 +22,14 @@ pub fn (mut c Connection) perform_handshake() ! {
 
 	max_attempts := 50
 	for attempt := 0; attempt < max_attempts; attempt++ {
-		ts := u64(time.now().unix_milli()) * 1000000
+		ts := ngtcp2_timestamp()
 		mut pi := Ngtcp2PktInfo{}
 
 		c.send_handshake_packet(ts, mut pi)!
 
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
+			c.finalize_zero_rtt()
 			$if trace_quic ? {
 				eprintln('[QUIC] Client handshake complete')
 			}
@@ -44,6 +40,7 @@ pub fn (mut c Connection) perform_handshake() ! {
 
 		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
+			c.finalize_zero_rtt()
 			$if trace_quic ? {
 				eprintln('[QUIC] Client handshake complete')
 			}
@@ -56,13 +53,8 @@ pub fn (mut c Connection) perform_handshake() ! {
 
 // perform_handshake_server performs the server-side QUIC handshake.
 pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file string) ! {
-	if c.closed {
-		return error('connection closed')
-	}
-
-	if c.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
+	c.ensure_open()!
+	c.ensure_conn()!
 
 	$if trace_quic ? {
 		eprintln('[QUIC] Starting server handshake...')
@@ -70,7 +62,7 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 
 	max_attempts := 50
 	for attempt := 0; attempt < max_attempts; attempt++ {
-		ts := u64(time.now().unix_milli()) * 1000000
+		ts := ngtcp2_timestamp()
 		mut pi := Ngtcp2PktInfo{}
 
 		c.recv_handshake_packet(ts, mut pi, 'server')!
@@ -101,6 +93,15 @@ fn (mut c Connection) send_handshake_packet(ts u64, mut pi Ngtcp2PktInfo) ! {
 	}
 }
 
+// finalize_zero_rtt handles 0-RTT state after handshake completion.
+// Marks 0-RTT as rejected if still attempting, then flushes accepted early data.
+fn (mut c Connection) finalize_zero_rtt() {
+	if c.zero_rtt.state == .attempting {
+		c.zero_rtt.reject()
+	}
+	c.flush_early_data() or {}
+}
+
 fn (mut c Connection) recv_handshake_packet(ts u64, mut pi Ngtcp2PktInfo, role string) ! {
 	c.udp_socket.set_read_timeout(2 * time.second)
 	n, _ := c.udp_socket.read(mut c.recv_buf) or {
@@ -128,15 +129,13 @@ fn (mut c Connection) recv_handshake_packet(ts u64, mut pi Ngtcp2PktInfo, role s
 
 // send_with_crypto sends data with encryption via ngtcp2 callbacks.
 pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx &CryptoContext) ! {
-	if c.closed {
-		return error('connection closed')
-	}
+	c.ensure_open()!
 
 	if !c.handshake_done {
 		return error('handshake not completed')
 	}
 
-	ts := u64(time.now().unix_milli()) * 1000000
+	ts := ngtcp2_timestamp()
 	mut pi := Ngtcp2PktInfo{}
 
 	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &c.path, &pi, c.send_buf, i64(stream_id),
@@ -154,9 +153,7 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 
 // recv_with_crypto receives data with decryption via ngtcp2 callbacks.
 pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoContext) ![]u8 {
-	if c.closed {
-		return error('connection closed')
-	}
+	c.ensure_open()!
 
 	if !c.handshake_done {
 		return error('handshake not completed')
@@ -168,7 +165,7 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 		return []u8{}
 	}
 
-	ts := u64(time.now().unix_milli()) * 1000000
+	ts := ngtcp2_timestamp()
 	mut pi := Ngtcp2PktInfo{}
 
 	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {

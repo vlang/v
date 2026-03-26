@@ -55,6 +55,8 @@ pub fn new_client_with_config(address string, config ClientConfig) !Client {
 
 // request sends an HTTP/2 request and returns the response.
 pub fn (mut c Client) request(req Request) !Response {
+	enforce_max_concurrent_streams(&c.conn)!
+
 	stream_id := c.conn.next_stream_id
 	c.conn.next_stream_id += 2
 	c.conn.last_stream_id = stream_id

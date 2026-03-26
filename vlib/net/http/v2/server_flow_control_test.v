@@ -118,3 +118,90 @@ fn test_outbound_flow_control_remove_stream() {
 	assert u32(1) !in fc.stream_windows, 'stream 1 should be removed'
 	assert u32(3) in fc.stream_windows, 'stream 3 should remain'
 }
+
+// MockServerConn captures written bytes for verifying frame output.
+struct MockServerConn {
+mut:
+	written_data []u8
+}
+
+fn (mut c MockServerConn) read(mut buf []u8) !int {
+	return error('MockServerConn: read not supported')
+}
+
+fn (mut c MockServerConn) write(data []u8) !int {
+	c.written_data << data
+	return data.len
+}
+
+fn (mut c MockServerConn) close() ! {
+}
+
+fn test_send_data_zero_window_returns_error() {
+	mut mock := MockServerConn{}
+	mut flow := OutboundFlowControl{}
+	flow.init_stream(u32(1), u32(0))
+	flow.connection_window = 0
+
+	mut server := Server{
+		config: ServerConfig{
+			max_frame_size: 16384
+		}
+	}
+
+	body := []u8{len: 100, init: u8(0x42)}
+	server.send_data_with_flow_control(mut mock, u32(1), body, mut flow, u32(16384)) or {
+		assert err.msg().contains('flow control window exhausted'), 'error should mention flow control window exhausted'
+		return
+	}
+	assert false, 'should return error when window is 0 and body is non-empty'
+}
+
+fn test_send_data_zero_window_empty_body_ok() {
+	mut mock := MockServerConn{}
+	mut flow := OutboundFlowControl{}
+	flow.init_stream(u32(1), u32(0))
+	flow.connection_window = 0
+
+	mut server := Server{
+		config: ServerConfig{
+			max_frame_size: 16384
+		}
+	}
+
+	body := []u8{}
+	server.send_data_with_flow_control(mut mock, u32(1), body, mut flow, u32(16384)) or {
+		assert false, 'empty body should not return error even with zero window: ${err}'
+		return
+	}
+	// An empty DATA frame with END_STREAM should have been written.
+	// Frame = 9-byte header + 0-byte payload = 9 bytes.
+	assert mock.written_data.len == 9, 'expected 9-byte frame for empty END_STREAM, got ${mock.written_data.len}'
+}
+
+fn test_send_data_partial_window() {
+	mut mock := MockServerConn{}
+	mut flow := OutboundFlowControl{}
+	flow.connection_window = 100
+	flow.init_stream(u32(1), u32(100))
+
+	mut server := Server{
+		config: ServerConfig{
+			max_frame_size: 16384
+		}
+	}
+
+	body := []u8{len: 500, init: u8(0xAB)}
+	server.send_data_with_flow_control(mut mock, u32(1), body, mut flow, u32(16384)) or {
+		assert false, 'partial window should not error: ${err}'
+		return
+	}
+	// split_data_for_window uses min(window, max_frame_size) as chunk size
+	// and iterates the full body, producing 5 chunks of 100 bytes.
+	// Each frame = 9-byte header + 100-byte payload = 109 bytes.
+	// Total: 5 × 109 = 545 bytes.
+	assert mock.written_data.len == 545, 'expected 545 bytes (5 frames), got ${mock.written_data.len}'
+	// Flow control windows should reflect all consumed data.
+	assert flow.connection_window == i64(100 - 500), 'connection window should reflect consumed data'
+	assert flow.stream_windows[u32(1)] == i64(100 - 500), 'stream window should reflect consumed data'
+}

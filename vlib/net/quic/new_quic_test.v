@@ -353,3 +353,232 @@ fn test_connection_migrate_connection_closed() {
 
 	assert false, 'Should have failed when connection is closed'
 }
+
+fn test_connection_close_sets_closed() {
+	println('Testing Connection.close sets closed flag...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+	assert conn.closed == false
+	assert conn.ngtcp2_conn == unsafe { nil }
+
+	conn.close()
+
+	assert conn.closed == true
+	assert conn.ngtcp2_conn == unsafe { nil }
+	assert conn.streams.len == 0
+
+	println('✓ Connection.close sets closed flag test passed')
+}
+
+fn test_connection_close_idempotent() {
+	println('Testing Connection.close idempotent...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+
+	conn.close()
+	assert conn.closed == true
+
+	// Second close must not panic
+	conn.close()
+	assert conn.closed == true
+
+	println('✓ Connection.close idempotent test passed')
+}
+
+fn test_connection_max_data_left() {
+	println('Testing Connection.max_data_left...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+	// With nil ngtcp2_conn, should return 0 (safe default)
+	assert conn.max_data_left() == u64(0)
+
+	println('✓ Connection.max_data_left test passed')
+}
+
+fn test_connection_streams_left() {
+	println('Testing Connection.streams_bidi_left and streams_uni_left...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+	// With nil ngtcp2_conn, should return 0 (safe default)
+	assert conn.streams_bidi_left() == u64(0)
+	assert conn.streams_uni_left() == u64(0)
+
+	println('✓ Connection.streams_left test passed')
+}
+
+fn test_connection_reset_stream() {
+	println('Testing Connection.reset_stream on closed connection...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		closed:      true
+	}
+
+	conn.reset_stream(4, 0) or {
+		assert err.msg().contains('connection closed')
+		println('✓ Connection.reset_stream closed test passed')
+		return
+	}
+	assert false, 'Should have failed on closed connection'
+}
+
+fn test_connection_reset_stream_nil_conn() {
+	println('Testing Connection.reset_stream with nil ngtcp2...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+
+	conn.reset_stream(4, 0) or {
+		assert err.msg().contains('not initialized')
+		println('✓ Connection.reset_stream nil ngtcp2 test passed')
+		return
+	}
+	assert false, 'Should have failed with nil ngtcp2'
+}
+
+fn test_connection_stop_sending() {
+	println('Testing Connection.stop_sending on closed connection...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		closed:      true
+	}
+
+	conn.stop_sending(4, 0) or {
+		assert err.msg().contains('connection closed')
+		println('✓ Connection.stop_sending closed test passed')
+		return
+	}
+	assert false, 'Should have failed on closed connection'
+}
+
+fn test_connection_stop_sending_nil_conn() {
+	println('Testing Connection.stop_sending with nil ngtcp2...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+
+	conn.stop_sending(4, 0) or {
+		assert err.msg().contains('not initialized')
+		println('✓ Connection.stop_sending nil ngtcp2 test passed')
+		return
+	}
+	assert false, 'Should have failed with nil ngtcp2'
+}
+
+fn test_close_with_error_code() {
+	println('Testing Connection.close_with_error...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+	}
+	assert conn.closed == false
+
+	conn.close_with_error(0x0100, 'test close') or {
+		assert false, 'close_with_error should not fail: ${err}'
+		return
+	}
+
+	assert conn.closed == true
+	assert conn.ngtcp2_conn == unsafe { nil }
+	assert conn.streams.len == 0
+
+	println('✓ Connection.close_with_error test passed')
+}
+
+fn test_flush_early_data_accepted() {
+	println('Testing Connection.flush_early_data with accepted state...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		zero_rtt:    new_zero_rtt_connection(ZeroRTTConfig{
+			enabled:        true
+			max_early_data: 16384
+		})
+	}
+
+	// Buffer some early data
+	conn.zero_rtt.add_early_data('early request data'.bytes(), 4) or {
+		assert false, 'failed to buffer early data: ${err}'
+		return
+	}
+	assert conn.zero_rtt.early_data.len == 1
+
+	// Simulate server accepting 0-RTT
+	conn.zero_rtt.accept()
+	assert conn.zero_rtt.state == .accepted
+
+	// Flush should succeed without error (send failures are non-fatal)
+	conn.flush_early_data() or {
+		assert false, 'flush_early_data should not error: ${err}'
+		return
+	}
+
+	println('✓ Connection.flush_early_data accepted test passed')
+}
+
+fn test_flush_early_data_not_accepted() {
+	println('Testing Connection.flush_early_data when disabled...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		zero_rtt:    new_zero_rtt_connection(ZeroRTTConfig{
+			enabled: false
+		})
+	}
+	assert conn.zero_rtt.state == .disabled
+
+	// Flush should be a no-op (no error, no action)
+	conn.flush_early_data() or {
+		assert false, 'flush_early_data should be no-op when disabled: ${err}'
+		return
+	}
+
+	println('✓ Connection.flush_early_data not accepted test passed')
+}
+
+fn test_flush_early_data_rejected() {
+	println('Testing Connection.flush_early_data with rejected state...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		zero_rtt:    new_zero_rtt_connection(ZeroRTTConfig{
+			enabled:        true
+			max_early_data: 16384
+		})
+	}
+
+	// Buffer early data, then reject
+	conn.zero_rtt.add_early_data('rejected data'.bytes(), 4) or {
+		assert false, 'failed to buffer early data: ${err}'
+		return
+	}
+	conn.zero_rtt.reject()
+	assert conn.zero_rtt.state == .rejected
+	assert conn.zero_rtt.early_data.len == 0 // reject clears buffer
+
+	// Flush should be a no-op when rejected
+	conn.flush_early_data() or {
+		assert false, 'flush_early_data should be no-op when rejected: ${err}'
+		return
+	}
+
+	println('✓ Connection.flush_early_data rejected test passed')
+}
+
+fn test_flush_early_data_closed_connection() {
+	println('Testing Connection.flush_early_data on closed connection...')
+	mut conn := Connection{
+		remote_addr: '127.0.0.1:4433'
+		closed:      true
+		zero_rtt:    new_zero_rtt_connection(ZeroRTTConfig{
+			enabled: true
+		})
+	}
+
+	conn.flush_early_data() or {
+		assert err.msg().contains('connection closed')
+		println('✓ Connection.flush_early_data closed connection test passed')
+		return
+	}
+
+	assert false, 'Should have failed on closed connection'
+}

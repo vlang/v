@@ -47,9 +47,13 @@ fn (mut s Server) handle_settings(mut conn ServerConn, frame Frame, mut client_s
 
 	pairs := parse_settings_payload(frame.payload)!
 
+	old_header_table_size := client_settings.header_table_size
 	old_initial_window := client_settings.initial_window_size
 	for pair in pairs {
 		apply_setting_pair(pair, mut client_settings)!
+	}
+	if client_settings.header_table_size != old_header_table_size {
+		ctx.encoder.set_max_table_size(int(client_settings.header_table_size))
 	}
 	if client_settings.initial_window_size != old_initial_window {
 		ctx.flow.adjust_initial_window_size(old_initial_window, client_settings.initial_window_size)
@@ -138,7 +142,13 @@ fn (mut s Server) send_response(mut conn ServerConn, stream_id u32, response Ser
 
 fn (mut s Server) send_data_with_flow_control(mut conn ServerConn, stream_id u32, body []u8, mut flow OutboundFlowControl, max_frame_size u32) ! {
 	window := flow.available_window(stream_id)
+	if window <= 0 && body.len > 0 {
+		return error('flow control window exhausted for stream ${stream_id}')
+	}
 	chunks := split_data_for_window(body, window, max_frame_size)
+	if chunks.len == 0 && body.len > 0 {
+		return error('flow control window exhausted for stream ${stream_id}')
+	}
 	for i, chunk in chunks {
 		is_last := i == chunks.len - 1
 		data_flags := if is_last { u8(FrameFlags.end_stream) } else { u8(0) }
@@ -180,6 +190,9 @@ fn (mut s Server) handle_ping(mut conn ServerConn, frame Frame) ! {
 	}
 }
 
+// handle_priority parses a PRIORITY frame per RFC 7540 §6.3.
+// Priority is advisory (RFC 7540 §5.3) and this implementation
+// does not use it for stream scheduling. Requests are dispatched in arrival order.
 fn handle_priority(frame Frame) {
 	pf := PriorityFrame.from_frame(frame) or {
 		$if debug {
@@ -202,31 +215,7 @@ fn send_rst_stream(mut conn ServerConn, stream_id u32, error_code ErrorCode) ! {
 }
 
 fn (mut s Server) read_frame(mut conn ServerConn) !Frame {
-	mut header_buf := []u8{len: frame_header_size}
-
-	read_exact(mut conn, mut header_buf, frame_header_size) or {
-		return error('read header: ${err}')
-	}
-
-	header := parse_frame_header(header_buf) or {
-		return error('unknown frame type, frame discarded')
-	}
-
-	if header.length > s.config.max_frame_size {
-		return error('frame size ${header.length} exceeds max_frame_size ${s.config.max_frame_size}')
-	}
-
-	mut payload := []u8{len: int(header.length)}
-	if header.length > 0 {
-		read_exact(mut conn, mut payload, int(header.length)) or {
-			return error('read payload: ${err}')
-		}
-	}
-
-	return Frame{
-		header:  header
-		payload: payload
-	}
+	return read_frame_from(mut conn, s.config.max_frame_size)
 }
 
 fn (mut s Server) write_frame(mut conn ServerConn, frame Frame) ! {
@@ -235,21 +224,6 @@ fn (mut s Server) write_frame(mut conn ServerConn, frame Frame) ! {
 }
 
 fn send_window_update(mut conn ServerConn, stream_id u32, increment u32) ! {
-	payload := [
-		u8(increment >> 24) & 0x7f,
-		u8(increment >> 16),
-		u8(increment >> 8),
-		u8(increment),
-	]
-	frame := Frame{
-		header:  FrameHeader{
-			length:     4
-			frame_type: .window_update
-			flags:      0
-			stream_id:  stream_id
-		}
-		payload: payload
-	}
-	data := frame.encode()
+	data := new_window_update_frame(stream_id, increment).encode()
 	conn.write(data)!
 }

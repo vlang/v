@@ -8,6 +8,7 @@ mut:
 	dynamic_table      DynamicTable
 	max_blocked        u64
 	known_insert_count int
+	ack_buf            []u8
 }
 
 // new_qpack_decoder creates a new QPACK decoder with the specified capacity and blocked streams limit.
@@ -22,6 +23,14 @@ pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 // acknowledge_insert updates the decoder's known insert count.
 pub fn (mut d Decoder) acknowledge_insert(count int) {
 	d.known_insert_count += count
+}
+
+// pending_acknowledgments returns any decoder stream instructions (section acknowledgments)
+// generated during decoding and clears the internal buffer.
+pub fn (mut d Decoder) pending_acknowledgments() []u8 {
+	result := d.ack_buf.clone()
+	d.ack_buf.clear()
+	return result
 }
 
 fn decode_section_prefix(data []u8, max_table_capacity int, total_inserts int) !(int, int, int) {
@@ -89,6 +98,14 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 		header, bytes_read := d.decode_field_line(data, idx, base)!
 		headers << header
 		idx += bytes_read
+	}
+
+	// Buffer a section acknowledgment if the block referenced the dynamic table
+	if ric > 0 {
+		ack := SectionAcknowledgment{
+			stream_id: 0
+		}
+		d.ack_buf << ack.encode()
 	}
 
 	return headers

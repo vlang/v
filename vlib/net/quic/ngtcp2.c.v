@@ -24,17 +24,31 @@ module quic
 #include <ngtcp2/ngtcp2_crypto.h>
 #include <ngtcp2/ngtcp2_crypto_ossl.h>
 
-// Core ngtcp2 types (opaque pointers)
+// Ngtcp2Conn is an opaque handle for an ngtcp2 connection.
 pub type Ngtcp2Conn = voidptr
+
+// Ngtcp2Settings is an opaque handle for ngtcp2 connection settings.
 pub type Ngtcp2Settings = voidptr
+
+// Ngtcp2TransportParams is an opaque handle for ngtcp2 transport parameters.
 pub type Ngtcp2TransportParams = voidptr
+
+// Ngtcp2Callbacks is an opaque handle for ngtcp2 callback functions.
 pub type Ngtcp2Callbacks = voidptr
+
+// Ngtcp2Cid is an opaque handle for an ngtcp2 connection ID.
 pub type Ngtcp2Cid = voidptr
+
+// Ngtcp2Path is an opaque handle for an ngtcp2 network path.
 pub type Ngtcp2Path = voidptr
+
+// Ngtcp2Pkt is an opaque handle for an ngtcp2 packet.
 pub type Ngtcp2Pkt = voidptr
+
+// Ngtcp2Vec is an opaque handle for an ngtcp2 scatter-gather vector.
 pub type Ngtcp2Vec = voidptr
 
-// Error codes
+// ngtcp2 error codes per RFC 9000.
 pub const ngtcp2_err_invalid_argument = -201
 pub const ngtcp2_err_nobuf = -203
 pub const ngtcp2_err_proto = -205
@@ -127,6 +141,16 @@ pub mut:
 	flags     u32
 	data      voidptr
 	datalen   u64
+}
+
+// Ngtcp2Ccerr holds connection close error information for CONNECTION_CLOSE frames.
+pub struct Ngtcp2Ccerr {
+pub mut:
+	ccerr_type int // ngtcp2_ccerr_type
+	error_code u64
+	frame_type u64
+	reason     voidptr
+	reasonlen  usize
 }
 
 // Settings structure
@@ -264,6 +288,12 @@ fn C.ngtcp2_conn_shutdown_stream_write(conn voidptr, flags u32, stream_id i64, a
 fn C.ngtcp2_conn_shutdown_stream_read(conn voidptr, flags u32, stream_id i64, app_error_code u64) int
 
 fn C.ngtcp2_conn_close_stream(conn voidptr, stream_id i64, app_error_code u64) int
+
+fn C.ngtcp2_conn_write_connection_close(conn voidptr, path voidptr, pi voidptr, dest &u8, destlen usize, ccerr voidptr, ts u64) isize
+
+fn C.ngtcp2_ccerr_default(ccerr voidptr)
+
+fn C.ngtcp2_ccerr_set_transport_error(ccerr voidptr, error_code u64, reason voidptr, reasonlen usize)
 
 fn C.ngtcp2_conn_get_max_data_left(conn voidptr) u64
 
@@ -434,6 +464,33 @@ pub fn conn_shutdown_stream(conn voidptr, stream_id i64, app_error_code u64) ! {
 	if rv != 0 {
 		return error('ngtcp2_conn_shutdown_stream failed: ${strerror(rv)}')
 	}
+}
+
+// shutdown_stream_write wraps ngtcp2_conn_shutdown_stream_write.
+pub fn shutdown_stream_write(conn voidptr, flags u32, stream_id i64, app_error_code u64) int {
+	return C.ngtcp2_conn_shutdown_stream_write(conn, flags, stream_id, app_error_code)
+}
+
+// shutdown_stream_read wraps ngtcp2_conn_shutdown_stream_read.
+pub fn shutdown_stream_read(conn voidptr, flags u32, stream_id i64, app_error_code u64) int {
+	return C.ngtcp2_conn_shutdown_stream_read(conn, flags, stream_id, app_error_code)
+}
+
+// conn_write_connection_close writes a CONNECTION_CLOSE frame into dest.
+pub fn conn_write_connection_close(conn voidptr, dest []u8, error_code u64, reason string, ts u64) !int {
+	mut ccerr := Ngtcp2Ccerr{}
+	C.ngtcp2_ccerr_default(&ccerr)
+	mut reason_ptr := unsafe { nil }
+	if reason.len > 0 {
+		reason_ptr = voidptr(reason.str)
+	}
+	C.ngtcp2_ccerr_set_transport_error(&ccerr, error_code, reason_ptr, usize(reason.len))
+	result := C.ngtcp2_conn_write_connection_close(conn, unsafe { nil }, unsafe { nil },
+		dest.data, usize(dest.len), &ccerr, ts)
+	if result < 0 {
+		return error('connection close write failed: ${strerror(int(result))}')
+	}
+	return int(result)
 }
 
 // settings_default initializes settings with default values

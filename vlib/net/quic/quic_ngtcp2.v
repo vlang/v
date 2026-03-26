@@ -49,6 +49,25 @@ pub:
 	max_idle_timeout            u64           = 30000
 }
 
+// ensure_open verifies that the connection is not closed.
+fn (c &Connection) ensure_open() ! {
+	if c.closed {
+		return error('connection closed')
+	}
+}
+
+// ensure_conn verifies that the ngtcp2 connection handle is initialized.
+fn (c &Connection) ensure_conn() ! {
+	if c.ngtcp2_conn == unsafe { nil } {
+		return error('ngtcp2 connection not initialized')
+	}
+}
+
+// ngtcp2_timestamp returns the current time as an ngtcp2 nanosecond timestamp.
+fn ngtcp2_timestamp() u64 {
+	return u64(time.now().unix_milli()) * 1000000
+}
+
 // new_connection creates a new QUIC client connection using ngtcp2.
 pub fn new_connection(config ConnectionConfig) !Connection {
 	addr_parts := config.remote_addr.split(':')
@@ -159,7 +178,7 @@ fn configure_ngtcp2_settings() Ngtcp2SettingsStruct {
 		pmtud_probes:       unsafe { nil }
 	}
 	settings_default(&settings)
-	settings.initial_ts = u64(time.now().unix_milli()) * 1000000
+	settings.initial_ts = ngtcp2_timestamp()
 	return settings
 }
 
@@ -211,24 +230,16 @@ pub fn get_expiry(conn &Connection) u64 {
 
 // handle_expiry notifies ngtcp2 that the connection timer has fired.
 pub fn handle_expiry(mut conn Connection) ! {
-	if conn.closed {
-		return error('connection closed')
-	}
-	if conn.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
+	conn.ensure_open()!
+	conn.ensure_conn()!
 	ts := time.sys_mono_now()
 	conn_handle_expiry(conn.ngtcp2_conn, ts)!
 }
 
 // check_and_handle_timers checks whether the timer has expired and processes it. Returns true if the timer fired.
 pub fn check_and_handle_timers(mut conn Connection) !bool {
-	if conn.closed {
-		return error('connection closed')
-	}
-	if conn.ngtcp2_conn == unsafe { nil } {
-		return error('ngtcp2 connection not initialized')
-	}
+	conn.ensure_open()!
+	conn.ensure_conn()!
 	now := time.sys_mono_now()
 	expiry := get_expiry(&conn)
 	if now >= expiry {

@@ -229,3 +229,23 @@ fn test_generate_encoder_instruction_roundtrip_literal() {
 	assert decoded.name == 'x-test-key'
 	assert decoded.value == 'test-val'
 }
+
+fn test_encode_stream_type_byte_control() {
+	result := encode_stream_type_byte(control_stream_type)
+	assert result == [u8(0x00)]
+}
+
+fn test_encode_stream_type_byte_encoder() {
+	result := encode_stream_type_byte(qpack_encoder_stream_type)
+	assert result == [u8(0x02)]
+}
+
+fn test_encode_stream_type_byte_decoder() {
+	result := encode_stream_type_byte(qpack_decoder_stream_type)
+	assert result == [u8(0x03)]
+}
+
+fn test_control_stream_id_default_negative() {
+	m := UniStreamManager{}
+	assert m.control_stream_id == i64(-1), 'control_stream_id should default to -1'
+}

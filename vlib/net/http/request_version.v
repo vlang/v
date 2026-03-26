@@ -67,6 +67,9 @@ fn build_request_path(url urllib.URL) string {
 	return if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 }
 
+// do_http2 and do_http3 follow parallel structure because v2 and v3 modules
+// define separate Request/Response types to avoid circular imports.
+
 fn (req &Request) do_http2(url urllib.URL) !Response {
 	host_name := url.hostname()
 	mut nport := url.port().int()
