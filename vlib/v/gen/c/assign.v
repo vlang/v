@@ -7,6 +7,39 @@ import v.ast
 import v.util
 import v.token
 
+fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expected_type ast.Type) {
+	mut expr_copy := expr
+	match mut expr_copy {
+		ast.IfExpr {
+			if !expr_copy.is_expr || expr_copy.typ == 0 || expr_copy.typ == ast.void_type {
+				expr_copy.is_expr = true
+				expr_copy.typ = if value_type != 0 && value_type != ast.void_type {
+					value_type
+				} else {
+					expected_type
+				}
+			}
+		}
+		ast.MatchExpr {
+			if !expr_copy.is_expr || expr_copy.return_type == 0
+				|| expr_copy.return_type == ast.void_type {
+				resolved_value_type := if value_type != 0 && value_type != ast.void_type {
+					value_type
+				} else {
+					expected_type
+				}
+				expr_copy.is_expr = true
+				expr_copy.return_type = resolved_value_type
+				if expr_copy.expected_type in [0, ast.void_type, ast.none_type] {
+					expr_copy.expected_type = expected_type
+				}
+			}
+		}
+		else {}
+	}
+	g.expr(expr_copy)
+}
+
 fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
 	return match expr {
 		ast.CallExpr { expr.or_block.kind != .absent }
@@ -400,12 +433,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		if is_decl {
 			resolved_decl_type := g.resolved_expr_type(val, var_type)
-			$if trace_ci_fixes ? {
-				if g.file.path.contains('comptime_for_in_options_struct_test.v')
-					&& left is ast.Ident && left.name == 'w' {
-					g.writeln('/*trace_decl_w before=${g.table.type_to_str(var_type)} right=${g.table.type_to_str(val_type)} resolved=${g.table.type_to_str(resolved_decl_type)} expr=${typeof(val).name}*/')
-				}
-			}
 			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type {
 				var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
 				val_type = var_type
@@ -1070,11 +1097,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
-				$if trace_ci_fixes ? {
-					if left is ast.Ident && left.name == 'head' {
-						eprintln('assign overload left=${g.table.type_to_str(var_type)} left_sym=${left_sym.name} right=${g.table.type_to_str(unwrapped_val_type)} right_sym=${right_sym.name} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
-					}
-				}
 				pos := g.out.len
 				g.expr(left)
 				struct_info := g.table.final_sym(var_type)
@@ -1471,7 +1493,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								}
 							}
 							if nval == val {
-								g.expr(nval)
+								g.expr_in_value_context(nval, val_type, var_type)
 								if !is_fn_var && is_auto_heap && is_option_auto_heap
 									&& !is_large_struct_heap {
 									if aligned != 0 {

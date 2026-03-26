@@ -293,7 +293,30 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 	c.inside_recheck = true
 	c.anon_struct_should_be_mut = false
 	mut expr := v.expr
-	refreshed_type := c.expr(mut expr)
+	mut refreshed_type := ast.void_type
+	if mut expr is ast.IfGuardExpr {
+		c.expr(mut expr)
+		if expr.expr_type != 0 && expr.expr_type.clear_option_and_result() != ast.void_type {
+			sym := c.table.sym(expr.expr_type)
+			if sym.kind == .multi_return {
+				mr_info := sym.info as ast.MultiReturn
+				if mr_info.types.len == expr.vars.len {
+					for vi, var in expr.vars {
+						if var.name == v.name {
+							refreshed_type = mr_info.types[vi]
+							break
+						}
+					}
+				}
+			} else {
+				// Rechecks should keep the value type introduced by the guard variable,
+				// not the `bool` condition type returned by `IfGuardExpr`.
+				refreshed_type = expr.expr_type.clear_option_and_result()
+			}
+		}
+	} else {
+		refreshed_type = c.expr(mut expr)
+	}
 	if refreshed_type != 0 && refreshed_type != ast.void_type {
 		$if trace_ci_fixes ? {
 			if c.file.path.contains('/datatypes/linked_list.v') {
@@ -5175,16 +5198,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					} else {
 						obj.typ
 					}
-					if typ == 0 {
-						if mut obj.expr is ast.Ident {
-							if obj.expr.kind == .unresolved {
-								c.error('unresolved variable: `${node.name}`', node.pos)
-								return ast.void_type
-							}
-						}
-						if mut obj.expr is ast.IfGuardExpr {
+					if mut obj.expr is ast.IfGuardExpr {
+						if obj.expr.expr_type != 0 {
 							// new variable from if guard shouldn't have the option flag for further use
-							// a temp variable will be generated which unwraps it
+							// a temp variable will be generated which unwraps it. Always prefer
+							// the guard expr metadata here, because scope vars can keep a stale
+							// cached type across later generic rechecks.
 							sym := c.table.sym(obj.expr.expr_type)
 							if sym.kind == .multi_return {
 								mr_info := sym.info as ast.MultiReturn
@@ -5198,11 +5217,33 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							} else {
 								typ = obj.expr.expr_type.clear_option_and_result()
 							}
+						}
+					} else if typ == 0 {
+						if mut obj.expr is ast.Ident {
+							if obj.expr.kind == .unresolved {
+								c.error('unresolved variable: `${node.name}`', node.pos)
+								return ast.void_type
+							}
 						} else if obj.expr is ast.EmptyExpr {
 							c.error('invalid variable `${node.name}`', node.pos)
 							typ = ast.void_type
 						} else {
 							typ = c.expr(mut obj.expr)
+						}
+					}
+					$if trace_vweb_guard ? {
+						if node.name in ['params', 'app', 'global_app', 'request_app'] {
+							expr_kind := typeof(obj.expr).name
+							mut expr_type_str := '<none>'
+							match obj.expr {
+								ast.IfGuardExpr {
+									expr_type_str = c.table.type_to_str(obj.expr.expr_type)
+								}
+								else {}
+							}
+							obj_type_str := if obj.typ == 0 { '<none>' } else { c.table.type_to_str(obj.typ) }
+							resolved_type_str := if typ == 0 { '<none>' } else { c.table.type_to_str(typ) }
+							eprintln('ident name=${node.name} obj.typ=${obj_type_str} resolved=${resolved_type_str} expr_kind=${expr_kind} expr_type=${expr_type_str} smart=${obj.smartcasts.map(c.table.type_to_str(it))} file=${c.file.path}')
 						}
 					}
 					if c.inside_interface_deref && c.table.is_interface_var(obj)

@@ -627,10 +627,13 @@ fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Rou
 
 fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// Create a new app object for each connection, copy global data like db connections
-	mut request_app := &T{}
+	mut request_app := unsafe { &T(vcalloc(sizeof(T))) }
 	$if T is MiddlewareInterface {
-		request_app = &T{
-			middlewares: global_app.middlewares.clone()
+		middleware_app := MiddlewareInterface(*global_app)
+		$for field in T.fields {
+			$if field.name == 'middlewares' {
+				request_app.$(field.name) = middleware_app.middlewares.clone()
+			}
 		}
 	}
 
@@ -890,13 +893,16 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 
 // validate_middleware validates and fires all middlewares that are defined in the global app instance
 fn validate_middleware[T](mut app T, full_path string) bool {
-	for path, middleware_chain in app.middlewares {
-		// only execute middleware if route.path starts with `path`
-		if full_path.len >= path.len && full_path.starts_with(path) {
-			// there is middleware for this route
-			for func in middleware_chain {
-				if func(mut app.Context) == false {
-					return false
+	$if T is MiddlewareInterface {
+		middleware_app := MiddlewareInterface(app)
+		for path, middleware_chain in middleware_app.middlewares {
+			// only execute middleware if route.path starts with `path`
+			if full_path.len >= path.len && full_path.starts_with(path) {
+				// there is middleware for this route
+				for func in middleware_chain {
+					if func(mut app.Context) == false {
+						return false
+					}
 				}
 			}
 		}

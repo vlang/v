@@ -277,6 +277,23 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						continue
 					}
 					if w := branch.scope.find_var(var.name) {
+						$if trace_vweb_guard ? {
+							if var.name == 'params' {
+								expr_type_str := if branch.cond.expr_type == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(branch.cond.expr_type)
+								}
+								clear_type := branch.cond.expr_type.clear_option_and_result()
+								clear_type_str := if clear_type == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(clear_type)
+								}
+								old_type_str := if w.typ == 0 { '<none>' } else { c.table.type_to_str(w.typ) }
+								eprintln('if_guard scope name=${var.name} expr_type=${expr_type_str} clear=${clear_type_str} old=${old_type_str} file=${c.file.path}')
+							}
+						}
 						if var.name !in branch.scope.objects {
 							branch.scope.objects[var.name] = w
 						}

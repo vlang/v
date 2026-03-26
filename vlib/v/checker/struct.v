@@ -537,16 +537,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if node.is_short_syntax && c.has_active_generic_recheck_context() {
 		node.typ = ast.void_type
 	}
-	$if trace_ci_fixes ? {
-		if (c.file.path.contains('/.vmodules/vtl/src/iter.v')
-			|| c.file.path.contains('generic_method_short_struct_arg_cgen_test.v'))
-			&& node.is_short_syntax {
-			expected_type_str := if c.expected_type == 0 { '<none>' } else { c.table.type_to_str(c.expected_type) }
-			node_type_str := if node.typ == 0 { '<none>' } else { c.table.type_to_str(node.typ) }
-			generic_type_str := if node.generic_typ == 0 { '<none>' } else { c.table.type_to_str(node.generic_typ) }
-			eprintln('struct_init short file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } { '<none>' } else { c.table.cur_fn.name }} expected=${expected_type_str} node_typ=${node_type_str} generic_typ=${generic_type_str} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
-		}
-	}
 	if node.typ == ast.void_type {
 		// short syntax `foo(key:val, key2:val2)`
 		if c.expected_type == ast.void_type {
@@ -562,11 +552,25 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	original_node_typ := node.typ
 	concrete_node_typ := c.recheck_concrete_type(node.typ)
-	$if trace_ci_fixes ? {
-		if c.table.cur_fn != unsafe { nil }
-			&& (c.table.cur_fn.name.contains('do') || c.table.cur_fn.name.contains('insert')
-			|| c.table.cur_fn.name.contains('delete')) {
-			eprintln('struct_init enter fn=${c.table.cur_fn.name} gen=${c.table.cur_fn.generic_names} node.typ=${c.table.type_to_str(concrete_node_typ)} original=${c.table.type_to_str(original_node_typ)} rechecked=${c.table.type_to_str(c.recheck_concrete_type(original_node_typ))} cur=${c.table.cur_concrete_types.map(c.table.type_to_str(it))} update=${node.has_update_expr}')
+	$if trace_vweb_guard ? {
+		if c.file.path.contains('/vlib/vweb/vweb.v') {
+			node_type_str := if node.typ == 0 { '<none>' } else { c.table.type_to_str(node.typ) }
+			concrete_type_str := if concrete_node_typ == 0 {
+				'<none>'
+			} else {
+				c.table.type_to_str(concrete_node_typ)
+			}
+			generic_type_str := if node.generic_typ == 0 {
+				'<none>'
+			} else {
+				c.table.type_to_str(node.generic_typ)
+			}
+			expected_type_str := if c.expected_type == 0 {
+				'<none>'
+			} else {
+				c.table.type_to_str(c.expected_type)
+			}
+			eprintln('struct_init typ=${node_type_str} concrete=${concrete_type_str} generic_typ=${generic_type_str} expected=${expected_type_str} short=${node.is_short_syntax} fields=${node.init_fields.map(it.name)}')
 		}
 	}
 	struct_sym := c.table.sym(concrete_node_typ)
@@ -846,13 +850,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 				exp_type = c.recheck_concrete_type(exp_type)
-				$if trace_ci_fixes ? {
-					if c.table.cur_fn != unsafe { nil } && (c.table.cur_fn.name.contains('do')
-						|| c.table.cur_fn.name.contains('insert')
-						|| c.table.cur_fn.name.contains('delete')) {
-						eprintln('struct_init field fn=${c.table.cur_fn.name} field=${field_name} exp=${c.table.type_to_str(exp_type)} raw=${c.table.type_to_str(field_info.typ)}')
-					}
-				}
 				exp_type_sym := c.table.sym(exp_type)
 				exp_final_sym := if exp_type_sym.kind == .generic_inst {
 					c.table.sym(ast.new_type((exp_type_sym.info as ast.GenericInst).parent_idx))
@@ -861,18 +858,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				c.expected_type = exp_type
 				got_type = c.expr(mut init_field.expr)
-				$if trace_ci_fixes ? {
-					if c.file.path.contains('/eventbus/') {
-						eprintln('struct_init eventbus fn=${c.table.cur_fn.name} field=${field_name} exp=${c.table.type_to_str(exp_type)} got=${c.table.type_to_str(got_type)} expr=${init_field.expr}')
-					}
-				}
-				$if trace_ci_fixes ? {
-					if c.table.cur_fn != unsafe { nil } && (c.table.cur_fn.name.contains('do')
-						|| c.table.cur_fn.name.contains('insert')
-						|| c.table.cur_fn.name.contains('delete')) {
-						eprintln('struct_init got fn=${c.table.cur_fn.name} field=${field_name} got=${c.table.type_to_str(got_type)} expr=${init_field.expr}')
-					}
-				}
 				got_type_sym := c.table.sym(got_type)
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
@@ -1131,13 +1116,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	if node.has_update_expr {
 		update_type := c.recheck_concrete_type(c.expr(mut node.update_expr))
 		node.update_expr_type = update_type
-		$if trace_ci_fixes ? {
-			if c.table.cur_fn != unsafe { nil }
-				&& (c.table.cur_fn.name.contains('do') || c.table.cur_fn.name.contains('insert')
-				|| c.table.cur_fn.name.contains('delete')) {
-				eprintln('struct_init update fn=${c.table.cur_fn.name} update=${c.table.type_to_str(update_type)} node=${c.table.type_to_str(concrete_node_typ)} expr=${node.update_expr}')
-			}
-		}
 		expr_sym := c.table.final_sym(c.unwrap_generic(update_type))
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)

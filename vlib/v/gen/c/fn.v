@@ -3476,11 +3476,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			method_name)
 	}
 	parent_method_generic_names_len := parent_generic_method.generic_names.len
-	$if trace_ci_fixes ? {
-		if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
-			eprintln('method start ${method_name}: raw=${raw_method_name} left=${g.table.type_to_str(left_type)} receiver=${g.table.type_to_str(receiver_type)} unwrapped=${g.table.type_to_str(unwrapped_rec_type)} left_node=${g.table.type_to_str(node.left_type)} node.ct=${node.concrete_types.map(g.table.type_to_str(it))} node.raw=${node.raw_concrete_types.map(g.table.type_to_str(it))} recv.ct=${receiver_concrete_types.map(g.table.type_to_str(it))}')
-		}
-	}
 	$if trace_method_generics ? {
 		if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 			'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
@@ -3694,11 +3689,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 				'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
 				eprintln('>>> method_call pre-name: ${method_name} | concrete_types: ${concrete_types.map(g.table.type_to_str(it))} | receiver_concrete_types: ${receiver_concrete_types.map(g.table.type_to_str(it))} | has_method: ${has_method} | method_generic_names_len: ${method_generic_names_len} | full_method_generic_names: ${full_method_generic_names} | name_before: ${name}')
-			}
-		}
-		$if trace_ci_fixes ? {
-			if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
-				eprintln('method pre-name ${method_name}: raw=${raw_method_name} concrete=${concrete_types.map(g.table.type_to_str(it))} recv.ct=${receiver_concrete_types.map(g.table.type_to_str(it))} has_method=${has_method} method_names=${full_method_generic_names} name_before=${name}')
 			}
 		}
 		name_already_specialized := specialized_suffix != '' && name.ends_with(specialized_suffix)
@@ -3959,11 +3949,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					eprintln('>>> method_call named: ${method_name} | name_concrete_types: ${name_concrete_types.map(g.table.type_to_str(it))} | final_name: ${name}')
 				}
 			}
-			$if trace_ci_fixes ? {
-				if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
-					eprintln('method named ${method_name}: raw=${raw_method_name} name.ct=${name_concrete_types.map(g.table.type_to_str(it))} final=${name}')
-				}
-			}
 		} else if !(node.kind == .str && receiver_concrete_types.len > 0)
 			&& !name_already_specialized {
 			name = g.generic_fn_name(concrete_types, name)
@@ -3971,11 +3956,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				if method_name in ['next', 'next1', 'next2', 'next3', 'method', 'another_method',
 					'call_generic_fn', 'collect', 'encode_value', 'check_struct_type_valid'] {
 					eprintln('>>> method_call named no-method: ${method_name} | concrete_types: ${concrete_types.map(g.table.type_to_str(it))} | final_name: ${name}')
-				}
-			}
-			$if trace_ci_fixes ? {
-				if g.file.path.contains('/.vmodules/vtl/src/split.v') && method_name in ['swapaxes', 'slice_hilo'] {
-					eprintln('method named no-method ${method_name}: raw=${raw_method_name} concrete=${concrete_types.map(g.table.type_to_str(it))} final=${name}')
 				}
 			}
 		}
@@ -5332,18 +5312,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 			|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
 			|| g.unwrap_generic(resolved_arg_typ) != g.unwrap_generic(arg_typ)) {
 			arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
-		}
-	}
-	$if trace_ci_fixes ? {
-		if g.file.path.contains('comptime_for_in_options_struct_test.v') && arg.expr is ast.Ident
-			&& arg.expr.name == 'w' {
-			arg_name := if arg_typ == 0 { '0' } else { g.table.type_to_str(arg_typ) }
-			expected_name := if expected_type == 0 {
-				'0'
-			} else {
-				g.table.type_to_str(expected_type)
-			}
-			eprintln('ref_or_deref_arg w: arg=${arg_name} expected=${expected_name} expr_typ=${g.table.type_to_str(arg.typ)}')
 		}
 	}
 	// Array slice expressions (e.g. b[..8]) always return a value in C (via builtin__array_slice),

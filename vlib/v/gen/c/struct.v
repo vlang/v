@@ -11,15 +11,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
 	base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
-	$if trace_ci_fixes ? {
-		if g.file.path.contains('generic_method_short_struct_arg_cgen_test.v')
-			|| g.file.path.contains('/.vmodules/vtl/src/iter.v') {
-			node_type_str := if node.typ == 0 { '<none>' } else { g.table.type_to_str(node.typ) }
-			generic_type_str := if node.generic_typ == 0 { '<none>' } else { g.table.type_to_str(node.generic_typ) }
-			base_type_str := if base_node_typ == 0 { '<none>' } else { g.table.type_to_str(base_node_typ) }
-			eprintln('cgen struct_init fn=${if g.cur_fn == unsafe { nil } { '<nil>' } else { g.cur_fn.name }} node.typ=${node_type_str} generic_typ=${generic_type_str} base=${base_type_str} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))} active=${g.active_call_generic_names}:${g.active_call_concrete_types.map(g.table.type_to_str(it))} short=${node.is_short_syntax}')
-		}
-	}
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
 		is_update_tmp_var = true
 

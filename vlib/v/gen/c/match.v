@@ -60,13 +60,6 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
-	$if trace_ci_fixes ? {
-		if g.file.path.contains('/.vmodules/vtl/src/stack.v') {
-			ret_str := if node.return_type == 0 { '<none>' } else { g.table.type_to_str(node.return_type) }
-			expected_str := if node.expected_type == 0 { '<none>' } else { g.table.type_to_str(node.expected_type) }
-			eprintln('match expr file=${g.file.path} is_expr=${node.is_expr} ret=${ret_str} expected=${expected_str} cond=${node.cond_type}')
-		}
-	}
 	need_tmp_var := g.need_tmp_var_in_match(node)
 	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
 
