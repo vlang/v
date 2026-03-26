@@ -1317,9 +1317,8 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 			}
 		}
-		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-			|| (t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none))
+		is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+			&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// Guard against misresolution: if the receiver is known to be a string
@@ -1459,9 +1458,8 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		}
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
-			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-				|| (t.get_module_scope(sel.lhs.name) != none
-				&& t.lookup_var_type(sel.lhs.name) == none))
+			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+				&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 			if !is_module_call {
 				// Compute generic specialization suffix from the type arg
 				suffix := '_T_' + t.generic_specialization_token(gai.expr)
@@ -2660,9 +2658,8 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	// Method call resolution: rewrite receiver.method(arg) -> Type__method(receiver, arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
-		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-			|| (t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none))
+		is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+			&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// prepend(arr) → prepend_many(arr.data, arr.len)
@@ -2755,9 +2752,8 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		gai := expr.lhs as ast.GenericArgOrIndexExpr
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
-			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-				|| (t.get_module_scope(sel.lhs.name) != none
-				&& t.lookup_var_type(sel.lhs.name) == none))
+			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+				&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 			if !is_module_call {
 				suffix := '_T_' + t.generic_specialization_token(gai.expr)
 				// When the receiver matches the current method's receiver parameter
