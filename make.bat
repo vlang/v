@@ -15,8 +15,7 @@ set V_EXE=./v.exe
 set V_BOOTSTRAP=./v_win_bootstrap.exe
 set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
-set V_C_FILE=./vc/v.c
-if not exist "%V_C_FILE%" set V_C_FILE=./vc/v_win.c
+set V_C_FILE=./vc/v_win.c
 
 REM TCC variables
 set tcc_url=https://github.com/vlang/tccbin
