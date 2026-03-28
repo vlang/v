@@ -2082,7 +2082,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 		}
 	}
-	is_print := node.kind in [.print, .println, .eprint, .eprintln, .panic]
+	mut is_print := !is_selector_call && node.kind in [.print, .println, .eprint, .eprintln, .panic]
 	print_method := name
 	is_json_encode := node.kind == .json_encode
 	is_json_encode_pretty := node.kind == .json_encode_pretty
@@ -2186,6 +2186,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if func.mod == 'builtin' && !name.starts_with('builtin__') && node.language != .c {
 				name = 'builtin__${name}'
 			}
+			is_print = is_print && func.mod == 'builtin'
+		} else {
+			is_print = false
 		}
 	}
 	if node.is_fn_a_const {
