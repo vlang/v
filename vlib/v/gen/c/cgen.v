@@ -7174,6 +7174,26 @@ fn (mut g Gen) write_sorted_types() {
 	}
 }
 
+fn (mut g Gen) ensure_fixed_array_option_definition(elem_type ast.Type) bool {
+	if !elem_type.has_flag(.option) || elem_type.has_flag(.generic) {
+		return false
+	}
+	elem_sym := g.table.final_sym(elem_type.clear_option_and_result())
+	if elem_sym.info !is ast.Struct && elem_sym.info !is ast.Interface
+		&& elem_sym.info !is ast.SumType {
+		return false
+	}
+	styp, base := g.option_type_name(elem_type)
+	lock g.done_options {
+		if base !in g.done_options {
+			g.done_options << base
+			g.typedefs.writeln('typedef struct ${styp} ${styp};')
+			g.type_definitions.writeln('${g.option_type_text(styp, base)};')
+		}
+	}
+	return true
+}
+
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 	mut struct_names := map[string]bool{}
 	for sym in symbols {
@@ -7200,7 +7220,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.Struct {
 				if !struct_names[name]
 					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
-					// generate field option types for fixed array of option struct before struct declaration
+					// generate field option types for fixed array of option struct/interface/sumtype
+					// before the struct declaration
 					opt_fields := sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
 					for opt_field in opt_fields {
 						field_sym := g.table.final_sym(opt_field.typ)
@@ -7208,6 +7229,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						if !arr.elem_type.has_flag(.option) || arr.elem_type.has_flag(.generic) {
 							continue
 						}
+						g.ensure_fixed_array_option_definition(arr.elem_type)
 						styp := field_sym.cname
 						mut fixed_elem_name := g.styp(arr.elem_type.set_nr_muls(0))
 						if arr.elem_type.is_ptr() {
@@ -7323,17 +7345,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							g.type_definitions.writeln(def_str)
 						} else if elem_sym.info !is ast.ArrayFixed
 							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
-							// fixed array of option struct must be defined backwards
-							if sym.info.elem_type.has_flag(.option) && elem_sym.info is ast.Struct {
-								styp_elem, base := g.option_type_name(sym.info.elem_type)
-								lock g.done_options {
-									if base !in g.done_options {
-										g.done_options << base
-										g.typedefs.writeln('typedef struct ${styp_elem} ${styp_elem};')
-										g.type_definitions.writeln('${g.option_type_text(styp_elem,
-											base)};')
-									}
-								}
+							// fixed array of option struct/interface/sumtype must be defined backwards
+							if g.ensure_fixed_array_option_definition(sym.info.elem_type) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
