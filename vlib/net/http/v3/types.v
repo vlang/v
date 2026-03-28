@@ -1,5 +1,7 @@
 module v3
 
+import net.http.common
+
 // HTTP/3 frame types, request/response types, and shared structures (RFC 9114).
 
 // max_data_frame_size is the maximum payload size for a single DATA frame (16KB),
@@ -34,49 +36,23 @@ pub mut:
 	qpack_blocked_streams    u64 = 100
 }
 
-// Method represents HTTP methods for HTTP/3 requests.
-// This enum is duplicated from net.http.Method because V does not allow
-// circular imports — net.http imports net.http.v3, so net.http.v3 cannot
-// import net.http. A future solution could use a shared types module
-// (e.g., net.http.common) imported by both.
-pub enum Method {
-	get
-	post
-	put
-	patch
-	delete
-	head
-	options
-}
+pub type Method = common.Method
 
-// str returns the HTTP method as a string.
-pub fn (m Method) str() string {
-	return match m {
-		.get { 'GET' }
-		.post { 'POST' }
-		.put { 'PUT' }
-		.patch { 'PATCH' }
-		.delete { 'DELETE' }
-		.head { 'HEAD' }
-		.options { 'OPTIONS' }
-	}
-}
-
-// Request represents an HTTP/3 request.
+// Request represents an HTTP/3 client request.
 pub struct Request {
 pub:
 	method  Method
 	url     string
 	host    string
 	data    string
-	headers map[string]string
+	header  common.Header
 }
 
-// Response represents an HTTP/3 response.
+// Response represents an HTTP/3 client response.
 pub struct Response {
 pub:
 	status_code int
-	headers     map[string]string
+	header      common.Header
 	body        string
 }
 
@@ -88,16 +64,11 @@ pub:
 }
 
 // create_data_frames splits a request body into DATA frames respecting max_data_frame_size.
-// Returns an empty-payload DATA frame when the body is empty to signal stream end.
+// End-of-request is signaled via QUIC FIN at the transport layer, not via
+// application-level empty DATA frames.
 fn create_data_frames(data string) []Frame {
 	if data.len == 0 {
-		return [
-			Frame{
-				frame_type: .data
-				length:     0
-				payload:    []u8{}
-			},
-		]
+		return []Frame{}
 	}
 	mut frames := []Frame{cap: data.len / max_data_frame_size + 1}
 	mut offset := 0

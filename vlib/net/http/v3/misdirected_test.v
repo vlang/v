@@ -5,7 +5,6 @@ module v3
 fn test_is_misdirected_421() {
 	resp := Response{
 		status_code: 421
-		headers:     {}
 		body:        ''
 	}
 	assert is_misdirected(resp) == true
@@ -14,7 +13,6 @@ fn test_is_misdirected_421() {
 fn test_is_misdirected_200() {
 	resp := Response{
 		status_code: 200
-		headers:     {}
 		body:        'ok'
 	}
 	assert is_misdirected(resp) == false
@@ -23,7 +21,6 @@ fn test_is_misdirected_200() {
 fn test_is_misdirected_404() {
 	resp := Response{
 		status_code: 404
-		headers:     {}
 		body:        'not found'
 	}
 	assert is_misdirected(resp) == false

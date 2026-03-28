@@ -7,20 +7,11 @@ import io
 import net
 import time
 import runtime
-// ServerStatus is the current status of the server.
-// .closed means that the server is completely inactive (the default on creation, and after calling .close()).
-// .running means that the server is active and serving (after .listen_and_serve()).
-// .stopped means that the server is not active but still listening (after .stop() ).
 
 pub enum ServerStatus {
 	closed
 	running
 	stopped
-}
-
-pub interface Handler {
-mut:
-	handle(Request) Response
 }
 
 pub const default_server_port = 9009
@@ -30,24 +21,28 @@ mut:
 	state ServerStatus = .closed
 pub mut:
 	addr                    string        = ':${default_server_port}'
-	handler                 Handler       = DebugHandler{}
+	handler                 ServerHandler = DebugHandler{}
 	read_timeout            time.Duration = 30 * time.second
 	write_timeout           time.Duration = 30 * time.second
 	accept_timeout          time.Duration = 30 * time.second
 	pool_channel_slots      int           = 1024
 	worker_num              int           = runtime.nr_jobs()
-	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
+	max_keep_alive_requests int           = 100
 	listener                net.TcpListener
 
-	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
-	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
-	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
+	on_running fn (mut s Server) = unsafe { nil }
+	on_stopped fn (mut s Server) = unsafe { nil }
+	on_closed  fn (mut s Server) = unsafe { nil }
 
-	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
+	max_request_body_size int  = 10_485_760 // 10 MB, same default as HTTP/2 and HTTP/3
+	show_startup_message  bool = true
+	cert_file             string // TLS cert; when set with key_file, enables HTTPS
+	key_file             string
+	enable_h3            bool   // when true and TLS enabled, also serve HTTP/3 on UDP
+	tls_addr             string // optional TLS listen address for listen_and_serve_all()
+	h3_addr              string // optional HTTP/3 listen address for listen_and_serve_all()
 }
 
-// listen_and_serve listens on the server port `s.port` over TCP network and
-// uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
@@ -60,7 +55,6 @@ pub fn (mut s Server) listen_and_serve() {
 	if l.family() == net.AddrFamily.unspec {
 		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
 		listen_family := net.AddrFamily.ip
-		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
 		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
@@ -73,12 +67,10 @@ pub fn (mut s Server) listen_and_serve() {
 	s.addr = l.str()
 	s.listener.set_accept_timeout(s.accept_timeout)
 
-	// Create tcp connection channel
 	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, s.max_request_body_size)
 	}
 
 	if s.show_startup_message {
@@ -94,7 +86,6 @@ pub fn (mut s Server) listen_and_serve() {
 	for s.state == .running {
 		mut conn := s.listener.accept() or {
 			if err.code() == net.err_timed_out_code {
-				// Skip network timeouts, they are normal
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')
@@ -109,7 +100,6 @@ pub fn (mut s Server) listen_and_serve() {
 	}
 }
 
-// stop signals the server that it should not respond anymore.
 @[inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
@@ -118,7 +108,6 @@ pub fn (mut s Server) stop() {
 	}
 }
 
-// close immediately closes the port and signals the server that it has been closed.
 @[inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
@@ -128,24 +117,18 @@ pub fn (mut s Server) close() {
 	}
 }
 
-// status indicates whether the server is running, stopped, or closed.
 @[inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
 }
 
-// WaitTillRunningParams allows for parametrising the calls to s.wait_till_running()
 @[params]
 pub struct WaitTillRunningParams {
 pub:
-	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
-	retry_period_ms int = 10  // how much time to wait between each check for the status, in milliseconds
+	max_retries     int = 100
+	retry_period_ms int = 10
 }
 
-// wait_till_running allows you to synchronise your calling (main) thread, with the state of the server
-// (when the server is running in another thread).
-// It returns an error, after params.max_retries * params.retry_period_ms
-// milliseconds have passed, without that expected server transition.
 pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
 	mut i := 0
 	for s.status() != .running && i < params.max_retries {
@@ -163,16 +146,18 @@ struct HandlerWorker {
 	id                      int
 	ch                      chan &net.TcpConn
 	max_keep_alive_requests int
+	max_request_body_size   int
 pub mut:
-	handler Handler
+	handler ServerHandler
 }
 
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int) thread {
+fn new_handler_worker(wid int, ch chan &net.TcpConn, handler ServerHandler, max_keep_alive_requests int, max_request_body_size int) thread {
 	mut w := &HandlerWorker{
 		id:                      wid
 		ch:                      ch
 		handler:                 handler
 		max_keep_alive_requests: max_keep_alive_requests
+		max_request_body_size:   max_request_body_size
 	}
 	return spawn w.process_requests()
 }
@@ -198,33 +183,31 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 
 	mut request_count := 0
 	for {
-		mut req := parse_request(mut reader) or {
-			$if debug {
-				// only show in debug mode to prevent abuse
-				eprintln('error parsing request: ${err}')
+		mut req := parse_request_with_limit(mut reader, w.max_request_body_size) or {
+			if err.msg().starts_with('request body too large') {
+				conn.write('HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()) or {}
+			} else {
+				$if debug {
+					eprintln('error parsing request: ${err}')
+				}
 			}
 			return
 		}
 		request_count++
 
 		remote_ip := conn.peer_ip() or { '0.0.0.0' }
-		req.header.add_custom('Remote-Addr', remote_ip) or {}
+		set_server_only_header(mut req.header, 'Remote-Addr', remote_ip)
 
-		mut resp := w.handler.handle(req)
-		if resp.version() == .unknown {
-			resp.set_version(req.version)
-		}
+		server_req := request_to_server_request(&req)
+		server_resp := w.handler.handle(server_req)
+		mut resp := server_response_to_response(server_resp, req.version)
 
-		// Implemented by developers?
 		if !resp.header.contains(.content_length) {
 			resp.header.set(.content_length, '${resp.body.len}')
 		}
 
-		// Check if max keep-alive requests limit reached
 		max_reached := w.max_keep_alive_requests > 0 && request_count >= w.max_keep_alive_requests
 
-		// Determine if connection should be kept alive
-		// HTTP/1.1 defaults to keep-alive, HTTP/1.0 defaults to close
 		req_conn := (req.header.get(.connection) or { '' }).to_lower()
 		resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
 		keep_alive := if max_reached {
@@ -238,12 +221,9 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		} else if req_conn == 'keep-alive' {
 			true
 		} else {
-			// Default behavior based on HTTP version
 			req.version == .v1_1
 		}
 
-		// Set Connection header in response
-		// Always override if max requests reached, otherwise only set if not already present
 		if max_reached || !resp.header.contains(.connection) {
 			if keep_alive {
 				resp.header.set(.connection, 'keep-alive')
@@ -261,23 +241,4 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 			return
 		}
 	}
-}
-
-// DebugHandler implements the Handler interface by echoing the request
-// in the response.
-struct DebugHandler {}
-
-fn (d DebugHandler) handle(req Request) Response {
-	$if debug {
-		eprintln('[${time.now()}] ${req.method} ${req.url}\n\r${req.header}\n\r${req.data} - 200 OK')
-	} $else {
-		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
-	}
-	mut r := Response{
-		body:   req.data
-		header: req.header
-	}
-	r.set_status(.ok)
-	r.set_version(req.version)
-	return r
 }

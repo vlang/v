@@ -2,6 +2,7 @@ module v2
 
 // HTTP/2 client with TLS, HPACK, and flow control.
 import net
+import net.http.common
 import net.ssl
 import time
 
@@ -130,10 +131,19 @@ fn build_request_header_fields(req Request) []HeaderField {
 			value: req.host
 		},
 	]
-	filtered := filter_connection_specific_headers(req.headers)
-	for key, value in filtered {
+
+	for entry in req.header.entries() {
+		key := entry.key
+		value := entry.value
+		lower := key.to_lower()
+		if lower in forbidden_headers {
+			continue
+		}
+		if lower == 'transfer-encoding' && value.to_lower() != 'trailers' {
+			continue
+		}
 		headers << HeaderField{
-			name:  key.to_lower()
+			name:  lower
 			value: value
 		}
 	}
@@ -204,20 +214,20 @@ fn (mut c Client) read_response(stream_id u32) !Response {
 
 fn (c Client) build_response(stream &Stream) Response {
 	mut status_code := 200
-	mut response_headers := map[string]string{}
+	mut resp_header := common.new_header()
 
-	for header in stream.headers {
-		if header.name == ':status' {
-			status_code = header.value.int()
-		} else if !header.name.starts_with(':') {
-			response_headers[header.name] = header.value
+	for h in stream.headers {
+		if h.name == ':status' {
+			status_code = h.value.int()
+		} else if !h.name.starts_with(':') {
+			resp_header.add_custom(h.name, h.value) or {}
 		}
 	}
 
 	return Response{
 		body:        stream.data.bytestr()
 		status_code: status_code
-		headers:     response_headers
+		header:      resp_header
 	}
 }
 

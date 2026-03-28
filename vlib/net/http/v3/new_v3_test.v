@@ -1,5 +1,7 @@
 module v3
 
+import net.quic
+
 // Tests for QPACK encoding/decoding and varint codec.
 
 // new_test_server_connection creates a minimal ServerConnection for unit tests.
@@ -12,6 +14,23 @@ fn new_test_server_connection() ServerConnection {
 			qpack_max_table_capacity: 4096
 			qpack_blocked_streams:    100
 		}
+	}
+}
+
+// make_test_server_stream creates a ServerStream with headers_received=true for testing.
+fn make_test_server_stream(stream_id u64, method string, path string) &ServerStream {
+	return &ServerStream{
+		id:               stream_id
+		headers:          [HeaderField{':method', method}, HeaderField{':path', path}]
+		headers_received: true
+	}
+}
+
+// make_test_quic_stream creates a quic.Stream for FIN detection testing.
+fn make_test_quic_stream(stream_id u64, fin bool) &quic.Stream {
+	return &quic.Stream{
+		id:           stream_id
+		fin_received: fin
 	}
 }
 
@@ -201,7 +220,7 @@ fn test_large_body_chunking() {
 
 	frames := create_data_frames(body)
 
-	// Expect 3 frames: 2 full (16384 bytes each) + 1 partial (100 bytes)
+	// Expect 3 frames: 2 full + 1 partial (no trailing empty end marker)
 	assert frames.len == 3, 'expected 3 frames, got ${frames.len}'
 	assert frames[0].payload.len == max_data_frame_size
 	assert frames[0].length == u64(max_data_frame_size)
@@ -226,11 +245,12 @@ fn test_large_body_chunking() {
 }
 
 fn test_small_body_no_chunking() {
-	println('Testing small body produces single frame...')
+	println('Testing small body produces single DATA frame...')
 
 	small_body := 'hello world'
 	frames := create_data_frames(small_body)
 
+	// Only the actual body frame — no trailing empty end marker
 	assert frames.len == 1
 	assert frames[0].payload.len == small_body.len
 	assert frames[0].frame_type == .data
@@ -239,14 +259,12 @@ fn test_small_body_no_chunking() {
 }
 
 fn test_empty_body_data_frame() {
-	println('Testing empty body produces empty DATA frame...')
+	println('Testing empty body produces no DATA frames...')
 
 	frames := create_data_frames('')
 
-	assert frames.len == 1
-	assert frames[0].payload.len == 0
-	assert frames[0].length == u64(0)
-	assert frames[0].frame_type == .data
+	// Empty body means no DATA frames — FIN signals end-of-request
+	assert frames.len == 0
 
 	println('Empty body data frame test passed')
 }
@@ -257,7 +275,7 @@ fn test_exact_chunk_boundary() {
 	body := []u8{len: max_data_frame_size * 2, init: u8(0x42)}.bytestr()
 	frames := create_data_frames(body)
 
-	// Exactly 2 full frames, no partial
+	// Exactly 2 full frames (no trailing empty end marker)
 	assert frames.len == 2
 	assert frames[0].payload.len == max_data_frame_size
 	assert frames[1].payload.len == max_data_frame_size
@@ -286,18 +304,21 @@ fn test_data_after_headers_succeeds() {
 	stream_id := u64(0)
 
 	// Manually create the stream with headers to simulate HEADERS arriving first.
-	// Set request_complete to true to avoid triggering process_request, which
-	// requires a fully initialized crypto context.
-	conn.streams[stream_id] = &ServerStream{
-		id:               stream_id
-		headers:          [HeaderField{':method', 'POST'}, HeaderField{':path', '/'}]
-		headers_received: true
-		request_complete: true
-	}
+	// Mark the request as already complete so handle_data_frame does not
+	// trigger process_request, which requires a fully initialized crypto context.
+	mut setup_stream := make_test_server_stream(stream_id, 'POST', '/')
+	setup_stream.request_complete = true
+	conn.streams[stream_id] = setup_stream
 
 	// DATA after HEADERS should succeed (data is appended)
 	s.handle_data_frame(mut conn, stream_id, 'body'.bytes()) or {
 		assert false, 'DATA after HEADERS should not fail: ${err}'
+		return
+	}
+
+	// Empty DATA should be treated as normal empty data, not as an end marker
+	s.handle_data_frame(mut conn, stream_id, []u8{}) or {
+		assert false, 'empty DATA frame should not fail: ${err}'
 		return
 	}
 
@@ -641,6 +662,94 @@ fn test_control_reader_parses_goaway() {
 	assert gid == u64(12)
 }
 
+// ── FIN signaling: create_data_frames must NOT append empty end-marker ──
+
+fn test_create_data_frames_no_empty_marker() {
+	body := 'hello world'
+	frames := create_data_frames(body)
+
+	// No frame should have zero-length payload (the old empty end-marker is removed)
+	for i, f in frames {
+		assert f.payload.len > 0, 'frame ${i} has zero-length payload — empty end-marker should not exist'
+	}
+}
+
+fn test_create_data_frames_body_content_only() {
+	body := 'test body data'
+	frames := create_data_frames(body)
+
+	// Should produce exactly 1 DATA frame for a small body (no trailing marker)
+	assert frames.len == 1, 'expected 1 frame for small body, got ${frames.len}'
+	assert frames[0].payload == body.bytes()
+	assert frames[0].frame_type == .data
+	assert frames[0].length == u64(body.len)
+}
+
+fn test_create_data_frames_empty_body_returns_no_frames() {
+	frames := create_data_frames('')
+
+	// Empty body should produce zero DATA frames — FIN handles end-of-request
+	assert frames.len == 0, 'expected 0 frames for empty body, got ${frames.len}'
+}
+
+fn test_handle_data_frame_completes_request_on_quic_fin() {
+	// After H-NEW1 fix: handle_data_frame no longer triggers request completion
+	// directly. It appends data only. Request completion is delegated to
+	// check_fin_completions, which runs after ALL frames in a packet are processed.
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Create ServerStream with headers (simulating HEADERS arrived first)
+	conn.streams[stream_id] = make_test_server_stream(stream_id, 'POST', '/')
+
+	// Create QUIC-level stream with fin_received = true to simulate FIN detection
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Act: handle DATA frame — should only append data, NOT call process_request
+	s.handle_data_frame(mut conn, stream_id, 'body'.bytes()) or {
+		assert false, 'handle_data_frame should not fail: ${err}'
+		return
+	}
+
+	// Assert: data appended but request NOT yet complete (delegated to check_fin_completions)
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should still exist'
+		return
+	}
+	assert stream.request_complete == false, 'handle_data_frame must not set request_complete (delegated to check_fin_completions)'
+	assert stream.data == 'body'.bytes(), 'data should be appended'
+	println('✓ handle_data_frame appends data without triggering request completion')
+}
+
+fn test_handle_headers_frame_creates_quic_stream() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Encode a simple GET request header
+	headers := [
+		HeaderField{':method', 'GET'},
+		HeaderField{':path', '/test'},
+		HeaderField{':scheme', 'https'},
+	]
+	conn.mu.lock()
+	encoded := conn.encoder.encode(headers)
+	conn.mu.unlock()
+
+	// Act: handle HEADERS frame — process_request will fail (no real connection)
+	s.handle_headers_frame(mut conn, stream_id, encoded) or {
+		// Expected: process_request fails on nil connection
+	}
+
+	// Assert: QUIC-level stream should exist for FIN detection
+	if _ := conn.quic_conn.streams[stream_id] {
+		println('✓ handle_headers_frame creates QUIC-level stream for FIN detection')
+	} else {
+		assert false, 'QUIC-level stream should be created in handle_headers_frame for FIN detection'
+	}
+}
+
 fn test_control_reader_ignores_unknown_frames() {
 	mut reader := new_control_reader()
 
@@ -673,4 +782,299 @@ fn test_control_reader_ignores_unknown_frames() {
 		return
 	}
 	assert result.frame_type == .unknown
+}
+
+// ── H5: Stream ID convention matches QUIC client-initiated bidi (RFC 9000 §2.1) ──
+
+fn test_next_client_stream_id_starts_at_zero() {
+	// RFC 9000 §2.1: client-initiated bidirectional streams use IDs 0, 4, 8, 12, ...
+	// The first ID MUST be 0 to match QUIC's convention.
+	conn := new_test_server_connection()
+	assert conn.next_client_stream_id == u64(0), 'next_client_stream_id must start at 0 to match QUIC bidi convention'
+}
+
+fn test_stream_id_allocation_matches_quic_bidi_convention() {
+	// RFC 9000 §2.1: client-initiated bidirectional stream IDs are 4*n
+	// (0, 4, 8, 12, ...). Our synthesized IDs must follow this pattern.
+	mut conn := new_test_server_connection()
+
+	// Simulate allocating stream IDs as handle_packet does
+	expected_ids := [u64(0), u64(4), u64(8), u64(12)]
+	for expected in expected_ids {
+		conn.mu.lock()
+		allocated := conn.next_client_stream_id
+		conn.next_client_stream_id += 4
+		conn.mu.unlock()
+		assert allocated == expected, 'stream ID should be ${expected}, got ${allocated}'
+	}
+}
+
+fn test_new_server_connection_stream_id_matches_quic() {
+	// Verify that new_server_connection (the real constructor) also starts at 0
+	quic_conn := quic.Connection{}
+	crypto_ctx := quic.CryptoContext{}
+	conn := new_server_connection(quic_conn, crypto_ctx, '127.0.0.1:4433')
+	assert conn.next_client_stream_id == u64(0), 'new_server_connection must start next_client_stream_id at 0 (QUIC bidi convention)'
+}
+
+// ── Client FIN optimization: serialize_frame extraction ──
+
+fn test_serialize_frame_produces_valid_encoding() {
+	payload := 'hello'.bytes()
+	frame := Frame{
+		frame_type: .data
+		length:     u64(payload.len)
+		payload:    payload
+	}
+	data := serialize_frame(frame) or {
+		assert false, 'serialize_frame failed: ${err}'
+		return
+	}
+	// Serialized data must include varint header + payload
+	assert data.len > payload.len, 'serialized data should include frame header'
+	// Payload should appear at the end unchanged
+	assert data[data.len - payload.len..] == payload, 'payload should be at end of serialized data'
+}
+
+fn test_serialize_frame_roundtrip_with_decode() {
+	payload := 'test data'.bytes()
+	frame := Frame{
+		frame_type: .data
+		length:     u64(payload.len)
+		payload:    payload
+	}
+	data := serialize_frame(frame) or {
+		assert false, 'serialize_frame failed: ${err}'
+		return
+	}
+
+	// Decode the serialized frame and verify
+	frame_type_val, bytes_read := decode_varint(data) or {
+		assert false, 'decode frame type failed: ${err}'
+		return
+	}
+	frame_length, bytes_read2 := decode_varint(data[bytes_read..]) or {
+		assert false, 'decode frame length failed: ${err}'
+		return
+	}
+
+	assert frame_type_val == u64(FrameType.data), 'frame type should be DATA'
+	assert frame_length == u64(payload.len), 'frame length should match payload'
+	decoded_payload := data[bytes_read + bytes_read2..]
+	assert decoded_payload == payload, 'decoded payload should match original'
+}
+
+// ── C1/H2: FIN completion hook ──
+
+fn test_check_fin_completions_processes_ready_streams() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Setup: stream has headers + data, waiting for FIN
+	mut setup_stream := make_test_server_stream(stream_id, 'POST', '/')
+	setup_stream.data = 'body'.bytes()
+	conn.streams[stream_id] = setup_stream
+	// QUIC-level stream has FIN
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Act
+	s.check_fin_completions(mut conn, [stream_id])
+
+	// Assert: stream should be marked complete
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == true, 'stream should be marked complete after FIN sweep'
+}
+
+fn test_check_fin_completions_skips_incomplete_streams() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Setup: stream has headers but NO FIN
+	conn.streams[stream_id] = make_test_server_stream(stream_id, 'POST', '/')
+	// QUIC-level stream without FIN
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, false)
+
+	// Act
+	s.check_fin_completions(mut conn, [stream_id])
+
+	// Assert: stream should NOT be marked complete (no FIN)
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == false, 'stream without FIN should not be completed'
+}
+
+fn test_check_fin_completions_skips_already_complete() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Setup: stream already complete
+	mut setup_stream := make_test_server_stream(stream_id, 'POST', '/')
+	setup_stream.request_complete = true
+	conn.streams[stream_id] = setup_stream
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Act — should not re-trigger process_request
+	s.check_fin_completions(mut conn, [stream_id])
+
+	// Assert: should still be complete (no crash, no re-processing)
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == true
+}
+
+fn test_empty_body_post_completes_via_fin() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	// Setup: POST request with headers but NO data (empty body)
+	conn.streams[stream_id] = make_test_server_stream(stream_id, 'POST', '/upload')
+	// FIN received (signals end of empty body)
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Act
+	s.check_fin_completions(mut conn, [stream_id])
+
+	// Assert: empty-body POST should complete via FIN sweep
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == true, 'empty-body POST should complete when FIN arrives'
+}
+
+// ── H3: Per-connection packet serialization ──
+
+fn test_server_connection_has_packet_mu() {
+	// ServerConnection must have a packet_mu mutex for serializing
+	// concurrent packet processing on the same connection.
+	mut conn := new_test_server_connection()
+	// Verify the mutex is usable (lock + unlock should not panic)
+	conn.packet_mu.lock()
+	conn.packet_mu.unlock()
+}
+
+// ── H-NEW1: handle_data_frame must NOT trigger request completion ──
+
+fn test_handle_data_frame_does_not_complete_request() {
+	// handle_data_frame should ONLY append payload data to the stream.
+	// Request completion must happen via check_fin_completions sweep,
+	// not inside handle_data_frame — even when FIN is already visible.
+	// This prevents premature completion when a packet contains multiple
+	// DATA frames (FIN is visible from the first frame onward).
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	conn.streams[stream_id] = make_test_server_stream(stream_id, 'POST', '/')
+
+	// QUIC-level stream with FIN already visible (simulating ngtcp2 processed first)
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Act: handle_data_frame should only append data
+	s.handle_data_frame(mut conn, stream_id, 'chunk1'.bytes()) or {
+		assert false, 'handle_data_frame should not fail: ${err}'
+		return
+	}
+
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == false, 'handle_data_frame must NOT set request_complete (delegation to check_fin_completions)'
+	assert stream.data == 'chunk1'.bytes(), 'data should be appended'
+}
+
+fn test_handle_data_frame_accumulates_multiple_chunks() {
+	// Simulates a packet with multiple DATA frames — each call should
+	// only append data without triggering completion.
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+	stream_id := u64(0)
+
+	conn.streams[stream_id] = make_test_server_stream(stream_id, 'POST', '/upload')
+	conn.quic_conn.streams[stream_id] = make_test_quic_stream(stream_id, true)
+
+	// Simulate two DATA frames in the same packet
+	s.handle_data_frame(mut conn, stream_id, 'part1'.bytes()) or {
+		assert false, 'first DATA frame failed: ${err}'
+		return
+	}
+	s.handle_data_frame(mut conn, stream_id, 'part2'.bytes()) or {
+		assert false, 'second DATA frame failed: ${err}'
+		return
+	}
+
+	stream := conn.streams[stream_id] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == false, 'neither DATA frame should trigger completion'
+	expected_data := []u8{}
+	mut expected := expected_data.clone()
+	expected << 'part1'.bytes()
+	expected << 'part2'.bytes()
+	assert stream.data == expected, 'all chunks should be accumulated'
+}
+
+// ── M6: check_fin_completions targeted by stream IDs ──
+
+fn test_check_fin_completions_only_checks_specified_ids() {
+	// check_fin_completions should only process the stream IDs passed to it,
+	// not sweep all streams. O(new_fin) not O(all_streams).
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+
+	// Stream 0: has headers + FIN (should be completed)
+	mut setup_s0 := make_test_server_stream(u64(0), 'POST', '/a')
+	setup_s0.data = 'body-a'.bytes()
+	conn.streams[u64(0)] = setup_s0
+	conn.quic_conn.streams[u64(0)] = make_test_quic_stream(u64(0), true)
+
+	// Stream 4: has headers + FIN (should NOT be completed — not in check list)
+	mut setup_s4 := make_test_server_stream(u64(4), 'POST', '/b')
+	setup_s4.data = 'body-b'.bytes()
+	conn.streams[u64(4)] = setup_s4
+	conn.quic_conn.streams[u64(4)] = make_test_quic_stream(u64(4), true)
+
+	// Act: only check stream 0
+	s.check_fin_completions(mut conn, [u64(0)])
+
+	stream0 := conn.streams[u64(0)] or {
+		assert false, 'stream 0 should exist'
+		return
+	}
+	stream4 := conn.streams[u64(4)] or {
+		assert false, 'stream 4 should exist'
+		return
+	}
+	assert stream0.request_complete == true, 'stream 0 should be completed (in check list)'
+	assert stream4.request_complete == false, 'stream 4 should NOT be completed (not in check list)'
+}
+
+fn test_check_fin_completions_with_empty_ids_is_noop() {
+	mut s := Server{}
+	mut conn := new_test_server_connection()
+
+	conn.streams[u64(0)] = make_test_server_stream(u64(0), 'POST', '/')
+	conn.quic_conn.streams[u64(0)] = make_test_quic_stream(u64(0), true)
+
+	// Act: empty check list — should be a no-op
+	s.check_fin_completions(mut conn, []u64{})
+
+	stream := conn.streams[u64(0)] or {
+		assert false, 'stream should exist'
+		return
+	}
+	assert stream.request_complete == false, 'empty check list should not complete any streams'
 }

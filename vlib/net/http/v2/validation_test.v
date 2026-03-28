@@ -134,6 +134,46 @@ fn test_validate_missing_path() {
 	assert false, 'should reject headers missing :path'
 }
 
+fn test_validate_missing_scheme() {
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'GET'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+	]
+	validate_request_headers(headers) or {
+		assert err.msg().contains(':scheme')
+		return
+	}
+	assert false, 'should reject headers missing :scheme'
+}
+
+fn test_validate_unknown_method() {
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'BREW'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+	]
+	validate_request_headers(headers) or {
+		assert err.msg().contains('unsupported :method')
+		return
+	}
+	assert false, 'should reject unsupported :method'
+}
+
 fn test_validate_unknown_pseudo_header() {
 	headers := [
 		HeaderField{

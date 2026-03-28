@@ -1,17 +1,12 @@
 module main
 
-import net.http { Request, Response, Server }
+import net.http
 
 struct ExampleHandler {}
 
-fn (h ExampleHandler) handle(req Request) Response {
-	mut res := Response{
-		header: http.new_header_from_map({
-			.content_type: 'text/plain'
-		})
-	}
+fn (h ExampleHandler) handle(req http.ServerRequest) http.ServerResponse {
 	mut status_code := 200
-	res.body = match req.url {
+	body := match req.path {
 		'/foo' {
 			'bar\n'
 		}
@@ -26,12 +21,17 @@ fn (h ExampleHandler) handle(req Request) Response {
 			'Not found\n'
 		}
 	}
-	res.status_code = status_code
-	return res
+	return http.ServerResponse{
+		status_code: status_code
+		header: http.new_header_from_map({
+			.content_type: 'text/plain'
+		})
+		body: body.bytes()
+	}
 }
 
 fn main() {
-	mut server := Server{
+	mut server := http.Server{
 		handler: ExampleHandler{}
 	}
 	server.listen_and_serve()

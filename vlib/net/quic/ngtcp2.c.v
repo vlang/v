@@ -48,6 +48,14 @@ pub type Ngtcp2Pkt = voidptr
 // Ngtcp2Vec is an opaque handle for an ngtcp2 scatter-gather vector.
 pub type Ngtcp2Vec = voidptr
 
+// QUIC stream write flags for ngtcp2_conn_writev_stream (ngtcp2 API).
+pub const ngtcp2_write_stream_flag_none = u32(0x00)
+pub const ngtcp2_write_stream_flag_fin = u32(0x01)
+pub const ngtcp2_write_stream_flag_more = u32(0x02)
+
+// QUIC recv_stream_data callback flags (from ngtcp2 API).
+pub const ngtcp2_stream_data_flag_fin = u32(0x01)
+
 // ngtcp2 error codes per RFC 9000.
 pub const ngtcp2_err_invalid_argument = -201
 pub const ngtcp2_err_nobuf = -203
@@ -375,6 +383,18 @@ pub mut:
 	remote_addrlen u32
 }
 
+// QuicStreamEvents holds pending stream events from C callbacks.
+// The C-side callbacks write FIN/close events here via user_data,
+// and the V-side drains them after conn_read_pkt.
+pub struct QuicStreamEvents {
+pub mut:
+	fin_stream_ids    [64]i64
+	fin_count         int
+	closed_stream_ids [64]i64
+	closed_count      int
+	overflow          int
+}
+
 // Custom C callbacks (defined in quic_stubs.c)
 fn C.quic_rand_cb(dest &u8, destlen usize, rand_ctx voidptr)
 fn C.quic_get_new_connection_id_cb(conn voidptr, cid voidptr, token &u8, cidlen usize, user_data voidptr) int
@@ -423,15 +443,15 @@ pub fn conn_write_pkt(conn voidptr, path &Ngtcp2PathStruct, pi &Ngtcp2PktInfo, d
 	return int(rv)
 }
 
-// conn_writev_stream writes stream data
-pub fn conn_writev_stream(conn voidptr, path &Ngtcp2PathStruct, pi &Ngtcp2PktInfo, dest []u8, stream_id i64, data []u8, ts u64) !(int, i64) {
+// conn_writev_stream writes stream data with optional flags (e.g., FIN).
+pub fn conn_writev_stream(conn voidptr, path &Ngtcp2PathStruct, pi &Ngtcp2PktInfo, dest []u8, stream_id i64, data []u8, ts u64, flags u32) !(int, i64) {
 	mut datalen := i64(0)
 	vec := Ngtcp2VecStruct{
 		base: data.data
 		len:  u64(data.len)
 	}
 	rv := C.ngtcp2_conn_writev_stream(conn, path, pi, dest.data, u64(dest.len), &datalen,
-		0, stream_id, &vec, 1, ts)
+		flags, stream_id, &vec, 1, ts)
 	if rv < 0 {
 		return error('ngtcp2_conn_writev_stream failed: ${strerror(int(rv))}')
 	}

@@ -170,3 +170,6 @@ CHANGELOG.md
 v
 vnew
 vnew.*
+
+docs/
+*.md

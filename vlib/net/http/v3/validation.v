@@ -1,6 +1,7 @@
 module v3
 
 // HTTP/3 request header validation per RFC 9114 §4.1.2.
+import net.http.common
 
 // h3_known_pseudo_headers lists valid HTTP/3 request pseudo-headers.
 // Includes :protocol for extended CONNECT per RFC 9220.
@@ -16,6 +17,7 @@ const h3_forbidden_headers = ['connection', 'keep-alive', 'proxy-connection', 't
 pub fn validate_h3_request_headers(headers []HeaderField) ! {
 	mut has_method := false
 	mut has_path := false
+	mut has_scheme := false
 	mut has_authority := false
 	mut is_connect := false
 	mut pseudo_ended := false
@@ -29,10 +31,15 @@ pub fn validate_h3_request_headers(headers []HeaderField) ! {
 				return error('H3_MESSAGE_ERROR: unknown pseudo-header ${h.name} (RFC 9114 §4.1.2)')
 			}
 			if h.name == ':method' {
+				if common.method_from_str_known(h.value) == none {
+					return error('H3_MESSAGE_ERROR: unsupported :method ${h.value} (RFC 9114 §4.1.2)')
+				}
 				has_method = true
 				is_connect = h.value == 'CONNECT'
 			} else if h.name == ':path' {
 				has_path = true
+			} else if h.name == ':scheme' {
+				has_scheme = true
 			} else if h.name == ':authority' {
 				has_authority = true
 			}
@@ -50,8 +57,13 @@ pub fn validate_h3_request_headers(headers []HeaderField) ! {
 		if !has_authority {
 			return error('H3_MESSAGE_ERROR: CONNECT requires :authority pseudo-header (RFC 9114 §4.4)')
 		}
-	} else if !has_path {
-		return error('H3_MESSAGE_ERROR: missing required :path pseudo-header (RFC 9114 §4.1.2)')
+	} else {
+		if !has_path {
+			return error('H3_MESSAGE_ERROR: missing required :path pseudo-header (RFC 9114 §4.1.2)')
+		}
+		if !has_scheme {
+			return error('H3_MESSAGE_ERROR: missing required :scheme pseudo-header (RFC 9114 §4.1.2)')
+		}
 	}
 }
 

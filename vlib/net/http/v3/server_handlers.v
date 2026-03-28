@@ -1,5 +1,7 @@
 module v3
 
+import net.http.common
+
 // Server-side HTTP/3 frame handlers and request processing.
 
 // decode_and_validate_headers decodes QPACK headers from the payload and
@@ -38,6 +40,9 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64,
 	}
 	stream.headers << headers
 	stream.headers_received = true
+	// Ensure QUIC-level stream exists so process_stream_fin_events can
+	// propagate FIN flags recorded by the ngtcp2 recv_stream_data callback.
+	conn.quic_conn.ensure_stream(stream_id)
 	local_headers := stream.headers.clone()
 	conn.mu.unlock()
 
@@ -80,15 +85,7 @@ fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, pa
 		return error('H3_EXCESSIVE_LOAD: request body exceeds max size (${max_body})')
 	}
 	stream.data << payload
-	already_done := stream.request_complete
-	if !already_done {
-		stream.request_complete = true
-	}
 	conn.mu.unlock()
-
-	if !already_done {
-		s.process_request(mut conn, stream)!
-	}
 }
 
 fn (mut s Server) handle_settings_frame(mut conn ServerConnection, payload []u8) ! {
@@ -134,23 +131,31 @@ fn (mut s Server) handle_settings_frame(mut conn ServerConnection, payload []u8)
 fn (mut s Server) process_request(mut conn ServerConnection, stream &ServerStream) ! {
 	mut method := ''
 	mut path := ''
-	mut headers := map[string]string{}
+	mut host := ''
+	mut header := common.new_header()
 
-	for header in stream.headers {
-		if header.name == ':method' {
-			method = header.value
-		} else if header.name == ':path' {
-			path = header.value
-		} else if !header.name.starts_with(':') {
-			headers[header.name] = header.value
+	for field in stream.headers {
+		if field.name == ':method' {
+			method = field.value
+		} else if field.name == ':path' {
+			path = field.value
+		} else if field.name == ':authority' {
+			host = field.value
+		} else if !field.name.starts_with(':') {
+			header.add_custom(field.name, field.value) or {}
 		}
 	}
+	if host != '' && !header.contains(.host) {
+		header.set(.host, host)
+	}
 
-	request := ServerRequest{
-		method:    method
+	request := common.ServerRequest{
+		method:    common.method_from_str(method)
 		path:      path
-		headers:   headers
+		host:      host
+		header:    header
 		body:      stream.data
+		version:   .v3_0
 		stream_id: stream.id
 	}
 
@@ -182,15 +187,16 @@ fn assemble_response_frames(encoded_headers []u8, body []u8) ![]u8 {
 	return frame_data
 }
 
-fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, response ServerResponse) ! {
-	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
+fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, response common.ServerResponse) ! {
+	resp_entries := response.header.entries()
+	mut resp_headers := []HeaderField{cap: 2 + resp_entries.len}
 	resp_headers << HeaderField{':status', response.status_code.str()}
 
-	for key, value in response.headers {
-		resp_headers << HeaderField{key, value}
+	for entry in resp_entries {
+		resp_headers << HeaderField{entry.key, entry.value}
 	}
 
-	if 'content-length' !in response.headers && response.body.len > 0 {
+	if !response.header.contains_custom('content-length') && response.body.len > 0 {
 		resp_headers << HeaderField{'content-length', response.body.len.str()}
 	}
 
@@ -215,7 +221,10 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 	}
 	conn.mu.unlock()
 
-	conn.quic_conn.send_with_crypto(stream_id, encrypted, &conn.crypto_ctx) or {
+	// Coalesce FIN with the response data to reduce packet count.
+	// The client already uses send_frame_with_fin for the last DATA frame;
+	// the server mirrors that pattern here.
+	conn.quic_conn.send_with_fin(stream_id, encrypted) or {
 		return error('failed to send response: ${err}')
 	}
 
@@ -224,15 +233,41 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 	}
 }
 
-fn default_server_handler(req ServerRequest) ServerResponse {
-	body := 'Hello from HTTP/3 server!\nPath: ${req.path}\nMethod: ${req.method}\nProtocol: HTTP/3 (QUIC)'.bytes()
+// check_fin_completions checks the specified streams for completable requests.
+// Only streams in check_ids are examined, changing cost from O(all_streams)
+// to O(check_ids) per packet. check_ids is the union of FIN event IDs from
+// drain_stream_events and stream IDs that had frames dispatched this packet.
+// Handles: C1 (FIN arrives in separate packet), H2 (empty-body POST/PUT/PATCH).
+fn (mut s Server) check_fin_completions(mut conn ServerConnection, check_ids []u64) {
+	conn.mu.lock()
+	mut completable := []u64{}
+	for sid in check_ids {
+		stream := conn.streams[sid] or { continue }
+		if stream.headers_received && !stream.request_complete && conn.quic_conn.stream_has_fin(sid) {
+			completable << sid
+		}
+	}
+	for sid in completable {
+		mut stream := conn.streams[sid] or { continue }
+		stream.request_complete = true
+	}
+	conn.mu.unlock()
 
-	return ServerResponse{
+	for sid in completable {
+		stream := conn.streams[sid] or { continue }
+		s.process_request(mut conn, stream) or {
+			close_on_h3_error(mut conn, err)
+		}
+	}
+}
+
+fn default_server_handler(req common.ServerRequest) common.ServerResponse {
+	return common.ServerResponse{
 		status_code: 200
-		headers:     {
+		header:      common.from_map({
 			'content-type': 'text/plain'
 			'server':       'V HTTP/3 Server'
-		}
-		body:        body
+		})
+		body:        'Hello from HTTP/3 server!\nPath: ${req.path}\nMethod: ${req.method}\nProtocol: HTTP/3 (QUIC)'.bytes()
 	}
 }

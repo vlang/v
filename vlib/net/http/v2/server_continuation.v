@@ -50,11 +50,12 @@ fn apply_decoded_headers(raw_decoded []HeaderField, stream_id u32, mut streams m
 		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
 		return
 	}
-	method, path, header_map := extract_pseudo_headers(decoded)
+	method, path, host, header := extract_pseudo_headers(decoded)
 	streams[stream_id] = ServerStreamState{
-		method:     method
-		path:       path
-		header_map: header_map.clone()
+		method: method
+		path:   path
+		host:   host
+		header: header
 	}
 	ctx.flow.init_stream(stream_id, cs.initial_window_size)
 }

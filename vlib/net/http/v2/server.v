@@ -2,6 +2,7 @@ module v2
 
 // HTTP/2 server supporting both plain TCP (h2c) and TLS (h2) modes.
 import net
+import net.http.common
 import net.mbedtls
 import sync
 import time
@@ -23,26 +24,11 @@ pub:
 	max_request_body_size int = 10_485_760
 }
 
-// ServerRequest represents an HTTP/2 request.
-pub struct ServerRequest {
-pub:
-	method    string
-	path      string
-	headers   map[string]string
-	body      []u8
-	stream_id u32
-}
+pub type ServerRequest = common.ServerRequest
 
-// ServerResponse represents an HTTP/2 response.
-pub struct ServerResponse {
-pub:
-	status_code int = 200
-	headers     map[string]string
-	body        []u8
-}
+pub type ServerResponse = common.ServerResponse
 
-// Handler processes requests.
-pub type Handler = fn (ServerRequest) ServerResponse
+pub type Handler = fn (common.ServerRequest) common.ServerResponse
 
 // ClientSettings holds the peer's SETTINGS values per RFC 7540 §6.5.2.
 pub struct ClientSettings {
@@ -59,7 +45,8 @@ struct ServerStreamState {
 mut:
 	method     string
 	path       string
-	header_map map[string]string
+	host       string
+	header     common.Header
 	body       []u8
 }
 
@@ -195,7 +182,7 @@ fn (mut s Server) handle_connection(mut conn ServerConn) {
 
 	s.register_connection(conn)
 
-	upgrade_req := s.negotiate_protocol(mut conn) or {
+	upgrade_req, client_settings := s.negotiate_protocol(mut conn) or {
 		eprintln('[HTTP/2] Protocol negotiation error: ${err}')
 		return
 	}
@@ -211,7 +198,8 @@ fn (mut s Server) handle_connection(mut conn ServerConn) {
 		spawn s.dispatch_stream(mut conn, upgrade_req, mut ctx)
 	}
 
-	highest_stream_id := s.run_frame_loop(mut conn, mut ctx)
+	initial_cs := settings_to_client_settings(client_settings)
+	highest_stream_id := s.run_frame_loop(mut conn, mut ctx, initial_cs)
 
 	s.conn_mu.lock()
 	if highest_stream_id > s.highest_stream_id {
@@ -221,6 +209,16 @@ fn (mut s Server) handle_connection(mut conn ServerConn) {
 
 	$if debug {
 		eprintln('[HTTP/2] Connection closed')
+	}
+}
+
+fn settings_to_client_settings(s Settings) ClientSettings {
+	return ClientSettings{
+		header_table_size:      s.header_table_size
+		max_concurrent_streams: s.max_concurrent_streams
+		initial_window_size:    s.initial_window_size
+		max_frame_size:         s.max_frame_size
+		max_header_list_size:   s.max_header_list_size
 	}
 }
 

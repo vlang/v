@@ -39,6 +39,31 @@ fn test_validate_h3_request_headers_missing_path() {
 	assert false, 'expected error for missing :path'
 }
 
+fn test_validate_h3_request_headers_missing_scheme() {
+	headers := [
+		HeaderField{':method', 'GET'},
+		HeaderField{':path', '/'},
+	]
+	validate_h3_request_headers(headers) or {
+		assert err.msg().contains(':scheme')
+		return
+	}
+	assert false, 'expected error for missing :scheme'
+}
+
+fn test_validate_h3_request_headers_unknown_method() {
+	headers := [
+		HeaderField{':method', 'BREW'},
+		HeaderField{':path', '/'},
+		HeaderField{':scheme', 'https'},
+	]
+	validate_h3_request_headers(headers) or {
+		assert err.msg().contains('unsupported :method')
+		return
+	}
+	assert false, 'expected error for unsupported :method'
+}
+
 fn test_validate_h3_request_headers_unknown_pseudo_header() {
 	headers := [
 		HeaderField{':method', 'GET'},
@@ -134,6 +159,7 @@ fn test_validate_h3_request_headers_valid_minimal() {
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/'},
+		HeaderField{':scheme', 'https'},
 	]
 	validate_h3_request_headers(headers) or {
 		assert false, 'valid minimal headers should pass: ${err}'
@@ -207,6 +233,7 @@ fn test_max_concurrent_streams_rejects_excess() {
 	headers := [
 		HeaderField{':method', 'GET'},
 		HeaderField{':path', '/'},
+		HeaderField{':scheme', 'https'},
 	]
 	encoded := conn.encoder.encode(headers)
 
@@ -238,6 +265,7 @@ fn test_max_concurrent_streams_allows_within_limit() {
 	headers := [
 		HeaderField{':method', 'POST'},
 		HeaderField{':path', '/'},
+		HeaderField{':scheme', 'https'},
 	]
 	encoded := conn.encoder.encode(headers)
 

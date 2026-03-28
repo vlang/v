@@ -54,6 +54,8 @@ pub mut:
 
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+
+	alt_svc_cache &AltSvcCache = unsafe { nil } // optional Alt-Svc cache for automatic HTTP/3 upgrade; create with new_alt_svc_cache()
 }
 
 fn (mut req Request) free() {
@@ -225,7 +227,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 	sb.write_string(' ')
 	sb.write_string(version.str())
 	sb.write_string('\r\n')
-	if !req.header.contains(.host) {
+	if !req.header.contains_custom('host') {
 		sb.write_string('Host: ')
 		if port != 80 && port != 443 && port != 0 {
 			sb.write_string('${host_name}:${port}')
@@ -234,13 +236,13 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		}
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.user_agent) {
+	if !req.header.contains_custom('user-agent') {
 		ua := req.user_agent
 		sb.write_string('User-Agent: ')
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.content_length) {
+	if !req.header.contains_custom('content-length') {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
@@ -403,24 +405,74 @@ pub fn (req &Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 
+// validate_and_parse_content_length strictly validates a Content-Length header value.
+// Rejects empty, non-numeric, negative, and overflow values.
+fn validate_and_parse_content_length(raw_value string) !int {
+	trimmed := raw_value.trim_space()
+	if trimmed.len == 0 {
+		return error('invalid Content-Length: empty value')
+	}
+	for c in trimmed {
+		if c < `0` || c > `9` {
+			return error('invalid Content-Length: "${trimmed}" is not a valid non-negative integer')
+		}
+	}
+	// max int is 2147483647 (10 digits); longer strings always overflow
+	if trimmed.len > 10 {
+		return error('invalid Content-Length: value exceeds maximum allowed size')
+	}
+	n := trimmed.int()
+	// 10-digit strings above 2147483647 wrap negative via .int()
+	if n < 0 {
+		return error('invalid Content-Length: value exceeds maximum allowed size')
+	}
+	return n
+}
+
+// read_request_body reads the request body using a validated Content-Length.
+// If max_body_size > 0 and the length exceeds it, returns an error.
+// If max_body_size == 0, no size limit is applied.
+fn read_request_body(mut reader io.BufferedReader, content_length_str string, max_body_size int) ![]u8 {
+	n := validate_and_parse_content_length(content_length_str)!
+	if max_body_size > 0 && n > max_body_size {
+		return error('request body too large: ${n} bytes exceeds limit of ${max_body_size} bytes')
+	}
+	if n > 0 {
+		mut body := []u8{len: n}
+		mut count := 0
+		for count < body.len {
+			count += reader.read(mut body[count..]) or { break }
+		}
+		if count < n {
+			return error('unexpected EOF while reading request body: got ${count} of ${n} bytes')
+		}
+		return body
+	}
+	return []u8{}
+}
+
 // parse_request parses a raw HTTP request into a Request object.
 // See also: `parse_request_head`, which parses only the headers.
 pub fn parse_request(mut reader io.BufferedReader) !Request {
 	mut request := parse_request_head(mut reader)!
-
-	// body
 	mut body := []u8{}
 	if length := request.header.get(.content_length) {
-		n := length.int()
-		if n > 0 {
-			body = []u8{len: n}
-			mut count := 0
-			for count < body.len {
-				count += reader.read(mut body[count..]) or { break }
-			}
-		}
+		body = read_request_body(mut reader, length, 0)!
 	}
+	request.data = body.bytestr()
+	return request
+}
 
+// parse_request_with_limit parses a raw HTTP request with body size enforcement.
+// If max_body_size > 0 and Content-Length exceeds it, returns an error.
+// If max_body_size == 0, no limit is applied (backward compatible).
+// See also: `parse_request`, which has no body size limit.
+pub fn parse_request_with_limit(mut reader io.BufferedReader, max_body_size int) !Request {
+	mut request := parse_request_head(mut reader)!
+	mut body := []u8{}
+	if length := request.header.get(.content_length) {
+		body = read_request_body(mut reader, length, max_body_size)!
+	}
 	request.data = body.bytestr()
 	return request
 }
@@ -560,7 +612,9 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	// method := method_from_str(words[0])
 	// target := urllib.parse(words[1])!
 	// version := version_from_str(words[2])
-	method := method_from_str(method_str)
+	method := method_from_str_known(method_str) or {
+		return error('unsupported method')
+	}
 	target := urllib.parse(target_str)!
 	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)

@@ -1,6 +1,7 @@
 module v2
 
 // Frame dispatch loop and request handling for HTTP/2 server connections.
+import net.http.common
 
 // LoopState holds mutable state for the server frame processing loop.
 struct LoopState {
@@ -13,9 +14,10 @@ mut:
 	continuation_state  ContinuationState
 }
 
-fn (mut s Server) run_frame_loop(mut conn ServerConn, mut ctx ConnContext) u32 {
+fn (mut s Server) run_frame_loop(mut conn ServerConn, mut ctx ConnContext, initial_client_settings ClientSettings) u32 {
 	mut state := LoopState{
-		decoder: new_decoder_with_limit(65536)
+		decoder:         new_decoder_with_limit(65536)
+		client_settings: initial_client_settings
 	}
 
 	for {
@@ -125,11 +127,12 @@ fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]Server
 		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
 		return
 	}
-	method, path, header_map := extract_pseudo_headers(decoded)
+	method, path, host, header := extract_pseudo_headers(decoded)
 	streams[stream_id] = ServerStreamState{
-		method:     method
-		path:       path
-		header_map: header_map.clone()
+		method: method
+		path:   path
+		host:   host
+		header: header
 	}
 	ctx.flow.init_stream(stream_id, cs.initial_window_size)
 	if frame.header.has_flag(.end_stream) {
@@ -200,45 +203,49 @@ fn handle_window_update_in_loop(frame Frame, mut ctx ConnContext, mut conn Serve
 	}
 }
 
-// extract_pseudo_headers extracts :method, :path, and regular headers from
+// extract_pseudo_headers extracts :method, :path, :authority, and regular headers from
 // decoded header fields. For CONNECT requests (RFC 7540 §8.3), :authority
 // is used as the path since :path is absent.
-fn extract_pseudo_headers(decoded []HeaderField) (string, string, map[string]string) {
+fn extract_pseudo_headers(decoded []HeaderField) (string, string, string, common.Header) {
 	mut method_str := ''
 	mut path := ''
 	mut authority := ''
-	mut headers := map[string]string{}
+	mut header := common.new_header()
 	for h in decoded {
 		match h.name {
 			':method' { method_str = h.value }
 			':path' { path = h.value }
 			':authority' { authority = h.value }
-			else { headers[h.name] = h.value }
+			else { header.add_custom(h.name, h.value) or {} }
 		}
 	}
 	// RFC 7540 §8.3: CONNECT uses :authority as its target
 	if method_str == 'CONNECT' && path == '' {
 		path = authority
 	}
-	if authority != '' {
-		headers[':authority'] = authority
-	}
-	return method_str, path, headers
+	return method_str, path, authority, header
 }
 
 fn build_request(stream_id u32, stream ServerStreamState) ServerRequest {
+	mut header := stream.header
+	if stream.host != '' && !header.contains(.host) {
+		header.set(.host, stream.host)
+	}
 	return ServerRequest{
-		method:    stream.method
+		method:    common.method_from_str(stream.method)
 		path:      stream.path
-		headers:   stream.header_map
+		host:      stream.host
+		header:    header
 		body:      stream.body
-		stream_id: stream_id
+		version:   .v2_0
+		stream_id: u64(stream_id)
 	}
 }
 
 fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mut ctx ConnContext) {
+	sid := u32(request.stream_id)
 	defer {
-		ctx.flow.remove_stream(request.stream_id)
+		ctx.flow.remove_stream(sid)
 		ctx.wg.done()
 	}
 
@@ -246,12 +253,10 @@ fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mu
 		ctx.write_mu.lock()
 		error_response := ServerResponse{
 			status_code: 500
-			headers:     {
-				'content-type': 'text/plain'
-			}
+			header:      common.from_map({'content-type': 'text/plain'})
 			body:        'no handler configured'.bytes()
 		}
-		s.send_response(mut conn, request.stream_id, error_response, mut ctx.encoder, mut
+		s.send_response(mut conn, sid, error_response, mut ctx.encoder, mut
 			ctx.flow) or { eprintln('[HTTP/2] Failed to send error response: ${err}') }
 		ctx.write_mu.unlock()
 		return
@@ -260,7 +265,7 @@ fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mu
 	response := h(request)
 
 	ctx.write_mu.lock()
-	s.send_response(mut conn, request.stream_id, response, mut ctx.encoder, mut ctx.flow) or {
+	s.send_response(mut conn, sid, response, mut ctx.encoder, mut ctx.flow) or {
 		eprintln('[HTTP/2] Failed to send response: ${err}')
 	}
 	ctx.write_mu.unlock()

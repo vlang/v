@@ -7,31 +7,37 @@ import time
 // Connection represents a QUIC connection backed by ngtcp2.
 pub struct Connection {
 pub mut:
-	remote_addr    string
-	conn_id        []u8
-	streams        map[u64]&Stream
-	next_stream_id u64 = 1
-	closed         bool
-	ngtcp2_conn    voidptr
-	udp_socket     net.UdpConn
-	handshake_done bool
-	send_buf       []u8
-	recv_buf       []u8
-	crypto_ctx     CryptoContext
-	path           Ngtcp2PathStruct
-	path_addrs     QuicPathAddrs
-	migration      ConnectionMigration
-	zero_rtt       ZeroRTTConnection
-	session_cache  &SessionCache = unsafe { nil }
-	idle_monitor   IdleTimeoutMonitor
+	remote_addr        string
+	conn_id            []u8
+	streams            map[u64]&Stream
+	next_stream_id     u64 = 1
+	closed             bool
+	ngtcp2_conn        voidptr
+	udp_socket         net.UdpConn
+	handshake_done     bool
+	send_buf           []u8
+	recv_buf           []u8
+	crypto_ctx         CryptoContext
+	path               Ngtcp2PathStruct
+	path_addrs         QuicPathAddrs
+	migration          ConnectionMigration
+	zero_rtt           ZeroRTTConnection
+	session_cache      &SessionCache = unsafe { nil }
+	idle_monitor       IdleTimeoutMonitor
+	stream_events      &QuicStreamEvents = unsafe { nil }
+	// pending_fin_streams accumulates stream IDs that received FIN events
+	// during drain_stream_events. Callers (e.g. H3 server) read and clear
+	// this list to do targeted completion checks instead of sweeping all streams.
+	pending_fin_streams []u64
 }
 
 // Stream represents a QUIC stream.
 pub struct Stream {
 pub mut:
-	id     u64
-	data   []u8
-	closed bool
+	id           u64
+	data         []u8
+	closed       bool
+	fin_received bool
 }
 
 // ConnectionConfig holds QUIC connection configuration.
@@ -78,7 +84,8 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	host := addr_parts[0]
 	port := addr_parts[1].int()
 
-	mut ngtcp2_setup := setup_ngtcp2(host, port, config)!
+	stream_events := &QuicStreamEvents{}
+	mut ngtcp2_setup := setup_ngtcp2(host, port, config, stream_events)!
 
 	mut crypto_ctx := new_crypto_context_client(config.alpn) or {
 		conn_del(ngtcp2_setup.ngtcp2_conn)
@@ -107,6 +114,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		zero_rtt:      init_zero_rtt_subsystem(config, host)
 		session_cache: config.session_cache
 		idle_monitor:  new_idle_timeout_monitor(config.max_idle_timeout)
+		stream_events: stream_events
 	}
 }
 
@@ -119,7 +127,7 @@ pub mut:
 	conn_id     []u8
 }
 
-fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2ConnectionSetup {
+fn setup_ngtcp2(host string, port int, config ConnectionConfig, stream_events &QuicStreamEvents) !Ngtcp2ConnectionSetup {
 	mut udp_socket := net.dial_udp('${host}:${port}') or {
 		return error('failed to create UDP socket: ${err}')
 	}
@@ -155,7 +163,7 @@ fn setup_ngtcp2(host string, port int, config ConnectionConfig) !Ngtcp2Connectio
 	quic_version := u32(0x00000001)
 
 	ngtcp2_conn := conn_client_new(&dcid, &scid, &path, quic_version, &callbacks, &settings,
-		&params, unsafe { nil }) or {
+		&params, voidptr(stream_events)) or {
 		udp_socket.close() or {}
 		return error('failed to create ngtcp2 connection: ${err}')
 	}

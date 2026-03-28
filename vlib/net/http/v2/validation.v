@@ -1,6 +1,7 @@
 module v2
 
 // Header validation for HTTP/2 requests per RFC 7540 §8.1.2.
+import net.http.common
 
 // known_pseudo_headers lists the valid HTTP/2 request pseudo-headers per RFC 7540 §8.1.2.3.
 const known_pseudo_headers = [':method', ':path', ':scheme', ':authority']
@@ -17,6 +18,7 @@ const forbidden_headers = ['connection', 'keep-alive', 'proxy-connection', 'upgr
 pub fn validate_request_headers(headers []HeaderField) ! {
 	mut has_method := false
 	mut has_path := false
+	mut has_scheme := false
 	mut has_authority := false
 	mut is_connect := false
 	mut pseudo_ended := false
@@ -30,10 +32,15 @@ pub fn validate_request_headers(headers []HeaderField) ! {
 				return error('PROTOCOL_ERROR: unknown pseudo-header ${h.name}')
 			}
 			if h.name == ':method' {
+				if common.method_from_str_known(h.value) == none {
+					return error('PROTOCOL_ERROR: unsupported :method ${h.value}')
+				}
 				has_method = true
 				is_connect = h.value == 'CONNECT'
 			} else if h.name == ':path' {
 				has_path = true
+			} else if h.name == ':scheme' {
+				has_scheme = true
 			} else if h.name == ':authority' {
 				has_authority = true
 			}
@@ -51,8 +58,13 @@ pub fn validate_request_headers(headers []HeaderField) ! {
 		if !has_authority {
 			return error('PROTOCOL_ERROR: CONNECT requires :authority pseudo-header (RFC 7540 §8.3)')
 		}
-	} else if !has_path {
-		return error('PROTOCOL_ERROR: missing required :path pseudo-header')
+	} else {
+		if !has_path {
+			return error('PROTOCOL_ERROR: missing required :path pseudo-header')
+		}
+		if !has_scheme {
+			return error('PROTOCOL_ERROR: missing required :scheme pseudo-header')
+		}
 	}
 }
 

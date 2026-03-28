@@ -1,95 +1,92 @@
-// Simple HTTP/3 Client Example
-// Demonstrates basic HTTP/3 client usage with QUIC
+// HTTP/3 Client Example
+// Demonstrates HTTP/3 client usage via the unified net.http API.
+// HTTP/3 is discovered automatically through Alt-Svc headers.
 //
-// Install dependencies (macOS): brew install openssl@3 libngtcp2
-// Install dependencies (Linux): apt-get install libssl-dev libngtcp2-dev
+// Note: For direct QUIC connection management, use net.quic.
+// The unified API handles protocol negotiation transparently.
 //
-// Build and run: ./v run examples/http3/01_simple_client.v
-import net.http.v3
-import net.quic
+// Usage: v run examples/http3/01_simple_client.v
+module main
+
+import net.http
 
 fn main() {
 	println('=== HTTP/3 Client Example ===\n')
 
-	// Example 1: Demonstrate QUIC connection
-	println('--- Example 1: QUIC Connection ---')
-	quic_connection_example()
+	// Example 1: Simple fetch with automatic protocol negotiation
+	println('--- Example 1: Fetch with Protocol Discovery ---')
+	fetch_example()
 
-	// Example 2: Building requests
-	println('\n--- Example 2: Request Building ---')
-	build_request_example()
+	// Example 2: Using Client with Alt-Svc cache for HTTP/3 upgrade
+	println('\n--- Example 2: Alt-Svc Cache for HTTP/3 Discovery ---')
+	alt_svc_example()
 
-	// Example 3: HTTP methods
+	// Example 3: HTTP methods via unified API
 	println('\n--- Example 3: HTTP Methods ---')
 	methods_example()
 
 	println('\n=== HTTP/3 Client Example Complete ===')
 }
 
-fn quic_connection_example() {
-	// Create a QUIC connection to a public HTTP/3 server
-	println('Creating QUIC connection to cloudflare-quic.com:443...')
+fn fetch_example() {
+	// Use http.fetch() — protocol is negotiated automatically.
+	// If the server advertises HTTP/3 via Alt-Svc header, subsequent
+	// requests can upgrade when using an Alt-Svc cache.
+	println('Fetching https://cloudflare-quic.com/ ...')
 
-	mut conn := quic.new_connection(
-		remote_addr: 'cloudflare-quic.com:443'
-		alpn:        ['h3']
+	response := http.fetch(
+		url:    'https://cloudflare-quic.com/'
+		method: .get
+		header: http.new_header_from_map({
+			.user_agent: 'V-HTTP3-Client/1.0'
+			.accept:     '*/*'
+		})
 	) or {
-		println('Connection creation: ${err}')
-		println('  (This may fail if DNS resolution or UDP is blocked)')
-		return
-	}
-	println('QUIC connection created successfully')
-
-	// Attempt the TLS 1.3 / QUIC handshake
-	println('Performing QUIC/TLS handshake...')
-	conn.perform_handshake() or {
-		println('Handshake result: ${err}')
-		println('  (Handshake requires network connectivity to the server)')
-		conn.close()
+		println('Request result: ${err}')
+		println('  (This may fail if DNS resolution or network is unavailable)')
 		return
 	}
 
-	println('QUIC connection established!')
-	conn.close()
-	println('Connection closed')
+	println('Status: ${response.status_code}')
+	body_preview := if response.body.len > 200 {
+		response.body[..200] + '...'
+	} else {
+		response.body
+	}
+	println('Body (${response.body.len} bytes):\n${body_preview}')
 }
 
-fn build_request_example() {
-	// Build a GET request
-	get_request := v3.Request{
-		method:  .get
-		url:     '/'
-		host:    'example.com'
-		data:    ''
-		headers: {
-			'user-agent': 'V-HTTP3-Client/1.0'
-			'accept':     'text/html'
-		}
-	}
-	println('GET request built: ${get_request.method} ${get_request.url}')
+fn alt_svc_example() {
+	// Create a reusable client with shared Alt-Svc cache.
+	// The cache stores Alt-Svc headers from server responses
+	// to automatically upgrade subsequent requests to HTTP/3.
+	mut client := http.new_client()
+	println('Created HTTP client with Alt-Svc cache for HTTP/3 discovery')
 
-	// Build a POST request with JSON body
-	json_data := '{"name":"test","value":123}'
-	post_request := v3.Request{
-		method:  .post
-		url:     '/api/data'
-		host:    'example.com'
-		data:    json_data
-		headers: {
-			'content-type':   'application/json'
-			'content-length': json_data.len.str()
-			'user-agent':     'V-HTTP3-Client/1.0'
-		}
+	// First request discovers HTTP/3 support via Alt-Svc header
+	println('First request (discovers HTTP/3 via Alt-Svc)...')
+	response1 := client.get('https://cloudflare-quic.com/') or {
+		println('  Request result: ${err}')
+		return
 	}
-	println('POST request built: ${post_request.method} ${post_request.url}')
+	println('  Status: ${response1.status_code}')
+
+	// Second request may use HTTP/3 if Alt-Svc was cached
+	println('Second request (may upgrade to HTTP/3)...')
+	response2 := client.get('https://cloudflare-quic.com/') or {
+		println('  Request result: ${err}')
+		return
+	}
+	println('  Status: ${response2.status_code}')
 }
 
 fn methods_example() {
-	// HTTP methods available
+	// All HTTP methods are available through http.fetch()
 	methods := ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']
 
 	for method in methods {
-		request := v3.Request{
+		config := http.FetchConfig{
+			url:    'https://example.com/${method}'
 			method: match method {
 				'get' { .get }
 				'post' { .post }
@@ -100,10 +97,8 @@ fn methods_example() {
 				'options' { .options }
 				else { .get }
 			}
-			url:    '/${method}'
-			host:   'example.com'
 		}
-		println('  - ${method.to_upper()}: ${request.method}')
+		println('  - ${method.to_upper()}: ${config.method}')
 	}
-	println('All HTTP methods supported')
+	println('All HTTP methods supported via unified http.fetch()')
 }

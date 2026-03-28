@@ -143,7 +143,7 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 	mut pi := Ngtcp2PktInfo{}
 
 	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &c.path, &pi, c.send_buf, i64(stream_id),
-		data, ts) or { return error('failed to write stream data: ${err}') }
+		data, ts, ngtcp2_write_stream_flag_none) or { return error('failed to write stream data: ${err}') }
 
 	if nwritten > 0 {
 		c.udp_socket.write(c.send_buf[..nwritten]) or {

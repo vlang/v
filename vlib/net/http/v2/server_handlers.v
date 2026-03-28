@@ -89,18 +89,19 @@ fn apply_setting_pair(pair SettingPair, mut settings ClientSettings) ! {
 }
 
 fn build_response_headers(response ServerResponse) []HeaderField {
-	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
+	resp_entries := response.header.entries()
+	mut resp_headers := []HeaderField{cap: 2 + resp_entries.len}
 	resp_headers << HeaderField{
 		name:  ':status'
 		value: response.status_code.str()
 	}
-	for key, value in response.headers {
+	for entry in resp_entries {
 		resp_headers << HeaderField{
-			name:  key
-			value: value
+			name:  entry.key
+			value: entry.value
 		}
 	}
-	if response.body.len > 0 && 'content-length' !in response.headers {
+	if response.body.len > 0 && !response.header.contains_custom('content-length') {
 		resp_headers << HeaderField{
 			name:  'content-length'
 			value: response.body.len.str()

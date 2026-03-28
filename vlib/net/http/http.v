@@ -40,6 +40,8 @@ pub mut:
 
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+
+	alt_svc_cache &AltSvcCache = unsafe { nil } // optional Alt-Svc cache for automatic HTTP/3 upgrade
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -188,6 +190,7 @@ pub fn prepare(config FetchConfig) !Request {
 		on_finish:              config.on_finish
 		stop_copying_limit:     config.stop_copying_limit
 		stop_receiving_limit:   config.stop_receiving_limit
+		alt_svc_cache:          config.alt_svc_cache
 	}
 	return req
 }
@@ -198,6 +201,42 @@ pub fn prepare(config FetchConfig) !Request {
 pub fn fetch(config FetchConfig) !Response {
 	req := prepare(config)!
 	return req.do()!
+}
+
+// Client provides a reusable HTTP client with shared Alt-Svc cache
+// for automatic HTTP/3 upgrade discovery across multiple requests.
+pub struct Client {
+pub mut:
+	alt_svc_cache &AltSvcCache = new_alt_svc_cache()
+	user_agent    string       = 'v.http'
+}
+
+// new_client creates a reusable HTTP client with shared Alt-Svc cache.
+pub fn new_client() &Client {
+	return &Client{}
+}
+
+pub fn (c &Client) get(url string) !Response {
+	return fetch(method: .get, url: url, alt_svc_cache: c.alt_svc_cache, user_agent: c.user_agent)
+}
+
+pub fn (c &Client) post(url string, data string) !Response {
+	return fetch(
+		method:        .post
+		url:           url
+		data:          data
+		header:        new_header(key: .content_type, value: content_type_default)
+		alt_svc_cache: c.alt_svc_cache
+		user_agent:    c.user_agent
+	)
+}
+
+pub fn (c &Client) head(url string) !Response {
+	return fetch(method: .head, url: url, alt_svc_cache: c.alt_svc_cache, user_agent: c.user_agent)
+}
+
+pub fn (c &Client) delete(url string) !Response {
+	return fetch(method: .delete, url: url, alt_svc_cache: c.alt_svc_cache, user_agent: c.user_agent)
 }
 
 // get_text sends an HTTP GET request to the given `url` and returns the text content of the response.

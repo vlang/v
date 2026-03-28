@@ -3,30 +3,77 @@ module v3
 // Server-side QUIC packet decryption and frame dispatch.
 
 fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
+	// Serialize all packet processing for this connection. handle_packet is
+	// spawned per UDP packet (see listen_and_serve), so concurrent packets
+	// for the same connection would race on ngtcp2_conn state, stream_events,
+	// and the streams map without this lock. The inner conn.mu remains for
+	// fine-grained field access within frame handlers.
+	conn.packet_mu.lock()
+	dispatched_ids := s.process_packet_frames(mut conn, packet)
+	// Collect FIN event IDs accumulated during process_incoming_packet's
+	// drain_stream_events, then clear. Union with dispatched IDs covers
+	// the case where FIN arrived in a previous packet but the stream
+	// wasn't yet completable (e.g. HEADERS hadn't been processed).
+	mut check_ids := conn.quic_conn.pending_fin_streams.clone()
+	conn.quic_conn.pending_fin_streams.clear()
+	for id in dispatched_ids {
+		if id !in check_ids {
+			check_ids << id
+		}
+	}
+	if check_ids.len > 0 {
+		s.check_fin_completions(mut conn, check_ids)
+	}
+	conn.packet_mu.unlock()
+}
+
+// process_packet_frames orchestrates QUIC state feeding and HTTP/3 frame dispatch.
+// MUST be called under conn.packet_mu to ensure serialized access.
+// Returns the set of stream IDs that had frames dispatched in this packet.
+fn (mut s Server) process_packet_frames(mut conn ServerConnection, packet []u8) []u64 {
+	s.ingest_quic_packet(mut conn, packet)
+	return s.decode_and_dispatch_frames(mut conn, packet)
+}
+
+// ingest_quic_packet feeds the raw packet to ngtcp2 for QUIC state tracking —
+// connection-level ACKs, flow control, and FIN/close event detection via C
+// callbacks. This MUST run before frame parsing so that stream FIN flags are
+// up-to-date when check_fin_completions sweeps after all frames are processed.
+fn (mut s Server) ingest_quic_packet(mut conn ServerConnection, packet []u8) {
+	conn.quic_conn.process_incoming_packet(packet) or {
+		eprintln('QUIC packet processing failed: ${err}')
+	}
+}
+
+// decode_and_dispatch_frames decrypts the packet, decodes HTTP/3 frames, and
+// dispatches each frame to the appropriate handler. Returns stream IDs that
+// received frames, used by handle_packet for targeted FIN completion checks.
+fn (mut s Server) decode_and_dispatch_frames(mut conn ServerConnection, packet []u8) []u64 {
 	decrypted := s.decrypt_incoming_packet(mut conn, packet) or {
 		eprintln('Failed to decrypt packet: ${err}')
-		return
+		return []u64{}
 	}
 
+	mut dispatched_ids := []u64{}
 	mut idx := 0
 	mut current_stream_id := u64(0)
 
 	for idx < decrypted.len {
 		frame_type_val, bytes_read := decode_varint(decrypted[idx..]) or {
 			eprintln('Failed to decode frame type: ${err}')
-			return
+			return dispatched_ids
 		}
 		idx += bytes_read
 
 		frame_length, bytes_read2 := decode_varint(decrypted[idx..]) or {
 			eprintln('Failed to decode frame length: ${err}')
-			return
+			return dispatched_ids
 		}
 		idx += bytes_read2
 
 		if idx + int(frame_length) > decrypted.len {
 			eprintln('Incomplete frame')
-			return
+			return dispatched_ids
 		}
 
 		payload := decrypted[idx..idx + int(frame_length)]
@@ -39,10 +86,15 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 			current_stream_id = conn.next_client_stream_id
 			conn.next_client_stream_id += 4
 			conn.mu.unlock()
+			if current_stream_id !in dispatched_ids {
+				dispatched_ids << current_stream_id
+			}
 		}
 
 		s.dispatch_server_frame(mut conn, frame_type, current_stream_id, payload)
 	}
+
+	return dispatched_ids
 }
 
 fn (mut s Server) decrypt_incoming_packet(mut conn ServerConnection, packet []u8) ![]u8 {

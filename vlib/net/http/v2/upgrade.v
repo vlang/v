@@ -4,6 +4,7 @@ module v2
 // Supports detecting HTTP/1.1 upgrade requests, building upgrade requests,
 // and switching to HTTP/2 after the 101 Switching Protocols response.
 import encoding.base64
+import net.http.common
 
 // http_methods lists the HTTP methods that can appear in an upgrade request.
 const http_methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
@@ -185,12 +186,13 @@ fn append_setting(mut payload []u8, id SettingId, value u32) {
 // negotiate_protocol determines whether the connection uses HTTP/2 directly
 // (prior knowledge) or starts with an HTTP/1.1 h2c upgrade request (RFC 7540 §3.2).
 // For TLS connections, always expects the HTTP/2 preface directly.
-// Returns a ServerRequest with stream_id > 0 if an upgrade was detected,
-// or stream_id 0 if the connection uses HTTP/2 prior knowledge.
-fn (mut s Server) negotiate_protocol(mut conn ServerConn) !ServerRequest {
+// Returns a ServerRequest with stream_id > 0 if an upgrade was detected
+// (along with the client's HTTP2-Settings), or stream_id 0 with default
+// Settings if the connection uses HTTP/2 prior knowledge.
+fn (mut s Server) negotiate_protocol(mut conn ServerConn) !(ServerRequest, Settings) {
 	if s.tls {
 		s.read_preface(mut conn)!
-		return ServerRequest{}
+		return ServerRequest{}, Settings{}
 	}
 
 	mut initial_buf := []u8{len: preface.len}
@@ -202,7 +204,7 @@ fn (mut s Server) negotiate_protocol(mut conn ServerConn) !ServerRequest {
 		$if debug {
 			eprintln('[HTTP/2] Preface received (prior knowledge)')
 		}
-		return ServerRequest{}
+		return ServerRequest{}, Settings{}
 	}
 
 	if !is_http1_request(initial_buf) {
@@ -214,8 +216,8 @@ fn (mut s Server) negotiate_protocol(mut conn ServerConn) !ServerRequest {
 
 // perform_h2c_upgrade completes the h2c upgrade handshake after detecting an
 // HTTP/1.1 request. Sends the 101 response, reads the client's HTTP/2 preface,
-// and returns the original request as stream 1.
-fn (mut s Server) perform_h2c_upgrade(mut conn ServerConn, initial_buf []u8) !ServerRequest {
+// and returns the original request as stream 1 plus the client's HTTP2-Settings.
+fn (mut s Server) perform_h2c_upgrade(mut conn ServerConn, initial_buf []u8) !(ServerRequest, Settings) {
 	full_data := read_http1_headers(mut conn, initial_buf)!
 	upgrade_req := detect_h2c_upgrade(full_data) or {
 		return error('HTTP/1.1 request without h2c upgrade')
@@ -225,18 +227,20 @@ fn (mut s Server) perform_h2c_upgrade(mut conn ServerConn, initial_buf []u8) !Se
 		eprintln('[HTTP/2] h2c upgrade detected: ${upgrade_req.method} ${upgrade_req.path}')
 	}
 
-	apply_upgrade_settings(upgrade_req.h2_settings) or {
+	client_settings := apply_upgrade_settings(upgrade_req.h2_settings) or {
 		return error('invalid HTTP2-Settings: ${err}')
 	}
 
 	send_101_response(mut conn) or { return error('failed to send 101: ${err}') }
 	s.read_preface(mut conn)!
 
+	host := upgrade_req.headers['host'] or { '' }
 	return ServerRequest{
-		method:    upgrade_req.method
+		method:    common.method_from_str(upgrade_req.method)
 		path:      upgrade_req.path
-		headers:   upgrade_req.headers
-		body:      []u8{}
+		host:      host
+		header:    common.from_map(upgrade_req.headers)
+		version:   .v2_0
 		stream_id: 1
-	}
+	}, client_settings
 }

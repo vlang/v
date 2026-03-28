@@ -2,6 +2,7 @@ module v3
 
 // HTTP/3 server over QUIC.
 import net
+import net.http.common
 import net.quic
 import sync
 
@@ -12,7 +13,7 @@ pub mut:
 	max_concurrent_streams u32    = 100
 	cert_file              string
 	key_file               string
-	handler                fn (ServerRequest) ServerResponse = default_server_handler
+	handler                fn (common.ServerRequest) common.ServerResponse = default_server_handler
 	max_stream_data        u64 = 1048576
 	max_data               u64 = 10485760
 	max_idle_timeout       u64 = 30000
@@ -20,23 +21,9 @@ pub mut:
 	max_request_body_size  int = 10_485_760
 }
 
-// ServerRequest represents an HTTP/3 server request.
-pub struct ServerRequest {
-pub:
-	method    string
-	path      string
-	headers   map[string]string
-	body      []u8
-	stream_id u64
-}
+pub type ServerRequest = common.ServerRequest
 
-// ServerResponse represents an HTTP/3 server response.
-pub struct ServerResponse {
-pub:
-	status_code int = 200
-	headers     map[string]string
-	body        []u8
-}
+pub type ServerResponse = common.ServerResponse
 
 // Server represents an HTTP/3 server.
 pub struct Server {
@@ -55,10 +42,21 @@ mut:
 	streams                    map[u64]&ServerStream
 	settings                   Settings
 	remote_addr                string
+	// next_client_stream_id tracks the next HTTP/3 stream ID to assign.
+	// Starts at 0 and increments by 4, matching QUIC client-initiated
+	// bidirectional stream IDs (0, 4, 8, 12, ...) per RFC 9000 §2.1.
+	// This alignment is REQUIRED so that synthesized H3 stream IDs match
+	// the real QUIC stream IDs reported by ngtcp2 FIN/close callbacks.
 	next_client_stream_id      u64
 	rx_packet_number           u64
 	tx_packet_number           u64
+	// mu guards fine-grained field access (encoder, decoder, streams, counters).
 	mu                         sync.Mutex
+	// packet_mu serializes entire packet processing per connection.
+	// handle_packet is spawned per UDP packet; concurrent packets for the
+	// same connection would race on ngtcp2_conn, stream_events, and stream
+	// maps without this coarse-grained lock.
+	packet_mu                  sync.Mutex
 	encoder                    Encoder
 	decoder                    Decoder
 	uni                        UniStreamManager

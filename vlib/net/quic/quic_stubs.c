@@ -103,6 +103,60 @@ static int quic_get_new_connection_id_cb(ngtcp2_conn *conn, ngtcp2_cid *cid,
   return 0;
 }
 
+// QuicStreamEvents holds pending stream events for V-side processing.
+// Must match the QuicStreamEvents struct in ngtcp2.c.v exactly.
+#define QUIC_MAX_PENDING_EVENTS 64
+typedef struct {
+  int64_t fin_stream_ids[QUIC_MAX_PENDING_EVENTS];
+  int     fin_count;
+  int64_t closed_stream_ids[QUIC_MAX_PENDING_EVENTS];
+  int     closed_count;
+  int     overflow;
+} QuicStreamEvents;
+
+// ngtcp2 recv_stream_data callback: called when stream data is received.
+// When FIN is signaled (flags & 0x01), records the event in QuicStreamEvents
+// so the V layer can set Stream.fin_received after conn_read_pkt returns.
+static int quic_recv_stream_data_cb(ngtcp2_conn *conn, uint32_t flags,
+    int64_t stream_id, uint64_t offset,
+    const uint8_t *data, size_t datalen,
+    void *user_data, void *stream_user_data) {
+  (void)conn;
+  (void)offset;
+  (void)stream_user_data;
+  (void)data;
+  (void)datalen;
+  if ((flags & NGTCP2_STREAM_DATA_FLAG_FIN) && user_data != NULL) {
+    QuicStreamEvents *events = (QuicStreamEvents *)user_data;
+    if (events->fin_count < QUIC_MAX_PENDING_EVENTS) {
+      events->fin_stream_ids[events->fin_count++] = stream_id;
+    } else {
+      events->overflow = 1;
+    }
+  }
+  return 0;
+}
+
+// ngtcp2 stream_close callback: called when a stream is closed.
+// Records the close event in QuicStreamEvents for V-side processing.
+static int quic_stream_close_cb(ngtcp2_conn *conn, uint32_t flags,
+    int64_t stream_id, uint64_t app_error_code,
+    void *user_data, void *stream_user_data) {
+  (void)conn;
+  (void)flags;
+  (void)app_error_code;
+  (void)stream_user_data;
+  if (user_data != NULL) {
+    QuicStreamEvents *events = (QuicStreamEvents *)user_data;
+    if (events->closed_count < QUIC_MAX_PENDING_EVENTS) {
+      events->closed_stream_ids[events->closed_count++] = stream_id;
+    } else {
+      events->overflow = 1;
+    }
+  }
+  return 0;
+}
+
 // quic_init_callbacks fills all required ngtcp2 callbacks for a client.
 // This is done in C because V cannot directly assign C function pointers
 // to struct fields typed as voidptr.
@@ -121,6 +175,8 @@ static void quic_init_callbacks(ngtcp2_callbacks *cb) {
   cb->version_negotiation = ngtcp2_crypto_version_negotiation_cb;
   cb->rand = quic_rand_cb;
   cb->get_new_connection_id = quic_get_new_connection_id_cb;
+  cb->recv_stream_data = quic_recv_stream_data_cb;
+  cb->stream_close = quic_stream_close_cb;
 }
 
 // conn_ref get_conn callback: retrieves ngtcp2_conn from conn_ref

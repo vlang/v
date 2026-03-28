@@ -83,7 +83,9 @@ fn test_delete_header() {
 	mut r := new_request(.get, '', '')
 	r.header.set(.authorization, 'foo')
 	r.header.delete(.authorization)
-	assert r.header.get(.authorization)! == ''
+	if x := r.header.get(.authorization) {
+		assert false, 'deleted header should not be retrievable, got ${x}'
+	}
 }
 
 fn test_custom_header() {
@@ -389,4 +391,37 @@ fn test_set_cookie() {
 	h.add(.set_cookie, 'foo')
 	h.add(.set_cookie, 'bar')
 	assert h.render() == 'Set-Cookie: foo\r\nSet-Cookie: bar\r\n'
+}
+
+fn test_deleted_headers_are_ignored_everywhere() {
+	mut h := new_header()
+	h.add(.authorization, 'secret')
+	h.delete(.authorization)
+	assert !h.contains(.authorization)
+	assert !h.contains_custom('authorization')
+	assert h.render() == ''
+	assert h.entries().len == 0
+}
+
+fn test_header_add_custom_stops_at_max_headers() {
+	mut h := new_header()
+	for i in 0 .. max_headers {
+		h.add_custom('X-Test-${i}', '${i}') or { assert false, err.msg() }
+	}
+	h.add_custom('X-Overflow', 'boom') or {
+		assert err.msg().contains('maximum number of headers reached')
+		return
+	}
+	assert false, 'expected add_custom to fail after max_headers is reached'
+}
+
+fn test_header_add_silently_ignores_past_capacity() {
+	mut h := new_header()
+	for i in 0 .. max_headers {
+		h.add(.accept, 'val-${i}')
+	}
+	assert h.values(.accept).len == max_headers
+	h.add(.host, 'should-be-ignored')
+	assert h.values(.host).len == 0
+	assert h.values(.accept).len == max_headers
 }

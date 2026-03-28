@@ -70,6 +70,14 @@ fn test_parse_request_line() {
 	assert version == .v1_1
 }
 
+fn test_parse_request_line_unknown_method_fails() {
+	http.parse_request_line('BREW /coffee HTTP/1.1') or {
+		assert err.msg().contains('unsupported method')
+		return
+	}
+	assert false, 'expected unsupported method error'
+}
+
 fn test_parse_form() {
 	assert http.parse_form('foo=bar&bar=baz') == {
 		'foo': 'bar'
@@ -298,4 +306,103 @@ fn test_parse_request_head_str_multiple_same_header() {
 	assert req.method == .get
 	assert req.host == 'example.com'
 	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
+}
+
+fn test_parse_request_with_limit_accepts_small_body() {
+	body := 'hello'
+	req_str := 'POST / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
+	mut r := reader(req_str)
+	req := http.parse_request_with_limit(mut r, 1000) or {
+		assert false, 'should not fail: ${err}'
+		return
+	}
+	assert req.data == body
+}
+
+fn test_parse_request_with_limit_rejects_large_body() {
+	body := 'A'.repeat(1000)
+	req_str := 'POST / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
+	mut r := reader(req_str)
+	http.parse_request_with_limit(mut r, 100) or {
+		assert err.msg().contains('request body too large')
+		return
+	}
+	assert false, 'expected error for body exceeding limit'
+}
+
+fn test_parse_request_with_limit_zero_means_no_limit() {
+	body := 'A'.repeat(10000)
+	req_str := 'POST / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
+	mut r := reader(req_str)
+	req := http.parse_request_with_limit(mut r, 0) or {
+		assert false, 'should not fail with limit=0: ${err}'
+		return
+	}
+	assert req.data.len == body.len
+}
+
+fn test_server_default_body_limit() {
+	s := http.Server{}
+	assert s.max_request_body_size == 10_485_760
+}
+
+fn test_parse_request_rejects_negative_content_length() {
+	mut r := reader('POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n')
+	http.parse_request(mut r) or {
+		assert err.msg().contains('invalid Content-Length')
+		return
+	}
+	assert false, 'expected error for negative Content-Length'
+}
+
+fn test_parse_request_rejects_non_numeric_content_length() {
+	mut r := reader('POST / HTTP/1.1\r\nContent-Length: abc\r\n\r\n')
+	http.parse_request(mut r) or {
+		assert err.msg().contains('invalid Content-Length')
+		return
+	}
+	assert false, 'expected error for non-numeric Content-Length'
+}
+
+fn test_parse_request_rejects_overflow_content_length() {
+	mut r := reader('POST / HTTP/1.1\r\nContent-Length: 99999999999999\r\n\r\n')
+	http.parse_request(mut r) or {
+		assert err.msg().contains('invalid Content-Length')
+		return
+	}
+	assert false, 'expected error for overflow Content-Length'
+}
+
+fn test_parse_request_accepts_valid_content_length() {
+	body := 'hello'
+	mut r := reader('POST / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}')
+	req := http.parse_request(mut r) or {
+		assert false, 'should not fail for valid Content-Length: ${err}'
+		return
+	}
+	assert req.data == body
+}
+
+fn test_parse_request_rejects_truncated_body() {
+	// Content-Length claims 100 bytes, but only 50 bytes of body data provided
+	actual_body := 'A'.repeat(50)
+	req_str := 'POST / HTTP/1.1\r\nContent-Length: 100\r\n\r\n${actual_body}'
+	mut r := reader(req_str)
+	http.parse_request(mut r) or {
+		assert err.msg().contains('unexpected EOF while reading request body')
+		return
+	}
+	assert false, 'expected error for truncated body'
+}
+
+fn test_parse_request_with_limit_rejects_truncated_body() {
+	// Same truncation test but via parse_request_with_limit
+	actual_body := 'A'.repeat(50)
+	req_str := 'POST / HTTP/1.1\r\nContent-Length: 100\r\n\r\n${actual_body}'
+	mut r := reader(req_str)
+	http.parse_request_with_limit(mut r, 1000) or {
+		assert err.msg().contains('unexpected EOF while reading request body')
+		return
+	}
+	assert false, 'expected error for truncated body via parse_request_with_limit'
 }

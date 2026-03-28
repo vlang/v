@@ -1,6 +1,7 @@
 module v3
 
 // HTTP/3 client (RFC 9114).
+import net.http.common
 import net.quic
 import sync
 
@@ -105,9 +106,8 @@ pub fn (mut c Client) start_control_reader() {
 }
 
 // request sends an HTTP/3 request and returns the response.
-// After sending all frames (HEADERS + DATA), the QUIC layer signals
-// end-of-stream (FIN) implicitly — ngtcp2 marks the stream write-side
-// as complete when no more data is written before reading the response.
+// After sending all frames (HEADERS + DATA), the client explicitly sends a
+// QUIC FIN on the stream to signal end-of-request to the server.
 pub fn (mut c Client) request(req Request) !Response {
 	stream_id := c.next_stream_id
 	c.next_stream_id += 4
@@ -131,8 +131,18 @@ pub fn (mut c Client) request(req Request) !Response {
 	c.send_frame(stream_id, headers_frame)!
 
 	data_frames := create_data_frames(req.data)
-	for frame in data_frames {
-		c.send_frame(stream_id, frame)!
+	if data_frames.len > 0 {
+		// Send all frames except the last one normally
+		for i := 0; i < data_frames.len - 1; i++ {
+			c.send_frame(stream_id, data_frames[i])!
+		}
+		// Attach FIN to the last DATA frame to reduce packet count
+		c.send_frame_with_fin(stream_id, data_frames[data_frames.len - 1])!
+	} else {
+		// No body data — signal end-of-request with FIN only
+		c.quic_conn.send_fin(stream_id) or {
+			return error('failed to send FIN: ${err}')
+		}
 	}
 
 	return c.read_response(stream_id)!
@@ -140,7 +150,7 @@ pub fn (mut c Client) request(req Request) !Response {
 
 // encode_request_headers builds and QPACK-encodes headers for the given request.
 fn (mut c Client) encode_request_headers(req Request) []u8 {
-	mut headers := []HeaderField{cap: 4 + req.headers.len}
+	mut headers := []HeaderField{cap: 4 + req.header.keys().len}
 	headers << HeaderField{
 		name:  ':method'
 		value: req.method.str()
@@ -158,9 +168,15 @@ fn (mut c Client) encode_request_headers(req Request) []u8 {
 		value: req.host
 	}
 
-	for key, value in req.headers {
+	for entry in req.header.entries() {
+		key := entry.key
+		value := entry.value
+		lower := key.to_lower()
+		if lower in h3_forbidden_headers {
+			continue
+		}
 		headers << HeaderField{
-			name:  key.to_lower()
+			name:  lower
 			value: value
 		}
 	}
@@ -176,14 +192,27 @@ fn (mut c Client) flush_encoder_instructions() {
 	}
 }
 
-fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
+// serialize_frame encodes an HTTP/3 frame (type + length + payload) into bytes.
+fn serialize_frame(frame Frame) ![]u8 {
 	mut data := []u8{}
-
 	data << encode_varint(u64(frame.frame_type))!
 	data << encode_varint(frame.length)!
 	data << frame.payload
+	return data
+}
 
+fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
+	data := serialize_frame(frame)!
 	c.quic_conn.send(stream_id, data)!
+}
+
+// send_frame_with_fin serializes and sends an HTTP/3 frame with the QUIC FIN
+// flag attached, signaling end-of-stream on the last frame.
+fn (mut c Client) send_frame_with_fin(stream_id u64, frame Frame) ! {
+	data := serialize_frame(frame)!
+	c.quic_conn.send_with_fin(stream_id, data) or {
+		return error('failed to send frame with FIN: ${err}')
+	}
 }
 
 fn (mut c Client) read_response(stream_id u64) !Response {
@@ -191,20 +220,20 @@ fn (mut c Client) read_response(stream_id u64) !Response {
 	headers, body := c.parse_response_frames(data)!
 
 	mut status_code := 200
-	mut response_headers := map[string]string{}
+	mut resp_header := common.new_header()
 
-	for header in headers {
-		if header.name == ':status' {
-			status_code = header.value.int()
-		} else if !header.name.starts_with(':') {
-			response_headers[header.name] = header.value
+	for h in headers {
+		if h.name == ':status' {
+			status_code = h.value.int()
+		} else if !h.name.starts_with(':') {
+			resp_header.add_custom(h.name, h.value) or {}
 		}
 	}
 
 	return Response{
 		body:        body.bytestr()
 		status_code: status_code
-		headers:     response_headers
+		header:      resp_header
 	}
 }
 
