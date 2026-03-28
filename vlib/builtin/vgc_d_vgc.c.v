@@ -853,6 +853,7 @@ fn vgc_calloc(n usize) voidptr {
 
 // Typed memdup: allocate with pointer map and copy source data.
 // Used by HEAP_vgc() macro for struct allocations with known layout.
+@[markused]
 fn vgc_memdup_typed(src voidptr, n isize, ptrmap u64, ptr_words u8) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }
