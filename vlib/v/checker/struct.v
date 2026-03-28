@@ -702,8 +702,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		|| (node.generic_typ != 0 && node.generic_typ.has_flag(.generic))
 	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
 		&& type_sym.language != .c
-		&& (type_sym.mod != c.mod && !(is_generic_init
-		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
+		&& (type_sym.mod != c.mod && !(is_generic_init && type_sym.mod != 'builtin'))
+		&& !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
 	if type_sym.info is ast.Struct && type_sym.mod != c.mod {

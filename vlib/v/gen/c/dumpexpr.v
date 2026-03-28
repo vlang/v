@@ -133,8 +133,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 								ctyp
 							}
 							break
-						} else if scope_var.ct_type_var == ct_var
-							&& g.cur_fn != unsafe { nil }
+						} else if scope_var.ct_type_var == ct_var && g.cur_fn != unsafe { nil }
 							&& g.cur_fn.generic_names.len > 0 {
 							// For generic_param/generic_var, node.obj.typ is a stale
 							// copy from checker time. Use the refreshed scope var.
@@ -172,7 +171,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 			if current_fn_ident_type != 0 {
 				expr_type = current_fn_ident_type
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
+					'')
 			}
 		}
 		if expr_type.is_ptr() && expr_type.has_flag(.option) {

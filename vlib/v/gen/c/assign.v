@@ -452,8 +452,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// return the base type but the checker already has a specific type.
 				is_base_container_downgrade := (resolved_unwrapped == ast.map_type
 					&& var_sym.kind == .map && var_type != ast.map_type)
-					|| (resolved_unwrapped == ast.array_type
-					&& var_sym.kind == .array && var_type != ast.array_type)
+					|| (resolved_unwrapped == ast.array_type && var_sym.kind == .array
+					&& var_type != ast.array_type)
 				if !is_sumtype_reversal && !is_base_container_downgrade {
 					var_type = resolved_unwrapped
 					val_type = var_type
