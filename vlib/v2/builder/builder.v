@@ -141,7 +141,12 @@ fn ensure_string_eq_impl(source string) string {
 
 fn replace_generated_c_fn(source string, signature string, replacement string) string {
 	needle := signature + ' {'
-	start := source.index(needle) or { return source }
+	// Search for the needle preceded by a newline to ensure we match an actual
+	// function definition at the start of a line, not an occurrence inside a
+	// string literal (e.g. when the compiler compiles itself).
+	full_needle := '\n' + needle
+	nl_pos := source.index(full_needle) or { return source }
+	start := nl_pos + 1 // skip the newline itself
 	body_start := start + needle.len - 1
 	if body_start < 0 || body_start >= source.len || source[body_start] != `{` {
 		return source
