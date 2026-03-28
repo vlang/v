@@ -1204,6 +1204,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	] {
 		resolved_return_type = resolved_left_type
 	}
+	// .filter() returns a new plain array, not shared.
+	if resolved_return_type.has_flag(.shared_f) {
+		resolved_return_type = resolved_return_type.deref().clear_flag(.shared_f)
+	}
 	return_sym := g.table.final_sym(g.unwrap_generic(resolved_return_type))
 	return_elem_type := if return_sym.kind == .array {
 		(return_sym.info as ast.Array).elem_type
