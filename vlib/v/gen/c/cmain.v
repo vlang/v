@@ -312,10 +312,13 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\tmain__vtest_init();')
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
+	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	}
+	g.writeln('\tmain__vtest_init();')
 	g.gen_c_main_profile_hook()
 
 	mut all_tfuncs := g.get_all_test_function_names()
