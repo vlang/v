@@ -345,6 +345,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
 						exp_typ = exp_typ.clear_flag(.option)
 					}
+				} else if expr.obj.is_unwrapped && exp_typ.has_flag(.option) {
+					exp_typ = exp_typ.clear_flag(.option)
 				}
 			}
 		}
