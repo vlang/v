@@ -948,6 +948,9 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 		node.left = ast.Expr(ast.Ident{
 			name: past.tmp_var
 		})
+		// The tmp_var is a cloned array (value, not pointer), so update
+		// left_type to strip pointer flags from the mut receiver.
+		node.left_type = resolved_return_type
 	}
 	g.gen_array_sort(node)
 	g.writeln(';')
@@ -1502,9 +1505,15 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 		left_sym.array_fixed_info().elem_type
 	}
 	is_auto_deref_var := right.is_auto_deref_var()
+	// Check if the right side is an interface/sumtype variable that needs
+	// dereferencing. Skip this for smartcast variables (match arms) since
+	// the smartcast codegen already handles the deref.
+	is_interface_needs_deref := g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct]
+		&& right is ast.Ident && right.info is ast.IdentVar
+		&& g.table.sym(right.obj.typ).kind in [.interface, .sum_type]
+		&& right.obj.smartcasts.len == 0
 	if (is_auto_deref_var && !elem_typ.is_ptr())
-		|| (g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct] && right is ast.Ident
-		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type])
+		|| is_interface_needs_deref
 		|| elem_typ.nr_muls() + 1 == right_type.nr_muls() {
 		g.write('*')
 	}

@@ -772,13 +772,25 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.left, left_default))
 			if left_type != 0 {
 				if expr.index is ast.RangeExpr {
+					mut slice_type := ast.Type(0)
 					if expr.left is ast.Ident {
 						resolved_left_type := g.resolve_current_fn_generic_param_type(expr.left.name)
 						if resolved_left_type != 0 {
-							return g.unwrap_generic(resolved_left_type)
+							slice_type = g.unwrap_generic(resolved_left_type)
 						}
 					}
-					return g.unwrap_generic(left_type)
+					if slice_type == 0 {
+						slice_type = g.unwrap_generic(left_type)
+					}
+					// Slicing returns a new array by value; strip pointer
+					// from mut params.
+					slice_type = slice_type.set_nr_muls(0)
+					// Slicing a fixed array yields a dynamic array.
+					slice_sym := g.table.final_sym(slice_type)
+					if slice_sym.info is ast.ArrayFixed {
+						return ast.new_type(g.table.find_or_register_array(slice_sym.info.elem_type))
+					}
+					return slice_type
 				}
 				if expr.left is ast.Ident {
 					resolved_value_type := g.resolve_current_fn_generic_param_value_type(expr.left.name)

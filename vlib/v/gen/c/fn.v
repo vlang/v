@@ -2092,7 +2092,7 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 				return_type.clear_option_and_result()
 			}
 		}
-		if final_left_sym.kind == .array && !(left_sym.has_method(node.name)
+		if final_left_sym.kind in [.array, .array_fixed] && !(left_sym.has_method(node.name)
 			|| left_sym.has_method_with_generic_parent(node.name)) && (node.name == 'get'
 			|| node.kind in [.first, .last, .pop_left, .pop, .map, .filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted, .sorted_with_compare]) {
 			return_type := g.resolved_array_builtin_method_return_type(node, left_type,
@@ -2336,15 +2336,21 @@ fn (mut g Gen) resolved_array_builtin_method_return_type(node ast.CallExpr, left
 		return return_type
 	}
 	resolved_left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
-	if resolved_left_sym.kind != .array {
+	if resolved_left_sym.kind !in [.array, .array_fixed] {
 		return return_type
 	}
 	if node.name == 'get' {
-		array_info := resolved_left_sym.info as ast.Array
-		if array_info.elem_type == 0 {
+		elem_type := if resolved_left_sym.info is ast.Array {
+			resolved_left_sym.info.elem_type
+		} else if resolved_left_sym.info is ast.ArrayFixed {
+			resolved_left_sym.info.elem_type
+		} else {
 			return return_type
 		}
-		return g.unwrap_generic(g.recheck_concrete_type(array_info.elem_type.set_flag(.option)))
+		if elem_type == 0 {
+			return return_type
+		}
+		return g.unwrap_generic(g.recheck_concrete_type(elem_type.set_flag(.option)))
 	}
 	match node.kind {
 		.map {
@@ -2378,14 +2384,29 @@ fn (mut g Gen) resolved_array_builtin_method_return_type(node ast.CallExpr, left
 		}
 		.filter, .reverse, .clone, .clone_to_depth, .repeat, .trim, .slice, .sorted,
 		.sorted_with_compare {
-			return resolved_left_type
+			// These methods return a new array by value, never a pointer.
+			// Strip pointer flags from mut receivers.
+			mut ret := g.unwrap_generic(resolved_left_type).set_nr_muls(0)
+			// .filter on a fixed array returns a dynamic array since the
+			// result size is determined at runtime.
+			if node.kind == .filter && resolved_left_sym.kind == .array_fixed {
+				info := resolved_left_sym.info as ast.ArrayFixed
+				ret = ast.new_type(g.table.find_or_register_array(info.elem_type))
+			}
+			return ret
 		}
 		.first, .last, .pop_left, .pop {
-			array_info := resolved_left_sym.info as ast.Array
-			if array_info.elem_type == 0 {
+			elem_type := if resolved_left_sym.info is ast.Array {
+				resolved_left_sym.info.elem_type
+			} else if resolved_left_sym.info is ast.ArrayFixed {
+				resolved_left_sym.info.elem_type
+			} else {
 				return return_type
 			}
-			return g.unwrap_generic(g.recheck_concrete_type(array_info.elem_type))
+			if elem_type == 0 {
+				return return_type
+			}
+			return g.unwrap_generic(g.recheck_concrete_type(elem_type))
 		}
 		else {}
 	}
@@ -4369,14 +4390,22 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						typ = resolved
 					}
 				}
+				mut ct_resolved := false
 				if expr.ct_expr || expr.obj.ct_type_var != .no_comptime {
 					resolved := g.type_resolver.get_type_or_default(ast.Expr(expr), typ)
 					if resolved != 0 && resolved != ast.void_type {
 						typ = resolved
+						ct_resolved = true
 					}
 				}
-				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-					// In generic contexts, scope var types may be stale.
+				// In generic contexts, scope var types may be stale from a
+				// previous checker instantiation. When ct_type_var is
+				// generic_var, the comptime resolver above may return a stale
+				// type, so we also try the generic scope resolution. But only
+				// do this when comptime didn't resolve or when the variable is
+				// a generic_var (not for regular comptime vars).
+				if (!ct_resolved || expr.obj.ct_type_var == .generic_var)
+					&& g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 					resolved := g.resolved_expr_type(expr, expr.obj.typ)
 					if resolved != 0 {
 						typ = resolved
