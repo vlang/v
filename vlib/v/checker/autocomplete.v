@@ -78,8 +78,12 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 		}
 		declaration := 'fn ${fn_name}(${params.join(', ')})${ret_str}'
 		mut doc := ''
-		mod := f.name.all_before_last('.')
-		if info := c.table.vls_info['fn_${mod}[]${fn_name}'] {
+		receiver := if f.is_method {
+			c.table.sym(f.receiver_type).name.all_after_last('.')
+		} else {
+			''
+		}
+		if info := c.table.vls_info['fn_${f.mod}[${receiver}]${fn_name}'] {
 			doc = info.doc
 		}
 		c.vls_write_details([Detail{
