@@ -1200,7 +1200,7 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 
 // infix_expr_and_or_op generates code for `&&` and `||`
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
-	if g.need_tmp_var_in_array_call(node.right) {
+	if g.need_tmp_var_in_array_call(node.right) && g.inside_ternary == 0 {
 		// `if a == 0 || arr.any(it.is_letter()) {...}`
 		tmp := g.new_tmp_var()
 		cur_line := g.go_before_last_stmt().trim_space()
