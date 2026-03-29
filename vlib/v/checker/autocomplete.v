@@ -86,12 +86,14 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 		if info := c.table.vls_info['fn_${f.mod}[${receiver}]${fn_name}'] {
 			doc = info.doc
 		}
-		c.vls_write_details([Detail{
-			kind:          .function
-			label:         fn_name
-			declaration:   declaration
-			documentation: doc
-		}])
+		c.vls_write_details([
+			Detail{
+				kind:          .function
+				label:         fn_name
+				declaration:   declaration
+				documentation: doc
+			},
+		])
 		exit(0)
 	}
 	if c.pref.linfo.method != .signature_help {
