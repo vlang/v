@@ -908,9 +908,13 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						&& array_expr is ast.StringLiteral {
 						var := g.expr_string(left)
 						slit := cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
-						if is_auto_deref_var || (left.info is ast.IdentVar
-							&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]
-							&& left.obj.smartcasts.len == 0) {
+						needs_deref := if left.info is ast.IdentVar {
+							g.table.sym(left.obj.typ).kind in [.interface, .sum_type]
+								&& left.obj.smartcasts.len == 0
+						} else {
+							false
+						}
+						if is_auto_deref_var || needs_deref {
 							g.write('_SLIT_EQ(${var}->str, ${var}->len, "${slit}")')
 						} else {
 							g.write('_SLIT_EQ(${var}.str, ${var}.len, "${slit}")')
