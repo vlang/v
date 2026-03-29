@@ -4374,7 +4374,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					if resolved != 0 && resolved != ast.void_type {
 						typ = resolved
 					}
-				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				}
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 					// In generic contexts, scope var types may be stale.
 					resolved := g.resolved_expr_type(expr, expr.obj.typ)
 					if resolved != 0 {

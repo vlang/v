@@ -10,7 +10,21 @@ const skip_struct_init = ['struct stat', 'struct addrinfo']
 fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
-	base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
+	base_node_typ := if node.generic_typ != 0 {
+		if node.is_short_syntax || node.typ.has_flag(.generic) || node.typ == ast.void_type {
+			// Short syntax inits and still-generic types: use generic_typ so the cgen
+			// can resolve it using the current concrete types.
+			node.generic_typ
+		} else {
+			// Explicitly typed inits (e.g. V2d[bool]{...}): the type in node.typ
+			// was written in source and should be preserved. Using node.generic_typ
+			// (e.g. V2d[T]) would incorrectly substitute T with the enclosing
+			// function's concrete type parameter.
+			node.typ
+		}
+	} else {
+		node.typ
+	}
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
 		is_update_tmp_var = true
 

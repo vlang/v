@@ -74,6 +74,22 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	return resolved_typ
 }
 
+// Promotes literal element types in arrays (e.g. []int_literal -> []int, []float_literal -> []f64)
+// so that array comparisons use the correct registered array type.
+fn (mut g Gen) promote_literal_array_type(typ ast.Type) ast.Type {
+	sym := g.table.sym(typ)
+	if sym.info is ast.Array {
+		promoted_elem := ast.mktyp(sym.info.elem_type)
+		if promoted_elem != sym.info.elem_type {
+			idx := g.table.find_or_register_array(promoted_elem)
+			if idx > 0 {
+				return ast.new_type(idx).derive(typ)
+			}
+		}
+	}
+	return typ
+}
+
 fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return typ

@@ -117,6 +117,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			right_type = resolved_right
 		}
 	}
+	// Promote literal element types in arrays (e.g. []int_literal -> []int)
+	// so that equality comparisons match the correct array type.
+	left_type = g.promote_literal_array_type(left_type)
+	right_type = g.promote_literal_array_type(right_type)
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false

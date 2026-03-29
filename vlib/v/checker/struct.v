@@ -532,9 +532,19 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			// A concrete type like MultiLevel[int] should not be re-resolved when visited
 			// inside a different generic context (e.g., as a nested init in MultiLevel[MultiLevel[int]]).
 			if node.typ.has_flag(.generic) || node.typ == ast.void_type {
-				resolved_generic_typ := c.recheck_concrete_type(node.generic_typ)
-				if resolved_generic_typ != 0 && resolved_generic_typ != ast.void_type {
-					node.typ = resolved_generic_typ
+				// Try resolving node.typ first — it may use the function's generic names
+				// (e.g., Item[A] where A is from the enclosing function), which are directly
+				// resolvable via cur_concrete_types. Only fall back to node.generic_typ
+				// (which uses the struct's own generic param names like T) if node.typ can't resolve.
+				resolved_typ := c.recheck_concrete_type(node.typ)
+				if resolved_typ != node.typ && resolved_typ != 0 && resolved_typ != ast.void_type
+					&& !resolved_typ.has_flag(.generic) {
+					node.typ = resolved_typ
+				} else {
+					resolved_generic_typ := c.recheck_concrete_type(node.generic_typ)
+					if resolved_generic_typ != 0 && resolved_generic_typ != ast.void_type {
+						node.typ = resolved_generic_typ
+					}
 				}
 			}
 		}
@@ -1257,11 +1267,16 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		field_is_option := field.typ.has_flag(.option)
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field_is_option
 			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated {
-			c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
-				node.pos)
-			continue
+			// Skip this check during generic recheck (concrete instantiation),
+			// because generic code like `T{}` or `Struct[V]{}` cannot provide
+			// initializers for reference fields that only appear after type substitution.
+			if !c.has_active_generic_recheck_context() {
+				c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
+					node.pos)
+				continue
+			}
 		}
-		if !field_is_option {
+		if !field_is_option && !c.has_active_generic_recheck_context() {
 			if sym.kind == .struct {
 				c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
 					node.pos)
