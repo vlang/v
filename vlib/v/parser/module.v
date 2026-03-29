@@ -323,7 +323,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.pos()
 		alias := p.check_name()
-		if p.is_imported_symbol(alias) {
+		if p.is_imported_symbol(alias) && !(p.pref.is_fmt && p.inside_ct_if_expr) {
 			p.error_with_pos('cannot register symbol `${alias}`, it was already imported',
 				pos)
 			return
