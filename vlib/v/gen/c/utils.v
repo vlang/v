@@ -905,7 +905,18 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					return g.cur_concrete_types[idx]
 				}
 			}
-			base_struct_typ := if expr.generic_typ != 0 { expr.generic_typ } else { expr.typ }
+			// In generic contexts, use generic_typ to allow resolution via
+			// recheck_concrete_type/unwrap_generic. Outside generic contexts,
+			// prefer the already-resolved expr.typ to avoid returning unresolved
+			// generic type names (e.g. Foo_T_T instead of Foo_T_int).
+			base_struct_typ := if expr.generic_typ != 0 && g.cur_fn != unsafe { nil }
+				&& g.cur_concrete_types.len > 0 {
+				expr.generic_typ
+			} else if expr.typ != 0 {
+				expr.typ
+			} else {
+				expr.generic_typ
+			}
 			if base_struct_typ != 0 {
 				return g.unwrap_generic(g.recheck_concrete_type(base_struct_typ))
 			}

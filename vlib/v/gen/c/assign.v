@@ -413,6 +413,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut is_fn_var := false
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
+		// Save original shared status of val_type before resolution blocks can overwrite it.
+		// This is needed because `val_type = var_type` in resolution blocks can lose the
+		// RHS shared flag (e.g., lock expr returning shared value to non-shared variable).
+		orig_val_shared := val_type.has_flag(.shared_f)
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 			resolved_left_type := g.recheck_concrete_type(var_type)
 			if resolved_left_type != 0 {
@@ -432,13 +436,33 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			scope: unsafe { nil }
 		}
 		if is_decl {
-			resolved_decl_type := g.resolved_expr_type(val, var_type)
+			// Strip shared/atomic flags and pointer from the default type
+			// so that `resolved_expr_type` doesn't propagate LHS declaration
+			// properties to the resolved RHS type (e.g., for string/int literals
+			// that fall through to the default).
+			mut decl_default := var_type.clear_flag(.shared_f).clear_flag(.atomic_f)
+			if var_type.has_flag(.shared_f) && decl_default.nr_muls() > 0 {
+				decl_default = decl_default.set_nr_muls(decl_default.nr_muls() - 1)
+			}
+			resolved_decl_type := g.resolved_expr_type(val, decl_default)
 			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type {
 				mut resolved_unwrapped := g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
 				// Don't propagate pointer flag from auto-deref mut parameters.
 				// `mut e := expr` where expr is a mut param should create a value copy.
 				if resolved_unwrapped.is_ptr() && !var_type.is_ptr() {
 					resolved_unwrapped = resolved_unwrapped.deref()
+				}
+				// Don't propagate shared/atomic flags from the resolved RHS expression
+				// to a non-shared declaration. E.g., `sliced := shared_arr[..x]` inside
+				// a rlock block resolves to a shared type, but `sliced` is not shared.
+				if !var_type.has_flag(.shared_f) && resolved_unwrapped.has_flag(.shared_f) {
+					resolved_unwrapped = resolved_unwrapped.clear_flag(.shared_f)
+					if resolved_unwrapped.nr_muls() > 0 {
+						resolved_unwrapped = resolved_unwrapped.set_nr_muls(resolved_unwrapped.nr_muls() - 1)
+					}
+				}
+				if !var_type.has_flag(.atomic_f) && resolved_unwrapped.has_flag(.atomic_f) {
+					resolved_unwrapped = resolved_unwrapped.clear_flag(.atomic_f)
 				}
 				// Skip when resolved type is a parent sumtype of a smartcast variant.
 				// This happens in match arms where the RHS uses a smartcast variable
@@ -812,9 +836,29 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					resolved_val_type = resolved_val_type.set_flag(.atomic_f)
 				}
 				var_type = resolved_val_type
-				val_type = resolved_val_type
+				// val_type represents the RHS expression type, which is NOT shared/atomic.
+				// Only var_type (the LHS declaration type) should carry those flags.
+				val_type = resolved_val_type.clear_flag(.shared_f).clear_flag(.atomic_f)
 				left.obj.typ = var_type
 			}
+		}
+		// Various resolution blocks above may overwrite var_type, stripping the
+		// shared/atomic flags and nr_muls that the checker originally set.
+		// Re-apply them based on the left-hand identifier's share attribute,
+		// which is the authoritative source for whether the declaration is shared.
+		if is_decl && mut left is ast.Ident {
+			left_info := left.info
+			if left_info is ast.IdentVar {
+				if left_info.share == .shared_t && !var_type.has_flag(.shared_f) {
+					var_type = var_type.set_flag(.shared_f)
+				}
+				if left_info.share == .atomic_t && !var_type.has_flag(.atomic_f) {
+					var_type = var_type.set_flag(.atomic_f)
+				}
+			}
+		}
+		if is_decl && var_type.has_flag(.shared_f) && var_type.nr_muls() == 0 {
+			var_type = var_type.set_nr_muls(1)
 		}
 		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
 			left.obj.typ = var_type
@@ -1451,8 +1495,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else if var_type.has_flag(.shared_f) && !val_type.has_flag(.shared_f)
 							&& !val_type.is_ptr() {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if val_type.has_flag(.shared_f) {
-							g.expr_with_cast(val, val_type, var_type)
+						} else if val_type.has_flag(.shared_f) || orig_val_shared {
+							g.expr_with_cast(val, val_type.set_flag(.shared_f), var_type)
 						} else if val in [ast.MatchExpr, ast.IfExpr]
 							&& unaliased_right_sym.info is ast.ArrayFixed {
 							tmp_var := g.expr_with_var(val, var_type, false)
