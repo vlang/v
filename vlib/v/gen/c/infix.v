@@ -909,7 +909,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						var := g.expr_string(left)
 						slit := cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
 						mut needs_deref := false
-						if left.info is ast.IdentVar {
+						if left.info is ast.IdentVar && left.obj is ast.Var {
 							if g.table.sym(left.obj.typ).kind in [.interface, .sum_type] {
 								needs_deref = left.obj.smartcasts.len == 0
 							}

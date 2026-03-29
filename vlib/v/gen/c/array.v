@@ -1512,7 +1512,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	// dereferencing. Skip this for smartcast variables (match arms) since
 	// the smartcast codegen already handles the deref.
 	mut is_interface_needs_deref := false
-	if right is ast.Ident && right.info is ast.IdentVar {
+	if right is ast.Ident && right.info is ast.IdentVar && right.obj is ast.Var {
 		if g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct]
 			&& g.table.sym(right.obj.typ).kind in [.interface, .sum_type] {
 			is_interface_needs_deref = right.obj.smartcasts.len == 0
