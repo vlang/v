@@ -1015,6 +1015,7 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	mut main_source := b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
 	main_source = b.inject_cached_core_forward_decls(main_source)
+	main_source = sanitize_staged_c_source(main_source)
 	print_time('C Gen', sw.elapsed())
 	if main_source == '' {
 		if os.getenv('V2_TRACE_CACHE') != '' {
@@ -1275,7 +1276,7 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
-	os.write_file(c_path, module_source)!
+	os.write_file(c_path, sanitize_staged_c_source(module_source))!
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
