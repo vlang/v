@@ -1511,12 +1511,12 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	// Check if the right side is an interface/sumtype variable that needs
 	// dereferencing. Skip this for smartcast variables (match arms) since
 	// the smartcast codegen already handles the deref.
-	is_interface_needs_deref := if right is ast.Ident && right.info is ast.IdentVar {
-		g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct]
-			&& g.table.sym(right.obj.typ).kind in [.interface, .sum_type]
-			&& right.obj.smartcasts.len == 0
-	} else {
-		false
+	mut is_interface_needs_deref := false
+	if right is ast.Ident && right.info is ast.IdentVar {
+		if g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct]
+			&& g.table.sym(right.obj.typ).kind in [.interface, .sum_type] {
+			is_interface_needs_deref = right.obj.smartcasts.len == 0
+		}
 	}
 	if (is_auto_deref_var && !elem_typ.is_ptr())
 		|| is_interface_needs_deref
