@@ -66,6 +66,18 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
+	// Promote literal types (int_literal -> int, float_literal -> f64) in array/map element types.
+	// These are never emitted as C typedefs (e.g., `Array_int_literal` doesn't exist).
+	unwrapped_sym := g.table.sym(unwrapped)
+	if unwrapped_sym.info is ast.Array {
+		promoted_elem := ast.mktyp(unwrapped_sym.info.elem_type)
+		if promoted_elem != unwrapped_sym.info.elem_type {
+			idx := g.table.find_or_register_array(promoted_elem)
+			if idx > 0 {
+				unwrapped = ast.new_type(idx).derive(unwrapped)
+			}
+		}
+	}
 	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
