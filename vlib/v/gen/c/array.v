@@ -1212,7 +1212,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 	// .filter() returns a new plain array, not shared.
 	if resolved_return_type.has_flag(.shared_f) {
-		resolved_return_type = resolved_return_type.deref().clear_flag(.shared_f)
+		resolved_return_type = resolved_return_type.clear_flag(.shared_f)
+		if resolved_return_type.is_ptr() {
+			resolved_return_type = resolved_return_type.deref()
+		}
 	}
 	return_sym := g.table.final_sym(g.unwrap_generic(resolved_return_type))
 	return_elem_type := if return_sym.kind == .array {
@@ -2100,8 +2103,10 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		g.indent++
 	}
 	resolved_left_type := g.resolved_array_receiver_type(*node)
-	left_type := if resolved_left_type.has_flag(.shared_f) {
+	left_type := if resolved_left_type.has_flag(.shared_f) && resolved_left_type.is_ptr() {
 		resolved_left_type.clear_flag(.shared_f).deref()
+	} else if resolved_left_type.has_flag(.shared_f) {
+		resolved_left_type.clear_flag(.shared_f)
 	} else if resolved_left_type.is_ptr() {
 		resolved_left_type.deref()
 	} else {

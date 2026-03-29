@@ -793,8 +793,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					.array, .array_fixed, .map {
 						// we do allow []int{}, [10]int{}, map[string]int{}
 					}
+					.sum_type, .interface {
+						// allow alias-of-sumtype/interface init (e.g. SumAlias{})
+					}
 					else {
-						if !(sym.is_number() && node.init_fields.len == 0 && !node.has_update_expr) {
+						if !((sym.is_number() || sym.kind == .string || sym.kind == .bool)
+							&& node.init_fields.len == 0 && !node.has_update_expr) {
 							c.error('alias type name: ${sym.name} is not struct type',
 								node.pos)
 						}
