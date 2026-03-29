@@ -2035,7 +2035,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		left_sym := g.table.sym(node.left_type)
 		if node.is_field {
 			if field := g.table.find_field_with_embeds(left_sym, node.name) {
-				fn_typ = field.typ
+				fn_typ = g.unwrap_generic(field.typ)
 			}
 			if node.is_unwrapped_fn_selector {
 				fn_typ = fn_typ.clear_option_and_result()
@@ -2570,6 +2570,33 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 							node.concrete_types)
 						{
 							expected_types[i] = utyp
+						}
+					}
+				}
+			}
+		}
+	}
+	if node.is_field && node.concrete_types.len == 0 && g.cur_fn != unsafe { nil }
+		&& g.cur_fn.generic_names.len > 0 && g.cur_concrete_types.len > 0 {
+		left_sym := g.table.sym(node.left_type)
+		if field := g.table.find_field_with_embeds(left_sym, node.name) {
+			field_sym := g.table.sym(g.unwrap_generic(field.typ))
+			if field_sym.kind == .function {
+				if field_sym.info is ast.FnType {
+					info := field_sym.info
+					for i in 0 .. expected_types.len {
+						if i < info.func.params.len {
+							mut param_typ := info.func.params[i].typ
+							if param_typ.has_flag(.generic) {
+								if utyp := g.table.convert_generic_type(param_typ, g.cur_fn.generic_names,
+									g.cur_concrete_types)
+								{
+									param_typ = utyp
+								}
+							}
+							if expected_types[i] != param_typ {
+								expected_types[i] = param_typ
+							}
 						}
 					}
 				}
