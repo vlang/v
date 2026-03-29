@@ -39,6 +39,7 @@ struct Detail {
 	kind               DetailKind // The type of item (e.g., Method, Function, Field)
 	label              string     // The name of the completion item
 	detail             string     // Additional info like the function signature or return type
+	declaration        string     // Full fn declaration, e.g. "fn greet(name string) string"
 	documentation      string     // The documentation for the item
 	insert_text        ?string
 	insert_text_format ?int // 1 for PlainText, 2 for Snippet
@@ -58,6 +59,37 @@ fn (mut c Checker) get_fn_from_call_expr(node ast.CallExpr) !ast.Fn {
 
 // Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
 pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
+	// Hover over a function call: cursor is on the function name, method is .completion.
+	// Output the full fn declaration as a single Detail so VLS can display it.
+	if c.pref.linfo.method == .completion && c.vls_is_the_node(node.name_pos) {
+		f := c.get_fn_from_call_expr(node) or { return }
+		fn_name := f.name.all_after_last('.')
+		mut params := []string{cap: f.params.len}
+		for i, param in f.params {
+			if f.is_method && i == 0 {
+				continue // skip receiver
+			}
+			params << '${param.name} ${c.table.type_to_str(param.typ)}'
+		}
+		ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+			' ' + c.table.type_to_str(f.return_type)
+		} else {
+			''
+		}
+		declaration := 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+		mut doc := ''
+		mod := f.name.all_before_last('.')
+		if info := c.table.vls_info['fn_${mod}[]${fn_name}'] {
+			doc = info.doc
+		}
+		c.vls_write_details([Detail{
+			kind:          .function
+			label:         fn_name
+			declaration:   declaration
+			documentation: doc
+		}])
+		exit(0)
+	}
 	if c.pref.linfo.method != .signature_help {
 		return
 	}
@@ -332,10 +364,22 @@ fn (c &Checker) vls_gen_mod_funcs_details(mut details []Detail, mod string) {
 			if info := c.table.vls_info['fn_${mod}[]${name}'] {
 				doc = info.doc
 			}
+			// Build full fn declaration for hover display, e.g. "fn add(a int, b int) int"
+			mut params := []string{cap: f.params.len}
+			for param in f.params {
+				params << '${param.name} ${c.table.type_to_str(param.typ)}'
+			}
+			ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+				' ' + c.table.type_to_str(f.return_type)
+			} else {
+				''
+			}
+			declaration := 'fn ${name}(${params.join(', ')})${ret_str}'
 			details << Detail{
 				kind:          .function
 				label:         name
 				detail:        type_string
+				declaration:   declaration
 				documentation: doc
 			}
 		}
@@ -453,6 +497,7 @@ fn (c &Checker) vls_write_details(details []Detail) {
 		sb.write_string('{"kind":${int(detail.kind)},')
 		sb.write_string('"label":"${detail.label}",')
 		sb.write_string('"detail":"${detail.detail}",')
+		sb.write_string('"declaration":"${detail.declaration}",')
 		sb.write_string('"documentation":"${detail.documentation}",')
 		if insert_text := detail.insert_text {
 			sb.write_string('"insert_text":"${insert_text}",')
