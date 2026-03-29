@@ -14,7 +14,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Hover over fn keyword or function name on the declaration line — show full declaration.
 		on_fn_name := c.vls_is_the_node(node.name_pos)
 		on_fn_keyword := c.pref.linfo.line_nr == node.name_pos.line_nr
-			&& c.pref.linfo.col >= node.pos.col && c.pref.linfo.col < node.name_pos.col
+			&& c.pref.linfo.col >= int(node.pos.col) - 1 && c.pref.linfo.col < node.name_pos.col
 		if c.pref.linfo.method == .completion && (on_fn_name || on_fn_keyword) {
 			mut params := []string{cap: node.params.len}
 			for param in node.params {
