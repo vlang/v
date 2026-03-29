@@ -943,9 +943,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			else {}
 		}
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			orig_var_option := var_type.has_flag(.option)
 			resolved_left_type := g.resolved_expr_type(left, var_type)
 			if resolved_left_type != 0 {
 				var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_left_type))
+			}
+			// Preserve the option flag when the variable was option-smartcasted.
+			// `resolved_expr_type` returns the smartcasted (unwrapped) type for variables
+			// inside `if x != none` blocks, but the C variable is still the option type
+			// and needs option wrapping on assignment.
+			if orig_var_option && !var_type.has_flag(.option) {
+				var_type = var_type.set_flag(.option)
 			}
 			resolved_val_type := g.resolved_expr_type(val, val_type)
 			if resolved_val_type != 0 {

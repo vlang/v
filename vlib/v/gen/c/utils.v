@@ -922,12 +922,19 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				}
 			}
 			// In generic contexts, use generic_typ to allow resolution via
-			// recheck_concrete_type/unwrap_generic. Outside generic contexts,
-			// prefer the already-resolved expr.typ to avoid returning unresolved
-			// generic type names (e.g. Foo_T_T instead of Foo_T_int).
+			// recheck_concrete_type/unwrap_generic only when the struct init type
+			// itself still has unresolved generic parts (short syntax or generic flag).
+			// For explicitly typed inits (e.g. LinkedList[StructFieldInfo]{}),
+			// preserve expr.typ to avoid incorrectly substituting the inner struct's
+			// generic parameter with the enclosing function's concrete type.
 			base_struct_typ := if expr.generic_typ != 0 && g.cur_fn != unsafe { nil }
 				&& g.cur_concrete_types.len > 0 {
-				expr.generic_typ
+				if expr.is_short_syntax || expr.typ.has_flag(.generic)
+					|| expr.typ == ast.void_type {
+					expr.generic_typ
+				} else {
+					expr.typ
+				}
 			} else if expr.typ != 0 {
 				expr.typ
 			} else {

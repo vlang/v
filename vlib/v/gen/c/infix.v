@@ -1426,7 +1426,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					g.fixed_array_var_init(tmpvar, false, fixed_info.elem_type, fixed_info.size)
 				} else {
 					rhs_expr := g.expr_string_with_cast(node.right, right.typ, elem_type)
-					if needs_explicit_deref && !rhs_expr.trim_space().starts_with('*') {
+					// Don't dereference when the expression was cast via a
+					// `_to_sumtype_` function, since that function already takes
+					// a pointer parameter and returns a value (not a pointer).
+					if needs_explicit_deref && !rhs_expr.trim_space().starts_with('*')
+						&& !rhs_expr.contains('_to_sumtype_') {
 						g.write('*')
 					}
 					g.write(rhs_expr)
