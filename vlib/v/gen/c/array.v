@@ -1518,8 +1518,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 			is_interface_needs_deref = right.obj.smartcasts.len == 0
 		}
 	}
-	if (is_auto_deref_var && !elem_typ.is_ptr())
-		|| is_interface_needs_deref
+	if (is_auto_deref_var && !elem_typ.is_ptr()) || is_interface_needs_deref
 		|| elem_typ.nr_muls() + 1 == right_type.nr_muls() {
 		g.write('*')
 	}

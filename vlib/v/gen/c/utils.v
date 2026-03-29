@@ -941,8 +941,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			// generic parameter with the enclosing function's concrete type.
 			base_struct_typ := if expr.generic_typ != 0 && g.cur_fn != unsafe { nil }
 				&& g.cur_concrete_types.len > 0 {
-				if expr.is_short_syntax || expr.typ.has_flag(.generic)
-					|| expr.typ == ast.void_type {
+				if expr.is_short_syntax || expr.typ.has_flag(.generic) || expr.typ == ast.void_type {
 					expr.generic_typ
 				} else {
 					expr.typ

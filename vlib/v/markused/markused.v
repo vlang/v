@@ -297,7 +297,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			walker.mark_by_sym(sym)
 		} else if sym.info is ast.SumType && sym.info.concrete_types.len > 0 && !sym.info.is_generic {
 			walker.mark_by_sym(sym)
-		} else if sym.info is ast.Interface && sym.info.concrete_types.len > 0 && !sym.info.is_generic {
+		} else if sym.info is ast.Interface && sym.info.concrete_types.len > 0
+			&& !sym.info.is_generic {
 			walker.mark_by_sym(sym)
 		} else if sym.info is ast.Thread && sym.info.return_type != ast.void_type {
 			walker.mark_by_sym(sym)
