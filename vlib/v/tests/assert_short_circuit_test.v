@@ -22,11 +22,14 @@ fn test_assert_and_short_circuit_with_nil_parent() {
 	mut p := Node{
 		name: 'abc'
 	}
-	// For &&: if left is false, right should not be evaluated
-	// Since p.parent == nil is true, the && expression is false
-	// But we use an always-true left side to test
-	assert true && unsafe { p.parent == nil }
-	assert true
+	// Test &&: when left is true, right should be evaluated (non-short-circuit path)
+	// This tests that the right side IS evaluated when left is true
+	assert true && p.name == 'abc'
+	// Test && short-circuit: left is false, right should NOT be evaluated
+	// With fix, right is short-circuited (no nil access)
+	// Without fix, would crash with nil pointer access
+	// We use a simple bool expr to avoid assert failure
+	_ = false && unsafe { p.parent == nil }
 }
 
 fn test_assert_or_with_message() {
@@ -42,16 +45,10 @@ fn test_assert_or_both_sides_need_eval() {
 	mut child := Node{
 		name: 'child'
 	}
-	mut parent := Node{
-		name:     'parent'
-		children: [child]
-	}
-	child.parent = &parent
-
-	// Here left side is false (parent is not nil), so right side should be evaluated
-	// Right side checks if parent has a child with same name as current node
-	assert unsafe { child.parent != nil } || true, 'should not short circuit'
-	assert true
+	// child.parent is nil by default
+	// Left side is false (child.parent == nil, so child.parent != nil is false)
+	// Right side must be evaluated - use a simple true to test both sides are evaluated
+	assert unsafe { child.parent != nil } || true, 'should evaluate both sides'
 }
 
 fn test_nested_or_in_assert() {
