@@ -15,6 +15,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		on_fn_name := c.vls_is_the_node(node.name_pos)
 		on_fn_keyword := c.pref.linfo.line_nr == node.name_pos.line_nr
 			&& c.pref.linfo.col >= int(node.pos.col) - 1 && c.pref.linfo.col < node.name_pos.col
+			&& node.name_pos.file_idx >= 0
+			&& os.real_path(c.pref.linfo.path) == os.real_path(c.table.filelist[node.name_pos.file_idx])
 		if c.pref.linfo.method == .completion && (on_fn_name || on_fn_keyword) {
 			mut params := []string{cap: node.params.len}
 			for param in node.params {
@@ -34,12 +36,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if info := c.table.vls_info['fn_${mod}[]${node.short_name}'] {
 				doc = info.doc
 			}
-			c.vls_write_details([Detail{
-				kind:          .function
-				label:         node.short_name
-				declaration:   declaration
-				documentation: doc
-			}])
+			c.vls_write_details([
+				Detail{
+					kind:          .function
+					label:         node.short_name
+					declaration:   declaration
+					documentation: doc
+				},
+			])
 			exit(0)
 		}
 		if node.is_method && node.receiver.type_pos.line_nr > 0 {
