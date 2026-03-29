@@ -46,7 +46,7 @@ fn C.vgc_addr_to_arena(addr usize) int
 // ============================================================
 
 const vgc_page_shift = 13
-const vgc_page_size = usize(1) << vgc_page_shift // 8192 bytes
+const vgc_page_size = 8192
 const vgc_max_small_size = u32(32768) // objects > this are "large"
 const vgc_num_classes = 68
 const vgc_num_span_classes = 136 // 68 * 2 (scan + noscan variants)
