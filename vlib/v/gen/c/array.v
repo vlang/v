@@ -448,8 +448,11 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 			g.past_tmp_var_done(past)
 		}
 
-		ret_typ := g.styp(node.typ)
-		elem_typ := g.styp(node.elem_type)
+		// Use the resolved elem_type (not stale AST types) for generating correct C types
+		// in generic function instantiations.
+		resolved_array_idx := g.table.find_or_register_array(elem_type.typ)
+		ret_typ := g.styp(ast.new_type(resolved_array_idx))
+		elem_typ := g.styp(elem_type.typ)
 		if var_name == '' {
 			g.write('${ret_typ} ${past.tmp_var} =')
 		}
@@ -480,13 +483,13 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		if is_default_array {
 			info := elem_type.unaliased_sym.info as ast.Array
 			depth := if g.table.sym(info.elem_type).kind == .array { 1 } else { 0 }
-			g.write2('(${elem_styp}[]){', g.type_default(node.elem_type))
+			g.write2('(${elem_styp}[]){', g.type_default(elem_type.typ))
 			g.write('}[0], ${depth})')
-		} else if node.has_len && node.elem_type == ast.string_type {
+		} else if node.has_len && elem_type.typ == ast.string_type {
 			g.write2('&(${elem_styp}[]){', '_S("")')
 			g.write('})')
 		} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
-			g.write2('(voidptr)&(${elem_styp}[]){', g.type_default(node.elem_type))
+			g.write2('(voidptr)&(${elem_styp}[]){', g.type_default(elem_type.typ))
 			g.write('}[0])')
 		} else {
 			g.write('0)')
