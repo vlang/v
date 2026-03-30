@@ -4955,14 +4955,20 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name_type > 0 {
-		if g.cur_concrete_types.len > 0 && node.field_name == 'name' {
-			eprintln('DBG selector typeof: gkind=${node.gkind_field} name_type=${node.name_type} expr_is_typeof=${node.expr is ast.TypeOf} concrete=${g.cur_concrete_types}')
-		}
 		match node.gkind_field {
 			.name {
 				mut name_type := node.name_type
 				if node.expr is ast.TypeOf {
-					name_type = g.resolved_typeof_name_type(node.expr, name_type)
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+						resolved := g.resolve_typeof_in_generic(node.expr)
+						if resolved != 0 {
+							name_type = resolved
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else {
+						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+					}
 				} else {
 					name_type = g.unwrap_generic(name_type)
 				}
@@ -4970,15 +4976,60 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			.typ {
-				g.write(u32(g.unwrap_generic(node.name_type)).str())
+				mut name_type := node.name_type
+				if node.expr is ast.TypeOf {
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+						resolved := g.resolve_typeof_in_generic(node.expr)
+						if resolved != 0 {
+							name_type = resolved
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else {
+						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+					}
+				} else {
+					name_type = g.unwrap_generic(name_type)
+				}
+				g.write(u32(name_type).str())
 				return
 			}
 			.unaliased_typ {
-				g.write(u32(g.table.unaliased_type(g.unwrap_generic(node.name_type))).str())
+				mut name_type := node.name_type
+				if node.expr is ast.TypeOf {
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+						resolved := g.resolve_typeof_in_generic(node.expr)
+						if resolved != 0 {
+							name_type = resolved
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else {
+						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+					}
+				} else {
+					name_type = g.unwrap_generic(name_type)
+				}
+				g.write(u32(g.table.unaliased_type(name_type)).str())
 				return
 			}
 			.indirections {
-				g.write(int(g.unwrap_generic(node.name_type).nr_muls()).str())
+				mut name_type := node.name_type
+				if node.expr is ast.TypeOf {
+					if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+						resolved := g.resolve_typeof_in_generic(node.expr)
+						if resolved != 0 {
+							name_type = resolved
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else {
+						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+					}
+				} else {
+					name_type = g.unwrap_generic(name_type)
+				}
+				g.write(int(name_type.nr_muls()).str())
 				return
 			}
 			.unknown {
@@ -5007,8 +5058,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// `T.idx`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).unalised_typ`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_field_type(g.resolved_typeof_name_type(node.expr,
-							name_type), node.field_name)
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+						name_type = g.type_resolver.typeof_field_type(name_type, node.field_name)
 						g.write(int(name_type).str())
 					} else {
 						g.write(int(g.unwrap_generic(name_type)).str())
@@ -5018,7 +5078,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// `T.<field_name>`, `typeof(expr).<field_name>`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
 					}
 					name_type = g.type_resolver.typeof_field_type(name_type, node.field_name)
 					g.write(int(name_type).str())
@@ -5026,7 +5095,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
 					}
 					// `typeof(expr).indirections`
 					g.write(int(g.unwrap_generic(name_type).nr_muls()).str())
@@ -5588,21 +5666,43 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 fn (mut g Gen) resolve_typeof_in_generic(node ast.TypeOf) ast.Type {
 	inner := node.expr
 	if inner is ast.Ident {
-		// Look up the parameter type from the current function declaration
-		if g.cur_fn != unsafe { nil } {
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			// First try resolving through the table's function definition,
+			// which may retain the original generic param types.
+			resolved := g.resolve_current_fn_generic_param_type(inner.name)
+			if resolved != 0 {
+				return resolved
+			}
+			// Fallback: try to find the parameter and map its type
+			// through the current generic concrete types.
 			for param in g.cur_fn.params {
 				if param.name == inner.name {
-					eprintln('DBG resolve_typeof_in_generic: param=${param.name} param.typ=${param.typ} resolved=${g.unwrap_generic(g.recheck_concrete_type(param.typ))} concrete=${g.cur_concrete_types}')
-					return g.unwrap_generic(g.recheck_concrete_type(param.typ))
+					rechecked := g.unwrap_generic(g.recheck_concrete_type(param.typ))
+					if rechecked != 0 {
+						return rechecked
+					}
 				}
 			}
 			// Try local variables through scope
 			if inner.scope != unsafe { nil } {
 				if v := inner.scope.find_var(inner.name) {
-					resolved := g.unwrap_generic(g.recheck_concrete_type(v.typ))
-					if resolved != 0 {
-						return resolved
+					resolved2 := g.unwrap_generic(g.recheck_concrete_type(v.typ))
+					if resolved2 != 0 {
+						return resolved2
 					}
+				}
+			}
+		}
+	} else if inner is ast.SelectorExpr {
+		// typeof(val.field) - resolve field type using current generic context.
+		// Skip comptime expressions (e.g. arg.typ in $for arg in method.params)
+		// which should be resolved by the comptime resolver instead.
+		if !inner.is_field_typ && inner.expr_type != 0 {
+			resolved_et := g.resolved_expr_type(inner.expr, inner.expr_type)
+			if resolved_et != 0 {
+				sym := g.table.sym(resolved_et)
+				if f := g.table.find_field_with_embeds(sym, inner.field_name) {
+					return f.typ
 				}
 			}
 		}
@@ -6755,9 +6855,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 				// When inside_interface_deref is set (e.g. string interpolation),
 				// interface smartcast to non-pointer builtins also needs deref since
 				// interface stores values as pointers.
+				// But NOT for interface-to-interface smartcasts, where the cast
+				// function (I_X_as_I_Y) returns a value type, not a pointer.
 				if !needs_interface_smartcast_deref && g.inside_interface_deref
 					&& g.table.is_interface_smartcast(resolved_var) && interface_source_is_interface
-					&& !smartcast_types.last().is_ptr() {
+					&& !smartcast_types.last().is_ptr()
+					&& g.table.sym(smartcast_types.last()).kind != .interface {
 					needs_interface_smartcast_deref = true
 				}
 				interface_var_needs_deref := g.inside_interface_deref
