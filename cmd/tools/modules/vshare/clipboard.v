@@ -17,7 +17,8 @@ fn copy_to_clipboard_with_commands(text string, commands []ClipboardCommand) boo
 	if text.len == 0 || commands.len == 0 {
 		return false
 	}
-	temp_file := os.join_path(os.vtmp_dir(), 'vshare_clipboard_${os.getpid()}_${time.now().unix_micro()}.txt')
+	temp_file := os.join_path(os.vtmp_dir(),
+		'vshare_clipboard_${os.getpid()}_${time.now().unix_micro()}.txt')
 	os.write_file(temp_file, text) or { return false }
 	defer {
 		os.rm(temp_file) or {}

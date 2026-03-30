@@ -805,7 +805,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 					if left is ast.Ident && left.or_expr.kind == .absent
 						&& array_expr is ast.StringLiteral {
 						var := g.expr_string(left)
-						slit := cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
+						slit :=
+							cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
 						if is_auto_deref_var || (left.info is ast.IdentVar
 							&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
 							g.write('_SLIT_EQ(${var}->str, ${var}->len, "${slit}")')
@@ -1077,8 +1078,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			}
 			if left.unaliased_sym.info is ast.Struct
 				&& left.unaliased_sym.info.generic_types.len > 0 {
-				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
-					method_name)
+				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types, method_name)
 			}
 		} else {
 			g.gen_plain_infix_expr(node)
@@ -1219,7 +1219,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				} else if elem_sym.info is ast.ArrayFixed
 					&& node.right in [ast.CallExpr, ast.DumpExpr] {
 					tmpvar := g.expr_with_var(node.right, array_info.elem_type, false)
-					g.fixed_array_var_init(tmpvar, false, elem_sym.info.elem_type, elem_sym.info.size)
+					g.fixed_array_var_init(tmpvar, false, elem_sym.info.elem_type,
+						elem_sym.info.size)
 				} else {
 					g.expr_with_cast(node.right, right.typ, array_info.elem_type)
 				}

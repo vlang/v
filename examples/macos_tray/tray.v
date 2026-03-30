@@ -21,8 +21,8 @@ struct TrayMenuItem {
 
 // Parameters to configure the tray button.
 struct TrayParams {
-	items    []TrayMenuItem         @[required]
-	on_click fn (item TrayMenuItem) @[required]
+	items    []TrayMenuItem              @[required]
+	on_click fn (item main.TrayMenuItem) @[required]
 }
 
 // Internal Cocoa application state.

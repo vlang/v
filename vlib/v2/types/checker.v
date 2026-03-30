@@ -2888,8 +2888,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	if decl_generic_params.len > 0 {
 		c.generic_params = decl_generic_params.clone()
 	}
-	fn_typ := c.fn_type_with_insert_params(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes),
-		true)
+	fn_typ := c.fn_type_with_insert_params(decl.typ,
+		FnTypeAttribute.from_ast_attributes(decl.attributes), true)
 	c.generic_params = prev_generic_params
 	mut typ := Type(fn_typ)
 	// Heap-allocate Fn so pointer stored in env.methods remains valid
@@ -3373,8 +3373,7 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 	}
 	mut embedded := []Struct{cap: st.embedded.len}
 	for emb in st.embedded {
-		embedded << c.substitute_struct_generic_type_with_stack(emb, generic_type_map,
-			next_stack)
+		embedded << c.substitute_struct_generic_type_with_stack(emb, generic_type_map, next_stack)
 	}
 	return Struct{
 		name:           st.name
@@ -3458,8 +3457,7 @@ fn (mut c Checker) substitute_generic_type_with_stack(t Type, generic_type_map m
 			for param in t.params {
 				params << Parameter{
 					name:   param.name
-					typ:    c.substitute_generic_type_with_stack(param.typ, generic_type_map,
-						stack)
+					typ:    c.substitute_generic_type_with_stack(param.typ, generic_type_map, stack)
 					is_mut: param.is_mut
 				}
 			}
@@ -3510,8 +3508,7 @@ fn (mut c Checker) substitute_generic_type_with_stack(t Type, generic_type_map m
 			})
 		}
 		Struct {
-			return Type(c.substitute_struct_generic_type_with_stack(t, generic_type_map,
-				stack))
+			return Type(c.substitute_struct_generic_type_with_stack(t, generic_type_map, stack))
 		}
 		Thread {
 			if elem := t.elem_type {
@@ -4751,9 +4748,7 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				if obj := c.lookup_type_by_name(emb_n) {
 					live_type = obj
 				}
-				if embedded_field_or_method_type := c.find_field_or_method(live_type,
-					name)
-				{
+				if embedded_field_or_method_type := c.find_field_or_method(live_type, name) {
 					return embedded_field_or_method_type
 				}
 			}

@@ -552,9 +552,7 @@ pub fn (fs &FlagParser) usage() string {
 		adesc = ''
 	}
 	mut use := []string{}
-	if doc_add_name_and_version(fs.application_name, fs.application_version, fs.options, mut
-		use)
-	{
+	if doc_add_name_and_version(fs.application_name, fs.application_version, fs.options, mut use) {
 		use << '${underline}'
 	}
 	if fs.usage_examples.len == 0 {

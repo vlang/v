@@ -563,8 +563,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 @[inline]
 fn v_sprintf_panic(idx int, len int) {
 	if idx >= len {
-		panic_n2('% conversion specifiers number mismatch (expected %, given args)', idx + 1,
-			len)
+		panic_n2('% conversion specifiers number mismatch (expected %, given args)', idx + 1, len)
 	}
 }
 

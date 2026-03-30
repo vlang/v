@@ -600,8 +600,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 				} else if p.tok.kind == .plus {
 					constraint += '+'
 				} else {
-					p.error_with_pos('Output constraint must starts with `=` or `+`',
-						pos)
+					p.error_with_pos('Output constraint must starts with `=` or `+`', pos)
 					return []
 				}
 				p.next()

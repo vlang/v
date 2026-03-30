@@ -299,7 +299,8 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 			tmpl_var.placeholders) or { return err.msg() }
 		converted_cache_delay_expiration := i64(tmpl_var.cache_delay_expiration) * convert_seconds
 		// If cache exist, return necessary fields else, 'is_cache_exist' return false.
-		is_cache_exist, id, path, mut last_template_mod, gen_at, cache_del_exp, content_checksum := tm.return_cache_info_isexistent(file_path)
+		is_cache_exist, id, path, mut last_template_mod, gen_at, cache_del_exp, content_checksum :=
+			tm.return_cache_info_isexistent(file_path)
 		mut html := ''
 		// Definition of several variables used to assess the need for cache updates.sss
 		// This determination is based on modifications within the HTML template itself.
@@ -315,9 +316,9 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 		}
 
 		// From this point, all the previously encountered variables are used to determine the routing in rendering the HTML template and creating/using its cache.
-		cash_req, unique_time := tm.cache_request_route(is_cache_exist, converted_cache_delay_expiration,
-			last_template_mod, test_current_template_mod, cache_del_exp, gen_at, tm.c_time,
-			content_checksum, current_content_checksum)
+		cash_req, unique_time := tm.cache_request_route(is_cache_exist,
+			converted_cache_delay_expiration, last_template_mod, test_current_template_mod,
+			cache_del_exp, gen_at, tm.c_time, content_checksum, current_content_checksum)
 		// Each of these match statements aims to provide HTML rendering, but each one sends a specific signal 'cash_req' of type CacheRequest
 		// or calls the appropriate function for managing the cache of the provided HTML.
 		match cash_req {
@@ -518,8 +519,7 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRe
 		return internat_server_error
 	}
 	// Parses the template and stores the rendered output in the variable. See the function itself for more details.
-	mut html := tm.parse_tmpl_file(file_path, tmpl_name, placeholders, tm.compress_html,
-		tmpl_type)
+	mut html := tm.parse_tmpl_file(file_path, tmpl_name, placeholders, tm.compress_html, tmpl_type)
 	// If caching is enabled and the template content is valid, this section creates a temporary cache file, which is then used by the cache manager.
 	// If successfully temporary is created, a cache creation/update notification is sent through its dedicated channel to the cache manager
 	if cache_delay_expiration != -1 && html != internat_server_error && tm.active_cache_server {
@@ -783,8 +783,8 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 							}
 						}
 						if tc.cache_request == .new {
-							tm.chandler_remaining_cache_template_used(tc.cache_request,
-								tc.id, tm.id_to_handlered)
+							tm.chandler_remaining_cache_template_used(tc.cache_request, tc.id,
+								tm.id_to_handlered)
 							// Increment ID counter for the next creation/update cache request
 							tm.id_counter++
 						} else {
@@ -797,7 +797,8 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 								tc.id, tm.id_to_handlered)
 							if test_b {
 								// Finding position of cache in database ( If disk mode, cache is erased )
-								key, is_success := tm.chandler_clear_specific_cache(tm.id_to_handlered)
+								key, is_success :=
+									tm.chandler_clear_specific_cache(tm.id_to_handlered)
 								if !is_success {
 									break
 								}
@@ -883,7 +884,8 @@ fn (mut tm DynamicTemplateManager) chandler_clear_specific_cache(id int) (int, b
 			match value.cache_storage_mode {
 				.memory {}
 				.disk {
-					file_path := os.join_path(tm.template_cache_folder, '${value.name}_${value.checksum}.cache')
+					file_path := os.join_path(tm.template_cache_folder,
+						'${value.name}_${value.checksum}.cache')
 					os.rm(file_path) or {
 						eprintln('${message_signature_error} While deleting the specific cache file: ${file_path}, cache server will be stopped, you need to fix and restart application: : ${err.msg()}')
 						break

@@ -1,3 +1,1 @@
-static inline int main__App_level_Interface_main__Leveler_method_wrapper(void* _)
-return main__Log_level(&(_interface_obj->Log));
-._method_level = (void*) main__App_level_Interface_main__Leveler_method_wrapper,
+._method_level = (void*) main__Log_level,

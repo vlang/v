@@ -43,8 +43,10 @@ fn main() {
 	fp.skip_executable()
 
 	context.new_commit = fp.string('new', `n`, 'master', 'The new commit, by default: master.')
-	context.old_commit = fp.string('old', `o`, '', 'A known old commit, required (for it, COMMAND should exit with 0).')
-	context.command = fp.string('command', `c`, '', 'A command to execute. Should exit with 0 for the *old* commits.')
+	context.old_commit = fp.string('old', `o`, '',
+		'A known old commit, required (for it, COMMAND should exit with 0).')
+	context.command = fp.string('command', `c`, '',
+		'A command to execute. Should exit with 0 for the *old* commits.')
 	fp.finalize() or {}
 	if context.old_commit == '' {
 		eprintln('--old COMMIT is required')

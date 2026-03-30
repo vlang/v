@@ -789,8 +789,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 				// bmp.line(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, color2)
 				// bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color2)
-				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2,
-					prev.x, prev.y, color)
+				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2, prev.x,
+					prev.y, color)
 				x0 = (prev.x + point.x) / 2
 				y0 = (prev.y + point.y) / 2
 			}
@@ -817,8 +817,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 					// bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
 					// u32(0xFF000000))
-					bmp.quadratic(x0, y0, start_point.x, start_point.y, (point.x + start_point.x) / 2,
-						(point.y + start_point.y) / 2, color)
+					bmp.quadratic(x0, y0, start_point.x, start_point.y,
+						(point.x + start_point.x) / 2, (point.y + start_point.y) / 2, color)
 				}
 			} else {
 				// last point not in a curve

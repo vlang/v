@@ -188,13 +188,14 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			node.aggregate_field_type = ast.int_type
 			node.typ = ast.int_type.set_flag(.result)
 		} else {
-			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind, node.aggregate_field,
-				fields, table_sym.name, node.pos) or { return ast.void_type }
+			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind,
+				node.aggregate_field, fields, table_sym.name, node.pos) or { return ast.void_type }
 			node.aggregate_field_type = aggregate_field.typ
 			node.fields = [
 				aggregate_field,
 			]
-			node.typ = c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
+			node.typ =
+				c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
 		}
 	} else {
 		node.fields = fields
@@ -622,8 +623,7 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 	is_string := field_type.is_string()
 
 	if field_sym.kind in [.array, .struct] && !is_time {
-		c.orm_error('ORM aggregate functions do not support array or sub-struct fields',
-			pos)
+		c.orm_error('ORM aggregate functions do not support array or sub-struct fields', pos)
 		return none
 	}
 
@@ -765,16 +765,14 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 			}
 		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
 			|| expr.left is ast.PrefixExpr {
-			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				expr.left)
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.left)
 		} else if !(expr.left is ast.SelectorExpr
 			&& c.comptime.is_comptime_selector_field_name(expr.left, 'name')) {
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
 		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
-			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				expr.right)
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.right)
 		}
 	} else if expr is ast.ParExpr {
 		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.expr)
@@ -813,8 +811,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 	if expr.or_expr.kind == .absent {
 		if c.inside_defer {
-			c.error('ORM returns a result, so it should have an `or {}` block at the end',
-				expr.pos)
+			c.error('ORM returns a result, so it should have an `or {}` block at the end', expr.pos)
 		} else {
 			c.error('ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
 				expr.pos)

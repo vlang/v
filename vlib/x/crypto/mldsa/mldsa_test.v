@@ -205,8 +205,7 @@ fn test_power2_round() {
 	for val in [u32(0), 1, 100, 1000, q / 2, q - 1] {
 		r := field_to_montgomery(val) or { panic(err) }
 		hi, lo := power2_round(r)
-		reconstructed := field_add(field_to_montgomery(u32(hi) << d) or { panic(err) },
-			lo)
+		reconstructed := field_add(field_to_montgomery(u32(hi) << d) or { panic(err) }, lo)
 		assert field_from_montgomery(reconstructed) == val, 'power2_round failed for ${val}'
 	}
 }

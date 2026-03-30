@@ -931,8 +931,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 				// If the function returns an interface type and the return expr
 				// is a concrete struct InitExpr, mark the concrete type's
 				// interface methods so the vtable wrapper can call them.
-				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr,
-					mod_name)
+				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
 			}
 		}
 		ast.StructDecl {

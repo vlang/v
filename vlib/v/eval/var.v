@@ -58,8 +58,8 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ ast.Type) {
 pub fn (mut e Eval) add(expr ast.Expr, val Object) {
 	match expr {
 		ast.Ident {
-			e.local_vars[expr.name].val = e.infix_expr(e.local_vars[expr.name].val, val,
-				.plus, e.local_vars[expr.name].typ)
+			e.local_vars[expr.name].val = e.infix_expr(e.local_vars[expr.name].val, val, .plus,
+				e.local_vars[expr.name].typ)
 		}
 		else {
 			panic('unknown left value to add statement: ${expr.type_name()}')

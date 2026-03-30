@@ -354,8 +354,8 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 	}
 	cc := configured_cc(b.pref.vroot)
 	cc_flags := configured_cflags()
-	if !b.can_use_cached_module_bundle(builtin_cache_name, builtin_cached_module_paths,
-		cc, cc_flags) {
+	if !b.can_use_cached_module_bundle(builtin_cache_name, builtin_cached_module_paths, cc,
+		cc_flags) {
 		return false
 	}
 	if vlib_cached_module_paths.len > 0
@@ -684,8 +684,7 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 					type_decl_seen[type_decl.name] = true
 				}
 				ast.InterfaceDecl {
-					decl_stmts << ast.Stmt(b.resolved_header_interface_decl(module_name,
-						stmt))
+					decl_stmts << ast.Stmt(b.resolved_header_interface_decl(module_name, stmt))
 				}
 				ast.GlobalDecl {
 					mut gfields := []ast.FieldDecl{cap: stmt.fields.len}

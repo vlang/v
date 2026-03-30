@@ -31,14 +31,16 @@ fn testsuite_begin() {
 
 fn test_simple_veb_app_can_be_compiled() {
 	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
+	did_server_compile :=
+		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
 
 fn test_new_veb_app_can_be_compiled() {
 	// Ensure the new fasthttp backend builds successfully.
-	did_server_compile := os.system('${os.quoted_path(vexe)} -d new_veb -o ${os.quoted_path(serverexe_new)} vlib/veb/tests/veb_test_server.v')
+	did_server_compile :=
+		os.system('${os.quoted_path(vexe)} -d new_veb -o ${os.quoted_path(serverexe_new)} vlib/veb/tests/veb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe_new)
 }

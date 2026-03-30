@@ -229,14 +229,13 @@ fn (mut p Parser) free_scanner() {
 	}
 }
 
-const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\',
-	'/')
+const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\', '/')
 
 pub fn (mut p Parser) set_path(path string) {
 	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_display_path = os.real_path(p.file_path).replace_once(normalised_working_folder,
-		'').replace('\\', '/')
+	p.file_display_path =
+		os.real_path(p.file_path).replace_once(normalised_working_folder, '').replace('\\', '/')
 	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
@@ -1053,8 +1052,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					return stmt
 				}
 				p.attrs = []
-				return p.error_with_pos('attributes can only be used before declarations',
-					attr_pos)
+				return p.error_with_pos('attributes can only be used before declarations', attr_pos)
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -1224,8 +1222,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							defer_mode = .function
 						}
 						else {
-							return p.error_with_pos('unknown `defer` mode: `${mode}`',
-								mode_pos)
+							return p.error_with_pos('unknown `defer` mode: `${mode}`', mode_pos)
 						}
 					}
 					p.check(.rpar)
@@ -1897,8 +1894,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if !known_var && lit0_is_capital && p.peek_tok.kind == .dot && language == .v
 			&& p.peek_token(2).kind == .name {
 			if func := p.table.find_fn(p.prepend_mod(p.tok.lit) + '__static__' + p.peek_token(2).lit) {
-				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false,
-					true))
+				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false, true))
 				pos := p.tok.pos()
 				typ_name := p.check_name()
 				p.check(.dot)
@@ -2983,8 +2979,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	if p.is_imported_symbol(name) {
-		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
-			end_pos)
+		p.error_with_pos('cannot register alias `${name}`, this type was already imported', end_pos)
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
@@ -3121,7 +3116,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	if idx == pidx {
 		type_alias_pos := sum_variants[0].pos
-		p.error_with_pos('a type alias can not refer to itself: ${name}', decl_pos.extend(type_alias_pos))
+		p.error_with_pos('a type alias can not refer to itself: ${name}',
+			decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
 	comments = sum_variants[0].end_comments.clone()

@@ -41,8 +41,8 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 
 			// match controller paths
 			$if A is ControllerInterface {
-				if completed_context := handle_controllers[X](controllers_sorted, ctx, mut
-					url, host)
+				if completed_context := handle_controllers[X](controllers_sorted, ctx, mut url,
+					host)
 				{
 					return completed_context
 				}

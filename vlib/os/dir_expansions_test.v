@@ -39,8 +39,7 @@ fn test_expand_tilde_to_home() {
 	os.setenv('USERPROFILE', r'\tmp\home\folder', true)
 
 	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
-	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',
-		'expansion'))
+	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde', 'expansion'))
 	assert home_test == home_expansion_test
 	assert os.expand_tilde_to_home('~') == os.home_dir()
 }

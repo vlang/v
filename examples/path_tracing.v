@@ -424,8 +424,8 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
 		if obj.refl == .spec { // Ideal SPECULAR reflection
-			return obj.e +
-				f * radiance(Ray{x, r.d - n.mul_scalar(2.0 * n.dot(r.d))}, depth, scene_id)
+			return obj.e + f * radiance(Ray{x, r.d -
+				n.mul_scalar(2.0 * n.dot(r.d))}, depth, scene_id)
 		}
 	}
 

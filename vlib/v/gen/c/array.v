@@ -154,7 +154,8 @@ fn (mut g Gen) register_array_interface_cast_fn(got_type ast.Type, expected_type
 	fn_builder.writeln('\t${expected_styp} res = builtin____new_array_with_default${noscan}(a.len, a.cap, sizeof(${expected_elem_styp}), 0);')
 	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i) {')
 	src_elem_expr := '((${g.styp(got_info.elem_type)}*)a.data)[i]'
-	converted_expr := g.array_interface_cast_expr(src_elem_expr, got_info.elem_type, expected_info.elem_type)
+	converted_expr := g.array_interface_cast_expr(src_elem_expr, got_info.elem_type,
+		expected_info.elem_type)
 	fn_builder.writeln('\t\t((${expected_elem_styp}*)res.data)[i] = ${converted_expr};')
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\treturn res;')
@@ -676,8 +677,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	noscan := g.check_noscan(ret_elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_styp,
-		'{0}')
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_styp, '{0}')
 	if left_is_array {
 		g.writeln('${past.tmp_var} = builtin____new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_styp}));\n')
 	}
@@ -801,7 +801,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	if left_is_array {
-		g.writeln2(';', 'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+		g.writeln2(';',
+			'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
 	} else {
 		g.writeln2(';', '${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
 	}
@@ -1133,8 +1134,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, left_sym.kind == .array,
-		false)
+	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i,
+		left_sym.kind == .array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1625,8 +1626,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		(sym.info as ast.ArrayFixed).elem_type
 	}
 	elem_type_str := g.styp(elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool',
-		'false')
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool', 'false')
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
@@ -1642,8 +1642,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
-		false)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1718,8 +1717,8 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		(sym.info as ast.ArrayFixed).elem_type
 	}
 	elem_type_str := g.styp(elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ast.int_type_name,
-		'0')
+	has_infix_left_var_name :=
+		g.write_prepared_tmp_value(past.tmp_var, node, ast.int_type_name, '0')
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
@@ -1735,8 +1734,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
-		false)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1812,8 +1810,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	}
 	elem_type_str := g.styp(elem_type)
 
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool',
-		'true')
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool', 'true')
 	i := g.new_tmp_var()
 
 	mut expr := node.args[0].expr
@@ -1829,8 +1826,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
-		false)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -2053,7 +2049,8 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 	for i in 0 .. size {
 		if elem_sym.info is ast.ArrayFixed {
 			init_str := if g.inside_array_fixed_struct { '${expr_str}' } else { '${expr_str}[${i}]' }
-			g.fixed_array_var_init(init_str, is_auto_deref, elem_sym.info.elem_type, elem_sym.info.size)
+			g.fixed_array_var_init(init_str, is_auto_deref, elem_sym.info.elem_type,
+				elem_sym.info.size)
 		} else {
 			if is_auto_deref {
 				g.write('(*')

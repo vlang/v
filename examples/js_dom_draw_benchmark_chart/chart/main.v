@@ -106,7 +106,8 @@ pub fn (mut app App) controller_get_all_task() !vweb.Result {
 		}
 
 		from_framework[orm_stmt_kind] = json.encode(framework_platform[orm_stmt_kind])
-		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind], framework_platform[orm_stmt_kind])
+		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind],
+			framework_platform[orm_stmt_kind])
 		max_benchmark[orm_stmt_kind] = arrays.max(maxs[orm_stmt_kind]) or { continue }
 	}
 
@@ -243,11 +244,9 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 
 	for name in attribute_names {
 		table[name]['max.'] = '${math.round_sig(f64(max_times[name]) / 1000000, 2)} ms (${max_fast[name]}x faster)'
-		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name]) / 1000000,
-			2)} ms (${ten_perc_max_fast[name]}x faster)'
+		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name]) / 1000000, 2)} ms (${ten_perc_max_fast[name]}x faster)'
 		table[name]['min.'] = '${math.round_sig(f64(min_times[name]) / 1000000, 2)} ms (${min_fast[name]}x faster)'
-		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name]) / 1000000,
-			2)} ms (${ten_perc_min_fast[name]}x faster)'
+		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name]) / 1000000, 2)} ms (${ten_perc_min_fast[name]}x faster)'
 	}
 	return table
 }

@@ -16,7 +16,9 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// `convert_generic_type`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
+			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names,
+				g.cur_concrete_types)
+			{
 				return t_typ
 			}
 		} else if g.inside_struct_init {
@@ -25,7 +27,9 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+						if t_typ := g.table.convert_generic_type(typ, generic_names,
+							sym.info.concrete_types)
+						{
 							return t_typ
 						}
 					}
@@ -37,11 +41,15 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-					if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+					if t_typ := g.table.convert_generic_type(typ, generic_names,
+						sym.info.concrete_types)
+					{
 						return t_typ
 					}
 
-					if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
+					if t_typ := g.table.convert_generic_type(typ, generic_names,
+						g.cur_concrete_types)
+					{
 						return t_typ
 					}
 				}
@@ -98,8 +106,7 @@ fn (mut g Gen) fn_var_signature(var_type ast.Type, return_type ast.Type, arg_typ
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
 			func := arg_sym.info.func
-			arg_sig := g.fn_var_signature(arg_typ, func.return_type, func.params.map(it.typ),
-				'')
+			arg_sig := g.fn_var_signature(arg_typ, func.return_type, func.params.map(it.typ), '')
 			sig += arg_sig
 		} else {
 			arg_styp := g.styp(arg_typ)
@@ -120,7 +127,8 @@ fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string 
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
-			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
+			sig += g.anon_fn_cname(arg_sym.info.func.return_type,
+				arg_sym.info.func.params.map(it.typ))
 		} else {
 			sig += g.styp(arg_typ).replace('*', '_ptr')
 		}

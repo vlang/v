@@ -200,8 +200,7 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 
 // step_message_with_label returns a string describing the current step using current time as duration.
 pub fn (b &Benchmark) step_message_with_label(label string, msg string, opts MessageOptions) string {
-	return b.step_message_with_label_and_duration(label, msg, b.step_timer.elapsed(),
-		opts)
+	return b.step_message_with_label_and_duration(label, msg, b.step_timer.elapsed(), opts)
 }
 
 // step_message returns a string describing the current step.

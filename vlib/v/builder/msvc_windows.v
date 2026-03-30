@@ -25,7 +25,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) !string {
 		unsafe {
 			for version in versions {
 				required_bytes := u32(0) // TODO: mut
-				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, voidptr(&required_bytes))
+				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0,
+					voidptr(&required_bytes))
 				length := required_bytes / 2
 				if result != 0 {
 					continue
@@ -85,8 +86,8 @@ fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
-			voidptr(&root_key))
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0,
+			key_query_value | key_wow64_32key | key_enumerate_sub_keys, voidptr(&root_key))
 
 		if rc != 0 {
 			return error('Unable to open root key')
@@ -161,7 +162,8 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 		// VSWhere is guaranteed to be installed at this location now
 		// If its not there then end user needs to update their visual studio
 		// installation!
-		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+		res :=
+			os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
 		// println('res: "${res}"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)
@@ -664,8 +666,8 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 				}
 				real_libs << lib
 				if parts.len > 1 {
-					_, leftover := split_and_apply_gnu_flags(parts[1..].join(' '), mut
-						inc_paths, mut lib_paths, mut real_libs)
+					_, leftover := split_and_apply_gnu_flags(parts[1..].join(' '), mut inc_paths, mut
+						lib_paths, mut real_libs)
 					if leftover != '' {
 						other_flags << strip_quotes(leftover)
 					}
@@ -691,9 +693,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 					if part == '' {
 						continue
 					}
-					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut
-						real_libs)
-					{
+					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut real_libs) {
 						continue
 					}
 					if !part.starts_with('-') {
@@ -726,9 +726,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 					if part == '' {
 						continue
 					}
-					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut
-						real_libs)
-					{
+					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut real_libs) {
 						continue
 					}
 					if !part.starts_with('-') {

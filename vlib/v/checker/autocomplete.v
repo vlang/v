@@ -268,8 +268,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 fn (mut c Checker) module_autocomplete(mod string) {
 	mut details := []Detail{cap: 128}
 	c.vls_gen_mod_funcs_details(mut details, mod)
-	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type,
-		.struct)
+	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type, .struct)
 	c.vls_gen_mod_consts_details(mut details, mod)
 	c.vls_write_details(details)
 }
@@ -322,7 +321,8 @@ fn (c &Checker) vls_gen_mod_funcs_details(mut details []Detail, mod string) {
 	for _, f in c.table.fns {
 		mut name := f.name
 		if f.is_pub && !f.is_method && !f.is_static_type_method && name.all_before_last('.') == mod {
-			name = name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
+			name =
+				name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
 			type_string := if f.return_type != ast.no_type {
 				c.table.type_to_str(f.return_type)
 			} else {

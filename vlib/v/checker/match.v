@@ -331,8 +331,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				if first_iteration {
 					if unwrapped_expected_type.has_option_or_result()
 						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .interface, .multi_return] {
-						c.check_match_branch_last_stmt(mut stmt, unwrapped_expected_type,
-							expr_type)
+						c.check_match_branch_last_stmt(mut stmt, unwrapped_expected_type, expr_type)
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
@@ -654,8 +653,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					c.add_error_detail('')
 					c.add_error_detail('match condition type: ${mcstype}')
 					c.add_error_detail('          range type: ${brstype}')
-					c.error('the range type and the match condition type should match',
-						expr.pos)
+					c.error('the range type and the match condition type should match', expr.pos)
 				}
 				mut low_value_higher_than_high_value := false
 				mut low := i64(0)
@@ -809,8 +807,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					if expr_type !in cond_match_sym.info.variants {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
-						sumtype_variant_names := cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
-							{}))
+						sumtype_variant_names :=
+							cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -867,8 +865,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope,
-					false, false)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope, false,
+					false)
 			}
 		}
 	}

@@ -223,8 +223,7 @@ fn test_bits() {
 		// C.printf("x:%16x [%llu,%llu] %llu\n", u64(i) << x, sum, carry, u64(v >> 32) + u64(v >> 32))
 		assert ((carry << 32) | sum) == v + v
 	}
-	mut sum_64t, mut carry_64t := add_64(0x8000_0000_0000_0000, 0x8000_0000_0000_0000,
-		u64(0))
+	mut sum_64t, mut carry_64t := add_64(0x8000_0000_0000_0000, 0x8000_0000_0000_0000, u64(0))
 	assert sum_64t == u64(0)
 	assert carry_64t == u64(1)
 

@@ -166,8 +166,7 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
 	match var.name {
 		t.info.comptime_for_variant_var {
-			return t.get_ct_type_or_default('${t.info.comptime_for_variant_var}.typ',
-				ast.void_type)
+			return t.get_ct_type_or_default('${t.info.comptime_for_variant_var}.typ', ast.void_type)
 		}
 		t.info.comptime_for_method_param_var {
 			return t.get_ct_type_or_default('${t.info.comptime_for_method_param_var}.typ',

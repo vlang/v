@@ -397,7 +397,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	}
 
 	$if !net_nonblocking_sockets ? {
-		socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+		socket_error_message(res,
+			'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 		return &TcpListener(unsafe { nil }) // for compiler passed
 	} $else {
 		// non-blocking sockets may also not succeed immediately when they listen() and need to check the status and take action accordingly.
@@ -410,7 +411,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 					break
 				}
 			} else {
-				socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+				socket_error_message(res,
+					'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 				break // for compiler passed
 			}
 		}

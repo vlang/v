@@ -19,8 +19,7 @@ fn init() {
 	unsafe { // Unsafe is needed for taking an address of const
 		C.mbedtls_ctr_drbg_init(&ctr_drbg)
 		C.mbedtls_entropy_init(&entropy)
-		ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0,
-			0)
+		ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0, 0)
 		if ret != 0 {
 			C.mbedtls_ctr_drbg_free(&ctr_drbg)
 			panic('Failed to seed ssl context: ${ret}')
@@ -65,8 +64,8 @@ pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSL
 	}
 	if cert_key != '' {
 		unsafe {
-			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1,
-				0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1, 0, 0,
+				C.mbedtls_ctr_drbg_random, &ctr_drbg)
 			if ret != 0 {
 				return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_pk_parse_key error ret: ${ret}',
 					ret)
@@ -95,8 +94,8 @@ pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSL
 	}
 	if cert_key != '' {
 		unsafe {
-			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str),
-				0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str), 0,
+				C.mbedtls_ctr_drbg_random, &ctr_drbg)
 			if ret != 0 {
 				return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_pk_parse_keyfile error ret: ${ret}',
 					ret)
@@ -228,8 +227,8 @@ fn (mut l SSLListener) init() ! {
 			ret)
 	}
 
-	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER, C.MBEDTLS_SSL_TRANSPORT_STREAM,
-		C.MBEDTLS_SSL_PRESET_DEFAULT)
+	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
+		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
@@ -411,8 +410,8 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
 	mut ret := 0
-	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT, C.MBEDTLS_SSL_TRANSPORT_STREAM,
-		C.MBEDTLS_SSL_PRESET_DEFAULT)
+	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT,
+		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_config_defaults failed to set SSL configuration ret: ${ret}',
 			ret)
@@ -448,15 +447,18 @@ fn (mut s SSLConn) init() ! {
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str,
+
 				s.config.verify.len + 1)
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str,
+
 				s.config.cert.len + 1)
 		}
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
+
 					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 			}
 		}
@@ -542,8 +544,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	ret = C.mbedtls_net_connect(&s.server_fd, &char(hostname.str), &char(port_str.str),
 		C.MBEDTLS_NET_PROTO_TCP)
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.dial, failed to connect to host',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.dial, failed to connect to host', ret)
 	}
 	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)

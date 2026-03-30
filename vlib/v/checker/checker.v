@@ -3443,6 +3443,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					}
 				}
 			}
+			// If the expression is already the target type (e.g. due to smartcasting
+			// inside an `if x is Type` block), the cast is a no-op.
+			if node.expr_type.idx() == node.typ.idx() {
+				return node.typ
+			}
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type),
@@ -5199,6 +5204,13 @@ fn (mut c Checker) apply_assert_autocasts(mut expr ast.Expr, scope &ast.Scope) {
 		ident := expr as ast.Ident
 		ident_scope := if !isnil(ident.scope) { ident.scope } else { scope }
 		if autocast := c.find_assert_autocast(ident_scope, ident.name) {
+			// Don't insert an as-cast if the variable is already smartcast to the target type
+			// (e.g. inside an `if err is Type { ... }` block).
+			if v := scope.find_var(ident.name) {
+				if v.smartcasts.len > 0 && v.smartcasts.last().idx() == autocast.to_type.idx() {
+					return
+				}
+			}
 			expr = ast.Expr(ast.ParExpr{
 				expr: ast.Expr(ast.AsCast{
 					typ:       autocast.to_type
@@ -5228,7 +5240,9 @@ fn (mut c Checker) apply_assert_autocasts(mut expr ast.Expr, scope &ast.Scope) {
 			}
 		}
 		ast.InfixExpr {
-			c.apply_assert_autocasts(mut expr.left, scope)
+			if expr.op !in [.key_is, .not_is] {
+				c.apply_assert_autocasts(mut expr.left, scope)
+			}
 			c.apply_assert_autocasts(mut expr.right, scope)
 		}
 		ast.IndexExpr {

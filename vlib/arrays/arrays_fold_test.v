@@ -12,7 +12,7 @@ fn test_main() {
 	assert arrays.fold[bool, []bool]([true, false], []bool{}, fn (r []bool, t bool) []bool {
 		return arrays.merge(r, [t])
 	}) == [false, true]
-	assert arrays.fold[MyInt, []MyInt]([MyInt(0), 1], []MyInt{}, fn (r []MyInt, t MyInt) []MyInt {
+	assert arrays.fold[MyInt, []MyInt]([MyInt(0), 1], []MyInt{}, fn (r []main.MyInt, t MyInt) []main.MyInt {
 		return arrays.merge(r, [t])
 	}) == [MyInt(0), 1]
 	assert arrays.fold([1, 2, 3, 4], [5, 6, 7], fn (r []int, t int) []int {

@@ -120,7 +120,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		// Handle comments at the end of the line
 		if field.comments.len > 0 {
 			if field.has_default_expr {
-				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.default_expr.str().len - 2))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) -
+					field.default_expr.str().len - 2))
 			} else if field.attrs.len > 0 {
 				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - attrs_len))
 			} else {
@@ -283,7 +284,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			mut value_align := new_field_align(use_break_line: true)
 			mut comment_align := new_field_align(use_threshold: true)
 			for init_field in node.init_fields {
-				value_align.add_info(init_field.name.len, init_field.pos.line_nr, init_field.has_break_line)
+				value_align.add_info(init_field.name.len, init_field.pos.line_nr,
+					init_field.has_break_line)
 				if init_field.end_comments.len > 0 {
 					comment_align.add_info(init_field.expr.str().len, init_field.pos.line_nr,
 						init_field.has_break_line)
@@ -302,9 +304,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.expr(init_field.expr)
 				if init_field.end_comments.len > 0 {
-					f.write(' '.repeat(
-						comment_align.max_len(init_field.pos.line_nr) - init_field.expr.str().len +
-						1))
+					f.write(' '.repeat(comment_align.max_len(init_field.pos.line_nr) -
+						init_field.expr.str().len + 1))
 					f.comments(init_field.end_comments, has_nl: false, level: .indent)
 				}
 				if single_line_fields {

@@ -171,7 +171,8 @@ fn test_iarna_toml_spec_tests() {
 
 					iarna_yaml_path := valid_test_file.all_before_last('.') + '.yaml'
 					if os.exists(iarna_yaml_path) {
-						converted_json_path = os.join_path(compare_work_dir_root, '${valid_test_file_name}.yaml.json')
+						converted_json_path = os.join_path(compare_work_dir_root,
+							'${valid_test_file_name}.yaml.json')
 						run([python, '-c',
 							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
 							'<', iarna_yaml_path, '>', converted_json_path]) or {
@@ -193,8 +194,10 @@ fn test_iarna_toml_spec_tests() {
 				}
 				toml_doc := toml.parse_file(valid_test_file)!
 
-				v_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.v.json')
-				iarna_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.json')
+				v_toml_json_path := os.join_path(compare_work_dir_root,
+					'${valid_test_file_name}.v.json')
+				iarna_toml_json_path := os.join_path(compare_work_dir_root,
+					'${valid_test_file_name}.json')
 
 				os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table, converted_from_yaml))!
 
@@ -292,8 +295,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 		}
 		ast.DateTime {
 			// Normalization for json
-			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
-				'T')
+			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
 			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
@@ -342,7 +344,8 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 		}
 		ast.Number {
 			if value.text.contains('inf') {
-				mut json_text := value.text.replace('inf', '1.7976931348623157e+308') // Inconsistency ???
+				mut json_text :=
+					value.text.replace('inf', '1.7976931348623157e+308') // Inconsistency ???
 				if skip_value_map {
 					return '${json_text}'
 				}

@@ -260,8 +260,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 				newest_sfile = sfile
 			}
 		}
-		single_file_recompile := should_recompile_tool(vexe, newest_sfile, tool_name,
-			tool_exe)
+		single_file_recompile := should_recompile_tool(vexe, newest_sfile, tool_name, tool_exe)
 		// eprintln('>>> should_recompile_tool: tool_source: ${tool_source} | ${single_file_recompile} | ${newest_sfile}')
 		return single_file_recompile
 	}
@@ -421,9 +420,11 @@ and the existing module `${modulename}` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from ${murl} ...')
 	}
-	cloning_res := os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
+	cloning_res :=
+		os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code != 0 {
-		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
+		return error_with_code('cloning failed, details: ${cloning_res.output}',
+			cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
 		return error('even after cloning, ${mod_v_file} is still missing')

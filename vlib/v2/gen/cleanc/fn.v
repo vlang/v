@@ -310,7 +310,8 @@ fn (mut g Gen) infer_vector_return_type_from_stmts(stmts []ast.Stmt) string {
 						return inferred
 					}
 					if stmt.expr.else_expr is ast.IfExpr {
-						else_inferred := g.infer_vector_return_type_from_stmts(stmt.expr.else_expr.stmts)
+						else_inferred :=
+							g.infer_vector_return_type_from_stmts(stmt.expr.else_expr.stmts)
 						if else_inferred != '' {
 							return else_inferred
 						}
@@ -450,8 +451,7 @@ fn (mut g Gen) register_fn_signature(node ast.FnDecl, fn_name string) {
 	mut params := []bool{}
 	mut param_types := []string{}
 	if node.is_method && node.receiver.name != '' {
-		recv_type := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ),
-			'void*')
+		recv_type := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
 		params << (node.receiver.is_mut || recv_type.ends_with('*'))
 		param_types << if node.receiver.is_mut && !recv_type.ends_with('*') {
 			recv_type + '*'
@@ -506,50 +506,40 @@ fn collect_generic_placeholder_names_from_expr(expr ast.Expr, mut seen map[strin
 		ast.Type {
 			match expr {
 				ast.ArrayType {
-					collect_generic_placeholder_names_from_expr(expr.elem_type, mut seen, mut
-						out)
+					collect_generic_placeholder_names_from_expr(expr.elem_type, mut seen, mut out)
 				}
 				ast.ArrayFixedType {
-					collect_generic_placeholder_names_from_expr(expr.elem_type, mut seen, mut
-						out)
-					collect_generic_placeholder_names_from_expr(expr.len, mut seen, mut
-						out)
+					collect_generic_placeholder_names_from_expr(expr.elem_type, mut seen, mut out)
+					collect_generic_placeholder_names_from_expr(expr.len, mut seen, mut out)
 				}
 				ast.MapType {
-					collect_generic_placeholder_names_from_expr(expr.key_type, mut seen, mut
-						out)
-					collect_generic_placeholder_names_from_expr(expr.value_type, mut seen, mut
-						out)
+					collect_generic_placeholder_names_from_expr(expr.key_type, mut seen, mut out)
+					collect_generic_placeholder_names_from_expr(expr.value_type, mut seen, mut out)
 				}
 				ast.OptionType {
-					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut
-						out)
+					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut out)
 				}
 				ast.ResultType {
-					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut
-						out)
+					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut out)
 				}
 				ast.TupleType {
 					for typ in expr.types {
-						collect_generic_placeholder_names_from_expr(typ, mut seen, mut
-							out)
+						collect_generic_placeholder_names_from_expr(typ, mut seen, mut out)
 					}
 				}
 				ast.FnType {
 					for param in expr.params {
-						collect_generic_placeholder_names_from_expr(param.typ, mut seen, mut
-							out)
+						collect_generic_placeholder_names_from_expr(param.typ, mut seen, mut out)
 					}
 					if expr.return_type !is ast.EmptyExpr {
-						collect_generic_placeholder_names_from_expr(expr.return_type, mut
-							seen, mut out)
+						collect_generic_placeholder_names_from_expr(expr.return_type, mut seen, mut
+							out)
 					}
 				}
 				ast.GenericType {
 					// Recurse into params (e.g. LinkedList[T] → extract T)
 					for param in expr.params {
-						collect_generic_placeholder_names_from_expr(param, mut seen, mut
-							out)
+						collect_generic_placeholder_names_from_expr(param, mut seen, mut out)
 					}
 				}
 				else {}
@@ -570,8 +560,7 @@ fn (g &Gen) generic_fn_param_names(node ast.FnDecl) []string {
 		&& node.name in ['subscribe_method', 'unsubscribe_method'] {
 		mut seen := map[string]bool{}
 		if node.receiver.typ !is ast.EmptyExpr {
-			collect_generic_placeholder_names_from_expr(node.receiver.typ, mut seen, mut
-				names)
+			collect_generic_placeholder_names_from_expr(node.receiver.typ, mut seen, mut names)
 		}
 		for param in node.typ.params {
 			collect_generic_placeholder_names_from_expr(param.typ, mut seen, mut names)
@@ -850,8 +839,8 @@ fn infer_generic_type_bindings_from_param(param ast.Expr, concrete types.Type, g
 					if concrete is types.Map {
 						infer_generic_type_bindings_from_param(param.key_type, concrete.key_type,
 							generic_params, mut bindings)
-						infer_generic_type_bindings_from_param(param.value_type, concrete.value_type,
-							generic_params, mut bindings)
+						infer_generic_type_bindings_from_param(param.value_type,
+							concrete.value_type, generic_params, mut bindings)
 					}
 				}
 				ast.OptionType {
@@ -961,7 +950,8 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		}
 		mut arg_type_name := g.get_expr_type(base_arg).trim_space().trim_right('*')
 		if (arg_type_name == '' || arg_type_name == 'int') && base_arg is ast.Ident {
-			arg_type_name = (g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
+			arg_type_name =
+				(g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
 		}
 		if arg_type_name == 'string' {
 			candidate := '${name}_T_string'
@@ -994,7 +984,8 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		}
 		mut arg_type_name := g.get_expr_type(base_arg).trim_space().trim_right('*')
 		if (arg_type_name == '' || arg_type_name == 'int') && base_arg is ast.Ident {
-			arg_type_name = (g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
+			arg_type_name =
+				(g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
 		}
 		if arg_type_name != '' && arg_type_name != 'int' {
 			if candidate := g.find_specialized_call_name('json2__Encoder__encode_value',
@@ -1043,7 +1034,9 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 				candidate_types << '${g.cur_module}__${arg_type_name}'
 			}
 			for concrete_type_name in candidate_types {
-				if candidate := g.find_specialized_call_name(name, sanitize_generic_token_part(concrete_type_name)) {
+				if candidate := g.find_specialized_call_name(name,
+					sanitize_generic_token_part(concrete_type_name))
+				{
 					return candidate
 				}
 			}
@@ -1098,7 +1091,9 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 				candidate_types << '${g.cur_module}__${arg_type_name}'
 			}
 			for concrete_type_name in candidate_types {
-				if candidate := g.find_specialized_call_name(name, sanitize_generic_token_part(concrete_type_name)) {
+				if candidate := g.find_specialized_call_name(name,
+					sanitize_generic_token_part(concrete_type_name))
+				{
 					return candidate
 				}
 			}
@@ -1130,8 +1125,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 				continue
 			}
 		}
-		infer_generic_type_bindings_from_param(param.typ, concrete, generic_params, mut
-			bindings)
+		infer_generic_type_bindings_from_param(param.typ, concrete, generic_params, mut bindings)
 	}
 	if bindings.len != generic_params.len {
 		return none
@@ -2468,7 +2462,8 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 						if g.is_interface_type(param_base) {
 							mut arg_type := g.get_expr_type(base_arg).trim_space()
 							if (arg_type == '' || arg_type == 'int') && base_arg is ast.Ident {
-								arg_type = (g.get_local_var_c_type(base_arg.name) or { '' }).trim_space()
+								arg_type =
+									(g.get_local_var_c_type(base_arg.name) or { '' }).trim_space()
 							}
 							if arg_type == '' || arg_type == 'int' {
 								if raw := g.get_raw_type(base_arg) {
@@ -2611,8 +2606,8 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 						is_primitive :=
 							arg_type in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool', 'rune', 'byte', 'usize', 'isize']
 							|| arg_type in g.primitive_type_aliases
-						g.gen_sum_type_wrap(param_type, field_name, tag, is_primitive,
-							base_arg, arg_type)
+						g.gen_sum_type_wrap(param_type, field_name, tag, is_primitive, base_arg,
+							arg_type)
 						return
 					}
 				}
@@ -3465,8 +3460,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						param_idx := i - param_offset
 						if method := g.interface_method_by_name(base_receiver, method_name) {
 							if param_idx >= 0 && param_idx < method.param_types.len {
-								g.gen_interface_call_arg(method.param_types[param_idx],
-									arg)
+								g.gen_interface_call_arg(method.param_types[param_idx], arg)
 							} else {
 								g.expr(arg)
 							}
@@ -3551,9 +3545,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						return
 					}
 					// Try embedded struct method resolution
-					if emb := g.resolve_method_on_embedded_receiver(narrowed_receiver,
-						method_name)
-					{
+					if emb := g.resolve_method_on_embedded_receiver(narrowed_receiver, method_name) {
 						call_args := g.interface_call_args_without_object(lhs.lhs, args)
 						g.sb.write_string('${emb.method_c_name}(')
 						ptr_params := g.fn_param_is_ptr[emb.method_c_name] or { []bool{} }
@@ -3582,9 +3574,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			if !is_iface_receiver && base_receiver != '' && base_receiver != 'int'
 				&& !g.is_interface_type(base_receiver) {
 				method_name := lhs.rhs.name
-				if concrete_method := g.resolve_method_on_concrete_type(base_receiver,
-					method_name)
-				{
+				if concrete_method := g.resolve_method_on_concrete_type(base_receiver, method_name) {
 					ptr_params := g.fn_param_is_ptr[concrete_method] or { []bool{} }
 					receiver_as_ptr := ptr_params.len > 0 && ptr_params[0]
 					g.sb.write_string('${concrete_method}(')

@@ -541,8 +541,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				return ast.SelectExpr{}
 			}
 			if has_else {
-				p.error_with_pos('at most one `else` branch allowed in `select` block',
-					p.tok.pos())
+				p.error_with_pos('at most one `else` branch allowed in `select` block', p.tok.pos())
 				return ast.SelectExpr{}
 			}
 			is_else = true
@@ -616,8 +615,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					match expr {
 						ast.PrefixExpr {
 							if expr.op != .arrow {
-								p.error_with_pos('select key: `<-` operator expected',
-									expr.pos)
+								p.error_with_pos('select key: `<-` operator expected', expr.pos)
 								return ast.SelectExpr{}
 							}
 						}

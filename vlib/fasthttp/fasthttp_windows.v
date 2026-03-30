@@ -5,7 +5,7 @@ pub:
 	port                    int = 3000
 	max_request_buffer_size int = 8192
 mut:
-	request_handler fn (HttpRequest) !HttpResponse @[required]
+	request_handler fn (fasthttp.HttpRequest) !fasthttp.HttpResponse @[required]
 }
 
 // new_server creates and initializes a new Server instance.

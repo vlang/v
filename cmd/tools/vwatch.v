@@ -393,15 +393,22 @@ fn main() {
 	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
 	fp.allow_unknown_args()
 
-	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
-	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
+	context.is_worker = fp.bool('vwatchworker', 0, false,
+		'Internal flag. Used to distinguish vwatch manager and worker processes.')
+	context.silent = fp.bool('silent', `s`, false,
+		'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
-	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
-	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
-	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
-	context.only_watch = fp.string('only-watch', 0, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
+	context.keep_running = fp.bool('keep', `k`, false,
+		'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
+	context.add_files = fp.string('add', `a`, '',
+		'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
+	context.ignore_exts = fp.string('ignore', `i`, '',
+		'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
+	context.only_watch = fp.string('only-watch', 0, '',
+		'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
-	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
+	context.cmd_before_run = fp.string('before', 0, '',
+		'A command to execute *before* each re-run.')
 	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
 	if show_help {
 		println(fp.usage())

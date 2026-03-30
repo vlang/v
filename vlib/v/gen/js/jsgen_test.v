@@ -33,7 +33,8 @@ fn test_example_compilation() {
 			node_options_file += ' --enable-source-maps' // activate souremap generation
 		}
 		jsfile := os.join_path_single(output_dir, '${file}.js')
-		v_code := os.system('${os.quoted_path(vexe)} ${v_options_file} -o ${os.quoted_path(jsfile)} ${os.quoted_path(path)}')
+		v_code :=
+			os.system('${os.quoted_path(vexe)} ${v_options_file} -o ${os.quoted_path(jsfile)} ${os.quoted_path(path)}')
 		if v_code != 0 {
 			assert false
 		}
@@ -51,7 +52,8 @@ fn test_example_compilation() {
 		assert js_code == 0
 		if should_create_source_map {
 			if there_is_grep_available {
-				grep_code_sourcemap_found := os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
+				grep_code_sourcemap_found :=
+					os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
 				assert grep_code_sourcemap_found == 0
 				println('file has a source map embedded')
 			} else {

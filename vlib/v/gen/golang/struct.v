@@ -63,7 +63,8 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 			// keep one empty line between fields (exclude one after mut:, pub:, ...)
 			mut before_last_line := node.fields[i - 1].pos.line_nr
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = int_max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
+				before_last_line = int_max(before_last_line,
+					node.fields[i - 1].default_expr.pos().last_line)
 			}
 
 			mut next_first_line := field.pos.line_nr

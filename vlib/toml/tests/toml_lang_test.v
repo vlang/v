@@ -68,11 +68,11 @@ fn test_toml_lang_tomltest() {
 	}
 
 	valid_folder := 'valid'
-	valid_test_files := test_files_list.filter(it.starts_with('valid/') && it.ends_with('.toml')).map(it.replace('\\',
-		'/'))
+	valid_test_files :=
+		test_files_list.filter(it.starts_with('valid/') && it.ends_with('.toml')).map(it.replace('\\', '/'))
 	invalid_folder := 'invalid'
-	invalid_test_files := test_files_list.filter(it.starts_with('invalid/') && it.ends_with('.toml')).map(it.replace('\\',
-		'/'))
+	invalid_test_files :=
+		test_files_list.filter(it.starts_with('invalid/') && it.ends_with('.toml')).map(it.replace('\\', '/'))
 
 	assert valid_test_files.len > 0, 'Expected a list of *valid* test files'
 	assert invalid_test_files.len > 0, 'Expected a list of *invalid* test files'
@@ -145,8 +145,10 @@ fn test_toml_lang_tomltest() {
 			// eprintln('                relative: ${relative} parsed')
 
 			v_toml_json_path := os.join_path(compare_work_dir_root,
+
 				os.file_name(valid_test_file).all_before_last('.') + '.v.json')
 			bs_toml_json_path := os.join_path(compare_work_dir_root,
+
 				os.file_name(valid_test_file).all_before_last('.') + '.json')
 
 			os.write_file(v_toml_json_path, to_toml_lang(toml_doc.ast.table))!

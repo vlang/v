@@ -732,8 +732,9 @@ fn (mut t Transformer) try_expand_tuple_if_assign_stmts(stmt ast.AssignStmt) ?[]
 			}
 		} else {
 			// else-if chain
-			else_if_stmts := t.build_tuple_branch_assigns(else_if.stmts, tuple_lhs, n,
-				stmt.pos) or { return none }
+			else_if_stmts := t.build_tuple_branch_assigns(else_if.stmts, tuple_lhs, n, stmt.pos) or {
+				return none
+			}
 			else_expr = ast.IfExpr{
 				cond:      else_if.cond
 				stmts:     else_if_stmts

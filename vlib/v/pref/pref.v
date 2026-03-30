@@ -573,7 +573,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_shared = true
 			}
 			'--enable-globals' {
-				eprintln_cond(show_output && !res.is_quiet, '`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				eprintln_cond(show_output && !res.is_quiet,
+					'`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
 				res.enable_globals = true
 			}
 			'-enable-globals' {
@@ -737,7 +738,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.show_depgraph = true
 			}
 			'-run-only' {
-				res.run_only = cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
+				res.run_only =
+					cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
 				i++
 			}
 			'-exclude' {
@@ -857,7 +859,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				run_http_argument := 'import net.http.file; file.serve()'
 				mut new_args := args.filter(it != '-http')
 				new_args << ['-e', run_http_argument]
-				eprintln_cond(show_output && !res.is_quiet, "Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
+				eprintln_cond(show_output && !res.is_quiet,
+					"Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
 				run_code_in_tmp_vfile_and_exit(new_args, mut res, '-e', 'vsh', run_http_argument)
 			}
 			'-cross' {
@@ -911,7 +914,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-thread-stack-size' {
-				res.thread_stack_size = cmdline.option(args[i..], arg, res.thread_stack_size.str()).int()
+				res.thread_stack_size =
+					cmdline.option(args[i..], arg, res.thread_stack_size.str()).int()
 				i++
 			}
 			'-cc' {
@@ -925,8 +929,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
-				res.checker_match_exhaustive_cutoff_limit = cmdline.option(args[i..],
-					arg, '10').int()
+				res.checker_match_exhaustive_cutoff_limit =
+					cmdline.option(args[i..], arg, '10').int()
 				i++
 			}
 			'-o', '-output' {
@@ -1113,8 +1117,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
-		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
-		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+		eprintln_cond(show_output && !res.is_quiet,
+			"Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln_cond(show_output && !res.is_quiet,
+			'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 	if res.os in [.browser, .wasi] && res.backend != .wasm {
 		eprintln_exit('OS `${res.os}` forbidden for backends other than wasm')
@@ -1150,14 +1156,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln_cond(show_output && !res.is_quiet, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+			eprintln_cond(show_output && !res.is_quiet,
+				'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
 		res.path = command
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
-		eprintln_cond(show_output && !res.is_quiet, '`-bare-builtin-dir` must be used with `-freestanding`')
+		eprintln_cond(show_output && !res.is_quiet,
+			'`-bare-builtin-dir` must be used with `-freestanding`')
 	}
 	if command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run) {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
@@ -1173,7 +1181,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			must_exist(res.path)
 			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 				&& os.is_file(res.path + '.v') {
-				eprintln_cond(show_output && !res.is_quiet, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+				eprintln_cond(show_output && !res.is_quiet,
+					'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 				res.path += '.v'
 			}
 		}

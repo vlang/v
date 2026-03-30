@@ -13,8 +13,12 @@ fn test_fn_array_direct_call() {
 		return false
 	}
 
-	println(fs.array_of_fn[0](1, &Placeholder{ name: 'Bob' }, 'Builder'))
-	assert fs.array_of_fn[0](1, &Placeholder{ name: 'Bob' }, 'Builder') == false
+	println(fs.array_of_fn[0](1, &Placeholder{
+		name: 'Bob'
+	}, 'Builder'))
+	assert fs.array_of_fn[0](1, &Placeholder{
+		name: 'Bob'
+	}, 'Builder') == false
 }
 
 fn test_fn_map_direct_call() {

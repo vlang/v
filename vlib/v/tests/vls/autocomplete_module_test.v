@@ -8,8 +8,7 @@ const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 // note: windows path separator will cause json decode fail
 const json_errors_text_file = os.to_slash(text_file)
-const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
-	'sample.v')
+const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
 
 const autocomplete_info_for_mod_sample_mod1 = '{"details": [
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},

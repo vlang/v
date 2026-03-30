@@ -207,7 +207,8 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, true_in_string.str, true_in_string.len)
+				vmemcmp(checker.json.str + checker.checker_idx, true_in_string.str,
+					true_in_string.len)
 			}
 
 			if is_not_ok != 0 {
@@ -222,7 +223,8 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, false_in_string.str, false_in_string.len)
+				vmemcmp(checker.json.str + checker.checker_idx, false_in_string.str,
+					false_in_string.len)
 			}
 
 			if is_not_ok != 0 {

@@ -1811,8 +1811,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('table.bitsize_to_type: compiler bug: bitsizes must be multiples of 8, but passed bit_size is ${bit_size}')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr,
-				false))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr, false))
 		}
 	}
 }
@@ -2293,8 +2292,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		ArrayFixed {
-			unwrap_typ := t.unwrap_generic_type_ex(ts.info.elem_type, generic_names, concrete_types,
-				recheck_concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex(ts.info.elem_type, generic_names,
+				concrete_types, recheck_concrete_types)
 			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{}, false)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
@@ -2404,20 +2403,21 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						// Map[T], []Type[T]
 						if t.type_kind(fields[i].typ) in [.array, .array_fixed, .map]
 							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-							t.unwrap_generic_type_ex(fields[i].typ, t_generic_names, t_concrete_types,
-								recheck_concrete_types)
+							t.unwrap_generic_type_ex(fields[i].typ, t_generic_names,
+								t_concrete_types, recheck_concrete_types)
 						}
 					}
 					// update concrete types
 					for i in 0 .. ts.info.generic_types.len {
-						if t_typ := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
-							t_concrete_types)
+						if t_typ := t.convert_generic_type(ts.info.generic_types[i],
+							t_generic_names, t_concrete_types)
 						{
 							final_concrete_types << t_typ
 						}
 					}
 					if final_concrete_types.len > 0 {
-						t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+						t.unwrap_method_types(ts, generic_names, concrete_types,
+							final_concrete_types)
 					}
 				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
@@ -2660,8 +2660,7 @@ fn (mut t Table) specialize_generic_fn_method_type(typ Type, parent_type Type, c
 			elem_typ := t.specialize_generic_fn_method_type(sym.info.elem_type, parent_type,
 				concrete_type, generic_names, concrete_types)
 			if elem_typ != sym.info.elem_type {
-				idx := t.find_or_register_array_fixed(elem_typ, sym.info.size, None{},
-					false)
+				idx := t.find_or_register_array_fixed(elem_typ, sym.info.size, None{}, false)
 				if elem_typ.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(typ).set_flag(.generic)
 				}
@@ -2767,7 +2766,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 				Struct {
 					mut parent_info := parent.info as Struct
 					if !parent_info.is_generic {
-						util.verror('generic error', 'struct `${parent.name}` is not a generic struct, cannot instantiate to the concrete types')
+						util.verror('generic error',
+							'struct `${parent.name}` is not a generic struct, cannot instantiate to the concrete types')
 						continue
 					}
 					mut fields := parent_info.fields.clone()
@@ -2816,13 +2816,15 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 						}
 					} else {
-						util.verror('generic error', 'the number of generic types of struct `${parent.name}` is inconsistent with the concrete types')
+						util.verror('generic error',
+							'the number of generic types of struct `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
 				Interface {
 					mut parent_info := parent.info as Interface
 					if !parent_info.is_generic {
-						util.verror('generic error', 'interface `${parent.name}` is not a generic interface, cannot instantiate to the concrete types')
+						util.verror('generic error',
+							'interface `${parent.name}` is not a generic interface, cannot instantiate to the concrete types')
 						continue
 					}
 					if parent_info.generic_types.len == info.concrete_types.len {
@@ -2873,13 +2875,15 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						sym.kind = parent.kind
 						sym.methods = all_methods
 					} else {
-						util.verror('generic error', 'the number of generic types of interface `${parent.name}` is inconsistent with the concrete types')
+						util.verror('generic error',
+							'the number of generic types of interface `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
 				SumType {
 					mut parent_info := parent.info as SumType
 					if !parent_info.is_generic {
-						util.verror('generic error', 'sumtype `${parent.name}` is not a generic sumtype, cannot instantiate to the concrete types')
+						util.verror('generic error',
+							'sumtype `${parent.name}` is not a generic sumtype, cannot instantiate to the concrete types')
 						continue
 					}
 					if parent_info.generic_types.len == info.concrete_types.len {
@@ -2919,7 +2923,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						sym.is_pub = true
 						sym.kind = parent.kind
 					} else {
-						util.verror('generic error', 'the number of generic types of sumtype `${parent.name}` is inconsistent with the concrete types')
+						util.verror('generic error',
+							'the number of generic types of sumtype `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
 				FnType {
@@ -2936,8 +2941,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 					}
 					if function.return_type.has_flag(.generic) {
-						if t_typ := t.convert_generic_type(function.return_type, function.generic_names,
-							info.concrete_types)
+						if t_typ := t.convert_generic_type(function.return_type,
+							function.generic_names, info.concrete_types)
 						{
 							function.return_type = t_typ
 						}

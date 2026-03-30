@@ -20,8 +20,10 @@ fn new_hstmt(hdbc C.SQLHDBC) !HStmt {
 	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)
 	mut hstmt := C.SQLHSTMT(C.SQL_NULL_HSTMT)
 	// Allocate statement handle
-	retcode = C.SQLAllocHandle(C.SQLSMALLINT(C.SQL_HANDLE_STMT), C.SQLHANDLE(hdbc), unsafe { &C.SQLHANDLE(&hstmt) })
-	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_STMT)', C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+	retcode = C.SQLAllocHandle(C.SQLSMALLINT(C.SQL_HANDLE_STMT), C.SQLHANDLE(hdbc),
+		unsafe { &C.SQLHANDLE(&hstmt) })
+	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_STMT)', C.SQLHANDLE(hstmt),
+		C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 
 	return HStmt{
 		hdbc:  hdbc
@@ -57,7 +59,8 @@ fn (h HStmt) retrieve_column_count() !int {
 	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)
 	col_count_buff := C.SQLSMALLINT(0)
 	retcode = C.SQLNumResultCols(h.hstmt, &col_count_buff)
-	check_error(retcode, 'SQLNumResultCols()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+	check_error(retcode, 'SQLNumResultCols()', C.SQLHANDLE(h.hstmt),
+		C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 	return int(col_count_buff)
 }
 
@@ -77,7 +80,8 @@ fn (mut h HStmt) prepare_read() ! {
 		// find out buffer size needed to read data in this column
 		retcode = C.SQLColAttribute(h.hstmt, i_col, C.SQLUSMALLINT(C.SQL_DESC_LENGTH),
 			C.SQLPOINTER(0), C.SQLSMALLINT(0), C.SQLSMALLINT(0), &size_ret)
-		check_error(retcode, 'SQLColAttribute()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+		check_error(retcode, 'SQLColAttribute()', C.SQLHANDLE(h.hstmt),
+			C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 
 		// buffer allocation is the size + 1 to include termination char, since SQL_DESC_LENGTH does not include it.
 		allocate_size := size_ret + C.SQLLEN(1)
@@ -116,7 +120,8 @@ fn (h HStmt) read_rows() ![][]string {
 			}
 		} else {
 			if retcode != C.SQLRETURN(C.SQL_NO_DATA) {
-				check_error(retcode, 'SQLFetch()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+				check_error(retcode, 'SQLFetch()', C.SQLHANDLE(h.hstmt),
+					C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 			} else {
 				break
 			}

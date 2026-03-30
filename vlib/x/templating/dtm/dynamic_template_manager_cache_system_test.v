@@ -78,7 +78,8 @@ fn test_chandler_clear_specific_cache() {
 	dtmi.create_cache()
 	if !dtmi.abort_test {
 		lock dtmi.template_caches {
-			cache_file := os.join_path(dtmi.template_cache_folder, '${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
+			cache_file := os.join_path(dtmi.template_cache_folder,
+				'${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
 			index, is_success := dtmi.chandler_clear_specific_cache(dtmi.template_caches[0].id)
 			assert is_success == true
 			assert index == 0

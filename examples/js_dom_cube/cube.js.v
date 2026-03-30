@@ -388,8 +388,8 @@ fn main() {
 
 	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
 	position := gl.getAttribLocation(shader_program, 'position'.str)
-	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false),
-		JS.Number(0), JS.Number(0))
+	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false), JS.Number(0),
+		JS.Number(0))
 	gl.enableVertexAttribArray(position)
 
 	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
@@ -399,14 +399,14 @@ fn main() {
 	gl.enableVertexAttribArray(color)
 	gl.useProgram(shader_program)
 
-	mut proj_matrix := get_projection(40.0, f64(canvas.width) / f64(canvas.height), 1.0,
-		100.0)
+	mut proj_matrix := get_projection(40.0, f64(canvas.width) / f64(canvas.height), 1.0, 100.0)
 	mut mo_matrix := [f64(1), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 	mut view_matrix := [f64(1), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
 	view_matrix[14] = view_matrix[14] - 6
 
-	mut state := State{false, gl, canvas, 0, 0, 0, 0, 0, 0, 0, mo_matrix, view_matrix, proj_matrix, pmatrix, vmatrix, mmatrix, index_buffer}
+	mut state :=
+		State{false, gl, canvas, 0, 0, 0, 0, 0, 0, 0, mo_matrix, view_matrix, proj_matrix, pmatrix, vmatrix, mmatrix, index_buffer}
 
 	canvas.addEventListener('mousedown'.str, fn [mut state] (e JS.Event) {
 		state.drag = true

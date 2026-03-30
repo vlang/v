@@ -600,8 +600,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 		} else {
 			func_call, fntype := r.function_call(r.line)
-			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
-				'"'), '')
+			filter_line :=
+				r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"', '"'), '')
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1
 				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {

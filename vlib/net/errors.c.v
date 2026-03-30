@@ -3,10 +3,13 @@ module net
 // Well defined errors that are returned from socket functions
 pub const errors_base = 0
 pub const err_new_socket_failed = error_with_code('net: new_socket failed to create socket',
+
 	errors_base + 1)
 pub const err_option_not_settable = error_with_code('net: set_option_xxx option not settable',
+
 	errors_base + 2)
 pub const err_option_wrong_type = error_with_code('net: set_option_xxx option wrong type',
+
 	errors_base + 3)
 pub const err_port_out_of_range = error_with_code('net: port out of range', errors_base + 5)
 pub const err_no_udp_remote = error_with_code('net: no udp remote', errors_base + 6)

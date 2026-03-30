@@ -209,8 +209,7 @@ pub fn (mut a array) ensure_cap(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic_n('array.ensure_cap: array needs to grow to cap (which is > 2^31):',
-				cap)
+			panic_n('array.ensure_cap: array needs to grow to cap (which is > 2^31):', cap)
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
@@ -380,8 +379,7 @@ pub fn (mut a array) delete(i int) {
 pub fn (mut a array) delete_many(i int, size int) {
 	if i < 0 || i64(i) + i64(size) > i64(a.len) {
 		if size > 1 {
-			panic_n3('array.delete: index out of range (i,i+size,a.len):', i, i + size,
-				a.len)
+			panic_n3('array.delete: index out of range (i,i+size,a.len):', i, i + size, a.len)
 		} else {
 			panic_n2('array.delete: index out of range (i,a.len):', i, a.len)
 		}
@@ -614,7 +612,8 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_i64 || _end == max_i32 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic('array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
+			panic(
+				'array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
 				', ' + impl_i64_to_string(end))
 		}
 		if end > a.len {
@@ -792,11 +791,15 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 		// handle `arr << arr`
 		copy := a.clone()
 		unsafe {
-			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), copy.data, u64(a.element_size) * u64(size))
+			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), copy.data,
+				u64(a.element_size) * u64(size))
 		}
 	} else {
 		if a.data != 0 && val != 0 {
-			unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, u64(a.element_size) * u64(size)) }
+			unsafe {
+				vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val,
+					u64(a.element_size) * u64(size))
+			}
 		}
 	}
 	a.len = int(new_len)
@@ -811,8 +814,8 @@ pub fn (mut a array) reverse_in_place() {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
 			vmemcpy(tmp_value, &u8(a.data) + u64(i) * u64(a.element_size), a.element_size)
-			vmemcpy(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) +
-				u64(a.len - 1 - i) * u64(a.element_size), a.element_size)
+			vmemcpy(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) + u64(a.len - 1 -
+				i) * u64(a.element_size), a.element_size)
 			vmemcpy(&u8(a.data) + u64(a.len - 1 - i) * u64(a.element_size), tmp_value,
 				a.element_size)
 		}

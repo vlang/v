@@ -27,14 +27,16 @@ fn test_output() {
 			should_sort: false
 		)
 		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
-		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
+		fails += check_output('${vexe} doc -readme -comments ${qpath}',
+			'${path_no_ext}.readme.comments.out')
 		// test the main 3 different formats:
 		program_dir := os.quoted_path(if os.is_dir(path) { path } else { os.dir(path) })
 		for fmt in ['html', 'ansi', 'text'] {
 			fails += check_output('${vexe} doc -no-timestamp -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}',
 				'${path_no_ext}.${fmt}')
 		}
-		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}', '${path_no_ext}.md')
+		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}',
+			'${path_no_ext}.md')
 		if fails == 0 {
 			println(term.green('OK'))
 		} else {

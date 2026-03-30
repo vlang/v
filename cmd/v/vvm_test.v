@@ -50,7 +50,8 @@ fn test_vvmrc_delegates_to_matching_compiler_executable() {
 	bin_dir := os.join_path(tmp_root, 'bin')
 	os.mkdir_all(bin_dir) or { panic(err) }
 	fake_compiler_source := os.join_path(tmp_root, 'fake_compiler.v')
-	os.write_file(fake_compiler_source, "import os\nfn main() {\n\tprintln('${delegated_marker} ' + os.args[1..].join(' '))\n}\n") or {
+	os.write_file(fake_compiler_source,
+		"import os\nfn main() {\n\tprintln('${delegated_marker} ' + os.args[1..].join(' '))\n}\n") or {
 		panic(err)
 	}
 	fake_compiler_exe := os.join_path(bin_dir, if os.user_os() == 'windows' {
@@ -58,14 +59,14 @@ fn test_vvmrc_delegates_to_matching_compiler_executable() {
 	} else {
 		'v${requested_vvm_test_version}'
 	})
-	compile_res := os.execute('${os.quoted_path(current_vexe)} -o ${os.quoted_path(fake_compiler_exe)} ${os.quoted_path(fake_compiler_source)}')
+	compile_res :=
+		os.execute('${os.quoted_path(current_vexe)} -o ${os.quoted_path(fake_compiler_exe)} ${os.quoted_path(fake_compiler_source)}')
 	assert compile_res.exit_code == 0, compile_res.output
 	project_dir := os.join_path(tmp_root, 'project')
 	os.mkdir_all(project_dir) or { panic(err) }
 	os.write_file(os.join_path(project_dir, '.vvmrc'), requested_vvm_test_version) or { panic(err) }
-	os.write_file(os.join_path(project_dir, 'main.v'), "fn main() {\n\tprintln('from project')\n}\n") or {
-		panic(err)
-	}
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		"fn main() {\n\tprintln('from project')\n}\n") or { panic(err) }
 	mut envs := os.environ()
 	path_key := find_path_env_key(envs)
 	envs[path_key] = '${bin_dir}${os.path_delimiter}${envs[path_key]}'

@@ -144,8 +144,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		mut type_sym := c.table.sym(c.expected_type)
 		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
-			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)',
-				node.pos)
+			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)', node.pos)
 			return ast.void_type
 		}
 		array_info := type_sym.array_info()
@@ -450,9 +449,7 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 							}
 						}
 					}
-					if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr,
-						0)
-					{
+					if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr, 0) {
 						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
@@ -474,8 +471,7 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 		}
 	}
 
-	idx := c.table.find_or_register_array_fixed(new_elem_typ, int(fixed_size), size_expr,
-		false)
+	idx := c.table.find_or_register_array_fixed(new_elem_typ, int(fixed_size), size_expr, false)
 	return if elem_type.has_flag(.generic) {
 		ast.new_type(idx).set_flag(.generic)
 	} else {
@@ -753,8 +749,7 @@ fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol,
 			}
 			checked_types << parent_type
 			parent_sym := c.table.sym(parent_type)
-			c.do_check_elements_ref_fields_initialized(parent_sym, mut checked_types,
-				pos)
+			c.do_check_elements_ref_fields_initialized(parent_sym, mut checked_types, pos)
 		}
 		else {}
 	}
@@ -851,7 +846,8 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		return ast.void_type
 	} else if left_value_sym.kind == .sum_type {
 		if right_sym.kind != .array {
-			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(c.unwrap_generic(right_type))) {
+			if !c.table.is_sumtype_or_in_variant(left_value_type,
+				ast.mktyp(c.unwrap_generic(right_type))) {
 				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 			}
 		} else {

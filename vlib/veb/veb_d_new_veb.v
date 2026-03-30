@@ -70,8 +70,7 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 		}
 	}
 	// Create and populate the `veb.Context`.
-	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
-		params)
+	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
 	// params.routes, params.controllers_sorted)
 	// Serialize the final `http.Response` into a byte array.
 	if completed_context.takeover {
@@ -131,9 +130,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, pa
 	}
 	// Match controller paths first
 	$if A is ControllerInterface {
-		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut
-			url, host)
-		{
+		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
 			return completed_context
 		}
 	}

@@ -517,7 +517,8 @@ fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, st
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
 fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
-	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
+	clean_expected_typ :=
+		c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {
 		return true
 		// The following if confition should catch the bugs descripted in the issue
@@ -630,6 +631,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			if parent_elem_sym.info is ast.Array {
 				array_info := parent_elem_sym.array_info()
 				elem_type := c.table.find_or_register_array_with_dims(array_info.elem_type,
+
 					array_info.nr_dims + exp_sym.info.nr_dims)
 				if c.table.type_to_str(got) == c.table.type_to_str(ast.idx_to_type(elem_type)) {
 					return true
@@ -819,7 +821,8 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						if node.ct_left_value_evaled {
 							if lval := node.ct_left_value.i64() {
 								if lval < 0 {
-									c.error('invalid bitshift of a negative number', node.left.pos())
+									c.error('invalid bitshift of a negative number',
+										node.left.pos())
 									return left_type
 								}
 							}
@@ -1110,7 +1113,8 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 									} else {
 										for init_field in node.init_fields {
 											if init_field.name != t.name && init_field.typ != 0 {
-												field := sym.info.fields.filter(it.name == init_field.name)
+												field :=
+													sym.info.fields.filter(it.name == init_field.name)
 												if field.len > 0 {
 													if c.table.sym(field[0].typ).name == gt_name {
 														concrete_types << ast.mktyp(init_field.typ)
@@ -1166,7 +1170,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				if node.left_type.has_flag(.generic) {
 					match sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+							receiver_generic_names :=
+								sym.info.generic_types.map(c.table.sym(it).name)
 							if gt_name in receiver_generic_names {
 								idx := receiver_generic_names.index(gt_name)
 								typ = sym.info.generic_types[idx]
@@ -1185,7 +1190,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 									typ = c.table.cur_concrete_types[idx]
 								}
 							} else { // in non-generic fn
-								receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+								receiver_generic_names :=
+									sym.info.generic_types.map(c.table.sym(it).name)
 								if gt_name in receiver_generic_names
 									&& sym.info.generic_types.len == sym.info.concrete_types.len {
 									idx := receiver_generic_names.index(gt_name)
@@ -1332,8 +1338,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 							// resolve lambda with generic return type
 							if arg.expr is ast.LambdaExpr && typ.has_flag(.generic) {
-								typ = c.type_resolver.unwrap_generic_expr(arg.expr.expr,
-									typ)
+								typ = c.type_resolver.unwrap_generic_expr(arg.expr.expr, typ)
 								if typ.has_flag(.generic) {
 									lambda_ret_gt_name := c.table.type_to_str(typ)
 									idx := func.generic_names.index(lambda_ret_gt_name)
@@ -1376,9 +1381,11 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ = cur_param.typ
 						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
 						if cparam_type_sym.kind == .array {
-							typ = c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+							typ =
+								c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 						} else if cparam_type_sym.kind == .array_fixed {
-							typ = c.type_resolver.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
+							typ =
+								c.type_resolver.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
 						}
 						typ = c.unwrap_generic(typ)
 						break
@@ -1390,8 +1397,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `${gt_name}` in call to `${func.name}`',
-				node.pos)
+			c.error('could not infer generic type `${gt_name}` in call to `${func.name}`', node.pos)
 			return
 		}
 		if c.pref.is_verbose {

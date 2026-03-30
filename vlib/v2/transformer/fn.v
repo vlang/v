@@ -1082,9 +1082,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 			} else if expr.args.len == 1 && t.is_sort_compare_lambda_expr(expr.args[0]) {
 				// .sort(a < b) with lambda comparator
-				if result := t.transform_sort_call(sel.lhs, sel.rhs.name, [expr.args[0]],
-					expr.pos)
-				{
+				if result := t.transform_sort_call(sel.lhs, sel.rhs.name, [expr.args[0]], expr.pos) {
 					return result
 				}
 			}
@@ -1419,8 +1417,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				fn_info := t.lookup_call_fn_info(expr.lhs)
 				mut transformed_call_args := []ast.Expr{cap: call_args.len}
 				for i, arg in call_args {
-					transformed_call_args << t.transform_call_arg_with_sumtype_check(arg,
-						fn_info, i)
+					transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
 				}
 				transformed_call_args = t.lower_variadic_args(expr.lhs, transformed_call_args)
 				mut args := []ast.Expr{cap: transformed_call_args.len + 1}
@@ -1461,8 +1458,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 					mut args2 := []ast.Expr{cap: call_args2.len + 1}
 					args2 << t.transform_expr(sel.lhs)
 					for i, arg in call_args2 {
-						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
-							i)
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2, i)
 					}
 					return ast.CallExpr{
 						lhs:  ast.Ident{
@@ -1479,8 +1475,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 					mut args2 := []ast.Expr{cap: call_args2.len + 1}
 					args2 << t.transform_expr(sel.lhs)
 					for i, arg in call_args2 {
-						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
-							i)
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2, i)
 					}
 					return ast.CallExpr{
 						lhs:  ast.Ident{
@@ -1497,8 +1492,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 					mut args2 := []ast.Expr{cap: call_args2.len + 1}
 					args2 << t.transform_expr(sel.lhs)
 					for i, arg in call_args2 {
-						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2,
-							i)
+						args2 << t.transform_call_arg_with_sumtype_check(arg, fn_info2, i)
 					}
 					return ast.CallExpr{
 						lhs:  ast.Ident{

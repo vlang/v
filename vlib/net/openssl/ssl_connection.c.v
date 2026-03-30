@@ -110,7 +110,8 @@ fn (mut s SSLConn) init() ! {
 
 	if s.config.validate {
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
-		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION)
+		C.SSL_CTX_set_options(s.sslctx,
+			C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION)
 	}
 
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
@@ -140,14 +141,14 @@ fn (mut s SSLConn) init() ! {
 			}
 		}
 		if s.config.verify != '' {
-			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str),
-				0)
+			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str), 0)
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
 		}
 		if s.config.cert != '' {
-			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
+			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
+				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
 			}

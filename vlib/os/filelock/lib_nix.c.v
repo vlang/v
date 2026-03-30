@@ -32,8 +32,7 @@ fn open_existing_file(path string, mode LockMode) int {
 
 fn (l &FileLock) lock_fd(fd int, immediate bool) bool {
 	if l.target == .file {
-		return C.v_filelock_lock(fd, int(l.mode == .exclusive), int(immediate), l.start,
-			l.len) == 0
+		return C.v_filelock_lock(fd, int(l.mode == .exclusive), int(immediate), l.start, l.len) == 0
 	}
 	flags := if immediate { C.LOCK_EX | C.LOCK_NB } else { C.LOCK_EX }
 	return C.flock(fd, flags) == 0

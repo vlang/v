@@ -10,8 +10,7 @@ fn mm_alloc(size u64) (&u8, Errno) {
 	map_flags := unsafe { MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous)) }
 	// END CONSTS
 
-	a, e := sys_mmap(&u8(unsafe { nil }), size + sizeof(u64), mem_prot, map_flags, -1,
-		0)
+	a, e := sys_mmap(&u8(unsafe { nil }), size + sizeof(u64), mem_prot, map_flags, -1, 0)
 	if e == .enoerror {
 		unsafe {
 			mut ap := &u64(a)

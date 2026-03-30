@@ -1104,8 +1104,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				return err_groups_max_nested, i + 1
 			}
 
-			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt,
-				i)
+			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt, i)
 
 			// manage question mark format error
 			if tmp_res < -1 {

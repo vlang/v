@@ -684,8 +684,8 @@ fn (mut g Gen) gen_pe_idata() {
 	g.gen_pe_idt(&PeImportDirectoryTable{}, 'null entry') // null entry
 
 	for imp in imports {
-		g.write32_at(imp.idt_pos + pe_idt_offsetof(.import_address_table_rva),
-			i32(g.pos() - idata_pos) + idata_section.header.virtual_address + 4)
+		g.write32_at(imp.idt_pos + pe_idt_offsetof(.import_address_table_rva), i32(g.pos() -
+			idata_pos) + idata_section.header.virtual_address + 4)
 
 		for func in imp.functions {
 			g.pe_dll_relocations[func] = g.pos()
@@ -787,7 +787,8 @@ fn (mut g Gen) patch_section_virtual_addrs() {
 				g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.base_of_code),
 					section.header.virtual_address)
 				g.write32_at(g.pe_opt_hdr_pos +
-					pe32_plus_optional_header_offsetof(.address_of_entry_point), section.header.virtual_address)
+					pe32_plus_optional_header_offsetof(.address_of_entry_point),
+					section.header.virtual_address)
 			}
 			else {}
 		}
@@ -797,8 +798,7 @@ fn (mut g Gen) patch_section_virtual_addrs() {
 fn (mut g Gen) patch_pe_code_size() {
 	code_size := i32(g.file_size_pos - g.code_start_pos)
 
-	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_code),
-		code_size)
+	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_code), code_size)
 	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_initialized_data),
 		code_size)
 
@@ -814,8 +814,7 @@ fn (mut g Gen) patch_pe_image_size() {
 	last_section := g.pe_sections.last()
 	image_size := (last_section.header.virtual_address + last_section.header.virtual_size +
 		pe_section_align - 1) & ~(pe_section_align - 1)
-	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_image),
-		image_size)
+	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_image), image_size)
 }
 
 pub fn (mut g Gen) generate_pe_footer() {

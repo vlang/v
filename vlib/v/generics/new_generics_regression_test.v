@@ -26,11 +26,14 @@ fn testsuite_begin() {
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {
-	run_new_generic_solver_tests('vlib/math/vec', '${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec',
-		expected_summary_vec, expected_summsvc_vec, failing_math_vec_tests[..])
-	run_new_generic_solver_tests('vlib/flag', '${os.quoted_path(vexe)} -new-generic-solver test vlib/flag/',
-		expected_summary_flag, expected_summsvc_flag, failing_flag_tests[..])
-	run_new_generic_solver_tests('vlib/v/tests/generics/', '${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
+	run_new_generic_solver_tests('vlib/math/vec',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec', expected_summary_vec,
+		expected_summsvc_vec, failing_math_vec_tests[..])
+	run_new_generic_solver_tests('vlib/flag',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/flag/', expected_summary_flag,
+		expected_summsvc_flag, failing_flag_tests[..])
+	run_new_generic_solver_tests('vlib/v/tests/generics/',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
 		expected_summary_generics, expected_summsvc_generics, failing_tests[..])
 }
 
@@ -56,8 +59,7 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		assert found_expected_failure, 'expected failing test ${known} , was not found.\nRun `v -new-generic-solver test ${root_label}` manually to verify, and then edit ${@FILE} to reflect the new state.'
 
 		if vtrace_output {
-			eprintln('>>>>> found_expected_failure ${idx + 1} `${term.colorize(term.green,
-				known)}`, OK')
+			eprintln('>>>>> found_expected_failure ${idx + 1} `${term.colorize(term.green, known)}`, OK')
 		}
 	}
 

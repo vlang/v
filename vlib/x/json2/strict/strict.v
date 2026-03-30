@@ -80,14 +80,12 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 	}
 }
 
-fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
+fn get_superfluous_keys[T](key_struct []x.json2.strict.KeyStruct) []string {
 	mut superfluous := []string{}
 
 	struct_keys := get_keys_from_[T]()
 
-	json_keys := key_struct.map(fn (json_key KeyStruct) string {
-		return json_key.key
-	})
+	json_keys := key_struct.map(it.key)
 
 	for json_key in json_keys {
 		if !struct_keys.contains(json_key) {
@@ -97,7 +95,7 @@ fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
 	return superfluous
 }
 
-fn get_duplicates_keys(key_struct []KeyStruct) []string {
+fn get_duplicates_keys(key_struct []x.json2.strict.KeyStruct) []string {
 	json_keys := key_struct.map(it.key).sorted()
 	return arrays.uniq_only_repeated(json_keys)
 }
@@ -113,7 +111,7 @@ fn get_keys_from_[T]() []string {
 }
 
 // get_keys_from_json .
-pub fn get_keys_from_json(tokens []string) []KeyStruct {
+pub fn get_keys_from_json(tokens []string) []x.json2.strict.KeyStruct {
 	mut key_structs := []KeyStruct{}
 
 	mut nested_map_count := 0

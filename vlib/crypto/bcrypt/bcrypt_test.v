@@ -1,7 +1,8 @@
 import crypto.bcrypt
 
 fn test_crypto_bcrypt() {
-	bcrypt.compare_hash_and_password('123456'.bytes(), r'$2a$07$MRniCPEgEQnrJmmgN.maM.kF2a/TI2PB37EQQNsUtEuINwultcHTm'.bytes())!
+	bcrypt.compare_hash_and_password('123456'.bytes(),
+		r'$2a$07$MRniCPEgEQnrJmmgN.maM.kF2a/TI2PB37EQQNsUtEuINwultcHTm'.bytes())!
 
 	hash := bcrypt.generate_from_password('password'.bytes(), 5)!
 	bcrypt.compare_hash_and_password('password'.bytes(), hash.bytes())!

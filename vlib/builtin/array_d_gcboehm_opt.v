@@ -115,8 +115,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic_n('array.ensure_cap_noscan: array needs to grow to cap (which is > 2^31):',
-				cap)
+			panic_n('array.ensure_cap_noscan: array needs to grow to cap (which is > 2^31):', cap)
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)

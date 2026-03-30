@@ -18,7 +18,8 @@ fn test_ret() {
 	e.push_val(f64(2.2))
 	e.push_val('calc')
 
-	ret := e.run('fn test() string { return "\${host_pop()}: \${i64(host_pop())+i64(host_pop())}" } test()')!
+	ret :=
+		e.run('fn test() string { return "\${host_pop()}: \${i64(host_pop())+i64(host_pop())}" } test()')!
 	assert ret[0].string() == 'calc: 4'
 }
 

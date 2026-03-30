@@ -32,8 +32,8 @@ fn (db MockDB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 fn (db MockDB) insert(table orm.Table, data orm.QueryData) ! {
 	mut st := db.st
-	last, qdata := orm.orm_stmt_gen(.sqlite, table, '`', .insert, false, '?', 1, data,
-		orm.QueryData{})
+	last, qdata :=
+		orm.orm_stmt_gen(.sqlite, table, '`', .insert, false, '?', 1, data, orm.QueryData{})
 	st.last = last
 	st.data = qdata.data
 	st.where = []orm.Primitive{}
@@ -83,8 +83,7 @@ fn mock_type_from_v(typ int) !string {
 
 fn (db MockDB) create(table orm.Table, fields []orm.TableField) ! {
 	mut st := db.st
-	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v,
-		false)!
+	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v, false)!
 	return db.db.create(table, fields)
 }
 

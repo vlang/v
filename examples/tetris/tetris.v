@@ -216,8 +216,7 @@ fn (g &Game) draw_ghost() {
 		pos_y := g.move_ghost()
 		for i in 0 .. tetro_size {
 			tetro := g.tetro[i]
-			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gg.rgba(125, 125, 225,
-				40))
+			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gg.rgba(125, 125, 225, 40))
 		}
 	}
 }

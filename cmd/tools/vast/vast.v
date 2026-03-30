@@ -40,13 +40,18 @@ fn main() {
 	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
 	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
 	fp.description('Pass -p to see it instead.')
-	ctx.is_watch = fp.bool('watch', `w`, false, 'watch a .v file for changes, rewrite the .json file, when a change is detected')
+	ctx.is_watch = fp.bool('watch', `w`, false,
+		'watch a .v file for changes, rewrite the .json file, when a change is detected')
 	ctx.is_print = fp.bool('print', `p`, false, 'print the AST to stdout')
-	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
-	ctx.is_terse = fp.bool('terse', `t`, false, 'terse output, only with tree node names (AST structure), no details')
-	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false, 'skip properties that have default values like false, 0, "", etc')
+	ctx.is_compile = fp.bool('compile', `c`, false,
+		'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
+	ctx.is_terse = fp.bool('terse', `t`, false,
+		'terse output, only with tree node names (AST structure), no details')
+	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false,
+		'skip properties that have default values like false, 0, "", etc')
 	ctx.check = fp.bool('check', `k`, false, 'run v.checker as well (it may modify the AST)')
-	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
+	hfields := fp.string_multi('hide', 0,
+		'hide the specified fields. You can give several, by separating them with `,`').join(',')
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
 	}

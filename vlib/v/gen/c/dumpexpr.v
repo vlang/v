@@ -27,12 +27,12 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
-					.result))).replace('*', '')
+				name =
+					g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f, .result))).replace('*', '')
 			}
 		} else if node.expr is ast.CallExpr {
-			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-				'')
+			name =
+				g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 		}
 	}
 	// var.$(field.name)
@@ -60,13 +60,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			expr_type = g.type_resolver.get_type(node.expr)
 			break
 		}
-		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-			'')
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 		&& (node.expr.expr as ast.Ident).ct_expr {
 		expr_type = g.comptime_selector_type(node.expr)
-		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-			'')
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 	}
 
 	if g.table.sym(node.expr_type).language == .c {
@@ -222,7 +220,8 @@ fn (mut g Gen) dump_expr_definitions() {
 		int_str := g.get_str_fn(ast.int_type)
 		surrounder.add('\tstring sline = ${int_str}(line);', '\tbuiltin__string_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
-			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tbuiltin__string_free(&value);')
+			surrounder.add('\tstring value = ${to_string_fn_name}();',
+				'\tbuiltin__string_free(&value);')
 		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _S("none");', '\tbuiltin__string_free(&value);')
 		} else if is_ptr {

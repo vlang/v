@@ -136,7 +136,9 @@ fn (mut encoder Encoder) encode_string(val string) {
 			}
 			else {
 				if character < 0x20 { // control characters
-					unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+					unsafe {
+						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
+					}
 					buffer_end++
 					buffer_start = buffer_end
 
@@ -151,7 +153,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 				}
 				if encoder.escape_unicode {
 					if character >= 0b1111_0000 { // four bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						unicode_point_low := val[buffer_end..buffer_end + 4].bytes().byterune() or {
 							0
 						} - 0x10000
@@ -166,7 +171,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 						continue
 					} else if character >= 0b1110_0000 { // three bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						hex_string := '\\u${val[buffer_end..buffer_end + 3].bytes().byterune() or {
 							0
 						}:04x}'
@@ -178,7 +186,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 						continue
 					} else if character >= 0b1100_0000 { // two bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						hex_string := '\\u${val[buffer_end..buffer_end + 2].bytes().byterune() or {
 							0
 						}:04x}'

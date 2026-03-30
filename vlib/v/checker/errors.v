@@ -233,8 +233,7 @@ fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos tok
 			deprecation_message), pos)
 	} else if after_time == now {
 		// print_backtrace()
-		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message),
-			pos)
+		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message), pos)
 		// c.warn(semicolonize('${start_message} has been deprecated!11 m=${deprecation_message}',
 		// deprecation_message), pos)
 	} else {

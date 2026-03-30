@@ -9,8 +9,7 @@ fn rect_empty_bounds_match(a f32, b f32) bool {
 }
 
 fn test_rect_empty_screen_bounds_keep_the_top_left_corner_aligned() {
-	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(1.0, 12, 34, 56,
-		78)
+	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(1.0, 12, 34, 56, 78)
 	assert rect_empty_bounds_match(tleft_x, 12.1)
 	assert rect_empty_bounds_match(tleft_y, 34.1)
 	assert rect_empty_bounds_match(bright_x, 67.9)

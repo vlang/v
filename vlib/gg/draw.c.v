@@ -187,8 +187,8 @@ fn rect_empty_screen_bounds(scale f32, x f32, y f32, w f32, h f32) (f32, f32, f3
 	// border renders consistently across different OpenGL implementations.
 	toffset := f32(0.1)
 	boffset := f32(-0.1)
-	return toffset + x * scale, toffset + y * scale, boffset + (x + w) * scale, boffset + (y +
-		h) * scale
+	return toffset + x * scale, toffset + y * scale, boffset + (x + w) * scale, boffset +
+		(y + h) * scale
 }
 
 // draw_rect_empty draws the outline of a rectangle.
@@ -201,8 +201,7 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y,
-		w, h)
+	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
 	sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
 	// top:
 	sgl.v2f(tleft_x, tleft_y)
@@ -227,8 +226,7 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 // Note: it is much more efficient to draw lots of empty rectangles one after the other,
 // without filled rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c Color) {
-	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y,
-		w, h)
+	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
 	// sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
 	sgl.c4b(c.r, c.g, c.b, c.a)
@@ -576,8 +574,7 @@ fn radius_to_segments(r f32) int {
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3),
-				radius, c)
+			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -611,8 +608,7 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius,
-				c)
+			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -674,8 +670,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius,
-				c)
+			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -1057,10 +1052,10 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot,
-			y + yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot,
-			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot, y +
+			yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot, y +
+			yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
 	}
 	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
 	sgl.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)

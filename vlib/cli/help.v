@@ -70,7 +70,8 @@ pub fn (cmd &Command) help_message() string {
 			if flag.abbrev != '' {
 				abbrev_len = max(abbrev_len, flag.abbrev.len + spacing + 1) // + 1 for '-' in front
 			}
-			name_len = max(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
+			name_len =
+				max(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
 		}
 		for command in cmd.commands {
 			name_len = max(name_len, command.name.len + spacing)
@@ -80,7 +81,8 @@ pub fn (cmd &Command) help_message() string {
 			if flag.abbrev != '' {
 				abbrev_len = max(abbrev_len, flag.abbrev.len + spacing + 1) // + 1 for '-' in front
 			}
-			name_len = max(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
+			name_len =
+				max(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
 		}
 		for command in cmd.commands {
 			name_len = max(name_len, command.name.len + spacing)
@@ -92,7 +94,8 @@ pub fn (cmd &Command) help_message() string {
 			mut flag_name := ''
 			prefix := if cmd.posix_mode { '--' } else { '-' }
 			if flag.abbrev != '' {
-				abbrev_indent := ' '.repeat(abbrev_len - flag.abbrev.len - 1) // - 1 for '-' in front
+				abbrev_indent :=
+					' '.repeat(abbrev_len - flag.abbrev.len - 1) // - 1 for '-' in front
 				flag_name = '-${flag.abbrev}${abbrev_indent}${prefix}${flag.name}'
 			} else {
 				abbrev_indent := ' '.repeat(abbrev_len)

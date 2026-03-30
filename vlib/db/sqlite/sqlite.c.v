@@ -441,8 +441,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 			}
 			// Param values to bind
 			for i, param in params_row {
-				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,
-					0)
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
 				if code != sqlite_ok {
 					return db.error_message(code, query)
 				}

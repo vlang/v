@@ -131,8 +131,7 @@ pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 	// setup output buffer
 	mut out := []u8{len: plaintext.len + tag_size}
 	// write out an authentication tag into the last tag_size bytes of output
-	psiv_gen_tag(mut out[plaintext.len..], mut po_ad_clone, plaintext, ad.len, c.mac_key,
-		nonce)
+	psiv_gen_tag(mut out[plaintext.len..], mut po_ad_clone, plaintext, ad.len, c.mac_key, nonce)
 	// write out authenticated encrypted plaintext into the first plaintext.len bytes of output
 	psiv_encrypt_internal(mut out[0..plaintext.len], plaintext, c.enc_key, out[plaintext.len..],
 		nonce)!

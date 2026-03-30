@@ -218,7 +218,8 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 				// an absolute path
 				templates_folder = ''
 			}
-			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
+			file_path := os.real_path(os.join_path_single(templates_folder,
+				'${file_name}${file_ext}'))
 			$if trace_tmpl ? {
 				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
@@ -324,8 +325,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			}
 			.js {
 				// if line.contains('//V_TEMPLATE') {
-				source.writeln(insert_template_code(fn_name, tmpl_str_start, line, data,
-					state))
+				source.writeln(insert_template_code(fn_name, tmpl_str_start, line, data, state))
 				//} else {
 				// replace `$` to `\$` at first to escape JavaScript template literal syntax
 				// source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',

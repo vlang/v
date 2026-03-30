@@ -52,17 +52,19 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	expected_type_sym := c.table.sym(expected_type)
 	if expected_type_sym.info is ast.ArrayFixed {
-		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type, expected_type_sym.info.size,
-			expected_type_sym.info.size_expr, true)
+		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type,
+			expected_type_sym.info.size, expected_type_sym.info.size_expr, true)
 	}
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
-		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
+		c.error('unexpected argument, current function does not return anything',
+			node.exprs[0].pos())
 		return
 	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.option) {
 		c.error('can only return `none` from an Option-only return function', node.exprs[0].pos())
 		return
 	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.result) {
-		c.error('functions with Result-only return types can only return an error', node.exprs[0].pos())
+		c.error('functions with Result-only return types can only return an error',
+			node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
@@ -147,8 +149,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
 	if exp_is_option && got_types_0_idx == ast.error_type_idx {
-		c.error('Option and Result types have been split, use `!Foo` to return errors',
-			node.pos)
+		c.error('Option and Result types have been split, use `!Foo` to return errors', node.pos)
 	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
 		c.error('Option and Result types have been split, use `?` to return none', node.pos)
 	}
@@ -200,8 +201,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		exprv := node.exprs[expr_idxs[i]]
 		if exprv is ast.Ident && exprv.or_expr.kind == .propagate_option {
 			if exp_type.has_flag(.option) {
-				c.warn('unwrapping option is redundant as the function returns option',
-					node.pos)
+				c.warn('unwrapping option is redundant as the function returns option', node.pos)
 			} else {
 				c.error('should not unwrap option var on return, it could be none', node.pos)
 			}

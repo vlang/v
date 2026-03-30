@@ -30,11 +30,16 @@ fn new_context() !&Context {
 	fp.description('Reads into memory selected sections of *.tar.gz. archives from https or home_dir.')
 	fp.skip_executable()
 	ctx := &Context{
-		url:        fp.string('url', `u`, default_url, 'archive *.tar.gz URL, default(${default_url}). Start name with file:/// for local')
-		chunks:     fp.bool('chunks', `c`, false, 'decompress with chunks to reduce RAM usage, default(false)')
-		debug:      fp.int('debug', `d`, 0, 'prints blocks: 1=other, 2:+dirs, 3=+files, 4=+data, default(0=silent)')
-		max_blocks: fp.int('max_blocks', `m`, 0, 'maximum blocks to read, stop early. Default(0=read all)')
-		filename:   fp.string('filename', `f`, '', 'filename content complete print, stop early. Default(empty means none)')
+		url:        fp.string('url', `u`, default_url,
+			'archive *.tar.gz URL, default(${default_url}). Start name with file:/// for local')
+		chunks:     fp.bool('chunks', `c`, false,
+			'decompress with chunks to reduce RAM usage, default(false)')
+		debug:      fp.int('debug', `d`, 0,
+			'prints blocks: 1=other, 2:+dirs, 3=+files, 4=+data, default(0=silent)')
+		max_blocks: fp.int('max_blocks', `m`, 0,
+			'maximum blocks to read, stop early. Default(0=read all)')
+		filename:   fp.string('filename', `f`, '',
+			'filename content complete print, stop early. Default(empty means none)')
 	}
 	additional := fp.finalize()!
 	if additional.len > 0 {

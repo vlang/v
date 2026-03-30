@@ -289,8 +289,8 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 			typ:        typ
 			is_address: is_address
 			is_global:  true
-			g_idx:      g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
-				is_mut, cexpr)
+			g_idx:      g.mod.new_global(g.dbg_type_name(name, typ), false,
+				g.get_wasm_type_int_literal(typ), is_mut, cexpr)
 		}
 	}
 
@@ -888,8 +888,7 @@ pub fn (mut g Gen) housekeeping() {
 			mut buf := g.pool.buf.clone()
 
 			for reloc in g.pool.relocs {
-				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset),
-					reloc.pos)
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset), reloc.pos)
 			}
 			g.mod.new_data_segment(none, g.data_base, buf)
 		}

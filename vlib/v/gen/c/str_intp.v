@@ -187,8 +187,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if node.fills[i] {
 		pad_ch = 1
 	}
-	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
-		node.pluss[i], u8(pad_ch), base, upper_case)
+	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i],
+		remove_tail_zeros, node.pluss[i], u8(pad_ch), base, upper_case)
 
 	return res, fmt_type.str()
 }

@@ -254,8 +254,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			node.return_type
 		}
-		sreturn_type := shorten_full_name_based_on_cur_mod(t.type_to_str(return_type),
-			cur_mod)
+		sreturn_type := shorten_full_name_based_on_cur_mod(t.type_to_str(return_type), cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
 		f.write_string(' ${short_sreturn_type}')
 	}

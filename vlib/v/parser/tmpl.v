@@ -677,7 +677,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -720,7 +721,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -753,7 +755,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -904,7 +907,8 @@ fn veb_tmpl_${fn_name}() string {
 				key := line_[pos + 5..end]
 				if key.len > 0 {
 					// Replace '%raw key' with just '${key}'
-					line_ = line_.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+					line_ = line_.replace('%raw ${key}',
+						'\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
 				}
 				search_start = pos + 1
 			} else {

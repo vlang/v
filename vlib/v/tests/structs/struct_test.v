@@ -120,7 +120,8 @@ fn test_at() {
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
+	rk_holder :=
+		ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5

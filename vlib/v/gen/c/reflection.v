@@ -37,7 +37,8 @@ fn (g &Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	}
 	mut out := 'builtin__new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
-	out += node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
+	out +=
+		node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }
@@ -116,7 +117,8 @@ fn (g &Gen) gen_fields_array(fields []ast.StructField) string {
 	}
 	mut out := 'builtin__new_array_from_c_array(${fields.len},${fields.len},sizeof(${cprefix}StructField),'
 	out += '_MOV((${cprefix}StructField[${fields.len}]){'
-	out += fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
+	out +=
+		fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }

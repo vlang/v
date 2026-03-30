@@ -55,7 +55,8 @@ fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
 	ssl_conn.write_string(req_headers) or { return err }
 	mut content := strings.new_builder(4096)
-	req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn), read_from_ssl_connection_cb)!
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn),
+		read_from_ssl_connection_cb)!
 	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {

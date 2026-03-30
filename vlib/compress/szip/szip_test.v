@@ -92,7 +92,8 @@ fn test_reading_zipping_files() {
 	szip.zip_files(files, test_out_zip)!
 	assert os.exists(test_out_zip)
 
-	mut zp := szip.open(test_out_zip, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
+	mut zp :=
+		szip.open(test_out_zip, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
 	n_entries := zp.total()!
 	assert n_entries == n_files
 

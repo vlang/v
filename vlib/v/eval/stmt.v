@@ -55,8 +55,8 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 				.left_shift_assign {
 					infix_op := token.assign_op_to_infix_op(stmt.op)
 					for i, left in stmt.left {
-						res := e.infix_expr(e.expr(left, stmt.left_types[i]), rights[i],
-							infix_op, stmt.left_types[i])
+						res := e.infix_expr(e.expr(left, stmt.left_types[i]), rights[i], infix_op,
+							stmt.left_types[i])
 						e.set(left, res, false, stmt.left_types[i])
 					}
 				}

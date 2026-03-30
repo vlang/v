@@ -22,12 +22,10 @@ pub fn (_str string) to_wide(param ToWideConfig) &u16 {
 	$if windows {
 		unsafe {
 			src_encoding := if param.from_ansi { cp_acp } else { cp_utf8 }
-			num_chars := (C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len,
-				0, 0))
+			num_chars := (C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len, 0, 0))
 			mut wstr := &u16(malloc_noscan((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
-				C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len, wstr,
-					num_chars)
+				C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len, wstr, num_chars)
 				C.memset(&u8(wstr) + num_chars * 2, 0, 2)
 			}
 			return wstr
@@ -81,8 +79,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 			num_chars := C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, 0, 0, 0, 0)
 			mut str_to := malloc_noscan(num_chars + 1)
 			if str_to != 0 {
-				C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, &char(str_to), num_chars,
-					0, 0)
+				C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, &char(str_to), num_chars, 0, 0)
 				C.memset(str_to + num_chars, 0, 1)
 			}
 			return tos2(str_to)
@@ -107,8 +104,7 @@ pub fn wide_to_ansi(_wstr &u16) []u8 {
 		num_bytes := C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, 0, 0, 0, 0)
 		if num_bytes != 0 {
 			mut str_to := []u8{len: num_bytes}
-			C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, &char(str_to.data), str_to.len,
-				0, 0)
+			C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, &char(str_to.data), str_to.len, 0, 0)
 			return str_to
 		} else {
 			return []u8{}

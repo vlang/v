@@ -453,7 +453,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							}
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())
+								g.write_fntype_decl(left_var_name, expr_sym.info,
+									branch.cond.expr_type.nr_muls())
 								if branch.cond.expr_type.nr_muls() == 0 {
 									g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 								} else {

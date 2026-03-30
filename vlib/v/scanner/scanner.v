@@ -1143,8 +1143,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 							}
 							comment = '\x01' + comment.trim(' ')
 						}
-						return s.new_multiline_token(.comment, comment, comment.len + 4,
-							start_line)
+						return s.new_multiline_token(.comment, comment, comment.len + 4, start_line)
 					}
 					// Skip if not in fmt mode
 					continue

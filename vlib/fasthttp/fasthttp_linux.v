@@ -236,8 +236,8 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
 
 				for {
-					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
-						0)
+					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] },
+						server.max_request_buffer_size - 1, 0)
 					if bytes_read < 0 {
 						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 							// No more data available right now
@@ -282,8 +282,8 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					}
 					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
 						eprintln('Error decoding request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-							C.MSG_NOSIGNAL)
+						C.send(client_fd, tiny_bad_request_response.data,
+							tiny_bad_request_response.len, C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
@@ -291,8 +291,8 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					decoded_http_request.user_data = server.user_data
 					response := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-							C.MSG_NOSIGNAL)
+						C.send(client_fd, tiny_bad_request_response.data,
+							tiny_bad_request_response.len, C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
@@ -421,7 +421,8 @@ pub fn (mut server Server) run() ! {
 			return
 		}
 
-		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
+		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i],
+			server.listen_fds[i])
 	}
 
 	println('listening on http://0.0.0.0:${server.port}/')

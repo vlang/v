@@ -48,7 +48,8 @@ pub struct GetBlockResultB {
 }
 
 fn test_json_decode_with_sumtype_struct_field_without_type_field() {
-	decoded := json.decode(GetBlockResponse, '{ "result": { "hash": "00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09", "confirmations": 743970 } }')!
+	decoded := json.decode(GetBlockResponse,
+		'{ "result": { "hash": "00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09", "confirmations": 743970 } }')!
 
 	assert decoded.result == GetBlockResult(GetBlockResultB{
 		hash:          '00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09'

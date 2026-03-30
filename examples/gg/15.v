@@ -111,8 +111,7 @@ fn (mut g Game) header() {
 }
 
 fn (mut g Game) board() {
-	g.ctx.draw_rect_filled(pad - 8, head - 8, board_px + 16, board_px + 16, gg.rgb(218,
-		206, 188))
+	g.ctx.draw_rect_filled(pad - 8, head - 8, board_px + 16, board_px + 16, gg.rgb(218, 206, 188))
 	for i, v in g.board {
 		if g.anim && i == g.from {
 			continue
@@ -123,10 +122,10 @@ fn (mut g Game) board() {
 	if g.anim {
 		x0, y0 := xy(g.from)
 		x1, y1 := xy(g.to)
-		g.tile(int(f32(x0) + f32(x1 - x0) * g.t), int(f32(y0) + f32(y1 - y0) * g.t), g.val,
-			false)
+		g.tile(int(f32(x0) + f32(x1 - x0) * g.t), int(f32(y0) + f32(y1 - y0) * g.t), g.val, false)
 	}
-	g.ctx.draw_text(pad, head + board_px + 22, 'Arrow keys / WASD or click a tile next to the empty space.',
+	g.ctx.draw_text(pad, head + board_px + 22,
+		'Arrow keys / WASD or click a tile next to the empty space.',
 		size:  16
 		color: wcolor
 	)

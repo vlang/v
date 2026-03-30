@@ -97,7 +97,8 @@ fn main() {
 
 		mut state := DrawState{context, false, 0, 0}
 
-		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
+		mut inserts_from_framework :=
+			canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
 
 		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
 

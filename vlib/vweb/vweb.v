@@ -236,7 +236,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	$if vweb_livereload ? {
 		if mimetype == 'text/html' {
-			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
+			resp.body = res.replace('</html>',
+				'<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
 	// build the header after the potential modification of resp.body from above
@@ -576,8 +577,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	ch := chan &net.TcpConn{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
-		ws << new_worker[T](ch, worker_number, unsafe { global_app }, controllers_sorted,
-			&routes)
+		ws << new_worker[T](ch, worker_number, unsafe { global_app }, controllers_sorted, &routes)
 	}
 	if params.show_startup_message {
 		println('[Vweb] We have ${ws.len} workers')
@@ -1002,15 +1002,13 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
-					host)
+				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file, host)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use host_serve_static directly to add non-standard mime types.
 				if ext in mime_types {
-					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file,
-						full_path)
+					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file, full_path)
 				}
 			}
 		}

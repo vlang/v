@@ -127,8 +127,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				}
 				if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
 					last_pos = p.tok.pos()
-					p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`',
-						last_pos)
+					p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
 					p.next()
 				}
 			}

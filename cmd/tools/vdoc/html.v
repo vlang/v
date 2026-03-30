@@ -64,7 +64,8 @@ fn (vd &VDoc) render_search_index(out Output) {
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
 		js_search_index.write_string('"${title}",\n')
-		description := data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
+		description :=
+			data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
 		js_search_data.write_string('["${description}","${data.link}"],\n')
 	}
 	js_search_index.writeln('];\n')
@@ -191,6 +192,7 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder)
 	cfg := vd.cfg
 	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
+
 		cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
@@ -510,7 +512,9 @@ fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) 
 }
 
 fn html_highlight(code string, tb &ast.Table) string {
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{
+		output_mode: .silent
+	})
 	mut tok := s.scan()
 	mut prev_tok := tok
 	mut next_tok := s.scan()
@@ -697,7 +701,8 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
+		attributes :=
+			deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {

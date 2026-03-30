@@ -157,20 +157,20 @@ fn frame(app &App) {
 
 fn (app &App) display() {
 	for player in app.players {
-		app.gg.draw_rect_filled(f32(player.x), f32(player.y), f32(player.width), f32(player.height),
-			gg.black)
+		app.gg.draw_rect_filled(f32(player.x), f32(player.y), f32(player.width),
+			f32(player.height), gg.black)
 	}
 	for particle in app.particles {
 		app.gg.draw_rect_empty(f32(particle.pmt.x), f32(particle.pmt.y), f32(particle.pmt.width),
 			f32(particle.pmt.height), gg.blue)
 	}
 	for node in app.nodes {
-		app.gg.draw_rect_empty(f32(node.perimeter.x), f32(node.perimeter.y), f32(node.perimeter.width),
-			f32(node.perimeter.height), gg.red)
+		app.gg.draw_rect_empty(f32(node.perimeter.x), f32(node.perimeter.y),
+			f32(node.perimeter.width), f32(node.perimeter.height), gg.red)
 	}
 	for retrieved in app.retrieveds {
-		app.gg.draw_rect_filled(f32(retrieved.x + 1), f32(retrieved.y + 1), f32(retrieved.width - 2),
-			f32(retrieved.height - 2), gg.green)
+		app.gg.draw_rect_filled(f32(retrieved.x + 1), f32(retrieved.y + 1),
+			f32(retrieved.width - 2), f32(retrieved.height - 2), gg.green)
 	}
 	app.gg.draw_text(1200, 25, 'Nodes: ${app.nodes.len}', font_small)
 	app.gg.draw_text(1200, 50, 'Particles: ${app.particles.len}', font_small)

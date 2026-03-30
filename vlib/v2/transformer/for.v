@@ -207,7 +207,8 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 	}))
 
 	// key_values.len selector: map_ref.key_values.len
-	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len', types.Type(types.int_))
+	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len',
+		types.Type(types.int_))
 
 	// 1. mut _map_len := map_ref.key_values.len
 	stmts << ast.AssignStmt{
@@ -746,8 +747,8 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	t.register_synth_type(idx_pos, key_type)
 
 	iter_pos := t.next_synth_pos()
-	transformed_expr := t.iter_value_expr(for_in.expr, t.transform_expr(for_in.expr),
-		iter_pos, iter_type)
+	transformed_expr := t.iter_value_expr(for_in.expr, t.transform_expr(for_in.expr), iter_pos,
+		iter_type)
 
 	index_pos := t.next_synth_pos()
 	t.register_synth_type(index_pos, value_type)
@@ -919,8 +920,8 @@ fn (mut t Transformer) transform_fixed_array_for_in(stmt ast.ForStmt, for_in ast
 
 	// Transform the iterable expression
 	iter_pos := t.next_synth_pos()
-	transformed_expr := t.iter_value_expr(for_in.expr, t.transform_expr(for_in.expr),
-		iter_pos, types.Type(arr_type))
+	transformed_expr := t.iter_value_expr(for_in.expr, t.transform_expr(for_in.expr), iter_pos,
+		types.Type(arr_type))
 
 	index_pos := t.next_synth_pos()
 	t.register_synth_type(index_pos, value_type)

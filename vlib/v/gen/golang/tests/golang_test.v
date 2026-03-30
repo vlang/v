@@ -51,7 +51,8 @@ fn test_golang() {
 		}
 		tmperrfile := '${dir}/${test}.tmperr'
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
-		res := os.execute('${go_basename} run ${os.quoted_path(go_out_test_path)} 2> ${os.quoted_path(tmperrfile)}')
+		res :=
+			os.execute('${go_basename} run ${os.quoted_path(go_out_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('${full_test_path} failed to run'))

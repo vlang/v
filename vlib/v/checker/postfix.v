@@ -35,8 +35,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		}
 		if node.op != .question {
 			typ_str := c.table.type_to_str(typ)
-			c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
-				node.pos)
+			c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)', node.pos)
 		} else {
 			node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
 			if node.op == .question {

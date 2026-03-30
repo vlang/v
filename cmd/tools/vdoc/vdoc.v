@@ -245,7 +245,8 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	mut readme_frontmatter := map[string]string{}
 	if readme_contents.starts_with('---\n') {
 		if frontmatter_lines_end_idx := readme_contents.index('\n---\n') {
-			front_matter_lines := readme_contents#[4..frontmatter_lines_end_idx].trim_space().split_into_lines()
+			front_matter_lines :=
+				readme_contents#[4..frontmatter_lines_end_idx].trim_space().split_into_lines()
 			for line in front_matter_lines {
 				x := line.split(': ')
 				if x.len == 2 {

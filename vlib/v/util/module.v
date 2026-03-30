@@ -71,7 +71,8 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
-		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
+		trace_qualify(@FN, mod, file_path, 'module_res 2', mod,
+			'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
 	if m1 := mod_path_to_full_name(pref_, mod, clean_file_path) {
@@ -86,7 +87,8 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	}
 	// zzzzzzz WORKING, when there is NO ../v.mod:
 	// zzzzzzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 4: help          ; ---, clean_file_path: /v/cleanv/cmd/v/help
-	trace_qualify(@FN, mod, file_path, 'module_res 4', mod, '---, clean_file_path: ${clean_file_path}')
+	trace_qualify(@FN, mod, file_path, 'module_res 4', mod,
+		'---, clean_file_path: ${clean_file_path}')
 	return mod
 }
 
@@ -170,8 +172,8 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		rel_mod_path := path.replace(pref_.path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			full_mod_name := normalize_src_based_mod_name(rel_mod_path.replace(os.path_separator,
-				'.'), path)
+			full_mod_name :=
+				normalize_src_based_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 			return full_mod_name
 		}
 	}

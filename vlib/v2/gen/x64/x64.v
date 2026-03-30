@@ -373,8 +373,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load register arguments
 			for i in 1 .. instr.operands.len {
 				if i - 1 < 6 {
-					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1,
-						instr)
+					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1, instr)
 				}
 			}
 			fn_val := g.mod.values[instr.operands[0]]
@@ -481,8 +480,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load register arguments
 			for i in 1 .. instr.operands.len {
 				if i - 1 < 6 {
-					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1,
-						instr)
+					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1, instr)
 				}
 			}
 

@@ -158,11 +158,15 @@ fn main() {
 	fp.arguments_description('[folder1/ file2 ...]')
 	fp.skip_executable()
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help text.')
-	ctx.be_verbose = fp.bool('verbose', `v`, false, 'Be more verbose while processing the coverages.')
-	ctx.show_hotspots = fp.bool('hotspots', `H`, false, 'Show most frequently executed covered lines.')
+	ctx.be_verbose = fp.bool('verbose', `v`, false,
+		'Be more verbose while processing the coverages.')
+	ctx.show_hotspots = fp.bool('hotspots', `H`, false,
+		'Show most frequently executed covered lines.')
 	ctx.show_percentages = fp.bool('percentages', `P`, true, 'Show coverage percentage per file.')
-	ctx.show_test_files = fp.bool('show_test_files', `S`, false, 'Show `_test.v` files as well (normally filtered).')
-	ctx.use_absolute_paths = fp.bool('absolute', `A`, false, 'Use absolute paths for all files, no matter the current folder. By default, files inside the current folder, are shown with a relative path.')
+	ctx.show_test_files = fp.bool('show_test_files', `S`, false,
+		'Show `_test.v` files as well (normally filtered).')
+	ctx.use_absolute_paths = fp.bool('absolute', `A`, false,
+		'Use absolute paths for all files, no matter the current folder. By default, files inside the current folder, are shown with a relative path.')
 	ctx.filter = fp.string('filter', `f`, '', 'Filter only the matching source path patterns.')
 	if ctx.show_help {
 		println(fp.usage())

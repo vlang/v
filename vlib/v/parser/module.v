@@ -316,16 +316,14 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		return
 	}
 	if p.tok.kind != .name { // not a valid inner name
-		p.error_with_pos('import syntax error, please specify a valid fn or type name',
-			pos_t)
+		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
 		return
 	}
 	for p.tok.kind == .name {
 		pos := p.tok.pos()
 		alias := p.check_name()
 		if p.is_imported_symbol(alias) {
-			p.error_with_pos('cannot register symbol `${alias}`, it was already imported',
-				pos)
+			p.error_with_pos('cannot register symbol `${alias}`, it was already imported', pos)
 			return
 		}
 		p.imported_symbols[alias] = parent.mod + '.' + alias

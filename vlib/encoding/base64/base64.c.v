@@ -125,9 +125,9 @@ fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 
 		for src_len - si >= 8 {
 			// Converting 8 bytes of input into 6 bytes of output. Storing these in the upper bytes of an u64.
-			datablock_64.data = assemble64(u8(index[d[si + 0]]), u8(index[d[si + 1]]),
-				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]), u8(index[d[si + 5]]),
-				u8(index[d[si + 6]]), u8(index[d[si + 7]]))
+			datablock_64.data = assemble64(u8(index[d[si + 0]]), u8(index[d[si + 1]]), u8(index[d[
+				si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]), u8(index[d[si + 5]]), u8(index[d[
+				si + 6]]), u8(index[d[si + 7]]))
 
 			// Reading out the individual bytes from the u64. Watch out with endianness.
 			$if little_endian {
@@ -151,8 +151,8 @@ fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 		}
 
 		for src_len - si >= 4 {
-			datablock_32.data = assemble32(u8(index[d[si + 0]]), u8(index[d[si + 1]]),
-				u8(index[d[si + 2]]), u8(index[d[si + 3]]))
+			datablock_32.data = assemble32(u8(index[d[si + 0]]), u8(index[d[si + 1]]), u8(index[d[
+				si + 2]]), u8(index[d[si + 3]]))
 			$if little_endian {
 				b[n_decoded_bytes + 0] = datablock_32.data_byte[3]
 				b[n_decoded_bytes + 1] = datablock_32.data_byte[2]

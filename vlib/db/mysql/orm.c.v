@@ -148,15 +148,16 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 		is_and: []
 	}
 
-	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?',
-		1, converted_primitive_data, orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?', 1,
+		converted_primitive_data, orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	where_with_tenant := orm.apply_tenant_filter(table, where)
-	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where_with_tenant)
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data,
+		where_with_tenant)
 	mysql_stmt_worker(db, query, data, where_with_tenant)!
 }
 
@@ -178,8 +179,9 @@ pub fn (db DB) last_id() int {
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
-	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v,
-		false) or { return err }
+	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v, false) or {
+		return err
+	}
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 

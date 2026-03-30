@@ -64,7 +64,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
 				node.cond.pos().extend(node.high.pos()))
 		} else if typ_idx !in ast.integer_type_idxs {
-			c.error('range type can only be an integer type', node.cond.pos().extend(node.high.pos()))
+			c.error('range type can only be an integer type',
+				node.cond.pos().extend(node.high.pos()))
 		} else if high_type.has_option_or_result() {
 			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
 				node.high.pos())

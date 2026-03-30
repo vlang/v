@@ -127,8 +127,7 @@ fn (mut g Game) draw() {
 	ws := gg.window_size()
 	g.ctx.begin()
 	sgl.push_matrix()
-	sgl.scale(f32(ws.width) / f32(designed_width), f32(ws.height) / f32(designed_height),
-		0)
+	sgl.scale(f32(ws.width) / f32(designed_width), f32(ws.height) / f32(designed_height), 0)
 
 	g.draw_paddle()
 	g.draw_ball()
@@ -160,8 +159,7 @@ fn (g &Game) draw_paddle() {
 	roffset, rradius := -5, 18
 	g.ctx.draw_circle_filled(g.paddle_x - roffset, g.height, rradius, gg.blue)
 	g.ctx.draw_circle_filled(g.paddle_x + g.paddle_w + roffset, g.height, rradius, gg.blue)
-	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, g.paddle_h,
-		gg.blue)
+	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, g.paddle_h, gg.blue)
 	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, bevel_size,
 		highlight_color)
 }
@@ -170,8 +168,8 @@ fn (g &Game) draw_brick(brick Brick) {
 	g.ctx.draw_rect_filled(brick.x, brick.y, brick.w, brick.h, brick.c)
 	g.ctx.draw_rect_filled(brick.x, brick.y, brick.w, bevel_size, highlight_color)
 	g.ctx.draw_rect_filled(brick.x, brick.y, bevel_size, brick.h - bevel_size, highlight_color)
-	g.ctx.draw_rect_filled(brick.x + brick.w - bevel_size, brick.y, bevel_size, brick.h - bevel_size,
-		shade_color)
+	g.ctx.draw_rect_filled(brick.x + brick.w - bevel_size, brick.y, bevel_size,
+		brick.h - bevel_size, shade_color)
 	g.ctx.draw_rect_filled(brick.x, brick.y + brick.h - bevel_size, brick.w, bevel_size,
 		shade_color)
 }

@@ -319,8 +319,8 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					current_is_and = false
 					state = .field
 				} else {
-					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`', s.last_tok_start,
-						conds)!
+					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`',
+						s.last_tok_start, conds)!
 				}
 			}
 		}

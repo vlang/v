@@ -1164,8 +1164,7 @@ pub fn lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, cente
 			mut c := ctx
 			c.matrix_dirty = true
 			mut m := c.current_matrix_mut()
-			mat4_lookat(mut m, eye_x, eye_y, eye_z, center_x, center_y, center_z, up_x,
-				up_y, up_z)
+			mat4_lookat(mut m, eye_x, eye_y, eye_z, center_x, center_y, center_z, up_x, up_y, up_z)
 		}
 	}
 }

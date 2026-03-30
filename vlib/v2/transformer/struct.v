@@ -996,7 +996,8 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 					}
 					mt := expr.typ as ast.MapType
 					key_type_name := t.expr_to_type_name(mt.key_type)
-					hash_fn, eq_fn, clone_fn, free_fn := map_runtime_key_fns_from_type_name(key_type_name)
+					hash_fn, eq_fn, clone_fn, free_fn :=
+						map_runtime_key_fns_from_type_name(key_type_name)
 					return ast.Expr(ast.CallExpr{
 						lhs:  ast.Ident{
 							name: 'new_map'
@@ -1156,8 +1157,7 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 				t.transform_expr(field_value)
 			} else {
 				// Transform array elements with sumtype wrapping if needed.
-				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name,
-					field.name)
+				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name, field.name)
 				elem_interface_typ := t.get_field_array_elem_interface_type(struct_type_name,
 					field.name)
 				mut new_exprs := []ast.Expr{cap: arr_value.exprs.len}

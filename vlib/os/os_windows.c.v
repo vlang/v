@@ -341,8 +341,7 @@ pub fn raw_execute(cmd string) Result {
 			output:    'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
-	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
-		0)
+	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
@@ -375,8 +374,8 @@ pub fn raw_execute(cmd string) Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW,
-		0, 0, voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW, 0,
+		0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
@@ -393,8 +392,7 @@ pub fn raw_execute(cmd string) Result {
 	for {
 		mut result := false
 		unsafe {
-			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read),
-				0)
+			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read), 0)
 			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
 		if result == false || int(bytes_read) == 0 {
@@ -512,7 +510,8 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 pub fn uname() Uname {
 	nodename := hostname() or { '' }
 	// ToDO: environment variables have low reliability; check for another quick way
-	machine := getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
+	machine :=
+		getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
 	version_info := execute('cmd /d/c ver').output
 	version_n := (version_info.split(' '))[3].replace(']', '').trim_space()
 	return Uname{
@@ -629,11 +628,11 @@ pub fn disk_usage(path string) !DiskUsage {
 	mut available := u64(0)
 	mut ret := false
 	if path == '.' || path == '' {
-		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller,
-			&total, &available)
+		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller, &total,
+			&available)
 	} else {
-		ret = C.GetDiskFreeSpaceExA(&char(path.str), &free_bytes_available_to_caller,
-			&total, &available)
+		ret = C.GetDiskFreeSpaceExA(&char(path.str), &free_bytes_available_to_caller, &total,
+			&available)
 	}
 	if ret == false {
 		return error('cannot get disk usage of path')

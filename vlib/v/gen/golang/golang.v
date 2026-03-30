@@ -906,8 +906,7 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, false).replace('fn ',
-		'func '))
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, false).replace('fn ', 'func '))
 	f.fn_body(node)
 }
 
@@ -1286,8 +1285,7 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 	f.write(')')
 	if fn_info.return_type.idx() != ast.void_type_idx {
 		f.mark_types_import_as_used(fn_info.return_type)
-		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
-			f.mod2alias))
+		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type, f.mod2alias))
 		f.write(' ${ret_str}')
 	} else if fn_info.return_type.has_flag(.option) {
 		f.write(' ?')

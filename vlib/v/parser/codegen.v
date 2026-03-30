@@ -19,8 +19,7 @@ fn (mut p Parser) handle_codegen_for_file() {
 		return
 	}
 	ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-	codegen_files << parse_text(ptext, p.file_path, mut p.table, p.scanner.comments_mode,
-		p.pref)
+	codegen_files << parse_text(ptext, p.file_path, mut p.table, p.scanner.comments_mode, p.pref)
 }
 
 fn handle_codegen_for_multiple_files(mut files []&ast.File) {

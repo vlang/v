@@ -452,9 +452,11 @@ fn (mut m map) ensure_extra_metas_grow() {
 	m.extra_metas += extra_metas_inc
 	mem_size := (m.even_index + 2 + m.extra_metas)
 	unsafe {
-		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size),
+			int(size_of_u32 * mem_size))
 		m.metas = &u32(x)
-		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0,
+			int(sizeof(u32) * extra_metas_inc))
 	}
 }
 
@@ -466,7 +468,8 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size),
+				int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
 			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0,
 				int(sizeof(u32) * extra_metas_inc))

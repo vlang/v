@@ -73,7 +73,8 @@ fn main() {
 ")!
 	os.write_file(existing_path, 'hello')!
 	os.chmod(rnd_vsh_script_path, 0o700)!
-	res := os.execute('${os.quoted_path(rnd_vsh_script_path)} --path ${os.quoted_path(existing_path)}')
+	res :=
+		os.execute('${os.quoted_path(rnd_vsh_script_path)} --path ${os.quoted_path(existing_path)}')
 	assert res.exit_code == 0
 	assert res.output.trim_space() == 'File path: ${existing_path}'
 	os.rm(rnd_vsh_script_path)!

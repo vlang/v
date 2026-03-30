@@ -1,8 +1,8 @@
 struct Window {
 mut:
 	calls   int
-	on_init fn (mut w Window)        = unsafe { nil }
-	cb      fn (mut w Window, x int) = unsafe { nil }
+	on_init fn (mut w main.Window)        = unsafe { nil }
+	cb      fn (mut w main.Window, x int) = unsafe { nil }
 }
 
 fn (mut w Window) run() {

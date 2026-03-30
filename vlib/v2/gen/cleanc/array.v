@@ -234,7 +234,8 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 						if raw_type.base_type.base_type is types.Array {
 							is_array_append = true
 							if elem_type == '' {
-								elem_type = g.types_type_to_c(raw_type.base_type.base_type.elem_type)
+								elem_type =
+									g.types_type_to_c(raw_type.base_type.base_type.elem_type)
 							}
 						}
 					}

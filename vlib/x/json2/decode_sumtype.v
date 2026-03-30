@@ -110,7 +110,8 @@ fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) boo
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $array {
-					return decoder.check_element_type_valid(initialized_sumtype, decoder.current_node)
+					return decoder.check_element_type_valid(initialized_sumtype,
+						decoder.current_node)
 				}
 			}
 		}
