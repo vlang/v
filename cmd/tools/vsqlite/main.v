@@ -283,7 +283,15 @@ fn (mut app App) run(stmt string) bool {
 			println('Run time: ${format_duration(elapsed)}')
 		}
 	} else {
-		app.db.exec_none(stmt)
+		code := app.db.exec_none(stmt)
+		if code != 101 && code != 100 {
+			// sqlite_done=101, sqlite_row=100; anything else is an error
+			eprintln('Error: exec failed (code ${code})')
+			if app.bail {
+				exit(1)
+			}
+			return false
+		}
 		elapsed := time.since(t0)
 		affected := app.db.get_affected_rows_count()
 		last_id := app.db.last_insert_rowid()
@@ -1066,17 +1074,11 @@ fn dump_database(mut db sqlite.DB) string {
 		}
 		col_names := col_rows.map(it.vals[1])
 		col_list := col_names.map('"${it.replace('"', '""')}"').join(', ')
-		data_rows := db.exec('SELECT * FROM "${escaped}"') or { continue }
+		// Use quote() to correctly distinguish NULL from empty string.
+		quoted_cols := col_names.map('quote("${it.replace('"', '""')}")').join(', ')
+		data_rows := db.exec('SELECT ${quoted_cols} FROM "${escaped}"') or { continue }
 		for drow in data_rows {
-			mut vals := []string{}
-			for v in drow.vals {
-				if v == '' {
-					vals << 'NULL'
-				} else {
-					vals << "'${v.replace("'", "''")}'"
-				}
-			}
-			lines << 'INSERT INTO "${escaped}"(${col_list}) VALUES(${vals.join(', ')});'
+			lines << 'INSERT INTO "${escaped}"(${col_list}) VALUES(${drow.vals.join(', ')});'
 		}
 		lines << ''
 	}
@@ -1120,23 +1122,33 @@ fn format_duration(d time.Duration) string {
 	return '${ms}.${frac_str} ms'
 }
 
+// split_statements splits SQL on semicolons, respecting quoted strings and
+// BEGIN...END blocks (e.g. CREATE TRIGGER bodies).
 fn split_statements(src string) []string {
 	mut stmts := []string{}
 	mut start := 0
 	mut in_single := false
 	mut in_double := false
+	mut begin_depth := 0
 	for i := 0; i < src.len; i++ {
 		c := src[i]
 		if c == `'` && !in_double {
 			in_single = !in_single
 		} else if c == `"` && !in_single {
 			in_double = !in_double
-		} else if c == `;` && !in_single && !in_double {
-			s := src[start..i].trim_space()
-			if s != '' {
-				stmts << s
+		} else if !in_single && !in_double {
+			// Track BEGIN/END nesting for trigger bodies.
+			if c == `;` && begin_depth == 0 {
+				s := src[start..i].trim_space()
+				if s != '' {
+					stmts << s
+				}
+				start = i + 1
+			} else if is_keyword_at(src, i, 'BEGIN') {
+				begin_depth++
+			} else if is_keyword_at(src, i, 'END') && begin_depth > 0 {
+				begin_depth--
 			}
-			start = i + 1
 		}
 	}
 	s := src[start..].trim_space()
@@ -1144,6 +1156,28 @@ fn split_statements(src string) []string {
 		stmts << s
 	}
 	return stmts
+}
+
+// is_keyword_at checks if keyword appears at position i as a whole word
+// (not part of a larger identifier).
+fn is_keyword_at(src string, i int, keyword string) bool {
+	if i + keyword.len > src.len {
+		return false
+	}
+	// Must not be preceded by a word character.
+	if i > 0 && is_word_char(src[i - 1]) {
+		return false
+	}
+	// Must not be followed by a word character.
+	end := i + keyword.len
+	if end < src.len && is_word_char(src[end]) {
+		return false
+	}
+	return src[i..end].to_upper() == keyword
+}
+
+fn is_word_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
 }
 
 fn (mut app App) run_explain(stmt string) {

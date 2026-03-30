@@ -262,14 +262,17 @@ fn format_markdown_ex(rows []sqlite.Row, opts FormatOptions) string {
 		widths[i] = if w < 3 { 3 } else { w }
 	}
 
-	mut hdr := '|'
-	mut sep_row := '|'
-	for i, col in names {
-		hdr += ' ' + str_pad(col.limit(widths[i]), widths[i]) + ' |'
-		sep_row += ' ' + '-'.repeat(widths[i]) + ' |'
+	mut lines := []string{}
+	if opts.headers {
+		mut hdr := '|'
+		mut sep_row := '|'
+		for i, col in names {
+			hdr += ' ' + str_pad(col.limit(widths[i]), widths[i]) + ' |'
+			sep_row += ' ' + '-'.repeat(widths[i]) + ' |'
+		}
+		lines << hdr
+		lines << sep_row
 	}
-
-	mut lines := [hdr, sep_row]
 	for row in rows {
 		mut line := '|'
 		for i, val in row.vals {
