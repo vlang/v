@@ -88,6 +88,7 @@ pub fn (db &DB) str() string {
 
 pub struct Row {
 pub mut:
+	cols []string
 	vals []string
 }
 
@@ -287,6 +288,16 @@ pub fn (db &DB) exec(query string) ![]Row {
 		C.sqlite3_finalize(stmt)
 	}
 	nr_cols := C.sqlite3_column_count(stmt)
+	// Resolve column names once from the prepared statement.
+	mut col_names := []string{cap: nr_cols}
+	for i in 0 .. nr_cols {
+		col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+		col_names << if col_char != &u8(unsafe { nil }) {
+			unsafe { tos_clone(col_char) }
+		} else {
+			''
+		}
+	}
 	mut res := 0
 	mut rows := []Row{}
 	for {
@@ -296,7 +307,9 @@ pub fn (db &DB) exec(query string) ![]Row {
 			// C.puts(C.sqlite3_errstr(res))
 			break
 		}
-		mut row := Row{}
+		mut row := Row{
+			cols: col_names
+		}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 			if val == &u8(unsafe { nil }) {
@@ -376,6 +389,16 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 
 	mut rows := []Row{}
 	nr_cols := C.sqlite3_column_count(stmt)
+	// Resolve column names once from the prepared statement.
+	mut col_names := []string{cap: nr_cols}
+	for i in 0 .. nr_cols {
+		col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+		col_names << if col_char != &u8(unsafe { nil }) {
+			unsafe { tos_clone(col_char) }
+		} else {
+			''
+		}
+	}
 
 	if params is []string {
 		for i, param in params {
@@ -385,7 +408,9 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 			}
 		}
 		for {
-			mut row := Row{}
+			mut row := Row{
+				cols: col_names
+			}
 			code = C.sqlite3_step(stmt)
 			if is_error(code) {
 				return db.error_message(code, query)
@@ -406,7 +431,9 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 	} else if params is [][]string {
 		// Rows to process
 		for params_row in params {
-			mut row := Row{}
+			mut row := Row{
+				cols: col_names
+			}
 			// Param values to bind
 			for i, param in params_row {
 				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,

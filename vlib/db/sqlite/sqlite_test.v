@@ -131,6 +131,31 @@ fn test_exec_param_many() {
 	assert false
 }
 
+fn test_exec_returns_column_names() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	db.exec('create table items (id integer primary key, name text, price real)')!
+	db.exec("insert into items (name, price) values ('Widget', 9.99)")!
+
+	// exec should populate cols on each row
+	rows := db.exec('select id, name, price from items')!
+	assert rows.len == 1
+	assert rows[0].cols == ['id', 'name', 'price']
+	assert rows[0].vals[1] == 'Widget'
+
+	// exec_one should also have cols
+	row := db.exec_one('select name, price from items where id = 1')!
+	assert row.cols == ['name', 'price']
+	assert row.vals[0] == 'Widget'
+
+	// exec_param should also have cols
+	param_rows := db.exec_param('select id, name from items where id = ?', '1')!
+	assert param_rows.len == 1
+	assert param_rows[0].cols == ['id', 'name']
+	assert param_rows[0].vals[1] == 'Widget'
+
+	db.close()!
+}
+
 fn test_exec_param_many2() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	assert db.is_open
