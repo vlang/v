@@ -155,12 +155,15 @@ fn ensure_string_eq_impl(source string) string {
 
 fn replace_generated_c_fn(source string, signature string, replacement string) string {
 	needle := signature + ' {'
-	// Search for the needle preceded by a newline to ensure we match an actual
-	// function definition at the start of a line, not an occurrence inside a
-	// string literal (e.g. when the compiler compiles itself).
-	full_needle := '\n' + needle
-	nl_pos := source.index(full_needle) or { return source }
-	start := nl_pos + 1 // skip the newline itself
+	// Match an actual function definition at the start of a line, including the
+	// beginning of the file, not an occurrence inside a string literal.
+	start := if source.starts_with(needle) {
+		0
+	} else {
+		full_needle := '\n' + needle
+		nl_pos := source.index(full_needle) or { return source }
+		nl_pos + 1 // skip the newline itself
+	}
 	body_start := start + needle.len - 1
 	if body_start < 0 || body_start >= source.len || source[body_start] != `{` {
 		return source
@@ -168,9 +171,29 @@ fn replace_generated_c_fn(source string, signature string, replacement string) s
 	mut depth := 0
 	mut body_end := -1
 	for i := body_start; i < source.len; i++ {
-		if source[i] == `{` {
+		ch := source[i]
+		if ch == `"` {
+			i = skip_c_quoted_region(source, i, `"`)
+			continue
+		}
+		if ch == `'` {
+			i = skip_c_quoted_region(source, i, `'`)
+			continue
+		}
+		if ch == `/` && i + 1 < source.len {
+			next := source[i + 1]
+			if next == `/` {
+				i = skip_c_line_comment(source, i + 2)
+				continue
+			}
+			if next == `*` {
+				i = skip_c_block_comment(source, i + 2)
+				continue
+			}
+		}
+		if ch == `{` {
 			depth++
-		} else if source[i] == `}` {
+		} else if ch == `}` {
 			depth--
 			if depth == 0 {
 				body_end = i
@@ -182,6 +205,43 @@ fn replace_generated_c_fn(source string, signature string, replacement string) s
 		return source
 	}
 	return source[..start] + replacement + '\n' + source[body_end + 1..]
+}
+
+fn skip_c_quoted_region(source string, start int, quote u8) int {
+	mut i := start + 1
+	for i < source.len {
+		if source[i] == `\\` {
+			i += 2
+			continue
+		}
+		if source[i] == quote {
+			return i
+		}
+		i++
+	}
+	return source.len
+}
+
+fn skip_c_line_comment(source string, start int) int {
+	mut i := start
+	for i < source.len {
+		if source[i] == `\n` {
+			return i
+		}
+		i++
+	}
+	return source.len
+}
+
+fn skip_c_block_comment(source string, start int) int {
+	mut i := start
+	for i + 1 < source.len {
+		if source[i] == `*` && source[i + 1] == `/` {
+			return i + 1
+		}
+		i++
+	}
+	return source.len
 }
 
 fn sanitized_u64_to_hex_fn() string {
