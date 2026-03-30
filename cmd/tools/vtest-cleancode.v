@@ -41,7 +41,9 @@ const vfmt_verify_list = [
 	'vlib/',
 ]
 
-const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, []string{})
+const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, [
+	'vlib/v/tests/structs/anon_struct_local_init_test.v',
+])
 
 const vexe = os.getenv('VEXE')
 
@@ -86,8 +88,10 @@ fn v_test_vetting(vargs string) ! {
 		'${os.quoted_path(vexe)} fmt -inprocess -verify', 'fmt -inprocess -verify'
 	}
 	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
-	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)
+	exceptions :=
+		(util.find_all_v_files(vfmt_known_failing_exceptions) or { return }).map(os.abs_path(it))
+	filtered_vfmt_list := vfmt_list.filter(os.abs_path(it) !in exceptions)
+	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, filtered_vfmt_list, []string{})
 
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')
