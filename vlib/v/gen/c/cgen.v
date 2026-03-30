@@ -4955,9 +4955,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name_type > 0 {
+		if g.cur_concrete_types.len > 0 && node.field_name == 'name' {
+			eprintln('DBG selector typeof: gkind=${node.gkind_field} name_type=${node.name_type} expr_is_typeof=${node.expr is ast.TypeOf} concrete=${g.cur_concrete_types}')
+		}
 		match node.gkind_field {
 			.name {
-				g.type_name(node.name_type)
+				mut name_type := node.name_type
+				if node.expr is ast.TypeOf {
+					name_type = g.resolved_typeof_name_type(node.expr, name_type)
+				} else {
+					name_type = g.unwrap_generic(name_type)
+				}
+				g.type_name(name_type)
 				return
 			}
 			.typ {
@@ -4978,7 +4987,19 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							// In generic context, resolve the typeof inner expression
+							// from the current function's parameter types, since
+							// name_type is stale from the last checker instantiation.
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
 					}
 					g.type_name(name_type)
 					return
@@ -5562,6 +5583,40 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 }
 
+// resolve_typeof_in_generic resolves typeof(expr) type in a generic function context
+// by looking up the expression's type from the current function's parameters.
+fn (mut g Gen) resolve_typeof_in_generic(node ast.TypeOf) ast.Type {
+	inner := node.expr
+	if inner is ast.Ident {
+		// Look up the parameter type from the current function declaration
+		if g.cur_fn != unsafe { nil } {
+			for param in g.cur_fn.params {
+				if param.name == inner.name {
+					eprintln('DBG resolve_typeof_in_generic: param=${param.name} param.typ=${param.typ} resolved=${g.unwrap_generic(g.recheck_concrete_type(param.typ))} concrete=${g.cur_concrete_types}')
+					return g.unwrap_generic(g.recheck_concrete_type(param.typ))
+				}
+			}
+			// Try local variables through scope
+			if inner.scope != unsafe { nil } {
+				if v := inner.scope.find_var(inner.name) {
+					resolved := g.unwrap_generic(g.recheck_concrete_type(v.typ))
+					if resolved != 0 {
+						return resolved
+					}
+				}
+			}
+		}
+	} else if inner is ast.IndexExpr {
+		// typeof(arr[0]) - resolve element type
+		left_type := g.resolved_expr_type(inner.left, inner.left_type)
+		unwrapped := g.unwrap_generic(g.recheck_concrete_type(left_type))
+		if unwrapped != 0 {
+			return g.table.value_type(unwrapped)
+		}
+	}
+	return 0
+}
+
 fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type) ast.Type {
 	// For comptime expressions (arg.typ, field.typ, etc.), comptime type property
 	// selectors (T.key_type, T.value_type, T.element_type), and struct field selectors
@@ -5579,19 +5634,25 @@ fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type)
 			return g.unwrap_generic(resolved_type)
 		}
 	}
-	resolved_expr_type := g.resolved_expr_type(node.expr, default_type)
-	if resolved_expr_type != 0 && resolved_expr_type != ast.void_type {
-		return g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
-	}
-	if node.expr is ast.Ident {
-		resolved_current_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+	// Resolve the inner expression of typeof(), not the TypeOf node itself,
+	// since resolved_expr_type doesn't handle TypeOf directly.
+	inner_expr := node.expr
+	// For generic function parameters, resolve through the function's generic
+	// mapping first, since resolved_expr_type may return stale scope types
+	// from the last checker instantiation.
+	if inner_expr is ast.Ident {
+		resolved_current_type := g.resolve_current_fn_generic_param_type(inner_expr.name)
 		if resolved_current_type != 0 {
 			return resolved_current_type
 		}
 	}
-	if node.expr is ast.IndexExpr {
+	resolved_expr_type := g.resolved_expr_type(inner_expr, default_type)
+	if resolved_expr_type != 0 && resolved_expr_type != ast.void_type {
+		return g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
+	}
+	if inner_expr is ast.IndexExpr {
 		// For typeof(arr[0]), resolve the element type from the array's resolved type
-		left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+		left_type := g.resolved_expr_type(inner_expr.left, inner_expr.left_type)
 		unwrapped := g.unwrap_generic(g.recheck_concrete_type(left_type))
 		if unwrapped != 0 {
 			elem_type := g.table.value_type(unwrapped)
@@ -7167,6 +7228,17 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	g.write(', .data={E_STRUCT} }')
 }
 
+// is_error_type checks if the type is a struct that embeds Error (i.e. implements IError)
+fn (g &Gen) is_error_type(typ ast.Type) bool {
+	sym := g.table.sym(typ)
+	if sym.kind == .struct {
+		if sym.info is ast.Struct {
+			return sym.info.embeds.any(g.table.type_to_str(it) == 'Error')
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 	mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
 	if node.msg != '' {
@@ -8608,18 +8680,31 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 		if i == stmts.len - 1 {
 			expr_stmt := stmt as ast.ExprStmt
 			g.set_current_pos_as_last_stmt_pos()
+			is_custom_error := g.is_error_type(expr_stmt.typ)
 			if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
-				|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
-				// `return foo() or { error('failed') }`
+				|| expr_stmt.typ in [ast.none_type, ast.error_type] || is_custom_error) {
+				// `return foo() or { error('failed') }` or `return foo() or { CustomError{} }`
 				if g.cur_fn != unsafe { nil } {
 					g.write_defer_stmts(scope, true, pos)
+					// Wrap custom error types in a CastExpr to IError,
+					// matching what the checker does for direct returns.
+					mut err_expr := expr_stmt.expr
+					if is_custom_error {
+						err_expr = ast.CastExpr{
+							expr: expr_stmt.expr
+							typname: 'IError'
+							typ: ast.error_type
+							expr_type: expr_stmt.typ
+							pos: pos
+						}
+					}
 					if g.cur_fn.return_type.has_flag(.result) {
 						g.write('return ')
-						g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
+						g.gen_result_error(g.cur_fn.return_type, err_expr)
 						g.writeln(';')
 					} else if g.cur_fn.return_type.has_flag(.option) {
 						g.write('return ')
-						g.gen_option_error(g.cur_fn.return_type, expr_stmt.expr)
+						g.gen_option_error(g.cur_fn.return_type, err_expr)
 						g.writeln(';')
 					}
 				}

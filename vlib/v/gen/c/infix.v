@@ -1656,9 +1656,14 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			}
 		}
 		typ_str = g.styp(typ)
-		// Skip redundant cast when operands already have the same type
+		// Skip redundant cast when operands already have the same type,
+		// but keep it for types smaller than int (u8, i8, u16, i16) because
+		// C integer promotion rules would widen them to int.
 		if resolved_left_type == resolved_right_type && resolved_left_type == typ {
-			needs_cast = false
+			typ_kind := g.table.type_kind(typ)
+			if typ_kind !in [.u8, .i8, .u16, .i16] {
+				needs_cast = false
+			}
 		}
 		if needs_cast {
 			g.write('(${typ_str})(')

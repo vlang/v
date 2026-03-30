@@ -1014,7 +1014,14 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			inner_type := g.resolved_expr_type(expr.right, right_default)
 			return match expr.op {
 				.amp {
-					g.unwrap_generic(inner_type).ref()
+					// When the inner expr is an auto-deref var (e.g. mut param),
+					// codegen skips emitting & since the var is already a pointer.
+					// Don't add .ref() to match.
+					if expr.right.is_auto_deref_var() {
+						g.unwrap_generic(inner_type)
+					} else {
+						g.unwrap_generic(inner_type).ref()
+					}
 				}
 				.mul {
 					resolved_inner_type := g.unwrap_generic(inner_type)
