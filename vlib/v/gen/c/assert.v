@@ -22,35 +22,40 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut save_right := ast.empty_expr
 
 	if mut node.expr is ast.InfixExpr {
-		mut left_expr_type := node.expr.left_type
-		mut right_expr_type := node.expr.right_type
-		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-			resolved_left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
-			if resolved_left_type != 0 {
-				resolved_sym := g.table.sym(resolved_left_type)
-				left_sym := g.table.sym(left_expr_type)
-				if resolved_sym.kind !in [.sum_type, .interface]
-					|| left_sym.kind in [.sum_type, .interface] {
-					left_expr_type = resolved_left_type
+		// Don't extract subexpressions to ctemps for && and || operators,
+		// as this would break short-circuit evaluation semantics.
+		// The right side of && must only execute after the left side is true.
+		if node.expr.op !in [.and, .logical_or] {
+			mut left_expr_type := node.expr.left_type
+			mut right_expr_type := node.expr.right_type
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+				if resolved_left_type != 0 {
+					resolved_sym := g.table.sym(resolved_left_type)
+					left_sym := g.table.sym(left_expr_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| left_sym.kind in [.sum_type, .interface] {
+						left_expr_type = resolved_left_type
+					}
+				}
+				resolved_right_type := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+				if resolved_right_type != 0 {
+					resolved_sym := g.table.sym(resolved_right_type)
+					right_sym := g.table.sym(right_expr_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| right_sym.kind in [.sum_type, .interface] {
+						right_expr_type = resolved_right_type
+					}
 				}
 			}
-			resolved_right_type := g.resolved_expr_type(node.expr.right, node.expr.right_type)
-			if resolved_right_type != 0 {
-				resolved_sym := g.table.sym(resolved_right_type)
-				right_sym := g.table.sym(right_expr_type)
-				if resolved_sym.kind !in [.sum_type, .interface]
-					|| right_sym.kind in [.sum_type, .interface] {
-					right_expr_type = resolved_right_type
-				}
+			if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, left_expr_type) {
+				save_left = node.expr.left
+				node.expr.left = subst_expr
 			}
-		}
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, left_expr_type) {
-			save_left = node.expr.left
-			node.expr.left = subst_expr
-		}
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, right_expr_type) {
-			save_right = node.expr.right
-			node.expr.right = subst_expr
+			if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, right_expr_type) {
+				save_right = node.expr.right
+				node.expr.right = subst_expr
+			}
 		}
 	}
 	metaname := g.gen_assert_metainfo_common(node)
