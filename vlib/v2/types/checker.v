@@ -549,13 +549,7 @@ fn (mut c Checker) register_imported_symbols(files []ast.File) {
 }
 
 pub fn (mut c Checker) check_file(file ast.File) {
-	if !c.pref.verbose {
-		unsafe {
-			goto start_no_time
-		}
-	}
-	mut sw := time.new_stopwatch()
-	start_no_time:
+	mut sw := time.new_stopwatch(auto_start: c.pref.verbose)
 	// Track current file's module for function scope saving
 	c.cur_file_module = file.mod
 	// file_scope := new_scope(c.mod.scope)

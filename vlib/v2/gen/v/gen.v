@@ -39,13 +39,7 @@ pub fn (mut g Gen) gen(file ast.File) {
 	if g.out.len > 1 {
 		g.reset()
 	}
-	if !g.pref.verbose {
-		unsafe {
-			goto start_no_time
-		}
-	}
-	mut sw := time.new_stopwatch()
-	start_no_time:
+	mut sw := time.new_stopwatch(auto_start: g.pref.verbose)
 	g.file = file
 	g.stmt_list(g.file.stmts)
 	if g.pref.verbose {
