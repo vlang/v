@@ -4925,7 +4925,13 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
+	mut typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		resolved := g.resolve_typeof_in_generic(node)
+		if resolved != 0 {
+			typ = resolved
+		}
+	}
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
