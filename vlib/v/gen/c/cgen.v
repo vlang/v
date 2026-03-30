@@ -116,6 +116,7 @@ mut:
 	done_options               shared []string   // to avoid duplicates
 	done_results               shared []string   // to avoid duplicates
 	array_typedefs             []string          // to avoid duplicate array typedefs
+	written_array_typedefs     int
 	done_typedef_phase         bool              // set after write_typedef_types() completes
 	late_chan_types            shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types         map[string]bool   // concrete channel typedefs/helpers already emitted
@@ -483,6 +484,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				}
 			}
 
+			for at in g.array_typedefs {
+				if at !in global_g.array_typedefs {
+					global_g.array_typedefs << at
+				}
+			}
 			global_g.nr_closures += g.nr_closures
 			global_g.has_main = global_g.has_main || g.has_main
 
@@ -544,6 +550,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.register_iface_return_types()
 	global_g.write_results()
 	global_g.write_options()
+	global_g.write_late_array_typedefs()
 	global_g.sort_globals_consts()
 	util.timing_measure('cgen unification')
 
@@ -1084,6 +1091,7 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.options_pos_forward = g.type_definitions.len
 	g.write_typedef_types()
+	g.written_array_typedefs = g.array_typedefs.len
 	g.done_typedef_phase = true
 	g.write_typeof_functions()
 	g.write_sorted_types()
@@ -2091,9 +2099,18 @@ fn (mut g Gen) ensure_array_typedef(base_ string) {
 	base := base_.trim_right('*')
 	if base.starts_with('Array_') && !base.starts_with('Array_fixed_') {
 		if base !in g.array_typedefs {
-			g.type_definitions.writeln('typedef array ${base};')
-			g.array_typedefs << base
+			// Only track if write_typedef_types() already emitted at least
+			// one array typedef, which means the `array` struct is defined.
+			if g.written_array_typedefs > 0 || !g.done_typedef_phase {
+				g.array_typedefs << base
+			}
 		}
+	}
+}
+
+fn (mut g Gen) write_late_array_typedefs() {
+	for i := g.written_array_typedefs; i < g.array_typedefs.len; i++ {
+		g.type_definitions.writeln('typedef array ${g.array_typedefs[i]};')
 	}
 }
 

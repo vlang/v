@@ -1227,6 +1227,14 @@ pub fn (i &Ident) is_auto_heap() bool {
 }
 
 @[inline]
+pub fn (i &Ident) is_stack_obj() bool {
+	return match i.obj {
+		Var { i.obj.is_stack_obj }
+		else { false }
+	}
+}
+
+@[inline]
 pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var { return i.obj.is_mut }

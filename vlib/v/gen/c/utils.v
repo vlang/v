@@ -346,6 +346,20 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	return 0
 }
 
+fn (mut g Gen) resolved_ident_is_auto_heap_not_stack(expr ast.Ident) bool {
+	if expr.obj is ast.Var {
+		if expr.obj.is_auto_heap && !expr.obj.is_stack_obj {
+			return true
+		}
+	}
+	if expr.scope != unsafe { nil } {
+		if v := expr.scope.find_var(expr.name) {
+			return v.is_auto_heap && !v.is_stack_obj
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_ident_is_auto_heap(expr ast.Ident) bool {
 	if expr.obj is ast.Var && expr.obj.is_auto_heap {
 		return true
