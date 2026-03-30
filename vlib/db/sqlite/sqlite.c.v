@@ -582,6 +582,37 @@ pub fn (mut db DB) release_savepoint(savepoint string) ! {
 	db.exec('RELEASE SAVEPOINT ${savepoint};')!
 }
 
+// tables returns the names of all user tables in the database.
+pub fn (db &DB) tables() ![]string {
+	rows := db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")!
+	return rows.map(it.vals[0])
+}
+
+// columns returns the column names for the given table.
+pub fn (db &DB) columns(table string) ![]string {
+	rows := db.exec('PRAGMA table_info(${table})')!
+	return rows.map(it.vals[1])
+}
+
+// schema returns the CREATE statement(s) for the given table, or for all
+// objects if table is empty.
+pub fn (db &DB) schema(table string) !string {
+	filter := if table != '' { "AND name='${table}'" } else { '' }
+	rows := db.exec("SELECT sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') ${filter} AND sql IS NOT NULL ORDER BY type, name")!
+	return rows.map(it.vals[0]).join('\n\n')
+}
+
+// db_size returns the database file size in bytes, computed from page_count
+// and page_size.
+pub fn (db &DB) db_size() !i64 {
+	pc := db.exec('PRAGMA page_count')!
+	ps := db.exec('PRAGMA page_size')!
+	if pc.len == 0 || ps.len == 0 {
+		return 0
+	}
+	return pc[0].vals[0].i64() * ps[0].vals[0].i64()
+}
+
 // reset returns the connection to initial state for reuse
 pub fn (mut db DB) reset() ! {
 }

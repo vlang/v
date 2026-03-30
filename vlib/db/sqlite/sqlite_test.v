@@ -1,6 +1,7 @@
 // vtest build: present_sqlite3?
 import db.sqlite
 import orm
+import os
 
 type Connection = sqlite.DB
 
@@ -145,6 +146,46 @@ fn test_exec_param_many2() {
 	count := db.q_int('select count(*) from users')!
 	assert count == 3
 
+	db.close()!
+}
+
+fn test_tables() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	db.exec('create table alpha (id integer)')!
+	db.exec('create table beta (id integer)')!
+	tbl := db.tables()!
+	assert tbl == ['alpha', 'beta']
+	db.close()!
+}
+
+fn test_columns() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	db.exec('create table items (id integer primary key, name text, price real)')!
+	cols := db.columns('items')!
+	assert cols == ['id', 'name', 'price']
+	db.close()!
+}
+
+fn test_schema() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	db.exec('create table things (id integer primary key, label text)')!
+	s := db.schema('things')!
+	assert s.contains('CREATE TABLE things')
+	// empty table name returns all objects
+	all := db.schema('')!
+	assert all.contains('CREATE TABLE things')
+	db.close()!
+}
+
+fn test_db_size() {
+	tmp := os.join_path(os.temp_dir(), 'test_db_size.db')
+	defer {
+		os.rm(tmp) or {}
+	}
+	mut db := sqlite.connect(tmp) or { panic(err) }
+	db.exec('create table t (id integer)')!
+	sz := db.db_size()!
+	assert sz > 0
 	db.close()!
 }
 
