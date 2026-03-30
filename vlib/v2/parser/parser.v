@@ -68,14 +68,16 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	if filename == '' {
 		panic('parser.parse_file empty filename')
 	}
+	mut src := ''
+	mut sw := time.StopWatch{}
 	if !p.pref.verbose {
 		unsafe {
 			goto start_no_time
 		}
 	}
-	mut sw := time.new_stopwatch()
+	sw = time.new_stopwatch()
 	start_no_time:
-	src := os.read_file(filename) or { p.error('error reading `' + filename + '`') }
+	src = os.read_file(filename) or { p.error('error reading `' + filename + '`') }
 	p.init(filename, src, mut file_set)
 	// start
 	p.next()
