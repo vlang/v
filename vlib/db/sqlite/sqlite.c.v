@@ -590,14 +590,20 @@ pub fn (db &DB) tables() ![]string {
 
 // columns returns the column names for the given table.
 pub fn (db &DB) columns(table string) ![]string {
-	rows := db.exec('PRAGMA table_info(${table})')!
+	escaped := table.replace('"', '""')
+	rows := db.exec('PRAGMA table_info("${escaped}")')!
 	return rows.map(it.vals[1])
 }
 
 // schema returns the CREATE statement(s) for the given table, or for all
 // objects if table is empty.
 pub fn (db &DB) schema(table string) !string {
-	filter := if table != '' { "AND name='${table}'" } else { '' }
+	filter := if table != '' {
+		escaped := table.replace("'", "''")
+		"AND name='${escaped}'"
+	} else {
+		''
+	}
 	rows := db.exec("SELECT sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') ${filter} AND sql IS NOT NULL ORDER BY type, name")!
 	return rows.map(it.vals[0]).join('\n\n')
 }
