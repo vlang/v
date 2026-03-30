@@ -92,13 +92,11 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		message:   s
 	}
 
-	// To avoid getting stuck after an error, the parser will proceed to
-	// the next token only in modes where parsing continues after the
-	// error. In normal compile mode, keep the token stream intact so the
-	// caller can stop after the first parser error without producing
-	// follow-up diagnostics from a shifted token stream.
-	if (p.pref.check_only || p.pref.only_check_syntax || p.pref.output_mode == .silent)
-		&& p.tok.kind != .eof {
+	// To avoid getting stuck after an error, the parser will always
+	// proceed to the next token in modes where parsing continues, or
+	// while it is unwinding after a printed error.
+	if (should_abort_after_print || p.pref.check_only || p.pref.only_check_syntax
+		|| p.pref.output_mode == .silent) && p.tok.kind != .eof {
 		p.next()
 	}
 	return ast.NodeError{
@@ -127,13 +125,16 @@ fn (mut p Parser) error_with_error(error errors.Error) {
 		return
 	}
 	p.errors << error
-	if (p.pref.check_only || p.pref.only_check_syntax || p.pref.output_mode == .silent)
-		&& p.tok.kind != .eof {
+	if (should_abort_after_print || p.pref.check_only || p.pref.only_check_syntax
+		|| p.pref.output_mode == .silent) && p.tok.kind != .eof {
 		p.next()
 	}
 }
 
 fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
+	if p.should_abort {
+		return
+	}
 	if p.pref.warns_are_errors {
 		p.error_with_pos(s, pos)
 		return
@@ -159,6 +160,9 @@ fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 }
 
 fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
+	if p.should_abort {
+		return
+	}
 	if p.pref.skip_warnings {
 		return
 	}

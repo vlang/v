@@ -83,23 +83,9 @@ fn sync_cache() {
 	scripting.chdir(cache_oldv_folder)
 	for reponame in ['v', 'vc'] {
 		repofolder := os.join_path(cache_oldv_folder, reponame)
-		if !os.exists(repofolder) {
-			scripting.verbose_trace(@FN, 'cloning to ${repofolder}')
-			mut repo_options := ''
-			if reponame == 'vc' {
-				repo_options = '--filter=blob:none'
-			}
-			scripting.exec('git clone ${repo_options} --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
-				scripting.verbose_trace(@FN, '## error during clone: ${err}')
-				exit(1)
-			}
-		}
-		scripting.chdir(repofolder)
-		scripting.exec('git pull --quiet') or {
-			scripting.verbose_trace(@FN, 'pulling to ${repofolder}')
-			scripting.verbose_trace(@FN, '## error during pull: ${err}')
-			exit(1)
-		}
+		repo_url := 'https://github.com/vlang/${reponame}'
+		scripting.verbose_trace(@FN, 'syncing ${repo_url} to ${repofolder}')
+		vgit.clone_or_pull(repo_url, repofolder)
 	}
 	scripting.verbose_trace(@FN, 'done')
 }
@@ -124,7 +110,8 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
-	context.use_cache = fp.bool('cache', `u`, true, 'Use a cache of local repositories for --vrepo and --vcrepo in \$HOME/.cache/oldv/')
+	context.use_cache = fp.bool('cache', `u`, true,
+		'Use a cache of local repositories for --vrepo and --vcrepo in \$HOME/.cache/oldv/')
 	if context.use_cache {
 		context.vgo.v_repo_url = cache_oldv_folder_v
 		context.vgo.vc_repo_url = cache_oldv_folder_vc
@@ -132,17 +119,22 @@ fn main() {
 		context.vgo.v_repo_url = 'https://github.com/vlang/v'
 		context.vgo.vc_repo_url = 'https://github.com/vlang/vc'
 	}
-	context.cc = fp.string('cc', 0, 'cc', 'Use this C compiler for bootstrapping v.c (defaults to `cc`).')
-	context.cc_options = fp.string('ccoptions', 0, '', 'Use these C compiler options for bootstrapping v.c (defaults to ``).')
+	context.cc = fp.string('cc', 0, 'cc',
+		'Use this C compiler for bootstrapping v.c (defaults to `cc`).')
+	context.cc_options = fp.string('ccoptions', 0, '',
+		'Use these C compiler options for bootstrapping v.c (defaults to ``).')
 	env_cc_options := os.getenv('OLDV_CCOPTIONS')
 	if env_cc_options != '' {
 		context.cc_options = env_cc_options
 	}
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
-	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
+	context.fresh_tcc = fp.bool('fresh_tcc', 0, true,
+		'Do `make fresh_tcc` when preparing a V compiler.')
 	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
-	context.show_vccommit = fp.bool('show_VC_commit', 0, false, 'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
-	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
+	context.show_vccommit = fp.bool('show_VC_commit', 0, false,
+		'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
+	context.is_bisect = fp.bool('bisect', `b`, false,
+		'Bisect mode. Use the current commit in the repo where oldv is.')
 
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
 	if !should_sync && !context.is_bisect {

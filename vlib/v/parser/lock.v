@@ -16,6 +16,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
 			p.unexpected(expecting: 'one or more shared variable names')
+			return ast.LockExpr{
+				pos:   pos
+				scope: p.scope
+			}
 		}
 		p.next()
 		if p.tok.kind == .lcbr {
