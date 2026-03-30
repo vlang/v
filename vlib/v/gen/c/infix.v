@@ -110,11 +110,30 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 		resolved_left := g.resolved_expr_type(node.left, node.left_type)
 		if resolved_left != 0 {
-			left_type = resolved_left
+			// Don't override a smartcasted concrete type (from the checker)
+			// with a sumtype/option-sumtype from resolved_expr_type, which
+			// doesn't check scope smartcasts.
+			resolved_sym := g.table.sym(resolved_left)
+			left_sym := g.table.sym(left_type)
+			is_sumtype_override := resolved_sym.kind in [.sum_type, .interface]
+				&& left_sym.kind !in [.sum_type, .interface]
+			is_option_introduction := resolved_left.has_flag(.option)
+				&& !left_type.has_flag(.option)
+			if !is_sumtype_override && !is_option_introduction {
+				left_type = resolved_left
+			}
 		}
 		resolved_right := g.resolved_expr_type(node.right, node.right_type)
 		if resolved_right != 0 {
-			right_type = resolved_right
+			resolved_sym := g.table.sym(resolved_right)
+			right_sym := g.table.sym(right_type)
+			is_sumtype_override := resolved_sym.kind in [.sum_type, .interface]
+				&& right_sym.kind !in [.sum_type, .interface]
+			is_option_introduction := resolved_right.has_flag(.option)
+				&& !right_type.has_flag(.option)
+			if !is_sumtype_override && !is_option_introduction {
+				right_type = resolved_right
+			}
 		}
 	}
 	// Promote literal element types in arrays (e.g. []int_literal -> []int)
@@ -127,13 +146,19 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	mut eq_operator_expects_ptr := false
 	mut eq_method := ast.Fn{}
 	if m := g.table.find_method(left.sym, '==') {
-		has_defined_eq_operator = true
-		eq_operator_expects_ptr = m.receiver_type.is_ptr()
-		eq_method = m
-	} else if m := left.sym.find_method_with_generic_parent('==') {
-		has_defined_eq_operator = true
-		eq_operator_expects_ptr = m.receiver_type.is_ptr()
-		eq_method = m
+		// For != on generic struct types, check if the == operator was defined on
+		// a generic parent (receiver type has generic flag or is a different type).
+		// In that case, use _struct_eq for != (full structural comparison) instead
+		// of negating the user-defined ==, matching master's behavior.
+		mut skip_for_generic_ne := false
+		if node.op == .ne && m.receiver_type.has_flag(.generic) {
+			skip_for_generic_ne = true
+		}
+		if !skip_for_generic_ne {
+			has_defined_eq_operator = true
+			eq_operator_expects_ptr = m.receiver_type.is_ptr()
+			eq_method = m
+		}
 	}
 	// TODO: investigate why the following is needed for vlib/v/tests/string_alias_test.v and vlib/v/tests/anon_fn_with_alias_args_test.v
 	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
@@ -681,11 +706,21 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 		resolved_left := g.resolved_expr_type(node.left, node.left_type)
 		if resolved_left != 0 {
-			left_type = resolved_left
+			resolved_sym := g.table.sym(resolved_left)
+			left_sym := g.table.sym(left_type)
+			if resolved_sym.kind !in [.sum_type, .interface]
+				|| left_sym.kind in [.sum_type, .interface] {
+				left_type = resolved_left
+			}
 		}
 		resolved_right := g.resolved_expr_type(node.right, node.right_type)
 		if resolved_right != 0 {
-			right_type = resolved_right
+			resolved_sym := g.table.sym(resolved_right)
+			right_sym := g.table.sym(right_type)
+			if resolved_sym.kind !in [.sum_type, .interface]
+				|| right_sym.kind in [.sum_type, .interface] {
+				right_type = resolved_right
+			}
 		}
 	}
 	left := g.unwrap(left_type)
@@ -1435,7 +1470,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					// `_to_sumtype_` function, since that function already takes
 					// a pointer parameter and returns a value (not a pointer).
 					if needs_explicit_deref && !rhs_expr.trim_space().starts_with('*')
-						&& !rhs_expr.contains('_to_sumtype_') {
+						&& !rhs_expr.contains('_to_sumtype_')
+						&& !rhs_expr.contains('_to_Interface_') {
 						g.write('*')
 					}
 					g.write(rhs_expr)
@@ -1564,8 +1600,32 @@ struct VSafeArithmeticOp {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
-	resolved_right_type := g.resolved_expr_type(node.right, node.right_type)
+	mut resolved_left_type := g.resolved_expr_type(node.left, node.left_type)
+	mut resolved_right_type := g.resolved_expr_type(node.right, node.right_type)
+	// Don't override smartcasted concrete types with sumtype/interface from
+	// resolved_expr_type (which doesn't check scope smartcasts).
+	if resolved_left_type != 0 {
+		resolved_sym := g.table.sym(resolved_left_type)
+		left_sym := g.table.sym(node.left_type)
+		is_sumtype_override := resolved_sym.kind in [.sum_type, .interface]
+			&& left_sym.kind !in [.sum_type, .interface]
+		is_option_introduction := resolved_left_type.has_flag(.option)
+			&& !node.left_type.has_flag(.option)
+		if is_sumtype_override || is_option_introduction {
+			resolved_left_type = node.left_type
+		}
+	}
+	if resolved_right_type != 0 {
+		resolved_sym := g.table.sym(resolved_right_type)
+		right_sym := g.table.sym(node.right_type)
+		is_sumtype_override := resolved_sym.kind in [.sum_type, .interface]
+			&& right_sym.kind !in [.sum_type, .interface]
+		is_option_introduction := resolved_right_type.has_flag(.option)
+			&& !node.right_type.has_flag(.option)
+		if is_sumtype_override || is_option_introduction {
+			resolved_right_type = node.right_type
+		}
+	}
 	$if trace_ci_fixes ? {
 		if g.file.path.contains('binary_search_tree.v') && node.right is ast.SelectorExpr {
 			if node.right.expr is ast.Ident && node.right.expr.name == 'tree' {

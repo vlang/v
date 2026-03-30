@@ -713,6 +713,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		$if trace_post_process_generic_fns ? {
 			eprintln('>> gen_fn_decl, nkey: ${nkey} | generic_types_by_fn: ${generic_types_by_fn}')
 		}
+		mut generated_fn_names := map[string]bool{}
 		for concrete_types in generic_types_by_fn {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.sym(it))
@@ -727,6 +728,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			if concrete_types.len != effective_generic_names.len {
 				continue
 			}
+			fn_name := g.generic_fn_name(concrete_types, nkey)
+			if fn_name in generated_fn_names {
+				continue
+			}
+			generated_fn_names[fn_name] = true
 			g.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
@@ -1324,7 +1330,18 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			g.closure_structs << ctx_struct
 			g.definitions.writeln('${ctx_struct} {')
 			for var in node.inherited_vars {
-				resolved_var_typ := g.closure_inherited_var_type(node, var)
+				mut resolved_var_typ := g.closure_inherited_var_type(node, var)
+				// When the variable is auto-heap promoted, the closure struct
+				// stores the dereferenced value (the init code does `*var`),
+				// so strip one pointer level from the field type.
+				if node.decl.scope != unsafe { nil } && node.decl.scope.parent != unsafe { nil } {
+					if scope_var := node.decl.scope.parent.find_var(var.name) {
+						if scope_var.is_auto_heap && !scope_var.is_stack_obj
+							&& resolved_var_typ.is_ptr() {
+							resolved_var_typ = resolved_var_typ.deref()
+						}
+					}
+				}
 				var_sym := g.table.sym(resolved_var_typ)
 				if g.is_mut_closure_fixed_array(var) {
 					g.definitions.writeln('\t${g.mut_closure_fixed_array_field_styp(var)} ${c_name(var.name)};')
@@ -1561,8 +1578,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
+	// Reset inside_selector_lhs so that receiver expressions inside method
+	// calls generate proper auto-heap dereferences. Without this, when a
+	// method call is nested inside a selector (e.g. exa.payload()!.len),
+	// the selector's inside_selector_lhs flag would leak into the receiver
+	// generation and suppress the (*(exa)) deref.
+	old_inside_selector_lhs := g.inside_selector_lhs
+	g.inside_selector_lhs = false
 	defer {
 		g.inside_call = old_inside_call
+		g.inside_selector_lhs = old_inside_selector_lhs
 	}
 	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
@@ -2167,6 +2192,18 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 					}
 					slot := rec_len + generic_arg_idx
 					generic_arg_idx++
+					// Only override if the current concrete type is still unresolved.
+					// The checker already resolves concrete types correctly (e.g. T=int for []T with []int arg),
+					// so we should not overwrite already-resolved values with the full argument type
+					// (which would turn T=int into T=[]int, causing []T to resolve to [][]int).
+					if slot < concrete_types.len {
+						current_type := concrete_types[slot]
+						if current_type != 0 && current_type != ast.void_type
+							&& !current_type.has_flag(.generic)
+							&& !g.type_has_unresolved_generic_parts(current_type) {
+							continue
+						}
+					}
 					mut resolved_arg_type := ast.void_type
 					if arg.expr is ast.Ident && arg.expr.obj is ast.Var
 						&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param {
@@ -2190,7 +2227,8 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 						&& !resolved_arg_type.has_flag(.generic)
 						&& !g.type_has_unresolved_generic_parts(resolved_arg_type)
 						&& slot < concrete_types.len {
-						concrete_types[slot] = resolved_arg_type
+						g.infer_generic_call_concrete_types_from_types(func.generic_names, mut
+							concrete_types, arg, param.typ, resolved_arg_type)
 					}
 				}
 			}
@@ -2252,8 +2290,26 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			}
 		}
 	} else if node.is_static_method {
-		// Use node.return_type which was resolved by the checker, not the template
-		// function's unresolved return type from find_fn
+		// For static method calls like T.from(s) or T.parse(mut p) in generic contexts,
+		// node.return_type may be stale from a previous checker instantiation.
+		// Resolve from left_type which retains the .generic flag.
+		if node.left_type.has_flag(.generic) && g.cur_fn != unsafe { nil }
+			&& g.cur_concrete_types.len > 0 {
+			resolved_left := g.unwrap_generic(g.recheck_concrete_type(node.left_type))
+			if resolved_left != ast.void_type && resolved_left != 0 {
+				mut ret := resolved_left
+				if node.return_type.has_flag(.result) {
+					ret = ret.set_flag(.result)
+				} else if node.return_type.has_flag(.option) {
+					ret = ret.set_flag(.option)
+				}
+				return if node.or_block.kind == .absent {
+					ret
+				} else {
+					ret.clear_option_and_result()
+				}
+			}
+		}
 		ret_type := g.unwrap_generic(g.recheck_concrete_type(node.return_type))
 		return if node.or_block.kind == .absent {
 			ret_type
@@ -2464,6 +2520,13 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 
 fn (mut g Gen) resolved_generic_call_arg_type(arg ast.CallArg) ast.Type {
 	mut arg_type := g.resolved_expr_type(arg.expr, arg.typ)
+	if arg.expr is ast.ComptimeCall && arg.expr.method_name == 'method'
+		&& g.comptime.comptime_for_method != unsafe { nil } {
+		sym := g.table.sym(g.unwrap_generic(arg.expr.left_type))
+		if m := sym.find_method(g.comptime.comptime_for_method.name) {
+			return m.return_type
+		}
+	}
 	mut has_current_generic_type := false
 	mut resolved_current_type := ast.void_type
 	if arg.expr is ast.Ident {
@@ -3570,6 +3633,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if node.concrete_types.len == method_generic_names_len && node.concrete_types.len > 0 {
 			trust_node_concrete_types = node.raw_concrete_types.len == method_generic_names_len
 				&& node.raw_concrete_types.len > 0
+			// Inside a comptime $for method loop, the checker's concrete_types
+			// are from the last iteration (the AST node is shared across
+			// iterations). Don't trust them when an arg is a ComptimeCall.
+			if trust_node_concrete_types && g.comptime.comptime_for_method != unsafe { nil } {
+				if node.args.any(it.expr is ast.ComptimeCall) {
+					trust_node_concrete_types = false
+				}
+			}
 			if !trust_node_concrete_types {
 				trust_node_concrete_types = true
 				mut muttable := unsafe { &ast.Table(g.table) }
@@ -4400,15 +4471,23 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 				// In generic contexts, scope var types may be stale from a
 				// previous checker instantiation. When ct_type_var is
-				// generic_var, the comptime resolver above may return a stale
-				// type, so we also try the generic scope resolution. But only
-				// do this when comptime didn't resolve or when the variable is
-				// a generic_var (not for regular comptime vars).
-				if (!ct_resolved || expr.obj.ct_type_var == .generic_var)
+				// generic_var or generic_param, the comptime resolver above
+				// may return a stale type (e.g. from shared AST mutation),
+				// so we also try the generic scope resolution.
+				if (!ct_resolved || expr.obj.ct_type_var in [.generic_var, .generic_param])
 					&& g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-					resolved := g.resolved_expr_type(expr, expr.obj.typ)
-					if resolved != 0 {
-						typ = resolved
+					// For generic_param, prefer resolving from the function's
+					// parameter declaration to avoid stale AST types.
+					if expr.obj.ct_type_var == .generic_param {
+						param_resolved := g.resolve_current_fn_generic_param_type(expr.name)
+						if param_resolved != 0 {
+							typ = param_resolved
+						}
+					} else {
+						resolved := g.resolved_expr_type(expr, expr.obj.typ)
+						if resolved != 0 {
+							typ = resolved
+						}
 					}
 				}
 				if expr.obj.smartcasts.len > 0 {
@@ -5401,6 +5480,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 					expected_ref_inner_type)
 				g.write('&')
 				g.expr(arg.expr)
+			} else if arg_typ == ast.nil_type || arg_typ.is_voidptr()
+				|| (arg.expr is ast.UnsafeExpr && arg.expr.expr is ast.Nil) {
+				g.write('((void*)0)')
 			} else {
 				// sumtype conversions call memdup internally, so ADDR is sufficient.
 				// interface conversions don't, so HEAP is needed to ensure the pointer

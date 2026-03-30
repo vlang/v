@@ -12,6 +12,45 @@ module c
 import v.ast
 import v.util
 
+// is_or_block_var_unwrapped checks if a variable was initialized from an
+// expression with an `or {}` block (e.g. `x := opt_val or { default }`),
+// which means the variable's actual type has the option flag cleared.
+fn (g Gen) is_or_block_var_unwrapped(obj ast.Var) bool {
+	init_expr := obj.expr
+	return match init_expr {
+		ast.CallExpr { init_expr.or_block.kind != .absent }
+		ast.Ident { init_expr.or_expr.kind != .absent }
+		ast.IndexExpr { init_expr.or_expr.kind != .absent }
+		ast.SelectorExpr { init_expr.or_block.kind != .absent }
+		ast.PrefixExpr { init_expr.or_block.kind != .absent }
+		else { false }
+	}
+}
+
+// should_clear_option_flag checks if an expression's option flag should be cleared
+// because the variable was unwrapped via smartcast or `or {}` block.
+fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
+	ident := match expr {
+		ast.Ident { expr }
+		else { return false }
+	}
+	match ident.obj {
+		ast.Var {
+			if ident.obj.is_unwrapped {
+				return true
+			}
+			if g.is_or_block_var_unwrapped(ident.obj) {
+				return true
+			}
+			if !ident.obj.typ.has_flag(.option) && ident.obj.ct_type_var == .no_comptime {
+				return true
+			}
+		}
+		else {}
+	}
+	return false
+}
+
 fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
 		return false
@@ -106,6 +145,12 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		if resolved_expr_typ != 0 {
 			typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
 		}
+	}
+	// Resolve aggregate types (from multi-branch match arms) to the
+	// concrete variant type for the current iteration.
+	typ_sym_fmt := g.table.sym(typ)
+	if typ_sym_fmt.info is ast.Aggregate {
+		typ = typ_sym_fmt.info.types[g.aggregate_type_idx]
 	}
 	if expr.is_auto_deref_var() && typ.is_ptr() {
 		typ = typ.deref()
@@ -273,6 +318,12 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			orig_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
 		}
 	}
+	// Resolve aggregate types (from multi-branch match arms) to the
+	// concrete variant type for the current iteration.
+	orig_typ_sym := g.table.sym(orig_typ)
+	if orig_typ_sym.info is ast.Aggregate {
+		orig_typ = orig_typ_sym.info.types[g.aggregate_type_idx]
+	}
 	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
 	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
 	typ_sym := g.table.sym(typ)
@@ -439,6 +490,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 			if ctyp != ast.void_type {
+				// Clear option flag for variables unwrapped via `or {}` blocks
+				if ctyp.has_flag(.option) && g.should_clear_option_flag(expr) {
+					ctyp = ctyp.clear_flag(.option)
+				}
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_`
 					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
@@ -457,6 +512,16 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				if resolved_field_typ != ast.void_type {
 					field_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
 				}
+			}
+			// Resolve aggregate types (from multi-branch match arms) to the
+			// concrete variant type for the current iteration.
+			field_sym := g.table.sym(field_typ)
+			if field_sym.info is ast.Aggregate {
+				field_typ = field_sym.info.types[g.aggregate_type_idx]
+			}
+			// Clear option flag for variables unwrapped via `or {}` blocks
+			if field_typ.has_flag(.option) && g.should_clear_option_flag(expr) {
+				field_typ = field_typ.clear_flag(.option)
 			}
 			if i >= node_.expr_types.len {
 				node_.expr_types << field_typ

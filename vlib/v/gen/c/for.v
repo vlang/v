@@ -175,6 +175,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		resolved_cond_expr = cond_ident
 		param_cond_type := g.resolve_current_fn_generic_param_type(cond_ident.name)
 		scope_cond_type = g.resolved_scope_var_type(cond_ident)
+		// Don't let an aggregate/sumtype scope type override a more specific
+		// cond_type (e.g., a concrete array type from the aggregate handler).
+		if scope_cond_type != 0 && node.cond_type != 0 && node.cond_type != scope_cond_type {
+			scope_sym := g.table.final_sym(scope_cond_type)
+			if scope_sym.kind == .aggregate || scope_sym.kind == .sum_type {
+				scope_cond_type = 0
+			}
+		}
 		if scope_cond_type != 0 {
 			node.cond_type = scope_cond_type
 		} else if param_cond_type != 0 {
@@ -185,7 +193,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 	resolved_cond_type := g.resolved_expr_type(resolved_cond_expr, node.cond_type)
 	if resolved_cond_type != 0 {
-		node.cond_type = resolved_cond_type
+		// Don't let an aggregate/sumtype resolved type override a more specific
+		// cond_type (e.g., a concrete array type from the aggregate handler).
+		resolved_sym := g.table.final_sym(resolved_cond_type)
+		if !(resolved_sym.kind in [.aggregate, .sum_type] && node.cond_type != 0
+			&& node.cond_type != resolved_cond_type
+			&& g.table.final_sym(node.cond_type).kind !in [.aggregate, .sum_type]) {
+			node.cond_type = resolved_cond_type
+		}
 	}
 	if scope_cond_type != 0 {
 		node.cond_type = scope_cond_type
@@ -347,7 +362,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
 		if node.cond_type != 0 {
-			resolved_val_type := if scope_cond_type != 0 {
+			// Use scope_cond_type only if it's a concrete container type.
+			// Skip if it's an aggregate/sumtype (e.g., from a match arm
+			// smartcast) as value_type would return void for those.
+			use_scope_cond := scope_cond_type != 0
+				&& g.table.final_sym(scope_cond_type).kind !in [.aggregate, .sum_type]
+			resolved_val_type := if use_scope_cond {
 				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
 			} else if param_val_type != 0 {
 				param_val_type
@@ -723,7 +743,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	} else if node.kind == .aggregate {
 		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
 		val_type := g.table.value_type(for_type)
-
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{

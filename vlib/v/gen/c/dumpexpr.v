@@ -150,9 +150,20 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			'')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 		&& (node.expr.expr as ast.Ident).ct_expr {
-		expr_type = g.comptime_selector_type(node.expr)
-		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-			'')
+		ct_expr_type := g.comptime_selector_type(node.expr)
+		// Only override if the checker hasn't already resolved to a more
+		// specific (smartcasted) type. When inside a sumtype/option smartcast
+		// branch, node.expr_type is the concrete unwrapped type from the
+		// checker which is more accurate than what comptime_selector_type
+		// resolves (it uses a stale struct_type for scope lookups in generics).
+		ct_sym := g.table.sym(ct_expr_type)
+		node_sym := g.table.sym(expr_type)
+		if ct_sym.kind !in [.sum_type, .interface] || node_sym.kind in [.sum_type, .interface]
+			|| expr_type.has_option_or_result() {
+			expr_type = ct_expr_type
+			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+				'')
+		}
 	}
 
 	if g.table.sym(node.expr_type).language == .c {
@@ -179,8 +190,16 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			if scope_var := node.expr.scope.find_var(node.expr.name) {
 				if scope_var.typ.has_flag(.option_mut_param_t) {
 					expr_type = scope_var.typ
-					name = g.styp(expr_type.clear_flags(.shared_f, .result, .option_mut_param_t)).replace('*',
-						'')
+					// For mut option params, the type is ?&T. Strip the inner pointer
+					// from the name since __ptr is appended separately from is_ptr().
+					mut cleared_typ := expr_type.clear_flags(.shared_f, .result, .option_mut_param_t)
+					if cleared_typ.has_flag(.option) {
+						inner := cleared_typ.clear_option_and_result()
+						if inner.is_ptr() {
+							cleared_typ = inner.deref().set_flag(.option)
+						}
+					}
+					name = g.styp(cleared_typ).replace('*', '')
 				}
 			}
 		}

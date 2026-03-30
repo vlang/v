@@ -27,11 +27,21 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 			resolved_left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
 			if resolved_left_type != 0 {
-				left_expr_type = resolved_left_type
+				resolved_sym := g.table.sym(resolved_left_type)
+				left_sym := g.table.sym(left_expr_type)
+				if resolved_sym.kind !in [.sum_type, .interface]
+					|| left_sym.kind in [.sum_type, .interface] {
+					left_expr_type = resolved_left_type
+				}
 			}
 			resolved_right_type := g.resolved_expr_type(node.expr.right, node.expr.right_type)
 			if resolved_right_type != 0 {
-				right_expr_type = resolved_right_type
+				resolved_sym := g.table.sym(resolved_right_type)
+				right_sym := g.table.sym(right_expr_type)
+				if resolved_sym.kind !in [.sum_type, .interface]
+					|| right_sym.kind in [.sum_type, .interface] {
+					right_expr_type = resolved_right_type
+				}
 			}
 		}
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, left_expr_type) {
@@ -193,11 +203,21 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind,
 			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 				resolved_left := g.resolved_expr_type(node.expr.left, node.expr.left_type)
 				if resolved_left != 0 {
-					left_type = resolved_left
+					resolved_sym := g.table.sym(resolved_left)
+					left_sym := g.table.sym(left_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| left_sym.kind in [.sum_type, .interface] {
+						left_type = resolved_left
+					}
 				}
 				resolved_right := g.resolved_expr_type(node.expr.right, node.expr.right_type)
 				if resolved_right != 0 {
-					right_type = resolved_right
+					resolved_sym := g.table.sym(resolved_right)
+					right_sym := g.table.sym(right_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| right_sym.kind in [.sum_type, .interface] {
+						right_type = resolved_right
+					}
 				}
 			}
 			g.write('\t${metaname}.lvalue = ')

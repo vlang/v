@@ -332,9 +332,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				cond_expr_type := if cond.expr is ast.CallExpr && cond.expr.is_static_method
-					&& cond.expr.left_type.has_flag(.generic) {
-					g.resolve_return_type(cond.expr)
+				cond_expr_type := if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& cond.expr is ast.CallExpr {
+					resolved := g.resolve_return_type(cond.expr)
+					if resolved != ast.void_type && !resolved.has_flag(.generic) {
+						if cond.expr_type.has_flag(.option) && !resolved.has_flag(.option) {
+							resolved.set_flag(.option)
+						} else if cond.expr_type.has_flag(.result) && !resolved.has_flag(.result) {
+							resolved.set_flag(.result)
+						} else {
+							resolved
+						}
+					} else {
+						cond.expr_type
+					}
 				} else {
 					cond.expr_type
 				}
@@ -380,39 +391,62 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			mut var_name := guard_vars[i]
 			mut short_opt := false
 			g.left_is_opt = true
+			// Resolve the expression type in generic context
+			mut guard_expr_type := branch.cond.expr_type
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				if branch.cond.expr is ast.CallExpr {
+					resolved := g.resolve_return_type(branch.cond.expr)
+					if resolved != ast.void_type && !resolved.has_flag(.generic) {
+						guard_expr_type = if branch.cond.expr_type.has_flag(.option)
+							&& !resolved.has_flag(.option) {
+							resolved.set_flag(.option)
+						} else if branch.cond.expr_type.has_flag(.result)
+							&& !resolved.has_flag(.result) {
+							resolved.set_flag(.result)
+						} else {
+							resolved
+						}
+					}
+				} else {
+					resolved := g.unwrap_generic(g.recheck_concrete_type(guard_expr_type))
+					if resolved != ast.void_type {
+						guard_expr_type = resolved
+					}
+				}
+			}
 			if var_name == '' {
 				short_opt = true // we don't need a further tmp, so use the one we'll get later
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				if branch.cond.expr_type.has_flag(.option) {
+				if guard_expr_type.has_flag(.option) {
 					g.writeln('if (${var_name}.state == 0) {')
-				} else if branch.cond.expr_type.has_flag(.result) {
+				} else if guard_expr_type.has_flag(.result) {
 					g.writeln('if (!${var_name}.is_error) {')
 				}
 			} else {
 				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
-				if branch.cond.expr_type.has_flag(.option) {
-					dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+				if guard_expr_type.has_flag(.option) {
+					dot_or_ptr := if !guard_expr_type.has_flag(.option_mut_param_t) {
 						'.'
 					} else {
 						'-> '
 					}
 					g.writeln(', ${var_name}${dot_or_ptr}state == 0) {')
-				} else if branch.cond.expr_type.has_flag(.result) {
+				} else if guard_expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')
 				}
 			}
 			if short_opt || branch.cond.vars.len > 1 || branch.cond.vars[0].name != '_' {
-				base_type := g.base_type(branch.cond.expr_type)
+				base_type := g.base_type(guard_expr_type)
 				if short_opt {
 					cond_var_name := if branch.cond.vars[0].name == '_' {
 						'_dummy_${g.tmp_count + 1}'
 					} else {
 						branch.cond.vars[0].name
 					}
-					if g.table.sym(branch.cond.expr_type).kind == .array_fixed {
+					if g.table.sym(guard_expr_type).kind == .array_fixed {
 						g.writeln('\t${base_type} ${cond_var_name} = {0};')
 						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
 						g.expr(branch.cond.expr)
@@ -438,15 +472,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							g.writeln('\t${base_type} ${left_var_name} = {0};')
 							g.writeln('memcpy(${left_var_name}, (${base_type}*)${var_name}.data, sizeof(${base_type}));')
 						} else {
-							dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+							dot_or_ptr := if !guard_expr_type.has_flag(.option_mut_param_t) {
 								'.'
 							} else {
 								'-> '
 							}
-							expr_sym := g.table.sym(branch.cond.expr_type)
+							expr_sym := g.table.sym(guard_expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())
-								if branch.cond.expr_type.nr_muls() == 0 {
+								g.write_fntype_decl(left_var_name, expr_sym.info, guard_expr_type.nr_muls())
+								if guard_expr_type.nr_muls() == 0 {
 									g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 								} else {
 									g.writeln(' = (${base_type}*)${var_name}${dot_or_ptr}data;')
@@ -457,7 +491,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							}
 						}
 					} else if branch.cond.vars.len > 1 {
-						sym := g.table.sym(branch.cond.expr_type)
+						sym := g.table.sym(guard_expr_type)
 						if sym.info is ast.MultiReturn {
 							if sym.info.types.len == branch.cond.vars.len {
 								for vi, var in branch.cond.vars {

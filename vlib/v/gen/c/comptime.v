@@ -797,6 +797,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.comptime.comptime_for_method = unsafe { &method }
 			g.comptime.comptime_for_method_var = node.val_var
+			g.comptime.comptime_for_method_ret_type = method.return_type
 			g.writeln('/* method ${i} : ${method.name} */ {')
 			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
 			mlocation := util.cescaped_path(util.path_styled_for_error_messages(method.file))

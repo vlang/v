@@ -797,8 +797,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						// allow alias-of-sumtype/interface init (e.g. SumAlias{})
 					}
 					else {
-						if !((sym.is_number() || sym.kind == .string || sym.kind == .bool)
-							&& node.init_fields.len == 0 && !node.has_update_expr) {
+						if !((sym.is_number() || sym.kind == .string
+							|| sym.kind == .bool || sym.kind == .enum) && node.init_fields.len == 0
+							&& !node.has_update_expr) && !c.has_active_generic_recheck_context() {
 							c.error('alias type name: ${sym.name} is not struct type',
 								node.pos)
 						}
@@ -1309,7 +1310,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		*/
 		// Check for `@[required]` struct attr
 		if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
-			&& node.init_fields.all(it.name != field.name) {
+			&& node.init_fields.all(it.name != field.name)
+			&& !c.has_active_generic_recheck_context() {
 			c.error('field `${type_sym.name}.${field.name}` must be initialized', node.pos)
 		}
 		if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()

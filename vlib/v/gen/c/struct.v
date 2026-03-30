@@ -639,6 +639,14 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var, true)
 			return true
+		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
+			old_inside_memset := g.inside_memset
+			g.inside_memset = true
+			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ,
+				field.default_expr !is ast.CallExpr && field.default_expr !is ast.CastExpr)
+			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
+			g.inside_memset = old_inside_memset
+			return true
 		} else if field.default_expr is ast.CastExpr {
 			resolved_field_type := g.unwrap_generic(field.typ)
 			resolved_default_type := g.unwrap_generic(field.default_expr.typ)
@@ -647,13 +655,6 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					resolved_field_type)
 				return true
 			}
-		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
-			old_inside_memset := g.inside_memset
-			g.inside_memset = true
-			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ, field.default_expr !is ast.CallExpr)
-			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
-			g.inside_memset = old_inside_memset
-			return true
 		} else if field.typ.has_flag(.shared_f) {
 			g.init_shared_field(field)
 			return true

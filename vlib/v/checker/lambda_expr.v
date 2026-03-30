@@ -7,14 +7,20 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		if c.table.cur_concrete_types.len == 0 || node.typ == exp_typ {
 			return node.typ
 		}
-		node.is_checked = false
-	}
-	// When re-checking a lambda with concrete types, preserve the original generic_names
-	// so that the cgen can properly suffix the function name per instantiation.
-	prev_generic_names := if node.func != unsafe { nil } {
-		node.func.decl.generic_names.clone()
-	} else {
-		[]string{}
+		// Re-checking with different concrete types: don't recreate the AnonFn
+		// (which would mutate the shared AST and corrupt params for other
+		// instantiations). Just update the scope variable types and return.
+		// The cgen handles per-instantiation code generation via g.cur_concrete_types.
+		exp_sym := c.table.sym(exp_typ)
+		if exp_sym.info is ast.FnType {
+			for idx, mut x in node.params {
+				if idx < exp_sym.info.func.params.len {
+					eparam_type := exp_sym.info.func.params[idx].typ
+					c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
+				}
+			}
+		}
+		return node.typ
 	}
 	if exp_typ in [0, ast.void_type] {
 		c.fatal('lambda expressions are allowed only in places expecting function callbacks',
@@ -64,11 +70,6 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 					generic_names << x
 				}
 			}
-		}
-		// When re-checking with concrete types, the params/return are no longer generic,
-		// so generic_names would be empty. Preserve from the original check.
-		if generic_names.len == 0 && prev_generic_names.len > 0 {
-			generic_names = prev_generic_names.clone()
 		}
 
 		mut stmts := []ast.Stmt{}

@@ -444,13 +444,27 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if var_type.has_flag(.shared_f) && decl_default.nr_muls() > 0 {
 				decl_default = decl_default.set_nr_muls(decl_default.nr_muls() - 1)
 			}
+			// Check if this variable is auto-heap promoted early so we can
+			// skip resolved_expr_type updates that would add extra pointer
+			// levels (the HEAP macro handles the pointer promotion).
+			mut left_is_auto_heap := false
+			if left is ast.Ident && left.obj is ast.Var {
+				left_is_auto_heap = left.obj.is_auto_heap && !left.obj.is_stack_obj
+			}
 			resolved_decl_type := g.resolved_expr_type(val, decl_default)
-			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type {
+			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type && !left_is_auto_heap {
 				mut resolved_unwrapped := g.unwrap_generic(g.recheck_concrete_type(resolved_decl_type))
 				// Don't propagate pointer flag from auto-deref mut parameters.
 				// `mut e := expr` where expr is a mut param should create a value copy.
+				// Also handles the case where var_type is already a pointer (e.g.
+				// `c := head` where head is `mut &Client` → var_type is &Client
+				// but resolved_expr_type returns &&Client). Compare nr_muls to
+				// deref only when there's an extra level from auto-deref.
 				if resolved_unwrapped.is_ptr() && !var_type.is_ptr() {
 					resolved_unwrapped = resolved_unwrapped.deref()
+				} else if val is ast.Ident && val.is_auto_deref_var()
+					&& resolved_unwrapped.nr_muls() > var_type.nr_muls() {
+					resolved_unwrapped = resolved_unwrapped.set_nr_muls(var_type.nr_muls())
 				}
 				// Don't propagate shared/atomic flags from the resolved RHS expression
 				// to a non-shared declaration. E.g., `sliced := shared_arr[..x]` inside
@@ -467,6 +481,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// Skip when resolved type is a parent sumtype of a smartcast variant.
 				// This happens in match arms where the RHS uses a smartcast variable
 				// (e.g. `mut info := ts.info` inside `match ts.info { Struct { ... } }`).
+				// Resolve aggregate types (from multi-branch match arms)
+				// to the concrete variant type for the current iteration.
+				resolved_sym_ := g.table.sym(resolved_unwrapped)
+				if resolved_sym_.info is ast.Aggregate {
+					resolved_unwrapped = resolved_sym_.info.types[g.aggregate_type_idx]
+				}
 				resolved_sym := g.table.sym(resolved_unwrapped)
 				var_sym := g.table.sym(var_type)
 				is_sumtype_reversal := resolved_sym.kind == .sum_type
@@ -478,7 +498,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& var_sym.kind == .map && var_type != ast.map_type)
 					|| (resolved_unwrapped == ast.array_type && var_sym.kind == .array
 					&& var_type != ast.array_type)
-				if !is_sumtype_reversal && !is_base_container_downgrade {
+				// Don't introduce option/result flag when the checker already unwrapped it.
+				// E.g., `x := *var?` where var is `?&int`: checker says x is `int`,
+				// but resolved_expr_type may return `?int` because it sees the option var.
+				is_option_introduction := !var_type.has_option_or_result()
+					&& resolved_unwrapped.has_option_or_result()
+				if !is_sumtype_reversal && !is_base_container_downgrade && !is_option_introduction {
 					var_type = resolved_unwrapped
 					val_type = var_type
 					node.left_types[i] = var_type
@@ -643,6 +668,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				}
 				is_auto_heap = g.resolved_ident_is_auto_heap(left)
+				// In generic instantiations, is_auto_heap may be set by the
+				// checker's post_process when concrete types resolve to @[heap]
+				// structs. Reset when the variable is an option type.
+				if is_auto_heap && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					resolved_obj_typ := g.unwrap_generic(left.obj.typ)
+					if resolved_obj_typ != 0 && resolved_obj_typ.has_flag(.option)
+						&& !resolved_obj_typ.is_ptr() {
+						is_auto_heap = false
+					}
+				}
 				if left.obj.typ != 0 && val is ast.PrefixExpr {
 					is_fn_var = g.table.final_sym(left.obj.typ).kind == .function
 				}
@@ -796,6 +831,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					resolved_val_type = resolved_val_type.clear_option_and_result()
 				}
 				resolved_val_type = g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				// Resolve aggregate types (from multi-branch match arms)
+				// to the concrete variant type for the current iteration.
+				resolved_val_sym2 := g.table.sym(resolved_val_type)
+				if resolved_val_sym2.info is ast.Aggregate {
+					resolved_val_type = resolved_val_sym2.info.types[g.aggregate_type_idx]
+				}
 				// For SelectorExpr with scope smartcast (e.g. `if w.check != none`),
 				// the resolved field type has the option flag, but the smartcast
 				// unwraps it. Clear the option flag in that case.
@@ -827,6 +868,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 						resolved_val_type = new_arr_type
 					}
+				}
+				// When assigning from an auto-deref variable (e.g. mut ref param),
+				// the resolved type from scope includes the extra pointer level.
+				// Deref it to match the V value semantics.
+				if val is ast.Ident && val.is_auto_deref_var() && resolved_val_type.is_ptr() {
+					resolved_val_type = resolved_val_type.deref()
 				}
 				// Preserve shared/atomic flags from the original declaration.
 				if var_type.has_flag(.shared_f) {
@@ -998,6 +1045,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			g.right_is_opt = false
 		}
 		if !is_decl && node.op == .assign && var_type.has_flag(.option_mut_param_t) {
+			// For `mut ?T` parameters / for-loop variables, the C type is
+			// `_option_T*` (pointer to option). Write through the pointer
+			// by copying the entire option struct (state + data).
 			mut target_option_type := g.resolve_current_fn_generic_param_type(left.str())
 			if target_option_type == 0 || !target_option_type.has_flag(.option) {
 				target_option_type = var_type.clear_flag(.option_mut_param_t)
@@ -1011,8 +1061,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			target_option_type = g.unwrap_generic(g.recheck_concrete_type(target_option_type))
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(val, val_type, target_option_type, tmp_var, false)
-			g.expr(left)
-			g.writeln(' = ${tmp_var};')
+			left_name := c_name(left.str())
+			is_fn_param := left is ast.Ident && left.is_auto_deref_var()
+			if is_fn_param {
+				// Function params use _option_T_ptr* type, copy data through pointer
+				val_base_type := g.base_type(val_type)
+				g.writeln('${left_name}->state = ${tmp_var}.state;')
+				g.writeln('memcpy(&${left_name}->data, ${tmp_var}.data, sizeof(${val_base_type}));')
+			} else {
+				// For-loop variables use _option_T* type, copy whole struct
+				g.writeln('*${left_name} = ${tmp_var};')
+			}
 			continue
 		}
 

@@ -154,6 +154,22 @@ fn (mut g Gen) is_expr_smartcast_to_sumtype(expr ast.Expr, expected_sumtype ast.
 	return false
 }
 
+// expr_has_or_block checks if an expression has an `or {}` block that
+// unwraps an option/result type.
+fn (g Gen) expr_has_or_block(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr { expr.or_block.kind != .absent }
+		ast.Ident { expr.or_expr.kind != .absent }
+		ast.IndexExpr { expr.or_expr.kind != .absent }
+		ast.SelectorExpr { expr.or_block.kind != .absent }
+		ast.PrefixExpr { expr.or_block.kind != .absent }
+		ast.InfixExpr { expr.or_block.kind != .absent }
+		ast.ComptimeCall { expr.or_block.kind != .absent }
+		ast.ComptimeSelector { expr.or_block.kind != .absent }
+		else { false }
+	}
+}
+
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	mut scope := if expr.scope != unsafe { nil } {
 		expr.scope.innermost(expr.pos.pos)
@@ -187,6 +203,11 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 			resolved_expr_type := g.resolved_expr_type(v.expr, v.typ)
 			if resolved_expr_type != 0 {
 				refreshed_expr_type = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
+				// If the variable was initialized with an `or {}` block that
+				// unwraps the option/result, clear the flag from the resolved type
+				if refreshed_expr_type.has_option_or_result() && g.expr_has_or_block(v.expr) {
+					refreshed_expr_type = refreshed_expr_type.clear_option_and_result()
+				}
 				$if trace_ci_fixes ? {
 					if g.file.path.contains('comptime_for_in_options_struct_test.v')
 						&& expr.name in ['v', 'w'] {
@@ -855,6 +876,14 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					g.unwrap_generic(g.recheck_concrete_type(expr.return_type))
 				} else {
 					g.unwrap_generic(g.recheck_concrete_type(expr.return_type)).clear_option_and_result()
+				}
+			}
+		}
+		ast.ComptimeCall {
+			if expr.kind == .method && g.comptime.comptime_for_method != unsafe { nil } {
+				sym := g.table.sym(g.unwrap_generic(expr.left_type))
+				if m := sym.find_method(g.comptime.comptime_for_method.name) {
+					return m.return_type
 				}
 			}
 		}

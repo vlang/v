@@ -116,6 +116,7 @@ mut:
 	done_options               shared []string   // to avoid duplicates
 	done_results               shared []string   // to avoid duplicates
 	array_typedefs             []string          // to avoid duplicate array typedefs
+	done_typedef_phase         bool              // set after write_typedef_types() completes
 	late_chan_types            shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types         map[string]bool   // concrete channel typedefs/helpers already emitted
 	chan_pop_options           map[string]string // types for `x := <-ch or {...}`
@@ -910,6 +911,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		referenced_fns:        global_g.referenced_fns
 		is_cc_msvc:            global_g.is_cc_msvc
 		use_segfault_handler:  global_g.use_segfault_handler
+		done_typedef_phase:    global_g.done_typedef_phase
+		array_typedefs:        global_g.array_typedefs.clone()
 		has_reflection:        'v.reflection' in global_g.table.modules
 		has_debugger:          'v.debug' in global_g.table.modules
 		reflection_strings:    global_g.reflection_strings
@@ -1081,6 +1084,7 @@ pub fn (mut g Gen) init() {
 	g.write_builtin_types()
 	g.options_pos_forward = g.type_definitions.len
 	g.write_typedef_types()
+	g.done_typedef_phase = true
 	g.write_typeof_functions()
 	g.write_sorted_types()
 	g.write_array_fixed_return_types()
@@ -1333,6 +1337,10 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 		}
 	}
 	if styp := g.styp_cache[t] {
+		// Ensure late array typedefs are emitted even for cached types
+		if g.done_typedef_phase {
+			g.ensure_array_typedef(styp.trim_right('*'))
+		}
 		return styp
 	}
 	if g.pref.nofloat {
@@ -1347,6 +1355,12 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
+	}
+	// During generic codegen, array types resolved from generic parameters
+	// (e.g. []?T → []?i8) may not have been registered in the type table
+	// early enough for write_typedef_types(). Emit a late typedef if needed.
+	if g.done_typedef_phase {
+		g.ensure_array_typedef(styp)
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
@@ -2073,16 +2087,12 @@ fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Typ
 // This is needed because option/result wrapper structs reference the base
 // type in sizeof(), but the array typedef might have been skipped
 // (e.g. for builtin nested array types like Array_Array_string).
-fn (mut g Gen) ensure_array_typedef(base string) {
+fn (mut g Gen) ensure_array_typedef(base_ string) {
+	base := base_.trim_right('*')
 	if base.starts_with('Array_') && !base.starts_with('Array_fixed_') {
 		if base !in g.array_typedefs {
-			for sym in g.table.type_symbols {
-				if sym.kind == .array && sym.cname == base {
-					g.type_definitions.writeln('typedef array ${base};')
-					g.array_typedefs << base
-					return
-				}
-			}
+			g.type_definitions.writeln('typedef array ${base};')
+			g.array_typedefs << base
 		}
 	}
 }
@@ -2101,6 +2111,7 @@ pub fn (mut g Gen) write_typedef_types() {
 				if !g.pref.no_preludes && elem_sym.kind != .placeholder
 					&& !info.elem_type.has_flag(.generic) {
 					g.type_definitions.writeln('typedef array ${sym.cname};')
+					g.array_typedefs << sym.cname
 				}
 			}
 			.array_fixed {
@@ -3689,8 +3700,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			if g.pref.experimental {
-				// Do not allocate for `Interface(unsafe{nil})` casts
+			// Do not allocate for `Interface(unsafe{nil})` casts
+			{
 				is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
 				if is_nil_cast {
 					g.write('((void*)0)')
@@ -4547,7 +4558,17 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		ast.LambdaExpr {
 			if node.call_ctx != unsafe { nil } {
 				save_cur_concrete_types := g.cur_concrete_types
-				g.cur_concrete_types = node.call_ctx.concrete_types
+				call_concrete := node.call_ctx.concrete_types
+				// Only override cur_concrete_types if the call context has
+				// fully resolved (non-generic) types. When inside a generic
+				// function instantiation, g.cur_concrete_types already has
+				// the correct concrete types from gen_fn_decl. The call_ctx
+				// may still have unresolved generic placeholders from the
+				// checker's first pass.
+				if call_concrete.len > 0 && !call_concrete.any(it.has_flag(.generic)
+					|| g.type_has_unresolved_generic_parts(it)) {
+					g.cur_concrete_types = call_concrete
+				}
 				g.gen_anon_fn(mut node.func)
 				g.cur_concrete_types = save_cur_concrete_types
 			} else {
@@ -5525,6 +5546,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 }
 
 fn (mut g Gen) resolved_typeof_name_type(node ast.TypeOf, default_type ast.Type) ast.Type {
+	// For comptime expressions (arg.typ, field.typ, etc.), comptime type property
+	// selectors (T.key_type, T.value_type, T.element_type), and struct field selectors
+	// (which may have smartcasts from option unwrapping), delegate to typeof_type
+	// which has proper comptime-aware and smartcast-aware handling.
+	// resolved_expr_type would incorrectly return the V struct field type (e.g. int)
+	// instead of the comptime-resolved type, or miss smartcasts on struct fields.
+	if g.type_resolver.info.is_comptime(node.expr)
+		|| (node.expr is ast.SelectorExpr && node.expr.is_field_typ)
+		|| (node.expr is ast.SelectorExpr && node.expr.name_type != 0
+		&& node.expr.field_name in ['key_type', 'value_type', 'element_type'])
+		|| (node.expr is ast.SelectorExpr && node.expr.expr_type != 0) {
+		resolved_type := g.type_resolver.typeof_type(node.expr, default_type)
+		if resolved_type != ast.void_type_idx && resolved_type != 0 {
+			return g.unwrap_generic(resolved_type)
+		}
+	}
 	resolved_expr_type := g.resolved_expr_type(node.expr, default_type)
 	if resolved_expr_type != 0 && resolved_expr_type != ast.void_type {
 		return g.unwrap_generic(g.recheck_concrete_type(resolved_expr_type))
@@ -6327,6 +6364,18 @@ fn (mut g Gen) ident(node ast.Ident) {
 		return
 	}
 	mut is_auto_heap := node.is_auto_heap()
+	// In generic function instantiations, is_auto_heap may have been set
+	// by the checker's post_process when concrete types resolve to @[heap]
+	// structs. Reset it when the variable is an option type, since the
+	// option wrapper manages its own indirection and auto-heap promotion
+	// would cause incorrect pointer arithmetic (using . instead of ->).
+	if is_auto_heap && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+		&& node.obj is ast.Var {
+		resolved_obj_typ := g.unwrap_generic(node.obj.typ)
+		if resolved_obj_typ != 0 && resolved_obj_typ.has_flag(.option) && !resolved_obj_typ.is_ptr() {
+			is_auto_heap = false
+		}
+	}
 	mut is_option := false
 	mut node_info_is_option := false
 	mut resolved_var := ast.Var{}
@@ -6583,12 +6632,28 @@ fn (mut g Gen) ident(node ast.Ident) {
 					is_auto_heap = false
 				}
 			}
+			// Reset is_auto_heap for option types in generic contexts — the
+			// option wrapper is a value type and the assign handler doesn't
+			// HEAP-wrap it, so the ident handler must not dereference it.
+			if is_auto_heap && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_obj_typ := g.unwrap_generic(node.obj.typ)
+				if resolved_obj_typ != 0 && resolved_obj_typ.has_flag(.option)
+					&& !resolved_obj_typ.is_ptr() {
+					is_auto_heap = false
+				}
+			}
+			is_option = is_option || (has_resolved_var && resolved_var.orig_type.has_flag(.option))
+			// When an auto-heap option variable is being smartcast-unwrapped
+			// (e.g. `if svc != none { use(svc) }`), the option unwrap code
+			// at `->data` already handles the pointer indirection. Skip the
+			// outer (*(…)) deref to avoid double-dereferencing.
+			has_option_unwrap_smartcast := is_auto_heap && is_option && has_resolved_var
+				&& resolved_var.smartcasts.len > 0 && resolved_var.is_unwrapped
 			emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
-				&& !g.inside_selector_lhs && !g.is_assign_lhs
+				&& !g.inside_selector_lhs && !g.is_assign_lhs && !has_option_unwrap_smartcast
 			if emit_auto_heap_deref {
 				g.write('(*(')
 			}
-			is_option = is_option || (has_resolved_var && resolved_var.orig_type.has_flag(.option))
 			// Skip smartcasts for comptime_for variables to avoid using stale types
 			skip_smartcasts := g.is_comptime_for_var(node)
 			if has_resolved_var && resolved_var.smartcasts.len > 0 && !skip_smartcasts {
@@ -6609,6 +6674,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 				mut needs_interface_smartcast_deref := g.table.is_interface_smartcast(resolved_var)
 					&& current_smartcast_type != 0
 					&& smartcast_types.last().nr_muls() == current_smartcast_type.nr_muls() + 1
+				// When inside_interface_deref is set (e.g. string interpolation),
+				// interface smartcast to non-pointer builtins also needs deref since
+				// interface stores values as pointers.
+				if !needs_interface_smartcast_deref && g.inside_interface_deref
+					&& g.table.is_interface_smartcast(resolved_var) && interface_source_is_interface
+					&& !smartcast_types.last().is_ptr() {
+					needs_interface_smartcast_deref = true
+				}
 				interface_var_needs_deref := g.inside_interface_deref
 					&& g.table.is_interface_var(resolved_var)
 					&& !g.table.is_interface_smartcast(resolved_var)
@@ -6618,7 +6691,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					ast.Kind.placeholder
 				}
 				if interface_source_is_interface && smartcast_types.last().is_ptr() {
-					if g.inside_selector_lhs {
+					if g.inside_selector_lhs && !g.inside_interface_deref {
 						needs_interface_smartcast_deref = false
 					} else if raw_smartcast_target_kind !in [.struct, .aggregate, .array,
 						.array_fixed, .map, .interface, .sum_type, .function] {
@@ -6738,9 +6811,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						if i == 0 && resolved_var.ct_type_var != .smartcast
 							&& resolved_var.is_unwrapped {
-							if (!resolved_var.ct_type_unwrapped && !resolved_var.orig_type.is_ptr()
-								&& !resolved_var.orig_type.has_flag(.generic) && obj_sym.is_heap())
-								|| resolved_var.orig_type.has_flag(.option_mut_param_t) {
+							// Use ->data when the variable is a heap pointer (is_auto_heap)
+							// or when it has option_mut_param_t flag (always a pointer).
+							// emit_auto_heap_deref wraps the entire expression including
+							// .data access, so the variable is still a pointer at this point.
+							if is_auto_heap || resolved_var.orig_type.has_flag(.option_mut_param_t) {
 								g.write('->data')
 							} else {
 								g.write('.data')
