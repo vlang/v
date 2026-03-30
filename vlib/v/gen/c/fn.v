@@ -2874,8 +2874,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						}
 					}
 				} else {
-					// passing variadic arg to another call which expects same array type
-					if variadic_count == 1
+					// passing the current variadic arg to another call which expects the same array type
+					if variadic_count == 1 && g.is_forwarded_variadic_arg(args[arg_nr])
 						&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
 						|| (varg_type.has_flag(.variadic)
 						&& args[arg_nr].typ == varg_type.clear_flag(.variadic)
@@ -2913,6 +2913,18 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 	}
+}
+
+fn (g &Gen) is_forwarded_variadic_arg(arg ast.CallArg) bool {
+	if arg.typ.has_flag(.variadic) {
+		return true
+	}
+	if arg.expr is ast.Ident && g.cur_fn != unsafe { nil } && g.cur_fn.is_variadic
+		&& g.cur_fn.params.len > 0 && arg.expr.obj is ast.Var {
+		var_obj := arg.expr.obj as ast.Var
+		return var_obj.is_arg && arg.expr.name == g.cur_fn.params.last().name
+	}
+	return false
 }
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions
