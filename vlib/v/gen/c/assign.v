@@ -448,8 +448,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			// skip resolved_expr_type updates that would add extra pointer
 			// levels (the HEAP macro handles the pointer promotion).
 			mut left_is_auto_heap := false
-			if left is ast.Ident && left.obj is ast.Var {
-				left_is_auto_heap = left.obj.is_auto_heap && !left.obj.is_stack_obj
+			if left is ast.Ident {
+				if left.obj is ast.Var {
+					left_is_auto_heap = left.obj.is_auto_heap && !left.obj.is_stack_obj
+				}
 			}
 			resolved_decl_type := g.resolved_expr_type(val, decl_default)
 			if resolved_decl_type != 0 && resolved_decl_type != ast.void_type && !left_is_auto_heap {
