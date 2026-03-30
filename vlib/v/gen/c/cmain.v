@@ -312,6 +312,9 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
+	}
 	g.writeln('\tmain__vtest_init();')
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')

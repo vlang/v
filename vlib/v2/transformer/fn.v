@@ -956,15 +956,6 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 }
 
 fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
-	if (t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic')
-		&& expr.lhs.name() != 'snprintf' && expr.lhs.name() != 'memdup'
-		&& expr.lhs.name() != 'malloc' {
-		is_ga := expr.lhs is ast.GenericArgs
-		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
-		is_sel := expr.lhs is ast.SelectorExpr
-		is_ident := expr.lhs is ast.Ident
-		eprintln('[DBG transform_call_expr ENTRY] fn=${t.cur_fn_name_str} lhs_name=${expr.lhs.name()} is_ga=${is_ga} is_gaoi=${is_gaoi} is_sel=${is_sel} is_ident=${is_ident} args.len=${expr.args.len}')
-	}
 	// Resolve $d('key', default) comptime define calls to their default value.
 	// $d reads from compile-time environment; we just use the default.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
@@ -1317,9 +1308,8 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 			}
 		}
-		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-			|| (t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none))
+		is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+			&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// Guard against misresolution: if the receiver is known to be a string
@@ -1459,9 +1449,8 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		}
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
-			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-				|| (t.get_module_scope(sel.lhs.name) != none
-				&& t.lookup_var_type(sel.lhs.name) == none))
+			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+				&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 			if !is_module_call {
 				// Compute generic specialization suffix from the type arg
 				suffix := '_T_' + t.generic_specialization_token(gai.expr)
@@ -1528,12 +1517,6 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Default: transform arguments and lhs recursively
 	// This is important for smart cast propagation through method chains
 	// e.g., stmt.name.replace() when stmt is smartcast
-	if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
-		lhs_name := expr.lhs.name()
-		is_ga := expr.lhs is ast.GenericArgs
-		is_gaoi := expr.lhs is ast.GenericArgOrIndexExpr
-		eprintln('[DBG transform_call default] fn=${t.cur_fn_name_str} lhs_name=${lhs_name} is_ga=${is_ga} is_gaoi=${is_gaoi}')
-	}
 	call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 	// Look up function parameter types for sumtype re-wrapping
 	fn_info := t.lookup_call_fn_info(expr.lhs)
@@ -2660,9 +2643,8 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	// Method call resolution: rewrite receiver.method(arg) -> Type__method(receiver, arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
-		is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-			|| (t.get_module_scope(sel.lhs.name) != none
-			&& t.lookup_var_type(sel.lhs.name) == none))
+		is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+			&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// prepend(arr) → prepend_many(arr.data, arr.len)
@@ -2755,9 +2737,8 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		gai := expr.lhs as ast.GenericArgOrIndexExpr
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
-			is_module_call := sel.lhs is ast.Ident && (t.is_module_ident(sel.lhs.name)
-				|| (t.get_module_scope(sel.lhs.name) != none
-				&& t.lookup_var_type(sel.lhs.name) == none))
+			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
+				&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
 			if !is_module_call {
 				suffix := '_T_' + t.generic_specialization_token(gai.expr)
 				// When the receiver matches the current method's receiver parameter

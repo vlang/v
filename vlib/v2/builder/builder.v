@@ -69,9 +69,11 @@ fn sanitize_staged_c_source(c_source string) string {
 	// Pointer dereference for pass-by-pointer array params:
 	source = source.replace('(_idx_s < ((a)).len)', '(_idx_s < (*(a)).len)')
 	source = source.replace('&((string*)((a)).data)', '&((string*)(*(a)).data)')
-	// Result struct declarations that the backend may omit:
-	source = ensure_result_struct_decl(source, '_result_int', 'int')
-	source = ensure_result_struct_decl(source, '_result_rune', 'rune')
+	// Result struct declarations that the backend may omit
+	// (e.g. due to ARM64 chained-access map bugs in self-hosted binaries):
+	source = ensure_result_type(source, '_result_string', 'string')
+	source = ensure_result_type(source, '_result_int', 'int')
+	source = ensure_result_type(source, '_result_rune', 'rune')
 	// Builtin function body replacements (V source doesn't lower correctly yet):
 	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)', sanitized_u64_to_hex_fn())
 	source = replace_generated_c_fn(source, 'string u64_to_hex_no_leading_zeros(u64 nn, u8 len)',
@@ -114,14 +116,26 @@ fn sanitize_staged_c_source(c_source string) string {
 	return source
 }
 
-fn ensure_result_struct_decl(source string, struct_name string, elem_c_type string) string {
-	if source.contains('struct ${struct_name} {') {
+// ensure_result_type ensures that a _result_* type has both typedef and struct definition
+// in the generated C source. This is a safety net for when the cleanc backend's alias
+// registration fails (e.g. due to ARM64 chained-access map bugs in self-hosted binaries).
+fn ensure_result_type(source string, type_name string, val_type string) string {
+	if source.contains('struct ${type_name} {') {
 		return source
 	}
-	anchor := 'struct _result_string { bool is_error; IError err; u8 data[sizeof(string) > 1 ? sizeof(string) : 1]; };'
-	replacement := anchor +
-		'\nstruct ${struct_name} { bool is_error; IError err; u8 data[sizeof(${elem_c_type}) > 1 ? sizeof(${elem_c_type}) : 1]; };'
-	return source.replace(anchor, replacement)
+	// Find insertion point: after the _result base struct, or after typedef section
+	decl := 'typedef struct ${type_name} ${type_name};\n' +
+		'struct ${type_name} { bool is_error; IError err; u8 data[sizeof(${val_type}) > 1 ? sizeof(${val_type}) : 1]; };\n'
+	// Try to insert after the base _result struct definition
+	anchor := 'struct _result { bool is_error; IError err; };\n'
+	if source.contains(anchor) {
+		return source.replace(anchor, anchor + decl)
+	}
+	// Fallback: insert before the first function forward declaration
+	fwd_marker := source.index('\nvoid __v_live_init') or {
+		source.index('\nint main(') or { return source }
+	}
+	return source[..fwd_marker] + '\n' + decl + source[fwd_marker..]
 }
 
 fn ensure_string_eq_impl(source string) string {
@@ -141,7 +155,12 @@ fn ensure_string_eq_impl(source string) string {
 
 fn replace_generated_c_fn(source string, signature string, replacement string) string {
 	needle := signature + ' {'
-	start := source.index(needle) or { return source }
+	// Search for the needle preceded by a newline to ensure we match an actual
+	// function definition at the start of a line, not an occurrence inside a
+	// string literal (e.g. when the compiler compiles itself).
+	full_needle := '\n' + needle
+	nl_pos := source.index(full_needle) or { return source }
+	start := nl_pos + 1 // skip the newline itself
 	body_start := start + needle.len - 1
 	if body_start < 0 || body_start >= source.len || source[body_start] != `{` {
 		return source

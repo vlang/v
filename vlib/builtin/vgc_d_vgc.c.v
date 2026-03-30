@@ -46,7 +46,7 @@ fn C.vgc_addr_to_arena(addr usize) int
 // ============================================================
 
 const vgc_page_shift = 13
-const vgc_page_size = usize(1) << vgc_page_shift // 8192 bytes
+const vgc_page_size = 8192
 const vgc_max_small_size = u32(32768) // objects > this are "large"
 const vgc_num_classes = 68
 const vgc_num_span_classes = 136 // 68 * 2 (scan + noscan variants)
@@ -853,6 +853,7 @@ fn vgc_calloc(n usize) voidptr {
 
 // Typed memdup: allocate with pointer map and copy source data.
 // Used by HEAP_vgc() macro for struct allocations with known layout.
+@[markused]
 fn vgc_memdup_typed(src voidptr, n isize, ptrmap u64, ptr_words u8) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }

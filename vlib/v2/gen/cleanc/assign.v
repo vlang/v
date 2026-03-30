@@ -389,6 +389,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				scope_type := g.types_type_to_c(raw_type)
 				if scope_type != '' && scope_type != 'int' {
 					typ = scope_type
+					// Ensure result/option wrapper types are registered so their
+					// typedef and struct definitions get emitted in the C output.
+					if scope_type.starts_with('_result_') || scope_type.starts_with('_option_') {
+						g.register_alias_type(scope_type)
+					}
 				} else if scope_type == 'int' && typ == 'bool' {
 					// Fix: literal like `1` mistyped as bool in env
 					typ = 'int'
