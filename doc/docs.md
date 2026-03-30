@@ -5639,13 +5639,40 @@ instead:
 - Fedora/RHEL: `sudo dnf -y install sqlite-devel`
 - Arch: `sudo pacman -S sqlite`
 
+### Interactive SQLite CLI
+
+V includes a built-in SQLite CLI (`v sqlite`) as a V-native
+replacement for `sqlite3`:
+
+```sh
+v sqlite mydb.db
+```
+
+It provides a full readline REPL with history and tab completion,
+9 output modes, `.dump`, `.import`/`.export`, `.backup`, session
+control, and schema tools. Run `.help` inside the REPL for the
+full command list.
+
+### Convenience Methods
+
+The `db.sqlite` module includes helper methods for common queries:
+
+```v ignore
+db.tables()!         // list all user table names
+db.columns('users')! // column names for a table
+db.schema('users')!  // CREATE statement(s)
+db.db_size()!        // file size in bytes
+```
+
 ### Using the self contained SQLite module
-V also maintains a separate `sqlite` module, that wraps an SQLite amalgamation, but otherwise
-has the same API as the `db.sqlite` module. Its benefit, is that with it, you do not need to
-install a separate system level sqlite package/library on your system (which can be hard on
-some systems like windows, or systems with musl for example).
-Its negative is that it can make your compilations a bit slower (since it compiles SQLite
-from C, in addition to your own code).
+
+V also maintains a separate `sqlite` module, that wraps an SQLite
+amalgamation, but otherwise has the same API as the `db.sqlite`
+module. Its benefit is that you do not need to install a separate
+system-level sqlite package (which can be hard on some systems
+like Windows, or systems with musl for example). Its downside is
+that it can make compilations a bit slower since it compiles
+SQLite from C in addition to your own code.
 
 To use it, do:
 ```sh
