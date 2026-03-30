@@ -8791,7 +8791,8 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 			g.set_current_pos_as_last_stmt_pos()
 			is_custom_error := g.is_error_type(expr_stmt.typ)
 			if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
-				|| expr_stmt.typ in [ast.none_type, ast.error_type] || is_custom_error) {
+				|| expr_stmt.typ in [ast.none_type, ast.error_type]
+				|| is_custom_error) {
 				// `return foo() or { error('failed') }` or `return foo() or { CustomError{} }`
 				if g.cur_fn != unsafe { nil } {
 					g.write_defer_stmts(scope, true, pos)
@@ -8800,11 +8801,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut err_expr := expr_stmt.expr
 					if is_custom_error {
 						err_expr = ast.CastExpr{
-							expr: expr_stmt.expr
-							typname: 'IError'
-							typ: ast.error_type
+							expr:      expr_stmt.expr
+							typname:   'IError'
+							typ:       ast.error_type
 							expr_type: expr_stmt.typ
-							pos: pos
+							pos:       pos
 						}
 					}
 					if g.cur_fn.return_type.has_flag(.result) {
