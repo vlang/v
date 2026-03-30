@@ -120,22 +120,21 @@ fn test_typeof_on_sumtypes_of_structs() {
 	assert d.type_name() == 'UnaryExpr'
 }
 
-fn raw_sumtype_typeof(v ExprType) string {
-	return typeof(v)
-}
-
 fn test_raw_typeof_on_sumtypes_is_printable() {
 	a := fexpr(1)
 	b := fexpr(2)
 	c := fexpr(3)
+	raw_a_type := typeof(a)
+	raw_b_type := typeof(b)
+	raw_c_type := typeof(c)
 	// Regresses issue #26704: raw typeof(sumtype) should compile when used
 	// directly as a printable expression, not only when returned from a helper.
 	println(typeof(a))
 	println(typeof(b))
 	println(typeof(c))
-	assert raw_sumtype_typeof(a) == 'UnaryExpr'
-	assert raw_sumtype_typeof(b) == 'BinExpr'
-	assert raw_sumtype_typeof(c) == 'BoolExpr'
+	assert raw_a_type == 'UnaryExpr'
+	assert raw_b_type == 'BinExpr'
+	assert raw_c_type == 'BoolExpr'
 }
 
 fn myfn(i int) int {
