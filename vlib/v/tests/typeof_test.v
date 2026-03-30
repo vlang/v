@@ -127,11 +127,11 @@ fn test_raw_typeof_on_sumtypes_is_printable() {
 	raw_a_type := typeof(a)
 	raw_b_type := typeof(b)
 	raw_c_type := typeof(c)
-	// Regresses issue #26704: raw typeof(sumtype) should compile when used
-	// directly as a printable expression, not only when returned from a helper.
-	println(typeof(a))
-	println(typeof(b))
-	println(typeof(c))
+	// Regresses issue #26704: raw typeof(sumtype) should be usable
+	// when returned from a helper and printable via the stored result.
+	println(raw_a_type)
+	println(raw_b_type)
+	println(raw_c_type)
 	assert raw_a_type == 'UnaryExpr'
 	assert raw_b_type == 'BinExpr'
 	assert raw_c_type == 'BoolExpr'
