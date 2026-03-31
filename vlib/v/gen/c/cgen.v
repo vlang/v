@@ -6179,10 +6179,11 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	} else {
 		&ast.HashStmtNode(&node)
 	}
+	is_objc_target := is_objc_hash_target(node.kind, node.main)
 
 	match node.kind {
 		'include', 'insert', 'define' {
-			if node.main.contains('.m') {
+			if is_objc_target {
 				// Objective C code import, include it after V types, so that e.g. `string` is
 				// available there
 				if the_node !in g.definition_nodes {
@@ -6195,7 +6196,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			}
 		}
 		'preinclude' {
-			if node.main.contains('.m') {
+			if is_objc_target {
 				// Objective C code import, include it after V types, so that e.g. `string` is
 				// available there
 				if the_node !in g.definition_nodes {
@@ -6214,6 +6215,18 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 		}
 		else {}
 	}
+}
+
+fn is_objc_hash_target(kind string, raw_target string) bool {
+	if kind !in ['include', 'preinclude'] {
+		return false
+	}
+	mut target := raw_target.trim_space()
+	if target.len >= 2 && ((target.starts_with('"') && target.ends_with('"'))
+		|| (target.starts_with('<') && target.ends_with('>'))) {
+		target = target[1..target.len - 1]
+	}
+	return os.file_name(target).ends_with('.m')
 }
 
 fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, section string) {
@@ -6272,12 +6285,13 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 			// #inlude,#define,#insert          => `includes` section
 			// #postinclude                     => `postincludes` section
 			// '*.m' in #include or #preinclude => `definitions` section
+			is_objc_target := is_objc_hash_target(node.kind, node.main)
 			need_gen_stmt := match section {
 				'preincludes' {
-					if node.kind == 'preinclude' && !node.main.contains('.m') { true } else { false }
+					if node.kind == 'preinclude' && !is_objc_target { true } else { false }
 				}
 				'includes' {
-					if node.kind in ['include', 'define', 'insert'] && !node.main.contains('.m') {
+					if node.kind in ['include', 'define', 'insert'] && !is_objc_target {
 						true
 					} else {
 						false
@@ -6286,7 +6300,7 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 				'definitions' {
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
-					if node.kind in ['include', 'preinclude'] && node.main.contains('.m') {
+					if node.kind in ['include', 'preinclude'] && is_objc_target {
 						true
 					} else {
 						false
