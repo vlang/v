@@ -44,6 +44,7 @@ const external_tools = [
 	'shader',
 	'share',
 	'should-compile-all',
+	'sqlite',
 	'symlink',
 	'scan',
 	'test',
