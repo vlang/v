@@ -323,7 +323,10 @@ fn (mut app App) exec_file(path string) {
 	mut count := 0
 	for stmt in split_statements(content) {
 		trimmed := stmt.trim_space()
-		if trimmed == '' || trimmed.starts_with('--') {
+		// Strip comment-only lines to decide if the chunk has real SQL,
+		// but pass the original (with comments) to SQLite so it can parse them.
+		sql_content := trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
+		if sql_content == '' {
 			continue
 		}
 		app.run(trimmed)
@@ -340,7 +343,8 @@ fn (mut app App) read_file_repl(path string) {
 	mut count := 0
 	for stmt in split_statements(content) {
 		trimmed := stmt.trim_space()
-		if trimmed == '' || trimmed.starts_with('--') {
+		sql_content := trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
+		if sql_content == '' {
 			continue
 		}
 		app.run(trimmed)
@@ -985,12 +989,19 @@ fn (mut app App) import_csv(file string, table string) {
 	}
 	col_list := headers.join(',')
 	app.db.exec_none('BEGIN TRANSACTION')
+	mut imported := 0
 	for vals in rows {
 		quoted := vals.map("'${it.replace("'", "''")}'")
-		app.db.exec_none('INSERT INTO ${table} (${col_list}) VALUES (${quoted.join(',')})')
+		code := app.db.exec_none('INSERT INTO ${table} (${col_list}) VALUES (${quoted.join(',')})')
+		if code != 101 && code != 100 {
+			app.db.exec_none('ROLLBACK')
+			eprintln('Error: import failed on row ${imported + 1} (code ${code})')
+			return
+		}
+		imported++
 	}
 	app.db.exec_none('COMMIT')
-	println('Imported ${rows.len} rows into ${table}')
+	println('Imported ${imported} rows into ${table}')
 }
 
 fn (mut app App) refresh_completions() {
@@ -1145,7 +1156,12 @@ fn split_statements(src string) []string {
 				}
 				start = i + 1
 			} else if is_keyword_at(src, i, 'BEGIN') {
-				begin_depth++
+				// Only count as a trigger-body BEGIN if there is already content
+				// in this statement. A standalone 'BEGIN'/'BEGIN TRANSACTION'
+				// starts a new statement and must not suppress semicolon splitting.
+				if src[start..i].trim_space() != '' {
+					begin_depth++
+				}
 			} else if is_keyword_at(src, i, 'END') && begin_depth > 0 {
 				begin_depth--
 			}
