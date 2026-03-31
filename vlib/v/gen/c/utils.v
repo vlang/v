@@ -795,11 +795,19 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 							eprintln('resolved selector ${expr.expr.name}.${expr.field_name} left=${g.table.type_to_str(left_type)} field=${g.table.type_to_str(field.typ)} final=${g.table.type_to_str(field_type)} expr_typ=${g.table.type_to_str(expr.typ)}')
 						}
 					}
-					return g.unwrap_generic(g.recheck_concrete_type(field_type))
+					mut resolved_type := g.unwrap_generic(g.recheck_concrete_type(field_type))
+					if expr.or_block.kind != .absent {
+						resolved_type = resolved_type.clear_option_and_result()
+					}
+					return resolved_type
 				}
 			}
 			if expr.typ != 0 {
-				return g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+				mut resolved_type := g.unwrap_generic(g.recheck_concrete_type(expr.typ))
+				if expr.or_block.kind != .absent {
+					resolved_type = resolved_type.clear_option_and_result()
+				}
+				return resolved_type
 			}
 		}
 		ast.IndexExpr {

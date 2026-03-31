@@ -6817,7 +6817,8 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		return c.pref.is_vls
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod && sym.mod != 'main' {
+	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod && sym.mod != 'main'
+		&& typ !in c.table.cur_concrete_types {
 		if sym.kind == .function {
 			fn_info := sym.info as ast.FnType
 			// hack: recover fn mod from func name

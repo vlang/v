@@ -2021,7 +2021,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 					call_arg.pos)
 			}
-			if call_arg.expr is ast.ArrayDecompose && arg_typ.idx() != final_param_typ.idx() {
+			if call_arg.expr is ast.ArrayDecompose && arg_typ.idx() != final_param_typ.idx()
+				&& c.table.cur_concrete_types.len == 0 {
 				expected_type_str := c.table.type_to_str(param.typ)
 				got_type_str := c.table.type_to_str(arg_typ)
 				c.error('cannot use `${got_type_str}` as `${expected_type_str}` in argument ${i + 1} to `${fn_name}`',
@@ -2037,6 +2038,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
 			if param.typ.has_flag(.generic) {
+				continue
+			}
+			// When decomposing a generic variadic arg into a non-variadic function,
+			// each generic instantiation re-checks all branches (e.g. match arms),
+			// so the decomposed type may not match the target param type for
+			// unreachable branches. Skip the error in this case.
+			if has_decompose && call_arg.expr is ast.ArrayDecompose
+				&& c.table.cur_concrete_types.len > 0 {
 				continue
 			}
 			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {

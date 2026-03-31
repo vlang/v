@@ -858,71 +858,72 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
-		fid:                   idx
-		tid:                   v_gettid().hex()
-		file:                  file
-		out:                   strings.new_builder(512000)
-		cheaders:              strings.new_builder(15000)
-		includes:              strings.new_builder(100)
-		typedefs:              strings.new_builder(100)
-		type_definitions:      strings.new_builder(100)
-		sort_fn_definitions:   strings.new_builder(100)
-		alias_definitions:     strings.new_builder(100)
-		definitions:           strings.new_builder(100)
-		gowrappers:            strings.new_builder(100)
-		waiter_fn_definitions: strings.new_builder(100)
-		auto_str_funcs:        strings.new_builder(100)
-		comptime_definitions:  strings.new_builder(100)
-		pcs_declarations:      strings.new_builder(100)
-		cov_declarations:      strings.new_builder(100)
-		hotcode_definitions:   strings.new_builder(100)
-		embedded_data:         strings.new_builder(1000)
-		out_options_forward:   strings.new_builder(100)
-		out_options:           strings.new_builder(100)
-		out_results_forward:   strings.new_builder(100)
-		out_results:           strings.new_builder(100)
-		shared_types:          strings.new_builder(100)
-		shared_functions:      strings.new_builder(100)
-		channel_definitions:   strings.new_builder(100)
-		thread_definitions:    strings.new_builder(100)
-		json_forward_decls:    strings.new_builder(100)
-		enum_typedefs:         strings.new_builder(100)
-		sql_buf:               strings.new_builder(100)
-		cleanup:               strings.new_builder(100)
-		table:                 global_g.table
-		pref:                  global_g.pref
-		fn_decl:               unsafe { nil }
-		anon_fn:               unsafe { nil }
-		indent:                -1
-		module_built:          global_g.module_built
-		timers:                util.new_timers(
+		fid:                    idx
+		tid:                    v_gettid().hex()
+		file:                   file
+		out:                    strings.new_builder(512000)
+		cheaders:               strings.new_builder(15000)
+		includes:               strings.new_builder(100)
+		typedefs:               strings.new_builder(100)
+		type_definitions:       strings.new_builder(100)
+		sort_fn_definitions:    strings.new_builder(100)
+		alias_definitions:      strings.new_builder(100)
+		definitions:            strings.new_builder(100)
+		gowrappers:             strings.new_builder(100)
+		waiter_fn_definitions:  strings.new_builder(100)
+		auto_str_funcs:         strings.new_builder(100)
+		comptime_definitions:   strings.new_builder(100)
+		pcs_declarations:       strings.new_builder(100)
+		cov_declarations:       strings.new_builder(100)
+		hotcode_definitions:    strings.new_builder(100)
+		embedded_data:          strings.new_builder(1000)
+		out_options_forward:    strings.new_builder(100)
+		out_options:            strings.new_builder(100)
+		out_results_forward:    strings.new_builder(100)
+		out_results:            strings.new_builder(100)
+		shared_types:           strings.new_builder(100)
+		shared_functions:       strings.new_builder(100)
+		channel_definitions:    strings.new_builder(100)
+		thread_definitions:     strings.new_builder(100)
+		json_forward_decls:     strings.new_builder(100)
+		enum_typedefs:          strings.new_builder(100)
+		sql_buf:                strings.new_builder(100)
+		cleanup:                strings.new_builder(100)
+		table:                  global_g.table
+		pref:                   global_g.pref
+		fn_decl:                unsafe { nil }
+		anon_fn:                unsafe { nil }
+		indent:                 -1
+		module_built:           global_g.module_built
+		timers:                 util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
-		inner_loop:            &ast.empty_stmt
-		field_data_type:       global_g.table.find_type('FieldData')
-		enum_data_type:        global_g.table.find_type('EnumData')
-		variant_data_type:     global_g.table.find_type('VariantData')
-		array_sort_fn:         global_g.array_sort_fn
-		waiter_fns:            global_g.waiter_fns
-		threaded_fns:          global_g.threaded_fns
-		str_fn_names:          global_g.str_fn_names
-		anon_fns:              global_g.anon_fns
-		options_forward:       global_g.options_forward
-		results_forward:       global_g.results_forward
-		done_options:          global_g.done_options
-		done_results:          global_g.done_results
-		late_chan_types:       global_g.late_chan_types
-		is_autofree:           global_g.pref.autofree
-		obf_table:             global_g.obf_table
-		referenced_fns:        global_g.referenced_fns
-		is_cc_msvc:            global_g.is_cc_msvc
-		use_segfault_handler:  global_g.use_segfault_handler
-		done_typedef_phase:    global_g.done_typedef_phase
-		array_typedefs:        global_g.array_typedefs.clone()
-		has_reflection:        'v.reflection' in global_g.table.modules
-		has_debugger:          'v.debug' in global_g.table.modules
-		reflection_strings:    global_g.reflection_strings
+		inner_loop:             &ast.empty_stmt
+		field_data_type:        global_g.table.find_type('FieldData')
+		enum_data_type:         global_g.table.find_type('EnumData')
+		variant_data_type:      global_g.table.find_type('VariantData')
+		array_sort_fn:          global_g.array_sort_fn
+		waiter_fns:             global_g.waiter_fns
+		threaded_fns:           global_g.threaded_fns
+		str_fn_names:           global_g.str_fn_names
+		anon_fns:               global_g.anon_fns
+		options_forward:        global_g.options_forward
+		results_forward:        global_g.results_forward
+		done_options:           global_g.done_options
+		done_results:           global_g.done_results
+		late_chan_types:        global_g.late_chan_types
+		is_autofree:            global_g.pref.autofree
+		obf_table:              global_g.obf_table
+		referenced_fns:         global_g.referenced_fns
+		is_cc_msvc:             global_g.is_cc_msvc
+		use_segfault_handler:   global_g.use_segfault_handler
+		done_typedef_phase:     global_g.done_typedef_phase
+		array_typedefs:         global_g.array_typedefs.clone()
+		written_array_typedefs: global_g.written_array_typedefs
+		has_reflection:         'v.reflection' in global_g.table.modules
+		has_debugger:           'v.debug' in global_g.table.modules
+		reflection_strings:     global_g.reflection_strings
 	}
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info

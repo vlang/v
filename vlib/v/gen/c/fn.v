@@ -1806,8 +1806,15 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.write(')')
 		}
 		.delete {
-			left_info := left_sym.info as ast.Map
-			elem_type_str := g.styp(left_info.key_type)
+			elem_type_str := if left_sym.info is ast.Map {
+				g.styp(left_sym.info.key_type)
+			} else {
+				// In generic contexts, the left type may resolve to the base
+				// `map` struct rather than a concrete `map[K]V`. Resolve the
+				// key type from the argument expression instead.
+				arg_type := g.unwrap_generic(g.resolved_expr_type(node.args[0].expr, node.args[0].typ))
+				g.styp(arg_type)
+			}
 			g.write('builtin__map_delete(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(', &(${elem_type_str}[]){')
@@ -3483,7 +3490,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			return
 		}
 	}
-	if final_left_sym.kind == .map && !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+	if (final_left_sym.kind == .map || left_type.idx() == ast.map_type_idx)
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		if g.gen_map_method_call(node, left_type, final_left_sym) {
 			return
 		}

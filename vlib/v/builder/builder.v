@@ -541,7 +541,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.check_only {
-		if !b.pref.skip_notes {
+		if !b.pref.skip_notes && !b.pref.json_errors {
 			for file in b.parsed_files {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {
