@@ -43,10 +43,12 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 	mut base_arg := ''
 	mut base_quote := u8(`'`)
 	mut base_arg_name := ''
+	mut base_call_arg_idx := -1
 	mut base_has_arg := false
 	mut attrs := []ast.Attr{}
 	mut has_base_arg := false
 	mut positional_arg_idx := 1
+	mut call_arg_idx := 0
 	for p.tok.kind !in [.rpar, .eof] {
 		mut is_named := false
 		mut arg_name := ''
@@ -68,6 +70,7 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 				base_kind = kind
 				base_quote = quote
 				base_arg_name = arg_name
+				base_call_arg_idx = call_arg_idx
 				has_base_arg = true
 			} else {
 				attrs << ast.Attr{
@@ -80,6 +83,7 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 					has_at:        is_at
 					call_name:     name
 					call_arg_name: arg_name
+					call_arg_idx:  call_arg_idx
 				}
 			}
 		} else if !has_base_arg {
@@ -87,20 +91,24 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 			base_arg = arg
 			base_kind = kind
 			base_quote = quote
+			base_arg_name = arg_name
+			base_call_arg_idx = call_arg_idx
 			has_base_arg = true
 		} else {
 			attrs << ast.Attr{
-				name:      '${name}_${positional_arg_idx}'
-				has_arg:   true
-				arg:       arg
-				kind:      kind
-				quote:     quote
-				pos:       apos.extend(p.prev_tok.pos())
-				has_at:    is_at
-				call_name: name
+				name:         '${name}_${positional_arg_idx}'
+				has_arg:      true
+				arg:          arg
+				kind:         kind
+				quote:        quote
+				pos:          apos.extend(p.prev_tok.pos())
+				has_at:       is_at
+				call_name:    name
+				call_arg_idx: call_arg_idx
 			}
 			positional_arg_idx++
 		}
+		call_arg_idx++
 		if p.tok.kind == .comma {
 			p.next()
 			continue
@@ -118,6 +126,7 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 		has_at:        is_at
 		call_name:     name
 		call_arg_name: base_arg_name
+		call_arg_idx:  base_call_arg_idx
 	}
 	attrs.insert(0, base_attr)
 	return attrs

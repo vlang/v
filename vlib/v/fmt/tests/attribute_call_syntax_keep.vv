@@ -7,6 +7,12 @@ fn old_positional() {}
 @[deprecated(msg: 'use new_fn instead', after: '2999-10-10')]
 fn old_named() {}
 
+@[foo(bar: 'x', 123)]
+fn mixed_named_positional() {}
+
+@[foo(123, bar: 'x')]
+fn mixed_positional_named() {}
+
 struct Config {
 	flag  bool   @[custom(flag: true, count: 2)]
 	value string @[xml(name: 'cfg'); raw]

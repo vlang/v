@@ -141,8 +141,10 @@ fn attr_call_group_str(attrs []ast.Attr) string {
 	if attrs.len == 0 {
 		return ''
 	}
+	mut ordered_attrs := attrs.clone()
+	ordered_attrs.sort(a.call_arg_idx < b.call_arg_idx)
 	mut args := []string{}
-	for attr in attrs {
+	for attr in ordered_attrs {
 		if !attr.has_arg {
 			continue
 		}
