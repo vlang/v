@@ -1769,9 +1769,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
 		match node.kind {
 			.type_name {
-				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_${prefix_name}_${typ_sym.cname}',
+				if left_sym.kind == .sum_type {
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_sumtype_${typ_sym.cname}',
 						')', node)
+					return
+				} else if left_sym.kind == .interface {
+					g.conversion_function_call('v_typeof_interface_${typ_sym.cname}',
+						'', node)
 					return
 				}
 			}

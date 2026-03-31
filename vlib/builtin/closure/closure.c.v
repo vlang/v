@@ -5,13 +5,16 @@ module closure
 // https://nullprogram.com/blog/2017/01/08/
 
 const assumed_page_size = int(0x4000)
+const ppc64_architecture = int(11)
+
+type ClosureGetDataFn = fn () voidptr
 
 @[heap]
 struct Closure {
 	ClosureMutex
 mut:
 	closure_ptr      voidptr
-	closure_get_data fn () voidptr = unsafe { nil }
+	closure_get_data ClosureGetDataFn = unsafe { nil }
 	closure_cap      int
 	v_page_size      int = int(0x4000)
 }
@@ -23,10 +26,22 @@ enum MemoryProtectAtrr {
 	read_write
 }
 
+// Keep this runtime check bootstrap-compatible. Older compilers can not parse `$if ppc64` yet.
+@[inline]
+fn is_ppc64() bool {
+	$if big_endian {
+		return C.__V_architecture == ppc64_architecture
+	} $else {
+		return false
+	}
+}
+
 // refer to https://godbolt.org/z/r7P3EYv6c for a complete assembly
 //
 // NOTE: Keep the first branch as the longest byte sequence. In translated/bootstrap C mode
 // (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
+// The final `big_endian` branch maps to ppc64 here, since the supported big-endian
+// closure targets handled above are s390x and sparc64.
 // vfmt off
 pub const closure_thunk = $if ppc64le {
     [
@@ -108,7 +123,7 @@ pub const closure_thunk = $if ppc64le {
         0x81, 0xc0, 0x40, 0x00,  // jmp  %g1
         0x01, 0x00, 0x00, 0x00   // nop
     ]!
-} $else $if ppc64 {
+} $else $if big_endian {
     [
     u8(0x7C), 0x08, 0x02, 0xA6,  // mflr   %r0
         0x48, 0x00, 0x00, 0x05,  // bl     here
@@ -181,7 +196,7 @@ const closure_get_data_bytes = $if arm32 {
         0x81, 0xc3, 0xe0, 0x08,  // retl
         0x01, 0x00, 0x00, 0x00   // nop
     ]!
-} $else $if ppc64 {
+} $else $if big_endian {
     [
     u8(0x7d), 0xc3, 0x00, 0x66,  // mfvsrd %r3, %f14
         0x4e, 0x80, 0x00, 0x20   // blr
@@ -246,14 +261,14 @@ fn closure_init() {
 		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_exec)
 	}
 	// Setup global closure handler pointer
-	$if ppc64 {
+	if is_ppc64() {
 		mut desc := unsafe { &voidptr(&u8(g_closure.closure_ptr) - assumed_page_size) }
 		unsafe {
 			desc[0] = g_closure.closure_ptr
 			desc[1] = nil
 		}
-		g_closure.closure_get_data = desc
-	} $else {
+		g_closure.closure_get_data = unsafe { ClosureGetDataFn(desc) }
+	} else {
 		g_closure.closure_get_data = g_closure.closure_ptr
 	}
 
@@ -283,7 +298,7 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 
 		// Write closure metadata (data + function pointer)
 		mut p := &voidptr(&u8(curr_closure) - assumed_page_size)
-		$if ppc64 {
+		if is_ppc64() {
 			// ELFv1: guard page layout per slot:
 			//   [0] desc[0] = thunk code address  <- returned as ELFv1 function pointer
 			//   [1] desc[1] = nil (TOC unused; thunk loads real TOC from func descriptor)
@@ -293,7 +308,7 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			p[1] = nil
 			p[2] = data
 			p[3] = func
-		} $else {
+		} else {
 			p[0] = data // Stored closure context
 			p[1] = func // Target function to execute
 		}
@@ -301,10 +316,9 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
-	$if ppc64 {
+	if is_ppc64() {
 		// ELFv1: return descriptor address (guard page), not raw code address
 		return unsafe { &u8(curr_closure) - assumed_page_size }
-	} $else {
-		return curr_closure
 	}
+	return curr_closure
 }

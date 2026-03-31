@@ -1404,6 +1404,9 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
+		if c.interface_embeds_interface(utyp, interface_type) {
+			return true
+		}
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
 			pos)
 	}
@@ -6193,6 +6196,37 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut ${what}',
 			pos)
 		return true
+	}
+	return false
+}
+
+fn (mut c Checker) interface_embeds_interface(interface_type ast.Type, embedded_interface_type ast.Type) bool {
+	mut visited := map[int]bool{}
+	return c.interface_embeds_interface_recursive(interface_type, embedded_interface_type, mut
+		visited)
+}
+
+fn (mut c Checker) interface_embeds_interface_recursive(interface_type ast.Type, embedded_interface_type ast.Type, mut visited map[int]bool) bool {
+	u_interface_type := c.unwrap_generic(interface_type)
+	if visited[u_interface_type.idx()] {
+		return false
+	}
+	visited[u_interface_type.idx()] = true
+	embedded_idx := c.unwrap_generic(embedded_interface_type).idx()
+	final_embedded_idx := c.table.final_sym(embedded_interface_type).idx
+	if iface_decl := c.table.interfaces[u_interface_type] {
+		for embed in iface_decl.embeds {
+			embed_typ := c.unwrap_generic(embed.typ)
+			if embed_typ.idx() == embedded_idx
+				|| c.table.final_sym(embed_typ).idx == final_embedded_idx {
+				return true
+			}
+			if c.interface_embeds_interface_recursive(embed_typ, embedded_interface_type, mut
+				visited)
+			{
+				return true
+			}
+		}
 	}
 	return false
 }
