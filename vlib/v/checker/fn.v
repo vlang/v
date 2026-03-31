@@ -11,6 +11,41 @@ const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// handle vls go to definition for method receiver types
 	if c.pref.is_vls {
+		// Hover over fn keyword or function name on the declaration line — show full declaration.
+		on_fn_name := c.vls_is_the_node(node.name_pos)
+		on_fn_keyword := c.pref.linfo.line_nr == node.name_pos.line_nr
+			&& c.pref.linfo.col >= int(node.pos.col) - 1 && c.pref.linfo.col < node.name_pos.col
+			&& node.name_pos.file_idx >= 0
+			&& os.real_path(c.pref.linfo.path) == os.real_path(c.table.filelist[node.name_pos.file_idx])
+		if c.pref.linfo.method == .completion && (on_fn_name || on_fn_keyword) {
+			mut params := []string{cap: node.params.len}
+			for param in node.params {
+				if param.is_hidden {
+					continue
+				}
+				params << '${param.name} ${c.table.type_to_str(param.typ)}'
+			}
+			ret_str := if node.return_type != ast.no_type && node.return_type != ast.void_type {
+				' ' + c.table.type_to_str(node.return_type)
+			} else {
+				''
+			}
+			declaration := 'fn ${node.short_name}(${params.join(', ')})${ret_str}'
+			mut doc := ''
+			mod := node.name.all_before_last('.')
+			if info := c.table.vls_info['fn_${mod}[]${node.short_name}'] {
+				doc = info.doc
+			}
+			c.vls_write_details([
+				Detail{
+					kind:          .function
+					label:         node.short_name
+					declaration:   declaration
+					documentation: doc
+				},
+			])
+			exit(0)
+		}
 		if node.is_method && node.receiver.type_pos.line_nr > 0 {
 			if c.vls_is_the_node(node.receiver.type_pos) {
 				typ_str := c.table.type_to_str(node.receiver.typ)
