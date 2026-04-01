@@ -99,7 +99,7 @@ fn map_index_tmpl() string {
 	lang := {
 		'test_entry': 'Test Text'
 	}
-	return $tmpl('templates/map_index.txt')
+	return $tmpl('tmpl/map_index.txt')
 }
 
 fn test_tmpl_map_index() {

@@ -78,7 +78,7 @@ cache/
 *~
 ~*
 .sesskey
-tmp*
+/tmp*
 *.db
 *.swp
 *.swo
