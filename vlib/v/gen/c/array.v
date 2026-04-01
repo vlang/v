@@ -59,6 +59,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.write('\t\t')
 		}
 		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
+		is_iface := elem_sym.kind == .interface
+		if is_iface {
+			g.inside_cast_in_heap++
+		}
 		for i, expr in node.exprs {
 			expr_type := if node.expr_types.len > i { node.expr_types[i] } else { node.elem_type }
 			if expr_type == ast.string_type
@@ -90,6 +94,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 					g.write(', ')
 				}
 			}
+		}
+		if is_iface {
+			g.inside_cast_in_heap--
 		}
 		g.write('}))')
 		if g.is_shared {
