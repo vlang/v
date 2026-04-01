@@ -122,7 +122,12 @@ fn main() {
 		}
 		app.exec_file(args[2])
 	} else {
-		app.run(args[1..].join(' '))
+		cmd := args[1..].join(' ')
+		if cmd.starts_with('.') {
+			app.dot_cmd(cmd)
+		} else {
+			app.run(cmd)
+		}
 	}
 }
 
