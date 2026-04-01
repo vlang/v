@@ -26,9 +26,13 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 			save_left = node.expr.left
 			node.expr.left = subst_expr
 		}
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
-			save_right = node.expr.right
-			node.expr.right = subst_expr
+		// For || and && operators, do not pre-evaluate the right side
+		// to allow short-circuit evaluation to work correctly.
+		if node.expr.op !in [.logical_or, .and] {
+			if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+				save_right = node.expr.right
+				node.expr.right = subst_expr
+			}
 		}
 	}
 	metaname := g.gen_assert_metainfo_common(node)
@@ -160,9 +164,18 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind,
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, left_type)
 			g.writeln(';')
-			g.write('\t${metaname}.rvalue = ')
-			g.gen_assert_single_expr(node.expr.right, right_type)
-			g.writeln(';')
+			// For && and || operators, use a placeholder for rvalue
+			// to avoid issues with go_before_last_stmt() which can generate
+			// temporary variables outside the conditional scope.
+			// - For &&: if left is false, right is short-circuited
+			// - For ||: if left is true, right is short-circuited
+			if node.expr.op in [.logical_or, .and] {
+				g.writeln('\t${metaname}.rvalue = _S("<short-circuited>");')
+			} else {
+				g.write('\t${metaname}.rvalue = ')
+				g.gen_assert_single_expr(node.expr.right, right_type)
+				g.writeln(';')
+			}
 		}
 		else {}
 	}
