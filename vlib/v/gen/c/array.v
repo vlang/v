@@ -59,7 +59,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.write('\t\t')
 		}
 		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
-		if is_iface_or_sumtype {
+		is_iface := elem_sym.kind == .interface
+		if is_iface {
 			g.inside_cast_in_heap++
 		}
 		for i, expr in node.exprs {
@@ -94,7 +95,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				}
 			}
 		}
-		if is_iface_or_sumtype {
+		if is_iface {
 			g.inside_cast_in_heap--
 		}
 		g.write('}))')
