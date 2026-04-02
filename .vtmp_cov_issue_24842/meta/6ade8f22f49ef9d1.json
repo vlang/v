@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/builtin/rune.v", "fhash": "6ade8f22f49ef9d1",
-  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 32,
-  "points": [  14,20,21,22,23,24,70,71,72,74,76,104,105,108,109,110,111,116,118,119,120,122,125,126,127,129,131,133,135,136,138,141  ]
-}
