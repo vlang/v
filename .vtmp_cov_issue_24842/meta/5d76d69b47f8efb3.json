@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/term/term.v", "fhash": "5d76d69b47f8efb3",
-  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 18,
-  "points": [  36,37,38,41,42,43,201,205,206,203,208,209,211,215,216,213,218,229  ]
-}

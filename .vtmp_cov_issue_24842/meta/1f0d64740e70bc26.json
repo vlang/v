@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/builtin/map_d_gcboehm_opt.v", "fhash": "1f0d64740e70bc26",
-  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 38,
-  "points": [  11,12,14,19,20,34,36,37,57,59,60,80,82,83,103,106,107,109,110,111,112,115,120,123,124,126,127,128,129,132,137,140,141,143,144,145,146,149  ]
-}

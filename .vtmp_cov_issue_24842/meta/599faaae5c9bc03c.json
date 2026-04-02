@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch7/issue-25852/vlib/builtin/panicing.c.v", "fhash": "599faaae5c9bc03c",
-  "v_version": "V 0.5.1 93cbfb29900a939dc33850508c0ae71fdd2879f5",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 19,
-  "points": [  67,74,82,86,87,88,89,90,91,92,93,95,97,112,115,120,123,148,154  ]
-}
