@@ -133,6 +133,32 @@ pub fn malloc_noscan(n isize) &u8 {
 	return res
 }
 
+@[unsafe]
+fn malloc_uninit(n isize) &u8 {
+	if n < 0 {
+		_memory_panic(@FN, n)
+	} else if n == 0 {
+		return &u8(unsafe { nil })
+	}
+	$if vgc ? {
+		return unsafe { &u8(vgc_malloc_typed_opts(usize(n), 0, 0, false)) }
+	}
+	return malloc(n)
+}
+
+@[unsafe]
+fn malloc_noscan_uninit(n isize) &u8 {
+	if n < 0 {
+		_memory_panic(@FN, n)
+	} else if n == 0 {
+		return &u8(unsafe { nil })
+	}
+	$if vgc ? {
+		return unsafe { &u8(vgc_malloc_noscan_opts(usize(n), false)) }
+	}
+	return malloc_noscan(n)
+}
+
 @[inline]
 fn __at_least_one(how_many u64) u64 {
 	// handle the case for allocating memory for empty structs, which have sizeof(EmptyStruct) == 0
@@ -409,6 +435,9 @@ pub fn memdup(src voidptr, sz isize) voidptr {
 	if sz == 0 {
 		return vcalloc(1)
 	}
+	$if vgc ? {
+		return vgc_memdup(src, sz)
+	}
 	unsafe {
 		mem := malloc(sz)
 		return C.memcpy(mem, src, sz)
@@ -422,6 +451,9 @@ pub fn memdup_noscan(src voidptr, sz isize) voidptr {
 	}
 	if sz == 0 {
 		return vcalloc_noscan(1)
+	}
+	$if vgc ? {
+		return vgc_memdup_noscan(src, sz)
 	}
 	unsafe {
 		mem := malloc_noscan(sz)

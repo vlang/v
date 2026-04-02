@@ -103,13 +103,23 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			if aligned != 0 {
 				g.write('(${basetyp}*)builtin__memdup_align(&(${basetyp}){')
 			} else {
-				g.write('(${basetyp}*)builtin__memdup(&(${basetyp}){')
+				g.write_heap_alloc(basetyp, node.typ.clear_option_and_result())
+				if is_multiline {
+					g.writeln('(${basetyp}){')
+				} else {
+					g.write('(${basetyp}){')
+				}
 			}
 		} else {
 			if aligned != 0 {
 				g.write('(${styp}*)builtin__memdup_align(&(${styp}){')
 			} else {
-				g.write('(${styp}*)builtin__memdup(&(${styp}){')
+				g.write_heap_alloc(styp, unwrapped_typ)
+				if is_multiline {
+					g.writeln('(${styp}){')
+				} else {
+					g.write('(${styp}){')
+				}
 			}
 		}
 	} else if node.typ.is_ptr() {
@@ -421,13 +431,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			if aligned != 0 {
 				g.write(', sizeof(${basetyp}), ${aligned})')
 			} else {
-				g.write(', sizeof(${basetyp}))')
+				g.write_heap_alloc_close(node.typ.clear_option_and_result())
 			}
 		} else {
 			if aligned != 0 {
 				g.write(', sizeof(${styp}), ${aligned})')
 			} else {
-				g.write(', sizeof(${styp}))')
+				g.write_heap_alloc_close(unwrapped_typ)
 			}
 		}
 	}

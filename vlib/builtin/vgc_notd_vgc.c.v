@@ -12,6 +12,22 @@ fn vgc_malloc_noscan(n usize) voidptr {
 	return unsafe { nil }
 }
 
+fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) voidptr {
+	return unsafe { nil }
+}
+
+fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
+	return unsafe { nil }
+}
+
+fn vgc_memdup(src voidptr, n isize) voidptr {
+	return unsafe { nil }
+}
+
+fn vgc_memdup_noscan(src voidptr, n isize) voidptr {
+	return unsafe { nil }
+}
+
 fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
 	return unsafe { nil }
 }

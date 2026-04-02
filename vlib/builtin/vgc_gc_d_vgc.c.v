@@ -133,7 +133,7 @@ fn vgc_scan_range(lo usize, hi usize) {
 	mut addr := start
 	for addr + sizeof(usize) <= hi {
 		val := unsafe { *(&usize(voidptr(addr))) }
-		if vgc_is_heap_ptr(val) {
+		if val != 0 {
 			vgc_shade(val)
 		}
 		addr += sizeof(usize)
@@ -143,6 +143,9 @@ fn vgc_scan_range(lo usize, hi usize) {
 // Shade marks an object grey (discovered but not yet scanned).
 // Translated from Go's shade() in mgcmark.go.
 fn vgc_shade(addr usize) {
+	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
+		return
+	}
 	span := vgc_find_span(voidptr(addr))
 	if span == unsafe { nil } || !span.in_use {
 		return
@@ -174,21 +177,26 @@ fn vgc_shade(addr usize) {
 // Parallel mark using OS threads.
 // Translated from Go's gcDrain() with multiple workers.
 fn vgc_parallel_mark() {
-	// Use up to 4 workers (like Go's dedicated mark workers)
-	nworkers := if vgc_heap.ncaches < 4 { 1 } else { 4 }
+	mut nworkers := C.vgc_num_cpus()
+	if nworkers < 1 {
+		nworkers = 1
+	} else if nworkers > 4 {
+		nworkers = 4
+	}
 	vgc_heap.gc_nworkers = nworkers
 	C.vgc_atomic_store_u32(&vgc_heap.gc_workers_done, 0)
 
 	if nworkers <= 1 {
-		// Single-threaded mark
 		vgc_drain_mark_work()
 		return
 	}
 
-	// Start mark workers as OS threads
-	for _ in 0 .. nworkers {
+	// Start helper workers and let the current GC thread participate as well.
+	for _ in 1 .. nworkers {
 		C.vgc_start_thread(vgc_mark_worker)
 	}
+	vgc_drain_mark_work()
+	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
 
 	// Wait for all workers to finish
 	for C.vgc_atomic_load_u32(&vgc_heap.gc_workers_done) < u32(nworkers) {
@@ -264,7 +272,7 @@ fn vgc_scan_precise(obj_addr usize, ptrmap u64, ptr_words u8) {
 		// Read the pointer at this offset
 		ptr_addr := obj_addr + usize(bit) * word_size
 		val := unsafe { *(&usize(voidptr(ptr_addr))) }
-		if val != 0 && vgc_is_heap_ptr(val) {
+		if val != 0 {
 			vgc_shade(val)
 		}
 		// Clear this bit and continue
@@ -276,8 +284,41 @@ fn vgc_scan_precise(obj_addr usize, ptrmap u64, ptr_words u8) {
 // Work queue (translated from Go's mgcwork.go)
 // ============================================================
 
+@[inline]
+fn vgc_can_use_work_fastpath() bool {
+	return vgc_heap.ncaches <= 1 && vgc_heap.gc_nworkers <= 1
+}
+
 // Add a pointer to the mark work queue
 fn vgc_work_put(addr usize) {
+	if vgc_can_use_work_fastpath() {
+		mut buf := vgc_heap.work_full
+		if buf == unsafe { nil } || buf.nobj >= 256 {
+			mut new_buf := vgc_heap.work_empty
+			if new_buf != unsafe { nil } {
+				unsafe {
+					vgc_heap.work_empty = new_buf.next
+				}
+			} else {
+				new_buf = unsafe { &VGC_WorkBuf(C.vgc_os_alloc(usize(sizeof(VGC_WorkBuf)))) }
+				if new_buf == unsafe { nil } {
+					return
+				}
+			}
+			unsafe {
+				new_buf.nobj = 0
+				new_buf.next = vgc_heap.work_full
+				vgc_heap.work_full = new_buf
+			}
+			buf = new_buf
+		}
+		unsafe {
+			buf.obj[buf.nobj] = addr
+			buf.nobj++
+		}
+		return
+	}
+
 	C.vgc_mutex_lock(&vgc_heap.work_lock)
 
 	// Get or create a work buffer
@@ -313,6 +354,23 @@ fn vgc_work_put(addr usize) {
 
 // Get a pointer from the mark work queue
 fn vgc_work_get() usize {
+	if vgc_can_use_work_fastpath() {
+		mut buf := vgc_heap.work_full
+		if buf == unsafe { nil } || buf.nobj == 0 {
+			return 0
+		}
+		unsafe {
+			buf.nobj--
+			addr := buf.obj[buf.nobj]
+			if buf.nobj == 0 {
+				vgc_heap.work_full = buf.next
+				buf.next = vgc_heap.work_empty
+				vgc_heap.work_empty = buf
+			}
+			return addr
+		}
+	}
+
 	C.vgc_mutex_lock(&vgc_heap.work_lock)
 
 	mut buf := vgc_heap.work_full
@@ -350,12 +408,8 @@ fn vgc_write_barrier(new_val voidptr) {
 	if new_val == unsafe { nil } {
 		return
 	}
-	addr := usize(new_val)
-	if !vgc_is_heap_ptr(addr) {
-		return
-	}
 	// Shade the new pointer (mark it grey)
-	vgc_shade(addr)
+	vgc_shade(usize(new_val))
 }
 
 // ============================================================
@@ -471,9 +525,9 @@ fn vgc_update_trigger() {
 	gc_percent := u64(vgc_heap.gc_percent)
 
 	mut goal := marked + marked * gc_percent / 100
-	// Minimum 4MB trigger
-	if goal < 4 * 1024 * 1024 {
-		goal = 4 * 1024 * 1024
+	// Avoid very small heap goals that force frequent full cycles on bursty workloads.
+	if goal < 256 * 1024 * 1024 {
+		goal = 256 * 1024 * 1024
 	}
 	C.vgc_atomic_store_u64(&vgc_heap.next_gc, goal)
 }

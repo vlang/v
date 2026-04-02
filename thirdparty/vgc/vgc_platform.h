@@ -88,8 +88,13 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       VirtualFree(ptr, size, MEM_DECOMMIT);
   }
+  static inline int vgc_num_cpus(void) {
+      DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+      return count > 0 ? (int)count : 1;
+  }
 #else
   #include <sys/mman.h>
+  #include <unistd.h>
   static inline void* vgc_os_alloc(size_t size) {
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
@@ -99,6 +104,10 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
   }
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       madvise(ptr, size, MADV_DONTNEED);
+  }
+  static inline int vgc_num_cpus(void) {
+      long count = sysconf(_SC_NPROCESSORS_ONLN);
+      return count > 0 ? (int)count : 1;
   }
 #endif
 

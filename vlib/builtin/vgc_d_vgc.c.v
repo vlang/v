@@ -39,6 +39,7 @@ fn C.vgc_init_size_tables()
 fn C.vgc_mutex_lock(lk &u32)
 fn C.vgc_mutex_unlock(lk &u32)
 fn C.vgc_start_thread(f voidptr)
+fn C.vgc_num_cpus() int
 fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
 fn C.vgc_addr_to_arena(addr usize) int
 
@@ -210,7 +211,7 @@ pub fn vgc_init() {
 	C.vgc_init_size_tables()
 	vgc_heap.gc_enabled = 1
 	vgc_heap.gc_percent = 100
-	vgc_heap.next_gc = 4 * 1024 * 1024 // initial trigger at 4MB (like Go)
+	vgc_heap.next_gc = 256 * 1024 * 1024 // favor throughput over early collections
 	vgc_heap.gc_phase = vgc_phase_off
 	// Register the main thread
 	vgc_register_thread()
@@ -899,7 +900,32 @@ fn vgc_memdup_typed(src voidptr, n isize, ptrmap u64, ptr_words u8) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }
 	}
-	mem := vgc_malloc_typed(usize(n), ptrmap, ptr_words)
+	mem := vgc_malloc_typed_opts(usize(n), ptrmap, ptr_words, false)
+	if mem != unsafe { nil } {
+		unsafe { C.memcpy(mem, src, n) }
+	}
+	return mem
+}
+
+// Memdup variants that skip zero-fill when the destination will be overwritten.
+@[markused]
+fn vgc_memdup(src voidptr, n isize) voidptr {
+	if src == unsafe { nil } || n <= 0 {
+		return unsafe { nil }
+	}
+	mem := vgc_malloc_typed_opts(usize(n), 0, 0, false)
+	if mem != unsafe { nil } {
+		unsafe { C.memcpy(mem, src, n) }
+	}
+	return mem
+}
+
+@[markused]
+fn vgc_memdup_noscan(src voidptr, n isize) voidptr {
+	if src == unsafe { nil } || n <= 0 {
+		return unsafe { nil }
+	}
+	mem := vgc_malloc_noscan_opts(usize(n), false)
 	if mem != unsafe { nil } {
 		unsafe { C.memcpy(mem, src, n) }
 	}
