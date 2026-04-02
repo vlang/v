@@ -166,15 +166,17 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 @[direct_array_access]
-fn (p &Parser) is_generic_call() bool {
-	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind != .lsbr {
+fn (p &Parser) is_generic_call_at(offset int) bool {
+	tok := if offset == 0 { p.tok } else { p.peek_token(offset) }
+	next_tok := if offset == 0 { p.peek_tok } else { p.peek_token(offset + 1) }
+	lit0_is_capital := tok.kind != .eof && tok.lit.len > 0 && tok.lit[0].is_capital()
+	if lit0_is_capital || next_tok.kind != .lsbr {
 		return false
 	}
-	mut tok2 := p.peek_token(2)
-	mut tok3 := p.peek_token(3)
-	mut tok4 := p.peek_token(4)
-	mut tok5 := p.peek_token(5)
+	mut tok2 := p.peek_token(offset + 2)
+	mut tok3 := p.peek_token(offset + 3)
+	mut tok4 := p.peek_token(offset + 4)
+	mut tok5 := p.peek_token(offset + 5)
 	mut kind2, mut kind3, mut kind4, mut kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
 	if kind2 == .amp { // if there is a & in front, shift everything left
 		tok2 = tok3
@@ -183,7 +185,7 @@ fn (p &Parser) is_generic_call() bool {
 		kind3 = kind4
 		tok4 = tok5
 		kind4 = kind5
-		tok5 = p.peek_token(6)
+		tok5 = p.peek_token(offset + 6)
 		kind5 = tok5.kind
 	}
 
@@ -197,8 +199,8 @@ fn (p &Parser) is_generic_call() bool {
 			// case 2
 			return true
 		}
-		if p.peek_tok.kind == .lsbr {
-			mut i := 3
+		if next_tok.kind == .lsbr {
+			mut i := offset + 3
 			mut nested_sbr_count := 0
 			for {
 				cur_tok := p.peek_token(i)

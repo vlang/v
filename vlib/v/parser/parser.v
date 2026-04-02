@@ -1764,7 +1764,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		false
 	}
 
-	is_generic_call := p.is_generic_call()
+	is_generic_call := p.is_generic_call_at(0)
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
 	if p.peek_tok.kind == .lpar && p.tok.line_nr != p.peek_tok.line_nr
@@ -1916,7 +1916,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 				scope:       p.scope
 			}
 		}
-		if !known_var && p.peek_token(2).kind == .name && p.peek_token(3).kind == .lpar {
+		if !known_var && p.peek_token(2).kind == .name
+			&& (p.peek_token(3).kind == .lpar || p.is_generic_call_at(2)) {
 			if lit0_is_capital && p.peek_tok.kind == .dot && language == .v {
 				// New static method call
 				p.expr_mod = ''
@@ -2278,7 +2279,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .dollar {
 		return p.comptime_selector(left)
 	}
-	is_generic_call := p.is_generic_call()
+	is_generic_call := p.is_generic_call_at(0)
 	name_pos := p.tok.pos()
 	// array initialization with enum shortcut [Enum.foo .bar]
 	if !is_generic_call && p.tok.kind == .name && p.inside_array_lit && p.last_enum_name != ''
