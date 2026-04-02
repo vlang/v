@@ -15,6 +15,7 @@ const integrate_rounds = 20
 
 @[soa]
 struct Particle {
+mut:
 	x           f32
 	y           f32
 	z           f32

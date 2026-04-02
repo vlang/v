@@ -94,11 +94,33 @@ Average sign time:            11 µs
 Average verify time:          30 µs
 ```
 
-## SOA Structs
+## SOA Structs (V2 cleanc only)
 
-`bench_soa_structs.v` compares Array-of-Structs vs Struct-of-Arrays layout for a 16-field
-particle system (500k particles). Requires `@[soa]` attribute support.
+Compares Array-of-Structs vs Struct-of-Arrays memory layout for a 16-field
+particle system (500k particles). Uses V2's `@[soa]` attribute which auto-generates
+separate contiguous arrays per field for better cache utilization.
 
 ```
-v -prod -o /tmp/bench_soa bench/bench_soa_structs.v && /tmp/bench_soa
+./cmd/v2/v2 -prod -backend cleanc bench/bench_soa_structs.v -o bench/bench_soa_structs
+./bench/bench_soa_structs
 ```
+
+```
+build particles
+  aos: 20 ms    soa push: 125 ms    soa indexed: 37 ms
+
+sum x only
+  aos: 19 ms    soa: 12 ms    speedup: 1.58x
+
+sum x/y/z/life (4 of 16 fields)
+  aos: 14 ms    soa: 10 ms    speedup: 1.40x
+
+sum all 16 fields
+  aos: 11 ms    soa: 16 ms    speedup: 0.69x
+
+integrate position/velocity/life
+  aos: 10 ms    soa: 13 ms    speedup: 0.77x
+```
+
+SOA is 1.4x-1.6x faster for partial field access (fewer cache lines touched).
+When all fields are accessed or mutated, AOS wins due to less pointer indirection.
