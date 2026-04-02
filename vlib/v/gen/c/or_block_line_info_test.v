@@ -14,8 +14,12 @@ fn test_option_propagation_panic_has_matching_line_info() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	lines := res.output.replace('\r\n', '\n').split_into_lines()
-	expected_line := '#line 12 "${source_path}"'
-	expected_panic := 'builtin__panic_debug(12, builtin__tos3("${source_path}")'
+	// On Windows, #line directives use double-escaped backslashes, while
+	// panic_debug uses forward slashes, so normalize paths for comparison.
+	escaped_source_path := source_path.replace('\\', '\\\\')
+	fwd_source_path := source_path.replace('\\', '/')
+	expected_line := '#line 12 "${escaped_source_path}"'
+	expected_panic := 'builtin__panic_debug(12, builtin__tos3("${fwd_source_path}")'
 	mut main_idx := -1
 	for i, line in lines {
 		if line.contains('void main__main(void) {') {

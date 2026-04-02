@@ -282,8 +282,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							branch.scope.objects[var.name] = w
 						}
 						branch.scope.update_var_type(var.name, unwrapped_guard_typ)
-						if !unwrapped_guard_typ.is_ptr()
-							&& c.table.sym(unwrapped_guard_typ).is_heap() {
+						resolved_guard_typ := c.unwrap_generic(unwrapped_guard_typ)
+						if !resolved_guard_typ.is_ptr() && c.table.sym(resolved_guard_typ).is_heap() {
 							if mut guard_var := branch.scope.find_var(var.name) {
 								guard_var.is_auto_heap = true
 							}

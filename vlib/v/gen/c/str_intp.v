@@ -421,6 +421,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else if i < node_.expr_types.len
 				&& g.table.final_sym(g.unwrap_generic(expr.obj.typ)).kind in [.interface, .sum_type] {
 				node_.expr_types[i]
+			} else if i < node_.expr_types.len {
+				node_.expr_types[i]
 			} else {
 				g.type_resolver.get_type_or_default(expr, expr.obj.typ)
 			}

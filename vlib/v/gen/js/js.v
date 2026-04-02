@@ -474,6 +474,7 @@ pub fn (mut g JsGen) init() {
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
 		g.definitions.writeln('const \$process = process;')
+		g.definitions.writeln('if (typeof print === "undefined") { globalThis.print = function() {}; }')
 	}
 	g.definitions.writeln('function checkDefine(key) {')
 	g.definitions.writeln('\tif (globalThis.hasOwnProperty(key)) { return !!globalThis[key]; } return false;')

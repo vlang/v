@@ -631,7 +631,7 @@ pub interface JS.WebGLRenderingContext {
 	drawingBufferHeight JS.Number
 	drawingBufferWidth  JS.Number
 	activeTexture(texture JS.Number)
-	attachShader(program JS.WebGLProgram, shader JS.WebGLProgram)
+	attachShader(program JS.WebGLProgram, shader JS.WebGLShader)
 	linkProgram(program JS.WebGLProgram)
 	bindAttribLocation(program JS.WebGLProgram, index JS.Number, name JS.String)
 	bindBuffer(target JS.Number, buffer JS.WebGLBuffer)

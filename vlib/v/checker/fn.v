@@ -108,22 +108,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		return
 	}
 	node.ninstances++
-	mut old_params := []ast.Param{}
-	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == node.generic_names.len
-		&& c.table.cur_concrete_types.all(!it.has_flag(.generic)) {
-		old_params = node.params.clone()
-		for i, param in old_params {
-			if !param.typ.has_flag(.generic) {
-				continue
-			}
-			if typ := c.table.convert_generic_param_type(param, node.generic_names, c.table.cur_concrete_types) {
-				node.params[i].typ = typ
-				if mut v := node.scope.find_var(param.name) {
-					v.typ = typ
-				}
-			}
-		}
-	}
 	// save all the state that fn_decl or inner  statements/expressions
 	// could potentially modify, since functions can be nested, due to
 	// anonymous function support, and ensure that it is restored, when
@@ -141,14 +125,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.inside_unsafe = node.is_unsafe
 	c.returns = false
 	defer {
-		if old_params.len > 0 {
-			node.params = old_params
-			for param in old_params {
-				if mut v := node.scope.find_var(param.name) {
-					v.typ = param.typ
-				}
-			}
-		}
 		c.stmt_level = prev_stmt_level
 		c.fn_level--
 		c.returns = prev_returns

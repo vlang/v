@@ -108,6 +108,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.gen_attrs(node.attrs)
 	mut skip := false
 	pos := g.out.len
+	defs_pos := g.definitions.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
 		// TODO: true for not just "builtin"
@@ -157,6 +158,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.fn_decl = keep_fn_decl
 	if skip {
 		g.go_back_to(pos)
+		if g.pref.build_mode != .build_module && !g.pref.use_cache {
+			g.definitions.go_back_to(defs_pos)
+		}
 	}
 	if !g.pref.skip_unused {
 		if node.language != .c {
@@ -880,7 +884,8 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
-		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic) {
+		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
+			&& param.typ.has_flag(.generic) {
 			mut surface_typ := g.unwrap_generic(param.orig_typ)
 			typ = if surface_typ.is_ptr() && g.table.sym(surface_typ).kind == .struct {
 				surface_typ.ref()
@@ -2119,7 +2124,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		cur_line := g.go_before_last_stmt()
 		if is_json_encode || is_json_encode_pretty {
 			unwrapped_typ := g.unwrap_generic(node.args[0].typ)
-			g.gen_json_for_type(unwrapped_typ, .encode)
+			g.gen_json_for_type(unwrapped_typ)
 			json_type_str = g.styp(unwrapped_typ)
 			// `json__encode` => `json__encode_User`
 			encode_name := js_enc_name(json_type_str)
@@ -2143,7 +2148,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// `json.decode(User, s)` => json.decode_User(s)
 			typ := c_name(g.styp(ast_type.typ))
 			fn_name := c_fn_name(name) + '_' + typ
-			g.gen_json_for_type(ast_type.typ, .decode)
+			g.gen_json_for_type(ast_type.typ)
 			g.empty_line = true
 			g.writeln('// json.decode')
 			g.write('cJSON* ${json_obj} = json__json_parse(')

@@ -412,11 +412,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						branch.cond.vars[0].name
 					}
+					mut short_opt_is_auto_heap := false
+					if branch.stmts.len > 0 {
+						scope := g.file.scope.innermost(ast.Node(branch.stmts.last()).pos().pos)
+						if v := scope.find_var(branch.cond.vars[0].name) {
+							short_opt_is_auto_heap = v.is_auto_heap
+						}
+					}
 					if g.table.sym(branch.cond.expr_type).kind == .array_fixed {
 						g.writeln('\t${base_type} ${cond_var_name} = {0};')
 						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
 						g.expr(branch.cond.expr)
 						g.writeln(', sizeof(${base_type}));')
+					} else if short_opt_is_auto_heap {
+						g.write('\t${base_type}* ${cond_var_name} = HEAP(${base_type}, ')
+						g.expr(branch.cond.expr)
+						g.writeln(');')
 					} else {
 						g.write('\t${base_type} ${cond_var_name} = ')
 						g.expr(branch.cond.expr)

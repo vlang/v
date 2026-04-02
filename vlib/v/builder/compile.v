@@ -234,7 +234,7 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	v.module_search_paths << v.compiled_dir
 	mut source_root := ''
 	src_root := os.join_path(v.compiled_dir, 'src')
-	if os.exists(src_root) {
+	if os.exists(src_root) && !v.pref.is_vsh {
 		root_files := os.ls(v.compiled_dir) or { []string{} }
 		if v.pref.should_compile_filtered_files(v.compiled_dir, root_files).len == 0 {
 			source_root = src_root

@@ -980,38 +980,40 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	mut t_map := ast.Value(ast.Null{})
 
 	unsafe {
-		if table_first := table[first.str()] {
-			if table_first is map[string]ast.Value {
-				mut t := &(table_first as map[string]ast.Value)
-				if val := t[last.str()] {
-					if val is []ast.Value {
-						mut arr := &val
-						arr << p.array_of_tables_contents()!
-						t[last.str()] = arr
+		if dotted_key.len == 2 {
+			if table_first := table[first.str()] {
+				if table_first is map[string]ast.Value {
+					mut t := &(table_first as map[string]ast.Value)
+					if val := t[last.str()] {
+						if val is []ast.Value {
+							mut arr := &val
+							arr << p.array_of_tables_contents()!
+							t[last.str()] = arr
+						} else {
+							return error(@MOD + '.' + @STRUCT + '.' + @FN +
+								' t[${last.str()}] is not an array. (excerpt): "...${p.excerpt()}..."')
+						}
 					} else {
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' t[${last.str()}] is not an array. (excerpt): "...${p.excerpt()}..."')
+						t[last.str()] = p.array_of_tables_contents()!
 					}
-				} else {
-					t[last.str()] = p.array_of_tables_contents()!
+					p.last_aot.clear()
+					p.last_aot_index = 0
+					return
 				}
+			} else {
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `${first}` in dotted key `${dotted_key}`.')
+				mut t := &map[string]ast.Value{}
+				p.implicit_declared << first
+				// NOTE: We register this implicit allocation also as *explicit* to be able to catch a special case like:
+				// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+				// See also: undo_special_case_01
+				p.explicit_declared << first
+				t[last.str()] = p.array_of_tables_contents()!
+				table[first.str()] = ast.Value(t)
 				p.last_aot.clear()
 				p.last_aot_index = 0
 				return
 			}
-		} else {
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `${first}` in dotted key `${dotted_key}`.')
-			mut t := &map[string]ast.Value{}
-			p.implicit_declared << first
-			// NOTE: We register this implicit allocation also as *explicit* to be able to catch a special case like:
-			// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
-			// See also: undo_special_case_01
-			p.explicit_declared << first
-			t[last.str()] = p.array_of_tables_contents()!
-			table[first.str()] = ast.Value(t)
-			p.last_aot.clear()
-			p.last_aot_index = 0
-			return
 		}
 
 		// NOTE this is starting to get EVEN uglier. TOML is not *at all* simple at this point...

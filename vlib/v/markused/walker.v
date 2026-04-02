@@ -963,12 +963,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.trace_enabled {
 		w.level++
 		defer(fn) { w.level-- }
-		receiver_name := if node.is_method && node.receiver.typ != 0 {
-			w.table.type_to_str(node.receiver.typ) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name}')
 	}
 	if node.is_closure {
 		w.used_closures++
@@ -982,6 +976,39 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
+	// For generic functions, mark the concrete param/return types for all instantiations.
+	// This is needed because mark_fn_ret_and_params skips types with .generic flag,
+	// but the cgen will emit concrete versions for all fn_generic_types entries.
+	if node.generic_names.len > 0 {
+		max_param_len := if node.is_method { node.params.len - 1 } else { node.params.len }
+		param_i := if node.is_method { 1 } else { 0 }
+		for concrete_type_list in w.table.fn_generic_types[fkey] {
+			// mark concrete return type
+			if node.return_type.has_flag(.generic) {
+				if resolved := w.table.convert_generic_type(node.return_type, node.generic_names,
+					concrete_type_list)
+				{
+					w.mark_by_type(resolved)
+				}
+			}
+			// mark concrete param types
+			for k, concrete_type in concrete_type_list {
+				if k >= max_param_len {
+					break
+				}
+				param_typ := node.params[k + param_i].typ
+				if param_typ.has_flag(.generic) {
+					if resolved := w.table.convert_generic_type(param_typ, node.generic_names,
+						concrete_type_list)
+					{
+						w.mark_by_type(resolved)
+					} else if w.table.type_kind(param_typ) == .array {
+						w.mark_by_type(w.table.find_or_register_array(concrete_type))
+					}
+				}
+			}
+		}
+	}
 	w.cur_fn = fkey
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
@@ -1129,7 +1156,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		}
 		if ((node.is_method && stmt.params.len > 1) || !node.is_method)
 			&& stmt.generic_names.len > 0 {
-			// mark concrete []T param as used
+			// mark concrete generic param types (e.g. []T, ...Node[T]) as used
 			max_param_len := if node.is_method { stmt.params.len - 1 } else { stmt.params.len }
 			param_i := if node.is_method { 1 } else { 0 }
 			for concrete_type_list in w.table.fn_generic_types[fn_name] {
@@ -1139,7 +1166,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 					}
 					param_typ := stmt.params[k + param_i].typ
 					if param_typ.has_flag(.generic) {
-						if w.table.type_kind(param_typ) == .array {
+						if resolved := w.table.convert_generic_type(param_typ, stmt.generic_names,
+							concrete_type_list)
+						{
+							w.mark_by_type(resolved)
+						} else if w.table.type_kind(param_typ) == .array {
 							w.mark_by_type(w.table.find_or_register_array(concrete_type))
 						} else if param_typ.has_flag(.option) {
 							w.used_option++

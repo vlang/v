@@ -3130,7 +3130,10 @@ fn (mut e Eval) update_index_target(expr ast.IndexExpr, value Value) ! {
 			if index < 0 || index >= container.values.len {
 				return error('v2.eval: array index out of bounds')
 			}
-			mut updated := container
+			mut updated := ArrayValue{
+				...container
+				values: container.values.clone()
+			}
 			assigned_value := e.adapt_value_to_type_name(value, updated.elem_type_name)
 			updated.values[index] = assigned_value
 			e.update_target(expr.lhs, updated)!

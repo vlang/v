@@ -114,9 +114,10 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	}
 	$if windows {
 		return error('fasthttp server lifecycle control is not supported on windows')
+	} $else {
+		mut server := unsafe { &Server(h.ptr) }
+		return server.wait_till_running_impl(params)!
 	}
-	mut server := unsafe { &Server(h.ptr) }
-	return server.wait_till_running_impl(params)!
 }
 
 // shutdown gracefully stops accepting new requests and waits for active requests to finish.
@@ -126,9 +127,10 @@ pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	}
 	$if windows {
 		return error('fasthttp server lifecycle control is not supported on windows')
+	} $else {
+		mut server := unsafe { &Server(h.ptr) }
+		server.shutdown_impl(params)!
 	}
-	mut server := unsafe { &Server(h.ptr) }
-	server.shutdown_impl(params)!
 }
 
 $if !windows {

@@ -139,7 +139,8 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
 		// we add the rounding value
-		s := f64_to_str(f + dec_round[dec_digit], 18)
+		clamped_dec := if dec_digit >= dec_round.len { dec_round.len - 1 } else { dec_digit }
+		s := f64_to_str(f + dec_round[clamped_dec], 18)
 		// check for +inf -inf Nan
 		if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
 			return s

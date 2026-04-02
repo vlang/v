@@ -1204,6 +1204,18 @@ fn (mut b Builder) cc_linux_cross() {
 			}
 		}
 	}
+	// Compile compiler runtime builtins (provides __udivti3 etc. for 128-bit integer
+	// operations used by thirdparty code like mbedtls bignum.c, since the linuxroot
+	// sysroot doesn't include libgcc or compiler-rt).
+	builtins_src := os.join_path(@VEXEROOT, 'thirdparty', 'builtins', 'compiler_builtins.c')
+	builtins_obj := os.join_path(os.vtmp_dir(), 'compiler_builtins.o')
+	if os.exists(builtins_src) {
+		builtins_cmd := '${b.quote_compiler_name(cc_name)} -w -fPIC -target x86_64-linux-gnu -o ${os.quoted_path(builtins_obj)} -c ${os.quoted_path(builtins_src)}'
+		builtins_res := os.execute(builtins_cmd)
+		if builtins_res.exit_code != 0 {
+			println('Warning: failed to compile compiler builtins for cross compilation.')
+		}
+	}
 	mut linker_args := [
 		'-L',
 		os.quoted_path(stubs_dir),
@@ -1232,6 +1244,9 @@ fn (mut b Builder) cc_linux_cross() {
 	linker_args << libs
 	linker_args << extra_obj_files
 	linker_args << cflags.c_options_only_object_files()
+	if os.exists(builtins_obj) {
+		linker_args << os.quoted_path(builtins_obj)
+	}
 	// -ldl
 	b.dump_c_options(linker_args)
 	mut ldlld := '${sysroot}/ld.lld'

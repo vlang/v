@@ -1951,6 +1951,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						}
 					}
 				}
+				if param.orig_typ.has_flag(.generic) {
+					if otyp := t.convert_generic_type(param.orig_typ, generic_names, to_types) {
+						param.orig_typ = otyp
+					}
+				}
 			}
 			func.name = ''
 			func.generic_names = []
@@ -2154,6 +2159,36 @@ pub fn (mut t Table) convert_generic_param_type(param Param, generic_names []str
 	return t.convert_generic_type(param.typ, generic_names, to_types)
 }
 
+// type_contains_placeholder returns true if the given type or any of its inner
+// generic types resolves to a placeholder (i.e., an undefined/unknown type).
+pub fn (t &Table) type_contains_placeholder(typ Type) bool {
+	sym := t.sym(typ)
+	if sym.kind == .placeholder {
+		return true
+	}
+	return match sym.info {
+		Array {
+			t.type_contains_placeholder(sym.info.elem_type)
+		}
+		ArrayFixed {
+			t.type_contains_placeholder(sym.info.elem_type)
+		}
+		Map {
+			t.type_contains_placeholder(sym.info.key_type)
+				|| t.type_contains_placeholder(sym.info.value_type)
+		}
+		SumType {
+			sym.info.concrete_types.any(t.type_contains_placeholder(it))
+		}
+		Struct {
+			sym.info.concrete_types.any(t.type_contains_placeholder(it))
+		}
+		else {
+			false
+		}
+	}
+}
+
 pub fn (mut t Table) unwrap_generic_param_type(param Param, generic_names []string, concrete_types []Type) Type {
 	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
 		&& concrete_types.all(!it.has_flag(.generic)) {
@@ -2274,6 +2309,10 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					unwrapped_fn.params[i].typ = t.unwrap_generic_param_type(param, generic_names,
 						concrete_types)
 					has_generic = true
+				}
+				if param.orig_typ.has_flag(.generic) {
+					unwrapped_fn.params[i].orig_typ = t.unwrap_generic_type(param.orig_typ,
+						generic_names, concrete_types)
 				}
 			}
 			if unwrapped_fn.return_type.has_flag(.generic) {
@@ -2754,6 +2793,13 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								info.concrete_types)
 							{
 								param.typ = t_typ
+							}
+						}
+						if param.orig_typ.has_flag(.generic) {
+							if t_typ := t.convert_generic_type(param.orig_typ, function.generic_names,
+								info.concrete_types)
+							{
+								param.orig_typ = t_typ
 							}
 						}
 					}

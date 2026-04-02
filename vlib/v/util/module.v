@@ -34,8 +34,14 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 			}
 		}
 	}
-	if m1 := mod_path_to_full_name(pref_, mod, file_path) {
-		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, file_path)
+	// Use absolute file_path so mod_path_to_full_name can walk up to find v.mod
+	abs_file_path := if os.is_abs_path(file_path) {
+		file_path
+	} else {
+		os.join_path_single(os.getwd(), file_path)
+	}
+	if m1 := mod_path_to_full_name(pref_, mod, abs_file_path) {
+		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, abs_file_path)
 		// >  qualify_module: analyzer           | file_path: /v/vls/analyzer/store.v  | =>   module_res 2: analyzer           ; clean_file_path - getwd == mod
 		// >  qualify_import: analyzer.depgraph  | file_path: /v/vls/analyzer/store.v  | =>   import_res 2: analyzer.depgraph  ; /v/vls/analyzer/store.v
 		// >  qualify_import: tree_sitter        | file_path: /v/vls/analyzer/store.v  | =>   import_res 2: tree_sitter        ; /v/vls/analyzer/store.v
@@ -102,13 +108,6 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 // 2022-01-30 it leads to path differences, and the / version on windows triggers a module lookip bug,
 // 2022-01-30 leading to completely different errors)
 fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !string {
-	normalized_path := os.real_path(path)
-	normalized_pref_path := os.real_path(pref_.path)
-	normalized_pref_base := if os.is_dir(normalized_pref_path) {
-		normalized_pref_path
-	} else {
-		normalized_pref_path.all_before_last(os.path_separator)
-	}
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := ['vlib', '.vmodules', 'modules']
@@ -119,14 +118,14 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		}
 	}
 	mut in_vmod_path := false
-	parts := normalized_path.split(os.path_separator)
+	parts := path.split(os.path_separator)
 	for vmod_folder in vmod_folders {
 		if vmod_folder in parts {
 			in_vmod_path = true
 			break
 		}
 	}
-	path_parts := normalized_path.split(os.path_separator)
+	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i > 0; i-- {
@@ -170,14 +169,27 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 			}
 		}
 	}
-	if os.is_abs_path(normalized_pref_base) && os.is_abs_path(normalized_path)
-		&& os.is_dir(normalized_path) && normalized_path.all_after_last(os.path_separator) == mod { // && path.contains(mod )
-		rel_mod_path := normalized_path.replace(normalized_pref_base + os.path_separator,
-			'')
-		if rel_mod_path != normalized_path {
-			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
+	if pref_.path.len > 0 && os.is_dir(path) {
+		real_pref_path_dir := pref_path_to_source_root(pref_)
+		real_path := os.real_path(path)
+		prefix := real_pref_path_dir + os.path_separator
+		if real_path.starts_with(prefix) {
+			full_mod_name := real_path[prefix.len..].replace(os.path_separator, '.')
 			return full_mod_name
 		}
 	}
 	return error('module not found')
+}
+
+fn pref_path_to_source_root(pref_ &pref.Preferences) string {
+	pref_path_dir := if os.is_dir(pref_.path) { pref_.path } else { os.dir(pref_.path) }
+	real_pref_path_dir := os.real_path(pref_path_dir)
+	files := os.ls(real_pref_path_dir) or { return real_pref_path_dir }
+	if pref_.should_compile_filtered_files(real_pref_path_dir, files).len == 0 {
+		src_path := os.join_path(real_pref_path_dir, 'src')
+		if os.is_dir(src_path) {
+			return src_path
+		}
+	}
+	return real_pref_path_dir
 }

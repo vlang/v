@@ -1500,7 +1500,12 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 // get_orm_select_expr_from_struct_field returns the SQL expression used in a SELECT list.
 fn (g &Gen) get_orm_select_expr_from_struct_field(field ast.StructField) string {
 	if attr := field.attrs.find_first('sql_select') {
-		return attr.arg
+		arg := attr.arg.trim_space()
+		if arg.len >= 2 && ((arg.starts_with("'") && arg.ends_with("'"))
+			|| (arg.starts_with('"') && arg.ends_with('"'))) {
+			return arg[1..arg.len - 1].trim_space()
+		}
+		return arg
 	}
 	return g.get_orm_column_name_from_struct_field(field)
 }

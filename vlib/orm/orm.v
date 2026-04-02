@@ -1103,7 +1103,7 @@ fn sql_field_name(field TableField) string {
 fn sql_field_select_expr(field TableField) string {
 	for attr in field.attrs {
 		if attr.name == 'sql_select' && attr.has_arg {
-			return attr.arg
+			return trim_attr_arg(attr.arg)
 		}
 	}
 	return sql_field_name(field)

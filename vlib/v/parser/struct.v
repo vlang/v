@@ -195,7 +195,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
-			} else if p.tok.kind == .key_mut {
+			} else if p.tok.kind == .key_mut && p.peek_tok.kind == .name
+				&& p.peek_token(2).line_nr == p.tok.line_nr
+				&& p.peek_token(2).kind !in [.assign, .rcbr, .semicolon] {
 				p.error_with_pos('missing `:` after `mut` in struct', p.tok.pos())
 				return ast.StructDecl{}
 			} else if p.tok.kind == .key_global && p.peek_tok.kind == .colon {

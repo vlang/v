@@ -79,8 +79,8 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 53 failed, 213 passed, 266 total.'
-const expected_summary_generics = 'Summary for all V _test.v files: 52 failed, 214 passed, 266 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 55 failed, 212 passed, 267 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 54 failed, 213 passed, 267 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
@@ -100,9 +100,11 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_fn_infer_multi_paras_test.v',
 	'vlib/v/tests/generics/generic_fn_type_with_different_generic_type_test.v',
 	'vlib/v/tests/generics/generic_fn_typeof_name_test.v',
+	'vlib/v/tests/generics/generic_fn_value_inference_test.v',
 	'vlib/v/tests/generics/generic_fn_with_comptime_for_test.v',
 	'vlib/v/tests/generics/generic_map_alias_test.v',
 	'vlib/v/tests/generics/generic_muls_test.v',
+	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',
 	'vlib/v/tests/generics/generic_options_with_reserved_ident_test.v',
 	'vlib/v/tests/generics/generic_receiver_embed_test.v',

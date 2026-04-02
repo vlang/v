@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl // needs GL/gl.h
 module sgl
 
 fn test_next_draw_chunk_keeps_uncapped_draws_intact() {

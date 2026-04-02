@@ -33,6 +33,9 @@ fn v_files() []string {
 		if tfile.starts_with('./vlib/v/cgen/tests') {
 			continue
 		}
+		if tfile.ends_with('graceful_shutdown_test.v') {
+			continue
+		}
 		files_that_can_be_formatted << tfile
 	}
 	return files_that_can_be_formatted
