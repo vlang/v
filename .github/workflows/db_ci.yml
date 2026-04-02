@@ -118,5 +118,5 @@ jobs:
           exit 1
       - name: Run mssql driver tests
         env:
-          VMSSQL_CONN_STR: "Driver={${{ steps.odbc.outputs.name }}};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TDS_Version=7.4;ClientCharset=UTF-8"
+          VMSSQL_CONN_STR: 'Driver={${{ steps.odbc.outputs.name }}};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TDS_Version=7.4;ClientCharset=UTF-8'
         run: ./v -d network -d started_mssql -silent test vlib/db/mssql/
