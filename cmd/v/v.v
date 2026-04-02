@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import hash
 import os
 import term
 import v.help
@@ -63,6 +64,7 @@ const external_tools = [
 	'where',
 ]
 const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
+const delegated_v2_exe_env = 'V_V2_EXE'
 
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
@@ -116,6 +118,7 @@ fn main() {
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
 		true)
 	maybe_delegate_to_vvmrc(command, prefs)
+	maybe_delegate_to_v2(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -201,6 +204,71 @@ fn invoke_help_and_exit(remaining []string) {
 	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
 	eprintln('For usage information, use ${term.highlight_command('v help')}.')
 	exit(1)
+}
+
+fn maybe_delegate_to_v2(command string, prefs &pref.Preferences) {
+	if !prefs.use_v2 {
+		return
+	}
+	if !is_v2_relevant_command(command, prefs) {
+		eprintln('v: `-v2` currently supports direct compilation only. Use `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.')
+		exit(1)
+	}
+	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'))
+}
+
+fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
+	if prefs.path == '' || prefs.is_run || prefs.is_crun {
+		return false
+	}
+	return command.ends_with('.v') && prefs.path.ends_with('.v')
+}
+
+@[noreturn]
+fn launch_v2_compiler(is_verbose bool, args []string) {
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
+	util.set_vroot_folder(vroot)
+	mut v2_exe := os.getenv(delegated_v2_exe_env)
+	if v2_exe == '' {
+		v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+		v2_exe = cached_v2_executable_path(vroot)
+		v2_exe_dir := os.dir(v2_exe)
+		os.mkdir_all(v2_exe_dir) or {
+			eprintln('cannot create `${v2_exe_dir}`: ${err}')
+			exit(1)
+		}
+		if util.should_recompile_tool(vexe, v2_source, 'v2', v2_exe) {
+			compilation_command := '${os.quoted_path(vexe)} -o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_source)}'
+			if is_verbose {
+				println('Compiling v2 with: "${compilation_command}"')
+			}
+			current_work_dir := os.getwd()
+			os.chdir(vroot) or {}
+			tool_compilation := os.execute(compilation_command)
+			os.chdir(current_work_dir) or {}
+			if tool_compilation.exit_code != 0 {
+				eprintln('cannot compile `${v2_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+				exit(1)
+			}
+		}
+	} else if !os.is_file(v2_exe) {
+		eprintln('v: `${delegated_v2_exe_env}` points to a missing executable: `${v2_exe}`')
+		exit(1)
+	}
+	os.setenv('VCHILD', 'true', true)
+	os.setenv('VEXE', os.real_path(v2_exe), true)
+	os.execvp(v2_exe, args) or {
+		eprintln('> error while executing: ${v2_exe} ${args}')
+		panic(err)
+	}
+	exit(2)
+}
+
+fn cached_v2_executable_path(vroot string) string {
+	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v2', vroot_hash,
+		'v2'))
 }
 
 fn rebuild(prefs &pref.Preferences) {

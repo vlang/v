@@ -96,6 +96,7 @@ pub mut:
 	output_mode         OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
+	use_v2     bool
 	// nofmt            bool   // disable vfmt
 	is_glibc           bool   // if GLIBC will be linked
 	is_musl            bool   // if MUSL will be linked
@@ -318,6 +319,7 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
+	use_v2_requested := '-v2' in args
 	detect_musl(mut res)
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -418,6 +420,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				} else {
 					command = 'version'
 				}
+			}
+			'-v2' {
+				res.use_v2 = true
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
@@ -943,6 +948,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-b', '-backend' {
 				sbackend := cmdline.option(args[i..], arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
+				if use_v2_requested && sbackend in ['eval', 'cleanc', 'c', 'v', 'arm64', 'x64'] {
+					res.backend_set_by_flag = true
+					i++
+					continue
+				}
 				b := backend_from_string(sbackend) or {
 					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
 				}

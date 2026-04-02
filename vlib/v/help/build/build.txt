@@ -36,6 +36,11 @@ If you have not set it, a suitable platform specific folder (like /tmp) will be 
 
 NB: the build flags are shared with the run command too:
 
+  -v2
+    Delegate direct compilation to the V2 frontend from `cmd/v2/v2.v`.
+    Example: `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.
+    V2 defaults to the `cleanc` backend unless `-b`/`-backend` selects another one.
+
   -b <backend>, -backend <backend>
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:

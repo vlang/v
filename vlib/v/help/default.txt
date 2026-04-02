@@ -17,6 +17,9 @@ Examples:
                                sources.
   v -o h.c hello.v             Translate `hello.v` to `h.c` only. Do not compile
                                further.
+  v -v2 hello.v                Compile `hello.v` with the V2 frontend
+                               (`cmd/v2/v2.v`). Use `-b arm64` or
+                               `-backend arm64` to switch V2 backends.
   v -o - hello.v               Translates `hello.v` and outputs the C source 
                                code to stdout. Does not compile further.
   v watch hello.v              Re-do the same compilation when a source code
