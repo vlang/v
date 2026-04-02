@@ -2240,15 +2240,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	if ast.builtin_array_generic_methods_matcher.matches(field_name) {
-		if p.file_backend_mode == .v || p.file_backend_mode == .c {
-			p.register_auto_import('builtin.closure')
-		}
-		p.open_scope()
-		defer(fn) {
-			p.close_scope()
-		}
-	}
+	is_builtin_array_generic_method := ast.builtin_array_generic_methods_matcher.matches(field_name)
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
 		p.next()
@@ -2270,6 +2262,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	if p.tok.kind == .lpar {
+		if is_builtin_array_generic_method {
+			if p.file_backend_mode == .v || p.file_backend_mode == .c {
+				p.register_auto_import('builtin.closure')
+			}
+			p.open_scope()
+			defer(fn) {
+				p.close_scope()
+			}
+		}
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
