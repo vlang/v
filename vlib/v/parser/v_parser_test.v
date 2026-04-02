@@ -477,3 +477,22 @@ x end_comment'
 y comment line2
 y end_comment'
 }
+
+fn test_no_closure_auto_import_for_field_names() {
+	vpref := &pref.Preferences{}
+	for field_name in ast.builtin_array_generic_methods {
+		source := 'struct Sample {
+mut:
+	${field_name} u32
+}
+
+fn use_field(mut sample Sample) {
+	_ = sample.${field_name}
+	sample.${field_name}++
+}
+'
+		mut table := ast.new_table()
+		prog := parse_text(source, '', mut table, .skip_comments, vpref)
+		assert 'builtin.closure' !in prog.auto_imports
+	}
+}
