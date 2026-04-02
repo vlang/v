@@ -43,6 +43,7 @@ jobs:
             v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
             v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev
             v retry -- sudo apt -qq install sassc libgit2-dev # needed by gitly
+            v retry -- sudo apt -qq install libunwind-18-dev # needed by v-analyzer for libbacktrace
           else
             v retry brew install sassc libgit2
           fi
