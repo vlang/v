@@ -1599,7 +1599,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
 	if w.uses_array {
-		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt, .vgc] {
 			w.fn_by_name('__new_array_noscan')
 			w.fn_by_name('new_array_from_c_array_noscan')
 			w.fn_by_name('__new_array_with_multi_default_noscan')
@@ -1661,7 +1661,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('new_map_init')
 		w.fn_by_name('map_hash_string')
 
-		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt, .vgc] {
 			w.fn_by_name('new_map_noscan_key')
 			w.fn_by_name('new_map_noscan_value')
 			w.fn_by_name('new_map_noscan_key_value')

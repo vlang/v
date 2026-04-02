@@ -25,6 +25,7 @@ fn C.vgc_os_alloc(size usize) voidptr
 fn C.vgc_os_free(ptr voidptr, size usize)
 fn C.vgc_os_decommit(ptr voidptr, size usize)
 fn C.vgc_get_sp() voidptr
+fn C.vgc_get_stack_bounds(lo &usize, hi &usize) int
 fn C.vgc_bitmap_get(bits &u8, idx u32) int
 fn C.vgc_bitmap_set(bits &u8, idx u32)
 fn C.vgc_bitmap_clear(bits &u8, idx u32)
@@ -108,6 +109,7 @@ mut:
 	tiny_allocs usize
 	// Thread info
 	registered bool
+	stack_base usize // fixed stack boundary for this thread
 	stack_lo   usize // lowest stack address (for root scanning)
 	stack_hi   usize // highest stack address
 	thread_id  u64
@@ -229,16 +231,55 @@ fn vgc_register_thread() {
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 
 	C.vgc_set_cache_idx(idx)
+	sp := usize(C.vgc_get_sp())
+	mut stack_lo := usize(0)
+	mut stack_hi := usize(0)
+	mut stack_base := if sp > usize(8) * 1024 * 1024 {
+		sp - usize(8) * 1024 * 1024
+	} else {
+		usize(0)
+	}
+	if C.vgc_get_stack_bounds(&stack_lo, &stack_hi) != 0 && stack_lo < stack_hi {
+		dist_lo := if sp >= stack_lo { sp - stack_lo } else { stack_lo - sp }
+		dist_hi := if stack_hi >= sp { stack_hi - sp } else { sp - stack_hi }
+		stack_base = if dist_hi <= dist_lo { stack_hi } else { stack_lo }
+	}
 	unsafe {
 		vgc_heap.caches[idx].registered = true
-		vgc_heap.caches[idx].stack_hi = usize(C.vgc_get_sp())
-		vgc_heap.caches[idx].stack_lo = vgc_heap.caches[idx].stack_hi - usize(8) * 1024 * 1024 // estimate 8MB stack
+		vgc_heap.caches[idx].stack_base = stack_base
 	}
+	vgc_refresh_stack_range_for_sp(idx, sp)
 }
 
 fn vgc_ensure_registered() {
 	if C.vgc_get_cache_idx() < 0 {
 		vgc_register_thread()
+	}
+}
+
+fn vgc_refresh_stack_range() {
+	cache_idx := C.vgc_get_cache_idx()
+	if cache_idx < 0 {
+		return
+	}
+	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
+}
+
+fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
+	if cache_idx < 0 || cache_idx >= vgc_max_threads {
+		return
+	}
+	stack_base := unsafe { vgc_heap.caches[cache_idx].stack_base }
+	if stack_base <= sp {
+		unsafe {
+			vgc_heap.caches[cache_idx].stack_lo = stack_base
+			vgc_heap.caches[cache_idx].stack_hi = sp
+		}
+	} else {
+		unsafe {
+			vgc_heap.caches[cache_idx].stack_lo = sp
+			vgc_heap.caches[cache_idx].stack_hi = stack_base
+		}
 	}
 }
 
@@ -426,64 +467,40 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 	if span.alloc_bits == unsafe { nil } {
 		return unsafe { nil }
 	}
-	// Scan from free_index hint using byte-level skip
-	mut byte_idx := span.free_index >> 3
+	start_idx := span.free_index
 	nbytes := (span.nelems + 7) >> 3
-	// Check partial byte at free_index first
-	for i := span.free_index; i < ((byte_idx + 1) << 3) && i < span.nelems; i++ {
-		if C.vgc_bitmap_get(span.alloc_bits, i) == 0 {
-			C.vgc_bitmap_set(span.alloc_bits, i)
-			span.alloc_count++
-			span.free_index = i + 1
-			addr := span.base + usize(i) * usize(span.elem_size)
-			return unsafe { voidptr(addr) }
-		}
-	}
-	byte_idx++
-	// Skip full bytes (0xFF = all 8 slots allocated)
-	for byte_idx < nbytes {
-		b := unsafe { span.alloc_bits[byte_idx] }
-		if b != 0xFF {
-			// Has a free bit in this byte
+	start_byte := start_idx >> 3
+	end_byte := (start_idx + 7) >> 3
+	for pass in 0 .. 2 {
+		mut byte_idx := if pass == 0 { start_byte } else { u32(0) }
+		limit := if pass == 0 { nbytes } else { end_byte }
+		for byte_idx < limit {
 			bit_base := byte_idx << 3
-			for bit in 0 .. u32(8) {
+			mut b := unsafe { span.alloc_bits[byte_idx] }
+			if b == 0xFF {
+				byte_idx++
+				continue
+			}
+			start_bit := if byte_idx == start_byte { start_idx & 7 } else { u32(0) }
+			for bit := start_bit; bit < u32(8); bit++ {
 				i := bit_base + bit
 				if i >= span.nelems {
 					break
 				}
-				if C.vgc_bitmap_get(span.alloc_bits, i) == 0 {
-					C.vgc_bitmap_set(span.alloc_bits, i)
+				mask := u8(1) << bit
+				if (b & mask) == 0 {
+					b |= mask
+					unsafe {
+						span.alloc_bits[byte_idx] = b
+					}
 					span.alloc_count++
 					span.free_index = i + 1
 					addr := span.base + usize(i) * usize(span.elem_size)
 					return unsafe { voidptr(addr) }
 				}
 			}
+			byte_idx++
 		}
-		byte_idx++
-	}
-	// Wrap around: scan from beginning to original free_index
-	byte_idx = 0
-	end_byte := (span.free_index + 7) >> 3
-	for byte_idx < end_byte {
-		b := unsafe { span.alloc_bits[byte_idx] }
-		if b != 0xFF {
-			bit_base := byte_idx << 3
-			for bit in 0 .. u32(8) {
-				i := bit_base + bit
-				if i >= span.nelems {
-					break
-				}
-				if C.vgc_bitmap_get(span.alloc_bits, i) == 0 {
-					C.vgc_bitmap_set(span.alloc_bits, i)
-					span.alloc_count++
-					span.free_index = i + 1
-					addr := span.base + usize(i) * usize(span.elem_size)
-					return unsafe { voidptr(addr) }
-				}
-			}
-		}
-		byte_idx++
 	}
 	return unsafe { nil } // span is full
 }
@@ -602,7 +619,7 @@ fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 // ============================================================
 
 fn vgc_malloc(n usize) voidptr {
-	return vgc_malloc_typed(n, 0, 0)
+	return vgc_malloc_typed_opts(n, 0, 0, true)
 }
 
 // vgc_malloc_typed allocates with a precise pointer map.
@@ -610,6 +627,10 @@ fn vgc_malloc(n usize) voidptr {
 // ptr_words: number of pointer words in the object.
 // If ptrmap==0 && ptr_words==0, falls back to conservative scanning.
 fn vgc_malloc_typed(n usize, ptrmap u64, ptr_words u8) voidptr {
+	return vgc_malloc_typed_opts(n, ptrmap, ptr_words, true)
+}
+
+fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) voidptr {
 	if n == 0 {
 		return unsafe { nil }
 	}
@@ -620,14 +641,14 @@ fn vgc_malloc_typed(n usize, ptrmap u64, ptr_words u8) voidptr {
 	// Large allocation (> 32KB) - get dedicated span
 	if n > usize(vgc_max_small_size) {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, false)
+		return vgc_alloc_large(n, false, zero_fill)
 	}
 
 	// Small allocation - use size class and cache
 	class_idx := C.vgc_size_class(u32(n))
 	if class_idx == 0 {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, false)
+		return vgc_alloc_large(n, false, zero_fill)
 	}
 
 	span_class := int(class_idx) * 2 // scan variant
@@ -650,8 +671,9 @@ fn vgc_malloc_typed(n usize, ptrmap u64, ptr_words u8) voidptr {
 		// Track actual object bytes, not page bytes
 		C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
 		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
-		// Zero the memory (like Go's mallocgc)
-		unsafe { C.memset(ptr, 0, n) }
+		if zero_fill {
+			unsafe { C.memset(ptr, 0, n) }
+		}
 		// Periodic GC check - only when span fills up (amortize cost)
 		if span.alloc_count >= span.nelems {
 			vgc_maybe_gc()
@@ -675,6 +697,10 @@ fn vgc_maybe_gc() {
 }
 
 fn vgc_malloc_noscan(n usize) voidptr {
+	return vgc_malloc_noscan_opts(n, true)
+}
+
+fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 	if n == 0 {
 		return unsafe { nil }
 	}
@@ -684,12 +710,12 @@ fn vgc_malloc_noscan(n usize) voidptr {
 
 	if n > usize(vgc_max_small_size) {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, true)
+		return vgc_alloc_large(n, true, zero_fill)
 	}
 
 	class_idx := C.vgc_size_class(u32(n))
 	if class_idx == 0 {
-		return vgc_alloc_large(n, true)
+		return vgc_alloc_large(n, true, zero_fill)
 	}
 
 	// Tiny allocator for very small objects (translated from Go's mcache tiny allocator)
@@ -721,7 +747,9 @@ fn vgc_malloc_noscan(n usize) voidptr {
 		if span != unsafe { nil } {
 			ptr := unsafe { vgc_span_alloc_obj(mut span) }
 			if ptr != unsafe { nil } {
-				unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
+				if zero_fill {
+					unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
+				}
 				unsafe {
 					vgc_heap.caches[cache_idx].tiny = usize(ptr)
 					vgc_heap.caches[cache_idx].tiny_offset = n
@@ -744,13 +772,15 @@ fn vgc_malloc_noscan(n usize) voidptr {
 	if ptr != unsafe { nil } {
 		C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
 		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
-		unsafe { C.memset(ptr, 0, n) }
+		if zero_fill {
+			unsafe { C.memset(ptr, 0, n) }
+		}
 	}
 	return ptr
 }
 
 // Allocate a large object (> 32KB) with its own span
-fn vgc_alloc_large(n usize, noscan bool) voidptr {
+fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 	npages := u32((n + vgc_page_size - 1) / vgc_page_size)
 	span := vgc_span_alloc(npages)
 	if span == unsafe { nil } {
@@ -786,7 +816,9 @@ fn vgc_alloc_large(n usize, noscan bool) voidptr {
 	C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
 
 	ptr := unsafe { voidptr(span.base) }
-	unsafe { C.memset(ptr, 0, n) }
+	if zero_fill {
+		unsafe { C.memset(ptr, 0, n) }
+	}
 	return ptr
 }
 
@@ -799,16 +831,25 @@ fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
 		return unsafe { nil }
 	}
 	// Find the span owning this pointer to get old size
-	old_size := vgc_get_obj_size(old_ptr)
-	if old_size == 0 {
+	old_span := vgc_find_span(old_ptr)
+	if old_span == unsafe { nil } {
 		// Unknown object - just malloc new
 		return vgc_malloc(new_size)
 	}
+	old_size := usize(old_span.elem_size)
 	if new_size <= old_size {
 		return old_ptr // fits in current allocation
 	}
-	// Allocate new, copy, old will be collected
-	new_ptr := vgc_malloc(new_size)
+	// Preserve the original scan policy so raw buffers do not become scan objects.
+	mut new_ptr := unsafe { nil }
+	if old_span.noscan {
+		new_ptr = vgc_malloc_noscan_opts(new_size, false)
+	} else if old_span.has_ptrmap {
+		new_ptr = vgc_malloc_typed_opts(new_size, old_span.ptrmap, old_span.ptr_words,
+			false)
+	} else {
+		new_ptr = vgc_malloc_typed_opts(new_size, 0, 0, false)
+	}
 	if new_ptr != unsafe { nil } {
 		copy_size := if old_size < new_size { old_size } else { new_size }
 		unsafe { C.memcpy(new_ptr, old_ptr, copy_size) }
@@ -915,10 +956,8 @@ fn vgc_safepoint() {
 	if cache_idx < 0 {
 		return
 	}
-	// Update stack pointer for root scanning
-	unsafe {
-		vgc_heap.caches[cache_idx].stack_hi = usize(C.vgc_get_sp())
-	}
+	// Update the live stack range for root scanning.
+	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
 	// Mark ourselves as stopped
 	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 1)
 	C.vgc_atomic_add_u32(&vgc_heap.gc_stopped_count, 1)

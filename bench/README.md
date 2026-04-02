@@ -5,7 +5,8 @@ V version: 0.5.1.
 
 ## GC: Boehm vs VGC
 
-Compares Boehm GC (`-gc boehm`) against V's built-in concurrent tri-color mark-and-sweep (`-gc vgc`).
+Compares Boehm GC (`-gc boehm`) against V's built-in concurrent tri-color
+mark-and-sweep (`-gc vgc`).
 5 iterations per test, median reported.
 
 ```
@@ -15,18 +16,18 @@ v run bench/bench_gc.v
 ```
   test                                             boehm       vgc     ratio
   ———————————————————————————————————————————— ————————— ————————— —————————
-  small allocs (1000000x string)                   41 ms     59 ms    1.44x
-  tree build+walk (depth=18, 10x)                  49 ms    156 ms    3.18x
-  array grow (100x 100000 pushes)                   8 ms     33 ms    4.13x
-  map insert (20x 10k entries)                     20 ms     31 ms    1.55x
-  mixed workload (50 rounds)                       10 ms     21 ms    2.10x
+  small allocs (1000000x string)                   43 ms     52 ms    1.21x
+  tree build+walk (depth=18, 10x)                  46 ms    125 ms    2.72x
+  array grow (100x 100000 pushes)                   7 ms     30 ms    4.29x
+  map insert (20x 10k entries)                     20 ms     27 ms    1.35x
+  mixed workload (50 rounds)                       10 ms     16 ms    1.60x
 
   heap usage:
-    boehm: 29856 KB allocated, 29312 KB free
+    boehm: 29856 KB allocated, 29020 KB free
     vgc:   131072 KB allocated, 0 KB free
 ```
 
-Boehm is 1.4x-4x faster across all workloads and uses ~4x less heap.
+Boehm is still 1.2x-4.3x faster across these workloads and uses ~4x less heap.
 
 ## Closures
 

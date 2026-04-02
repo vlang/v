@@ -46,6 +46,9 @@ fn vgc_gc_start() {
 	// Enable write barrier (for concurrent correctness)
 	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 1)
 
+	// The thread starting GC does not pass through a safepoint.
+	vgc_refresh_stack_range()
+
 	// Scan roots: stacks + globals (conservative scanning)
 	vgc_mark_roots()
 

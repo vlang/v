@@ -9113,7 +9113,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 }
 
 fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
-	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt, .vgc] {
 		if !g.contains_ptr(elem_typ) {
 			return '_noscan'
 		}

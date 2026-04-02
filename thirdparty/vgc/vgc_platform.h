@@ -113,6 +113,59 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 #endif
 
 // ============================================================
+// Stack bounds
+// ============================================================
+#if defined(__APPLE__)
+  #include <pthread.h>
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      void* stack_hi = pthread_get_stackaddr_np(pthread_self());
+      size_t stack_size = pthread_get_stacksize_np(pthread_self());
+      if (stack_hi == NULL || stack_size == 0) return 0;
+      *hi = (uintptr_t)stack_hi;
+      *lo = *hi - stack_size;
+      return 1;
+  }
+#elif defined(__linux__) || defined(__ANDROID__)
+  #include <pthread.h>
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      pthread_attr_t attr;
+      if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
+      void* stack_lo = NULL;
+      size_t stack_size = 0;
+      int ok = pthread_attr_getstack(&attr, &stack_lo, &stack_size) == 0 && stack_lo != NULL && stack_size != 0;
+      pthread_attr_destroy(&attr);
+      if (!ok) return 0;
+      *lo = (uintptr_t)stack_lo;
+      *hi = *lo + stack_size;
+      return 1;
+  }
+#elif defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__OpenBSD__)
+  #include <pthread.h>
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      pthread_attr_t attr;
+      if (pthread_attr_init(&attr) != 0) return 0;
+      if (pthread_attr_get_np(pthread_self(), &attr) != 0) {
+          pthread_attr_destroy(&attr);
+          return 0;
+      }
+      void* stack_lo = NULL;
+      size_t stack_size = 0;
+      int ok = pthread_attr_getstack(&attr, &stack_lo, &stack_size) == 0 && stack_lo != NULL && stack_size != 0;
+      pthread_attr_destroy(&attr);
+      if (!ok) return 0;
+      *lo = (uintptr_t)stack_lo;
+      *hi = *lo + stack_size;
+      return 1;
+  }
+#else
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      (void)lo;
+      (void)hi;
+      return 0;
+  }
+#endif
+
+// ============================================================
 // Bitmap operations (for mark/alloc bitmaps)
 // ============================================================
 static inline int vgc_bitmap_get(const uint8_t* bits, uint32_t idx) {

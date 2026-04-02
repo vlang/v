@@ -164,7 +164,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		]
 	}
 
-	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
+	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt, .vgc]
 
 	has_noscan := all_fn_root_names.any(it.contains('noscan')
 		&& it !in ['vcalloc_noscan', 'malloc_noscan'])
@@ -182,7 +182,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		// _noscan functions/methods are selected when the `-gc boehm` is on:
+		// _noscan functions/methods are selected when the active GC can honor noscan allocations.
 		if has_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
 			all_fn_root_names << k
 			continue

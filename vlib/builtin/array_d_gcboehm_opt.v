@@ -120,7 +120,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
-	new_data := vcalloc_noscan(new_size)
+	new_data := unsafe { malloc_noscan(__at_least_one(new_size)) }
 	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
