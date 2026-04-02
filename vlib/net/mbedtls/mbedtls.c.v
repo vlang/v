@@ -86,6 +86,7 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_hash.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_mac.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_pake.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_random.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_rsa.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_se.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_slot_management.o
