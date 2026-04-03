@@ -198,6 +198,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
+	left_is_explicit_ptr := left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
+		&& left_final_sym.kind != .voidptr
+	right_is_explicit_ptr := right_type.is_any_kind_of_pointer() && !node.right.is_auto_deref_var()
+		&& right_final_sym.kind != .voidptr
 
 	if node.op != .key_is {
 		match mut node.left {
@@ -459,7 +463,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
 			}
 
-			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
+			if !c.pref.translated && !left_is_explicit_ptr
+				&& left_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if left_sym.has_method_with_generic_parent(op_str) {
 					if method := left_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
@@ -477,7 +482,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
-			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
+			} else if !c.pref.translated && !right_is_explicit_ptr
+				&& right_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if right_sym.has_method_with_generic_parent(op_str) {
 					if method := right_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
@@ -949,7 +955,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			c.error('infix expr: cannot use `${error_right_sym.name}` (right expression) as `${error_left_sym.name}`',
 				left_right_pos)
 		} else if left_type.is_ptr() {
-			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
+			for_ptr_op := left_is_explicit_ptr || c.table.type_is_for_pointer_arithmetic(left_type)
 			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
 				&& right_type.is_int() {
 				sugg := ' (you can use it inside an `unsafe` block)'
