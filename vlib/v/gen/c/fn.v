@@ -4194,7 +4194,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						')', node)
 					return
 				} else if left_sym.kind == .interface {
-					g.conversion_function_call('v_typeof_interface_${typ_sym.cname}', '', node)
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}',
+						')', node)
 					return
 				}
 			}
