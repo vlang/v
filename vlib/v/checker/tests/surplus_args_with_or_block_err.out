@@ -1,0 +1,9 @@
+vlib/v/checker/tests/surplus_args_with_or_block_err.vv:34:47: error: expected 2 arguments, but got 3
+   32 |
+   33 |     if config.output_file != '' {
+   34 |         export_results(results, config.output_file, config) or {
+      |                                                     ~~~~~~
+   35 |             if config.use_color {
+   36 |                 eprintln('Error: export failed')
+Details: have ([]main.SimResult, string, main.Config)
+         want ([]main.SimResult, main.Config)
