@@ -2078,6 +2078,46 @@ static int ssl_get_ecdh_params_from_cert(mbedtls_ssl_context *ssl)
 #endif /* MBEDTLS_KEY_EXCHANGE_ECDH_RSA_ENABLED) ||
           MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA_ENABLED */
 
+#if defined(MBEDTLS_KEY_EXCHANGE_WITH_SERVER_SIGNATURE_ENABLED)
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_parse_signature_algorithm(mbedtls_ssl_context *ssl,
+                                         uint16_t sig_alg,
+                                         mbedtls_md_type_t *md_alg,
+                                         mbedtls_pk_type_t *pk_alg)
+{
+    if (mbedtls_ssl_get_pk_type_and_md_alg_from_sig_alg(sig_alg, pk_alg, md_alg) != 0) {
+        MBEDTLS_SSL_DEBUG_MSG(1,
+                              ("Server used unsupported value in SigAlg extension 0x%04x",
+                               sig_alg));
+        return MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER;
+    }
+
+    /*
+     * mbedtls_ssl_get_pk_sigalg_and_md_alg_from_sig_alg() understands sig_alg code points across
+     * TLS versions. Make sure that the received sig_alg extension is valid in TLS 1.2.
+     */
+    if (!mbedtls_ssl_sig_alg_is_supported(ssl, sig_alg)) {
+        MBEDTLS_SSL_DEBUG_MSG(1,
+                              ("Server used unsupported value in SigAlg extension 0x%04x",
+                               sig_alg));
+        return MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER;
+    }
+
+    /*
+     * Check if the signature algorithm is acceptable
+     */
+    if (!mbedtls_ssl_sig_alg_is_offered(ssl, sig_alg)) {
+        MBEDTLS_SSL_DEBUG_MSG(1, ("Server used SigAlg value 0x%04x that was not offered", sig_alg));
+        return MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER;
+    }
+
+    MBEDTLS_SSL_DEBUG_MSG(2, ("Server used SignatureAlgorithm %d", sig_alg & 0x00FF));
+    MBEDTLS_SSL_DEBUG_MSG(2, ("Server used HashAlgorithm %d", sig_alg >> 8));
+
+    return 0;
+}
+#endif /* MBEDTLS_KEY_EXCHANGE_WITH_SERVER_SIGNATURE_ENABLED) */
+
 MBEDTLS_CHECK_RETURN_CRITICAL
 static int ssl_parse_server_key_exchange(mbedtls_ssl_context *ssl)
 {
@@ -2300,7 +2340,6 @@ start_processing:
         unsigned char *params = ssl->in_msg + mbedtls_ssl_hs_hdr_len(ssl);
         size_t params_len = (size_t) (p - params);
         void *rs_ctx = NULL;
-        uint16_t sig_alg;
 
         mbedtls_pk_context *peer_pk;
 
@@ -2319,11 +2358,8 @@ start_processing:
          * Handle the digitally-signed structure
          */
         MBEDTLS_SSL_CHK_BUF_READ_PTR(p, end, 2);
-        sig_alg = MBEDTLS_GET_UINT16_BE(p, 0);
-        if (mbedtls_ssl_get_pk_type_and_md_alg_from_sig_alg(
-                sig_alg, &pk_alg, &md_alg) != 0 &&
-            !mbedtls_ssl_sig_alg_is_offered(ssl, sig_alg) &&
-            !mbedtls_ssl_sig_alg_is_supported(ssl, sig_alg)) {
+        uint16_t sig_alg = MBEDTLS_GET_UINT16_BE(p, 0);
+        if (ssl_parse_signature_algorithm(ssl, sig_alg, &md_alg, &pk_alg) != 0) {
             MBEDTLS_SSL_DEBUG_MSG(1,
                                   ("bad server key exchange message"));
             mbedtls_ssl_send_alert_message(
@@ -2764,7 +2800,7 @@ static int ssl_write_client_key_exchange(mbedtls_ssl_context *ssl)
 
         header_len = 4;
 
-        MBEDTLS_SSL_DEBUG_MSG(1, ("Perform PSA-based ECDH computation."));
+        MBEDTLS_SSL_DEBUG_MSG(3, ("Perform PSA-based ECDH computation."));
 
         /*
          * Generate EC private key for ECDHE exchange.
@@ -2936,7 +2972,7 @@ ecdh_calc_secret:
 
         header_len += ssl->conf->psk_identity_len;
 
-        MBEDTLS_SSL_DEBUG_MSG(1, ("Perform PSA-based ECDH computation."));
+        MBEDTLS_SSL_DEBUG_MSG(3, ("Perform PSA-based ECDH computation."));
 
         /*
          * Generate EC private key for ECDHE exchange.

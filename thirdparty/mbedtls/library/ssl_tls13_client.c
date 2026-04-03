@@ -2270,6 +2270,9 @@ static int ssl_tls13_process_encrypted_extensions(mbedtls_ssl_context *ssl)
 #if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
     if (mbedtls_ssl_tls13_key_exchange_mode_with_psk(ssl)) {
         mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_SERVER_FINISHED);
+
+        /* Since we're not using a certificate, set verify_result to success */
+        ssl->session_negotiate->verify_result = 0;
     } else {
         mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_CERTIFICATE_REQUEST);
     }

@@ -1,7 +1,7 @@
 // This script can be used to update the thirdparty/mbedtls/ folder to a future version of mbedtls.
 import os
 
-const version = 'v3.6.5'
+const version = 'v3.6.6'
 
 fn do(cmd string) {
 	println(cmd)
