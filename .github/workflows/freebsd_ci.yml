@@ -93,7 +93,7 @@ jobs:
 
   gcc-freebsd:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - name: Tests on FreeBSD with gcc
