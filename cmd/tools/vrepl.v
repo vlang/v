@@ -458,6 +458,10 @@ fn remove_comment(oline string) string {
 }
 
 fn run_repl(workdir string, vrepl_prefix string) int {
+	os.mkdir_all(workdir) or {
+		rerror('Could not create the REPL working folder `${workdir}`: ${err}')
+		return 1
+	}
 	os.chdir(workdir) or {
 		rerror('Could not change the REPL working folder to `${workdir}`: ${err}')
 		return 1
