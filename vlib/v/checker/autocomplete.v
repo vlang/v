@@ -273,7 +273,7 @@ fn (mut c Checker) ident_hover(node_ ast.Expr) {
 		else {}
 	}
 	if declaration == '' {
-		return
+		exit(0)
 	}
 	c.vls_write_hover(declaration, doc)
 	exit(0)
