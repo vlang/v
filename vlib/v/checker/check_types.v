@@ -242,6 +242,11 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		if got.is_number() && expected.is_number() {
 			return
 		}
+		// allow pointer-to-number types to be used interchangeably, e.g. &int_literal as &int
+		if got_is_ptr && exp_is_ptr && got.nr_muls() == expected.nr_muls()
+			&& got.deref().is_number() && expected.deref().is_number() {
+			return
+		}
 		// allow bool & int to be used interchangeably for C functions
 		if (got.idx() == ast.bool_type_idx
 			&& expected.idx() in [ast.int_type_idx, ast.int_literal_type_idx, ast.i32_type_idx])

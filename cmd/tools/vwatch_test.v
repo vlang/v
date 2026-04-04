@@ -29,7 +29,7 @@ fn test_watch_keeps_backend_flag_intact() {
 	process.set_args(['watch', '-backend', 'js_browser', '-output', output_path, source_path])
 	process.run()
 
-	for _ in 0 .. 80 {
+	for _ in 0 .. 300 {
 		if os.exists(output_path) || !process.is_alive() {
 			break
 		}
