@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch4/issue-26234/vlib/builtin/closure/closure_nix.c.v", "fhash": "16eee80b78998534",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d macos",
-  "npoints": 21,
-  "points": [  16,17,25,29,30,33,38,41,43,46,55,56,58,61,62,67,68,74,75,81,82  ]
-}

@@ -262,7 +262,7 @@ fn sfons_render_resize(user_ptr voidptr, width int, height int) int {
 	return sfons_render_create(user_ptr, width, height)
 }
 
-fn sfons_render_update(user_ptr voidptr, rect &int, data &u8) {
+fn sfons_render_update(user_ptr voidptr, _rect &int, _data &u8) {
 	assert user_ptr != unsafe { nil }
 	mut sf := unsafe { &SFons(user_ptr) }
 	sf.img_dirty = true

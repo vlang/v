@@ -1,3 +1,8 @@
+vlib/v/checker/tests/i64_to_f64_implicit_cast_err.vv:1:14: notice: unused parameter: `value`
+    1 | fn takes_f64(value f64) {}
+      |              ~~~~~
+    2 | 
+    3 | fn returns_f64() f64 {
 vlib/v/checker/tests/i64_to_f64_implicit_cast_err.vv:5:9: error: cannot use `i64` as type `f64` in return argument
     3 | fn returns_f64() f64 {
     4 |     value := i64(9_223_372_036_854_775_000)

@@ -43,7 +43,7 @@ mut:
 
 // DecoderOptions provides options for JSON decoding.
 // By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
-@[params]
+@[markused; params]
 pub struct DecoderOptions {
 pub:
 	// In strict mode, quoted strings are not accepted as numbers.
@@ -53,6 +53,7 @@ pub:
 }
 
 // Decoder is the internal decoding state.
+@[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
@@ -105,7 +106,7 @@ fn (list &LinkedList[ValueInfo]) str() string {
 }
 
 @[manualfree]
-fn (list &LinkedList[T]) str() string {
+fn (list &LinkedList[StructFieldInfo]) str() string {
 	mut sb := strings.new_builder(128)
 	defer {
 		unsafe { sb.free() }
@@ -153,6 +154,7 @@ fn (e JsonDecodeError) msg() string {
 }
 
 // checker_error generates a checker error message showing the position in the json string
+@[markused]
 fn (mut checker Decoder) checker_error(message string) ! {
 	position := checker.checker_idx
 
@@ -214,6 +216,7 @@ fn (mut checker Decoder) checker_error(message string) ! {
 }
 
 // decode_error generates a decoding error from the decoding stage
+@[markused]
 fn (mut decoder Decoder) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
 	if decoder.current_node != unsafe { nil } {
@@ -303,9 +306,6 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut result)!
-	unsafe {
-		decoder.values_info.free()
-	}
 	return result
 }
 
@@ -688,7 +688,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										if unsafe {
 											vmemcmp(decoder.json.str +
 												decoder.current_node.next.value.position,
-												float_zero_in_string.str, float_zero_in_string.len) == 0
+												c'0.0', '0.0'.len) == 0
 										} {
 											current_field_info = current_field_info.next
 											continue
@@ -792,7 +792,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 													val.$(field.name) = decoded_ptr
 												}
 											} $else {
-												decoder.decode_value(mut val.$(field.name))!
+												mut decoded_field_value := val.$(field.name)
+												decoder.decode_value(mut decoded_field_value)!
+												$if field.unaliased_typ is $map {
+													val.$(field.name) = decoded_field_value.move()
+												} $else {
+													val.$(field.name) = decoded_field_value
+												}
 											}
 										}
 										current_field_info.value.is_decoded = true
@@ -840,8 +846,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
-				true_in_string.len) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, c'true', 'true'.len) == 0
 		}
 	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value
@@ -866,6 +871,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 }
 
 fn (mut decoder Decoder) decode_string[T](mut val T) ! {
+	_ = val
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -997,7 +1003,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -1254,6 +1260,7 @@ fn parse_integer_number[T](str string) !T {
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
+	_ = val
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {

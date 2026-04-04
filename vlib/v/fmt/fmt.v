@@ -418,7 +418,12 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 				return node !is ast.Import
 			}
 			ast.ConstDecl {
-				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
+				mut is_comment_expr_stmt := false
+				if node is ast.ExprStmt {
+					expr_stmt := node
+					is_comment_expr_stmt = expr_stmt.expr is ast.Comment
+				}
+				if node !is ast.ConstDecl && !is_comment_expr_stmt {
 					return true
 				}
 			}
@@ -2049,7 +2054,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
-fn (mut f Fmt) write_static_method(name string, short_name string) {
+fn (mut f Fmt) write_static_method(_name string, short_name string) {
 	if short_name.contains('.') {
 		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
@@ -2393,12 +2398,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	f.inside_comptime_if = node.is_comptime
-	allow_multiline_branches := node.is_expr || f.inside_const || f.is_struct_init
-		|| f.single_line_fields
 	mut is_ternary := node.branches.len == 2 && node.has_else
-		&& branch_is_single_line(node.branches[0], allow_multiline_branches)
-		&& branch_is_single_line(node.branches[1], allow_multiline_branches)
-		&& (allow_multiline_branches || f.is_assign)
+		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
+		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
+		|| f.single_line_fields)
 	f.single_line_if = is_ternary
 	start_pos := f.out.len
 	start_len := f.line_len
@@ -2479,9 +2482,10 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	}
 }
 
-fn branch_is_single_line(b ast.IfBranch, allow_multiline bool) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
-		return allow_multiline || b.pos.line_nr == b.stmts[0].pos.line_nr
+fn branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0])
+		&& b.pos.line_nr == b.stmts[0].pos.line_nr {
+		return true
 	}
 	return false
 }

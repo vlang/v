@@ -315,15 +315,12 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 				branch.is_comptime_err = stmt.expr is ast.ComptimeCall
 					&& stmt.expr.kind in [.compile_error, .compile_warn]
-				expr_type := if branch.is_comptime_err {
-					c.expected_type
-				} else {
-					c.unwrap_generic(if stmt.expr is ast.CallExpr {
+				expr_type := if branch.is_comptime_err { c.expected_type } else { c.unwrap_generic(if stmt.expr is ast.CallExpr {
 						stmt.typ
 					} else {
 						c.expr(mut stmt.expr)
 					})
-				}
+				 }
 				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
 				must_be_option = must_be_option || expr_type == ast.none_type
 				stmt.typ = expr_type
@@ -697,8 +694,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
-					key = c.table.type_to_str(expr.typ)
-					expr_types << expr
+					expr_typ := c.recheck_concrete_type(expr.typ)
+					key = c.table.type_to_str(expr_typ)
+					expr.typ = expr_typ
+					expr_types << ast.TypeNode{
+						...expr
+						typ: expr_typ
+					}
 				}
 				ast.EnumVal {
 					key = expr.val

@@ -7,6 +7,9 @@ import strings
 
 @[inline]
 fn (mut g Gen) register_free_method(typ ast.Type) {
+	if g.type_has_unresolved_generic_parts(typ) {
+		return
+	}
 	if typ.has_flag(.shared_f) {
 		g.get_free_method(typ.clear_flag(.shared_f).set_nr_muls(0))
 	} else {
@@ -36,6 +39,9 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 
 fn (mut g Gen) gen_free_methods() {
 	for typ, _ in g.autofree_methods {
+		if g.type_has_unresolved_generic_parts(typ) {
+			continue
+		}
 		g.gen_free_method(typ)
 	}
 }
@@ -43,11 +49,20 @@ fn (mut g Gen) gen_free_methods() {
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	styp := g.styp(typ).replace('*', '')
 	mut fn_name := styp_to_free_fn_name(styp)
+	if g.type_has_unresolved_generic_parts(typ) {
+		return fn_name
+	}
 	deref_typ := if typ.has_flag(.option) { typ } else { typ.set_nr_muls(0) }
 	if deref_typ in g.generated_free_methods {
 		return fn_name
 	}
+	// Also check by C function name to prevent duplicate definitions when
+	// different type IDs map to the same C name (e.g. nested array types).
+	if fn_name in g.generated_free_fn_names {
+		return fn_name
+	}
 	g.generated_free_methods[deref_typ] = true
+	g.generated_free_fn_names[fn_name] = true
 
 	objtyp := g.unwrap_generic(typ)
 	mut sym := g.table.sym(objtyp)
@@ -195,10 +210,15 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, o
 		}
 		field_styp := g.gen_type_name_for_free_call(field.typ)
 		is_struct_option := typ.has_flag(.option)
+		free_method_typ := if field.typ.has_flag(.shared_f) {
+			field.typ.clear_flag(.shared_f).set_nr_muls(0)
+		} else {
+			field.typ
+		}
 		mut field_styp_fn_name := if sym.has_method('free') {
 			'${field_styp}_free'
 		} else {
-			g.gen_free_method(field.typ)
+			g.gen_free_method(free_method_typ)
 		}
 		if sym.is_builtin() {
 			field_styp_fn_name = 'builtin__${field_styp_fn_name}'
@@ -237,7 +257,8 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, o
 				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)&(it->${field_name}${suffix}));')
 				fn_builder.writeln('\t}')
 			} else {
-				fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+				prefix := if field.typ.is_ptr() { '' } else { '&' }
+				fn_builder.writeln('\t${field_styp_fn_name}(${prefix}(it->${field_name}));')
 			}
 		}
 	}

@@ -182,7 +182,8 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec, '')
+				g.gen_struct_enc_dec(utyp, ast.TypeInfo(psym.info), ret_styp, mut enc, mut
+					dec, '')
 			} else if psym.kind == .enum {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
@@ -682,11 +683,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 }
 
 fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, is_required bool, ret_styp string, mut dec strings.Builder) {
-	none_check := if !is_required {
-		'cJSON_IsNull(jsonroot_${tmp}) || '
-	} else {
-		''
-	}
+	none_check := if !is_required { 'cJSON_IsNull(jsonroot_${tmp}) || ' } else { '' }
 	type_check := if typ.is_int() || typ.is_float() {
 		'${none_check}cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && strlen(jsonroot_${tmp}->valuestring))'
 	} else if typ.is_string() {

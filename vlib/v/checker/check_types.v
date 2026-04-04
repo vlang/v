@@ -310,32 +310,28 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 
 	idx_got := got.idx()
 	idx_expected := expected.idx()
-	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
-		|| idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+	if got in ast.byteptr_types || got in ast.charptr_types || expected in ast.byteptr_types
+		|| expected in ast.charptr_types {
 		muls_got := got.nr_muls()
 		muls_expected := expected.nr_muls()
-		if idx_got == ast.byteptr_type_idx && idx_expected == ast.u8_type_idx
+		if got in ast.byteptr_types && idx_expected == ast.u8_type_idx
 			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.byteptr_type_idx && idx_got == ast.u8_type_idx
+		if expected in ast.byteptr_types && idx_got == ast.u8_type_idx
 			&& muls_expected + 1 == muls_got {
 			return
 		}
-		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx
+		if got in ast.charptr_types && idx_expected == ast.char_type_idx
 			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx
+		if expected in ast.charptr_types && idx_got == ast.char_type_idx
 			&& muls_expected + 1 == muls_got {
 			return
 		}
 	}
-	exp_type := if !is_aliased || expected_.has_flag(.variadic) {
-		expected
-	} else {
-		expected_
-	}
+	exp_type := if !is_aliased || expected_.has_flag(.variadic) { expected } else { expected_ }
 	if c.check_types(if is_exp_sumtype { got_ } else { got }, exp_type) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || exp_is_ptr {
@@ -415,23 +411,11 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 	}
 	mut outside_type_range := false
 	if expected.is_signed() {
-		max_signed_i64 := if bit_size >= 64 {
-			max_i64
-		} else {
-			i64((u64(1) << (bit_size - 1)) - 1)
-		}
-		min_signed := if bit_size >= 64 {
-			min_i64
-		} else {
-			-max_signed_i64 - 1
-		}
+		max_signed_i64 := if bit_size >= 64 { max_i64 } else { i64((u64(1) << (bit_size - 1)) - 1) }
+		min_signed := if bit_size >= 64 { min_i64 } else { -max_signed_i64 - 1 }
 		max_signed := u64(max_signed_i64)
 		if is_negative {
-			min_negative_abs := if min_signed == min_i64 {
-				u64(1) << 63
-			} else {
-				u64(-min_signed)
-			}
+			min_negative_abs := if min_signed == min_i64 { u64(1) << 63 } else { u64(-min_signed) }
 			outside_type_range = literal_value > min_negative_abs
 		} else {
 			outside_type_range = literal_value > max_signed
@@ -440,11 +424,7 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 		if is_negative {
 			outside_type_range = true
 		} else {
-			max_unsigned := if bit_size >= 64 {
-				max_u64
-			} else {
-				(u64(1) << bit_size) - 1
-			}
+			max_unsigned := if bit_size >= 64 { max_u64 } else { (u64(1) << bit_size) - 1 }
 			outside_type_range = literal_value > max_unsigned
 		}
 	}
@@ -641,6 +621,10 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 			if exp_arg_typ.is_pointer() || got_arg_typ.is_pointer() {
 				continue
 			}
+		}
+		if c.type_has_unresolved_generic_parts(got_arg_typ)
+			|| c.type_has_unresolved_generic_parts(exp_arg_typ) {
+			continue
 		}
 		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
 			return false
@@ -1192,6 +1176,31 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 								}
 							}
 						}
+						ast.GenericInst {
+							// Concrete generic instance (e.g. Vec2[f64]): resolve from
+							// the parent struct's generic type names and the instance's
+							// concrete types.
+							parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
+							match parent_sym.info {
+								ast.Struct, ast.Interface, ast.SumType {
+									receiver_generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
+									if gt_name in receiver_generic_names
+										&& receiver_generic_names.len == sym.info.concrete_types.len {
+										idx := receiver_generic_names.index(gt_name)
+										typ = sym.info.concrete_types[idx]
+									} else if gt_name in func.generic_names {
+										// Method uses a different generic name than the struct
+										// (e.g. struct Foo[T] with method fn (f Foo[U]) ...)
+										// Map by position in the method's generic names.
+										fn_idx := func.generic_names.index(gt_name)
+										if fn_idx < sym.info.concrete_types.len {
+											typ = sym.info.concrete_types[fn_idx]
+										}
+									}
+								}
+								else {}
+							}
+						}
 						else {}
 					}
 				}
@@ -1243,10 +1252,6 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
-					typ = typ.deref()
-				}
-				if has_concrete_caller_types && param.is_mut && param_infer_typ.nr_muls() == 0
-					&& typ.is_ptr() && c.table.final_sym(c.unwrap_generic(typ)).kind == .struct {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...

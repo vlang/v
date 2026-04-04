@@ -7,13 +7,17 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ_sym := c.table.sym(typ)
 	is_non_void_pointer := typ.is_any_kind_of_pointer() && !typ.has_flag(.shared_f)
 		&& typ_sym.kind != .voidptr
+	mut unwrapped_question_type := c.unwrap_generic(c.type_resolver.get_type(node.expr))
+	if c.table.sym(unwrapped_question_type).kind == .alias {
+		unaliased_question_type := c.table.unaliased_type(unwrapped_question_type)
+		if unaliased_question_type.has_option_or_result() {
+			unwrapped_question_type = c.unwrap_generic(unaliased_question_type)
+		}
+	}
+	unwrapped_question_type = unwrapped_question_type.clear_option_and_result()
 
 	if node.op in [.inc, .dec] && !node.expr.is_lvalue() {
-		op_kind, bin_op_alt := if node.op == .inc {
-			'increment', '+'
-		} else {
-			'decrement', '-'
-		}
+		op_kind, bin_op_alt := if node.op == .inc { 'increment', '+' } else { 'decrement', '-' }
 		c.add_error_detail('try rewrite this as `${node.expr} ${bin_op_alt} 1`')
 		c.error('cannot ${op_kind} `${node.expr}` because it is non lvalue expression',
 			node.expr.pos())
@@ -27,9 +31,10 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
 		if c.comptime.comptime_for_field_var != '' {
 			if c.comptime.is_comptime(node.expr) || node.expr is ast.ComptimeSelector {
-				node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
-				if node.op == .question {
-					node.typ = node.typ.clear_flag(.option)
+				node.typ = if node.op == .question {
+					unwrapped_question_type
+				} else {
+					c.unwrap_generic(c.type_resolver.get_type(node.expr))
 				}
 				return node.typ
 			}
@@ -39,20 +44,14 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 			c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
 				node.pos)
 		} else {
-			node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
-			if node.op == .question {
-				node.typ = node.typ.clear_flag(.option)
-			}
+			node.typ = unwrapped_question_type
 			return node.typ
 		}
 	} else {
 		if node.op != .question {
 			node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
 		} else {
-			node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
-			if node.op == .question {
-				node.typ = node.typ.clear_flag(.option)
-			}
+			node.typ = unwrapped_question_type
 			return node.typ
 		}
 	}

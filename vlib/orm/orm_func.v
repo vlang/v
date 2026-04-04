@@ -450,15 +450,12 @@ fn struct_meta[T]() []TableField {
 				}
 			}
 
-			mut field_type := field.unaliased_typ
-			if field.unaliased_typ == 0 {
-				field_type = field.typ
-			}
-			if field.unaliased_typ is time.Time {
+			mut field_type := field.typ
+			if typeof(field).name.contains('time.Time') {
 				field_type = time_
-			} else if field.unaliased_typ is $struct {
+			} else if field.is_struct {
 				field_type = type_idx['int']
-			} else if field.unaliased_typ is $enum {
+			} else if field.is_enum {
 				field_type = enum_
 			}
 

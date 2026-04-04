@@ -1,3 +1,13 @@
+vlib/v/checker/tests/void_function_assign_to_string.vv:1:6: notice: unused parameter: `x`
+    1 | fn x(x int, y int) {
+      |      ^
+    2 | }
+    3 |
+vlib/v/checker/tests/void_function_assign_to_string.vv:1:13: notice: unused parameter: `y`
+    1 | fn x(x int, y int) {
+      |             ^
+    2 | }
+    3 |
 vlib/v/checker/tests/void_function_assign_to_string.vv:6:4: error: assignment mismatch: 1 variable but `x()` returns 0 values
     4 | fn main() {
     5 |     mut a := ''

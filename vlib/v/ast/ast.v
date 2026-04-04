@@ -531,6 +531,7 @@ pub mut:
 	pre_comments         []Comment
 	typ_str              string // 'Foo'
 	typ                  Type   // the type of this struct
+	generic_typ          Type   // original generic struct type; reused for later concrete instantiations
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
 	update_expr_pos      token.Pos
@@ -998,6 +999,7 @@ pub mut:
 	is_index_var  bool // index loop var
 	expr          Expr
 	typ           Type
+	generic_typ   Type   // original generic declaration type; reused for later concrete instantiations
 	orig_type     Type   // original sumtype type; 0 if it's not a sumtype
 	smartcasts    []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
@@ -1221,6 +1223,14 @@ pub fn (mut i Ident) full_name() string {
 pub fn (i &Ident) is_auto_heap() bool {
 	return match i.obj {
 		Var { i.obj.is_auto_heap }
+		else { false }
+	}
+}
+
+@[inline]
+pub fn (i &Ident) is_stack_obj() bool {
+	return match i.obj {
+		Var { i.obj.is_stack_obj }
 		else { false }
 	}
 }
@@ -1711,16 +1721,18 @@ pub:
 	has_init           bool
 	has_index          bool // true if temp variable index is used
 pub mut:
-	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr     Expr   // len: expr
-	cap_expr     Expr   // cap: expr
-	init_expr    Expr   // init: expr
-	expr_types   []Type // [Dog, Cat] // also used for interface_types
-	elem_type    Type   // element type
-	init_type    Type   // init: value type
-	typ          Type   // array type
-	alias_type   Type   // alias type
-	has_callexpr bool   // has expr which needs tmp var to initialize it
+	exprs             []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr          Expr   // len: expr
+	cap_expr          Expr   // cap: expr
+	init_expr         Expr   // init: expr
+	expr_types        []Type // [Dog, Cat] // also used for interface_types
+	elem_type         Type   // element type
+	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
+	init_type         Type   // init: value type
+	typ               Type   // array type
+	generic_typ       Type   // original generic array type; reused for later concrete instantiations
+	alias_type        Type   // alias type
+	has_callexpr      bool   // has expr which needs tmp var to initialize it
 }
 
 pub struct ArrayDecompose {
@@ -2696,130 +2708,231 @@ pub fn (node Node) children() []Node {
 	mut children := []Node{}
 	if node is Expr {
 		match node {
-			Assoc, ArrayInit {
-				return node.exprs.map(Node(it))
+			Assoc {
+				assoc := node
+				return assoc.exprs.map(Node(it))
+			}
+			ArrayInit {
+				array_init := node
+				return array_init.exprs.map(Node(it))
 			}
 			StringInterLiteral {
-				children << node.exprs.map(Node(it))
-				for expr in node.fwidth_exprs {
+				string_inter_literal := node
+				children << string_inter_literal.exprs.map(Node(it))
+				for expr in string_inter_literal.fwidth_exprs {
 					if expr !is EmptyExpr {
 						children << expr
 					}
 				}
-				for expr in node.precision_exprs {
+				for expr in string_inter_literal.precision_exprs {
 					if expr !is EmptyExpr {
 						children << expr
 					}
 				}
 				return children
 			}
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely,
-			TypeOf, ArrayDecompose {
-				children << node.expr
+			SelectorExpr {
+				selector_expr := node
+				children << selector_expr.expr
+			}
+			PostfixExpr {
+				postfix_expr := node
+				children << postfix_expr.expr
+			}
+			UnsafeExpr {
+				unsafe_expr := node
+				children << unsafe_expr.expr
+			}
+			AsCast {
+				as_cast := node
+				children << as_cast.expr
+			}
+			ParExpr {
+				par_expr := node
+				children << par_expr.expr
+			}
+			IfGuardExpr {
+				if_guard_expr := node
+				children << if_guard_expr.expr
+			}
+			SizeOf {
+				size_of := node
+				children << size_of.expr
+			}
+			Likely {
+				likely_expr := node
+				children << likely_expr.expr
+			}
+			TypeOf {
+				type_of := node
+				children << type_of.expr
+			}
+			ArrayDecompose {
+				array_decompose := node
+				children << array_decompose.expr
 			}
 			LambdaExpr {
-				for p in node.params {
+				lambda_expr := node
+				for p in lambda_expr.params {
 					children << Node(Expr(p))
 				}
-				children << node.expr
+				children << lambda_expr.expr
 			}
-			LockExpr, OrExpr {
-				return node.stmts.map(Node(it))
+			LockExpr {
+				lock_expr := node
+				return lock_expr.stmts.map(Node(it))
+			}
+			OrExpr {
+				or_expr := node
+				return or_expr.stmts.map(Node(it))
 			}
 			StructInit {
-				return node.init_fields.map(Node(it))
+				struct_init := node
+				return struct_init.init_fields.map(Node(it))
 			}
 			AnonFn {
-				children << Stmt(node.decl)
+				anon_fn := node
+				children << Stmt(anon_fn.decl)
 			}
 			CallExpr {
-				children << node.left
-				children << node.args.map(Node(it))
-				children << Expr(node.or_block)
+				call_expr := node
+				children << call_expr.left
+				children << call_expr.args.map(Node(it))
+				children << Expr(call_expr.or_block)
 			}
 			InfixExpr {
-				children << node.left
-				children << node.right
+				infix_expr := node
+				children << infix_expr.left
+				children << infix_expr.right
 			}
 			PrefixExpr {
-				children << node.right
+				prefix_expr := node
+				children << prefix_expr.right
 			}
 			IndexExpr {
-				children << node.left
-				children << node.index
+				index_expr := node
+				children << index_expr.left
+				children << index_expr.index
 			}
 			IfExpr {
-				children << node.left
-				children << node.branches.map(Node(it))
+				if_expr := node
+				children << if_expr.left
+				children << if_expr.branches.map(Node(it))
 			}
 			MatchExpr {
-				children << node.cond
-				children << node.branches.map(Node(it))
+				match_expr := node
+				children << match_expr.cond
+				children << match_expr.branches.map(Node(it))
 			}
 			SelectExpr {
-				return node.branches.map(Node(it))
+				select_expr := node
+				return select_expr.branches.map(Node(it))
 			}
 			ChanInit {
-				children << node.cap_expr
+				chan_init := node
+				children << chan_init.cap_expr
 			}
 			MapInit {
-				children << node.keys.map(Node(it))
-				children << node.vals.map(Node(it))
+				map_init := node
+				children << map_init.keys.map(Node(it))
+				children << map_init.vals.map(Node(it))
 			}
 			RangeExpr {
-				children << node.low
-				children << node.high
+				range_expr := node
+				children << range_expr.low
+				children << range_expr.high
 			}
 			CastExpr {
-				children << node.expr
-				children << node.arg
+				cast_expr := node
+				children << cast_expr.expr
+				children << cast_expr.arg
 			}
 			ConcatExpr {
-				return node.vals.map(Node(it))
+				concat_expr := node
+				return concat_expr.vals.map(Node(it))
 			}
-			ComptimeCall, ComptimeSelector {
-				children << node.left
+			ComptimeCall {
+				comptime_call := node
+				children << comptime_call.left
+			}
+			ComptimeSelector {
+				comptime_selector := node
+				children << comptime_selector.left
 			}
 			else {}
 		}
 	} else if node is Stmt {
 		match node {
-			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, ComptimeFor {
-				return node.stmts.map(Node(it))
+			Block {
+				block := node
+				return block.stmts.map(Node(it))
 			}
-			ExprStmt, AssertStmt {
-				children << node.expr
+			DeferStmt {
+				defer_stmt := node
+				return defer_stmt.stmts.map(Node(it))
+			}
+			ForCStmt {
+				for_c_stmt := node
+				return for_c_stmt.stmts.map(Node(it))
+			}
+			ForInStmt {
+				for_in_stmt := node
+				return for_in_stmt.stmts.map(Node(it))
+			}
+			ForStmt {
+				for_stmt := node
+				return for_stmt.stmts.map(Node(it))
+			}
+			ComptimeFor {
+				comptime_for := node
+				return comptime_for.stmts.map(Node(it))
+			}
+			ExprStmt {
+				expr_stmt := node
+				children << expr_stmt.expr
+			}
+			AssertStmt {
+				assert_stmt := node
+				children << assert_stmt.expr
 			}
 			InterfaceDecl {
-				children << node.methods.map(Node(Stmt(it)))
-				children << node.fields.map(Node(it))
+				interface_decl := node
+				children << interface_decl.methods.map(Node(Stmt(it)))
+				children << interface_decl.fields.map(Node(it))
 			}
 			AssignStmt {
-				children << node.left.map(Node(it))
-				children << node.right.map(Node(it))
+				assign_stmt := node
+				children << assign_stmt.left.map(Node(it))
+				children << assign_stmt.right.map(Node(it))
 			}
 			Return {
-				return node.exprs.map(Node(it))
+				return_stmt := node
+				return return_stmt.exprs.map(Node(it))
 			}
 			// Note: these four decl nodes cannot be merged as one branch
 			StructDecl {
-				return node.fields.map(Node(it))
+				struct_decl := node
+				return struct_decl.fields.map(Node(it))
 			}
 			GlobalDecl {
-				return node.fields.map(Node(it))
+				global_decl := node
+				return global_decl.fields.map(Node(it))
 			}
 			ConstDecl {
-				return node.fields.map(Node(it))
+				const_decl := node
+				return const_decl.fields.map(Node(it))
 			}
 			EnumDecl {
-				return node.fields.map(Node(it))
+				enum_decl := node
+				return enum_decl.fields.map(Node(it))
 			}
 			FnDecl {
-				if node.is_method {
-					children << Node(node.receiver)
+				fn_decl := node
+				if fn_decl.is_method {
+					children << Node(fn_decl.receiver)
 				}
-				children << node.params.map(Node(it))
-				children << node.stmts.map(Node(it))
+				children << fn_decl.params.map(Node(it))
+				children << fn_decl.stmts.map(Node(it))
 			}
 			TypeDecl {
 				if node is SumTypeDecl {
@@ -2830,24 +2943,59 @@ pub fn (node Node) children() []Node {
 		}
 	} else if node is ScopeObject {
 		match node {
-			GlobalField, ConstField, Var { children << node.expr }
+			GlobalField {
+				global_field := node
+				children << global_field.expr
+			}
+			ConstField {
+				const_field := node
+				children << const_field.expr
+			}
+			Var {
+				var_ := node
+				children << var_.expr
+			}
 			AsmRegister, EmptyScopeObject {}
 		}
 	} else {
 		match node {
-			GlobalField, ConstField, EnumField, StructInitField, CallArg {
-				children << node.expr
+			GlobalField {
+				global_field := node
+				children << global_field.expr
+			}
+			ConstField {
+				const_field := node
+				children << const_field.expr
+			}
+			EnumField {
+				enum_field := node
+				children << enum_field.expr
+			}
+			StructInitField {
+				struct_init_field := node
+				children << struct_init_field.expr
+			}
+			CallArg {
+				call_arg := node
+				children << call_arg.expr
 			}
 			SelectBranch {
-				children << node.stmt
-				children << node.stmts.map(Node(it))
+				select_branch := node
+				children << select_branch.stmt
+				children << select_branch.stmts.map(Node(it))
 			}
-			IfBranch, File {
-				return node.stmts.map(Node(it))
+			IfBranch {
+				if_branch := node
+				return if_branch.stmts.map(Node(it))
+			}
+			File {
+				file := node
+				return file.stmts.map(Node(it))
 			}
 			MatchBranch {
-				children << node.stmts.map(Node(it))
-				children << node.exprs.map(Node(it))
+				match_branch := node
+				children << match_branch.stmts.map(Node(it))
+				children << match_branch.exprs.map(Node(it))
 			}
 			else {}
 		}

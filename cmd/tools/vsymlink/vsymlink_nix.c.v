@@ -5,7 +5,7 @@ fn setup_symlink(custom_link_dir string) {
 	if !os.exists(link_dir) {
 		os.mkdir_all(link_dir) or { panic(err) }
 	}
-	link_path := symlink_path(link_dir)
+	mut link_path := symlink_path(link_dir)
 	os.rm(link_path) or {}
 	os.symlink(vexe, link_path) or {
 		// Try ~/.local/bin as a fallback when /usr/local/bin is not writable.

@@ -921,7 +921,7 @@ pub fn header(msg string) {
 	flush_stdout()
 }
 
-fn random_sleep_ms(min_ms int, random_add_ms int) {
+fn random_sleep_ms(_ int, _ int) {
 	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
 }
 

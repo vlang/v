@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/time/duration.v", "fhash": "0ca00970a4cb2f0e",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 19,
-  "points": [  64,65,67,68,69,70,71,73,74,75,76,77,78,79,80,81,82,83,85  ]
-}

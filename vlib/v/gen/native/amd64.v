@@ -2304,7 +2304,7 @@ fn (mut c Amd64) cg_call_builtin(name Builtin) i64 {
 	return call_addr
 }
 
-fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
+fn (mut c Amd64) assign_struct_var(ident_var IdentVar, _typ ast.Type, s i32) {
 	// struct types bigger are passed around as a pointer in rax.
 	// we need to dereference and copy the contents one after the other
 	if ident_var !is LocalVar {
@@ -2418,7 +2418,7 @@ fn (mut c Amd64) cg_assign_var(var IdentVar, raw_type ast.Type) {
 
 // Could be nice to have left as an expr to be able to take all int assigns
 // TODO: may have a problem if the literal is bigger than max_i64: needs u64
-fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
+fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, _i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.decl_assign {
 			c.cg_allocate_stack_var(left.name, 8, i64(int_lit.val.int()))
@@ -5015,6 +5015,6 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 }
 
 // Temporary!
-fn (mut c Amd64) adr(r Arm64Register, delta i32) {
+fn (mut c Amd64) adr(_r Arm64Register, _delta i32) {
 	c.g.n_error('`adr` instruction not supported with amd64')
 }

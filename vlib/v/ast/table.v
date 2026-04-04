@@ -59,8 +59,7 @@ pub fn (mut uf UsedFeatures) free() {
 @[heap; minify]
 pub struct Table {
 mut:
-	parsing_type                 string         // name of the type to enable recursive type parsing
-	unwrap_generic_type_in_depth map[string]int // guards against recursive generic unwrapping loops
+	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
 	type_symbols       []&TypeSymbol
 	type_idxs          map[string]int
@@ -139,12 +138,11 @@ pub fn (mut t Table) free() {
 		t.fn_generic_types.free()
 		t.cmod_prefix.free()
 		t.used_features.free()
-		t.unwrap_generic_type_in_depth.free()
 	}
 }
 
 pub const fn_type_escape_seq = [' ', '', '(', '_', ')', '']
-pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
+pub const map_cname_escape_seq = ['[', '_T_', ', ', '_T_', ',', '_T_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
 
@@ -397,6 +395,13 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 		if method := ts.find_method(name) {
 			return method
 		}
+		if ts.kind == .generic_inst {
+			parent_sym := t.sym(new_type((ts.info as GenericInst).parent_idx))
+			if method := parent_sym.find_method_with_generic_parent(name) {
+				return method
+			}
+			return error('unknown method')
+		}
 		if ts.kind == .aggregate {
 			if method := t.register_aggregate_method(mut ts, name) {
 				return method
@@ -405,6 +410,16 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 			}
 		}
 		if ts.parent_idx == 0 {
+			// Also try Struct/Interface/SumType parent_type for generic concrete types
+			// whose parent_idx is 0 but have parent_type set.
+			has_parent_type := (ts.kind == .struct && (ts.info as Struct).parent_type != 0)
+				|| (ts.kind == .interface && (ts.info as Interface).parent_type != 0)
+				|| (ts.kind == .sum_type && (ts.info as SumType).parent_type != 0)
+			if has_parent_type {
+				if method := ts.find_method_with_generic_parent(name) {
+					return method
+				}
+			}
 			break
 		}
 		ts = t.type_symbols[ts.parent_idx]
@@ -656,6 +671,33 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 					return field
 				}
 			}
+			GenericInst {
+				parent_sym := t.sym(new_type(ts.info.parent_idx))
+				if field := t.find_field(parent_sym, name) {
+					match parent_sym.info {
+						Struct, Interface, SumType {
+							mut table := global_table
+							generic_names := parent_sym.info.generic_types.map(t.sym(it).name)
+							if generic_names.len == ts.info.concrete_types.len {
+								mut resolved_field := field
+								if ft := table.convert_generic_type(field.typ, generic_names,
+									ts.info.concrete_types)
+								{
+									resolved_field.typ = ft
+								}
+								if fut := table.convert_generic_type(field.unaliased_typ,
+									generic_names, ts.info.concrete_types)
+								{
+									resolved_field.unaliased_typ = fut
+								}
+								return resolved_field
+							}
+						}
+						else {}
+					}
+					return field
+				}
+			}
 			SumType {
 				t.resolve_common_sumtype_fields(mut ts)
 				if field := ts.info.find_sum_type_field(name) {
@@ -760,6 +802,10 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 	}
 	info.found_fields = true
 	sym.info = info
+	if sym.idx > 0 {
+		mut mut_table := unsafe { &Table(t) }
+		mut_table.type_symbols[sym.idx].info = info
+	}
 }
 
 // find_single_field_variant returns a field that exists in exactly one aggregate or sumtype variant.
@@ -858,6 +904,11 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
+	if idx == 65535 || typ == invalid_type {
+		// invalid_type is used as a sentinel during generic type resolution;
+		// return a safe placeholder instead of panicking.
+		return invalid_type_symbol
+	}
 	// this should never happen
 	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
@@ -954,8 +1005,10 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	}
 	if existing_symbol.kind == .placeholder {
 		// override placeholder
+		ngname := if typ.ngname != '' { typ.ngname } else { strip_generic_params(typ.name) }
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
+			ngname:     ngname
 			methods:    existing_symbol.methods
 			idx:        existing_idx
 			is_builtin: existing_symbol.is_builtin
@@ -1051,6 +1104,54 @@ pub fn (t &Table) known_type(name string) bool {
 @[inline]
 pub fn strip_generic_params(name string) string {
 	return name.all_before('[')
+}
+
+pub fn split_generic_args(args string) []string {
+	if args.len == 0 {
+		return []string{}
+	}
+	mut parts := []string{}
+	mut start := 0
+	mut square_depth := 0
+	mut paren_depth := 0
+	mut brace_depth := 0
+	for i, ch in args {
+		match ch {
+			`[` {
+				square_depth++
+			}
+			`]` {
+				if square_depth > 0 {
+					square_depth--
+				}
+			}
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			`{` {
+				brace_depth++
+			}
+			`}` {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+			}
+			`,` {
+				if square_depth == 0 && paren_depth == 0 && brace_depth == 0 {
+					parts << args[start..i].trim_space()
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	parts << args[start..].trim_space()
+	return parts.filter(it.len > 0)
 }
 
 // start_parsing_type open the scope during the parsing of a type
@@ -1514,12 +1615,21 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 	if expected_generic_types == 0 || concrete_types.len != expected_generic_types {
 		return 0
 	}
-	mut inst_name := parent_sym.ngname + '['
+	base_name := if parent_sym.ngname != '' {
+		parent_sym.ngname
+	} else {
+		strip_generic_params(parent_sym.name)
+	}
+	mut inst_name := base_name + '['
 	mut inst_cname := parent_sym.cname + '_T_'
 	for i, ct in concrete_types {
 		ct_sym := t.sym(ct)
+		if ct.nr_muls() > 0 {
+			inst_name += '&'.repeat(ct.nr_muls())
+			inst_cname += '__ptr__'.repeat(ct.nr_muls())
+		}
 		inst_name += ct_sym.name
-		inst_cname += ct_sym.cname
+		inst_cname += ct_sym.scoped_cname()
 		if i < concrete_types.len - 1 {
 			inst_name += ', '
 			inst_cname += '_T_'
@@ -1612,6 +1722,9 @@ pub fn (mut t Table) register_fn_generic_types(fn_name string) {
 }
 
 pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
+	if types.len == 0 {
+		return false
+	}
 	mut a := t.fn_generic_types[fn_name] or { return false }
 	if types in a {
 		return false
@@ -1972,7 +2085,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 			return none
 		}
 		typ := to_types[index]
-		if typ == 0 {
+		if typ == 0 || typ.idx() >= t.type_symbols.len {
 			return none
 		}
 		mut rtyp := typ.derive_add_muls(generic_type)
@@ -2146,7 +2259,8 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				mut converted_types := []Type{}
 				mut t_generic_names := generic_names.clone()
 				mut t_to_types := to_types.clone()
-				mut has_generic := false
+				mut has_unresolved_generic := false
+				mut type_changed := false
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
 					&& sym.generic_types != sym.info.generic_types {
 					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
@@ -2173,28 +2287,36 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 					{
 						converted_types << ct
 						gts := t.sym(ct)
+						if ct != sym.info.generic_types[i] {
+							type_changed = true
+						}
 						if ct.is_ptr() {
 							nrt += '&'.repeat(ct.nr_muls())
+							cnrt += '__ptr__'.repeat(ct.nr_muls())
 						}
 						nrt += gts.name
 						rnrt += gts.name
-						cnrt += gts.cname
+						cnrt += gts.scoped_cname()
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
 							rnrt += ', '
-							cnrt += '_'
+							cnrt += '_T_'
 						}
-						if ct.has_flag(.generic) && ct != sym.info.generic_types[i] {
-							has_generic = true
+						if ct.has_flag(.generic) {
+							has_unresolved_generic = true
 						}
 					} else {
 						return none
 					}
 				}
-				if has_generic && converted_types.len == sym.info.generic_types.len {
+				if type_changed && converted_types.len == sym.info.generic_types.len {
 					idx := t.find_or_register_generic_inst(new_type(type_idx), converted_types)
 					if idx > 0 {
-						return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+						return if has_unresolved_generic {
+							new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+						} else {
+							new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+						}
 					}
 				}
 				nrt += ']'
@@ -2206,7 +2328,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						idx = t.add_placeholder_type(nrt, cnrt, .v)
 					}
 				}
-				return if has_generic {
+				return if has_unresolved_generic {
 					new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 				} else {
 					new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
@@ -2215,12 +2337,12 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		}
 		UnknownTypeInfo {
 			if sym.name.contains('[') && sym.name.contains(']') {
-				base_name := sym.name.all_before('[')
-				generic_part := sym.name.all_after('[').trim_right(']')
+				base_name := sym.name.all_before_last('[')
+				generic_part := sym.name.all_after_last('[').trim_right(']')
 				mut converted_args := []string{}
 				mut has_generic := false
 				mut changed := false
-				args := generic_part.split(',').map(it.trim_space())
+				args := split_generic_args(generic_part)
 				for arg in args {
 					if arg in generic_names {
 						idx := generic_names.index(arg)
@@ -2253,7 +2375,9 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 							']',
 							'',
 							', ',
-							'_',
+							'_T_',
+							',',
+							'_T_',
 							' ',
 							'',
 						]), sym.language)
@@ -2761,6 +2885,8 @@ fn (mut t Table) convert_generic_default_expr(expr Expr, generic_names []string,
 		StructInit {
 			return Expr(StructInit{
 				...expr
+				generic_typ:      t.convert_generic_expr_type(expr.generic_typ, generic_names,
+					concrete_types)
 				typ:              t.convert_generic_expr_type(expr.typ, generic_names,
 					concrete_types)
 				update_expr:      t.convert_generic_default_expr(expr.update_expr, generic_names,
@@ -2880,42 +3006,72 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 
 // unwrap_generic_type_ex resolves generic symbols to concrete types and can recheck nested concrete fields.
 pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool) Type {
+	return t.unwrap_generic_type_ex_with_depth(typ, generic_names, concrete_types, recheck_concrete_types,
+		[]string{})
+}
+
+fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool, depth_guard []string) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
 	mut nrt := ''
 	mut c_nrt := ''
-	ts := t.sym(typ)
+	mut new_depth_guard := []string{}
+	type_idx := typ.idx()
+	if type_idx == 0 || type_idx >= t.type_symbols.len {
+		return typ
+	}
+	for ct in concrete_types {
+		if ct.idx() == 0 || ct.idx() >= t.type_symbols.len {
+			return typ
+		}
+	}
+	ts := t.type_symbols[type_idx]
 	match ts.info {
 		Array {
 			dims, elem_type := t.get_array_dims(ts.info)
-			unwrap_typ := t.unwrap_generic_type_ex(elem_type, generic_names, concrete_types,
-				recheck_concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex_with_depth(elem_type, generic_names,
+				concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_array_with_dims(unwrap_typ, dims)
+			if idx <= 0 {
+				return typ
+			}
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		ArrayFixed {
-			unwrap_typ := t.unwrap_generic_type_ex(ts.info.elem_type, generic_names, concrete_types,
-				recheck_concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex_with_depth(ts.info.elem_type, generic_names,
+				concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{}, false)
+			if idx <= 0 {
+				return typ
+			}
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Chan {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
+			if idx <= 0 {
+				return typ
+			}
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Thread {
-			unwrap_typ := t.unwrap_generic_type_ex(ts.info.return_type, generic_names,
-				concrete_types, recheck_concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex_with_depth(ts.info.return_type, generic_names,
+				concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_thread(unwrap_typ)
+			if idx <= 0 {
+				return typ
+			}
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Map {
-			unwrap_key_type := t.unwrap_generic_type_ex(ts.info.key_type, generic_names,
-				concrete_types, recheck_concrete_types)
-			unwrap_value_type := t.unwrap_generic_type_ex(ts.info.value_type, generic_names,
-				concrete_types, recheck_concrete_types)
+			unwrap_key_type := t.unwrap_generic_type_ex_with_depth(ts.info.key_type, generic_names,
+				concrete_types, recheck_concrete_types, depth_guard)
+			unwrap_value_type := t.unwrap_generic_type_ex_with_depth(ts.info.value_type,
+				generic_names, concrete_types, recheck_concrete_types, depth_guard)
 			idx := t.find_or_register_map(unwrap_key_type, unwrap_value_type)
+			if idx <= 0 {
+				return typ
+			}
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		FnType {
@@ -2934,12 +3090,20 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				}
 			}
 			if unwrapped_fn.return_type.has_flag(.generic) {
-				unwrapped_fn.return_type = t.unwrap_generic_type_ex(unwrapped_fn.return_type,
-					generic_names, concrete_types, recheck_concrete_types)
+				unwrapped_fn.return_type = t.unwrap_generic_type_ex_with_depth(unwrapped_fn.return_type,
+					generic_names, concrete_types, recheck_concrete_types, depth_guard)
 				has_generic = true
 			}
 			if has_generic {
+				// Clear the name so find_or_register_fn_type registers a new anonymous fn
+				// type with the resolved concrete param/return types, instead of returning
+				// the existing generic fn type entry (matched by name).
+				unwrapped_fn.name = ''
+				unwrapped_fn.generic_names = []
 				idx := t.find_or_register_fn_type(unwrapped_fn, true, false)
+				if idx <= 0 {
+					return typ
+				}
 				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 			}
 			return typ
@@ -2980,10 +3144,10 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						nrt += '&'.repeat(ct.nr_muls())
 					}
 					nrt += gts.name
-					c_nrt += gts.cname
+					c_nrt += gts.scoped_cname()
 					if i != ts.info.generic_types.len - 1 {
 						nrt += ', '
-						c_nrt += '_'
+						c_nrt += '_T_'
 					}
 				} else {
 					return typ
@@ -2993,16 +3157,24 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			mut idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
 				if recheck_concrete_types {
+					// Rechecking an already-registered concrete generic can revisit the same
+					// self-referential type through one of its fields.
+					if nrt in depth_guard {
+						if idx <= 0 {
+							return typ
+						}
+						return new_type(idx).derive(typ).clear_flag(.generic)
+					}
+					new_depth_guard = []string{cap: depth_guard.len + 1}
+					new_depth_guard << depth_guard
+					new_depth_guard << nrt
 					fields = ts.info.fields.clone()
 					for i in 0 .. fields.len {
-						if !fields[i].typ.has_flag(.generic) {
-							continue
-						}
-						// Map[T], []Type[T]
-						if t.type_kind(fields[i].typ) in [.array, .array_fixed, .map]
-							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-							t.unwrap_generic_type_ex(fields[i].typ, t_generic_names, t_concrete_types,
-								recheck_concrete_types)
+						resolved_field_typ := t.unwrap_generic_type_ex_with_depth(fields[i].typ,
+							t_generic_names, t_concrete_types, recheck_concrete_types,
+							new_depth_guard)
+						if resolved_field_typ != fields[i].typ {
+							fields[i].typ = resolved_field_typ
 						}
 					}
 					// update concrete types
@@ -3017,42 +3189,33 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 					}
 				}
+				if idx <= 0 {
+					return typ
+				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			}
 			if idx == 0 {
 				idx = t.add_placeholder_type(nrt, c_nrt, .v)
 			}
-			if nrt in t.unwrap_generic_type_in_depth {
+			if nrt in depth_guard {
 				// The concrete type is currently being built higher in the stack.
 				// Reuse its placeholder to avoid recursive generic unwrapping loops.
+				if idx <= 0 {
+					return typ
+				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			}
-			t.unwrap_generic_type_in_depth[nrt] = 1
-			defer {
-				t.unwrap_generic_type_in_depth.delete(nrt)
-			}
+			new_depth_guard = []string{cap: depth_guard.len + 1}
+			new_depth_guard << depth_guard
+			new_depth_guard << nrt
 			// fields type translate to concrete type
 			fields = ts.info.fields.clone()
 			for i in 0 .. fields.len {
-				if fields[i].typ.has_flag(.generic) {
-					orig_type := fields[i].typ
-					sym := t.sym(fields[i].typ)
-					if sym.kind == .struct && fields[i].typ.idx() != typ.idx() {
-						fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-							t_concrete_types)
-					} else {
-						if t_typ := t.convert_generic_type(fields[i].typ, t_generic_names,
-							t_concrete_types)
-						{
-							fields[i].typ = t_typ
-						}
-						if fields[i].typ.has_flag(.generic)
-							&& sym.kind in [.array, .array_fixed, .map]
-							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-								t_concrete_types)
-						}
-					}
+				orig_type := fields[i].typ
+				resolved_field_typ := t.unwrap_generic_type_ex_with_depth(orig_type, t_generic_names,
+					t_concrete_types, recheck_concrete_types, new_depth_guard)
+				if resolved_field_typ != orig_type {
+					fields[i].typ = resolved_field_typ
 					// Update type in `info.embeds`, if it's embed
 					if fields[i].is_embed {
 						mut parent_sym := t.sym(typ)
@@ -3074,14 +3237,14 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						{
 							fields[i].default_expr_typ = t_typ
 						}
+						fields[i].default_expr = t.convert_generic_default_expr(fields[i].default_expr,
+							t_generic_names, t_concrete_types)
 					} else if fields[i].default_expr_typ == 0
 						|| fields[i].default_expr_typ == nil_type {
 						if fields[i].default_expr.is_nil() && fields[i].typ.is_any_kind_of_pointer() {
 							fields[i].default_expr_typ = fields[i].typ
 						}
 					}
-					fields[i].default_expr = t.convert_generic_default_expr(fields[i].default_expr,
-						t_generic_names, t_concrete_types)
 				}
 			}
 			// update concrete types
@@ -3113,6 +3276,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			if final_concrete_types.len > 0 {
 				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
+			if new_idx <= 0 {
+				return typ
+			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		SumType {
@@ -3123,7 +3289,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				if variants[i].has_flag(.generic) || sym.kind == .generic_inst
 					|| (sym.kind in [.struct, .sum_type, .interface] && sym.has_generic_type_info()) {
 					if sym.kind in [.struct, .sum_type, .interface] {
-						variants[i] = t.unwrap_generic_type(variants[i], gn_names, final_concrete_types)
+						variants[i] = t.unwrap_generic_type_ex_with_depth(variants[i],
+							gn_names, final_concrete_types, false, new_depth_guard)
 					} else {
 						if t_typ := t.convert_generic_type(variants[i], gn_names, final_concrete_types) {
 							variants[i] = t_typ
@@ -3147,6 +3314,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			)
 			if final_concrete_types.len > 0 {
 				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+			}
+			if new_idx <= 0 {
+				return typ
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -3195,6 +3365,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			if final_concrete_types.len > 0 {
 				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
+			if new_idx <= 0 {
+				return typ
+			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		else {
@@ -3238,6 +3411,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 	for mut sym in t.type_symbols {
 		if sym.kind == .generic_inst {
 			info := sym.info as GenericInst
+			if info.parent_idx <= 0 || info.parent_idx >= t.type_symbols.len {
+				continue
+			}
 			parent := t.type_symbols[info.parent_idx]
 			if info.concrete_types.any(it.has_flag(.generic))
 				&& (parent.info is Struct || parent.info is Interface || parent.info is SumType) {
@@ -3280,7 +3456,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									}
 								}
 							}
-							if fields[i].has_default_expr {
+							if fields[i].has_default_expr
+								&& fields[i].default_expr_typ.has_flag(.generic) {
 								fields[i].default_expr_typ = t.convert_generic_expr_type(fields[i].default_expr_typ,
 									generic_names, info.concrete_types)
 								fields[i].default_expr = t.convert_generic_default_expr(fields[i].default_expr,
@@ -3295,6 +3472,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							...parent_info
 							is_generic:     false
 							concrete_types: info.concrete_types.clone()
+							scoped_name:    sym.name
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind
@@ -3451,6 +3629,26 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					sym.kind = parent.kind
 				}
 				else {}
+			}
+			if sym.kind != .generic_inst && sym.language == .v && sym.name.contains('[') {
+				sym.cname = sym.name.replace('.', '__').replace_each([
+					'[',
+					'_T_',
+					']',
+					'',
+					', ',
+					'_T_',
+					',',
+					'_T_',
+					' ',
+					'',
+					'&',
+					'__ptr__',
+					'(',
+					'_',
+					')',
+					'_',
+				])
 			}
 		}
 	}
@@ -3689,11 +3887,7 @@ pub fn (t &Table) get_array_dims(arr Array) (int, Type) {
 pub fn (t &Table) get_trace_fn_name(cur_fn FnDecl, node CallExpr) (string, string) {
 	generic_name := node.concrete_types.map(t.type_to_str(it)).join('_')
 	hash_fn := '_v__trace__${cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
-	fn_name := if node.concrete_types.len > 0 {
-		'${node.name}_T_${generic_name}'
-	} else {
-		node.name
-	}
+	fn_name := if node.concrete_types.len > 0 { '${node.name}_T_${generic_name}' } else { node.name }
 	return hash_fn, fn_name
 }
 

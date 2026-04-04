@@ -15,7 +15,7 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == u64(C.pthread_self())
 }
 
-fn signal_ignore_internal(args ...Signal) {
+fn signal_ignore_internal(_ ...Signal) {
 	// just do nothing by default, since that is most portable ¯\_(ツ)_/¯,
 	// especially on platforms like OpenBSD etc
 }

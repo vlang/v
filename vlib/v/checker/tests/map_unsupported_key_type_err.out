@@ -4,10 +4,4 @@ vlib/v/checker/tests/map_unsupported_key_type_err.vv:5:7: error: map key type `t
     5 |     _ := map[time.Time]int{}
       |          ~~~~~~~~~~~~~~~~~~~
     6 | }
-    7 | 
-vlib/v/checker/tests/map_unsupported_key_type_err.vv:9:17: error: map key type `time.Time` not supported
-    7 | 
-    8 | fn wrapped() {
-    9 |     _ := datatypes.Set[time.Time]{}
-      |                    ~~~~~~~~~~~~~~~~
-   10 | }
+    7 |

@@ -2817,7 +2817,7 @@ fn (t &Transformer) try_extract_sincos_arg(expr ast.Expr) ?ast.Expr {
 
 // try_expand_or_expr_assign checks if an assignment has an OrExpr RHS (used by transform_stmt)
 // Returns none since expansion is handled by try_expand_or_expr_assign_stmts at the list level
-fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt {
+fn (mut t Transformer) try_expand_or_expr_assign(_stmt ast.AssignStmt) ?ast.Stmt {
 	return none
 }
 
@@ -5080,7 +5080,7 @@ fn (t &Transformer) typed_deref(ptr ast.Expr, value_type types.Type) ast.Expr {
 
 // try_expand_array_index_or handles: arr[idx] or { fallback }
 // Transforms to: if idx < arr.len { arr[idx] } else { fallback }
-fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
+fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix_stmts []ast.Stmt) ?ast.Expr {
 	if or_expr.expr !is ast.IndexExpr {
 		return none
 	}

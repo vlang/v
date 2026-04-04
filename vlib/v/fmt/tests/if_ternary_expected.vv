@@ -1,5 +1,4 @@
 const spacing_error = if true { true } else { false }
-const strict_one_liner = if true { true } else { false }
 // Multiline result should not align with the next multiline result.
 const too_long_line = if b.no_cstep {
 	'TMP1/${b.nexpected_steps:1d}'

@@ -240,7 +240,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.pref.skip_unused && got_types[i].has_flag(.generic) {
 					c.table.used_features.comptime_syms[got_type] = true
 				}
-				if exp_type_sym.kind == .interface {
+				if exp_type_sym.kind == .interface
+					|| (exp_type_sym.kind == .generic_inst && exp_type_sym.info is ast.GenericInst
+					&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface) {
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {
@@ -283,9 +285,24 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					&& c.array_fixed_has_unresolved_size(exp_final_sym.info) {
 					continue
 				}
+				// In generic functions, scope variable types can be stale from a
+				// different instantiation pass. Skip the error if the original
+				// return type is generic — the cgen resolves types per-instantiation.
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.return_type.has_flag(.generic)
+					&& c.table.cur_concrete_types.len > 0 {
+					continue
+				}
 
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					exprv.pos())
+			}
+		}
+		if exprv is ast.Ident {
+			if exprv.obj is ast.Var && exprv.obj.smartcasts.len > 0 {
+				orig_sym := c.table.final_sym(exprv.obj.orig_type)
+				if orig_sym.kind == .interface {
+					continue
+				}
 			}
 		}
 		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()

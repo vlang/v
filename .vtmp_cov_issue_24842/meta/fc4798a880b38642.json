@@ -1,7 +1,0 @@
-{
-  "file": "/Users/alexander/code/worktrees/batch14/issue-22008/vlib/v/preludes/test_runner_normal.v", "fhash": "fc4798a880b38642",
-  "v_version": "V 0.5.1 07ee934f822c7a2980e0dc31ca635a6c734dcbca",
-  "build_options": "-coverage .vtmp_cov_issue_24842 -os macos -arch arm64 -d gcboehm -d gcboehm_full -d gcboehm_opt -d macos",
-  "npoints": 85,
-  "points": [  14,35,36,37,38,42,47,48,49,50,51,56,57,58,59,63,64,72,73,75,76,78,82,83,84,88,92,96,97,98,99,101,102,103,105,106,107,108,109,114,115,116,120,121,122,123,124,126,127,128,130,135,136,137,138,139,140,146,147,148,149,150,151,153,154,155,156,157,158,159,160,163,164,165,166,170,172,173,174,175,176,177,179,181,182  ]
-}

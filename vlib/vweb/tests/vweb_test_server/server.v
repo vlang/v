@@ -37,7 +37,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 
 const known_users = ['bilbo', 'kent']
 
-struct App {
+pub struct App {
 	vweb.Context
 	port          int
 	global_config shared Config

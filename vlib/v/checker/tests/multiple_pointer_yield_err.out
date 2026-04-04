@@ -1,3 +1,10 @@
+vlib/v/checker/tests/multiple_pointer_yield_err.vv:5:8: notice: unused parameter: `bar`
+    3 | }
+    4 | 
+    5 | fn foo(bar &&&Fail) {}
+      |        ~~~
+    6 | 
+    7 | fn main() {
 vlib/v/checker/tests/multiple_pointer_yield_err.vv:9:8: error: unexpected `&`, expecting expression
     7 | fn main() {
     8 |     f := Fail{}

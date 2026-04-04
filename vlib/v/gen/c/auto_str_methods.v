@@ -34,7 +34,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
 	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) {')
 	if convertor == 'bool' {
-		g.auto_str_funcs.writeln('\tstring tmp1 = builtin__string__plus(_S("${styp}("), (${convertor})it ? _S("true") : _S("false"));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = builtin__string__plus(_S("${styp}("), ((${convertor})it ? _S("true") : _S("false")));')
 	} else {
 		g.auto_str_funcs.writeln('\tstring tmp1 = builtin__string__plus(_S("${styp}("), builtin__tos3(_string__plus(_S("${typename_}("), _string__plus(_S(")"), _S(")"))).str));')
 	}
@@ -64,6 +64,18 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u32_type
 		} else if typ == ast.f64_type {
 			unwrapped = ast.u64_type
+		}
+	}
+	// Promote literal types (int_literal -> int, float_literal -> f64) in array/map element types.
+	// These are never emitted as C typedefs (e.g., `Array_int_literal` doesn't exist).
+	unwrapped_sym := g.table.sym(unwrapped)
+	if unwrapped_sym.info is ast.Array {
+		promoted_elem := ast.mktyp(unwrapped_sym.info.elem_type)
+		if promoted_elem != unwrapped_sym.info.elem_type {
+			idx := g.table.find_or_register_array(promoted_elem)
+			if idx > 0 {
+				unwrapped = ast.new_type(idx).derive(unwrapped)
+			}
 		}
 	}
 	styp := g.styp(unwrapped)
@@ -213,11 +225,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
-		dot := if expects_ptr {
-			'*'.repeat(typ.nr_muls())
-		} else {
-			'*'.repeat(typ.nr_muls() + 1)
-		}
+		dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
 		'${dot}(${parent_cast_type}**)&'
 	} else if typ.has_flag(.option_mut_param_t) {
 		'*(${parent_cast_type}*)'
@@ -316,8 +324,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
 	}
 	g.auto_str_funcs.writeln('\tstring res = builtin__str_intp(2, _MOV((StrIntpData[]){
-		{_S("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = tmp_ds }},
-		{_S(")"), 0, {.d_c = 0 }}
+		{_S("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = tmp_ds }, 0, 0, 0},
+		{_S(")"), 0, {.d_c = 0 }, 0, 0, 0}
 	}));')
 	g.auto_str_funcs.writeln('\tbuiltin__string_free(&tmp_ds);')
 	g.auto_str_funcs.writeln('\treturn res;')
@@ -447,8 +455,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 			}
 			val += ')'
 			res := 'builtin__str_intp(2, _MOV((StrIntpData[]){
-				{_S("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
-				{_S("\')"), 0, {.d_c = 0 }}
+				{_S("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
+				{_S("\')"), 0, {.d_c = 0 }, 0, 0, 0}
 			}))'
 			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
 				' return ${res};')
@@ -460,8 +468,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				}
 				val += ')'
 				res := 'builtin__str_intp(2, _MOV((StrIntpData[]){
-					{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
-					{_S(")"), 0, {.d_c = 0 }}
+					{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
+					{_S(")"), 0, {.d_c = 0 }, 0, 0, 0}
 				}))'
 				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
 					' return ${res};\n')
@@ -522,8 +530,8 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 			}
 			val += ')'
 			res := 'builtin__str_intp(2, _MOV((StrIntpData[]){
-				{_S("${clean_sum_type_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
-				{_S("\')"), 0, {.d_c = 0 }}
+				{_S("${clean_sum_type_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
+				{_S("\')"), 0, {.d_c = 0 }, 0, 0, 0}
 			}))'
 			fn_builder.write_string('\t\tcase ${int(typ)}: return ${res};\n')
 		} else {
@@ -534,8 +542,8 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 			}
 			val += ')'
 			res := 'builtin__str_intp(2, _MOV((StrIntpData[]){
-				{_S("${clean_sum_type_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
-				{_S(")"), 0, {.d_c = 0 }}
+				{_S("${clean_sum_type_v_type_name}("), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
+				{_S(")"), 0, {.d_c = 0 }, 0, 0, 0}
 			}))'
 			fn_builder.write_string('\t\tcase ${int(typ)}: return ${res};\n')
 		}
@@ -604,7 +612,7 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("    cap: "));')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, builtin__int_str(x->cap));')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S(", closed: "));')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, x->closed != 0 ? _S("true") : _S("false"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, (x->closed != 0 ? _S("true") : _S("false")));')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("\\n"));')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, indents);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("}"));')
@@ -652,8 +660,8 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	mut sym := g.table.sym(info.elem_type)
 	is_option := typ.has_flag(.option)
 	if !is_option && mut sym.info is ast.Alias {
-		// Keep pointer depth/flags when unwrapping aliases (e.g. []&AliasStruct).
-		typ = sym.info.parent_type.derive(typ)
+		// Preserve pointer depth when arrays contain alias pointer types.
+		typ = g.unalias_type_keep_muls(typ)
 		sym = g.table.sym(typ)
 	}
 	field_styp := g.styp(typ)
@@ -706,15 +714,15 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			}
 		} else if sym.kind == .rune {
 			// Rune are managed at this level as strings
-			g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }}, {_S("\`"), 0, {.d_c = 0 }}}));\n')
+			g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }, 0, 0, 0}, {_S("\`"), 0, {.d_c = 0 }, 0, 0, 0}}));\n')
 		} else if sym.kind == .string {
 			if typ.has_flag(.option) {
 				func := g.get_str_fn(typ)
 				g.auto_str_funcs.writeln('\t\tstring x = ${func}(it);\n')
 			} else if is_elem_ptr {
-				g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("&\'"), ${si_s_code}, {.d_s = *it }}, {_S("\'"), 0, {.d_c = 0 }}}));\n')
+				g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("&\'"), ${si_s_code}, {.d_s = *it }, 0, 0, 0}, {_S("\'"), 0, {.d_c = 0 }, 0, 0, 0}}));\n')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = it }}, {_S("\'"), 0, {.d_c = 0 }}}));\n')
+				g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = it }, 0, 0, 0}, {_S("\'"), 0, {.d_c = 0 }, 0, 0, 0}}));\n')
 			}
 		} else {
 			// There is a custom .str() method, so use it.
@@ -760,7 +768,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	mut typ := info.elem_type
 	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
-		typ = sym.info.parent_type.derive(typ)
+		typ = g.unalias_type_keep_muls(typ)
 		sym = g.table.sym(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
@@ -1039,7 +1047,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		return
 	}
 	fn_body.writeln('\tstring res = builtin__str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
-	fn_body.writeln('\t\t{_S("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}},')
+	fn_body.writeln('\t\t{_S("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}, 0, 0, 0},')
 
 	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	mut is_first := true
@@ -1053,11 +1061,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		} else {
 			field.typ
 		}
-		mut ptr_amp := if ftyp_noshared.is_ptr() {
-			'&'
-		} else {
-			''
-		}
+		mut ptr_amp := if ftyp_noshared.is_ptr() { '&' } else { '' }
 		mut base_typ := g.unwrap_generic(field.typ)
 		if base_typ.has_flag(.shared_f) {
 			base_typ = base_typ.clear_flag(.shared_f).deref()
@@ -1080,10 +1084,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 
 		if is_first {
 			// first field doesn't need \n
-			fn_body.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_S("    ${field.name}: ${ptr_amp}${prefix}"), 0, {.d_c=0}}, ')
+			fn_body.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}, 0, 0, 0}, {_S("    ${field.name}: ${ptr_amp}${prefix}"), 0, {.d_c=0}, 0, 0, 0}, ')
 			is_first = false
 		} else {
-			fn_body.write_string('\t\t{_S("\\n"), ${si_s_code}, {.d_s=indents}}, {_S("    ${field.name}: ${ptr_amp}${prefix}"), 0, {.d_c=0}}, ')
+			fn_body.write_string('\t\t{_S("\\n"), ${si_s_code}, {.d_s=indents}, 0, 0, 0}, {_S("    ${field.name}: ${ptr_amp}${prefix}"), 0, {.d_c=0}, 0, 0, 0}, ')
 		}
 
 		// custom methods management
@@ -1183,9 +1187,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			}
 		}
 
-		fn_body.writeln('}}, {_S("${quote_str}"), 0, {.d_c=0}},')
+		fn_body.writeln('}, 0, 0, 0}, {_S("${quote_str}"), 0, {.d_c=0}, 0, 0, 0},')
 	}
-	fn_body.writeln('\t\t{_S("\\n"), ${si_s_code}, {.d_s=indents}}, {_S("}"), 0, {.d_c=0}},')
+	fn_body.writeln('\t\t{_S("\\n"), ${si_s_code}, {.d_s=indents}, 0, 0, 0}, {_S("}"), 0, {.d_c=0}, 0, 0, 0},')
 	fn_body.writeln('\t}));')
 }
 
@@ -1262,26 +1266,26 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 			method_str = 'it${op}${final_field_name}${sufix}'
 		}
 		if sym.kind == .bool {
-			return '${method_str} ? _S("true") : _S("false")', false
+			return '(${method_str} ? _S("true") : _S("false"))', false
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr()) && !expects_ptr {
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'builtin__str_intp(1, _MOV((StrIntpData[]){
-					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }}
+					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }, 0, 0, 0}
 				}))', true
 			} else if sym.kind == .f64 {
 				return 'builtin__str_intp(1, _MOV((StrIntpData[]){
-					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
+					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }, 0, 0, 0}
 				}))', true
 			} else if sym.kind in [.u64, .usize] {
 				fmt_type := StrIntpType.si_u64
-				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}}))', true
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }, 0, 0, 0}}))', true
 			} else if sym.kind in [.i64, .isize] {
 				fmt_type := StrIntpType.si_i64
-				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i64 = *${method_str} }}}))', true
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i64 = *${method_str} }, 0, 0, 0}}))', true
 			}
 			fmt_type := StrIntpType.si_i32
-			return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}}))', true
+			return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }, 0, 0, 0}}))', true
 		}
 		return method_str, false
 	}

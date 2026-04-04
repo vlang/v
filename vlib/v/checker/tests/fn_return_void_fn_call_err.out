@@ -1,3 +1,10 @@
+vlib/v/checker/tests/fn_return_void_fn_call_err.vv:28:37: notice: unused parameter: `verbosity`
+   26 | }
+   27 | 
+   28 | fn install_from_github(unit string, verbosity int) ! {
+      |                                     ~~~~~~~~~
+   29 |     dump(unit)
+   30 | }
 vlib/v/checker/tests/fn_return_void_fn_call_err.vv:20:4: error: `install_from_github(unit, verbosity)!` used as value
    18 |     return match source {
    19 |         'github' {

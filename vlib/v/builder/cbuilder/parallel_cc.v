@@ -135,14 +135,14 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	}
 }
 
-fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) &os.Result {
+fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
 	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return &os.Result{
+	return voidptr(&os.Result{
 		...res
-	}
+	})
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

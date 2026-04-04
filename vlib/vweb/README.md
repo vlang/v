@@ -546,7 +546,7 @@ import db.sqlite
 
 struct App {
 	vweb.Context
-mut:
+pub mut:
 	db sqlite.DB
 }
 
@@ -598,8 +598,9 @@ import db.pg
 
 struct App {
 	vweb.Context
+pub:
 	db_handle vweb.DatabasePool[pg.DB]
-mut:
+pub mut:
 	db pg.DB
 }
 
@@ -633,7 +634,7 @@ problems arise when we want to provide more context than just the default `vweb.
 
 Let's view the following example where we want to provide a secret token to our app:
 
-```v
+```v ignore
 module main
 
 import vweb
@@ -842,13 +843,13 @@ import db.sqlite
 struct App {
 	vweb.Context
 	vweb.Controller
-mut:
+pub mut:
 	db sqlite.DB
 }
 
 struct Admin {
 	vweb.Context
-mut:
+pub mut:
 	db sqlite.DB
 }
 
@@ -878,15 +879,17 @@ import db.pg
 struct App {
 	vweb.Context
 	vweb.Controller
+pub:
 	db_handle vweb.DatabasePool[pg.DB]
-mut:
+pub mut:
 	db pg.DB
 }
 
 struct Admin {
 	vweb.Context
+pub:
 	db_handle vweb.DatabasePool[pg.DB]
-mut:
+pub mut:
 	db pg.DB
 }
 

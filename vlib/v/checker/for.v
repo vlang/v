@@ -5,6 +5,21 @@ module checker
 import v.ast
 import v.token
 
+fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
+	if base_type == 0 {
+		return base_type
+	}
+	if is_mut || is_ref {
+		if base_type.has_flag(.option) {
+			return base_type.set_flag(.option_mut_param_t)
+		}
+		if !base_type.is_any_kind_of_pointer() {
+			return base_type.ref()
+		}
+	}
+	return base_type
+}
+
 fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 	c.in_for_count++
 	prev_loop_labels := c.loop_labels
@@ -126,6 +141,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+			if node.cond is ast.Ident {
+				cond_ident := node.cond as ast.Ident
+				if cond_ident.obj is ast.Var && c.table.is_interface_smartcast(cond_ident.obj)
+					&& cond_ident.obj.smartcasts.len > 0
+					&& cond_ident.obj.smartcasts.last().is_ptr()
+					&& sym.kind in [.array, .array_fixed, .map] {
+					node.val_is_ref = true
+				}
+			}
 		} else if node.val_is_mut {
 			c.error('string type is immutable, it cannot be changed', node.pos)
 			return
@@ -149,10 +173,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
-			mut val_type := next_fn.return_type.clear_option_and_result()
-			if node.val_is_mut && !val_type.is_any_kind_of_pointer() {
-				val_type = val_type.ref()
-			}
+			mut val_type := for_in_val_type(next_fn.return_type.clear_option_and_result(),
+				node.val_is_mut, node.val_is_ref)
 			node.cond_type = typ
 			node.kind = sym.kind
 			node.val_type = val_type
@@ -200,10 +222,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 
-			mut value_type := c.table.value_type(unwrapped_typ)
-			if node.val_is_mut && !value_type.is_any_kind_of_pointer() {
-				value_type = value_type.ref()
-			}
+			mut value_type := for_in_val_type(c.table.value_type(unwrapped_typ), node.val_is_mut,
+				node.val_is_ref)
 			node.scope.update_var_type(node.val_var, value_type)
 			node.val_type = value_type
 
@@ -253,12 +273,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				if !value_type.is_any_kind_of_pointer() {
-					value_type = value_type.ref()
-				}
-				if value_type.has_flag(.option) {
-					value_type = value_type.set_flag(.option_mut_param_t)
-				}
+				value_type = for_in_val_type(value_type, true, false)
 				match mut node.cond {
 					ast.Ident {
 						if mut node.cond.obj is ast.Var {
@@ -289,8 +304,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					else {}
 				}
-			} else if node.val_is_ref && !value_type.is_any_kind_of_pointer() {
-				value_type = value_type.ref()
+			} else if node.val_is_ref {
+				value_type = for_in_val_type(value_type, false, true)
 			}
 			node.cond_type = typ
 			node.kind = sym.kind

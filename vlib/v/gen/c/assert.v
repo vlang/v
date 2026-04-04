@@ -22,20 +22,48 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut save_right := ast.empty_expr
 
 	if mut node.expr is ast.InfixExpr {
-		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
-			save_left = node.expr.left
-			node.expr.left = subst_expr
-		}
-		// For || and && operators, do not pre-evaluate the right side
-		// to allow short-circuit evaluation to work correctly.
-		if node.expr.op !in [.logical_or, .and] {
-			if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
-				save_right = node.expr.right
-				node.expr.right = subst_expr
+		// Don't extract subexpressions to ctemps for && and || operators,
+		// as this would break short-circuit evaluation semantics.
+		// The right side of && must only execute after the left side is true.
+		if node.expr.op !in [.and, .logical_or] {
+			mut left_expr_type := node.expr.left_type
+			mut right_expr_type := node.expr.right_type
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_left_type := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+				if resolved_left_type != 0 {
+					resolved_sym := g.table.sym(resolved_left_type)
+					left_sym := g.table.sym(left_expr_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| left_sym.kind in [.sum_type, .interface] {
+						left_expr_type = resolved_left_type
+					}
+				}
+				resolved_right_type := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+				if resolved_right_type != 0 {
+					resolved_sym := g.table.sym(resolved_right_type)
+					right_sym := g.table.sym(right_expr_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| right_sym.kind in [.sum_type, .interface] {
+						right_expr_type = resolved_right_type
+					}
+				}
+			}
+			if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, left_expr_type) {
+				save_left = node.expr.left
+				node.expr.left = subst_expr
+			}
+			// For || and && operators, do not pre-evaluate the right side
+			// to allow short-circuit evaluation to work correctly.
+			if node.expr.op !in [.logical_or, .and] {
+				if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, right_expr_type) {
+					save_right = node.expr.right
+					node.expr.right = subst_expr
+				}
 			}
 		}
 	}
 	metaname := g.gen_assert_metainfo_common(node)
+	g.set_current_pos_as_last_stmt_pos()
 	g.inside_ternary++
 	if g.pref.is_test {
 		g.write('if (')
@@ -91,8 +119,11 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		}
 		ast.ParExpr {
 			if expr.expr is ast.CallExpr {
-				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+				return g.new_ctemp_var_then_gen(ast.Expr(expr.expr), expr_type)
 			}
+		}
+		ast.PostfixExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
 		}
 		ast.SelectorExpr {
 			if expr.expr is ast.CallExpr {
@@ -104,6 +135,9 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				}
 				return g.new_ctemp_var_then_gen(expr, expr_type)
 			}
+			if g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
 		}
 		ast.LockExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -113,7 +147,16 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				return g.new_ctemp_var_then_gen(expr, expr_type)
 			}
 		}
-		else {}
+		ast.StructInit {
+			if g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {
+			if g.need_tmp_var_in_expr(expr) {
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
 	}
 	return unsupported_ctemp_assert_transform
 }
@@ -156,15 +199,35 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind,
 	}
 	match node.expr {
 		ast.InfixExpr {
-			left_type := if node.expr.left_ct_expr {
+			mut left_type := if node.expr.left_ct_expr {
 				g.type_resolver.get_type_or_default(node.expr.left, node.expr.left_type)
 			} else {
 				node.expr.left_type
 			}
-			right_type := if node.expr.right_ct_expr {
+			mut right_type := if node.expr.right_ct_expr {
 				g.type_resolver.get_type(node.expr.right)
 			} else {
 				node.expr.right_type
+			}
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_left := g.resolved_expr_type(node.expr.left, node.expr.left_type)
+				if resolved_left != 0 {
+					resolved_sym := g.table.sym(resolved_left)
+					left_sym := g.table.sym(left_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| left_sym.kind in [.sum_type, .interface] {
+						left_type = resolved_left
+					}
+				}
+				resolved_right := g.resolved_expr_type(node.expr.right, node.expr.right_type)
+				if resolved_right != 0 {
+					resolved_sym := g.table.sym(resolved_right)
+					right_sym := g.table.sym(right_type)
+					if resolved_sym.kind !in [.sum_type, .interface]
+						|| right_sym.kind in [.sum_type, .interface] {
+						right_type = resolved_right
+					}
+				}
 			}
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, left_type)

@@ -326,9 +326,9 @@ fn animate(mut state State, time f64) {
 	rotate_y(mut state.mo_matrix, state.theta)
 	state.time_old = time
 	state.gl.enable(dom.gl_depth_test())
-	state.gl.clearColor(0.5, 0.5, 0.5, 0.9)
-	state.gl.clearDepth(1.0)
-	state.gl.viewport(0.0, 0.0, state.canvas.width, state.canvas.height)
+	state.gl.clearColor(JS.Number(0.5), JS.Number(0.5), JS.Number(0.5), JS.Number(0.9))
+	state.gl.clearDepth(JS.Number(1.0))
+	state.gl.viewport(JS.Number(0.0), JS.Number(0.0), state.canvas.width, state.canvas.height)
 	state.gl.clear(JS.Number(int(dom.gl_color_buffer_bit()) | int(dom.gl_depth_buffer_bit())))
 
 	state.gl.uniformMatrix4fv(state.pmatrix, JS.Boolean(false), state.proj_matrix.to_number_array())
@@ -336,7 +336,8 @@ fn animate(mut state State, time f64) {
 	state.gl.uniformMatrix4fv(state.mmatrix, JS.Boolean(false), state.mo_matrix.to_number_array())
 
 	state.gl.bindBuffer(dom.gl_element_array_buffer(), state.index_buffer)
-	state.gl.drawElements(dom.gl_triangles(), indices.len, dom.gl_unsigned_short(), 0)
+	state.gl.drawElements(dom.gl_triangles(), JS.Number(indices.len), dom.gl_unsigned_short(),
+		JS.Number(0))
 
 	dom.window().requestAnimationFrame(fn [mut state] (time JS.Number) {
 		animate(mut state, f64(time))

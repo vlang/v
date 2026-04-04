@@ -9,6 +9,10 @@ import v.pref
 // mark_used walks the AST, starting at main() and marks all used fns transitively.
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals, all_decltypes, all_structs := all_global_decl(ast_files)
+	mut generic_fns := []&ast.FnDecl{}
+	for file in ast_files {
+		generic_fns << file.generic_fns
+	}
 	util.timing_start('MARKUSED')
 	defer {
 		util.timing_measure('MARKUSED')
@@ -263,6 +267,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	mut walker := Walker.new(
 		table:         table
 		all_fns:       all_fns
+		generic_fns:   generic_fns
 		all_consts:    all_consts
 		all_globals:   all_globals
 		all_decltypes: all_decltypes
@@ -282,6 +287,29 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	walker.mark_root_fns(all_fn_root_names)
+	walker.mark_generic_fn_instances()
+
+	// Mark all concrete generic type instances as used. These are created by
+	// generic_insts_to_concrete() and unwrap_generic_type_ex() for specific
+	// type instantiations. The walker may not mark them because it visits
+	// generic function bodies with unresolved (generic) AST types.
+	for sym in table.type_symbols {
+		if sym.info is ast.Struct && sym.info.concrete_types.len > 0 && !sym.info.is_generic {
+			walker.mark_by_sym(sym)
+		} else if sym.info is ast.SumType && sym.info.concrete_types.len > 0 && !sym.info.is_generic {
+			walker.mark_by_sym(sym)
+		} else if sym.info is ast.Interface && sym.info.concrete_types.len > 0
+			&& !sym.info.is_generic {
+			walker.mark_by_sym(sym)
+		} else if sym.info is ast.Thread && sym.info.return_type != ast.void_type {
+			walker.mark_by_sym(sym)
+		} else if sym.info is ast.Array {
+			elem_sym := table.sym(sym.info.elem_type)
+			if elem_sym.info is ast.Thread && elem_sym.info.return_type != ast.void_type {
+				walker.mark_by_sym(sym)
+			}
+		}
+	}
 
 	walker.mark_by_sym_name('vweb.RedirectParams')
 	walker.mark_by_sym_name('vweb.RequestParams')

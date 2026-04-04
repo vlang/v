@@ -1320,11 +1320,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.doc.gen_typ(styp)
 			}
 			if stmt.op == .decl_assign {
-				g.write(if g.inside_loop || is_mut {
-					'let '
-				} else {
-					'const '
-				})
+				g.write(if g.inside_loop || is_mut { 'let ' } else { 'const ' })
 			}
 
 			mut array_set := false
@@ -1560,7 +1556,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
-fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+fn (mut g JsGen) cc_type(typ ast.Type, _is_prefix_struct bool) string {
 	sym := g.table.sym(g.unwrap_generic(typ))
 	mut styp := sym.cname.replace('>', '').replace('<', '')
 	match sym.info {
@@ -2189,7 +2185,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO: Generate .val for basic types
 }
 
-fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
+fn (mut g JsGen) gen_lock_expr(_node ast.LockExpr) {
 	// TODO: implement this
 }
 
@@ -2593,8 +2589,8 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 	}
 }
 
-fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string,
-	enum_typ ast.TypeSymbol) {
+fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, _is_expr bool, cond_var MatchCond, tmp_var string,
+	_enum_typ ast.TypeSymbol) {
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
 	g.empty_line = true

@@ -148,26 +148,35 @@ fn (mut g Gen) gen_c_main_function_header() {
 	}
 }
 
+fn (mut g Gen) gen_boehm_gc_init() {
+	g.writeln('#if defined(_VGCBOEHM)')
+	if g.pref.gc_mode == .boehm_leak {
+		g.writeln('\tGC_set_find_leak(1);')
+	}
+	if g.pref.os == .linux && !g.pref.no_builtin {
+		g.writeln('\tbool __v_gc_debugger_workaround = builtin__gc_prepare_for_debugger_init();')
+	}
+	g.writeln('\tGC_set_pages_executable(0);')
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		g.writeln('\tGC_set_free_space_divisor(2);')
+	}
+	if g.pref.use_coroutines {
+		g.writeln('\tGC_allow_register_threads();')
+	}
+	g.writeln('\tGC_INIT();')
+	if g.pref.os == .linux && !g.pref.no_builtin {
+		g.writeln('\tbuiltin__gc_restore_roots_after_debugger_init(__v_gc_debugger_workaround);')
+	}
+	if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+		g.writeln('\tGC_enable_incremental();')
+	}
+	g.writeln('#endif')
+}
+
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln('\tGC_set_pages_executable(0);')
-		if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-			g.writeln('\tGC_set_free_space_divisor(2);')
-		}
-		if g.pref.use_coroutines {
-			g.writeln('\tGC_allow_register_threads();')
-		}
-		g.writeln('\tGC_INIT();')
-
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
 	}
 	if g.pref.gc_mode == .vgc {
 		g.writeln('\tbuiltin__vgc_init();')
@@ -216,19 +225,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	g.gen_c_main_trace_calls_hook()
 
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln('\tGC_set_pages_executable(0);')
-		if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-			g.writeln('\tGC_set_free_space_divisor(2);')
-		}
-		g.writeln('\tGC_INIT();')
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
 	}
 	if g.pref.gc_mode == .vgc {
 		g.writeln('\tbuiltin__vgc_init();')
@@ -305,22 +302,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln('\tGC_set_pages_executable(0);')
-		if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-			g.writeln('\tGC_set_free_space_divisor(2);')
-		}
-		if g.pref.use_coroutines {
-			g.writeln('\tGC_allow_register_threads();')
-		}
-		g.writeln('\tGC_INIT();')
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
 	}
 	if g.pref.gc_mode == .vgc {
 		g.writeln('\tbuiltin__vgc_init();')

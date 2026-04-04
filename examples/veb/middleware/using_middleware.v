@@ -7,6 +7,7 @@ const http_port = 8080
 
 struct App {
 	vweb.Context
+pub:
 	middlewares map[string][]vweb.Middleware
 mut:
 	is_authenticated bool

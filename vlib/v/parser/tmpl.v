@@ -517,6 +517,7 @@ fn veb_tmpl_${fn_name}() string {
 	}
 
 	mut in_span := false
+	mut in_html_comment := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
@@ -530,6 +531,35 @@ fn veb_tmpl_${fn_name}() string {
 		}
 		$if trace_tmpl ? {
 			eprintln('>>> tfile: ${template_file}, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: ${line}')
+		}
+		// Track HTML comments: skip @-interpolation inside <!-- ... -->
+		if state == .html {
+			if in_html_comment {
+				if line.contains('-->') {
+					in_html_comment = false
+				}
+				// Output comment line literally (no @-interpolation)
+				escaped := line.replace('\\', '\\\\').replace("'", "\\'")
+				source.writeln(escaped)
+				p.template_line_map << ast.TemplateLineInfo{
+					tmpl_path: template_file
+					tmpl_line: tline_number
+				}
+				continue
+			}
+			if line.contains('<!--') {
+				if !line.contains('-->') {
+					in_html_comment = true
+				}
+				// Single-line or start of multi-line comment: output literally
+				escaped := line.replace('\\', '\\\\').replace("'", "\\'")
+				source.writeln(escaped)
+				p.template_line_map << ast.TemplateLineInfo{
+					tmpl_path: template_file
+					tmpl_line: tline_number
+				}
+				continue
+			}
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }

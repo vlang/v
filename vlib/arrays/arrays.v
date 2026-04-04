@@ -519,7 +519,7 @@ pub fn binary_search[T](array []T, target T) !int {
 pub fn rotate_left[T](mut array []T, mid int) {
 	assert mid <= array.len && mid >= 0
 	k := array.len - mid
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
@@ -538,7 +538,7 @@ pub fn rotate_left[T](mut array []T, mid int) {
 pub fn rotate_right[T](mut array []T, k int) {
 	assert k <= array.len && k >= 0
 	mid := array.len - k
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}

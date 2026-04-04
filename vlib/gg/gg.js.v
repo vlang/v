@@ -467,8 +467,8 @@ pub fn (mut ctx Context) end() {
 pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.strokeStyle = c.to_css_string().str
-	ctx.context.moveTo(x1, y1)
-	ctx.context.lineTo(x2, y2)
+	ctx.context.moveTo(JS.Number(x1), JS.Number(y1))
+	ctx.context.lineTo(JS.Number(x2), JS.Number(y2))
 	ctx.context.stroke()
 	ctx.context.closePath()
 }
@@ -479,13 +479,13 @@ pub fn (mut ctx Context) quit() {
 pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.fillStyle = c.to_css_string().str
-	ctx.context.fillRect(x, y, w, h)
+	ctx.context.fillRect(JS.Number(x), JS.Number(y), JS.Number(w), JS.Number(h))
 	ctx.context.closePath()
 }
 
 fn gg_animation_frame_fn(mut g Context) {
 	g.frame++
-	g.context.clearRect(0, 0, g.config.width, g.config.height)
+	g.context.clearRect(JS.Number(0), JS.Number(0), JS.Number(g.config.width), JS.Number(g.config.height))
 	// todo(playXE): handle events
 
 	if !isnil(g.config.frame_fn) {

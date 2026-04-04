@@ -84,7 +84,8 @@ pub fn (mut t TypeResolver) update_ct_type(key string, var_type ast.Type) {
 // get_ct_type_or_default retrieves a comptime variable value on type map or default_type otherwise
 @[inline]
 pub fn (t &TypeResolver) get_ct_type_or_default(key string, default_type ast.Type) ast.Type {
-	return t.type_map[key] or { default_type }
+	resolved_key := if key.contains('|') { key.all_before('|') } else { key }
+	return t.type_map[resolved_key] or { default_type }
 }
 
 @[noreturn]
@@ -95,8 +96,22 @@ fn (t &TypeResolver) error(s string, pos token.Pos) {
 
 // promote_type resolves the final type of different generic/comptime operand types
 pub fn (t &TypeResolver) promote_type(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == right_type {
+		return left_type
+	}
+	// Float types take precedence over integer types in arithmetic.
+	if left_type.is_float() && right_type.is_int() {
+		return left_type
+	}
+	if right_type.is_float() && left_type.is_int() {
+		return right_type
+	}
+	// f64 takes precedence over f32.
 	if left_type == ast.f32_type && right_type == ast.f64_type {
 		return right_type
+	}
+	if left_type == ast.f64_type && right_type == ast.f32_type {
+		return left_type
 	}
 	return left_type
 }
@@ -235,13 +250,13 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			return t.get_type_from_comptime_var(node.expr as ast.Ident)
 		}
 		if node.expr is ast.Ident && node.expr.ct_expr {
-			struct_typ := t.resolver.unwrap_generic(t.get_type(node.expr))
+			struct_typ := t.resolver.unwrap_generic(t.get_type(ast.Expr(node.expr)))
 			struct_sym := t.table.final_sym(struct_typ)
 			// Struct[T] can have field with generic type
 			if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
 				if field := t.table.find_field(struct_sym, node.field_name) {
 					f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
-						t.get_type_or_default(node.expr, node.expr_type), node.field_name)
+						t.get_type_or_default(ast.Expr(node.expr), node.expr_type), node.field_name)
 					if f_unwrap != unsafe { nil } {
 						return f_unwrap.smartcasts.last()
 					}

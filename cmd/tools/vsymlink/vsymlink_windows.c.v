@@ -119,8 +119,8 @@ fn warn_and_exit(err string) {
 fn get_reg_sys_env_handle() !voidptr {
 	// open the registry key
 	reg_key_path := 'Environment'
-	reg_env_key := unsafe { nil } // or HKEY (HANDLE)
-	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
+	mut reg_env_key := os.hkey_current_user // placeholder, overwritten by RegOpenKeyEx
+	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, voidptr(&reg_env_key)) != 0 {
 		return error('Could not open "${reg_key_path}" in the registry')
 	}
 	return reg_env_key
@@ -130,11 +130,12 @@ fn get_reg_sys_env_handle() !voidptr {
 fn get_reg_value(reg_env_key voidptr, key string) !string {
 	// query the value (shortcut the sizing step)
 	reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
-	mut reg_value := unsafe { &u16(malloc(int(reg_value_size))) }
-	if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
+	reg_value_cap := int(reg_value_size / u32(sizeof(u16))) + 1
+	mut reg_value := []u16{len: reg_value_cap}
+	if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, &u8(reg_value.data), &reg_value_size) != 0 {
 		return error('Unable to get registry value for "${key}".')
 	}
-	return unsafe { string_from_wide(reg_value) }
+	return unsafe { string_from_wide(reg_value.data) }
 }
 
 // sets the value for the given $key to the given  $value
@@ -148,7 +149,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 // Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) !bool {
-	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
+	message_data_wide := message_data.to_wide()
+	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data_wide) },
 		os.smto_abortifhung, 5000, 0) == 0 {
 		return error('Could not broadcast WM_SETTINGCHANGE')
 	}

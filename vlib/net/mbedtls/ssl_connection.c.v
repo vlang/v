@@ -721,11 +721,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
-		timeval_timeout := if timeout < 0 {
-			&C.timeval(unsafe { nil })
-		} else {
-			&tt
-		}
+		timeval_timeout := if timeout < 0 { &C.timeval(unsafe { nil }) } else { &tt }
 
 		mut res := -1
 		match test {

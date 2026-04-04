@@ -144,6 +144,9 @@ pub fn (mut b Builder) middle_stages() ! {
 	util.timing_measure('Checker.generic_insts_to_concrete')
 
 	b.checker.check_files(b.parsed_files)
+	util.timing_start('Checker.generic_insts_to_concrete.after_check')
+	b.table.generic_insts_to_concrete()
+	util.timing_measure('Checker.generic_insts_to_concrete.after_check')
 	util.timing_measure('CHECK')
 	$if trace_type_symbols_after_checker ? {
 		for t, s in b.table.type_symbols {
@@ -154,6 +157,9 @@ pub fn (mut b Builder) middle_stages() ! {
 	if b.pref.new_generic_solver {
 		util.timing_start('GENERICS')
 		b.generics.solve_files(b.parsed_files)
+		util.timing_start('Checker.generic_insts_to_concrete.after_generics')
+		b.table.generic_insts_to_concrete()
+		util.timing_measure('Checker.generic_insts_to_concrete.after_generics')
 		util.timing_measure('GENERICS')
 	}
 
@@ -535,7 +541,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.check_only {
-		if !b.pref.skip_notes {
+		if !b.pref.skip_notes && !b.pref.json_errors {
 			for file in b.parsed_files {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {

@@ -12,7 +12,7 @@ vlib/v/checker/tests/unknown_method.vv:13:2: error: `println` can not print void
       |     ~~~~~~~~~~~~~~~~
    14 | 
    15 |     foo := new_foo[int]()
-vlib/v/checker/tests/unknown_method.vv:16:6: error: unknown method or field: `Foo[F].bar`
+vlib/v/checker/tests/unknown_method.vv:16:6: error: unknown method or field: `Foo.bar`
    14 | 
    15 |     foo := new_foo[int]()
    16 |     foo.bar()

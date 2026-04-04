@@ -6,6 +6,13 @@ module c
 import v.ast
 import v.util
 
+fn (g &Gen) match_cond_can_use_directly(cond ast.Expr) bool {
+	return (cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+		&& (cond !is ast.Ident || (cond is ast.Ident && cond.or_expr.kind == .absent)))
+		|| (cond is ast.SelectorExpr && cond.or_block.kind == .absent && (cond.expr !is ast.CallExpr
+		|| (cond.expr as ast.CallExpr).or_block.kind == .absent))
+}
+
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		if g.inside_struct_init {
@@ -16,6 +23,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum && node.branches.len > 5 {
+			return true
+		}
+		if !g.match_cond_can_use_directly(node.cond) {
 			return true
 		}
 		if g.need_tmp_var_in_expr(node.cond) {
@@ -74,11 +84,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
-		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
-		&& node.cond.or_expr.kind == .absent))) || (node.cond is ast.SelectorExpr
-		&& node.cond.or_block.kind == .absent && (node.cond.expr !is ast.CallExpr
-		|| (node.cond.expr as ast.CallExpr).or_block.kind == .absent)) {
+	if g.match_cond_can_use_directly(node.cond) {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {

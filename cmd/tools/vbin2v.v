@@ -43,7 +43,7 @@ fn (context Context) footer() string {
 	return ''
 }
 
-fn (context Context) file2v(bname string, fbytes []u8, bn_max int) string {
+fn (context Context) file2v(bname string, fbytes []u8, _bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	sb.write_string('const ${bname}_len' + ' = ${fbytes.len}\n')
 	fbyte := fbytes[0]

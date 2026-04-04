@@ -476,17 +476,53 @@ pub fn (t Type) has_option_or_result() bool {
 
 @[inline]
 pub fn (ts &TypeSymbol) scoped_name() string {
-	return if ts.info is Struct && ts.info.scoped_name != '' {
-		ts.info.scoped_name
-	} else {
-		ts.name
-	}
+	return if ts.info is Struct && ts.info.scoped_name != '' { ts.info.scoped_name } else { ts.name }
 }
 
 @[inline]
 pub fn (ts &TypeSymbol) scoped_cname() string {
 	return if ts.info is Struct && ts.info.scoped_name != '' {
-		ts.info.scoped_name.replace('.', '__')
+		if ts.language == .v && ts.info.scoped_name.contains('[') {
+			ts.info.scoped_name.replace('.', '__').replace_each([
+				'[',
+				'_T_',
+				']',
+				'',
+				', ',
+				'_T_',
+				',',
+				'_T_',
+				' ',
+				'',
+				'&',
+				'__ptr__',
+				'(',
+				'_',
+				')',
+				'_',
+			])
+		} else {
+			ts.info.scoped_name.replace('.', '__')
+		}
+	} else if ts.language == .v && ts.kind in [.placeholder, .generic_inst] && ts.name.contains('[') {
+		ts.name.replace('.', '__').replace_each([
+			'[',
+			'_T_',
+			']',
+			'',
+			', ',
+			'_T_',
+			',',
+			'_T_',
+			' ',
+			'',
+			'&',
+			'__ptr__',
+			'(',
+			'_',
+			')',
+			'_',
+		])
 	} else {
 		ts.cname
 	}
@@ -1564,12 +1600,14 @@ pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
-	if cached_res := t.cached_type_to_str[cache_key] {
-		return cached_res
+	mut mt := unsafe { &Table(t) }
+	rlock mt.cached_type_to_str {
+		if cached_res := mt.cached_type_to_str[cache_key] {
+			return cached_res
+		}
 	}
 	sym := t.sym(typ)
 	mut res := sym.name
-	mut mt := unsafe { &Table(t) }
 	defer {
 		lock mt.cached_type_to_str {
 			// Note, that this relies on `res = value return res` if you want to return early!
@@ -1917,10 +1955,30 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
+fn specialize_method_with_concrete_types(method Fn, generic_names []string, concrete_types []Type) Fn {
+	mut table := global_table
+	mut resolved := method
+	return_sym := table.sym(resolved.return_type)
+	if return_sym.kind in [.struct, .interface, .sum_type] {
+		resolved.return_type = table.unwrap_generic_type(resolved.return_type, generic_names,
+			concrete_types)
+	} else if rt := table.convert_generic_type(resolved.return_type, generic_names, concrete_types) {
+		resolved.return_type = rt
+	}
+	resolved.params = resolved.params.clone()
+	for mut param in resolved.params {
+		if pt := table.convert_generic_type(param.typ, generic_names, concrete_types) {
+			param.typ = pt
+		}
+	}
+	return resolved
+}
+
 pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	mut table := global_table
 	mut generic_names := []string{}
 	mut concrete_types := []Type{}
+	mut generic_inst_parent_idx := 0
 	match t.info {
 		Struct, Interface, SumType {
 			generic_names = t.info.generic_types.map(table.sym(it).name)
@@ -1931,61 +1989,62 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 				concrete_types = t.generic_types.clone()
 			}
 		}
+		GenericInst {
+			generic_inst_parent_idx = t.info.parent_idx
+			parent_sym := table.sym(new_type(generic_inst_parent_idx))
+			match parent_sym.info {
+				Struct, Interface, SumType {
+					generic_names = parent_sym.info.generic_types.map(table.sym(it).name)
+					concrete_types = t.info.concrete_types.clone()
+				}
+				FnType {
+					generic_names = parent_sym.info.func.generic_names.clone()
+					concrete_types = t.info.concrete_types.clone()
+				}
+				else {}
+			}
+		}
 		else {}
 	}
 	if m := t.find_method(name) {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
-			mut method := m
-			return_sym := table.sym(method.return_type)
-			if return_sym.kind in [.struct, .interface, .sum_type] {
-				method.return_type = table.unwrap_generic_type(method.return_type, generic_names,
-					concrete_types)
-			} else if rt := table.convert_generic_type(method.return_type, generic_names,
-				concrete_types)
-			{
-				method.return_type = rt
-			}
-			method.params = method.params.clone()
-			for mut param in method.params {
-				if pt := table.convert_generic_type(param.typ, generic_names, concrete_types) {
-					param.typ = pt
-				}
-			}
-			return method
+			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
 		}
 		return m
+	}
+	if generic_inst_parent_idx != 0 {
+		mut psym := table.sym(new_type(generic_inst_parent_idx))
+		for {
+			if m := psym.find_method(name) {
+				if generic_names.len == concrete_types.len && concrete_types.len > 0 {
+					return specialize_method_with_concrete_types(m, generic_names, concrete_types)
+				}
+				return m
+			}
+			if psym.parent_idx == 0 {
+				break
+			}
+			psym = table.type_symbols[psym.parent_idx]
+		}
 	}
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
-				parent_sym := table.sym(t.info.parent_type)
-				if x := parent_sym.find_method(name) {
-					match parent_sym.info {
-						Struct, Interface, SumType {
-							mut method := x
-							return_sym := table.sym(method.return_type)
-							if return_sym.kind in [.struct, .interface, .sum_type] {
-								method.return_type = table.unwrap_generic_type(method.return_type,
-									generic_names, concrete_types)
-							} else {
-								if rt := table.convert_generic_type(method.return_type,
-									generic_names, concrete_types)
-								{
-									method.return_type = rt
-								}
-							}
-							method.params = method.params.clone()
-							for mut param in method.params {
-								if pt := table.convert_generic_type(param.typ, generic_names,
+				mut psym2 := table.sym(t.info.parent_type)
+				for {
+					if x := psym2.find_method(name) {
+						match psym2.info {
+							Struct, Interface, SumType {
+								return specialize_method_with_concrete_types(x, generic_names,
 									concrete_types)
-								{
-									param.typ = pt
-								}
 							}
-							return method
+							else {}
 						}
-						else {}
 					}
+					if psym2.parent_idx == 0 {
+						break
+					}
+					psym2 = table.type_symbols[psym2.parent_idx]
 				}
 			}
 		}

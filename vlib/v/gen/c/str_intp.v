@@ -39,8 +39,42 @@ fn (mut g Gen) is_type_name_string_expr(expr ast.Expr) bool {
 	}
 }
 
+fn (g Gen) is_or_block_var_unwrapped(obj ast.Var) bool {
+	init_expr := obj.expr
+	return match init_expr {
+		ast.CallExpr { init_expr.or_block.kind != .absent }
+		ast.Ident { init_expr.or_expr.kind != .absent }
+		ast.IndexExpr { init_expr.or_expr.kind != .absent }
+		ast.SelectorExpr { init_expr.or_block.kind != .absent }
+		ast.PrefixExpr { init_expr.or_block.kind != .absent }
+		else { false }
+	}
+}
+
+fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
+	ident := match expr {
+		ast.Ident { expr }
+		else { return false }
+	}
+	match ident.obj {
+		ast.Var {
+			if ident.obj.is_unwrapped {
+				return true
+			}
+			if g.is_or_block_var_unwrapped(ident.obj) {
+				return true
+			}
+			if !ident.obj.typ.has_flag(.option) && ident.obj.ct_type_var == .no_comptime {
+				return true
+			}
+		}
+		else {}
+	}
+	return false
+}
+
 fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
-	if fmt == `p` || !typ.is_int_valptr() {
+	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
 		return false
 	}
 	if expr.is_auto_deref_var() {
@@ -56,6 +90,28 @@ fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 		}
 		ast.PrefixExpr {
 			expr.op == .amp
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bool {
+	if typ == 0 || typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
+		return true
+	}
+	// In generic contexts, always resolve expression types since AST types
+	// may be stale from a previous checker instantiation
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		return true
+	}
+	return match expr {
+		ast.CallExpr, ast.ComptimeSelector, ast.Ident, ast.IndexExpr, ast.InfixExpr {
+			true
+		}
+		ast.SelectorExpr {
+			expr.expr is ast.TypeOf
 		}
 		else {
 			false
@@ -88,7 +144,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .generic_inst, .map, .multi_return, .sum_type, .interface, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -100,12 +156,12 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set uppercase for the result string
+	expr := node.exprs[i]
 	mut typ := if i < node.expr_types.len {
 		g.unwrap_generic(node.expr_types[i])
 	} else {
 		ast.string_type
 	}
-	expr := node.exprs[i]
 	if g.is_type_name_string_expr(expr) {
 		typ = ast.string_type
 	} else if expr is ast.Ident && expr.obj is ast.Var {
@@ -129,14 +185,14 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 			}
 		}
 	}
-	if node.exprs[i].is_auto_deref_var() {
+	if node.exprs[i].is_auto_deref_var() && typ.nr_muls() > 0 {
 		typ = typ.deref()
 	}
-	if int_ref_interpolates_as_value(node.exprs[i], typ, fmts[i]) {
+	if int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
-	if typ.has_flag(.shared_f) {
+	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}
 	mut remove_tail_zeros := false
@@ -284,10 +340,22 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
-	orig_typ := if i < node.expr_types.len {
+	mut orig_typ := if i < node.expr_types.len {
 		g.unwrap_generic(node.expr_types[i])
 	} else {
 		ast.string_type
+	}
+	if g.should_resolve_str_intp_expr_type(expr, orig_typ) {
+		resolved_expr_typ := g.resolved_expr_type(expr, orig_typ)
+		if resolved_expr_typ != 0 {
+			orig_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
+		}
+	}
+	// Resolve aggregate types (from multi-branch match arms) to the
+	// concrete variant type for the current iteration.
+	orig_typ_sym := g.table.sym(orig_typ)
+	if orig_typ_sym.info is ast.Aggregate {
+		orig_typ = orig_typ_sym.info.types[g.aggregate_type_idx]
 	}
 	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
 	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
@@ -361,6 +429,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
 						exp_typ = exp_typ.clear_flag(.option)
 					}
+				} else if expr.obj.is_unwrapped && exp_typ.has_flag(.option) {
+					exp_typ = exp_typ.clear_flag(.option)
 				}
 			}
 		}
@@ -472,22 +542,27 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
 			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
-				typeof_expr := expr.expr as ast.TypeOf
-				if typeof_expr.expr is ast.Ident {
-					ident_name := (typeof_expr.expr as ast.Ident).name
-					if obj := typeof_expr.expr.scope.find(ident_name) {
-						if obj is ast.Var {
-							field_typ = obj.typ
-						}
-					}
-				}
+				field_typ = ast.string_type
 			}
 		}
 		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
-			ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			mut ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			// In generic contexts, comptime type may be stale from a previous
+			// checker instantiation. Prefer resolved_expr_type when available.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_ct := g.resolved_expr_type(expr, ctyp)
+				if resolved_ct != ast.void_type && resolved_ct != 0 {
+					ctyp = g.unwrap_generic(g.recheck_concrete_type(resolved_ct))
+				}
+			}
 			if ctyp != ast.void_type {
+				// Clear option flag for variables unwrapped via `or {}` blocks
+				if ctyp.has_flag(.option) && g.should_clear_option_flag(expr) {
+					ctyp = ctyp.clear_flag(.option)
+				}
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_` {
+				if node_.fmts[i] == `_`
+					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)
@@ -498,11 +573,55 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		} else {
+			if g.should_resolve_str_intp_expr_type(expr, field_typ) {
+				resolved_field_typ := g.resolved_expr_type(expr, field_typ)
+				if resolved_field_typ != ast.void_type {
+					field_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
+				}
+			}
+			// Resolve aggregate types (from multi-branch match arms) to the
+			// concrete variant type for the current iteration.
+			field_sym := g.table.sym(field_typ)
+			if field_sym.info is ast.Aggregate {
+				field_typ = field_sym.info.types[g.aggregate_type_idx]
+			}
+			// Clear option flag for variables unwrapped via `or {}` blocks
+			if field_typ.has_flag(.option) && g.should_clear_option_flag(expr) {
+				field_typ = field_typ.clear_flag(.option)
+			}
 			if i >= node_.expr_types.len {
 				node_.expr_types << field_typ
 			} else {
 				node_.expr_types[i] = field_typ
 			}
+			// Update format specifier if it was auto-determined and the type changed
+			if !node_.need_fmts[i] {
+				ftyp_sym := g.table.sym(field_typ)
+				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+					g.table.unalias_num_type(field_typ)
+				} else {
+					field_typ
+				}
+				fmts[i] = g.get_default_fmt(field_typ, new_typ)
+			}
+		}
+		expr_ := expr
+		match expr_ {
+			ast.Ident {
+				if expr_.obj is ast.Var && g.table.is_interface_smartcast(expr_.obj) {
+					expr_var := expr_.obj
+					if field_typ.is_ptr() && !expr_var.orig_type.is_ptr()
+						&& g.table.final_sym(expr_var.orig_type).kind == .interface
+						&& g.table.final_sym(field_typ).kind != .interface {
+						field_typ = field_typ.deref()
+						node_.expr_types[i] = field_typ
+						if !node_.need_fmts[i] {
+							fmts[i] = g.get_default_fmt(field_typ, field_typ)
+						}
+					}
+				}
+			}
+			else {}
 		}
 	}
 	g.write2('builtin__str_intp(', node.vals.len.str())
@@ -520,11 +639,23 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 
 		if i >= node.exprs.len {
 			// last part of the string
-			g.write('0, { .d_c = 0 }}')
+			g.write('0, { .d_c = 0 }, 0, 0, 0}')
 			break
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
+		$if trace_ci_fixes ? {
+			if g.file.path.contains('comptime_for_in_options_struct_test.v')
+				|| g.file.path.contains('comptime_map_fields_decode_test.v') {
+				g.write('/*trace_str_intp expr=')
+				g.write(node.exprs[i].str().replace('*/', '* /'))
+				g.write(' typ=')
+				g.write(g.table.type_to_str(node.expr_types[i]).replace('*/', '* /'))
+				g.write(' fmt=')
+				g.write(ft_str)
+				g.write('*/')
+			}
+		}
 		g.write2('0x', ft_u64.hex())
 		g.write2(', {.d_', ft_str)
 		g.write(' = ')
@@ -563,6 +694,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				'2'
 			})
+		} else {
+			g.write(', 0, 0, 0')
 		}
 		g.write('}')
 		if i < (node.vals.len - 1) {

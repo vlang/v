@@ -1,3 +1,17 @@
+vlib/v/checker/tests/crystallib_struct_init_result_err.vv:9:13: notice: unused parameter: `path`
+    7 | }
+    8 | 
+    9 | fn get_file(path string, create bool) !Path {
+      |             ~~~~
+   10 |     return Path{}
+   11 | }
+vlib/v/checker/tests/crystallib_struct_init_result_err.vv:9:26: notice: unused parameter: `create`
+    7 | }
+    8 | 
+    9 | fn get_file(path string, create bool) !Path {
+      |                          ~~~~~~
+   10 |     return Path{}
+   11 | }
 vlib/v/checker/tests/crystallib_struct_init_result_err.vv:16:12: error: get_file() returns `!Path`, so it should have either an `or {}` block, or `!` at the end
    14 |     mut doc := Doc{
    15 |         content: 'this is a first line.'

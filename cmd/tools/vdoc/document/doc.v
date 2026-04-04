@@ -246,11 +246,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}
@@ -276,11 +272,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}

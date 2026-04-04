@@ -32,7 +32,7 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .aggregate, .none]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .generic_inst, .map, .multi_return, .sum_type, .interface, .aggregate, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -96,6 +96,11 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			ftyp
 		}
 		mut fmt := node.fmts[i]
+		// During generic recheck, reset auto-determined format specifiers
+		// since the type may have changed between instantiations
+		if c.table.cur_concrete_types.len > 0 && !node.need_fmts[i] && fmt != `_` {
+			fmt = `_`
+		}
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,
 			`b`, `_`, `r`, `R`] {
@@ -104,7 +109,9 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		if fmt == `_` { // set default representation for type if none has been given
 			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
-				if typ != ast.void_type && !(c.inside_lambda && typ.has_flag(.generic)) {
+				if typ != ast.void_type && !(typ.has_flag(.generic) && (c.inside_lambda
+					|| c.table.cur_concrete_types.len > 0
+					|| (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0))) {
 					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
 				}
