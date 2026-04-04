@@ -10,7 +10,7 @@ struct App[M] {
 	f M
 }
 
-fn (mut self App[M]) next[M, T](input T) f64 {
+fn (mut self App[M]) next[M, T](_input T) f64 {
 	$if M is Something {
 		return 0
 	} $else {
