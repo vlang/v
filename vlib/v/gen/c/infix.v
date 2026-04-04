@@ -1340,7 +1340,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			resolved_right_type = g.unwrap_generic(right_type)
 		}
 		needs_explicit_deref := node.right is ast.Ident && resolved_right_type.is_ptr()
-			&& !elem_type.is_ptr()
+			&& !elem_type.is_ptr() && !elem_type.is_pointer()
 		rhs_is_any_value := elem_sym.kind == .any
 		mut rhs_is_interface_value := elem_sym.kind == .interface
 			&& g.table.does_type_implement_interface(resolved_right_type, elem_type)
