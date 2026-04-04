@@ -2,14 +2,13 @@ module stdatomic
 
 // The @VEXEROOT/thirdparty/stdatomic contains compatibility headers
 // for stdatomic, that supports both nix, windows and c++.
-// Use `#include` instead of `#insert` so `-os cross` keeps the platform
-// selection as C preprocessor guards instead of flattening every branch
-// into `vc/v.c`.
 
 $if windows {
-	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+	#flag -I @VEXEROOT/thirdparty/stdatomic/win
+	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
-	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 
 $if linux {
