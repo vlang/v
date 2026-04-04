@@ -8,7 +8,11 @@ features.
 - **Very fast** performance of C on the web.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 - **Middleware** functionality similar to other big frameworks.
+- **HTTPS support** directly from `veb` via `mbedtls`.
+- **Method-aware route middleware** for protecting only selected HTTP verbs.
+- **Static compression** with gzip/zstd, including manual pre-compression support.
 - **Controllers** to split up your apps logic.
+- **Graceful shutdown** support in the `new_veb` backend.
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
 
@@ -118,6 +122,18 @@ fn main() {
 	) or { panic(err) }
 }
 ```
+
+## Graceful shutdown
+
+When running with `-d new_veb`, the underlying server supports graceful
+shutdown. Once shutdown begins, it stops accepting new requests, waits for
+in-flight requests to finish, and only then exits. This is useful for deploys,
+tests, and management endpoints that trigger a stop after sending a response.
+
+The lifecycle controls come from the underlying `fasthttp.ServerHandle`
+(`wait_till_running()` and `shutdown(timeout: ...)`). If you need explicit
+server lifecycle management, use those lower-level hooks in the process that
+starts your app.
 
 ## Defining endpoints
 
@@ -469,8 +485,8 @@ over gzip when the client supports both.
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
    them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
-   on first request and cached as `.zst` or `.gz` files on disk (zstd preferred when client
-   supports it).
+   on first request and cached under `os.cache_dir()/veb/static_compression/`
+   (zstd preferred when the client supports it). The source directory stays unchanged.
 3. **Cache validation**: If the original file is modified, the compressed cache is
    automatically regenerated on the next request.
 4. **Streaming for large files**: Files larger than the threshold are served uncompressed in
@@ -561,8 +577,8 @@ curl -H "Accept-Encoding: zstd, gzip" --compressed http://localhost:8080/app.js
 # Request without encoding - should return uncompressed content
 curl -i http://localhost:8080/app.js
 
-# Verify that compressed cache file was created
-ls -lh static/app.js.zst static/app.js.gz 2>/dev/null
+# Auto-generated cache files are stored under:
+# os.cache_dir()/veb/static_compression/
 
 # Test manual pre-compression - style.css.zst is served directly (zero-copy)
 curl -H "Accept-Encoding: zstd" -i http://localhost:8080/style.css
@@ -579,6 +595,8 @@ serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
 
 - The lazy cache is created on first request, so the first visitor pays a small
   compression cost, but all subsequent requests are served at zero-copy speed.
+- Auto-generated cache files live in the OS cache directory, so read-only static
+  folders still work and your source tree stays clean.
 - Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
 - The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
   also use `encode_zstd` or `encode_gzip` for specific compression.

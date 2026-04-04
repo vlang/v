@@ -54,6 +54,24 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
+## Project-local compiler versions with `.vvmrc`
+
+If a project contains a `.vvmrc` file, commands like `v run .`, `v run file.v`,
+or `v file.v` will try to find and delegate to the requested V compiler version.
+This makes it easier to keep a project pinned to a known compiler release.
+
+The file should contain one version per project, for example:
+
+```text
+0.4.12
+```
+
+Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
+`current` keep using the currently running compiler.
+
+V searches for `.vvmrc` from the target path upward and stops at repository and
+project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
@@ -486,6 +504,10 @@ fn main() {
 	// warning: unused variable `a`
 }
 ```
+
+The compiler also warns about obviously constant conditions, for example
+self-comparisons like `if x == x { ... }` or `match` branches that can never be
+reached. These warnings help catch redundant checks and dead branches early.
 
 To ignore values returned by a function `_` can be used
 ```v
@@ -3624,12 +3646,12 @@ To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
 
-Numeric aliases can use empty literal syntax for zero/default initialization:
+Numeric aliases use ordinary conversions for initialization:
 
 ```v
 type Decimal = f64
 
-amount := Decimal{}
+amount := Decimal(0.0)
 ```
 
 ### Enums
@@ -4219,6 +4241,23 @@ if mut w is Mars {
 
 Otherwise `w` would keep its original type.
 > This works for both simple variables and complex expressions like `user.name`
+> and `values[i]`.
+
+Smart casts also work on indexed expressions in `match` branches:
+
+```v oksyntax
+type Entry = int | string
+
+values := [Entry('v')]
+match values[0] {
+	string {
+		assert values[0] == 'v'
+	}
+	else {
+		assert false
+	}
+}
+```
 
 #### Matching sum types
 
@@ -4336,7 +4375,7 @@ fn main() {
 Trailing option-typed parameters can also be omitted in function calls.
 When they are not passed, V supplies `none`:
 
-```v
+```v ignore
 fn connect(url string, timeout ?int) {
 	actual_timeout := timeout or { 1000 }
 	println('${url} -> ${actual_timeout}')
