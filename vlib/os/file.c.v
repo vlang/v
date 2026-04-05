@@ -509,11 +509,11 @@ pub fn (mut f File) read_struct[T](mut t T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
-	nbytes := fread(t, 1, tsize, f.cfile)!
+	nbytes := fread(voidptr(&t), 1, tsize, f.cfile)!
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -525,12 +525,12 @@ pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
 	f.seek(pos, .start) or {}
-	nbytes := fread(t, 1, tsize, f.cfile)!
+	nbytes := fread(voidptr(&t), 1, tsize, f.cfile)!
 	f.seek(0, .end) or {}
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)

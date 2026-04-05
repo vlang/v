@@ -395,7 +395,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		mut styp := g.styp(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
-		op_field := g.dot_or_ptr(node.cond_type)
+		op_field := if node.cond_type.has_flag(.shared_f) {
+			'->val.'
+		} else if node.cond_type.is_ptr() || resolved_cond_expr.is_auto_deref_var() {
+			'->'
+		} else {
+			g.dot_or_ptr(node.cond_type)
+		}
 
 		mut cond_var := ''
 		// Check if the cond has an or-block that unwraps the option

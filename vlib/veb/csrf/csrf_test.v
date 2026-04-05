@@ -210,7 +210,7 @@ fn (app &App) exit_gracefully() {
 	exit(0)
 }
 
-fn exit_after_timeout[T](mut app T, timeout_in_ms int) {
+fn exit_after_timeout(mut app App, timeout_in_ms int) {
 	time.sleep(timeout_in_ms * time.millisecond)
 	eprintln('>> webserver: pid: ${os.getpid()}, exiting ...')
 	app.exit_gracefully()

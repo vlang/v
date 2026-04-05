@@ -490,7 +490,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		if struct_info.value_kind == .string {
 			val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
 				struct_info.length - 1]) or {
-				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
+				decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 			}
 			if decoder.current_node != unsafe { nil } {
 				decoder.current_node = decoder.current_node.next
@@ -505,7 +505,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		if struct_info.value_kind == .number {
 			val.from_json_number(decoder.json[struct_info.position..struct_info.position +
 				struct_info.length]) or {
-				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
+				decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 			}
 			if decoder.current_node != unsafe { nil } {
 				decoder.current_node = decoder.current_node.next

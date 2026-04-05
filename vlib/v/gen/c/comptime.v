@@ -238,7 +238,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		// try to see if we need to pass a pointer
 		if mut node.left is ast.Ident {
 			if mut node.left.obj is ast.Var {
-				if m.params[0].typ.is_ptr() && !node.left.obj.typ.is_ptr() {
+				if m.params[0].typ.is_ptr() && !node.left.obj.typ.is_ptr()
+					&& !node.left.obj.is_auto_deref {
 					g.write('&')
 				}
 			}

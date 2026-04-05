@@ -411,15 +411,21 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 				}
 				inferred_types << inferred_type
 			}
-			// add concrete types to method
-			for imethod in inter_sym.info.methods {
-				im_fkey := imethod.fkey()
-				if c.table.register_fn_concrete_types(im_fkey, inferred_types) {
-					c.need_recheck_generic_fns = true
-				}
-				if method := typ_sym.find_method_with_generic_parent(imethod.name) {
-					if c.table.register_fn_concrete_types(method.fkey(), inferred_types) {
+			// add concrete types to method, but only if at least one
+			// inferred type is actually concrete (not still generic).
+			// When all inferred types are generic (e.g. T -> T from
+			// `implements`), registering them would cause a circular
+			// recheck that fails to resolve field types.
+			if !inferred_types.all(it.has_flag(.generic)) {
+				for imethod in inter_sym.info.methods {
+					im_fkey := imethod.fkey()
+					if c.table.register_fn_concrete_types(im_fkey, inferred_types) {
 						c.need_recheck_generic_fns = true
+					}
+					if method := typ_sym.find_method_with_generic_parent(imethod.name) {
+						if c.table.register_fn_concrete_types(method.fkey(), inferred_types) {
+							c.need_recheck_generic_fns = true
+						}
 					}
 				}
 			}

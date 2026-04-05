@@ -55,7 +55,12 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			if node.expr.info is ast.IdentVar {
 				current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 				if current_fn_ident_type != 0 {
-					expr_type = current_fn_ident_type
+					is_auto_deref := node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
+					expr_type = if is_auto_deref && current_fn_ident_type.is_ptr() {
+						current_fn_ident_type.deref()
+					} else {
+						current_fn_ident_type
+					}
 				} else {
 					resolved_ident_type := g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 						expr_type))
@@ -181,7 +186,12 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if !is_comptime_smartcast {
 			current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 			if current_fn_ident_type != 0 {
-				expr_type = current_fn_ident_type
+				is_auto_deref := node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
+				expr_type = if is_auto_deref && current_fn_ident_type.is_ptr() {
+					current_fn_ident_type.deref()
+				} else {
+					current_fn_ident_type
+				}
 				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
 					'')
 			}
@@ -230,6 +240,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		if expr_type.has_flag(.option_mut_param_t) {
+			g.write('*')
+		}
+		if node.expr is ast.Ident && node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
+			&& !expr_type.is_ptr() {
 			g.write('*')
 		}
 		for {

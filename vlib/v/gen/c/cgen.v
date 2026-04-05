@@ -5268,14 +5268,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name in ['idx', 'unaliased_typ'] {
 					// `T.idx`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).unalised_typ`
 					mut name_type := node.name_type
-					mut resolved_via_generic := false
 					if node.expr is ast.TypeOf {
 						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 							resolved := g.resolve_typeof_in_generic(node.expr)
 							if resolved != 0 {
 								name_type = g.type_resolver.typeof_field_type(resolved,
 									node.field_name)
-								resolved_via_generic = true
 							} else {
 								name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
 									g.resolve_typeof_expr_type(node.expr.expr, name_type)),
@@ -5288,7 +5286,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						}
 						// For mut params (auto_deref), strip pointer so that
 						// typeof(mut_param).idx == typeof(val_param).idx
-						if !resolved_via_generic && node.expr.expr is ast.Ident {
+						if node.expr.expr is ast.Ident {
 							if node.expr.expr.obj is ast.Var {
 								if node.expr.expr.obj.is_auto_deref && name_type.is_ptr() {
 									name_type = name_type.deref()
@@ -6065,6 +6063,12 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 		|| g.type_has_unresolved_generic_parts(node.expr.obj.typ))
 		&& !node.expr_type.has_flag(.generic) {
 		lhs_expr_type = g.unwrap_generic(node.expr.obj.typ)
+	}
+	if node.expr is ast.Ident {
+		resolved_current_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+		if resolved_current_type != 0 {
+			lhs_expr_type = resolved_current_type
+		}
 	}
 	resolved_selector_expr_type := if lhs_expr_type.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(lhs_expr_type) {
@@ -6942,7 +6946,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 					} else {
 						comptime_type
 					}
-					g.or_block(var_name, node.or_expr, or_return_type)
+					g.or_block(var_name, node.or_expr, g.or_type_with_auto_deref(node,
+						or_return_type))
 					g.writeln(stmt_str)
 				}
 				return
@@ -7013,7 +7018,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					node.info.typ
 				}
-				g.or_block(var_name, node.or_expr, or_return_type)
+				g.or_block(var_name, node.or_expr, g.or_type_with_auto_deref(node, or_return_type))
 				g.write(stmt_str)
 			}
 			if has_resolved_var {
@@ -7046,6 +7051,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			is_auto_heap = g.resolved_ident_is_auto_heap(node)
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
+			// When a variable is both auto_heap and auto_deref (e.g. a `mut`
+			// parameter of a @[heap] struct), the pointer indirection is
+			// already handled by the auto_deref mechanism (-> for selectors,
+			// pointer-type tracking in calls). Adding (*(…)) would
+			// incorrectly dereference the pointer a second time.
+			if is_auto_heap && node.obj.is_auto_deref {
+				is_auto_heap = false
+			}
 			if is_auto_heap && (node.obj.typ.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(node.obj.typ)) {
 				resolved_obj_typ := g.unwrap_generic(node.obj.typ)
@@ -7281,7 +7294,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		stmt_str := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		var_opt := if is_auto_heap { '(*${name})' } else { name }
-		g.or_block(var_opt, node.or_expr, node.obj.typ)
+		g.or_block(var_opt, node.or_expr, g.or_type_with_auto_deref(node, node.obj.typ))
 		g.write(stmt_str)
 	}
 }
@@ -9212,6 +9225,16 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // If the user is not using the option return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (tmp.state != 0) { ... }`
+// For auto-deref option variables (e.g. `mut t ?&T`), ensure the
+// `option_mut_param_t` flag is set so that `or_block` uses `->` instead of `.`.
+fn (g &Gen) or_type_with_auto_deref(node ast.Ident, typ ast.Type) ast.Type {
+	if node.obj is ast.Var && node.obj.is_auto_deref && typ.has_flag(.option)
+		&& !typ.has_flag(.option_mut_param_t) {
+		return typ.set_flag(.option_mut_param_t)
+	}
+	return typ
+}
+
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
