@@ -422,9 +422,16 @@ fn test_postfix_op_directly() {
 
 fn test_map_push_directly() {
 	mut a := map[string][]string{}
+	a['aaa'] = []string{}
 	a['aaa'] << ['a', 'b', 'c']
 	assert a['aaa'].len == 3
 	assert a['aaa'] == ['a', 'b', 'c']
+}
+
+fn test_map_push_missing_key_does_not_insert() {
+	mut a := map[string][]string{}
+	a['aaa'] << 'a'
+	assert a == map[string][]string{}
 }
 
 fn test_assign_directly() {
@@ -564,6 +571,20 @@ fn test_map_clone() {
 	assert nums['bar'] == 2
 	assert nums2['foo'] == 2
 	assert nums2['bar'] == 8
+}
+
+fn test_map_reserve_keeps_empty_map_valid() {
+	mut m := {
+		'abc': 42
+	}
+	mut moved := m.move()
+	moved.clear()
+	moved.reserve(6)
+	moved.delete('def')
+	assert moved.keys().len == 0
+	assert moved.values().len == 0
+	assert moved.clone().len == 0
+	unsafe { moved.free() }
 }
 
 struct MValue {

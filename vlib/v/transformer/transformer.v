@@ -688,6 +688,16 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			for mut expr in node.exprs {
 				expr = t.expr(mut expr)
 			}
+			for mut expr in node.fwidth_exprs {
+				if expr !is ast.EmptyExpr {
+					expr = t.expr(mut expr)
+				}
+			}
+			for mut expr in node.precision_exprs {
+				if expr !is ast.EmptyExpr {
+					expr = t.expr(mut expr)
+				}
+			}
 		}
 		ast.StructInit {
 			node.update_expr = t.expr(mut node.update_expr)
@@ -1311,10 +1321,12 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 	// >> sb.write_string('abc ${num}')
 	// >> sb.write_string('abc ${num} ${some_string} ${another_string} end')
 	for idx, w in original.fwidths {
-		if w != 0 {
+		if w != 0
+			|| (idx < original.fwidth_exprs.len && original.fwidth_exprs[idx] !is ast.EmptyExpr) {
 			return false
 		}
-		if original.precisions[idx] != 987698 {
+		if original.precisions[idx] != 987698 || (idx < original.precision_exprs.len
+			&& original.precision_exprs[idx] !is ast.EmptyExpr) {
 			return false
 		}
 		if original.need_fmts[idx] {

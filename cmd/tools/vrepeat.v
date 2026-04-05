@@ -290,6 +290,9 @@ fn (mut context Context) show_timings_details(si int, icmd int, cmd string) {
 		if x.len > 1 {
 			v := i64(x[0].trim_left(' ').f64() * 1000)
 			k := x[1].all_before(' ')
+			if k !in m {
+				m[k] = []i64{}
+			}
 			m[k] << v
 		}
 	}
@@ -311,7 +314,7 @@ fn (mut context Context) show_timings_details(si int, icmd int, cmd string) {
 		if old_ous[k].len == 0 {
 			new_ous[k] = v
 		} else {
-			new_ous[k] << old_ous[k]
+			new_ous[k] = old_ous[k].clone()
 			new_ous[k] << v
 		}
 	}

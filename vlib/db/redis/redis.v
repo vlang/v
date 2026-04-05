@@ -198,6 +198,20 @@ pub fn (mut db DB) ping() !string {
 	return db.cmd('PING')! as string
 }
 
+// validate checks whether the Redis connection is still responsive.
+pub fn (mut db DB) validate() !bool {
+	return db.ping()! == 'PONG'
+}
+
+// reset clears any queued pipeline state before the connection is reused.
+pub fn (mut db DB) reset() ! {
+	db.pipeline_mode = false
+	db.pipeline_cmd_count = 0
+	db.cmd_buf.clear()
+	db.resp_buf.clear()
+	db.pipeline_buffer.clear()
+}
+
 // del deletes a `key`
 pub fn (mut db DB) del(key string) !i64 {
 	// *2\r\n$3\r\nDEL\r\n$6\r\ncounter\r\n

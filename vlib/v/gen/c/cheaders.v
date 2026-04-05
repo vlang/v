@@ -102,14 +102,19 @@ const c_common_macros = '
 	#define __V_architecture 9
 #endif
 #if defined(__sparc__)
-       #define __V_sparc64  1
-       #undef __V_architecture
-       #define __V_architecture 10
+	#define __V_sparc64  1
+	#undef __V_architecture
+	#define __V_architecture 10
 #endif
 #if defined(__powerpc64__) && defined(__BIG_ENDIAN__)
-       #define __V_ppc64  1
-       #undef __V_architecture
-       #define __V_architecture 11
+	#define __V_ppc64  1
+	#undef __V_architecture
+	#define __V_architecture 11
+#endif
+#if (defined(__powerpc__) || defined(__powerpc) || defined(__POWERPC__) || defined(__ppc__) || defined(__ppc) || defined(__PPC__)) && !defined(__powerpc64__) && !defined(__ppc64__) && !defined(__PPC64__)
+	#define __V_ppc  1
+	#undef __V_architecture
+	#define __V_architecture 12
 #endif
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
@@ -132,7 +137,14 @@ const c_common_macros = '
 	#define E_STRUCT 0
 #endif
 #ifndef _WIN32
-	#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+	#if defined(__has_include) && !defined(__TINYC__)
+		#if __has_include(<execinfo.h>)
+			#include <execinfo.h>
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif
+	#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
 		#include <execinfo.h>
 	#else
 		// On linux: int backtrace(void **__array, int __size);
@@ -424,6 +436,22 @@ void _vcleanup(void);
 void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #endif
 #endif
+#ifdef __APPLE__
+	// macOS only exports aligned_alloc starting with 10.15.
+	#if !defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) || __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 101500
+static void *v__aligned_alloc_fallback(size_t alignment, size_t size) {
+	void *res = 0;
+	if (alignment < sizeof(void *)) {
+		alignment = sizeof(void *);
+	}
+	if (posix_memalign(&res, alignment, size) != 0) {
+		return 0;
+	}
+	return res;
+}
+		#define aligned_alloc v__aligned_alloc_fallback
+	#endif
+#endif
 #ifdef _WIN32
 	#ifdef WINVER
 		#undef WINVER
@@ -655,7 +683,7 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}
 // wyhash main function
 static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){
-	const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0],secret[1]);	uint64_t a, b;
+	const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0]^len,secret[1]);	uint64_t a, b;
 	if (_likely_(len<=16)) {
 		if (_likely_(len>=4)) { a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }
 		else if (_likely_(len>0)) { a=_wyr3(p,len); b=0; }

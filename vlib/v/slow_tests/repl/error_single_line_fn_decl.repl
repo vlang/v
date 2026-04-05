@@ -8,3 +8,127 @@ error: generic parameter needs to be uppercase
       |        ~~~
     8 |  print('hello') 
     9 | }
+error: generic parameter name needs to be exactly one char
+    5 | import math
+    6 | 
+    7 | fn foo[int](a int) {
+      |           ^
+    8 |  print('hello') 
+    9 | }
+error: `` is a reserved name and cannot be used for generics
+    5 | import math
+    6 | 
+    7 | fn foo[int](a int) {
+      |            ^
+    8 |  print('hello') 
+    9 | }
+error: unexpected name `int`, expecting `,`
+    5 | import math
+    6 | 
+    7 | fn foo[int](a int) {
+      |               ~~~
+    8 |  print('hello') 
+    9 | }
+error: `` is a reserved name and cannot be used for generics
+    5 | import math
+    6 | 
+    7 | fn foo[int](a int) {
+      |                  ^
+    8 |  print('hello') 
+    9 | }
+error: unexpected token `{`, expecting name
+    5 | import math
+    6 | 
+    7 | fn foo[int](a int) {
+      |                    ^
+    8 |  print('hello') 
+    9 | }
+error: unexpected name `print`, expecting `,`
+    6 | 
+    7 | fn foo[int](a int) {
+    8 |  print('hello') 
+      |  ~~~~~
+    9 | }
+   10 | mut a := [1, 2]
+error: `` is a reserved name and cannot be used for generics
+    6 | 
+    7 | fn foo[int](a int) {
+    8 |  print('hello') 
+      |       ^
+    9 | }
+   10 | mut a := [1, 2]
+error: duplicated generic parameter ``
+    6 | 
+    7 | fn foo[int](a int) {
+    8 |  print('hello') 
+      |        ~~~~~~~
+    9 | }
+   10 | mut a := [1, 2]
+error: unexpected token `)`, expecting name
+    6 | 
+    7 | fn foo[int](a int) {
+    8 |  print('hello') 
+      |               ^
+    9 | }
+   10 | mut a := [1, 2]
+error: unexpected token `}`, expecting `,`
+    7 | fn foo[int](a int) {
+    8 |  print('hello') 
+    9 | }
+      | ^
+   10 | mut a := [1, 2]
+error: generic parameter needs to be uppercase
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      | ~~~
+error: generic parameter name needs to be exactly one char
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |     ^
+error: `` is a reserved name and cannot be used for generics
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |       ~~
+error: unexpected token `[`, expecting name
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |          ^
+error: unexpected number `1`, expecting `,`
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |           ^
+error: `` is a reserved name and cannot be used for generics
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |            ^
+error: duplicated generic parameter ``
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |              ^
+error: unexpected token `]`, expecting name
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |               ^
+error: unexpected eof, expecting `]`
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |                ^
+error: unexpected eof, expecting `(`
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |                ^
+error: expecting `)`
+    8 |  print('hello') 
+    9 | }
+   10 | mut a := [1, 2]
+      |                ^

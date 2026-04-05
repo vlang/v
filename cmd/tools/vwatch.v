@@ -3,7 +3,7 @@ module main
 import os
 import time
 import term
-import flag
+import v.help
 
 const scan_timeout_s = get_scan_timeout_seconds()
 
@@ -98,6 +98,21 @@ mut:
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for vweb apps, to monitor for just *.v,*.js,*.css,*.html in vweb projects.
+}
+
+struct ParsedWatchOptions {
+mut:
+	remaining_options []string
+	is_worker         bool
+	silent            bool
+	clear_terminal    bool
+	keep_running      bool
+	add_files         []string = ['']
+	ignore_exts       []string = ['']
+	only_watch        []string = ['']
+	cmd_before_run    string
+	cmd_after_run     string
+	show_help         bool
 }
 
 @[if debug_vwatch ?]
@@ -385,35 +400,25 @@ fn main() {
 	// Options after `run` should be ignored, since they are intended for the user program, not for the watcher.
 	// For example, `v watch run x.v -a -b -k', should pass all of -a -b -k to the compiled and run program.
 	only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
-
-	mut fp := flag.new_flag_parser(only_watch_options)
-	fp.application('v watch')
-	fp.version('0.0.2')
-	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
-	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
-	fp.allow_unknown_args()
-
-	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
-	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
-	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
-	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
-	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
-	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
-	context.only_watch = fp.string('only-watch', 0, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
-	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
-	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
-	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
-	if show_help {
-		println(fp.usage())
-		exit(0)
-	}
-	remaining_options := fp.finalize() or {
+	parsed_watch_options := parse_watch_options(only_watch_options) or {
 		eprintln('Error: ${err}')
 		exit(1)
 	}
+	if parsed_watch_options.show_help {
+		help.print_and_exit('watch', exit_code: 0)
+	}
+	context.is_worker = parsed_watch_options.is_worker
+	context.silent = parsed_watch_options.silent
+	context.clear_terminal = parsed_watch_options.clear_terminal
+	context.keep_running = parsed_watch_options.keep_running
+	context.add_files = parsed_watch_options.add_files
+	context.ignore_exts = parsed_watch_options.ignore_exts
+	context.only_watch = parsed_watch_options.only_watch
+	context.cmd_before_run = parsed_watch_options.cmd_before_run
+	context.cmd_after_run = parsed_watch_options.cmd_after_run
 	context.opts = []
 	context.opts << all_args_before_watch_cmd
-	context.opts << remaining_options
+	context.opts << parsed_watch_options.remaining_options
 	if has_run {
 		context.opts << 'run'
 		context.opts << all_after('run', all_args_after_watch_cmd)
@@ -431,6 +436,145 @@ fn main() {
 	} else {
 		context.manager_main(all_args_before_watch_cmd, all_args_after_watch_cmd)
 	}
+}
+
+// parse_watch_options parses only vwatch's own flags and leaves compiler flags untouched.
+// This avoids `flag.FlagParser` short-cluster handling from rewriting passthrough args like
+// `-backend` into `-baend`.
+fn parse_watch_options(args []string) !ParsedWatchOptions {
+	mut parsed := ParsedWatchOptions{}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '--vwatchworker' {
+			parsed.is_worker = true
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'silent', `s`) {
+			parsed.silent = true
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'clear', `c`) {
+			parsed.clear_terminal = true
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'keep', `k`) {
+			parsed.keep_running = true
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'help', `h`) {
+			parsed.show_help = true
+			i++
+			continue
+		}
+		if value := watch_option_inline_value(arg, 'add', `a`) {
+			parsed.add_files = value.split_any(',')
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'add', `a`) {
+			i++
+			if i >= args.len {
+				return error('missing value for `${arg}`')
+			}
+			parsed.add_files = args[i].split_any(',')
+			i++
+			continue
+		}
+		if value := watch_option_inline_value(arg, 'ignore', `i`) {
+			parsed.ignore_exts = value.split_any(',')
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'ignore', `i`) {
+			i++
+			if i >= args.len {
+				return error('missing value for `${arg}`')
+			}
+			parsed.ignore_exts = args[i].split_any(',')
+			i++
+			continue
+		}
+		if value := watch_option_inline_value(arg, 'only-watch', `o`) {
+			parsed.only_watch = value.split_any(',')
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'only-watch', `o`) {
+			i++
+			if i >= args.len {
+				return error('missing value for `${arg}`')
+			}
+			parsed.only_watch = args[i].split_any(',')
+			i++
+			continue
+		}
+		if value := watch_option_inline_value(arg, 'before', 0) {
+			parsed.cmd_before_run = value
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'before', 0) {
+			i++
+			if i >= args.len {
+				return error('missing value for `${arg}`')
+			}
+			parsed.cmd_before_run = args[i]
+			i++
+			continue
+		}
+		if value := watch_option_inline_value(arg, 'after', 0) {
+			parsed.cmd_after_run = value
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'after', 0) {
+			i++
+			if i >= args.len {
+				return error('missing value for `${arg}`')
+			}
+			parsed.cmd_after_run = args[i]
+			i++
+			continue
+		}
+		parsed.remaining_options << arg
+		i++
+	}
+	return parsed
+}
+
+fn is_watch_option_name(arg string, longhand string, shorthand u8) bool {
+	return arg == watch_short_option_name(shorthand) || arg == '-${longhand}'
+		|| arg == '--${longhand}'
+}
+
+fn watch_option_inline_value(arg string, longhand string, shorthand u8) ?string {
+	prefixes := [watch_short_option_with_equals(shorthand), '-${longhand}=', '--${longhand}=']
+	for prefix in prefixes {
+		if prefix != '' && arg.starts_with(prefix) {
+			return arg[prefix.len..]
+		}
+	}
+	return none
+}
+
+fn watch_short_option_name(shorthand u8) string {
+	if shorthand == 0 {
+		return ''
+	}
+	return '-${shorthand.ascii_str()}'
+}
+
+fn watch_short_option_with_equals(shorthand u8) string {
+	short_option := watch_short_option_name(shorthand)
+	if short_option == '' {
+		return ''
+	}
+	return '${short_option}='
 }
 
 fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_args_after_watch_cmd []string) {

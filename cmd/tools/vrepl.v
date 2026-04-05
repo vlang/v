@@ -303,9 +303,10 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	defer {
 		os.rm(check_file) or {}
 	}
-	// -w suppresses the unused import warnings
-	// -check just does syntax and checker analysis without generating/running code
-	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
+	// -usecache keeps repeated REPL checks responsive by reusing cached modules.
+	// -w suppresses warnings from this synthetic println probe.
+	// -check just does syntax and checker analysis without generating/running code.
+	os_response := os.execute('${os.quoted_path(vexe)} -usecache -w -check ${os.quoted_path(check_file)}')
 	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
@@ -332,6 +333,9 @@ fn (mut r Repl) parse_import(line string) {
 
 	// set value
 	if line.contains('{') && line.contains('}') {
+		if mod !in r.modules {
+			r.modules[mod] = []string{}
+		}
 		values := line.split('{')[1].split('}')[0]
 		for value in values.split(',') {
 			r.modules[mod] << value
@@ -699,7 +703,16 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				temp_source_code = r.current_source_code(true, false) + '\n${r.line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
-			s := repl_run_vfile(temp_file) or { return 1 }
+			check_only := starts_with_import || starts_with_include || starts_with_fn
+				|| starts_with_const || starts_with_enum || starts_with_struct
+				|| starts_with_interface || starts_with_type
+				|| (r.line.len == 0 && (was_func || was_struct || was_enum || was_interface))
+			mut s := os.Result{}
+			if check_only {
+				s = repl_check_vfile(temp_file) or { return 1 }
+			} else {
+				s = repl_run_vfile(temp_file) or { return 1 }
+			}
 			if s.exit_code == 0 {
 				if starts_with_import {
 					r.parse_import(r.line)
@@ -829,6 +842,20 @@ fn repl_run_vfile(file string) !os.Result {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}
 	s := os.execute('${os.quoted_path(vexe)} -message-limit 1 -repl run ${os.quoted_path(file)}')
+	if s.exit_code < 0 {
+		rerror(s.output)
+		return error(s.output)
+	}
+	return s
+}
+
+fn repl_check_vfile(file string) !os.Result {
+	$if trace_repl_temp_files ? {
+		eprintln('>> repl_check_vfile file: ${file}')
+	}
+	// Declaration-only REPL lines do not need code generation or execution.
+	// Cached checks keep repeated imports and definitions responsive.
+	s := os.execute('${os.quoted_path(vexe)} -usecache -message-limit 1 -repl -check ${os.quoted_path(file)}')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_selector_postfix_unwrap_non_option_err.vv:5:30: cgen error: cannot use `?` on non-option expression
+    3 |         $for field in T.fields {
+    4 |             tmp := T{}
+    5 |             _ = int(tmp.$(field.name) ?)
+      |                                       ^
+    6 |         }
+    7 |     }

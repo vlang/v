@@ -103,7 +103,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		if field.has_default_expr {
 			f.write(' '.repeat(default_expr_align.max_len(field.pos.line_nr) - field_types[i].len))
 			f.write(' = ')
-			if !expr_is_single_line(field.default_expr) {
+			default_expr_pos := field.default_expr.pos()
+			if default_expr_pos.line_nr < default_expr_pos.last_line
+				|| !expr_is_single_line(field.default_expr) {
 				f.indent++
 				inc_indent = true
 			}

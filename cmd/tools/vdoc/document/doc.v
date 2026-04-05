@@ -154,6 +154,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt:         true
+		is_vdoc:        true
 	}
 	pref_.fill_with_defaults()
 	return pref_
@@ -245,11 +246,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}
@@ -275,11 +272,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}
@@ -350,12 +343,19 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 		}
 	}
 	mut preceding_comments := []DocComment{}
+	mut collect_post_module_comments := false
+	mut post_module_comments := []DocComment{}
 	// mut imports_section := true
 	for sidx, mut stmt in file_ast.stmts {
 		if mut stmt is ast.ExprStmt {
 			// Collect comments
 			if mut stmt.expr is ast.Comment {
-				preceding_comments << ast_comment_to_doc_comment(stmt.expr)
+				comment := ast_comment_to_doc_comment(stmt.expr)
+				if collect_post_module_comments {
+					post_module_comments << comment
+				} else {
+					preceding_comments << comment
+				}
 				continue
 			}
 		}
@@ -366,14 +366,24 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			}
 			// the previous comments were probably a copyright/license one
 			module_comment := merge_doc_comments(preceding_comments)
-			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
-				if module_comment == '' {
-					continue
-				}
+			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') && module_comment != '' {
 				d.head.comments << preceding_comments
 			}
 			preceding_comments = []
+			collect_post_module_comments = true
 			continue
+		}
+		if collect_post_module_comments {
+			if post_module_comments.len > 0 {
+				last_post_module_comment := post_module_comments[post_module_comments.len - 1]
+				if stmt is ast.Import || last_post_module_comment.pos.line_nr + 1 < stmt.pos.line_nr {
+					d.head.comments << post_module_comments
+				} else {
+					preceding_comments << post_module_comments
+				}
+				post_module_comments = []
+			}
+			collect_post_module_comments = false
 		}
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
 			// the accumulated comments were interspersed before/between the imports;
@@ -415,6 +425,9 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 		} else {
 			contents[node.name] = node
 		}
+	}
+	if collect_post_module_comments && post_module_comments.len > 0 {
+		d.head.comments << post_module_comments
 	}
 	d.fmt.mod2alias = map[string]string{}
 	if contents[''].kind != .const_group {
@@ -473,6 +486,11 @@ pub fn (mut d Doc) generate() ! {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
 		file_asts << parser.parse_file(file_path, mut d.table, comments_mode, d.prefs)
+	}
+	mut generated_file_asts := []&ast.File{}
+	parser.append_codegen_files(mut generated_file_asts)
+	for generated_file_ast in generated_file_asts {
+		file_asts << *generated_file_ast
 	}
 	return d.file_asts(mut file_asts)
 }

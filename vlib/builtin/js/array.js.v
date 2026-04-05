@@ -134,6 +134,9 @@ pub fn (a array) last() voidptr {
 }
 
 fn (a array) get(ix int) voidptr {
+	if ix < 0 || ix >= a.len {
+		return unsafe { nil }
+	}
 	mut result := unsafe { nil }
 	#result = a.arr.get(ix)
 

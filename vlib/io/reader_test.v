@@ -53,6 +53,30 @@ fn (mut s StringReaderTest) read(mut buf []u8) !int {
 	return read
 }
 
+struct ZeroThenDataReader {
+pub:
+	text string
+mut:
+	place       int
+	empty_reads int
+}
+
+fn (mut s ZeroThenDataReader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
+	if s.empty_reads == 0 {
+		s.empty_reads++
+		return 0
+	}
+	if s.place >= s.text.len {
+		return Eof{}
+	}
+	read := copy(mut buf, s.text[s.place..].bytes())
+	s.place += read
+	return read
+}
+
 const newline_count = 100000
 
 fn test_stringreadertest() {
@@ -140,6 +164,23 @@ fn test_totalread_read() {
 		panic('bad')
 	}
 
+	assert r.total_read == total
+}
+
+fn test_buffered_reader_retries_zero_length_reads() {
+	text := 'Some testing text'
+	mut s := ZeroThenDataReader{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s, retries: 2)
+	mut buf := []u8{len: text.len}
+	total := r.read(mut buf) or {
+		assert false
+		panic('bad')
+	}
+
+	assert total == text.len
+	assert buf[..total] == text.bytes()
 	assert r.total_read == total
 }
 

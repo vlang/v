@@ -1,0 +1,26 @@
+// vtest vflags: -gc boehm_leak
+
+fn make_grid() [][]int {
+	grid := [
+		[1, 2],
+		[3, 4],
+	]
+	return grid
+}
+
+fn make_label() string {
+	label := 'x'.repeat(3)
+	return label
+}
+
+fn main() {
+	{
+		grid := make_grid()
+		label := make_label()
+		m := {
+			'x': 1
+		}
+		println(grid.len + grid[0].len + label.len + m.len)
+	}
+	gc_check_leaks()
+}

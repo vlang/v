@@ -350,7 +350,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	p.next()
 }
 
-fn (mut p Parser) rebuild_imported_symbols_matcher(name string) {
+fn (mut p Parser) rebuild_imported_symbols_matcher(_ string) {
 	p.imported_symbols_trie = token.new_keywords_matcher_from_array_trie(p.imported_symbols.keys())
 }
 

@@ -43,6 +43,10 @@ type StructLists = Cat | []Cat | map[string]Dog
 
 type SumAlias = Sum
 
+struct AliasWrap {
+	val SumAlias
+}
+
 struct Empty1 {
 	a ?string @[omitempty]
 }
@@ -163,18 +167,15 @@ fn test_sum_type_options_fail() {
 	}
 }
 
-// to be implemented
-fn test_sum_type_alias_fail() {
-	if x := json.decode[SumAlias]('99') {
-		assert false
+fn test_sum_type_alias() {
+	assert json.decode[SumAlias]('99')! == SumAlias(99)
+	assert json.decode[SumAlias]('"hi"')! == SumAlias('hi')
+	assert json.decode[SumAlias]('true')! == SumAlias(true)
+	assert json.decode[SumAlias]('["hi", "bye"]')! == SumAlias(['hi', 'bye'])
+
+	assert json.decode[AliasWrap]('{"val": 99}')! == AliasWrap{
+		val: SumAlias(99)
 	}
-	if x := json.decode[SumAlias]('true') {
-		assert false
-	}
-	if x := json.decode[SumAlias]('["hi", "bye"]') {
-		assert false
-	}
-	if x := json.decode[SumAlias]('[0, 1]') {
-		assert false
-	}
+	assert json.decode[[]SumAlias]('[99, "hi", true, ["bye"]]')! == [SumAlias(99), SumAlias('hi'),
+		SumAlias(true), SumAlias(['bye'])]
 }

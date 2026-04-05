@@ -9,5 +9,6 @@ fn test_heap_struct_dereferencing_in_selector_expr() {
 		name: 'my_heap_struct_a'
 	}
 	b := 2
-	$tmpl('comptime_call_tmpl_variable_scope_test.tpl')
+	out := $tmpl('comptime_call_tmpl_variable_scope_test.tpl')
+	assert out.trim_space() == 'my_heap_struct_a\n2'
 }

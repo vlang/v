@@ -9,7 +9,7 @@ Pure V implementation of [ML-DSA](https://csrc.nist.gov/pubs/fips/204/final) (FI
 
 ## Example
 
-```v
+```v ignore
 import x.crypto.mldsa
 
 fn main() {

@@ -424,13 +424,7 @@ pub fn (ctx &Context) get_value[T](key context.Key) ?T {
 	if val := ctx.ctx.value(key) {
 		match val {
 			T {
-				// `context.value()` always returns a reference
-				// if we send back `val` the returntype becomes `?&T` and this can be problematic
-				// for end users since they won't be able to do something like
-				// `app.get_value[string]('a') or { '' }
-				// since V expects the value in the or block to be of type `&string`.
-				// And if a reference was allowed it would enable mutating the context directly
-				return *val
+				return val
 			}
 			else {}
 		}
@@ -573,7 +567,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		}
 	}
 
-	ch := chan &net.TcpConn{cap: params.pool_channel_slots}
+	ch := chan mut net.TcpConn{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
 		ws << new_worker[T](ch, worker_number, unsafe { global_app }, controllers_sorted,
@@ -627,10 +621,13 @@ fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Rou
 
 fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// Create a new app object for each connection, copy global data like db connections
-	mut request_app := &T{}
+	mut request_app := unsafe { &T(vcalloc(sizeof(T))) }
 	$if T is MiddlewareInterface {
-		request_app = &T{
-			middlewares: global_app.middlewares.clone()
+		middleware_app := MiddlewareInterface(*global_app)
+		$for field in T.fields {
+			$if field.name == 'middlewares' {
+				request_app.$(field.name) = middleware_app.middlewares.clone()
+			}
 		}
 	}
 
@@ -646,8 +643,8 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 		if field.is_shared {
 			unsafe {
 				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
-				raptr := &voidptr(&request_app.$(field.name))
-				gaptr := &voidptr(&global_app.$(field.name))
+				raptr := &voidptr(voidptr(&request_app.$(field.name)))
+				gaptr := &voidptr(voidptr(&global_app.$(field.name)))
 				*raptr = *gaptr
 				_ = raptr // TODO: v produces a warning that `raptr` is unused otherwise, even though it was on the previous line
 			}
@@ -890,13 +887,16 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 
 // validate_middleware validates and fires all middlewares that are defined in the global app instance
 fn validate_middleware[T](mut app T, full_path string) bool {
-	for path, middleware_chain in app.middlewares {
-		// only execute middleware if route.path starts with `path`
-		if full_path.len >= path.len && full_path.starts_with(path) {
-			// there is middleware for this route
-			for func in middleware_chain {
-				if func(mut app.Context) == false {
-					return false
+	$if T is MiddlewareInterface {
+		middleware_app := MiddlewareInterface(app)
+		for path, middleware_chain in middleware_app.middlewares {
+			// only execute middleware if route.path starts with `path`
+			if full_path.len >= path.len && full_path.starts_with(path) {
+				// there is middleware for this route
+				for func in middleware_chain {
+					if func(mut app.Context) == false {
+						return false
+					}
 				}
 			}
 		}
@@ -1185,37 +1185,21 @@ fn filter(s string) string {
 	return html.escape(s)
 }
 
-// Worker functions for the thread pool:
-struct Worker[T] {
-	id          int
-	ch          chan &net.TcpConn
-	global_app  voidptr
-	controllers []&ControllerPath
-	routes      &map[string]Route
+fn new_worker[T](ch chan mut net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) thread {
+	return spawn process_incoming_requests[T](ch, id, global_app, controllers, unsafe { routes })
 }
 
-fn new_worker[T](ch chan &net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) thread {
-	mut w := &Worker[T]{
-		id:          id
-		ch:          ch
-		global_app:  global_app
-		controllers: controllers
-		routes:      unsafe { routes }
-	}
-	return spawn w.process_incoming_requests[T]()
-}
-
-fn (mut w Worker[T]) process_incoming_requests() {
-	sid := '[vweb] tid: ${w.id:03d} received request'
+fn process_incoming_requests[T](ch chan mut net.TcpConn, id int, global_app voidptr, controllers []&ControllerPath, routes &map[string]Route) {
+	sid := '[vweb] tid: ${id:03d} received request'
 	for {
-		mut connection := <-w.ch or { break }
+		mut connection := <-ch or { break }
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		handle_conn[T](mut connection, w.global_app, w.controllers, w.routes, w.id)
+		handle_conn[T](mut connection, global_app, controllers, routes, id)
 	}
 	$if vweb_trace_worker_scan ? {
-		eprintln('[vweb] closing worker ${w.id}.')
+		eprintln('[vweb] closing worker ${id}.')
 	}
 }
 

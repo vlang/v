@@ -1,0 +1,3 @@
+builtin___v_malloc(sizeof(main__Foo));
+->x = _S("x");
+->y = _S("y");

@@ -108,7 +108,10 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
-	cmd := '${p.filename} ' + requote_args(p.args)
+	mut cmd := requote_arg(p.filename)
+	if p.args.len > 0 {
+		cmd += ' ' + requote_args(p.args)
+	}
 	cmd_wide_ptr := cmd.to_wide()
 	to_be_freed << cmd_wide_ptr
 	C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
@@ -376,14 +379,15 @@ fn requote_args(cargs []string) string {
 		if idx > 0 {
 			sb.write_rune(` `)
 		}
-		if !a.starts_with('"') {
-			sb.write_string('"')
-			sb.write_string(a)
-			sb.write_string('"')
-		} else {
-			sb.write_string(a)
-		}
+		sb.write_string(requote_arg(a))
 	}
 	res := sb.str()
 	return res
+}
+
+fn requote_arg(arg string) string {
+	if arg.starts_with('"') {
+		return arg
+	}
+	return '"${arg}"'
 }

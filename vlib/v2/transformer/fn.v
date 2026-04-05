@@ -823,9 +823,8 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	t.cur_fn_returns_option = false
 	t.cur_fn_returns_result = false
 	if decl.typ.return_type is ast.Type {
-		ret_type := decl.typ.return_type
-		t.cur_fn_returns_option = ret_type is ast.OptionType
-		t.cur_fn_returns_result = ret_type is ast.ResultType
+		t.cur_fn_returns_option = decl.typ.return_type is ast.OptionType
+		t.cur_fn_returns_result = decl.typ.return_type is ast.ResultType
 	}
 	if decl.typ.return_type is ast.Ident {
 		ret_name := decl.typ.return_type.name

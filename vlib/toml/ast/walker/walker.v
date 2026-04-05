@@ -31,6 +31,7 @@ pub fn inspect(value &ast.Value, data voidptr, inspector_callback InspectorFn) !
 }
 
 // walk traverses the AST using the given visitor
+@[autofree_bug; manualfree]
 pub fn walk(visitor Visitor, value &ast.Value) ! {
 	if value is map[string]ast.Value {
 		value_map := value as map[string]ast.Value
@@ -50,6 +51,7 @@ pub fn walk(visitor Visitor, value &ast.Value) ! {
 
 // walk_and_modify traverses the AST using the given modifier and lets the visitor
 // modify the contents.
+@[autofree_bug; manualfree]
 pub fn walk_and_modify(modifier Modifier, mut value ast.Value) ! {
 	if value is map[string]ast.Value {
 		mut value_map := value as map[string]ast.Value

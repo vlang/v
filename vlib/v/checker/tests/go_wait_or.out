@@ -1,3 +1,17 @@
+vlib/v/checker/tests/go_wait_or.vv:5:6: notice: unused parameter: `n`
+    3 | }
+    4 | 
+    5 | fn e(n int) {}
+      |      ^
+    6 | 
+    7 | fn f(n int) ?f64 {
+vlib/v/checker/tests/go_wait_or.vv:11:6: notice: unused parameter: `n`
+    9 | }
+   10 | 
+   11 | fn g(n int) ? {}
+      |      ^
+   12 | 
+   13 | fn main() {
 vlib/v/checker/tests/go_wait_or.vv:18:16: error: unexpected `?`, the function `wait` does not return an Option
    16 |         spawn d(1),
    17 |     ]

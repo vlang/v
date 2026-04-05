@@ -418,7 +418,12 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 				return node !is ast.Import
 			}
 			ast.ConstDecl {
-				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
+				mut is_comment_expr_stmt := false
+				if node is ast.ExprStmt {
+					expr_stmt := node
+					is_comment_expr_stmt = expr_stmt.expr is ast.Comment
+				}
+				if node !is ast.ConstDecl && !is_comment_expr_stmt {
 					return true
 				}
 			}
@@ -2049,7 +2054,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
-fn (mut f Fmt) write_static_method(name string, short_name string) {
+fn (mut f Fmt) write_static_method(_name string, short_name string) {
 	if short_name.contains('.') {
 		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())

@@ -1,5 +1,5 @@
 vlib/v/checker/tests/struct_not_init_err.vv:11:7: error: `Data` must be initialized
-    9 |
+    9 | 
    10 | fn main() {
    11 |     _ := Data
       |          ~~~~

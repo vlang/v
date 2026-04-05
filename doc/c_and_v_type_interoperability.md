@@ -5,7 +5,7 @@
 
 ## Number types in C and V:
 
-* A V `i8`  is equivalent to C `char`,  or `int8_t`.
+* A V `i8`  is equivalent to C `signed char`,  or `int8_t`.
 * A V `i16` is equivalent to C `short`, or `int16_t`.
 * A V `i32` is equivalent to C `int`,   or `int32_t`.
 * A V `i64` is equivalent to C `long`,  or `int64_t`.
@@ -17,6 +17,10 @@
 
 * A V `f32` is equivalent to C `float`.
 * A V `f64` is equivalent to C `double`.
+
+`char` in C is a distinct type with implementation-defined signedness, so use
+V `char`, `&char`, or `charptr` when you need to match C `char`, `char*`,
+or `char**`.
 
 * A V `isize` is equivalent to C `ssize_t`.
 It is a signed integer, and `isize` is guaranteed to be at least 16 bits.
@@ -111,7 +115,7 @@ For example, these functions have equivalent types:
 fn v_function(a u64, b i8) (i32, f32)
 ```
 ```c ignore
-struct { int i; float f; } c_function(unsigned long a, char b);
+struct { int i; float f; } c_function(unsigned long a, signed char b);
 ````
 
 A pointer to a V function is equivalent to a pointer to a C function, when the

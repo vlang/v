@@ -2,6 +2,22 @@ enum Info { young old }
 fn get_info(age int) Info { if age < 25 { return .young } else { return .old } }
 mut age := 20; println(get_info(age)); age = 45; println(get_info(age))
 ===output===
-young
-old
-
+warning: module 'os' is imported but never used. Use `import os as _`, to silence this warning, or just remove the unused import line
+    1 | import os
+      |        ~~
+    2 | 
+    3 | import time
+warning: module 'time' is imported but never used. Use `import time as _`, to silence this warning, or just remove the unused import line
+    1 | import os
+    2 | 
+    3 | import time
+      |        ~~~~
+    4 | 
+    5 | import math
+warning: module 'math' is imported but never used. Use `import math as _`, to silence this warning, or just remove the unused import line
+    3 | import time
+    4 | 
+    5 | import math
+      |        ~~~~
+    6 | 
+    7 | enum Info {

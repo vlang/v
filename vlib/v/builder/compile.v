@@ -6,6 +6,7 @@ module builder
 import os
 import v.pref
 import v.util
+import v.vmod
 
 pub type FnBackend = fn (mut b Builder)
 
@@ -194,7 +195,7 @@ fn eshcb(_ os.Signal) {
 @[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
-	panic(e)
+	panic(e.msg())
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
@@ -227,33 +228,22 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	// By default, these are what (3) contains:
 	// 3.1) search in vlib/
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
+	lookup_root := v.module_lookup_root()
 	v.module_search_paths = []
 	if v.pref.is_test {
 		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
-	v.module_search_paths << v.compiled_dir
-	mut source_root := ''
-	src_root := os.join_path(v.compiled_dir, 'src')
-	if os.exists(src_root) && !v.pref.is_vsh {
-		root_files := os.ls(v.compiled_dir) or { []string{} }
-		if v.pref.should_compile_filtered_files(v.compiled_dir, root_files).len == 0 {
-			source_root = src_root
-			v.module_search_paths << source_root
-		}
-	}
-	x := os.join_path(v.compiled_dir, 'modules')
+	v.module_search_paths << lookup_root
+	x := os.join_path(lookup_root, 'modules')
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
 
-	if source_root != '' && os.exists(os.join_path(source_root, 'modules')) {
-		v.module_search_paths << os.join_path(source_root, 'modules')
+	if os.exists(os.join_path(lookup_root, 'src/modules')) {
+		v.module_search_paths << os.join_path(lookup_root, 'src/modules')
 	}
-	if source_root == '' && os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
-		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
-	}
-	if os.exists(os.join_path(v.compiled_dir, 'modules')) {
-		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	if os.exists(os.join_path(lookup_root, 'modules')) {
+		v.module_search_paths << os.join_path(lookup_root, 'modules')
 	}
 
 	v.module_search_paths << v.pref.lookup_path
@@ -261,6 +251,27 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 		v.log('v.module_search_paths:')
 		println(v.module_search_paths)
 	}
+}
+
+fn (v &Builder) module_lookup_root() string {
+	if os.file_name(v.compiled_dir) != 'src' {
+		return v.compiled_dir
+	}
+	project_dir := os.dir(v.compiled_dir)
+	if project_dir == v.compiled_dir {
+		return v.compiled_dir
+	}
+	mut mcache := vmod.get_cache()
+	if mcache.get_by_folder(v.compiled_dir).vmod_folder == project_dir {
+		return project_dir
+	}
+	if os.real_path(os.getwd()) == project_dir {
+		return project_dir
+	}
+	if os.is_dir(os.join_path(project_dir, 'modules')) {
+		return project_dir
+	}
+	return v.compiled_dir
 }
 
 pub fn (v Builder) get_builtin_files() []string {

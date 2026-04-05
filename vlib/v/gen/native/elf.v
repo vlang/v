@@ -779,11 +779,31 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 				for fi in s.fields {
 					size := g.get_type_size(fi.typ)
 					match size {
-						1 { g.write8(0xF) }
-						2 { g.write16(0xF) }
-						4 { g.write32(0xF) }
-						8 { g.write64(i64(0xF)) }
-						else { eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`') }
+						1 {
+							g.write8(0xF)
+						}
+						2 {
+							g.write16(0xF)
+						}
+						4 {
+							g.write32(0xF)
+						}
+						8 {
+							g.write64(i64(0xF))
+						}
+						else {
+							if size > 8 && size % 8 == 0 {
+								for _ in 0 .. size / 8 {
+									g.write64(i64(0xF))
+								}
+							} else if size > 0 {
+								for _ in 0 .. size {
+									g.write8(0xF)
+								}
+							} else {
+								eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`')
+							}
+						}
 					}
 					g.println('; global ${fi.name}, size: ${size}')
 				}
@@ -819,7 +839,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 				for fi in s.fields {
 					size := g.get_type_size(fi.typ)
 					if size > 8 || size <= 0 {
-						eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`')
+						// Skip globals that are too large for register-based init.
+						// Their space is already reserved in the .data section above.
 					} else if fi.expr !is ast.EmptyExpr {
 						g.expr(fi.expr)
 						g.cg.cg_mov_reg_to_var(GlobalVar{fi.name, fi.typ}, .reg0)

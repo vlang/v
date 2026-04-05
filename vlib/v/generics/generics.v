@@ -424,10 +424,10 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if sym.info.is_generic && sym.generic_types.len == 0 {
-				mut sgtyps := '_T'
+				mut sgtyps := ''
 				for gt in sym.info.generic_types {
 					gts := g.table.sym(g.unwrap_generic(gt))
-					sgtyps += '_${gts.cname}'
+					sgtyps += '_T_${gts.scoped_cname()}'
 				}
 				styp += sgtyps
 			}
@@ -451,13 +451,14 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
 	mut name := old_name
 	if receiver_type != 0 {
-		mut info := g.table.sym(g.unwrap_generic(receiver_type)).info
-		if mut info is ast.Alias {
-			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(receiver_type))).info
+		mut receiver_sym := g.table.sym(g.unwrap_generic(receiver_type))
+		if receiver_sym.info is ast.Alias {
+			unaliased_type := g.table.unaliased_type(g.unwrap_generic(receiver_type))
+			receiver_sym = g.table.sym(unaliased_type)
 		}
-		if mut info is ast.Struct {
+		if receiver_sym.info is ast.Struct {
+			info := receiver_sym.info as ast.Struct
 			fn_conc_types := concrete_types#[info.generic_types.len..] // concrete types without the generic types of the struct
-
 			if fn_conc_types.len > 0 {
 				name += '_T'
 			}
@@ -466,7 +467,24 @@ pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []a
 					g.styp(typ.set_nr_muls(0))
 			}
 			return name
-		} else if mut info is ast.Interface {
+		}
+		if receiver_sym.info is ast.GenericInst {
+			info := receiver_sym.info as ast.GenericInst
+			parent_sym := g.table.sym(ast.idx_to_type(info.parent_idx))
+			if parent_sym.info is ast.Struct {
+				parent_info := parent_sym.info as ast.Struct
+				fn_conc_types := concrete_types#[parent_info.generic_types.len..]
+				if fn_conc_types.len > 0 {
+					name += '_T'
+				}
+				for typ in fn_conc_types {
+					name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
+						g.styp(typ.set_nr_muls(0))
+				}
+				return name
+			}
+		}
+		if receiver_sym.info is ast.Interface {
 			return name
 		}
 	}
@@ -658,13 +676,16 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				if receiver_type.has_flag(.generic) {
 					receiver_type = receiver_type.clear_flag(.generic)
 				}
+				call_name := if node.is_fn_var {
+					node.name
+				} else if node.is_method {
+					g.method_concrete_name(node.name, all_concrete_types, node.receiver_type)
+				} else {
+					g.concrete_name(node.name, all_concrete_types)
+				}
 				return ast.Expr(ast.CallExpr{
 					...node
-					name:                if node.is_method {
-						g.method_concrete_name(node.name, all_concrete_types, node.receiver_type)
-					} else {
-						g.concrete_name(node.name, all_concrete_types)
-					}
+					name:                call_name
 					left_type:           g.unwrap_generic(node.left_type)
 					receiver_type:       receiver_type
 					return_type:         g.unwrap_generic(node.return_type)
@@ -686,8 +707,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			node.or_block = g.expr(mut node.or_block) as ast.OrExpr
 			if node.is_method && g.table.sym(node.receiver_type).info is ast.Alias {
 				// Workaround needed for markused
+				alias_sym := g.table.sym(g.unwrap_generic(node.receiver_type))
 				unaliased_type := g.table.unaliased_type(g.unwrap_generic(node.receiver_type))
-				if g.table.sym(unaliased_type).has_method(node.name) {
+				if !alias_sym.has_method(node.name)
+					&& g.table.sym(unaliased_type).has_method(node.name) {
 					node.receiver_type = unaliased_type
 				}
 			}
@@ -700,15 +723,21 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						func.generic_names, node.concrete_types) or { it })
 				}
 			}
-			node.name = if node.is_method {
-				g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
-			} else {
-				g.concrete_name(node.name, node.concrete_types)
+			if !node.is_fn_var {
+				node.name = if node.is_method {
+					g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
+				} else {
+					g.concrete_name(node.name, node.concrete_types)
+				}
 			}
 			return ast.Expr(ast.CallExpr{
 				...node
 				concrete_types:     []
-				raw_concrete_types: []
+				raw_concrete_types: if node.raw_concrete_types.len > 0 {
+					node.raw_concrete_types.clone()
+				} else {
+					node.concrete_types.clone()
+				}
 			})
 		}
 		ast.CastExpr {
@@ -1157,13 +1186,19 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		ast.StringInterLiteral {
 			if g.cur_concrete_types.len > 0 {
 				mut exprs := node.exprs.clone()
+				mut fwidth_exprs := node.fwidth_exprs.clone()
+				mut precision_exprs := node.precision_exprs.clone()
 				return ast.Expr(ast.StringInterLiteral{
 					...node
-					exprs:      g.exprs(mut exprs)
-					expr_types: node.expr_types.map(g.unwrap_generic(it))
+					exprs:           g.exprs(mut exprs)
+					expr_types:      node.expr_types.map(g.unwrap_generic(it))
+					fwidth_exprs:    g.exprs(mut fwidth_exprs)
+					precision_exprs: g.exprs(mut precision_exprs)
 				})
 			}
 			node.exprs = g.exprs(mut node.exprs)
+			node.fwidth_exprs = g.exprs(mut node.fwidth_exprs)
+			node.precision_exprs = g.exprs(mut node.precision_exprs)
 		}
 		ast.StructInit {
 			if g.cur_concrete_types.len > 0 {

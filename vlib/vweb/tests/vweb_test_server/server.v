@@ -37,7 +37,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 
 const known_users = ['bilbo', 'kent']
 
-struct App {
+pub struct App {
 	vweb.Context
 	port          int
 	global_config shared Config
@@ -64,6 +64,12 @@ pub fn (mut app App) index() vweb.Result {
 pub fn (mut app App) simple() vweb.Result {
 	linfo('>>>>> ${@LOCATION}')
 	return app.text('A simple result')
+}
+
+@['/aB']
+pub fn (mut app App) mixed_case() vweb.Result {
+	linfo('>>>>> ${@LOCATION}')
+	return app.text('mixed case route')
 }
 
 pub fn (mut app App) html_page() vweb.Result {

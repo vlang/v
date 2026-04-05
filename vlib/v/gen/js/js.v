@@ -54,6 +54,7 @@ mut:
 	inside_ternary         bool
 	inside_or              bool
 	inside_loop            bool
+	inside_left_shift      bool
 	inside_map_set         bool // map.set(key, value)
 	inside_builtin         bool
 	inside_if_option       bool
@@ -1319,11 +1320,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.doc.gen_typ(styp)
 			}
 			if stmt.op == .decl_assign {
-				g.write(if g.inside_loop || is_mut {
-					'let '
-				} else {
-					'const '
-				})
+				g.write(if g.inside_loop || is_mut { 'let ' } else { 'const ' })
 			}
 
 			mut array_set := false
@@ -1559,7 +1556,7 @@ fn (mut g JsGen) gen_expr_stmt_no_semi(it ast.ExprStmt) {
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
-fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+fn (mut g JsGen) cc_type(typ ast.Type, _is_prefix_struct bool) string {
 	sym := g.table.sym(g.unwrap_generic(typ))
 	mut styp := sym.cname.replace('>', '').replace('<', '')
 	match sym.info {
@@ -1882,7 +1879,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('${tmp}.state = new u8(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
-			g.expr(it.exprs[0])
+			g.expr_with_expected_type(it.exprs[0], node.types[0])
 		} else { // Multi return
 			g.gen_array_init_values(it.exprs)
 		}
@@ -1900,7 +1897,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('throw new ReturnException(')
 	}
 	if it.exprs.len == 1 {
-		g.expr(it.exprs[0])
+		g.expr_with_expected_type(it.exprs[0], node.types[0])
 	} else { // Multi return
 		g.gen_array_init_values(it.exprs)
 	}
@@ -2188,7 +2185,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO: Generate .val for basic types
 }
 
-fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
+fn (mut g JsGen) gen_lock_expr(_node ast.LockExpr) {
 	// TODO: implement this
 }
 
@@ -2592,8 +2589,8 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 	}
 }
 
-fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string,
-	enum_typ ast.TypeSymbol) {
+fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, _is_expr bool, cond_var MatchCond, tmp_var string,
+	_enum_typ ast.TypeSymbol) {
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
 	g.empty_line = true
@@ -2967,7 +2964,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	} else if left_sym.kind == .map {
 		g.expr(expr.left)
 
-		if expr.is_setter {
+		if expr.is_setter && !g.inside_left_shift {
 			g.inside_map_set = true
 			g.write('.getOrSet(')
 		} else {
@@ -3030,6 +3027,31 @@ fn (mut g JsGen) expr_string(expr ast.Expr) string {
 	pos := g.out.len
 	g.expr(expr)
 	return g.out.cut_to(pos).trim_space()
+}
+
+fn (mut g JsGen) should_wrap_js_selector_rvalue(expr ast.Expr, expected_type ast.Type) bool {
+	if expected_type == 0 || expected_type.is_ptr() {
+		return false
+	}
+	match expr {
+		ast.SelectorExpr {}
+		else { return false }
+	}
+	target_sym := g.table.final_sym(g.unwrap_generic(expected_type))
+	if target_sym.language == .js || target_sym.name.starts_with('JS.') {
+		return false
+	}
+	return target_sym.kind in shallow_equatables
+}
+
+fn (mut g JsGen) expr_with_expected_type(expr ast.Expr, expected_type ast.Type) {
+	if g.should_wrap_js_selector_rvalue(expr, expected_type) {
+		g.write('new ${g.styp(expected_type)}(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
+	g.expr(expr)
 }
 
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
@@ -3108,7 +3130,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.write('array_push(')
+		old_inside_left_shift := g.inside_left_shift
+		g.inside_left_shift = true
 		g.expr(it.left)
+		g.inside_left_shift = old_inside_left_shift
 		mut ltyp := it.left_type
 		for ltyp.is_ptr() {
 			g.write('.val')

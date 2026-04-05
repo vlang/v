@@ -109,9 +109,12 @@ fn main() {
 	r('git checkout v_repo_master')
 	master_branch := gbranch()
 	hline('    Compiling old V executables from branch: ${master_branch}, commit: ${gcommit()} ...')
+	// Use `make` to bootstrap the old V from the C sources on the master branch,
+	// because the new V compiler may have breaking changes that prevent it from
+	// compiling the old code directly.
+	xtime('make -j4')
 	xtime('./v     -o vold1 cmd/v')
-	xtime('./vold1 -o vold2 cmd/v')
-	xtime('./vold2 -no-parallel -o vold cmd/v')
+	xtime('./vold1 -no-parallel -o vold cmd/v')
 	xtime('./vold -no-parallel -o ohw_master.c examples/hello_world.v')
 	xtime('./vold -no-parallel -o ohw_master_gcc.c -cc gcc examples/hello_world.v')
 	xtime('./vold -no-parallel -o ov_master.c  cmd/v')
@@ -126,7 +129,7 @@ fn main() {
 	if compare_prod {
 		show_size('vold_prod')
 	}
-	r('rm -rf vold1 vold2')
+	r('rm -rf vold1')
 
 	hline('File sizes so far ...')
 	compare_size('ohw_master.c', 'nhw_current.c')

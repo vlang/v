@@ -1,0 +1,8 @@
+// vtest vflags: -gc boehm_leak
+fn main() {
+	for i in 0 .. 3 {
+		print('${i} ')
+	}
+	println(123)
+	gc_check_leaks()
+}

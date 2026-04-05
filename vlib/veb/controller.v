@@ -29,7 +29,9 @@ pub fn (mut c Controller) register_controller[A, X](path string, mut global_app 
 // controller generates a new Controller for the main app
 pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 	routes := generate_routes[A, X](global_app) or { panic(err.msg()) }
-	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes) or {
+		panic(err.msg())
+	}
 
 	// generate struct with closure so the generic type is encapsulated in the closure
 	// no need to type `ControllerHandler` as generic since it's not needed for closures

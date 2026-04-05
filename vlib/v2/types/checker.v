@@ -2828,7 +2828,7 @@ fn (mut c Checker) assignment(from_type Type, to_type Type) ! {
 // 	}
 // }
 
-fn (mut c Checker) block(stmts []ast.Stmt) {
+fn (mut c Checker) block(_stmts []ast.Stmt) {
 }
 
 fn (mut c Checker) apply_smartcast(sc_name_ ast.Expr, sc_type Type) {

@@ -2,6 +2,7 @@ module testing
 
 import os
 import os.cmdline
+import semver
 import time
 import term
 import benchmark
@@ -920,7 +921,7 @@ pub fn header(msg string) {
 	flush_stdout()
 }
 
-fn random_sleep_ms(min_ms int, random_add_ms int) {
+fn random_sleep_ms(_ int, _ int) {
 	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
 }
 
@@ -947,7 +948,28 @@ fn check_openssl_present() bool {
 	}
 }
 
+fn check_modern_openssl_present() bool {
+	if !is_openssl_present {
+		return false
+	}
+	mut version_cmd := 'openssl version'
+	$if openbsd {
+		version_cmd = 'eopenssl35 version'
+	}
+	res := os.execute(version_cmd)
+	if res.exit_code != 0 {
+		return false
+	}
+	line := res.output.trim_space()
+	if !line.starts_with('OpenSSL ') {
+		return false
+	}
+	version := semver.coerce(line) or { return false }
+	return version.satisfies('>=3.5.0')
+}
+
 pub const is_openssl_present = check_openssl_present()
+pub const is_modern_openssl_present = check_modern_openssl_present()
 
 // is_started_mysqld is true, when the test runner determines that there is a running mysql server
 pub const is_started_mysqld = find_started_process('mysqld') or { '' }
@@ -996,6 +1018,9 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_openssl_present {
 		defines << 'present_openssl'
+	}
+	if is_modern_openssl_present {
+		defines << 'has_modern_openssl'
 	}
 
 	// detect the linux distribution as well when possible:

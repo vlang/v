@@ -54,6 +54,15 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 // save_expr registers a repeated code occurrence
 fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token.Pos) {
 	lock vt.repeated_expr {
+		if vt.cur_fn.name !in vt.repeated_expr {
+			vt.repeated_expr[vt.cur_fn.name] = map[string]map[string][]token.Pos{}
+		}
+		if expr !in vt.repeated_expr[vt.cur_fn.name] {
+			vt.repeated_expr[vt.cur_fn.name][expr] = map[string][]token.Pos{}
+		}
+		if file !in vt.repeated_expr[vt.cur_fn.name][expr] {
+			vt.repeated_expr[vt.cur_fn.name][expr][file] = []token.Pos{}
+		}
 		vt.repeated_expr[vt.cur_fn.name][expr][file] << pos
 	}
 	lock vt.repeated_expr_cutoff {

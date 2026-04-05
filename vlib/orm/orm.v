@@ -616,7 +616,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 			are_values_empty := values.len == 0
 
-			if sql_dialect == .sqlite && are_values_empty {
+			if sql_dialect in [.sqlite, .pg] && are_values_empty {
 				str += 'DEFAULT VALUES'
 			} else {
 				str += '('
@@ -885,6 +885,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			continue
 		}
 		mut default_val := field.default_val
+		mut has_default := default_val != ''
 		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
@@ -916,6 +917,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'unique' {
 					if attr.arg != '' {
 						if attr.kind == .string {
+							if attr.arg !in unique {
+								unique[attr.arg] = []string{}
+							}
 							unique[attr.arg] << field_name
 							continue
 						} else if attr.kind == .number {
@@ -933,6 +937,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 					col_typ = attr.arg.str()
 				}
 				'default' {
+					has_default = true
 					if default_val == '' {
 						default_val = attr.arg.str()
 					}
@@ -986,8 +991,13 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table.name}')
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
-		if defaults && default_val != '' {
-			stmt += ' DEFAULT ${default_val}'
+		if defaults && has_default {
+			if default_val != '' {
+				stmt += ' DEFAULT ${default_val}'
+			} else {
+				// Handle @[default: ''] - explicitly set DEFAULT '' for the column
+				stmt += " DEFAULT ''"
+			}
 		}
 		if sql_dialect == .mysql && field_comment != '' {
 			stmt += " COMMENT '${field_comment}'"

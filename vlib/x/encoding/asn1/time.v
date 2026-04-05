@@ -98,7 +98,7 @@ pub fn (utc UtcTime) into_utctime() !time.Time {
 	return utime
 }
 
-fn (utc UtcTime) payload_with_rule(rule EncodingRule) ![]u8 {
+fn (utc UtcTime) payload_with_rule(_rule EncodingRule) ![]u8 {
 	valid := validate_utctime(utc.value)!
 
 	if !valid {

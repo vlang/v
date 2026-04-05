@@ -1,3 +1,15 @@
+vlib/v/checker/tests/empty_arr_to_generic_param_err.vv:1:9: notice: unused parameter: `a`
+    1 | fn t[T](a []T) {}
+      |         ^
+    2 | 
+    3 | struct Foo {}
+vlib/v/checker/tests/empty_arr_to_generic_param_err.vv:5:18: notice: unused parameter: `a`
+    3 | struct Foo {}
+    4 | 
+    5 | fn (t &Foo) t[T](a []T) {}
+      |                  ^
+    6 | 
+    7 | fn main() {
 vlib/v/checker/tests/empty_arr_to_generic_param_err.vv:8:4: error: cannot use empty array as generic argument
     6 | 
     7 | fn main() {

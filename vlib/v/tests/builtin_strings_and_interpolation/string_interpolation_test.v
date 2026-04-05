@@ -31,6 +31,27 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
+fn test_dynamic_format_widths() {
+	width := 10
+	left_width := -10
+	zero_width := 5
+	sign_width := 6
+	name := 'abc'
+	num := 42
+	assert '>${name:(width)}<' == '>       abc<'
+	assert '>${name:(left_width)}<' == '>abc       <'
+	assert '>${name:(-width)}<' == '>abc       <'
+	assert '${num:0(zero_width)d}' == '00042'
+	assert '${num:+(sign_width)d}' == '   +42'
+}
+
+fn test_dynamic_format_precision() {
+	width := 8
+	precision := 3
+	value := 12.34567
+	assert '>${value:(width).(precision)f}<' == '>  12.346<'
+}
+
 fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'
@@ -126,6 +147,24 @@ fn test_inttypes_string_interpolation() {
 		assert '${vp:p}:${bp}' == 'CBF6EFC7:D311A88C' || '${vp:p}:${bp}' == 'cbf6efc7:d311a88c'
 			|| '${vp:p}:${bp}' == '0xcbf6efc7:0xd311a88c'
 	}
+}
+
+fn int_ref_mut_string(mut n &int) string {
+	return '${n}'
+}
+
+fn int_ref_string(n &int) string {
+	return '${n}'
+}
+
+fn test_int_ref_string_interpolation() {
+	mut count := 10
+	count_ref := &count
+	assert int_ref_mut_string(mut &count) == '10'
+	assert int_ref_string(&count) == '10'
+	assert '${count_ref}' == '10'
+	assert '${&count}' == '10'
+	assert '${count_ref:x}' == 'a'
 }
 
 fn test_utf8_string_interpolation() {
