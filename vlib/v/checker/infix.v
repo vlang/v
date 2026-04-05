@@ -322,7 +322,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface] {
 						elem_type := right_final_sym.array_info().elem_type
-						if node.left.is_auto_deref_var() {
+						if node.left.is_auto_deref_var() && left_type.is_ptr() {
 							left_type = left_type.deref()
 						}
 						c.check_expected(left_type, elem_type) or {
@@ -339,7 +339,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							}
 						} else {
 							elem_type := right_final_sym.array_info().elem_type
-							if node.left.is_auto_deref_var() {
+							if node.left.is_auto_deref_var() && left_type.is_ptr() {
 								left_type = left_type.deref()
 							}
 							c.check_expected(left_type, elem_type) or {
@@ -509,12 +509,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
-				deref_left_type := if node.left.is_auto_deref_var() {
+				deref_left_type := if node.left.is_auto_deref_var() && unwrapped_left_type.is_ptr() {
 					unwrapped_left_type.deref()
 				} else {
 					unwrapped_left_type
 				}
-				deref_right_type := if node.right.is_auto_deref_var() {
+				deref_right_type := if node.right.is_auto_deref_var()
+					&& unwrapped_right_type.is_ptr() {
 					unwrapped_right_type.deref()
 				} else {
 					unwrapped_right_type
@@ -967,8 +968,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		mut deref_right_type := right_type
 		if (!types_match || pointer_value_mismatch)
 			&& (left_allows_auto_deref || right_allows_auto_deref) {
-			deref_left_type = if left_allows_auto_deref { left_type.deref() } else { left_type }
-			deref_right_type = if right_allows_auto_deref { right_type.deref() } else { right_type }
+			deref_left_type = if left_allows_auto_deref && left_type.is_ptr() {
+				left_type.deref()
+			} else {
+				left_type
+			}
+			deref_right_type = if right_allows_auto_deref && right_type.is_ptr() {
+				right_type.deref()
+			} else {
+				right_type
+			}
 			types_match_after_deref = c.symmetric_check(deref_left_type, deref_right_type)
 				&& c.symmetric_check(deref_right_type, deref_left_type)
 		}

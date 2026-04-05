@@ -888,7 +888,7 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 // validate_middleware validates and fires all middlewares that are defined in the global app instance
 fn validate_middleware[T](mut app T, full_path string) bool {
 	$if T is MiddlewareInterface {
-		middleware_app := MiddlewareInterface(app)
+		middleware_app := unsafe { MiddlewareInterface(app) }
 		for path, middleware_chain in middleware_app.middlewares {
 			// only execute middleware if route.path starts with `path`
 			if full_path.len >= path.len && full_path.starts_with(path) {

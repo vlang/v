@@ -14,8 +14,3 @@ vlib/v/checker/tests/generic_interface_err.vv:10:6: error: can not find method `
     9 | s := Struct{7}
    10 | i := Interface(s)
       |      ~~~~~~~~~~~~
-vlib/v/checker/tests/generic_interface_err.vv:10:6: error: `Struct` does not implement interface `Interface`, cannot cast `Struct` to interface `Interface`
-    8 | 
-    9 | s := Struct{7}
-   10 | i := Interface(s)
-      |      ~~~~~~~~~~~~

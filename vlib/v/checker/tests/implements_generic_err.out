@@ -19,3 +19,23 @@ vlib/v/checker/tests/implements_generic_err.vv:22:31: error: unknown generic typ
       |                               ~~
    23 |     a int
    24 |     b T
+vlib/v/checker/tests/implements_generic_err.vv:28:2: error: `println` can not print void expressions
+   26 | 
+   27 | fn (foo Foo1[T]) fa() {
+   28 |     println(foo.b)
+      |     ~~~~~~~~~~~~~~
+   29 | }
+   30 |
+vlib/v/checker/tests/implements_generic_err.vv:32:2: error: `println` can not print void expressions
+   30 | 
+   31 | fn (foo Foo2[T]) fa() {
+   32 |     println(foo.b)
+      |     ~~~~~~~~~~~~~~
+   33 | }
+   34 |
+vlib/v/checker/tests/implements_generic_err.vv:36:2: error: `println` can not print void expressions
+   34 | 
+   35 | fn (foo Foo3[T]) fa() {
+   36 |     println(foo.b)
+      |     ~~~~~~~~~~~~~~
+   37 | }

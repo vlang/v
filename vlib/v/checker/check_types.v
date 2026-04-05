@@ -1263,10 +1263,11 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				// Use param.typ (not param_infer_typ) to get the actual pointer
 				// count including mut lowering, so that e.g. `mut val T` with
 				// param.typ=&T correctly strips the pointer from the arg type.
-				// Explicit `mut arg` calls should preserve the source-level
-				// reference type of the argument, even when the current scope
-				// variable is auto-dereferenced.
-				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 && !arg.is_mut {
+				// For auto-deref vars passed as mut, also strip pointers since
+				// the auto-deref var's type already includes the pointer level
+				// that mut adds.
+				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0
+					&& (!arg.is_mut || arg.expr.is_auto_deref_var()) {
 					param_muls := param.typ.nr_muls()
 					arg_muls := typ.nr_muls()
 					typ = if arg_muls >= param_muls {

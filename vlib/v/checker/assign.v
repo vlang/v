@@ -313,7 +313,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(mut right)
 				}
 			}
-			if right.is_auto_deref_var() {
+			if right.is_auto_deref_var() && right_type.is_ptr() {
 				left_type = ast.mktyp(right_type.deref())
 			} else {
 				left_type = ast.mktyp(right_type)
@@ -754,7 +754,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign, .minus_assign {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
-				left_deref := if left.is_auto_deref_var() { left_type.deref() } else { left_type }
+				left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
+					left_type.deref()
+				} else {
+					left_type
+				}
 				if left_deref == ast.string_type {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
@@ -917,11 +921,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				if left.is_auto_deref_arg() {
+				if left.is_auto_deref_arg() && left_type.is_ptr() {
 					left_deref := left_type.deref()
 					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
-					} else if right.is_auto_deref_var() {
+					} else if right.is_auto_deref_var() && right_type.is_ptr() {
 						right_type.deref()
 					} else {
 						right_type
@@ -932,14 +936,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
 				if left.is_auto_deref_var() || right.is_auto_deref_var() {
-					left_deref := if left.is_auto_deref_var() {
+					left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
 						left_type.deref()
 					} else {
 						left_type
 					}
 					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
-					} else if right.is_auto_deref_var() {
+					} else if right.is_auto_deref_var() && right_type.is_ptr() {
 						right_type.deref()
 					} else {
 						right_type
