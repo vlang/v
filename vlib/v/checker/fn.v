@@ -3898,7 +3898,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 // is `array_xxx`, instead of the plain `array` .
 fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_type ast.Type) {
 	node.receiver_type = left_type.ref()
-	if node.left.is_auto_deref_var() {
+	if node.left.is_auto_deref_var() && left_type.nr_muls() > 0 {
 		node.return_type = left_type.deref()
 	} else {
 		node.return_type = node.receiver_type.set_nr_muls(0)

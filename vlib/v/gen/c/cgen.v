@@ -7052,6 +7052,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			is_auto_heap = g.resolved_ident_is_auto_heap(node)
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
+			// When a variable is both auto_heap and auto_deref (e.g. a `mut`
+			// parameter of a @[heap] struct), the pointer indirection is
+			// already handled by the auto_deref mechanism (-> for selectors,
+			// pointer-type tracking in calls). Adding (*(…)) would
+			// incorrectly dereference the pointer a second time.
+			if is_auto_heap && node.obj.is_auto_deref {
+				is_auto_heap = false
+			}
 			if is_auto_heap && (node.obj.typ.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(node.obj.typ)) {
 				resolved_obj_typ := g.unwrap_generic(node.obj.typ)
