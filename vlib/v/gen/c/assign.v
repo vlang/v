@@ -1107,7 +1107,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
 				} else {
-					g.write('{${styp} _ = ')
+					mut actual_styp := styp
+					if val is ast.Ident && val.is_auto_deref_var() {
+						actual_styp = '${styp}*'
+					}
+					g.write('{${actual_styp} _ = ')
 				}
 				if (val in [ast.MatchExpr, ast.IfExpr, ast.ComptimeSelector] || is_fixed_array_var)
 					&& unaliased_right_sym.info is ast.ArrayFixed {
