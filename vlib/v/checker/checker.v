@@ -6514,9 +6514,6 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
-		if expr.is_auto_deref_var() {
-			return right_type
-		}
 		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `${s}`, the type `${right_sym.name}` is not a pointer',
