@@ -13,5 +13,11 @@ $if $pkgconfig('odbc') {
 	#flag darwin -L/opt/local/lib
 }
 
+$if tinyc {
+	// tcc does not search system include paths by default; add /usr/include so
+	// that it can find the unixODBC headers (sql.h, sqlext.h) on Linux.
+	#flag linux -I/usr/include
+}
+
 #include <sql.h>
 #include <sqlext.h>
