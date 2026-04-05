@@ -4267,7 +4267,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.expr(ast.Expr(node.left))
 			g.write('}[0]')
 		} else if !is_interface && node.from_embed_types.len > 0 {
-			n_ptr := node.left_type.nr_muls() - 1
+			// For mut generic params where the concrete type resolves
+			// to a multi-pointer (e.g. mut ctx X where X = &Context →
+			// C param is Context**), fn_decl_params adds .ref() which
+			// adds an extra pointer level not reflected in left_type.
+			mut extra_muls := 0
+			if node.left is ast.Ident && node.left.obj is ast.Var {
+				obj := node.left.obj
+				if obj.is_auto_deref && obj.is_arg && obj.generic_typ != 0 {
+					resolved := g.unwrap_generic(obj.generic_typ)
+					if resolved.nr_muls() > 1
+						&& g.table.sym(resolved).kind == .struct {
+						extra_muls = 1
+					}
+				}
+			}
+			n_ptr := node.left_type.nr_muls() - 1 + extra_muls
 			if n_ptr > 0 {
 				g.write2('(', '*'.repeat(n_ptr))
 				g.expr(ast.Expr(node.left))
