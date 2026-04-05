@@ -71,7 +71,13 @@ fn connect_with_retry() !mssql.Connection {
 	for _ in 0 .. 30 {
 		mut conn := mssql.Connection{}
 		if _ := conn.connect(conn_str) {
-			return conn
+			// SQL Server can accept a connection before it is ready to execute statements.
+			if _ := conn.query('select 1') {
+				return conn
+			} else {
+				last_err = err.msg()
+				conn.close()
+			}
 		} else {
 			last_err = err.msg()
 		}

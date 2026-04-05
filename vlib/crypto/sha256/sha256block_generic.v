@@ -80,7 +80,8 @@ const _k = [
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
-		mut w := []u32{len: (64)}
+		// Keep the message schedule on the stack.
+		mut w := [64]u32{}
 		mut h0 := dig.h[0]
 		mut h1 := dig.h[1]
 		mut h2 := dig.h[2]

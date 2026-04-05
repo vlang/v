@@ -47,11 +47,18 @@ fn (mut c Checker) refresh_generic_fn_scope_vars(node &ast.FnDecl) {
 		}
 	}
 	for param in node.params {
-		param_type := c.recheck_concrete_type(param.typ)
+		param_source_type := if param.is_mut && param.orig_typ != 0
+			&& (param.orig_typ.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(param.orig_typ)) {
+			param.orig_typ
+		} else {
+			param.typ
+		}
+		param_type := c.recheck_concrete_type(param_source_type)
 		if mut param_var := c.fn_scope.find_var(param.name) {
-			if param_var.generic_typ == 0
-				&& (param.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(param.typ)) {
-				param_var.generic_typ = param.typ
+			if param_var.generic_typ == 0 && (param_source_type.has_flag(.generic)
+				|| c.type_has_unresolved_generic_parts(param_source_type)) {
+				param_var.generic_typ = param_source_type
 			}
 			param_var.typ = param_type
 			param_var.orig_type = ast.no_type

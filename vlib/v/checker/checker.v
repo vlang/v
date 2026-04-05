@@ -1708,16 +1708,17 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 }
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
-	if typ == interface_type {
+	mut resolved_interface_type := c.unwrap_generic(interface_type)
+	if typ == resolved_interface_type {
 		return true
 	}
 	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${interface_type.debug()} (`${c.table.type_to_str(interface_type)}`)')
+		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${resolved_interface_type.debug()} (`${c.table.type_to_str(resolved_interface_type)}`)')
 	}
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
-	mut inter_sym := c.table.final_sym(interface_type)
+	mut inter_sym := c.table.final_sym(resolved_interface_type)
 	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
 			pos)
@@ -1740,7 +1741,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		return false
 	}
 	if mut inter_sym.info is ast.Interface {
-		mut generic_type := interface_type
+		mut generic_type := resolved_interface_type
 		mut generic_info := inter_sym.info
 		if inter_sym.info.parent_type.has_flag(.generic) && (inter_sym.info.concrete_types.len == 0
 			|| inter_sym.info.concrete_types.any(it.has_flag(.generic))) {
@@ -1750,7 +1751,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				generic_info = parent_sym.info
 			}
 		}
-		mut inferred_type := interface_type
+		mut inferred_type := resolved_interface_type
 		is_fully_concrete := inter_sym.info.concrete_types.len > 0
 			&& !inter_sym.info.concrete_types.any(it.has_flag(.generic))
 		if generic_info.is_generic && !is_fully_concrete {
@@ -1760,7 +1761,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		if inter_sym.info.is_generic && !is_fully_concrete {
-			if inferred_type == interface_type {
+			if inferred_type == resolved_interface_type {
 				// terminate early, since otherwise we get an infinite recursion/segfault:
 				return false
 			}
@@ -1771,7 +1772,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		generic_inst_info := inter_sym.info as ast.GenericInst
 		if !generic_inst_info.concrete_types.any(it.has_flag(.generic)) {
 			c.table.generic_insts_to_concrete()
-			inter_sym = c.table.final_sym(interface_type)
+			inter_sym = c.table.final_sym(resolved_interface_type)
 		}
 	}
 	// do not check the same type more than once
@@ -1782,22 +1783,22 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 	}
-	if utyp.idx() == interface_type.idx() {
+	if utyp.idx() == resolved_interface_type.idx() {
 		// same type -> already casted to the interface
 		return true
 	}
-	if interface_type.idx() == ast.error_type_idx && utyp.idx() == ast.none_type_idx {
+	if resolved_interface_type.idx() == ast.error_type_idx && utyp.idx() == ast.none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
 	is_interface_upcast := typ_sym.kind == .interface && inter_sym.kind == .interface
 		&& !styp.starts_with('JS.') && !inter_sym.name.starts_with('JS.')
-	if is_interface_upcast && !c.table.interface_inherits_interface(utyp, interface_type) {
+	if is_interface_upcast && !c.table.interface_inherits_interface(utyp, resolved_interface_type) {
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
 			pos)
 		return false
 	}
-	interface_sym := c.table.sym(interface_type)
+	interface_sym := c.table.sym(resolved_interface_type)
 	mut interface_generic_names := []string{}
 	mut interface_concrete_types := []ast.Type{}
 	mut interface_info := ast.Interface{}
@@ -4540,6 +4541,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 	final_to_type := if mut to_sym.info is ast.Alias { to_sym.info.parent_type } else { to_type }
+	mut to_is_interface := to_sym.kind == .interface
+	if !to_is_interface && to_sym.kind == .generic_inst {
+		gi := to_sym.info as ast.GenericInst
+		to_is_interface = c.table.type_symbols[gi.parent_idx].kind == .interface
+	}
 
 	if final_to_sym == final_from_sym && final_to_type.flags() == from_type.flags()
 		&& to_type.flags() == from_type.flags() {
@@ -4690,13 +4696,24 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
+	} else if !from_type.has_option_or_result() && to_is_interface {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface
 				&& !c.inside_unsafe && !from_type.is_number() {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
-			if to_sym.info.is_generic {
+			if mut to_sym.info is ast.Interface {
+				if !to_sym.info.is_generic {
+					// already concrete
+				} else {
+					inferred_type := c.unwrap_generic_interface(from_type, to_type, node.pos)
+					if inferred_type != 0 {
+						to_type = inferred_type
+						to_sym = c.table.sym(to_type)
+						final_to_sym = c.table.final_sym(to_type)
+					}
+				}
+			} else if to_type.has_flag(.generic) || c.type_has_unresolved_generic_parts(to_type) {
 				inferred_type := c.unwrap_generic_interface(from_type, to_type, node.pos)
 				if inferred_type != 0 {
 					to_type = inferred_type
@@ -4705,6 +4722,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		} else {
+			if to_type.has_flag(.generic) || c.type_has_unresolved_generic_parts(to_type) {
+				node.typname = c.table.sym(node.typ).name
+				return node.typ
+			}
 			if from_sym.kind == .interface && to_sym.kind == .interface {
 				return to_type
 			}

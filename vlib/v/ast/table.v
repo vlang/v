@@ -3231,12 +3231,9 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					}
 				}
 				if fields[i].has_default_expr {
-					if fields[i].default_expr_typ.has_flag(.generic) {
-						if t_typ := t.convert_generic_type(fields[i].default_expr_typ,
+					if fields[i].default_expr_typ != 0 && fields[i].default_expr_typ != nil_type {
+						fields[i].default_expr_typ = t.convert_generic_expr_type(fields[i].default_expr_typ,
 							t_generic_names, t_concrete_types)
-						{
-							fields[i].default_expr_typ = t_typ
-						}
 						fields[i].default_expr = t.convert_generic_default_expr(fields[i].default_expr,
 							t_generic_names, t_concrete_types)
 					} else if fields[i].default_expr_typ == 0
@@ -3456,10 +3453,12 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									}
 								}
 							}
-							if fields[i].has_default_expr
-								&& fields[i].default_expr_typ.has_flag(.generic) {
-								fields[i].default_expr_typ = t.convert_generic_expr_type(fields[i].default_expr_typ,
-									generic_names, info.concrete_types)
+							if fields[i].has_default_expr {
+								if fields[i].default_expr_typ != 0
+									&& fields[i].default_expr_typ != nil_type {
+									fields[i].default_expr_typ = t.convert_generic_expr_type(fields[i].default_expr_typ,
+										generic_names, info.concrete_types)
+								}
 								fields[i].default_expr = t.convert_generic_default_expr(fields[i].default_expr,
 									generic_names, info.concrete_types)
 							}

@@ -237,10 +237,11 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 									comptime_args[k] = cparam_type_sym.info.value_type
 								}
 							} else {
-								if node_.args[i].expr.is_auto_deref_var() {
+								if node_.args[i].expr.is_auto_deref_var() && !node_.args[i].is_mut {
 									ctyp = ctyp.deref()
 								}
-								if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+								if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0
+									&& !node_.args[i].is_mut {
 									ctyp = ctyp.set_nr_muls(0)
 								}
 								comptime_args[k] = ctyp
@@ -256,10 +257,10 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 						ctyp = cparam_type_sym.info.elem_type
 					}
-					if node_.args[i].expr.is_auto_deref_var() {
+					if node_.args[i].expr.is_auto_deref_var() && !node_.args[i].is_mut {
 						ctyp = ctyp.deref()
 					}
-					if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+					if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 && !node_.args[i].is_mut {
 						ctyp = ctyp.set_nr_muls(0)
 					}
 					comptime_args[k] = ctyp

@@ -1256,14 +1256,17 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
+				if arg.expr.is_auto_deref_var() && typ.is_ptr() && !arg.is_mut {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
 				// Use param.typ (not param_infer_typ) to get the actual pointer
 				// count including mut lowering, so that e.g. `mut val T` with
 				// param.typ=&T correctly strips the pointer from the arg type.
-				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {
+				// Explicit `mut arg` calls should preserve the source-level
+				// reference type of the argument, even when the current scope
+				// variable is auto-dereferenced.
+				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 && !arg.is_mut {
 					param_muls := param.typ.nr_muls()
 					arg_muls := typ.nr_muls()
 					typ = if arg_muls >= param_muls {
@@ -1272,7 +1275,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ.set_nr_muls(0)
 					}
 				}
-			} else if param_infer_typ.has_flag(.generic) {
+			} else if param_infer_typ.has_flag(.generic)
+				|| c.type_has_unresolved_generic_parts(param_infer_typ) {
 				arg_typ := if c.table.sym(arg.typ).kind == .any {
 					c.unwrap_generic(arg.typ)
 				} else {

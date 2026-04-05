@@ -5268,12 +5268,27 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name in ['idx', 'unaliased_typ'] {
 					// `T.idx`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).unalised_typ`
 					mut name_type := node.name_type
+					mut resolved_via_generic := false
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
-							g.resolve_typeof_expr_type(node.expr.expr, name_type)), node.field_name)
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = g.type_resolver.typeof_field_type(resolved,
+									node.field_name)
+								resolved_via_generic = true
+							} else {
+								name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
+									g.resolve_typeof_expr_type(node.expr.expr, name_type)),
+									node.field_name)
+							}
+						} else {
+							name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
+								g.resolve_typeof_expr_type(node.expr.expr, name_type)),
+								node.field_name)
+						}
 						// For mut params (auto_deref), strip pointer so that
 						// typeof(mut_param).idx == typeof(val_param).idx
-						if node.expr.expr is ast.Ident {
+						if !resolved_via_generic && node.expr.expr is ast.Ident {
 							if node.expr.expr.obj is ast.Var {
 								if node.expr.expr.obj.is_auto_deref && name_type.is_ptr() {
 									name_type = name_type.deref()
@@ -5295,8 +5310,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
-							name_type))
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.type_resolver.typeof_type(node.expr.expr,
+									g.resolve_typeof_expr_type(node.expr.expr, name_type))
+							}
+						} else {
+							name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+								name_type))
+						}
 					}
 					// `typeof(expr).indirections`
 					g.write(int(g.unwrap_generic(name_type).nr_muls()).str())
@@ -5323,7 +5348,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 			}
 		}
-		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
+		resolved_expr_type := g.resolved_expr_type(node.expr, g.type_resolver.get_type_or_default(node.expr,
+			ast.void_type))
+		if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+			g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
+		}
+		unsafe {
+			mut p := &ast.SelectorExpr(&node)
+			p.expr_type = resolved_expr_type
+		}
 	}
 
 	mut selector_scope := node.scope
@@ -7906,6 +7939,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
+	ret_expr_types := if node.types.len == 0 && exprs_len == 1 && type0 != ast.void_type {
+		[type0]
+	} else {
+		node.types
+	}
 	ret_type := g.unwrap_generic(g.fn_decl.return_type)
 
 	// got to do a correct check for multireturn
@@ -7973,7 +8011,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && exprs_len >= 1 && fn_return_is_option)
 		|| fn_return_is_fixed_array_non_result
-		|| (fn_return_is_multi && node.types.any(g.table.final_sym(it).kind == .array_fixed))
+		|| (fn_return_is_multi && ret_expr_types.any(g.table.final_sym(it).kind == .array_fixed))
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
 		option_none := expr0 is ast.None
@@ -8110,9 +8148,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg${arg_idx}=')
-			if expr !is ast.ArrayInit && g.table.final_sym(node.types[i]).kind == .array_fixed {
+			if expr !is ast.ArrayInit && g.table.final_sym(ret_expr_types[i]).kind == .array_fixed {
 				line := g.go_before_last_stmt().trim_space()
-				expr_styp := g.styp(node.types[i])
+				expr_styp := g.styp(ret_expr_types[i])
 				g.write('memcpy(&')
 				if fn_return_is_result || fn_return_is_option {
 					g.write('((${styp}*)')
@@ -8136,9 +8174,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write('*')
 				}
 				if mr_info.types[i].has_flag(.option) {
-					g.expr_with_opt(expr, node.types[i], mr_info.types[i])
+					g.expr_with_opt(expr, ret_expr_types[i], mr_info.types[i])
 				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface] {
-					g.expr_with_cast(expr, node.types[i], mr_info.types[i])
+					g.expr_with_cast(expr, ret_expr_types[i], mr_info.types[i])
 				} else {
 					g.expr(expr)
 				}
@@ -8175,7 +8213,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('return ${tmpvar}')
 		}
 	} else if exprs_len >= 1 {
-		if node.types.len == 0 {
+		if ret_expr_types.len == 0 {
 			g.checker_bug('node.exprs.len == ${node.exprs.len} && node.types.len == 0',
 				node.pos)
 		}

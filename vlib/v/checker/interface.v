@@ -414,7 +414,14 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 			// add concrete types to method
 			for imethod in inter_sym.info.methods {
 				im_fkey := imethod.fkey()
-				c.table.register_fn_concrete_types(im_fkey, inferred_types)
+				if c.table.register_fn_concrete_types(im_fkey, inferred_types) {
+					c.need_recheck_generic_fns = true
+				}
+				if method := typ_sym.find_method_with_generic_parent(imethod.name) {
+					if c.table.register_fn_concrete_types(method.fkey(), inferred_types) {
+						c.need_recheck_generic_fns = true
+					}
+				}
 			}
 			result_type := c.table.unwrap_generic_type(interface_type, generic_names,
 				inferred_types)
