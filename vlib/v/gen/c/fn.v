@@ -2010,8 +2010,8 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			if node.kind in [.pop_left, .pop] {
 				g.gen_arg_from_type(left_type, node.left)
 			} else {
-				if node.left_type.is_ptr() {
-					g.write2('(', '*'.repeat(node.left_type.nr_muls()))
+				if node.left_type.is_ptr() || node.left.is_auto_deref_var() {
+					g.write('(*')
 					g.expr(node.left)
 					g.write(')')
 				} else {

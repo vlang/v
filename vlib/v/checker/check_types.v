@@ -1256,18 +1256,27 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-				if arg.expr.is_auto_deref_var() && typ.is_ptr() && !arg.is_mut {
-					typ = typ.deref()
+				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
+					if !arg.is_mut {
+						typ = typ.deref()
+					} else if arg.expr is ast.Ident && arg.expr.obj is ast.Var
+						&& arg.expr.obj.generic_typ == 0 {
+						// Non-generic auto-deref mut param: obj.typ includes the
+						// mut pointer (e.g. mut ctx Context → obj.typ=&Context),
+						// so strip it for generic inference.
+						// Generic auto-deref mut params (generic_typ != 0) already
+						// have the correct resolved type without extra mut pointer.
+						typ = typ.deref()
+					}
 				}
 				// resolve &T &&T ...
 				// Use param.typ (not param_infer_typ) to get the actual pointer
 				// count including mut lowering, so that e.g. `mut val T` with
 				// param.typ=&T correctly strips the pointer from the arg type.
-				// For auto-deref vars passed as mut, also strip pointers since
-				// the auto-deref var's type already includes the pointer level
-				// that mut adds.
+				// For auto-deref vars passed as mut, skip stripping since their
+				// type already has the auto-deref pointer removed.
 				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0
-					&& (!arg.is_mut || arg.expr.is_auto_deref_var()) {
+					&& (!arg.is_mut || !arg.expr.is_auto_deref_var()) {
 					param_muls := param.typ.nr_muls()
 					arg_muls := typ.nr_muls()
 					typ = if arg_muls >= param_muls {

@@ -458,7 +458,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if is_fn_index_call {
 			g.write('(*')
 		}
-		if node.left_type.is_ptr() {
+		if node.left_type.is_ptr() || node.left.is_auto_deref_var() {
 			g.write('(*')
 			g.expr(ast.Expr(node.left))
 			g.write(')')
