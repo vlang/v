@@ -754,7 +754,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	}
 
 	mut request_app := new_request_app(global_app, ctx, tid)
-	handle_route(mut request_app, url, host, routes, tid)
+	handle_route(mut *request_app, url, host, routes, tid)
 }
 
 @[manualfree]
