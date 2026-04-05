@@ -24,7 +24,7 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 
-pub fn (mut app App) index() veb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	// We can dynamically specify which assets are to be used in template.
 	// 	mut am := assets.new_manager()
 	// 	am.add_css('assets/index.css')
@@ -35,10 +35,10 @@ pub fn (mut app App) index() veb.Result {
 	return $veb.html()
 }
 
-fn (mut app App) text() veb.Result {
+fn (mut app App) text(mut ctx Context) veb.Result {
 	return ctx.text('Hello, world from veb!')
 }
 
-fn (mut app App) time() veb.Result {
+fn (mut app App) time(mut ctx Context) veb.Result {
 	return ctx.text(time.now().format())
 }

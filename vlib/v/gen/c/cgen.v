@@ -6066,6 +6066,12 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 		&& !node.expr_type.has_flag(.generic) {
 		lhs_expr_type = g.unwrap_generic(node.expr.obj.typ)
 	}
+	if node.expr is ast.Ident {
+		resolved_current_type := g.resolve_current_fn_generic_param_type(node.expr.name)
+		if resolved_current_type != 0 {
+			lhs_expr_type = resolved_current_type
+		}
+	}
 	resolved_selector_expr_type := if lhs_expr_type.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(lhs_expr_type) {
 		g.unwrap_generic(lhs_expr_type)
