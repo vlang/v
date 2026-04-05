@@ -2037,7 +2037,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)builtin__array_get(')
 					}
 
-					if left.left_type.is_ptr() {
+					if left.left_type.is_ptr() || left.left.is_auto_deref_var() {
 						g.write('*')
 					}
 					g.expr(left.left)

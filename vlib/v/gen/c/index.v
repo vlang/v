@@ -222,7 +222,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		info.elem_type
 	}
 	elem_sym := g.table.final_sym(elem_type)
-	left_is_ptr := array_left_type.is_ptr()
+	left_is_ptr := array_left_type.is_ptr() || node.left.is_auto_deref_var()
 	result_type := match true {
 		gen_or && elem_type.has_flag(.option) {
 			node.typ.clear_flag(.option)

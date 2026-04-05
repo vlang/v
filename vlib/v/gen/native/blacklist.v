@@ -57,6 +57,7 @@ const blacklist = {
 	'string.contains_u8':     false
 	'malloc_noscan':          false
 	'malloc':                 false
+	'malloc_uninit':          false
 	'is_nil':                 false
 	'memdup':                 false
 	'vcalloc':                false

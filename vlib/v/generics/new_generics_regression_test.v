@@ -98,7 +98,7 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 }
 
 const expected_summsvc_generics = 'Summary for all V _test.v files: 108 failed, 166 passed, 274 total.'
-const expected_summary_generics = 'Summary for all V _test.v files: 107 failed, 167 passed, 274 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 106 failed, 168 passed, 274 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 2 failed, 17 passed, 19 total.'
@@ -212,7 +212,6 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_with_nested_generic_method_call_test.v',
 	'vlib/v/tests/generics/generics_with_nested_generics_fn_infer_call_test.v',
 	'vlib/v/tests/generics/generics_with_pointer_index_test.v',
-	'vlib/v/tests/generics/generics_with_recursive_generics_fn_test.v',
 ]!
 const failing_math_vec_tests = [
 	'vlib/math/vec/vec2_test.v',

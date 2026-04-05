@@ -1,17 +1,3 @@
-vlib/datatypes/bstree.v:54:10: warning: cannot assign a reference to a value (this will be an error soon) left=datatypes.BSTreeNode[Result[[]Token, Err[string]]] false right=datatypes.BSTreeNode[Result[[]Token, Err[string]]] true ptr=true
-   52 |     node.value = to_bind.value
-   53 |     node.is_init = to_bind.is_init
-   54 |     to_bind = new_none_node[T](false)
-      |             ^
-   55 | }
-   56 |
-vlib/datatypes/bstree.v:143:9: warning: cannot assign a reference to a value (this will be an error soon) left=datatypes.BSTreeNode[Result[[]Token, Err[string]]] false right=datatypes.BSTreeNode[Result[[]Token, Err[string]]] true ptr=true
-  141 |                 parent.right = new_none_node[T](false)
-  142 |             }
-  143 |             node = new_none_node[T](false)
-      |                  ^
-  144 |         }
-  145 |         return true
 vlib/v/checker/tests/check_err_msg_with_generics.vv:15:10: error: cannot cast struct `datatypes.BSTree[Result[[]Token, Err[string]]]` to `int`
    13 | fn test_err_msg() {
    14 |     typ := datatypes.BSTree[Result[[]Token, Err[string]]]{}
