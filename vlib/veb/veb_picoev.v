@@ -32,7 +32,7 @@ $if !new_veb ? {
 		flush_stdout()
 		routes_ptr := &routes
 		mut pico_context := &RequestParams{
-			global_app:         unsafe { global_app }
+			global_app:         unsafe { voidptr(&global_app) }
 			controllers:        controllers_sorted
 			routes:             routes_ptr
 			timeout_in_seconds: params.timeout_in_seconds

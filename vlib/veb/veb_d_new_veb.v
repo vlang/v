@@ -37,7 +37,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{
-		global_app:                global_app
+		global_app:                unsafe { voidptr(&global_app) }
 		controllers_sorted:        controllers_sorted
 		routes:                    &routes
 		benchmark_page_generation: params.benchmark_page_generation

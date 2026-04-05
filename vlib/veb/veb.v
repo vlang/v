@@ -131,7 +131,7 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 		ssl_listener.shutdown() or {}
 	}
 	ssl_params := &SslRequestParams{
-		global_app:                unsafe { global_app }
+		global_app:                unsafe { voidptr(&global_app) }
 		controllers_sorted:        controllers_sorted
 		routes:                    &routes
 		benchmark_page_generation: params.benchmark_page_generation
