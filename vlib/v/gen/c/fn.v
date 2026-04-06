@@ -4276,8 +4276,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				obj := node.left.obj
 				if obj.is_auto_deref && obj.is_arg && obj.generic_typ != 0 {
 					resolved := g.unwrap_generic(obj.generic_typ)
-					if resolved.nr_muls() > 1
-						&& g.table.sym(resolved).kind == .struct {
+					if resolved.nr_muls() > 1 && g.table.sym(resolved).kind == .struct {
 						extra_muls = 1
 					}
 				}

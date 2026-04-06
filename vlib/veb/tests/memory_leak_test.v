@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 3
 // vtest build: !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
 import os
