@@ -1541,7 +1541,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		cur_line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
-			g.write('bool ${tmp} = ((${g.infix_left_var_name}) ${node.op.str()} ')
+			g.write('bool ${tmp} = ((${g.infix_left_var_name}) && ')
 		} else {
 			g.write('bool ${tmp} = (')
 		}
@@ -1558,7 +1558,11 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		tmp := g.new_tmp_var()
 		cur_line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
-		g.write('bool ${tmp} = (')
+		if g.infix_left_var_name.len > 0 {
+			g.write('bool ${tmp} = ((${g.infix_left_var_name}) && ')
+		} else {
+			g.write('bool ${tmp} = (')
+		}
 		g.expr(node.left)
 		g.writeln(');')
 		g.set_current_pos_as_last_stmt_pos()

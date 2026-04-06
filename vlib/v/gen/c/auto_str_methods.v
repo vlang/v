@@ -1133,18 +1133,17 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				caller_should_free = false
 			}
 		} else if ftyp_noshared.is_ptr() {
-			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += '${it_field_name}.state != 0'
+				// optional pointer types: let the option auto-str function handle the none case
 			} else {
+				// reference types can be "nil"
 				funcprefix += 'builtin__isnil(${it_field_name})'
-			}
-			funcprefix += ' ? _S("nil") : '
-			// struct, floats and ints have a special case through the _str function
-			if !ftyp_noshared.has_flag(.option)
-				&& sym.kind !in [.struct, .alias, .enum, .sum_type, .map, .interface, .bool]
-				&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
-				funcprefix += '*'
+				funcprefix += ' ? _S("nil") : '
+				// struct, floats and ints have a special case through the _str function
+				if sym.kind !in [.struct, .alias, .enum, .sum_type, .map, .interface, .bool]
+					&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
+					funcprefix += '*'
+				}
 			}
 		}
 		mut is_field_array := false

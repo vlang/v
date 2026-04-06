@@ -1442,10 +1442,6 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// specialization suffix so cleanc can later substitute concrete types.
 	if expr.lhs is ast.GenericArgOrIndexExpr {
 		gai := expr.lhs as ast.GenericArgOrIndexExpr
-		if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
-			is_sel := gai.lhs is ast.SelectorExpr
-			eprintln('[DBG GAOI in call] fn=${t.cur_fn_name_str} gai.lhs_name=${gai.lhs.name()} is_sel=${is_sel} gai.expr=${gai.expr.name()}')
-		}
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
 			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
