@@ -2217,10 +2217,12 @@ fn (mut c Checker) sync_imported_const_type(source Const) {
 		for _, scope_ptr in c.env.scopes {
 			mut scope := unsafe { scope_ptr }
 			obj := scope.objects[source.name] or { continue }
-			if obj is Const && obj.mod == source.mod {
-				mut updated := obj
-				updated.typ = source.typ
-				scope.objects[source.name] = Object(updated)
+			if obj is Const {
+				if obj.mod == source.mod {
+					mut updated := obj
+					updated.typ = source.typ
+					scope.objects[source.name] = Object(updated)
+				}
 			}
 		}
 	}
