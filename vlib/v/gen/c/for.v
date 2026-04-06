@@ -662,12 +662,27 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln('${field_accessor}str[${i}];')
 		}
 	} else if node.kind in [.struct, .interface] {
-		cond_type_sym := g.table.sym(node.cond_type)
+		// In generic functions, `node.cond_type` may have been overwritten by the checker
+		// for the last concrete specialization. Re-resolve from the function parameter's
+		// declared type which still has the generic flag.
+		mut unwrapped_cond_type := g.unwrap_generic(node.cond_type)
+		if g.cur_concrete_types.len > 0 && g.cur_fn != unsafe { nil } && node.cond is ast.Ident {
+			for param in g.cur_fn.params {
+				if param.name == (node.cond as ast.Ident).name {
+					resolved := g.unwrap_generic(param.typ)
+					if resolved != unwrapped_cond_type {
+						unwrapped_cond_type = resolved
+					}
+					break
+				}
+			}
+		}
+		cond_type_sym := g.table.sym(unwrapped_cond_type)
 		mut next_fn := ast.Fn{}
 		// use alias `next` method if exists else use parent type `next` method
 		if cond_type_sym.kind == .alias {
 			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
-				g.table.final_sym(node.cond_type).find_method_with_generic_parent('next') or {
+				g.table.final_sym(unwrapped_cond_type).find_method_with_generic_parent('next') or {
 					verror('`next` method not found')
 					return
 				}
@@ -678,9 +693,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				return
 			}
 		}
-		ret_typ := next_fn.return_type
+		ret_typ := g.unwrap_generic(next_fn.return_type)
 		t_expr := g.new_tmp_var()
-		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
+		g.write('${g.styp(unwrapped_cond_type)} ${t_expr} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		i := node.key_var
@@ -706,11 +721,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if receiver_sym.is_builtin() {
 			fn_name = 'builtin__${fn_name}'
 		} else if receiver_sym.info is ast.Interface {
-			left_cc_type := g.cc_type(g.table.unaliased_type(node.cond_type), false)
+			left_cc_type := g.cc_type(g.table.unaliased_type(unwrapped_cond_type), false)
 			left_type_name := util.no_dots(left_cc_type)
 			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
 		} else {
-			fn_name = g.specialized_method_name_from_receiver(next_fn, node.cond_type,
+			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type,
 				fn_name)
 		}
 		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')

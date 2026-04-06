@@ -888,6 +888,27 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {
 	field_name := if language == .v { c_name(sfield.name) } else { sfield.name }
 	g.write('.${field_name} = ')
+	// Cast function pointers to the struct field's declared function type alias.
+	// The checker coerces V types to match, but C signatures can differ
+	// (e.g. callback returning &Result vs ThreadCB returning voidptr).
+	// This prevents -Werror=incompatible-pointer-types under -cstrict.
+	field_unwrap_sym := g.table.final_sym(sfield.typ)
+	if field_unwrap_sym.kind == .function && !sfield.expected_type.has_option_or_result()
+		&& g.cur_struct_init_typ != 0 {
+		struct_sym := g.table.sym(g.cur_struct_init_typ)
+		if struct_sym.info is ast.Struct {
+			for f in struct_sym.info.fields {
+				if f.name == sfield.name {
+					field_styp := g.styp(f.typ)
+					expr_styp := g.styp(sfield.typ)
+					if field_styp != expr_styp {
+						g.write('(${field_styp})')
+					}
+					break
+				}
+			}
+		}
+	}
 	g.struct_init_field_value(sfield)
 }
 

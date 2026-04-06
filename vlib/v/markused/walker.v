@@ -353,7 +353,17 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 					return
 				}
 				// the .next() method of the struct will be used for iteration:
-				cond_type_sym := w.table.sym(node.cond_type)
+				// In generic functions, node.cond_type may have been overwritten by the checker
+				// for the last specialization. Re-resolve from the variable's parameter type.
+				mut resolved_cond_type := node.cond_type
+				cond := node.cond
+				if cond is ast.Ident {
+					specialized_type := w.resolve_current_specialized_var_type(cond.name)
+					if specialized_type != ast.no_type {
+						resolved_cond_type = specialized_type
+					}
+				}
+				cond_type_sym := w.table.sym(resolved_cond_type)
 				if next_fn := cond_type_sym.find_method('next') {
 					unsafe {
 						w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))

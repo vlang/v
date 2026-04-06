@@ -22,6 +22,23 @@ pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
 	}
 }
 
+// sapp_to_gfx_pixelformat converts an sapp_pixel_format int to a gfx.PixelFormat.
+// The sapp and gfx pixel format enums have different integer values, so a direct
+// cast is incorrect.
+fn sapp_to_gfx_pixelformat(sapp_fmt int) gfx.PixelFormat {
+	// sapp_pixel_format: _DEFAULT=0, NONE=1, RGBA8=2, SRGB8A8=3, BGRA8=4, SBGRA8=5, DEPTH=6, DEPTH_STENCIL=7
+	return match sapp_fmt {
+		1 { gfx.PixelFormat.none }
+		2 { gfx.PixelFormat.rgba8 }
+		3 { gfx.PixelFormat.srgb8a8 }
+		4 { gfx.PixelFormat.bgra8 }
+		5 { gfx.PixelFormat.bgra8 } // sbgra8 has no gfx equivalent, use bgra8
+		6 { gfx.PixelFormat.depth }
+		7 { gfx.PixelFormat.depth_stencil }
+		else { gfx.PixelFormat.none }
+	}
+}
+
 // glue_environment returns a `gfx.Environment` compatible for use with `sapp` specific `gfx.Pass`es.
 // The retuned `gfx.Environment` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
@@ -29,12 +46,8 @@ pub fn glue_environment() gfx.Environment {
 	sapp_env := C.sapp_get_environment()
 	mut env := gfx.Environment{}
 	unsafe { vmemset(&env, 0, int(sizeof(env))) }
-	env.defaults.color_format = gfx.PixelFormat.from(sapp_env.defaults.color_format) or {
-		gfx.PixelFormat.none
-	}
-	env.defaults.depth_format = gfx.PixelFormat.from(sapp_env.defaults.depth_format) or {
-		gfx.PixelFormat.none
-	}
+	env.defaults.color_format = sapp_to_gfx_pixelformat(sapp_env.defaults.color_format)
+	env.defaults.depth_format = sapp_to_gfx_pixelformat(sapp_env.defaults.depth_format)
 	env.defaults.sample_count = sapp_env.defaults.sample_count
 	$if macos && !darwin_sokol_glcore33 ? {
 		env.metal.device = sapp_env.metal.device
@@ -52,8 +65,8 @@ pub fn glue_swapchain() gfx.Swapchain {
 	swapchain.width = sapp_sc.width
 	swapchain.height = sapp_sc.height
 	swapchain.sample_count = sapp_sc.sample_count
-	swapchain.color_format = gfx.PixelFormat.from(sapp_sc.color_format) or { gfx.PixelFormat.none }
-	swapchain.depth_format = gfx.PixelFormat.from(sapp_sc.depth_format) or { gfx.PixelFormat.none }
+	swapchain.color_format = sapp_to_gfx_pixelformat(sapp_sc.color_format)
+	swapchain.depth_format = sapp_to_gfx_pixelformat(sapp_sc.depth_format)
 	$if macos && !darwin_sokol_glcore33 ? {
 		swapchain.metal.current_drawable = sapp_sc.metal.current_drawable
 		swapchain.metal.depth_stencil_texture = sapp_sc.metal.depth_stencil_texture
