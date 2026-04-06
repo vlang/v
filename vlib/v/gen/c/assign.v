@@ -75,11 +75,6 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 	if gen_or {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
-		g.expr_with_cast(expr, expr_typ, ret_typ)
-		if in_heap {
-			g.write('))')
-		}
-		g.writeln(';')
 		expr_var := if expr is ast.Ident && expr.kind == .constant {
 			g.c_const_name(expr.name)
 		} else if expr is ast.Ident && expr.is_auto_heap() {
@@ -88,6 +83,20 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			'${expr}'
 		}
 		dot_or_ptr := if !expr_typ.has_flag(.option_mut_param_t) { '.' } else { '-> ' }
+		mut heap_line := ''
+		if in_heap {
+			// When the variable needs heap allocation, the caller has already
+			// written the partial line `TYPE *var = HEAP(TYPE, (`.
+			// We must NOT access the option's .data inside the HEAP macro
+			// before checking the state, because the option may be `none`.
+			// Pull back the partial line, emit the state check first, then
+			// write the assignment with data access after the check.
+			heap_line = g.go_before_last_stmt()
+			g.empty_line = true
+		} else {
+			g.expr_with_cast(expr, expr_typ, ret_typ)
+			g.writeln(';')
+		}
 		g.writeln('if (${c_name(expr_var)}${dot_or_ptr}state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
 			g.writeln('\tbuiltin__panic_option_not_set(_S("none"));')
@@ -123,6 +132,13 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			}
 		}
 		g.writeln('}')
+		if in_heap {
+			// Now that the state has been checked (and we haven't returned/panicked),
+			// it is safe to access .data and do the heap allocation.
+			g.write(heap_line)
+			g.expr_with_cast(expr, expr_typ, ret_typ)
+			g.writeln('));')
+		}
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.expr_with_opt(expr, expr_typ, ret_typ)

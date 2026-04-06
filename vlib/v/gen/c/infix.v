@@ -490,11 +490,16 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, ptr_typ string) {
+	// When inside a short-circuit `&&` condition (infix_left_var_name is set),
+	// do not hoist temp vars before the containing statement, as that would
+	// evaluate expressions (e.g. as-casts from smartcasts) before the
+	// short-circuit check has run. Instead, use inline expressions.
+	inside_and_rhs := g.infix_left_var_name.len > 0
 	mut stmt_str := ''
 	mut restore_stmt := false
 	mut left_expr := ''
 	mut right_expr := ''
-	if left_type.is_ptr() && !node.left.is_lvalue() {
+	if left_type.is_ptr() && !node.left.is_lvalue() && !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true
@@ -506,7 +511,7 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 	} else {
 		left_expr = g.expr_string(node.left)
 	}
-	if right_type.is_ptr() && !node.right.is_lvalue() {
+	if right_type.is_ptr() && !node.right.is_lvalue() && !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true

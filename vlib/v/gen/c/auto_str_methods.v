@@ -1135,7 +1135,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += 'builtin__isnil(&${it_field_name}) || builtin__isnil(&${it_field_name}.data)'
+				funcprefix += '${it_field_name}.state != 0'
 			} else {
 				funcprefix += 'builtin__isnil(${it_field_name})'
 			}

@@ -117,6 +117,21 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
+			// struct pointer equality comparisons may hoist temp vars
+			// (via gen_struct_pointer_eq_op) which breaks short-circuit
+			// evaluation when used on the right side of `&&` after an
+			// `is` check. Detect this so that infix_expr_and_or_op uses
+			// its safe short-circuit pattern instead.
+			if expr.op in [.eq, .ne] {
+				if (expr.left_type.is_ptr() && !expr.left.is_lvalue())
+					|| (expr.right_type.is_ptr() && !expr.right.is_lvalue()) {
+					left_sym := g.table.sym(expr.left_type)
+					right_sym := g.table.sym(expr.right_type)
+					if left_sym.kind == .struct || right_sym.kind == .struct {
+						return true
+					}
+				}
+			}
 		}
 		ast.MapInit {
 			for key in expr.keys {
