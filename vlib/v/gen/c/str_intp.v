@@ -414,7 +414,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		g.expr(expr)
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
-		mut exp_typ := typ
+		mut exp_typ := orig_typ
 		is_comptime_for_var := expr is ast.Ident && g.is_comptime_for_var(expr)
 		if !is_comptime_for_var && expr is ast.Ident {
 			if g.comptime.get_ct_type_var(expr) == .smartcast {

@@ -1093,6 +1093,9 @@ fn (mut w Walker) fn_decl_with_fkey(mut node ast.FnDecl, walk_fkey string) {
 }
 
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
+	if node == unsafe { nil } {
+		return
+	}
 	w.fn_decl_with_fkey(mut node, node.fkey())
 }
 

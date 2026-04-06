@@ -36,33 +36,17 @@ pub enum MouseButton {
 }
 
 pub enum MouseCursor {
-	default       = 0
-	arrow         = 1
-	ibeam         = 2
-	crosshair     = 3
-	pointing_hand = 4
-	resize_ew     = 5
-	resize_ns     = 6
-	resize_nwse   = 7
-	resize_nesw   = 8
-	resize_all    = 9
-	not_allowed   = 10
-	custom_0      = 11
-	custom_1      = 12
-	custom_2      = 13
-	custom_3      = 14
-	custom_4      = 15
-	custom_5      = 16
-	custom_6      = 17
-	custom_7      = 18
-	custom_8      = 19
-	custom_9      = 20
-	custom_10     = 21
-	custom_11     = 22
-	custom_12     = 23
-	custom_13     = 24
-	custom_14     = 25
-	custom_15     = 26
+	default       = C.SAPP_MOUSECURSOR_DEFAULT
+	arrow         = C.SAPP_MOUSECURSOR_ARROW
+	ibeam         = C.SAPP_MOUSECURSOR_IBEAM
+	crosshair     = C.SAPP_MOUSECURSOR_CROSSHAIR
+	pointing_hand = C.SAPP_MOUSECURSOR_POINTING_HAND
+	resize_ew     = C.SAPP_MOUSECURSOR_RESIZE_EW
+	resize_ns     = C.SAPP_MOUSECURSOR_RESIZE_NS
+	resize_nwse   = C.SAPP_MOUSECURSOR_RESIZE_NWSE
+	resize_nesw   = C.SAPP_MOUSECURSOR_RESIZE_NESW
+	resize_all    = C.SAPP_MOUSECURSOR_RESIZE_ALL
+	not_allowed   = C.SAPP_MOUSECURSOR_NOT_ALLOWED
 }
 
 pub enum Modifier {

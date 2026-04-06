@@ -9,7 +9,6 @@ mut:
 	pixels &u8 = unsafe { nil }
 }
 
-// screenshot_window captures a screenshot of the current window.
 @[manualfree]
 pub fn screenshot_window() &Screenshot {
 	img_width := width()
