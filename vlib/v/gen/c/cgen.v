@@ -3815,7 +3815,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			{
 				is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
 				if is_nil_cast {
-					g.write('((void*)0)')
+					if expected_type.is_ptr() {
+						g.write('((void*)0)')
+					} else {
+						// Non-pointer interface is a struct in C, use zero-init
+						g.write('(${g.styp(expected_type)}){0}')
+					}
 					return
 				}
 			}
