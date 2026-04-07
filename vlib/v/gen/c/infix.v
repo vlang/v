@@ -1565,11 +1565,22 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		}
 		g.expr(node.left)
 		g.writeln(');')
+		// Evaluate the right side with short-circuit: only evaluate if
+		// left side is true (for &&) or false (for ||).
+		// Use an if-block to prevent nested go_before_last_stmt() calls
+		// from grabbing `cur_line` content during right-side evaluation.
+		cond := if node.op == .and { tmp } else { '!${tmp}' }
+		g.writeln('if (${cond}) {')
+		g.indent++
 		g.set_current_pos_as_last_stmt_pos()
-		g.write('${cur_line} ${tmp} ${node.op.str()} ')
-		g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
-		g.expr(node.right)
 		g.infix_left_var_name = ''
+		g.write('${tmp} = ')
+		g.expr(node.right)
+		g.writeln(';')
+		g.indent--
+		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
+		g.write('${cur_line} ${tmp}')
 		g.inside_ternary = prev_inside_ternary
 	} else {
 		g.gen_plain_infix_expr(node)

@@ -899,10 +899,16 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		if struct_sym.info is ast.Struct {
 			for f in struct_sym.info.fields {
 				if f.name == sfield.name {
-					field_styp := g.styp(f.typ)
-					expr_styp := g.styp(sfield.typ)
-					if field_styp != expr_styp {
-						g.write('(${field_styp})')
+					// Only cast named function type aliases (e.g. ThreadCB),
+					// not anonymous function types from generic structs which
+					// may generate non-existent type names.
+					fsym := g.table.sym(f.typ)
+					if !fsym.name.starts_with('fn ') {
+						field_styp := g.styp(f.typ)
+						expr_styp := g.styp(sfield.typ)
+						if field_styp != expr_styp {
+							g.write('(${field_styp})')
+						}
 					}
 					break
 				}
