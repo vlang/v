@@ -731,6 +731,22 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				c.post_process_generic_fns() or { break post_process_iterations_loop }
 			}
 		}
+		// Resolve newly created generic struct/interface instances to concrete types.
+		// This ensures that methods of generic structs instantiated during the current
+		// iteration (e.g. EluLayer[f64] created when checking elu_layer[f64]) get their
+		// concrete types registered for rechecking in the next iteration.
+		mut old_concrete_count := 0
+		for _, v in c.table.fn_generic_types {
+			old_concrete_count += v.len
+		}
+		c.table.generic_insts_to_concrete()
+		mut new_concrete_count := 0
+		for _, v in c.table.fn_generic_types {
+			new_concrete_count += v.len
+		}
+		if new_concrete_count != old_concrete_count {
+			c.need_recheck_generic_fns = true
+		}
 		if !c.need_recheck_generic_fns {
 			break
 		}

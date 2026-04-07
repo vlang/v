@@ -114,10 +114,10 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 103 failed, 171 passed, 274 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 104 failed, 171 passed, 275 total.'
 // The exact failure count varies slightly across compilers:
-// gcc/tcc: 101, clang: 102, msvc/windows-gcc: 103.
-const expected_summary_generics = 'Summary for all V _test.v files: 101 failed, 173 passed, 274 total.'
+// gcc/tcc: 102, clang: 103, msvc/windows-gcc: 104.
+const expected_summary_generics = 'Summary for all V _test.v files: 102 failed, 173 passed, 275 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 2 failed, 17 passed, 19 total.'
@@ -183,6 +183,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_fn_return_result_test.v',
 	'vlib/v/tests/generics/generics_fn_variable_3_test.v',
 	'vlib/v/tests/generics/generics_for_in_iterate_test.v',
+	'vlib/v/tests/generics/generics_interface_cross_module_recheck_test.v',
 	'vlib/v/tests/generics/generics_interface_method_test.v',
 	'vlib/v/tests/generics/generics_interface_with_generic_method_using_generic_struct_test.v',
 	'vlib/v/tests/generics/generics_interface_with_generic_sumtype_test.v',

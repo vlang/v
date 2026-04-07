@@ -215,9 +215,20 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else {
 		sym.info as ast.Array
 	}
-	resolved_elem_type := g.recheck_concrete_type(g.resolved_expr_type(node, node.typ))
+	resolved_elem_type_ := g.recheck_concrete_type(g.resolved_expr_type(node, node.typ))
+	resolved_elem_type := if resolved_elem_type_ == ast.int_literal_type {
+		ast.int_type
+	} else if resolved_elem_type_ == ast.float_literal_type {
+		ast.f64_type
+	} else {
+		resolved_elem_type_
+	}
 	elem_type := if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
 		resolved_elem_type
+	} else if info.elem_type == ast.int_literal_type {
+		ast.int_type
+	} else if info.elem_type == ast.float_literal_type {
+		ast.f64_type
 	} else {
 		info.elem_type
 	}
