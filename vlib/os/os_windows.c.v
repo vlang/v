@@ -113,9 +113,14 @@ mut:
 	b_inherit_handle       bool
 }
 
+@[inline]
+fn wide_ptr_to_string(wstr &u16) string {
+	return unsafe { string_from_wide(wstr) }
+}
+
 pub struct C._utimbuf {
-	actime  int
-	modtime int
+	actime  i64
+	modtime i64
 }
 
 fn C._utime(&char, voidptr) i32
@@ -147,7 +152,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 
 	// save first finding
-	fname := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	fname := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if fname !in ['.', '..'] {
 		mut fp := fname.replace('\\', '/')
 		if match_base != '' {
@@ -161,7 +166,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 
 	// check and save next findings
 	for i := 0; C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0; i++ {
-		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 		if filename in ['.', '..'] {
 			continue
 		}
@@ -176,7 +181,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ! {
+pub fn utime(path string, actime i64, modtime i64) ! {
 	mut u := C._utimbuf{actime, modtime}
 	if C._utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -207,12 +212,12 @@ pub fn ls(path string) ![]string {
 	if h_find_files == C.INVALID_HANDLE_VALUE {
 		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
 	}
-	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
-		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}
@@ -283,7 +288,7 @@ const max_error_code = 15841
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-	mut buf := unsafe { nil }
+	mut buf := voidptr(unsafe { nil })
 	// Check for code overflow
 	if code > u32(max_error_code) {
 		return buf
@@ -302,7 +307,7 @@ pub fn get_error_msg(code int) string {
 	if ptr_text == 0 { // compare with null
 		return ''
 	}
-	msg := unsafe { string_from_wide(ptr_text) }
+	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
 	return msg
 }
@@ -403,11 +408,9 @@ pub fn raw_execute(cmd string) Result {
 	}
 	// encoding: from ANSI to UTF-8
 	soutput_str := read_data.str()
-	soutput := if validate.utf8_string(soutput_str) {
-		soutput_str
-	} else {
-		string_from_wide(soutput_str.to_wide(from_ansi: true))
-	}
+	soutput := if validate.utf8_string(soutput_str) { soutput_str } else { string_from_wide(soutput_str.to_wide(
+			from_ansi: true
+		)) }
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
@@ -611,7 +614,7 @@ fn get_long_path(path string) !string {
 	if res == 0 {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	long_path := unsafe { string_from_wide(&long_path_buf[0]) }
+	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path
 }
 

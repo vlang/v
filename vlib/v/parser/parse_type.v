@@ -363,6 +363,18 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	}
 
 	mut has_generic := false
+	// Parse generic type parameters if present (e.g. `fn [T](T) string`).
+	// When called from type_decl, generic_types are already parsed and passed in.
+	// When called from inline type parsing (e.g. function parameter types),
+	// generic_types is empty and we need to parse them here.
+	mut fn_generic_types := generic_types.clone()
+	if fn_generic_types.len == 0 && p.tok.kind == .lsbr {
+		types, _ := p.parse_generic_types()
+		fn_generic_types = types.clone()
+		if fn_generic_types.len > 0 {
+			has_generic = true
+		}
+	}
 	line_nr := p.tok.line_nr
 	params, _, is_variadic, is_c_variadic := p.fn_params()
 	for param in params {
@@ -386,7 +398,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
 	}
 
-	generic_names := p.types_to_names(generic_types, fn_type_pos, 'generic_types') or {
+	generic_names := p.types_to_names(fn_generic_types, fn_type_pos, 'generic_types') or {
 		return ast.no_type
 	}
 
@@ -401,7 +413,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		is_method:       false
 		attrs:           p.attrs
 	}
-	if has_generic && generic_types.len == 0 && name != '' {
+	if has_generic && fn_generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
 	}

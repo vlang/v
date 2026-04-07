@@ -264,7 +264,7 @@ fn test_pointer() {
 	bool_initialized_with_reference = true
 	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":true}'
 
-	mut int_initialized_with_reference := 0
+	mut int_initialized_with_reference := int(0)
 	assert json.encode(StructTypePointer[int]{ val: unsafe { nil } }) == '{}'
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
 	int_initialized_with_reference = 1

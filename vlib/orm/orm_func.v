@@ -491,7 +491,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 					}
 				}
 				if value != Primitive(Null{}) {
-					$if field.typ is i8 || field.typ is ?i8 {
+					$if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
 						instance.$(field.name) = match value {
 							i8 { i8(value) }
 							i16 { i8(value) }
@@ -506,7 +506,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { i8(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is i16 || field.typ is ?i16 {
+					} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
 						instance.$(field.name) = match value {
 							i8 { i16(value) }
 							i16 { i16(value) }
@@ -521,7 +521,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { i16(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is int || field.typ is ?int {
+					} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
 						instance.$(field.name) = match value {
 							i8 { int(value) }
 							i16 { int(value) }
@@ -536,7 +536,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { int(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is i64 || field.typ is ?i64 || field.is_enum {
+					} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64
+						|| field.unaliased_typ is $enum {
 						instance.$(field.name) = match value {
 							i8 { i64(value) }
 							i16 { i64(value) }
@@ -551,7 +552,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { i64(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is u8 || field.typ is ?u8 {
+					} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
 						instance.$(field.name) = match value {
 							i8 { u8(value) }
 							i16 { u8(value) }
@@ -566,7 +567,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { u8(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is u16 || field.typ is ?u16 {
+					} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
 						instance.$(field.name) = match value {
 							i8 { u16(value) }
 							i16 { u16(value) }
@@ -581,7 +582,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { u16(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is u32 || field.typ is ?u32 {
+					} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
 						instance.$(field.name) = match value {
 							i8 { u32(value) }
 							i16 { u32(value) }
@@ -596,7 +597,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { u32(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is u64 || field.typ is ?u64 {
+					} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
 						instance.$(field.name) = match value {
 							i8 { u64(value) }
 							i16 { u64(value) }
@@ -611,7 +612,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { u64(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is f32 || field.typ is ?f32 {
+					} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
 						instance.$(field.name) = match value {
 							i8 { f32(value) }
 							i16 { f32(value) }
@@ -626,7 +627,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { f32(value) }
 							else { 0 }
 						}
-					} $else $if field.typ is f64 || field.typ is ?f64 {
+					} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
 						instance.$(field.name) = match value {
 							i8 { f64(value) }
 							i16 { f64(value) }
@@ -641,7 +642,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { value }
 							else { 0 }
 						}
-					} $else $if field.typ is bool || field.typ is ?bool {
+					} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
 						instance.$(field.name) = match value {
 							i8 { value != 0 }
 							i16 { value != 0 }
@@ -656,9 +657,10 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							f64 { value != 0 }
 							else { false }
 						}
-					} $else $if field.typ is string || field.typ is ?string {
+					} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
 						instance.$(field.name) = value as string
-					} $else $if field.typ is time.Time || field.typ is ?time.Time {
+					} $else $if field.unaliased_typ is time.Time
+						|| field.unaliased_typ is ?time.Time {
 						if m.typ == time_ {
 							instance.$(field.name) = value as time.Time
 						} else if m.typ == type_string {
@@ -998,72 +1000,72 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 			}
 			qb.fields << sql_f_name
 
-			$if field.typ is bool {
-				qb.data << bool_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?bool {
+			$if field.unaliased_typ is bool {
+				qb.data << bool_to_primitive(bool(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?bool {
 				qb.data << option_bool_to_primitive(value.$(field.name))
 			}
-			$if field.typ is f32 {
-				qb.data << f32_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?f32 {
+			$if field.unaliased_typ is f32 {
+				qb.data << f32_to_primitive(f32(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?f32 {
 				qb.data << option_f32_to_primitive(value.$(field.name))
 			}
-			$if field.typ is f64 {
-				qb.data << f64_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?f64 {
+			$if field.unaliased_typ is f64 {
+				qb.data << f64_to_primitive(f64(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?f64 {
 				qb.data << option_f64_to_primitive(value.$(field.name))
 			}
-			$if field.typ is i8 {
-				qb.data << i8_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?i8 {
+			$if field.unaliased_typ is i8 {
+				qb.data << i8_to_primitive(i8(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?i8 {
 				qb.data << option_i8_to_primitive(value.$(field.name))
 			}
-			$if field.typ is i16 {
-				qb.data << i16_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?i16 {
+			$if field.unaliased_typ is i16 {
+				qb.data << i16_to_primitive(i16(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?i16 {
 				qb.data << option_i16_to_primitive(value.$(field.name))
 			}
-			$if field.typ is int {
-				qb.data << int_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?int {
+			$if field.unaliased_typ is int {
+				qb.data << int_to_primitive(int(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?int {
 				qb.data << option_int_to_primitive(value.$(field.name))
 			}
-			$if field.typ is i64 {
-				qb.data << i64_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?i64 {
+			$if field.unaliased_typ is i64 {
+				qb.data << i64_to_primitive(i64(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?i64 {
 				qb.data << option_i64_to_primitive(value.$(field.name))
 			}
-			$if field.typ is u8 {
-				qb.data << u8_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?u8 {
+			$if field.unaliased_typ is u8 {
+				qb.data << u8_to_primitive(u8(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?u8 {
 				qb.data << option_u8_to_primitive(value.$(field.name))
 			}
-			$if field.typ is u16 {
-				qb.data << u16_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?u16 {
+			$if field.unaliased_typ is u16 {
+				qb.data << u16_to_primitive(u16(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?u16 {
 				qb.data << option_u16_to_primitive(value.$(field.name))
 			}
-			$if field.typ is u32 {
-				qb.data << u32_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?u32 {
+			$if field.unaliased_typ is u32 {
+				qb.data << u32_to_primitive(u32(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?u32 {
 				qb.data << option_u32_to_primitive(value.$(field.name))
 			}
-			$if field.typ is u64 {
-				qb.data << u64_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?u64 {
+			$if field.unaliased_typ is u64 {
+				qb.data << u64_to_primitive(u64(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?u64 {
 				qb.data << option_u64_to_primitive(value.$(field.name))
 			}
-			$if field.typ is string {
-				qb.data << string_to_primitive(value.$(field.name))
-			} $else $if field.typ is ?string {
+			$if field.unaliased_typ is string {
+				qb.data << string_to_primitive(string(value.$(field.name)))
+			} $else $if field.unaliased_typ is ?string {
 				qb.data << option_string_to_primitive(value.$(field.name))
-			} $else $if field.typ is time.Time {
+			} $else $if field.unaliased_typ is time.Time {
 				if sql_f_type == type_string {
 					qb.data << string_to_primitive(value.$(field.name).format_ss())
 				} else {
 					qb.data << time_to_primitive(value.$(field.name))
 				}
-			} $else $if field.typ is ?time.Time {
+			} $else $if field.unaliased_typ is ?time.Time {
 				if sql_f_type == type_string {
 					b := value.$(field.name)
 					if b_ := b {
@@ -1074,7 +1076,7 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 				} else {
 					qb.data << option_time_to_primitive(value.$(field.name))
 				}
-			} $else $if field.is_enum {
+			} $else $if field.unaliased_typ is $enum {
 				qb.data << i64_to_primitive(i64(value.$(field.name)))
 			}
 		}

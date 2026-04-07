@@ -25,6 +25,14 @@ module slhdsa
 #flag openbsd -I/usr/local/include/eopenssl35
 #flag openbsd -L/usr/local/lib/eopenssl35 -Wl,-rpath,/usr/local/lib/eopenssl35
 
+// Installed through choco:
+#flag windows -IC:/Program Files/OpenSSL-Win64/include
+#flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+// Installed on the CI:
+#flag windows -IC:/Program Files/OpenSSL/include
+#flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
+#flag windows -l libcrypto
+
 #include <openssl/obj_mac.h>
 #include <openssl/evp.h>
 #include <openssl/bio.h>

@@ -34,6 +34,7 @@ fn (mut state State) update(line string) {
 }
 
 const tmpl_str_end = "')\n"
+const tmpl_literal_dollar_marker = '__V_TMPL_LITERAL_DOLLAR__'
 
 // check HTML open tag `<name attr="x" >`
 fn is_html_open_tag(name string, s string) bool {
@@ -235,11 +236,36 @@ fn rewrite_complex_template_at_expressions(line string) string {
 	return b.str()
 }
 
+fn escape_bare_tmpl_dollar_interpolations(line string) string {
+	mut sb := strings.new_builder(line.len)
+	mut i := 0
+	for i < line.len {
+		if i + 1 < line.len && ((line[i] == `@` && line[i + 1] == `{`)
+			|| (line[i] == `$` && line[i + 1] == `{`)) {
+			expr_end := find_tmpl_balanced_end(line, i + 1, `{`, `}`)
+			if expr_end != -1 {
+				sb.write_string(line[i..expr_end])
+				i = expr_end
+				continue
+			}
+		}
+		if line[i] == `$` && i + 1 < line.len && is_tmpl_ident_start(line[i + 1]) {
+			sb.write_string(tmpl_literal_dollar_marker)
+			i++
+			continue
+		}
+		sb.write_u8(line[i])
+		i++
+	}
+	return sb.str()
+}
+
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `veb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	rewritten_line := rewrite_complex_template_at_expressions(line)
+	literal_dollar := tmpl_str_end + 'sb_${fn_name}.write_u8(36)\n' + tmpl_str_start
+	rewritten_line := escape_bare_tmpl_dollar_interpolations(rewrite_complex_template_at_expressions(line))
 	mut sb := strings.new_builder(rewritten_line.len + 16)
 	mut i := 0
 	for i < rewritten_line.len {
@@ -289,6 +315,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
 	}
+	rline = rline.replace(tmpl_literal_dollar_marker, literal_dollar)
 	if rline.ends_with('\\') {
 		rline = rline[0..rline.len - 2] + trailing_bs
 	}
@@ -300,6 +327,11 @@ fn normalize_keyword_template_interpolations(line string) string {
 	mut i := 0
 	for i < line.len {
 		ch := line[i]
+		if ch == `$` && i > 0 && line[i - 1] == `\\` {
+			sb.write_u8(ch)
+			i++
+			continue
+		}
 		if ch == `$` && i + 1 < line.len && (line[i + 1].is_letter() || line[i + 1] == `_`) {
 			mut j := i + 1
 			for j < line.len && (line[j].is_letter() || line[j].is_digit() || line[j] == `_`) {
@@ -391,6 +423,9 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 	}
 
 	// If file hasnt been called before then add to dependency tree
+	if file_path !in dc.dependencies {
+		dc.dependencies[file_path] = []string{}
+	}
 	if !dc.dependencies[file_path].contains(calling_file) {
 		dc.dependencies[file_path] << calling_file
 	}
@@ -482,6 +517,7 @@ fn veb_tmpl_${fn_name}() string {
 	}
 
 	mut in_span := false
+	mut in_html_comment := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
@@ -495,6 +531,35 @@ fn veb_tmpl_${fn_name}() string {
 		}
 		$if trace_tmpl ? {
 			eprintln('>>> tfile: ${template_file}, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: ${line}')
+		}
+		// Track HTML comments: skip @-interpolation inside <!-- ... -->
+		if state == .html {
+			if in_html_comment {
+				if line.contains('-->') {
+					in_html_comment = false
+				}
+				// Output comment line literally (no @-interpolation)
+				escaped := line.replace('\\', '\\\\').replace("'", "\\'")
+				source.writeln(escaped)
+				p.template_line_map << ast.TemplateLineInfo{
+					tmpl_path: template_file
+					tmpl_line: tline_number
+				}
+				continue
+			}
+			if line.contains('<!--') {
+				if !line.contains('-->') {
+					in_html_comment = true
+				}
+				// Single-line or start of multi-line comment: output literally
+				escaped := line.replace('\\', '\\\\').replace("'", "\\'")
+				source.writeln(escaped)
+				p.template_line_map << ast.TemplateLineInfo{
+					tmpl_path: template_file
+					tmpl_line: tline_number
+				}
+				continue
+			}
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }

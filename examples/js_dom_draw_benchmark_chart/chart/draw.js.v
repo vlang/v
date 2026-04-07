@@ -19,8 +19,8 @@ fn draw_line(mut context JS.CanvasRenderingContext2D, _x1 int, _y1 int, _x2 int,
 	context.beginPath()
 	context.strokeStyle = 'black'.str
 	context.lineWidth = JS.Number(1)
-	context.moveTo(0, 0)
-	context.lineTo(100, 100)
+	context.moveTo(JS.Number(0), JS.Number(0))
+	context.lineTo(JS.Number(100), JS.Number(100))
 	context.stroke()
 	context.closePath()
 }
@@ -52,10 +52,10 @@ fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_ti
 
 	for i := 0; i <= time_array.len; i++ {
 		state.context.beginPath()
-		state.context.moveTo(state.x, state.y)
+		state.context.moveTo(JS.Number(state.x), JS.Number(state.y))
 		state.x = max_width / f64(time_array.len) * i + 1.0
 		state.y = max_height - (max_height / f64(max_time) * f64(time_array[i]))
-		state.context.lineTo(state.x, state.y)
+		state.context.lineTo(JS.Number(state.x), JS.Number(state.y))
 		state.context.stroke()
 		state.context.closePath()
 	}

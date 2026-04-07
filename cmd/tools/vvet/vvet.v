@@ -289,6 +289,7 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		}
 		ast.AssertStmt {
 			vt.expr(stmt.expr)
+			vt.expr(stmt.extra)
 		}
 		ast.AssignStmt {
 			vt.exprs(stmt.left)

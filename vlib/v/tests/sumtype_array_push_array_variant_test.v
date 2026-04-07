@@ -4,6 +4,8 @@
 // the compiler incorrectly used PUSH_MANY instead of pushing as a single element.
 
 type Prim = int | string | []Prim
+type AliasInt = int
+type ArrayPrim = []AliasInt | int | []u8
 
 fn test_push_array_literal_to_sumtype_array() {
 	mut args := []Prim{}
@@ -49,4 +51,22 @@ fn test_empty_sumtype_array_init() {
 		args << i
 	}
 	assert args.len == 3
+}
+
+fn test_push_array_subtype_variant_to_sumtype_array() {
+	mut args := []ArrayPrim{}
+	args << [u8(1), 2, 3]
+	assert args.len == 1
+
+	inner := args[0] as []u8
+	assert inner == [u8(1), 2, 3]
+}
+
+fn test_push_cast_array_subtype_variant_to_sumtype_array() {
+	mut args := []ArrayPrim{}
+	args << ArrayPrim([AliasInt(1), 2])
+	assert args.len == 1
+
+	inner := args[0] as []AliasInt
+	assert inner == [AliasInt(1), 2]
 }

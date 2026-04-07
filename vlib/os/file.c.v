@@ -503,39 +503,42 @@ fn error_size_of_type_0() IError {
 	return &SizeOfTypeIs0Error{}
 }
 
-// read_struct reads a single struct of type `T`.
+// read_struct reads a single plain-data struct of type `T`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) read_struct[T](mut t T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
-	nbytes := fread(t, 1, tsize, f.cfile)!
+	nbytes := fread(voidptr(&t), 1, tsize, f.cfile)!
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
 }
 
-// read_struct_at reads a single struct of type `T` at position specified in file.
+// read_struct_at reads a single plain-data struct of type `T` at position specified in file.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
 	f.seek(pos, .start) or {}
-	nbytes := fread(t, 1, tsize, f.cfile)!
+	nbytes := fread(voidptr(&t), 1, tsize, f.cfile)!
 	f.seek(0, .end) or {}
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
 }
 
-// read_raw reads and returns a single instance of type `T`.
+// read_raw reads and returns a single plain-data instance of type `T`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) read_raw[T]() !T {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -552,7 +555,8 @@ pub fn (mut f File) read_raw[T]() !T {
 	return t
 }
 
-// read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`.
+// read_raw_at reads and returns a single plain-data instance of type `T` starting at file byte offset `pos`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -571,7 +575,8 @@ pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	return t
 }
 
-// write_struct writes a single struct of type `T`.
+// write_struct writes a single plain-data struct of type `T`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) write_struct[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -590,7 +595,8 @@ pub fn (mut f File) write_struct[T](t &T) ! {
 	}
 }
 
-// write_struct_at writes a single struct of type `T` at file byte offset `pos`.
+// write_struct_at writes a single plain-data struct of type `T` at file byte offset `pos`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -606,7 +612,8 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 
 // TODO: `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
-// write_raw writes a single instance of type `T`.
+// write_raw writes a single plain-data instance of type `T`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -618,7 +625,8 @@ pub fn (mut f File) write_raw[T](t &T) ! {
 	unsafe { f.write_full_buffer(t, tsize)! }
 }
 
-// write_raw_at writes a single instance of type `T` starting at file byte offset `pos`.
+// write_raw_at writes a single plain-data instance of type `T` starting at file byte offset `pos`.
+// `T` must not contain strings, dynamic arrays, maps, pointers, interfaces, or function values.
 pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()

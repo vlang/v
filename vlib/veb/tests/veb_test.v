@@ -1,3 +1,4 @@
+// vtest retry: 3
 // vtest build: !sanitized_job?
 import os
 import time

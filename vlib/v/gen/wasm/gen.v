@@ -551,11 +551,7 @@ pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	}
 	g.infix_from_typ(node.left_type, node.op)
 
-	res_typ := if node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
-		ast.bool_type
-	} else {
-		node.left_type
-	}
+	res_typ := if node.op in [.eq, .ne, .gt, .lt, .ge, .le] { ast.bool_type } else { node.left_type }
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
@@ -798,14 +794,10 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	// {method self}
 	//
 	if node.is_method {
-		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-			ast.Expr(ast.PrefixExpr{
+		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() { ast.Expr(ast.PrefixExpr{
 				op:    .amp
 				right: node.left
-			})
-		} else {
-			node.left
-		}
+			}) } else { node.left }
 		// hack alert!
 		if node.receiver_type == ast.int_literal_type && expr is ast.IntegerLiteral {
 			g.literal(expr.val, ast.i64_type)
@@ -966,7 +958,10 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			size, _ := g.pool.type_size(typ)
 
+			old_needs_address := g.needs_address
+			g.needs_address = false
 			g.expr(node.index, ast.int_type)
+			g.needs_address = old_needs_address
 
 			if !direct_array_access {
 				g.is_leaf_function = false // calls panic()

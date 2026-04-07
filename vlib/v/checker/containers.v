@@ -6,6 +6,92 @@ import v.ast
 import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
+	$if trace_ci_fixes ? {
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
+			&& c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
+			eprintln('array_init ${c.table.cur_fn.name} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} elem_pos=${node.elem_type_pos} exprs=${node.exprs.len} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+		}
+	}
+	is_inferred_array_literal := node.exprs.len > 0 && !node.is_fixed && !node.has_cap
+		&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
+		&& node.generic_typ == 0 && node.generic_elem_type == 0
+	if c.has_active_generic_recheck_context() {
+		is_untyped_empty_array := node.exprs.len == 0 && !node.is_fixed && !node.has_cap
+			&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
+		$if trace_ci_fixes ? {
+			if c.file.path.contains('/eventbus/') {
+				eprintln('array_init file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } {
+					'<none>'
+				} else {
+					c.table.cur_fn.name
+				}} active=${c.has_active_generic_recheck_context()} expected=${c.table.type_to_str(c.expected_type)} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} empty=${is_untyped_empty_array}')
+			}
+		}
+		if node.generic_typ == 0 && node.typ != ast.void_type
+			&& (node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)) {
+			node.generic_typ = node.typ
+		}
+		if node.generic_elem_type == 0 && node.elem_type != ast.void_type
+			&& (node.elem_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(node.elem_type)) {
+			node.generic_elem_type = node.elem_type
+		}
+		if (node.typ == ast.void_type || is_untyped_empty_array) && c.expected_type != ast.void_type {
+			expected_array_typ := c.recheck_concrete_type(c.expected_type.clear_option_and_result())
+			expected_array_sym := c.table.final_sym(expected_array_typ)
+			match expected_array_sym.info {
+				ast.Array {
+					node.typ = expected_array_typ
+					node.elem_type = expected_array_sym.info.elem_type
+				}
+				ast.ArrayFixed {
+					node.typ = expected_array_typ
+					node.elem_type = expected_array_sym.info.elem_type
+				}
+				else {}
+			}
+			$if trace_ci_fixes ? {
+				if c.file.path.contains('/eventbus/') {
+					eprintln('array_init expected apply expected=${c.table.type_to_str(expected_array_typ)} new_typ=${c.table.type_to_str(node.typ)} new_elem=${c.table.type_to_str(node.elem_type)}')
+				}
+			}
+		}
+		base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
+		base_elem_type := if node.generic_elem_type != 0 {
+			node.generic_elem_type
+		} else {
+			node.elem_type
+		}
+		if base_node_typ != ast.void_type {
+			resolved_node_typ := c.recheck_concrete_type(base_node_typ)
+			if resolved_node_typ != 0 && resolved_node_typ != ast.void_type {
+				node.typ = resolved_node_typ
+			}
+		}
+		if base_elem_type != ast.void_type {
+			resolved_elem_type := c.recheck_concrete_type(base_elem_type)
+			if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
+				node.elem_type = resolved_elem_type
+			}
+		}
+	}
+	if c.has_active_generic_recheck_context() && node.exprs.len > 0 && !node.is_fixed {
+		node.expr_types = []
+		node.init_type = ast.void_type
+		node.has_callexpr = false
+		if node.typ == ast.void_type || node.elem_type == ast.void_type || is_inferred_array_literal
+			|| node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)
+			|| node.elem_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(node.elem_type) {
+			node.typ = ast.void_type
+			node.elem_type = ast.void_type
+		}
+		$if trace_ci_fixes ? {
+			if c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
+				eprintln('array_init reset ${c.table.cur_fn.name} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+			}
+		}
+	}
 	mut elem_type := ast.void_type
 	unwrap_elem_type := c.unwrap_generic(node.elem_type)
 	if node.typ.has_flag(.generic) {
@@ -118,6 +204,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.error('invalid array element: ${err.msg()}', expr.pos())
 				}
 				node.expr_types << typ
+			}
+		}
+		// Resolve generic array type to concrete when inside generic function
+		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
+			resolved := c.recheck_concrete_type(node.typ)
+			if resolved != node.typ && !resolved.has_flag(.generic) {
+				return resolved
 			}
 		}
 		return node.typ
@@ -316,17 +409,10 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
 	mut expected_elem_type := node.elem_type
 	if node.elem_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
-		if c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-			expr := node.init_expr
-			if expr is ast.CallExpr {
-				if func := c.table.find_fn(expr.name) {
-					if !func.return_type.has_flag(.generic) {
-						expected_elem_type = c.table.unwrap_generic_type(node.elem_type,
-							c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-					}
-				}
-			}
+		generic_names := c.effective_fn_generic_names(c.table.cur_fn)
+		if generic_names.len > 0 && c.table.cur_concrete_types.len == generic_names.len {
+			expected_elem_type = c.table.unwrap_generic_type(node.elem_type, generic_names,
+				c.table.cur_concrete_types)
 		}
 	}
 	c.expected_type = expected_elem_type
@@ -504,6 +590,16 @@ fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
 }
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 && node.typ != 0
+		&& c.expected_type != ast.void_type {
+		expected_map_type := c.expected_type.clear_option_and_result()
+		if c.table.sym(expected_map_type).kind == .map && node.typ != expected_map_type
+			&& !expected_map_type.has_flag(.generic) {
+			node.typ = expected_map_type
+			node.key_type = 0
+			node.value_type = 0
+		}
+	}
 	// `map = {}`
 	if node.keys.len == 0 && node.vals.len == 0 && !node.has_update_expr && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)
@@ -532,6 +628,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
+		start_errors := c.nr_errors
 		if node.typ.has_flag(.generic) {
 			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
 		}
@@ -570,11 +667,19 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				node.pos)
 			c.error('cannot use type `any` here', node.pos)
 		}
+		needs_explicit_key_check := c.expected_type == ast.void_type
+			|| c.expected_type.clear_option_and_result() != node.typ
+		if needs_explicit_key_check && c.nr_errors == start_errors && info.key_type != ast.void_type
+			&& !info.key_type.has_flag(.generic) && !c.table.supports_map_key_type(info.key_type) {
+			c.error('map key type `${c.table.sym(info.key_type).name}` not supported',
+				node.pos)
+		}
 		return node.typ
 	}
 
 	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
 		mut map_type := ast.void_type
+		start_errors := c.nr_errors
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
 			&& c.expected_type.has_flag(.generic))
@@ -623,6 +728,11 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		}
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
+		if c.nr_errors == start_errors && map_key_type != ast.void_type
+			&& !map_key_type.has_flag(.generic) && !c.table.supports_map_key_type(map_key_type) {
+			c.error('map key type `${c.table.sym(map_key_type).name}` not supported',
+				node.pos)
+		}
 
 		node.typ = ast.new_type(c.table.find_or_register_map(map_key_type, map_val_type))
 		node.key_type = map_key_type
@@ -836,7 +946,17 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		}
 	}
 	if left_value_sym.kind == .interface {
-		if right_final_sym.kind != .array {
+		right_is_interface_value := c.table.does_type_implement_interface(c.unwrap_generic(right_type),
+			left_value_type)
+		if right_is_interface_value {
+			if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
+				&& right_sym.kind != .interface {
+				c.mark_as_referenced(mut &node.right, true)
+			}
+		} else if right_final_sym.kind == .array {
+			// []Animal << []Cat
+			c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
+		} else {
 			// []Animal << Cat
 			if c.type_implements(right_type, left_value_type, right_pos) {
 				if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
@@ -844,22 +964,20 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 					c.mark_as_referenced(mut &node.right, true)
 				}
 			}
-		} else {
-			// []Animal << []Cat
-			c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
 		}
 		return ast.void_type
 	} else if left_value_sym.kind == .sum_type {
-		if right_sym.kind != .array {
-			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(c.unwrap_generic(right_type))) {
-				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
-			}
-		} else {
-			right_value_type := c.table.value_type(c.unwrap_generic(right_type))
-			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
-				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+		base_right_type := c.unwrap_generic(right_type)
+		if c.check_types(base_right_type, left_value_type) {
+			return ast.void_type
+		}
+		if right_sym.kind == .array {
+			right_value_type := c.table.value_type(base_right_type)
+			if c.check_types(right_value_type, left_value_type) {
+				return ast.void_type
 			}
 		}
+		c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 		return ast.void_type
 	}
 	// []T << T or []T << []T

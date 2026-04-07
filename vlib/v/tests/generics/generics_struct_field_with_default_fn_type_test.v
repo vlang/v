@@ -18,6 +18,15 @@ fn default_cb[T](x T) u32 {
 	return 22
 }
 
+type DefaultFnSumType[T] = DefaultFnGeneric[T] | T
+
+pub struct DefaultFnGeneric[T] {
+pub:
+	handler fn (T) = default_handler[T]
+}
+
+fn default_handler[T](data T) {}
+
 fn test_generic_struct_field_with_default_fn_type() {
 	filter1 := BloomFilter1[int]{}
 	println(filter1)
@@ -26,4 +35,12 @@ fn test_generic_struct_field_with_default_fn_type() {
 	filter2 := BloomFilter2[int]{}
 	println(filter2.hash_func(11))
 	assert filter2.hash_func(11) == 22
+}
+
+fn test_generic_sumtype_default_fn_type() {
+	value := DefaultFnSumType[int]{}
+	assert value is DefaultFnGeneric[int]
+	if value is DefaultFnGeneric[int] {
+		value.handler(1)
+	}
 }

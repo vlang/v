@@ -53,7 +53,7 @@ fn C.zip_entries_total(&Zip) i32
 
 fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) i32
 
-fn cb_zip_extract(filename &&char, arg &&char) int {
+fn cb_zip_extract(_filename &&char, _arg &&char) int {
 	return 0
 }
 

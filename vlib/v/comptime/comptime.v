@@ -454,6 +454,8 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.StringInterLiteral {
 			node.exprs = c.exprs(mut node.exprs)
+			node.fwidth_exprs = c.exprs(mut node.fwidth_exprs)
+			node.precision_exprs = c.exprs(mut node.precision_exprs)
 		}
 		ast.StructInit {
 			node.update_expr = c.expr(mut node.update_expr)

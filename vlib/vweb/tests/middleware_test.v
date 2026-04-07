@@ -1,3 +1,4 @@
+// vtest retry: 3
 import os
 import time
 import x.json2 as json

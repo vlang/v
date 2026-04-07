@@ -217,7 +217,7 @@ fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name st
 	g.definitions.writeln('}')
 }
 
-fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_option(typ ast.Type, _styp string, str_fn_name string) {
 	parent_type := typ.clear_flag(.option)
 	sym := g.table.sym(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
@@ -245,7 +245,7 @@ fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name strin
 	g.definitions.writeln('}')
 }
 
-fn (mut g JsGen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_alias(info ast.Alias, _styp string, str_fn_name string) {
 	parent_str_fn_name := g.get_str_fn(info.parent_type)
 	g.definitions.writeln('function ${str_fn_name}(it) { return indent_${str_fn_name}(it, 0); }')
 
@@ -257,7 +257,7 @@ fn (mut g JsGen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name stri
 	g.definitions.writeln('}')
 }
 
-fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, _styp string, str_fn_name string) {
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function ${str_fn_name}(a) {')
 	fn_builder.writeln('\tlet sb = strings__new_builder(${info.types.len} * 10);')
@@ -377,7 +377,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 	g.definitions.writeln(fn_builder.str())
 }
 
-fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, _styp string, str_fn_name string) {
 	g.definitions.writeln('function ${str_fn_name}(x) { return indent_${str_fn_name}(x, 0); }')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function indent_${str_fn_name}(x, indent_count) {')
@@ -430,17 +430,17 @@ fn (mut g JsGen) fn_decl_str(info ast.FnType) string {
 	return fn_str
 }
 
-fn (mut g JsGen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_fn_type(info ast.FnType, _styp string, str_fn_name string) {
 	g.definitions.writeln('function ${str_fn_name}() { return new string("${g.fn_decl_str(info)}");}')
 }
 
-fn (mut g JsGen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_chan(info ast.Chan, _styp string, str_fn_name string) {
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
 
 	g.definitions.writeln('function ${str_fn_name}(x) { return sync__Channel_auto_str(x, new string("${elem_type_name}")); }')
 }
 
-fn (mut g JsGen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_thread(info ast.Thread, _styp string, str_fn_name string) {
 	ret_type_name := util.strip_main_name(g.table.get_type_name(info.return_type))
 
 	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread(${ret_type_name})");}')
@@ -462,7 +462,7 @@ fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (stri
 	return '', ''
 }
 
-fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_array(info ast.Array, _styp string, str_fn_name string) {
 	mut typ := info.elem_type
 	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
@@ -522,7 +522,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 	g.definitions.writeln('}')
 }
 
-fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, _styp string, str_fn_name string) {
 	mut typ := info.elem_type
 	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
@@ -576,7 +576,7 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 	g.definitions.writeln('}')
 }
 
-fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
+fn (mut g JsGen) gen_str_for_map(info ast.Map, _styp string, str_fn_name string) {
 	mut key_typ := info.key_type
 	mut key_sym := g.table.sym(key_typ)
 	if mut key_sym.info is ast.Alias {

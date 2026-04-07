@@ -519,7 +519,7 @@ fn x11_release_error_handler() {
 	C.XSetErrorHandler(unsafe { nil })
 }
 
-fn x11_error_handler(display &C.Display, event voidptr) int {
+fn x11_error_handler(_display &C.Display, _event voidptr) int {
 	// XErrorEvent.error_code is at a known offset
 	// For simplicity, just set a non-zero error code
 	g_sapp_state.x11.error_code = 1
@@ -1285,7 +1285,7 @@ fn x11_lock_mouse(do_lock bool) {
 
 // === Clipboard ===
 
-fn x11_set_clipboard_string(str &char) {
+fn x11_set_clipboard_string(_str &char) {
 	if !g_sapp_state.clipboard.enabled || g_sapp_state.clipboard.buffer == unsafe { nil } {
 		return
 	}

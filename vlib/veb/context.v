@@ -112,8 +112,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	} $else {
 		ctx.res.body = response.clone()
 	}
-	// set Content-Type and Content-Length headers
-	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
+	// Prefer explicit overrides from Context state or a pre-set response header.
+	mut custom_mimetype := ctx.content_type
+	if custom_mimetype.len == 0 {
+		custom_mimetype = ctx.res.header.get(.content_type) or { mimetype }
+	}
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
@@ -147,6 +150,14 @@ pub fn (mut ctx Context) html(s string) Result {
 // Response with `s` as payload and content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	return ctx.send_response_to_client('text/plain', s)
+}
+
+fn (mut ctx Context) set_static_compression_config(enable_gzip bool, enable_zstd bool, enable_compression bool, max_size int, mime_types []string) {
+	ctx.enable_static_gzip = enable_gzip
+	ctx.enable_static_zstd = enable_zstd
+	ctx.enable_static_compression = enable_compression
+	ctx.static_compression_max_size = max_size
+	ctx.static_compression_mime_types = mime_types
 }
 
 // Response with json_s as payload and content-type `application/json`

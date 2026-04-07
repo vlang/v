@@ -103,7 +103,7 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	g.write32(0) // flags
 }
 
-fn (mut g Gen) macho_header(ncmds i32, bintype i32) i32 {
+fn (mut g Gen) macho_header(ncmds i32, _bintype i32) i32 {
 	g.write32(i32(0xfeedfacf)) // MH_MAGIC_64
 	if g.pref.arch == .arm64 {
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
@@ -264,7 +264,7 @@ fn (mut g Gen) get_pagesize() i32 {
 	return 0x1000 // 4KB
 }
 
-fn (mut g Gen) write_nulls(len i32) {
+fn (mut g Gen) write_nulls(_len i32) {
 	pad := g.get_pagesize() - i32(g.buf.len)
 	for _ in 0 .. pad {
 		g.write8(0)

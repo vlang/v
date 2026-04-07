@@ -1,0 +1,27 @@
+vlib/v/checker/tests/os_file_raw_io_unsupported_type_err.vv:14:17: error: `os.File.write_struct` only supports plain data types; `Options` contains field `command` of type `string`
+   12 |         bins:    [2, 16]
+   13 |     }
+   14 |     f.write_struct(opts) or { panic(err) }
+      |                    ~~~~
+   15 |     f.write_raw(opts) or { panic(err) }
+   16 |     mut read_opts := Options{}
+vlib/v/checker/tests/os_file_raw_io_unsupported_type_err.vv:15:14: error: `os.File.write_raw` only supports plain data types; `Options` contains field `command` of type `string`
+   13 |     }
+   14 |     f.write_struct(opts) or { panic(err) }
+   15 |     f.write_raw(opts) or { panic(err) }
+      |                 ~~~~
+   16 |     mut read_opts := Options{}
+   17 |     f.read_struct(mut read_opts) or { panic(err) }
+vlib/v/checker/tests/os_file_raw_io_unsupported_type_err.vv:17:20: error: `os.File.read_struct` only supports plain data types; `Options` contains field `command` of type `string`
+   15 |     f.write_raw(opts) or { panic(err) }
+   16 |     mut read_opts := Options{}
+   17 |     f.read_struct(mut read_opts) or { panic(err) }
+      |                       ~~~~~~~~~
+   18 |     _ = f.read_raw[Options]() or { panic(err) }
+   19 | }
+vlib/v/checker/tests/os_file_raw_io_unsupported_type_err.vv:18:8: error: `os.File.read_raw` only supports plain data types; `Options` contains field `command` of type `string`
+   16 |     mut read_opts := Options{}
+   17 |     f.read_struct(mut read_opts) or { panic(err) }
+   18 |     _ = f.read_raw[Options]() or { panic(err) }
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   19 | }

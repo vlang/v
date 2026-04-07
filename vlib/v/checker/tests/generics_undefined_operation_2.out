@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generics_undefined_operation_2.vv:23:18: error: undefined operation `&INode` < `&INode`
+vlib/v/checker/tests/generics_undefined_operation_2.vv:23:18: error: mismatched types `INode` and `&INode`
    21 | fn (mut h IHeap[T]) percolateup(hl u64, mut element T) {
    22 |     mut hole := hl
    23 |     for hole > 1 && element < h.array[hole / 2] {

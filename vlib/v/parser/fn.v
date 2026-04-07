@@ -54,7 +54,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	args := p.call_args()
 	if p.tok.kind != .rpar && !p.pref.is_vls {
 		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
-		if args.len < params.len && p.prev_tok.kind != .comma {
+		min_required_params := min_required_call_args(params)
+		if args.len < min_required_params && p.prev_tok.kind != .comma {
 			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
 			p.unexpected_with_pos(pos, expecting: '`,`')
 		} else if args.len > params.len {
@@ -123,6 +124,23 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
 	}
+}
+
+fn min_required_call_args(params []ast.Param) int {
+	if params.len == 0 {
+		return 0
+	}
+	mut required := params.len
+	mut idx := params.len - 1
+	for idx >= 0 {
+		if params[idx].typ.has_flag(.option) {
+			required--
+			idx--
+			continue
+		}
+		break
+	}
+	return required
 }
 
 fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
@@ -592,11 +610,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
-	mut comments_before_key_fn := if p.pref.is_vls {
-		p.cur_comments.clone()
-	} else {
-		[]
-	}
+	mut comments_before_key_fn := if p.pref.is_vls { p.cur_comments.clone() } else { [] }
 	comments << p.eat_comments()
 	p.open_scope()
 	defer {
@@ -744,11 +758,22 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {
 		sym := p.table.sym(rec.typ)
-		if sym.info is ast.Struct {
-			decl_generic_names := p.types_to_names(sym.info.generic_types, p.tok.pos(),
-				'sym.info.generic_types') or { return ast.FnDecl{
-				scope: unsafe { nil }
-			} }
+		mut rec_generic_types := []ast.Type{}
+		match sym.info {
+			ast.Struct {
+				rec_generic_types = sym.info.generic_types.clone()
+			}
+			ast.Interface {
+				rec_generic_types = sym.info.generic_types.clone()
+			}
+			else {}
+		}
+		if rec_generic_types.len > 0 {
+			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(), 'rec_generic_types') or {
+				return ast.FnDecl{
+					scope: unsafe { nil }
+				}
+			}
 			fn_generic_names := generic_names.clone()
 			generic_names = p.table.generic_type_names(rec.typ)
 			if decl_generic_names.len != generic_names.len {
@@ -851,6 +876,7 @@ run them via `v file.v` instead',
 			p.scope.register(ast.Var{
 				name:          param.name
 				typ:           param.typ
+				generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
 				is_mut:        param.is_mut
 				is_auto_deref: param.is_mut
 				is_stack_obj:  is_stack_obj
@@ -1209,6 +1235,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.scope.register(ast.Var{
 			name:          param.name
 			typ:           param.typ
+			generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
 			is_mut:        param.is_mut
 			is_auto_deref: param.is_mut
 			pos:           param.pos
@@ -1706,9 +1733,8 @@ fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Pos) {
 	if sym.kind == .generic_inst {
 		sym = p.table.type_symbols[(sym.info as ast.GenericInst).parent_idx]
 	}
-	if sym.kind !in [.array, .struct, .map, .placeholder] && !typ.is_ptr() {
-		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
-			pos)
+	if sym.kind == .function {
+		p.error_with_pos('shared arguments are not allowed for function types', pos)
 	}
 }
 

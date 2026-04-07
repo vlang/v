@@ -4,3 +4,15 @@ vlib/v/checker/tests/cast_generic_err.vv:2:7: error: cannot cast literal value t
       |          ~~~~
     3 | }
     4 |
+vlib/v/checker/tests/cast_generic_err.vv:2:7: error: cannot cast literal value to []u8 type
+    1 | fn decode[T]() {
+    2 |     _ := T(0)
+      |          ~~~~
+    3 | }
+    4 |
+vlib/v/checker/tests/cast_generic_err.vv:2:7: error: cannot cast literal value to map[int]u8 type
+    1 | fn decode[T]() {
+    2 |     _ := T(0)
+      |          ~~~~
+    3 | }
+    4 |

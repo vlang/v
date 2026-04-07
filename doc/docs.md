@@ -54,6 +54,24 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
+## Project-local compiler versions with `.vvmrc`
+
+If a project contains a `.vvmrc` file, commands like `v run .`, `v run file.v`,
+or `v file.v` will try to find and delegate to the requested V compiler version.
+This makes it easier to keep a project pinned to a known compiler release.
+
+The file should contain one version per project, for example:
+
+```text
+0.4.12
+```
+
+Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
+`current` keep using the currently running compiler.
+
+V searches for `.vvmrc` from the target path upward and stops at repository and
+project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
@@ -487,6 +505,10 @@ fn main() {
 }
 ```
 
+The compiler also warns about obviously constant conditions, for example
+self-comparisons like `if x == x { ... }` or `match` branches that can never be
+reached. These warnings help catch redundant checks and dead branches early.
+
 To ignore values returned by a function `_` can be used
 ```v
 fn foo() (int, int) {
@@ -722,11 +744,13 @@ To use a format specifier, follow this pattern:
   >
   > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
-- width: may be an integer value describing the minimum width of total field to output.
+- width: may be an integer value describing the minimum width of total field to output. For
+  runtime widths, wrap an `int` expression in parentheses, for example `${name:(width)}`.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point without any insignificant trailing zeros. If displaying insignificant zero's is desired,
   append a `f` specifier to the precision value (see examples below). Applies only to float
-  variables and is ignored for integer variables.
+  variables and is ignored for integer variables. Runtime precisions use the same parenthesized
+  form, for example `${value:(width).(precision)f}`.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent
@@ -3622,6 +3646,14 @@ To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
 
+Numeric aliases use ordinary conversions for initialization:
+
+```v
+type Decimal = f64
+
+amount := Decimal(0.0)
+```
+
 ### Enums
 
 An enum is a group of constant integer values, each having its own name,
@@ -3962,6 +3994,22 @@ fn main() {
 }
 ```
 
+Smart casting an interface value to `T` also means the smart-casted variable has type `&T`
+inside that branch. This matters when returning the value from a generic function:
+
+```v oksyntax
+fn get_component[T](entity Entity) !T {
+	for component in entity.components {
+		if component is T {
+			return *component
+		}
+	}
+	return error('Entity does not have component')
+}
+```
+
+If you want to return the smart-casted pointer itself, use `!&T` as the return type instead.
+
 ```v
 // interface-example.4
 interface IFoo {
@@ -4193,6 +4241,23 @@ if mut w is Mars {
 
 Otherwise `w` would keep its original type.
 > This works for both simple variables and complex expressions like `user.name`
+> and `values[i]`.
+
+Smart casts also work on indexed expressions in `match` branches:
+
+```v oksyntax
+type Entry = int | string
+
+values := [Entry('v')]
+match values[0] {
+	string {
+		assert values[0] == 'v'
+	}
+	else {
+		assert false
+	}
+}
+```
 
 #### Matching sum types
 
@@ -4304,6 +4369,21 @@ fn main() {
 	my_optional_int := ?int(none)
 	my_optional_string := ?string(none)
 	my_optional_user := ?User(none)
+}
+```
+
+Trailing option-typed parameters can also be omitted in function calls.
+When they are not passed, V supplies `none`:
+
+```v ignore
+fn connect(url string, timeout ?int) {
+	actual_timeout := timeout or { 1000 }
+	println('${url} -> ${actual_timeout}')
+}
+
+fn main() {
+	connect('https://vlang.io')
+	connect('https://vlang.io', 5000)
 }
 ```
 

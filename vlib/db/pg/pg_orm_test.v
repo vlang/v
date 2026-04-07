@@ -36,6 +36,11 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+struct TestInsertDefaultValues {
+	id      int    @[primary; sql: serial]
+	example string @[default: '']
+}
+
 @[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
@@ -243,6 +248,31 @@ fn test_pg_orm() {
 		drop table TestDefaultAttribute
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
+
+	/** test inserting only default values
+	*/
+	sql db {
+		create table TestInsertDefaultValues
+	}!
+
+	model_default_values := TestInsertDefaultValues{
+		example: ''
+	}
+
+	sql db {
+		insert model_default_values into TestInsertDefaultValues
+	}!
+
+	inserted_default_values := sql db {
+		select from TestInsertDefaultValues
+	}!
+
+	sql db {
+		drop table TestInsertDefaultValues
+	}!
+
+	assert inserted_default_values.len == 1
+	assert inserted_default_values[0].example == ''
 
 	/** test comment attribute
 	*/

@@ -22,6 +22,11 @@ struct TestDefaultAttribute {
 	created_at2 ?string @[default: 'CURRENT_TIMESTAMP']
 }
 
+struct TestDurationAlias {
+	id       int @[primary; sql: serial]
+	duration time.Duration
+}
+
 struct EntityToTest {
 	id   int    @[notnull; sql_type: 'INTEGER']
 	smth string @[notnull; sql_type: 'TEXT']
@@ -228,4 +233,34 @@ fn test_get_affected_rows_count() {
 		delete from EntityToTest where id == 1
 	}!
 	assert db.get_affected_rows_count() == 1
+}
+
+fn test_sqlite_orm_supports_time_duration_alias_fields() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table TestDurationAlias
+	}!
+
+	result := db.exec('pragma table_info(TestDurationAlias);')!
+	assert result.len == 2
+	assert result[1].vals[1] == 'duration'
+	assert result[1].vals[2] == 'INTEGER'
+
+	record := TestDurationAlias{
+		duration: 3 * time.second
+	}
+
+	sql db {
+		insert record into TestDurationAlias
+	}!
+
+	rows := sql db {
+		select from TestDurationAlias limit 1
+	}!
+	assert rows.len == 1
+	assert rows[0].duration == 3 * time.second
 }

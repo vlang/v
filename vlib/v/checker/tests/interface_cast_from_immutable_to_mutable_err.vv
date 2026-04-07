@@ -1,0 +1,18 @@
+interface Interface {
+mut:
+	foo string
+}
+
+struct Struct {
+mut:
+	foo string
+}
+
+fn main() {
+	bar := Struct{
+		foo: 'hello'
+	}
+	mut foobar := Interface(bar)
+	foobar.foo = 'bye'
+	Interface(bar).foo = 'changed'
+}

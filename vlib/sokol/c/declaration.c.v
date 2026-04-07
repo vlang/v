@@ -117,4 +117,8 @@ $if !no_sokol_app ? {
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
+@[use_once]
+#define SOKOL_IMPL
+#include "util/sokol_gl.h"
+
 #include "sokol_v.post.h"

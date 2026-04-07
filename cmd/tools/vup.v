@@ -132,7 +132,7 @@ fn (app App) recompile_vup() bool {
 	return true
 }
 
-fn (app App) make(vself string) bool {
+fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
 	make_result := os.execute(make)

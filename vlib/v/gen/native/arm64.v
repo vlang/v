@@ -339,51 +339,51 @@ fn (mut c Arm64) cg_address_size() i32 {
 	return 8
 }
 
-fn (mut c Arm64) cg_gen_print(s string, fd i32) {
+fn (mut c Arm64) cg_gen_print(_s string, _fd i32) {
 	panic('Arm64.cg_gen_print() is not implemented')
 }
 
-fn (mut c Arm64) cg_gen_print_reg(r Register, n i32, fd i32) {
+fn (mut c Arm64) cg_gen_print_reg(_r Register, _n i32, _fd i32) {
 	panic('Arm64.cg_gen_print_reg() is not implemented')
 }
 
-fn (mut c Arm64) cg_learel(reg Register, val i32) {
+fn (mut c Arm64) cg_learel(_reg Register, _val i32) {
 	panic('Arm64.cg_learel() not implemented')
 }
 
-fn (mut c Arm64) cg_lea_var_to_reg(reg Register, var_offset i32) {
+fn (mut c Arm64) cg_lea_var_to_reg(_reg Register, _var_offset i32) {
 	panic('Arm64.cg_lea_var_to_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_gen_match_expr(expr ast.MatchExpr) {
+fn (mut c Arm64) cg_gen_match_expr(_expr ast.MatchExpr) {
 	panic('Arm64.cg_gen_match_expr() not implemented')
 }
 
-fn (mut c Arm64) cg_convert_int_to_string(a Register, b Register) {
+fn (mut c Arm64) cg_convert_int_to_string(_a Register, _b Register) {
 	panic('Arm64.cg_convert_int_to_string() not implemented')
 }
 
-fn (mut c Arm64) cg_convert_bool_to_string(r Register) {
+fn (mut c Arm64) cg_convert_bool_to_string(_r Register) {
 	panic('Arm64.cg_convert_bool_to_string() not implemented')
 }
 
-fn (mut c Arm64) cg_reverse_string(r Register) {
+fn (mut c Arm64) cg_reverse_string(_r Register) {
 	panic('Arm64.cg_reverse_string() not implemented')
 }
 
-fn (mut c Arm64) cg_mov_var_to_reg(reg Register, var Var, config VarConfig) {
+fn (mut c Arm64) cg_mov_var_to_reg(_reg Register, _var Var, _config VarConfig) {
 	panic('Arm64.cg_mov_var_to_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_mov_reg(r1 Register, r2 Register) {
+fn (mut c Arm64) cg_mov_reg(_r1 Register, _r2 Register) {
 	panic('Arm64.cg_mov_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_mov64(r Register, val Number) {
+fn (mut c Arm64) cg_mov64(_r Register, _val Number) {
 	panic('Arm64.cg_mov64() not implemented')
 }
 
-fn (mut c Arm64) cg_convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig) {
+fn (mut c Arm64) cg_convert_rune_to_string(_r Register, _buffer i32, _var Var, _config VarConfig) {
 	panic('Arm64.cg_convert_rune_to_string() not implemented')
 }
 
@@ -401,35 +401,35 @@ fn (mut c Arm64) cg_ret() {
 	c.g.println('ret')
 }
 
-fn (mut c Arm64) cg_assign_stmt(node ast.AssignStmt) {
+fn (mut c Arm64) cg_assign_stmt(_node ast.AssignStmt) {
 	panic('Arm64.cg_assign_stmt() not implemented')
 }
 
-fn (mut c Arm64) cg_builtin_decl(builtin BuiltinFn) {
+fn (mut c Arm64) cg_builtin_decl(_builtin BuiltinFn) {
 	panic('Arm64.cg_builtin_decl() not implemented')
 }
 
-fn (mut c Arm64) cg_infix_expr(node ast.InfixExpr) {
+fn (mut c Arm64) cg_infix_expr(_node ast.InfixExpr) {
 	panic('Arm64.cg_infix_expr() not implemented')
 }
 
-fn (mut c Arm64) cg_return_stmt(node ast.Return) {
+fn (mut c Arm64) cg_return_stmt(_node ast.Return) {
 	panic('Arm64.cg_return_stmt() not implemented')
 }
 
-fn (mut c Arm64) cg_gen_cast_expr(expr ast.CastExpr) {
+fn (mut c Arm64) cg_gen_cast_expr(_expr ast.CastExpr) {
 	panic('Arm64.cg_gen_cast_expr() not implemented')
 }
 
-fn (mut c Arm64) cg_prefix_expr(expr ast.PrefixExpr) {
+fn (mut c Arm64) cg_prefix_expr(_expr ast.PrefixExpr) {
 	panic('Arm64.cg_prefix_expr() not implemented')
 }
 
-fn (mut c Arm64) cg_call_builtin(name Builtin) i64 {
+fn (mut c Arm64) cg_call_builtin(_name Builtin) i64 {
 	panic('Arm64.cg_call_builtin() not implemented')
 }
 
-fn (mut c Arm64) cg_gen_asm_stmt(asm_node ast.AsmStmt) {
+fn (mut c Arm64) cg_gen_asm_stmt(_asm_node ast.AsmStmt) {
 	panic('Arm64.cg_gen_asm_stmt() not implemented')
 }
 
@@ -438,126 +438,126 @@ fn (mut c Arm64) cg_infloop() {
 	c.g.println('jmp $$')
 }
 
-fn (mut c Arm64) cg_jmp_back(start i64) {
+fn (mut c Arm64) cg_jmp_back(_start i64) {
 	panic('Arm64.cg_jmp_back() not implemented')
 }
 
-fn (mut c Arm64) cg_init_struct(var Var, init ast.StructInit) {
+fn (mut c Arm64) cg_init_struct(_var Var, _init ast.StructInit) {
 	panic('Arm64.cg_init_struct() not implemented')
 }
 
-fn (mut c Arm64) cg_load_fp_var(var Var, config VarConfig) {
+fn (mut c Arm64) cg_load_fp_var(_var Var, _config VarConfig) {
 	panic('Arm64.cg_load_fp_var() not implemented')
 }
 
-fn (mut c Arm64) cg_load_fp(val f64) {
+fn (mut c Arm64) cg_load_fp(_val f64) {
 	panic('Arm64.cg_load_fp() not implemented')
 }
 
-fn (mut c Arm64) for_in_stmt(node ast.ForInStmt) {
+fn (mut c Arm64) for_in_stmt(_node ast.ForInStmt) {
 	panic('Arm64.for_in_stmt() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_zero(reg Register) {
+fn (mut c Arm64) cg_cmp_zero(_reg Register) {
 	panic('Arm64.cg_cmp_zero() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_var_reg(var Var, reg Register, config VarConfig) {
+fn (mut c Arm64) cg_cmp_var_reg(_var Var, _reg Register, _config VarConfig) {
 	panic('Arm64.cg_cmp_var_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_var(var Var, val i32, config VarConfig) {
+fn (mut c Arm64) cg_cmp_var(_var Var, _val i32, _config VarConfig) {
 	panic('Arm64.cg_cmp_var() not implemented')
 }
 
-fn (mut c Arm64) cg_dec_var(var Var, config VarConfig) {
+fn (mut c Arm64) cg_dec_var(_var Var, _config VarConfig) {
 	panic('Arm64.cg_dec_var() not implemented')
 }
 
-fn (mut c Arm64) cg_inc_var(var Var, config VarConfig) {
+fn (mut c Arm64) cg_inc_var(_var Var, _config VarConfig) {
 	panic('Arm64.cg_inc_var() not implemented')
 }
 
-fn (mut c Arm64) cg_cjmp(op JumpOp) i32 {
+fn (mut c Arm64) cg_cjmp(_op JumpOp) i32 {
 	panic('Arm64.cg_cjmp() not implemented')
 }
 
-fn (mut c Arm64) cg_jmp(addr i32) i32 {
+fn (mut c Arm64) cg_jmp(_addr i32) i32 {
 	panic('Arm64.cg_jmp() not implemented')
 }
 
-fn (mut c Arm64) cg_gen_syscall(node ast.CallExpr) {
+fn (mut c Arm64) cg_gen_syscall(_node ast.CallExpr) {
 	panic('Arm64.cg_gen_syscall() not implemented')
 }
 
-fn (mut c Arm64) cg_movabs(reg Register, val i64) {
+fn (mut c Arm64) cg_movabs(_reg Register, _val i64) {
 	panic('Arm64.cg_movabs() not implemented')
 }
 
-fn (mut c Arm64) gen_selector_expr(expr ast.SelectorExpr) {
+fn (mut c Arm64) gen_selector_expr(_expr ast.SelectorExpr) {
 	panic('Arm64.gen_selector_expr() not implemented')
 }
 
-fn (mut c Arm64) cg_mov_reg_to_var(var Var, reg Register, config VarConfig) {
+fn (mut c Arm64) cg_mov_reg_to_var(_var Var, _reg Register, _config VarConfig) {
 	panic('Arm64.cg_mov_reg_to_var() not implemented')
 }
 
-fn (mut c Arm64) cg_mov_int_to_var(var Var, integer i32, config VarConfig) {
+fn (mut c Arm64) cg_mov_int_to_var(_var Var, _integer i32, _config VarConfig) {
 	panic('Arm64.cg_mov_int_to_var() not implemented')
 }
 
-fn (mut c Arm64) cg_call(addr i32) i64 {
+fn (mut c Arm64) cg_call(_addr i32) i64 {
 	panic('Arm64.cg_call() not implemented')
 }
 
-fn (mut c Arm64) cg_zero_fill(size i32, var LocalVar) {
+fn (mut c Arm64) cg_zero_fill(_size i32, _var LocalVar) {
 	panic('Arm64.cg_zero_fill() not implemented')
 }
 
-fn (mut c Arm64) cg_call_addr_at(addr i32, at i64) i64 {
+fn (mut c Arm64) cg_call_addr_at(_addr i32, _at i64) i64 {
 	panic('Arm64.cg_call_addr_at() not implemented')
 }
 
-fn (mut c Arm64) cg_push(r Register) {
+fn (mut c Arm64) cg_push(_r Register) {
 	panic('Arm64.cg_push() not implemented')
 }
 
-pub fn (mut c Arm64) cg_add(r Register, val i32) {
+pub fn (mut c Arm64) cg_add(_r Register, _val i32) {
 	panic('Arm64.cg_add() not implemented')
 }
 
-pub fn (mut c Arm64) cg_add_reg(r Register, r2 Register) {
+pub fn (mut c Arm64) cg_add_reg(_r Register, _r2 Register) {
 	panic('Arm64.cg_add_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_pop(r Register) {
+fn (mut c Arm64) cg_pop(_r Register) {
 	panic('Arm64.cg_pop() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_reg(reg Register, reg2 Register) {
+fn (mut c Arm64) cg_cmp_reg(_reg Register, _reg2 Register) {
 	panic('Arm64.cg_add_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_create_string_struct(typ ast.Type, name string, str string) i32 {
+fn (mut c Arm64) cg_create_string_struct(_typ ast.Type, _name string, _str string) i32 {
 	panic('Arm64.cg_create_string_struct() not implemented')
 }
 
-fn (mut c Arm64) cg_mov_deref(reg Register, regptr Register, typ ast.Type) {
+fn (mut c Arm64) cg_mov_deref(_reg Register, _regptr Register, _typ ast.Type) {
 	panic('Arm64.cg_mov_deref() not implemented')
 }
 
-fn (mut c Arm64) cg_patch_relative_jmp(pos i32, addr i64) {
+fn (mut c Arm64) cg_patch_relative_jmp(_pos i32, _addr i64) {
 	panic('Arm64.cg_patch_relative_jmp() not implemented')
 }
 
-fn (mut c Arm64) cg_mul_reg(a Register, b Register) {
+fn (mut c Arm64) cg_mul_reg(_a Register, _b Register) {
 	panic('Arm64.cg_mul_reg() not implemented')
 }
 
-fn (mut c Arm64) cg_assign_var(var IdentVar, raw_type ast.Type) {
+fn (mut c Arm64) cg_assign_var(_var IdentVar, _raw_type ast.Type) {
 	panic('Arm64.cg_assign_var() not implemented')
 }
 
-fn (mut c Arm64) cg_sub_reg(a Register, b Register) {
+fn (mut c Arm64) cg_sub_reg(_a Register, _b Register) {
 	panic('Arm64.cg_sub_reg() not implemented')
 }

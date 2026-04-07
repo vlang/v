@@ -131,7 +131,7 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 		ssl_listener.shutdown() or {}
 	}
 	ssl_params := &SslRequestParams{
-		global_app:                unsafe { global_app }
+		global_app:                unsafe { voidptr(&global_app) }
 		controllers_sorted:        controllers_sorted
 		routes:                    &routes
 		benchmark_page_generation: params.benchmark_page_generation
@@ -726,15 +726,12 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	}
 
 	// Configure static file compression settings
-	user_context.enable_static_gzip = app.enable_static_gzip
-	user_context.enable_static_zstd = app.enable_static_zstd
-	user_context.enable_static_compression = app.enable_static_compression
-	user_context.static_compression_max_size = if app.static_compression_max_size >= 0 {
+	user_context.set_static_compression_config(app.enable_static_gzip, app.enable_static_zstd,
+		app.enable_static_compression, if app.static_compression_max_size >= 0 {
 		app.static_compression_max_size
 	} else {
 		1048576 // Default: 1MB
-	}
-	user_context.static_compression_mime_types = app.static_compression_mime_types.clone()
+	}, app.static_compression_mime_types.clone())
 
 	user_context.send_file(mime_type, static_file)
 	return true

@@ -172,7 +172,7 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	return .ignore
 }
 
-fn (mut ctx Context) should_test_when_it_contains_matching_fns(path string, backend string) ShouldTestStatus {
+fn (mut ctx Context) should_test_when_it_contains_matching_fns(path string, _backend string) ShouldTestStatus {
 	if ctx.run_only.len == 0 {
 		// no filters set, so just compile and test
 		return .test

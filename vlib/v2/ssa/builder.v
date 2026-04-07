@@ -7889,11 +7889,10 @@ fn (mut b Builder) generate_wyhash_body(func_idx int) {
 	wyp0 := b.mod.get_or_add_const(i64_t, '3257665815644502181') // 0x2d358dccaa6c78a5
 	wyp1 := b.mod.get_or_add_const(i64_t, '10067880064238660809') // 0x8bb84b93962eacc9
 
-	// seed ^= wymix(seed ^ secret[0], secret[1])
-	// Since seed is always 0 in practice: seed = wymix(wyp0, wyp1)
-	// But let's be correct and use the param:
+	// wyhash hardens zero-padded inputs by folding len into the initial seed mix.
 	seed_xor_s0 := b.mod.add_instr(.xor, entry, i64_t, [param_seed, wyp0])
-	seed_mix := b.wymix_inline(entry, seed_xor_s0, wyp1)
+	seed_xor_s0_len := b.mod.add_instr(.xor, entry, i64_t, [seed_xor_s0, param_len])
+	seed_mix := b.wymix_inline(entry, seed_xor_s0_len, wyp1)
 	seed_init := b.mod.add_instr(.xor, entry, i64_t, [param_seed, seed_mix])
 
 	// Allocas for a, b, and seed (results from branches, seed updated in long path)

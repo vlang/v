@@ -278,6 +278,27 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 					unwrapped_guard_typ := branch.cond.expr_type.clear_option_and_result()
 					if w := branch.scope.find_var(var.name) {
+						$if trace_vweb_guard ? {
+							if var.name == 'params' {
+								expr_type_str := if branch.cond.expr_type == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(branch.cond.expr_type)
+								}
+								clear_type := branch.cond.expr_type.clear_option_and_result()
+								clear_type_str := if clear_type == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(clear_type)
+								}
+								old_type_str := if w.typ == 0 {
+									'<none>'
+								} else {
+									c.table.type_to_str(w.typ)
+								}
+								eprintln('if_guard scope name=${var.name} expr_type=${expr_type_str} clear=${clear_type_str} old=${old_type_str} file=${c.file.path}')
+							}
+						}
 						if var.name !in branch.scope.objects {
 							branch.scope.objects[var.name] = w
 						}
@@ -406,7 +427,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							goto end_if
 						}
 					}
-					if !c.check_types(stmt.typ, node.typ) {
+					if !c.check_types(stmt.typ, node.typ)
+						&& !c.check_types(c.unwrap_generic(stmt.typ), c.unwrap_generic(node.typ)) {
 						if node.typ == ast.void_type {
 							// first branch of if expression
 							node.is_expr = true
@@ -603,10 +625,10 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
 					node.left_type = c.type_resolver.get_type(node.left)
 					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-						scope, true, true)
+						scope, true, true, false)
 				} else {
 					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-						scope, false, true)
+						scope, false, true, false)
 				}
 			}
 		} else if node.op == .key_is {
@@ -640,6 +662,25 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				}
 			}
 			if right_type != ast.no_type {
+				$if trace_ci_fixes ? {
+					source_path := if node.pos.file_idx >= 0
+						&& node.pos.file_idx < c.table.filelist.len {
+						c.table.filelist[node.pos.file_idx]
+					} else {
+						c.file.path
+					}
+					if source_path.contains('decode_sumtype.v')
+						&& node.pos.line_nr + 1 in [12, 111, 138, 215] {
+						right_kind := match right_expr {
+							ast.Ident { 'ident:${right_expr.name}' }
+							ast.TypeNode { 'typenode:${c.table.type_to_str(right_expr.typ)}' }
+							ast.None { 'none' }
+							else { typeof(right_expr).name }
+						}
+						eprintln('if is left=${node.left} left_type=${c.table.type_to_str(node.left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(right_type)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
+							node.pos.line_nr + 1}')
+					}
+				}
 				right_sym := c.table.sym(right_type)
 				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)
@@ -685,7 +726,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 						if !skip_smartcast
 							&& (left_final_sym.kind in [.interface, .sum_type] || is_option_unwrap) {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
-								scope, is_comptime, is_option_unwrap)
+								scope, is_comptime, is_option_unwrap, false)
 						}
 					}
 				}
@@ -705,10 +746,10 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				if c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
 					first_cond.left_type = c.type_resolver.get_type(first_cond.left)
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, true, true)
+						scope, true, true, false)
 				} else {
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, false, true)
+						scope, false, true, false)
 				}
 			}
 		}

@@ -64,8 +64,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	// original is_ptr for the typ (aliased type could overwrite it)
-	is_ptr := typ.is_ptr()
+	// option_mut_param_t is pointer-like even when nr_muls == 0
+	is_ptr := typ.is_ptr() || typ.has_flag(.option_mut_param_t)
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
@@ -76,6 +76,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	use_raw_interface_smartcast_expr := is_ptr && expr is ast.Ident && expr.obj is ast.Var
+		&& (expr.obj as ast.Var).smartcasts.len > 0
+		&& (expr.obj as ast.Var).smartcasts.last().is_ptr()
+		&& (g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).typ)).kind == .interface
+		|| ((expr.obj as ast.Var).orig_type != 0
+		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface))
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
@@ -87,8 +93,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.expr(expr)
 	} else if typ == ast.bool_type {
+		g.write('(')
 		g.expr(expr)
-		g.write(' ? _S("true") : _S("false")')
+		g.write(' ? _S("true") : _S("false"))')
 	} else if sym.kind == .none || typ == ast.void_type.set_flag(.option) {
 		if expr is ast.CallExpr {
 			stmt_str := g.go_before_last_stmt()
@@ -116,8 +123,22 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
-		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
-		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+		unwrap_opt_or_res := match expr {
+			ast.CallExpr, ast.ComptimeCall, ast.ComptimeSelector, ast.InfixExpr, ast.PrefixExpr,
+			ast.SelectorExpr {
+				expr.or_block.kind != .absent
+			}
+			ast.Ident, ast.IndexExpr {
+				expr.or_expr.kind != .absent
+			}
+			else {
+				false
+			}
+		}
+		exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
+		if unwrap_opt_or_res {
+			typ = exp_typ
+		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
@@ -136,7 +157,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
-			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code} ,{.d_s = builtin__isnil(')
+			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = builtin__isnil(')
 			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
 				if temp_var_needed {
@@ -153,6 +174,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 				if temp_var_needed {
 					g.write(tmp_var)
+				} else if use_raw_interface_smartcast_expr {
+					old_inside_selector_lhs := g.inside_selector_lhs
+					g.inside_selector_lhs = true
+					g.expr(expr)
+					g.inside_selector_lhs = old_inside_selector_lhs
 				} else {
 					g.expr(expr)
 				}
@@ -192,11 +218,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 			}
 		}
-		if unwrap_option {
+		if unwrap_opt_or_res {
 			g.expr(expr)
 		} else {
 			if temp_var_needed {
 				g.write(tmp_var)
+			} else if use_raw_interface_smartcast_expr {
+				old_inside_selector_lhs := g.inside_selector_lhs
+				g.inside_selector_lhs = true
+				g.expr_with_cast(expr, typ, typ)
+				g.inside_selector_lhs = old_inside_selector_lhs
 			} else {
 				g.expr_with_cast(expr, typ, typ)
 			}
@@ -207,7 +238,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write(')')
 		if is_ptr && !is_var_mut {
-			g.write('}}}))')
+			g.write('}, 0, 0, 0}}))')
 		}
 	} else {
 		is_var_mut := expr.is_auto_deref_var()

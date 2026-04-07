@@ -1,6 +1,16 @@
 fn test_complex_map_op1() {
 	mut test_map := map[string]Point_map{}
 
+	test_map['test1'] = Point_map{
+		points: {
+			'point3': []Point{}
+		}
+	}
+	test_map['test2'] = Point_map{
+		points: {
+			'point4': []Point{}
+		}
+	}
 	test_map['test1'].points['point3'] << Point{10, 20}
 	test_map['test2'].points['point4'] << Point{50, 60}
 
@@ -16,6 +26,12 @@ fn test_complex_map_op1() {
 fn test_complex_map_op2() {
 	mut test_map := map[string]map[string][]Point{}
 
+	test_map['test1'] = {
+		'point3': []Point{}
+	}
+	test_map['test2'] = {
+		'point4': []Point{}
+	}
 	test_map['test1']['point3'] << Point{10, 20}
 	test_map['test2']['point4'] << Point{50, 60}
 

@@ -1873,22 +1873,22 @@ fn (t &Transformer) get_field_array_elem_interface_type(struct_name string, fiel
 	field_typ := t.lookup_struct_field_type(struct_name, field_name) or { return none }
 	match field_typ {
 		types.Array {
-			if field_typ.elem_type is types.Interface {
-				return field_typ.elem_type
+			et := field_typ.elem_type
+			if et is types.Interface {
+				return et
 			}
-			if field_typ.elem_type is types.Alias
-				&& field_typ.elem_type.base_type is types.Interface {
-				return field_typ.elem_type
+			if et is types.Alias && et.base_type is types.Interface {
+				return et
 			}
 		}
 		types.Alias {
 			if field_typ.base_type is types.Array {
-				if field_typ.base_type.elem_type is types.Interface {
-					return field_typ.base_type.elem_type
+				et := field_typ.base_type.elem_type
+				if et is types.Interface {
+					return et
 				}
-				if field_typ.base_type.elem_type is types.Alias
-					&& field_typ.base_type.elem_type.base_type is types.Interface {
-					return field_typ.base_type.elem_type
+				if et is types.Alias && et.base_type is types.Interface {
+					return et
 				}
 			}
 		}
@@ -1986,7 +1986,7 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 //       ((T*)_awi_tN.data)[_v_index] = init_expr  (with `index` renamed to `_v_index`)
 //   }
 //   <returns _awi_tN ident>
-fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, pos token.Pos) ast.Expr {
+fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, _pos token.Pos) ast.Expr {
 	t.temp_counter++
 	arr_name := '_awi_t${t.temp_counter}'
 	arr_ident := ast.Ident{

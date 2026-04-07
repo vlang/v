@@ -311,7 +311,11 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		}
 		node.is_name = node.field_expr.field_name == 'name'
 		if mut node.field_expr.expr is ast.Ident {
-			node.typ_key = '${node.field_expr.expr.name}.typ'
+			node.typ_key = if c.comptime.comptime_for_field_value.name != '' {
+				'${node.field_expr.expr.name}.typ|${c.comptime.comptime_for_field_value.name}'
+			} else {
+				'${node.field_expr.expr.name}.typ'
+			}
 		}
 		expr_type = c.type_resolver.get_comptime_selector_type(node, ast.void_type)
 		if expr_type != ast.void_type {
@@ -332,7 +336,10 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 }
 
 fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
-	typ := if node.typ != ast.void_type {
+	typ := if node.expr !is ast.EmptyExpr {
+		node.typ = c.expr(mut node.expr)
+		c.unwrap_generic(node.typ)
+	} else if node.typ != ast.void_type {
 		c.unwrap_generic(node.typ)
 	} else {
 		node.typ = c.expr(mut node.expr)
@@ -513,6 +520,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_variant_var = node.val_var
 			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
 			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
+			$if trace_ci_fixes ? {
+				if c.file.path.contains('decode_sumtype.v') {
+					eprintln('comptime variants val_var=${node.val_var} variant=${c.table.type_to_str(variant)} sumtype=${c.table.type_to_str(typ)}')
+				}
+			}
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
@@ -1079,7 +1091,8 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
 				if var.smartcasts.len > 0 {
-					checked_type = c.unwrap_generic(var.smartcasts.last())
+					checked_type = c.unwrap_generic(c.exposed_smartcast_type(var.orig_type,
+						var.smartcasts.last(), var.is_mut))
 				}
 			}
 			return checked_type
@@ -1458,7 +1471,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 								ast.IntegerLiteral {
 									if cond.left.field_name == 'indirections' {
 										// field.indirections, T.indirections
-										left_type := c.get_expr_type(cond.left)
+										left_type := c.get_expr_type(ast.Expr(cond.left))
 										left_muls := left_type.nr_muls()
 										match cond.op {
 											.eq {
@@ -1530,7 +1543,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 								}
 								ast.BoolLiteral {
 									// field.is_pub == true
-									l, _ := c.comptime_if_cond(mut cond.left, mut sb)
+									mut left := ast.Expr(cond.left)
+									l, _ := c.comptime_if_cond(mut left, mut sb)
 									sb.write_string(' ${cond.op} ')
 									r := (cond.right as ast.BoolLiteral).val
 									sb.write_string('${r}')
@@ -1538,7 +1552,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 									return is_true, true
 								}
 								else {
-									c.error('definition of `${cond.left}` is unknown at compile time',
+									c.error('definition of `${ast.Expr(cond.left)}` is unknown at compile time',
 										cond.pos)
 									return false, false
 								}
@@ -1621,8 +1635,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 					return false, false
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
-				typ := c.unwrap_generic(c.expr(mut cond))
-				if cond.obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
+				mut ident_expr := ast.Expr(cond)
+				typ := c.unwrap_generic(c.expr(mut ident_expr))
+				resolved_obj := if mut ident_expr is ast.Ident {
+					ident_expr.obj
+				} else {
+					cond.obj
+				}
+				if resolved_obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
 					if !c.inside_ct_attr {
 						c.error('unknown var: `${cname}`', cond.pos)
 						return false, false
@@ -1630,7 +1650,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 					c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
 					return false, false
 				}
-				expr := c.find_obj_definition(cond.obj) or {
+				expr := c.find_obj_definition(resolved_obj) or {
 					c.error(err.msg(), cond.pos)
 					return false, false
 				}
@@ -1670,8 +1690,11 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				return is_true, true
 			}
 			if cond.kind == .d {
-				t := c.expr(mut cond)
-				if t != ast.bool_type {
+				cond.resolve_compile_value(c.pref.compile_values) or {
+					c.error(err.msg(), cond.pos)
+					return false, false
+				}
+				if cond.result_type != ast.bool_type {
 					c.error('inside \$if, only \$d() expressions that return bool are allowed',
 						cond.pos)
 					return false, false

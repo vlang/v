@@ -6,6 +6,21 @@ module c
 import v.ast
 import v.util
 
+fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
+	if base_type == 0 {
+		return base_type
+	}
+	if is_mut || is_ref {
+		if base_type.has_flag(.option) {
+			return base_type.set_flag(.option_mut_param_t)
+		}
+		if !base_type.is_any_kind_of_pointer() {
+			return base_type.ref()
+		}
+	}
+	return base_type
+}
+
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
 	if node.is_multi {
@@ -139,24 +154,104 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
-	mut node := unsafe { node_ }
+	mut node := node_
 	mut is_comptime := false
+	mut param_key_type := ast.Type(0)
+	mut param_val_type := ast.Type(0)
+	mut scope_cond_type := ast.Type(0)
+	mut resolved_cond_expr := node.cond
+	if node.cond is ast.Ident {
+		mut cond_ident := node.cond as ast.Ident
+		if node.scope != unsafe { nil } {
+			cond_ident.scope = node.scope
+		} else if g.file.scope != unsafe { nil } {
+			cond_ident.scope = g.file.scope.innermost(node.pos.pos)
+		}
+		if cond_ident.scope != unsafe { nil } {
+			if scope_var := cond_ident.scope.find_var(cond_ident.name) {
+				cond_ident.obj = *scope_var
+			}
+		}
+		resolved_cond_expr = cond_ident
+		param_cond_type := g.resolve_current_fn_generic_param_type(cond_ident.name)
+		scope_cond_type = g.resolved_scope_var_type(cond_ident)
+		// Don't let an aggregate/sumtype scope type override a more specific
+		// cond_type (e.g., a concrete array type from the aggregate handler).
+		if scope_cond_type != 0 && node.cond_type != 0 && node.cond_type != scope_cond_type {
+			scope_sym := g.table.final_sym(scope_cond_type)
+			if scope_sym.kind == .aggregate || scope_sym.kind == .sum_type {
+				scope_cond_type = 0
+			}
+		}
+		if scope_cond_type != 0 {
+			node.cond_type = scope_cond_type
+		} else if param_cond_type != 0 {
+			node.cond_type = param_cond_type
+		}
+		param_key_type = g.resolve_current_fn_generic_param_key_type(cond_ident.name)
+		param_val_type = g.resolve_current_fn_generic_param_value_type(cond_ident.name)
+	}
+	resolved_cond_type := g.resolved_expr_type(resolved_cond_expr, node.cond_type)
+	if resolved_cond_type != 0 {
+		// Don't let an aggregate/sumtype resolved type override a more specific
+		// cond_type (e.g., a concrete array type from the aggregate handler).
+		resolved_sym := g.table.final_sym(resolved_cond_type)
+		if !(resolved_sym.kind in [.aggregate, .sum_type] && node.cond_type != 0
+			&& node.cond_type != resolved_cond_type
+			&& g.table.final_sym(node.cond_type).kind !in [.aggregate, .sum_type]) {
+			node.cond_type = resolved_cond_type
+		}
+	}
+	if scope_cond_type != 0 {
+		node.cond_type = scope_cond_type
+	}
+	node.cond_type = g.recheck_concrete_type(node.cond_type)
+	if scope_cond_type != 0 {
+		node.cond_type = scope_cond_type
+	}
+	if node.cond_type != 0 {
+		resolved_cond_sym := g.table.final_sym(g.unwrap_generic(node.cond_type))
+		if resolved_cond_sym.kind in [.array, .array_fixed, .map, .string, .aggregate, .alias] {
+			node.kind = resolved_cond_sym.kind
+		}
+		if node.kind in [.array, .array_fixed, .map, .string] {
+			unwrapped_cond_type := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+			if node.key_var.len > 0 {
+				node.key_type = if param_key_type != 0 {
+					param_key_type
+				} else {
+					match resolved_cond_sym.kind {
+						.map { resolved_cond_sym.map_info().key_type }
+						else { ast.int_type }
+					}
+				}
+				node.scope.update_var_type(node.key_var, node.key_type)
+			}
+			base_val_type := if scope_cond_type != 0 {
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
+			} else if param_val_type != 0 {
+				param_val_type
+			} else {
+				g.recheck_concrete_type(g.table.value_type(unwrapped_cond_type))
+			}
+			node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
+			node.scope.update_var_type(node.val_var, node.val_type)
+		}
+	}
 
 	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
 		ctyp := g.type_resolver.get_type(node.cond)
 		if ctyp != ast.void_type {
-			unwrapped_typ = g.unwrap_generic(ctyp)
+			unwrapped_typ = g.unwrap_generic(g.recheck_concrete_type(ctyp))
 			is_comptime = true
 		}
 
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 
 		node.cond_type = unwrapped_typ
-		node.val_type = g.table.value_type(unwrapped_typ)
-		if node.val_is_mut {
-			node.val_type = node.val_type.ref()
-		}
+		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
@@ -170,9 +265,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 
 		if node.key_var.len > 0 {
-			key_type := match unwrapped_sym.kind {
-				.map { unwrapped_sym.map_info().key_type }
-				else { ast.int_type }
+			key_type := if param_key_type != 0 {
+				param_key_type
+			} else {
+				match unwrapped_sym.kind {
+					.map { unwrapped_sym.map_info().key_type }
+					else { ast.int_type }
+				}
 			}
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
@@ -189,34 +288,52 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 
 	if node.kind == .any && !is_comptime {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := if scope_cond_type != 0 {
+			g.unwrap_generic(scope_cond_type)
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		}
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
 		if node.key_var.len > 0 {
-			key_type := match unwrapped_sym.kind {
-				.map { unwrapped_sym.map_info().key_type }
-				else { ast.int_type }
+			key_type := if param_key_type != 0 {
+				param_key_type
+			} else {
+				match unwrapped_sym.kind {
+					.map { unwrapped_sym.map_info().key_type }
+					else { ast.int_type }
+				}
 			}
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 		}
-		node.val_type = g.table.value_type(unwrapped_typ)
+		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else if node.kind == .alias {
-		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_typ := if scope_cond_type != 0 {
+			g.unwrap_generic(scope_cond_type)
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
+		}
 		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
 		if node.key_var.len > 0 {
-			key_type := match unwrapped_sym.kind {
-				.map { unwrapped_sym.map_info().key_type }
-				else { ast.int_type }
+			key_type := if param_key_type != 0 {
+				param_key_type
+			} else {
+				match unwrapped_sym.kind {
+					.map { unwrapped_sym.map_info().key_type }
+					else { ast.int_type }
+				}
 			}
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 		}
-		node.val_type = g.table.value_type(g.table.unaliased_type(unwrapped_typ))
+		base_val_type := g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
+		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
@@ -244,11 +361,56 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	} else if node.kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
+		if node.cond_type != 0 {
+			// Use scope_cond_type only if it's a concrete container type.
+			// Skip if it's an aggregate/sumtype (e.g., from a match arm
+			// smartcast) as value_type would return void for those.
+			use_scope_cond := scope_cond_type != 0
+				&& g.table.final_sym(scope_cond_type).kind !in [.aggregate, .sum_type]
+			resolved_val_type := if use_scope_cond {
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
+			} else if param_val_type != 0 {
+				param_val_type
+			} else {
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(g.recheck_concrete_type(node.cond_type))))
+			}
+			if resolved_val_type != 0 {
+				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
+				node.scope.update_var_type(node.val_var, node.val_type)
+			}
+		}
+		$if trace_ci_fixes ? {
+			if g.cur_fn != unsafe { nil } && g.cur_fn.name in ['arrays.flatten', 'arrays.group_by'] {
+				trace_scope_cond_type := if node.cond is ast.Ident {
+					g.resolved_scope_var_type(node.cond as ast.Ident)
+				} else {
+					ast.no_type
+				}
+				eprintln('cgen for ${g.cur_fn.name} val=${node.val_var} val_type=${g.table.type_to_str(node.val_type)} cond_type=${g.table.type_to_str(node.cond_type)} scope_cond=${if trace_scope_cond_type != 0 {
+					g.table.type_to_str(trace_scope_cond_type)
+				} else {
+					'<none>'
+				}} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
+			}
+		}
 		mut styp := g.styp(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
-		op_field := g.dot_or_ptr(node.cond_type)
+		op_field := if node.cond_type.has_flag(.shared_f) {
+			'->val.'
+		} else if node.cond_type.is_ptr() || resolved_cond_expr.is_auto_deref_var() {
+			'->'
+		} else {
+			g.dot_or_ptr(node.cond_type)
+		}
 
 		mut cond_var := ''
+		// Check if the cond has an or-block that unwraps the option
+		cond_has_or_block := (node.cond is ast.SelectorExpr && node.cond.or_block.kind != .absent)
+			|| (node.cond is ast.CallExpr && node.cond.or_block.kind != .absent)
+			|| (node.cond is ast.IndexExpr && node.cond.or_expr.kind != .absent)
+		if cond_has_or_block {
+			node.cond_type = node.cond_type.clear_flag(.option)
+		}
 		cond_is_option := node.cond_type.has_flag(.option)
 		if (node.cond is ast.Ident && !cond_is_option)
 			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
@@ -422,6 +584,23 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('\tcontinue;')
 		g.writeln('}')
 		g.writeln('if (!builtin__DenseArray_has_index(&${cond_var}${dot_or_ptr}key_values, ${idx})) {continue;}')
+		if node.cond is ast.Ident {
+			cond_ident := node.cond as ast.Ident
+			resolved_key_type := g.resolve_current_fn_generic_param_key_type(cond_ident.name)
+			if resolved_key_type != 0 {
+				node.key_type = resolved_key_type
+				if node.key_var.len > 0 {
+					node.scope.update_var_type(node.key_var, node.key_type)
+				}
+			}
+			resolved_val_type := g.resolve_current_fn_generic_param_value_type(cond_ident.name)
+			if resolved_val_type != 0 {
+				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
+				if node.val_var.len > 0 {
+					node.scope.update_var_type(node.val_var, node.val_type)
+				}
+			}
+		}
 		if node.key_var != '_' {
 			key_styp := g.styp(node.key_type)
 			key := c_name(node.key_var)
@@ -483,12 +662,27 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln('${field_accessor}str[${i}];')
 		}
 	} else if node.kind in [.struct, .interface] {
-		cond_type_sym := g.table.sym(node.cond_type)
+		// In generic functions, `node.cond_type` may have been overwritten by the checker
+		// for the last concrete specialization. Re-resolve from the function parameter's
+		// declared type which still has the generic flag.
+		mut unwrapped_cond_type := g.unwrap_generic(node.cond_type)
+		if g.cur_concrete_types.len > 0 && g.cur_fn != unsafe { nil } && node.cond is ast.Ident {
+			for param in g.cur_fn.params {
+				if param.name == (node.cond as ast.Ident).name {
+					resolved := g.unwrap_generic(param.typ)
+					if resolved != unwrapped_cond_type {
+						unwrapped_cond_type = resolved
+					}
+					break
+				}
+			}
+		}
+		cond_type_sym := g.table.sym(unwrapped_cond_type)
 		mut next_fn := ast.Fn{}
 		// use alias `next` method if exists else use parent type `next` method
 		if cond_type_sym.kind == .alias {
 			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
-				g.table.final_sym(node.cond_type).find_method_with_generic_parent('next') or {
+				g.table.final_sym(unwrapped_cond_type).find_method_with_generic_parent('next') or {
 					verror('`next` method not found')
 					return
 				}
@@ -499,9 +693,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				return
 			}
 		}
-		ret_typ := next_fn.return_type
+		ret_typ := g.unwrap_generic(next_fn.return_type)
 		t_expr := g.new_tmp_var()
-		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
+		g.write('${g.styp(unwrapped_cond_type)} ${t_expr} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		i := node.key_var
@@ -526,15 +720,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.is_builtin() {
 			fn_name = 'builtin__${fn_name}'
-		}
-		if receiver_sym.info is ast.Struct {
-			if receiver_sym.info.concrete_types.len > 0 {
-				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name)
-			}
 		} else if receiver_sym.info is ast.Interface {
-			left_cc_type := g.cc_type(g.table.unaliased_type(node.cond_type), false)
+			left_cc_type := g.cc_type(g.table.unaliased_type(unwrapped_cond_type), false)
 			left_type_name := util.no_dots(left_cc_type)
 			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
+		} else {
+			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type,
+				fn_name)
 		}
 		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
@@ -572,7 +764,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	} else if node.kind == .aggregate {
 		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
 		val_type := g.table.value_type(for_type)
-
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{

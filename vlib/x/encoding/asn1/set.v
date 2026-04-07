@@ -94,7 +94,7 @@ pub fn (set Set) fields() []Element {
 	return set.fields
 }
 
-fn Set.parse(mut p Parser) !Set {
+fn Set.parse(mut _p Parser) !Set {
 	return error('not yet implemented')
 }
 

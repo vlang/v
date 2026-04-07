@@ -85,6 +85,7 @@ fn test_http_client_index() {
 fn test_http_client_404() {
 	server := 'http://${localserver}'
 	url_404_list := [
+		'/ab',
 		'/zxcnbnm',
 		'/JHKAJA',
 		'/unknown',
@@ -101,6 +102,13 @@ fn test_http_client_simple() {
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)! == 'text/plain'
 	assert x.body == 'A simple result'
+}
+
+fn test_http_client_mixed_case_route() {
+	x := http.get('http://${localserver}/aB') or { panic(err) }
+	assert_common_http_headers(x)!
+	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.body == 'mixed case route'
 }
 
 fn test_http_client_html_page() {

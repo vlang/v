@@ -46,6 +46,9 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 
 // read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
 	if r.end_of_stream {
 		return Eof{}
 	}
@@ -81,28 +84,29 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	if r.end_of_stream {
 		// we know we have already reached the end of stream
 		// so return early
-		return true
-	}
-	r.offset = 0
-	r.len = 0
-	r.len = r.reader.read(mut r.buf) or {
-		// end of stream was reached
-		r.end_of_stream = true
 		return false
 	}
-	if r.len == 0 {
+	for {
+		r.offset = 0
+		r.len = 0
+		r.len = r.reader.read(mut r.buf) or {
+			// end of stream was reached
+			r.end_of_stream = true
+			return false
+		}
+		if r.len > 0 {
+			r.fails = 0
+			return true
+		}
 		r.fails++
-	} else {
-		r.fails = 0
+		if r.fails >= r.mfails {
+			// When reading 0 bytes several times in a row, assume the stream has ended.
+			// This prevents infinite loops ¯\_(ツ)_/¯ ...
+			r.end_of_stream = true
+			return false
+		}
 	}
-	if r.fails >= r.mfails {
-		// When reading 0 bytes several times in a row, assume the stream has ended.
-		// This prevents infinite loops ¯\_(ツ)_/¯ ...
-		r.end_of_stream = true
-		return false
-	}
-	// we got some data
-	return true
+	return false
 }
 
 // needs_fill returns whether the buffer needs refilling.

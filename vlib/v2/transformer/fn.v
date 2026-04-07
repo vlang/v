@@ -823,9 +823,8 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	t.cur_fn_returns_option = false
 	t.cur_fn_returns_result = false
 	if decl.typ.return_type is ast.Type {
-		ret_type := decl.typ.return_type
-		t.cur_fn_returns_option = ret_type is ast.OptionType
-		t.cur_fn_returns_result = ret_type is ast.ResultType
+		t.cur_fn_returns_option = decl.typ.return_type is ast.OptionType
+		t.cur_fn_returns_result = decl.typ.return_type is ast.ResultType
 	}
 	if decl.typ.return_type is ast.Ident {
 		ret_name := decl.typ.return_type.name
@@ -1443,10 +1442,6 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// specialization suffix so cleanc can later substitute concrete types.
 	if expr.lhs is ast.GenericArgOrIndexExpr {
 		gai := expr.lhs as ast.GenericArgOrIndexExpr
-		if t.cur_fn_name_str == 'get' || t.cur_fn_name_str == 'get_or_panic' {
-			is_sel := gai.lhs is ast.SelectorExpr
-			eprintln('[DBG GAOI in call] fn=${t.cur_fn_name_str} gai.lhs_name=${gai.lhs.name()} is_sel=${is_sel} gai.expr=${gai.expr.name()}')
-		}
 		if gai.lhs is ast.SelectorExpr {
 			sel := gai.lhs as ast.SelectorExpr
 			is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none

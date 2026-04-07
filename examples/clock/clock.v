@@ -28,11 +28,11 @@ const second_hand_color = gg.red
 
 struct App {
 	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
-	tp + 1 * th, center - tw, tp + 1 * th]
+		tp + 1 * th, center - tw, tp + 1 * th]
 	hours_tic   []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
-	tp + 2 * th, center - tw, tp + 2 * th]
+		tp + 2 * th, center - tw, tp + 2 * th]
 	hours3_tic  []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
-	tp + 3 * th, center - tw, tp + 3 * th]
+		tp + 3 * th, center - tw, tp + 3 * th]
 
 	hour_hand   []f32 = [f32(329), 161, 350, 140, 371, 161, 371, 413, 329, 413]
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]

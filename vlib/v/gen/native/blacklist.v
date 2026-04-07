@@ -57,6 +57,7 @@ const blacklist = {
 	'string.contains_u8':     false
 	'malloc_noscan':          false
 	'malloc':                 false
+	'malloc_uninit':          false
 	'is_nil':                 false
 	'memdup':                 false
 	'vcalloc':                false
@@ -68,6 +69,7 @@ const blacklist = {
 	'_memory_panic':          false
 	'panic':                  false
 	'vcurrent_hash':          false
+	'__at_least_one':         false
 	'__new_array':            false
 	'panic_on_negative_len':  false
 	'panic_on_negative_cap':  false
@@ -103,6 +105,7 @@ const windows_blacklist = {
 	'string.last_index':    true
 	'string.last_index_u8': false
 	'string.contains_u8':   false
+	'__at_least_one':       false
 }
 
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {

@@ -11,8 +11,8 @@ mut:
 	column_count int = -1
 	// columns
 	buffers [][]char
-	// indicators for each column
-	indicators []C.SQLLEN
+	// indicators for each column (i64 is the same size as C.SQLLEN on 64-bit)
+	indicators []i64
 }
 
 // new_hstmt constructs a new statement handle
@@ -69,7 +69,7 @@ fn (mut h HStmt) prepare_read() ! {
 	h.column_count = column_count // remember the count because read will need it
 
 	h.buffers = [][]char{len: h.column_count}
-	h.indicators = []C.SQLLEN{len: h.column_count}
+	h.indicators = []i64{len: h.column_count}
 
 	for i := 0; i < h.column_count; i++ {
 		i_col := C.SQLUSMALLINT(i + 1) // col number starts with 1
@@ -86,7 +86,7 @@ fn (mut h HStmt) prepare_read() ! {
 
 		// bind the buffer
 		retcode = C.SQLBindCol(h.hstmt, C.SQLUSMALLINT(i_col), C.SQLSMALLINT(C.SQL_C_CHAR),
-			C.SQLPOINTER(&buff[0]), allocate_size, &h.indicators[i])
+			C.SQLPOINTER(&buff[0]), allocate_size, unsafe { &C.SQLLEN(&h.indicators[i]) })
 		check_error(retcode, 'SQLBindCol()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 
 		// record the buffer in HStmt

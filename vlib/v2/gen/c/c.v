@@ -1108,7 +1108,7 @@ fn (mut g Gen) gen_wyhash() {
 	g.sb.writeln('#endif')
 	g.sb.writeln('static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}')
 	g.sb.writeln('static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){')
-	g.sb.writeln('  const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0],secret[1]); uint64_t a, b;')
+	g.sb.writeln('  const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0]^len,secret[1]); uint64_t a, b;')
 	g.sb.writeln('  if(_likely_(len<=16)){')
 	g.sb.writeln('    if(_likely_(len>=4)){ a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }')
 	g.sb.writeln('    else if(_likely_(len>0)){ a=_wyr3(p,len); b=0; }')

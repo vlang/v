@@ -1,3 +1,10 @@
+vlib/v/checker/tests/opt_is_op_check_err.vv:7:6: notice: unused parameter: `a`
+    5 | }
+    6 | 
+    7 | fn r(a string) {}
+      |      ^
+    8 | 
+    9 | fn t(s ?Foo) {
 vlib/v/checker/tests/opt_is_op_check_err.vv:13:7: error: t.a is an Optional, it needs to be unwrapped first
    11 |         a: s
    12 |     }

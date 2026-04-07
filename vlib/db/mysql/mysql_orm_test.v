@@ -137,9 +137,10 @@ fn test_mysql_orm() {
 	}, orm.QueryData{}, orm.QueryData{}) or { panic(err) }
 	assert sum_res.len == 1
 	assert sum_res[0].len == 1
-	assert sum_res[0][0] is int
-	if sum_res[0][0] is int {
-		assert sum_res[0][0] == 101
+	sum_val := sum_res[0][0]
+	assert sum_val is int
+	if sum_val is int {
+		assert sum_val == 101
 	}
 
 	avg_res := db.select(orm.SelectConfig{
@@ -151,9 +152,10 @@ fn test_mysql_orm() {
 	}, orm.QueryData{}, orm.QueryData{}) or { panic(err) }
 	assert avg_res.len == 1
 	assert avg_res[0].len == 1
-	assert avg_res[0][0] is f64
-	if avg_res[0][0] is f64 {
-		assert avg_res[0][0] == 101.0
+	avg_val := avg_res[0][0]
+	assert avg_val is f64
+	if avg_val is f64 {
+		assert avg_val == 101.0
 	}
 
 	/** test orm sql type

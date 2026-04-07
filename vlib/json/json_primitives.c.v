@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module json
 
+import math
+
 #flag -I @VEXEROOT/thirdparty/cJSON
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
@@ -28,10 +30,13 @@ fn C.cJSON_IsObject(&C.cJSON) bool
 fn C.cJSON_IsArray(&C.cJSON) bool
 
 fn C.cJSON_CreateNumber(f64) &C.cJSON
+fn C.cJSON_CreateRaw(&char) &C.cJSON
 
 fn C.cJSON_CreateBool(bool) &C.cJSON
 
 fn C.cJSON_CreateString(&char) &C.cJSON
+
+fn C.cJSON_CreateRaw(&char) &C.cJSON
 
 fn C.cJSON_Parse(&char) &C.cJSON
 
@@ -233,12 +238,12 @@ fn encode_u64(val u64) &C.cJSON {
 
 @[markused]
 fn encode_f32(val f32) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
+	return C.cJSON_CreateRaw(&char(json_float_to_raw_string(val).str))
 }
 
 @[markused]
 fn encode_f64(val f64) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
+	return C.cJSON_CreateRaw(&char(json_float_to_raw_string(val).str))
 }
 
 @[markused]
@@ -248,12 +253,84 @@ fn encode_bool(val bool) &C.cJSON {
 
 @[markused]
 fn encode_rune(val rune) &C.cJSON {
-	return C.cJSON_CreateString(&char(val.str().str))
+	return C.cJSON_CreateRaw(&char(json_ascii_string(val.str()).str))
 }
 
 @[markused]
 fn encode_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(&char(val.str))
+	return C.cJSON_CreateRaw(&char(json_ascii_string(val).str))
+}
+
+// json_ascii_string returns a quoted JSON string with non-ASCII runes escaped as `\uXXXX`.
+fn json_ascii_string(val string) string {
+	mut output := []u8{cap: val.len + 2}
+	output << `"`
+	for character in val.runes() {
+		match character {
+			`"` {
+				output << `\\`
+				output << `"`
+			}
+			`\\` {
+				output << `\\`
+				output << `\\`
+			}
+			`\b` {
+				output << `\\`
+				output << `b`
+			}
+			`\f` {
+				output << `\\`
+				output << `f`
+			}
+			`\n` {
+				output << `\\`
+				output << `n`
+			}
+			`\r` {
+				output << `\\`
+				output << `r`
+			}
+			`\t` {
+				output << `\\`
+				output << `t`
+			}
+			else {
+				if character < 0x20 || character > 0x7f {
+					if character <= 0xffff {
+						output << `\\`
+						output << `u`
+						hex_string := '${u32(character):04x}'
+						unsafe { output.push_many(hex_string.str, 4) }
+					} else {
+						unicode_point_low := u32(character) - 0x10000
+						surrogate_pair := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
+							0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						unsafe { output.push_many(surrogate_pair.str, surrogate_pair.len) }
+					}
+				} else {
+					output << u8(character)
+				}
+			}
+		}
+	}
+	output << `"`
+	return output.bytestr()
+}
+
+// json_float_to_raw_string uses V's float formatter so json.encode keeps exact float round-trips.
+fn json_float_to_raw_string[T](val T) string {
+	if val == 0 {
+		return '0'
+	}
+	if math.is_nan(f64(val)) || math.is_inf(f64(val), 0) {
+		return 'null'
+	}
+	mut raw := val.str()
+	if raw.len > 2 && raw[raw.len - 2] == `.` && raw[raw.len - 1] == `0` {
+		raw = raw[..raw.len - 2]
+	}
+	return raw
 }
 
 // ///////////////////////

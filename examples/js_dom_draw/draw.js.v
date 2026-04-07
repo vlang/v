@@ -15,8 +15,8 @@ fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2
 	context.beginPath()
 	context.strokeStyle = 'black'.str
 	context.lineWidth = JS.Number(1)
-	context.moveTo(x1, y1)
-	context.lineTo(x2, y2)
+	context.moveTo(JS.Number(x1), JS.Number(y1))
+	context.lineTo(JS.Number(x2), JS.Number(y2))
 	context.stroke()
 	context.closePath()
 }
@@ -85,6 +85,6 @@ fn main() {
 		}
 	}, JS.EventListenerOptions{})
 	clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
-		state.context.clearRect(0, 0, canvas.width, canvas.height)
+		state.context.clearRect(JS.Number(0), JS.Number(0), canvas.width, canvas.height)
 	}, JS.EventListenerOptions{})
 }

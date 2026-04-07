@@ -121,6 +121,7 @@ pub mut:
 	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
 	show_timings       bool // show how much time each compiler stage took
 	is_fmt             bool
+	is_vdoc            bool
 	is_vet             bool
 	is_vweb            bool // skip _ var warning in templates
 	is_ios_simulator   bool
@@ -148,12 +149,12 @@ pub mut:
 	sanitize               bool // use Clang's new "-fsanitize" option
 	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
 	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
-	sourcemap_src_included bool   // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
-	show_cc                bool   // -showcc, print cc command
-	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
-	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
-	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
-	show_unused_params     bool   // NOTE: temporary until making it a default.
+	sourcemap_src_included bool // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
+	show_cc                bool // -showcc, print cc command
+	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
+	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
+	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
+	show_unused_params     bool = true // regular function params should report as unused by default.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
@@ -268,6 +269,35 @@ pub mut:
 	json_errors        bool // -json-errors, for VLS and other tools
 	new_transform      bool // temporary for the new transformer
 	new_generic_solver bool
+}
+
+// ensure_coroutines_runtime downloads and exposes the photon runtime used by `import coroutines`.
+pub fn ensure_coroutines_runtime() ! {
+	$if macos || linux {
+		arch := $if arm64 { 'arm64' } $else { 'amd64' }
+		vexe := vexe_path()
+		vroot := os.dir(vexe)
+		so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+		so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
+		if !os.exists(so_path) {
+			println('coroutines .so not found, downloading...')
+			res := os.execute('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"')
+			if res.exit_code != 0 || !os.exists(so_path) {
+				return error('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
+			}
+			println('done!')
+		}
+		$if macos {
+			dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
+			so_dir := os.dir(so_path)
+			if !dyld_fallback_paths.contains(so_dir) {
+				env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
+				os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
+			}
+		}
+	} $else {
+		return error('coroutines only work on macOS & Linux for now')
+	}
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -459,7 +489,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-subsystem' {
 				subsystem := cmdline.option(args[i..], '-subsystem', '')
-				res.subsystem = Subsystem.from(subsystem) or {
+				res.subsystem = Subsystem.from_string(subsystem) or {
 					mut valid := []string{}
 					$for x in Subsystem.values {
 						valid << x.name
@@ -526,6 +556,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						exit(1)
 					}
 				}
+				effective_gc_mode := if gc_mode == '' { 'boehm' } else { gc_mode }
+				res.build_options << '${arg} ${effective_gc_mode}'
 				i++
 			}
 			'-g', '-debug' {
@@ -1015,32 +1047,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
-				$if macos || linux {
-					arch := $if arm64 { 'arm64' } $else { 'amd64' }
-					vexe := vexe_path()
-					vroot := os.dir(vexe)
-					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
-					if !os.exists(so_path) {
-						println('coroutines .so not found, downloading...')
-						os.execute_opt('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"') or {
-							panic('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
-						}
-						println('done!')
-					}
-					res.compile_defines << 'is_coroutine'
-					res.compile_defines_all << 'is_coroutine'
-					$if macos {
-						dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
-						so_dir := os.dir(so_path)
-						if !dyld_fallback_paths.contains(so_dir) {
-							env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
-							os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
-						}
-					}
-				} $else {
-					eprintln_exit('coroutines only work on macOS & Linux for now')
-				}
+				ensure_coroutines_runtime() or { eprintln_exit(err.msg()) }
+				res.compile_defines << 'is_coroutine'
+				res.compile_defines_all << 'is_coroutine'
 			}
 			'-new-generic-solver' {
 				res.new_generic_solver = true

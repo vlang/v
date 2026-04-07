@@ -47,6 +47,22 @@ fn test_orm_stmt_gen_insert() {
 	assert query == "INSERT INTO 'Test' ('test', 'a') VALUES (?0, ?1);"
 }
 
+fn test_orm_stmt_gen_insert_default_values_pg() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, converted := orm.orm_stmt_gen(.pg, table, "'", .insert, true, '$', 1, orm.QueryData{
+		fields:      ['id', 'example']
+		data:        [orm.Primitive(0), orm.Primitive('')]
+		types:       []
+		kinds:       []
+		auto_fields: [0, 1]
+	}, orm.QueryData{})
+	assert query == "INSERT INTO 'Test' DEFAULT VALUES;"
+	assert converted.fields.len == 0
+	assert converted.data.len == 0
+}
+
 fn test_orm_stmt_gen_delete() {
 	table := orm.Table{
 		name: 'Test'

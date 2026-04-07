@@ -76,6 +76,14 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
+fn tool_recompilation_args(tool_name string, user_os string) []string {
+	if user_os == 'freebsd' && tool_name == 'vdoc' {
+		// FreeBSD's default tcc setup can not compile vdoc reliably.
+		return ['-cc', 'cc']
+	}
+	return []string{}
+}
+
 // is_escape_sequence returns `true` if `c` is considered a valid escape sequence denoter.
 @[inline]
 pub fn is_escape_sequence(c u8) bool {
@@ -141,6 +149,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 		if tool_name == 'vfmt' {
 			compilation_command += ' -d vfmt '
+		}
+		compilation_args := tool_recompilation_args(tool_name, os.user_os())
+		if compilation_args.len > 0 {
+			compilation_command += ' ${args_quote_paths(compilation_args)} '
 		}
 		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
@@ -474,7 +486,7 @@ pub fn strip_main_name(name string) string {
 
 @[inline]
 pub fn no_dots(s string) string {
-	return s.replace('.', '__')
+	return s.replace_each(['.', '__', '-', '_'])
 }
 
 const map_prefix = 'map[string]'

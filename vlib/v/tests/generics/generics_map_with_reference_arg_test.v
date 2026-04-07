@@ -47,7 +47,7 @@ pub fn (mut l Lru[T, V]) get(k T) ?V {
 		l.list.delete(l.list.index(k) or { return none })
 		l.list.push_front(k)
 		l.hits++
-		return l.m[k].value
+		return (l.m[k] or { return none }).value
 	}
 	l.miss++
 	return none
@@ -69,7 +69,7 @@ pub fn (mut l Lru[T, V]) remove_expired(cnt int) {
 
 pub fn (mut l Lru[T, V]) del(k T) {
 	if k in l.m {
-		val := l.m[k].value
+		val := (l.m[k] or { return }).value
 		l.m.delete(k)
 		l.list.delete(l.list.index(k) or { -1 })
 		on_del := l.on_del or { return }

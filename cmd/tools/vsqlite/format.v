@@ -289,7 +289,7 @@ fn format_markdown_ex(rows []sqlite.Row, opts FormatOptions) string {
 
 // ---------- json ----------
 
-fn format_json_ex(rows []sqlite.Row, opts FormatOptions) string {
+fn format_json_ex(rows []sqlite.Row, _opts FormatOptions) string {
 	if rows.len == 0 {
 		return '[]'
 	}

@@ -2817,7 +2817,7 @@ fn (t &Transformer) try_extract_sincos_arg(expr ast.Expr) ?ast.Expr {
 
 // try_expand_or_expr_assign checks if an assignment has an OrExpr RHS (used by transform_stmt)
 // Returns none since expansion is handled by try_expand_or_expr_assign_stmts at the list level
-fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt {
+fn (mut t Transformer) try_expand_or_expr_assign(_stmt ast.AssignStmt) ?ast.Stmt {
 	return none
 }
 
@@ -3124,14 +3124,16 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 		}))
 	})
 
-	// Common: (array*)map__get_and_set(&m, &key, &empty_array)
+	// Common: (array*)map__get(&m, &key, &empty_array)
+	// Use map__get (not map__get_and_set) so that pushing to a missing key is a no-op:
+	// map__get returns a pointer to the existing value or to the zero value without inserting.
 	arr_ptr_expr := ast.Expr(ast.CastExpr{
 		typ:  ast.Ident{
 			name: 'array*'
 		}
 		expr: ast.CallExpr{
 			lhs:  ast.Ident{
-				name: 'map__get_and_set'
+				name: 'map__get'
 			}
 			args: [
 				map_arg,
@@ -5080,7 +5082,7 @@ fn (t &Transformer) typed_deref(ptr ast.Expr, value_type types.Type) ast.Expr {
 
 // try_expand_array_index_or handles: arr[idx] or { fallback }
 // Transforms to: if idx < arr.len { arr[idx] } else { fallback }
-fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
+fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix_stmts []ast.Stmt) ?ast.Expr {
 	if or_expr.expr !is ast.IndexExpr {
 		return none
 	}

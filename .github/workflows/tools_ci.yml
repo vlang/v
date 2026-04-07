@@ -52,7 +52,7 @@ jobs:
           if [[ ${{ matrix.cc }} == "clang" ]]; then
             cmd="./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd"
             echo "$cmd" && $cmd
-            cmd="./v -silent -cc clang -cflags -fsanitize=memory    test-self -msan-compiler cmd"
+            cmd="./v -silent -gc none -cc clang -cflags -fsanitize=memory    test-self -msan-compiler cmd"
             echo "$cmd" && $cmd
           else
             cmd="./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd"

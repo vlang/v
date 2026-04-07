@@ -4,6 +4,7 @@
 module builder
 
 import os
+import v.ast
 import v.cflag
 import v.pref
 import v.util
@@ -18,6 +19,65 @@ const c_verror_message_marker = 'VERROR_MESSAGE '
 const current_os = os.user_os()
 
 const c_compilation_error_title = 'C compilation error'
+
+fn extract_c_struct_name(line string) string {
+	start := line.index('struct ') or { return '' } + 'struct '.len
+	mut end := start
+	for end < line.len {
+		ch := line[end]
+		if !ch.is_letter() && !ch.is_digit() && ch != `_` {
+			break
+		}
+		end++
+	}
+	return if end > start { line[start..end] } else { '' }
+}
+
+fn c_output_suggests_missing_typedef_for_c_struct(c_output string, known_non_typedef_c_structs map[string]bool) string {
+	if known_non_typedef_c_structs.len == 0 {
+		return ''
+	}
+	mut forward_declared := map[string]bool{}
+	mut incomplete := map[string]bool{}
+	for line in c_output.split_into_lines() {
+		name := extract_c_struct_name(line)
+		if name == '' || name !in known_non_typedef_c_structs {
+			continue
+		}
+		lower_line := line.to_lower()
+		if lower_line.contains('forward declaration of') {
+			if name in incomplete {
+				return name
+			}
+			forward_declared[name] = true
+			continue
+		}
+		if lower_line.contains('incomplete result type')
+			|| lower_line.contains('has incomplete type') || lower_line.contains('incomplete type')
+			|| lower_line.contains('return type is an incomplete type') {
+			if name in forward_declared {
+				return name
+			}
+			incomplete[name] = true
+		}
+	}
+	return ''
+}
+
+fn (v &Builder) known_non_typedef_c_structs() map[string]bool {
+	mut names := map[string]bool{}
+	for sym in v.table.type_symbols {
+		if sym.language != .c || sym.kind != .struct || !sym.cname.starts_with('C__') {
+			continue
+		}
+		info := sym.info as ast.Struct
+		if info.is_typedef {
+			continue
+		}
+		names[sym.cname[3..]] = true
+	}
+	return names
+}
 
 fn c_error_looks_like_cpp_header(c_output string) bool {
 	lower_output := c_output.to_lower()
@@ -38,6 +98,13 @@ fn c_error_looks_like_cpp_header(c_output string) bool {
 		}
 	}
 	return false
+}
+
+fn (v &Builder) ensure_imported_coroutines_runtime() ! {
+	if 'coroutines' !in v.table.imports {
+		return
+	}
+	pref.ensure_coroutines_runtime()!
 }
 
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
@@ -116,6 +183,11 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 	if res.output.contains('o: unrecognized file type')
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
+	}
+	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output,
+		v.known_non_typedef_c_structs())
+	if missing_typedef_name != '' {
+		more_suggestions += '\n${highlight_word('Suggestion')}: if `${missing_typedef_name}` is declared in the C header with `typedef struct ... ${missing_typedef_name};`, add `@[typedef]` to the V redeclaration: `@[typedef] struct C.${missing_typedef_name} { ... }`.'
 	}
 	if c_error_looks_like_cpp_header(res.output) {
 		verror('
@@ -198,6 +270,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-missing-braces', // see stackoverflow.com/q/13746033
 		'-Wno-enum-conversion', // silences `.dst_factor_rgb = sokol__gfx__BlendFactor__one_minus_src_alpha`
 		'-Wno-enum-compare', // silences `if (ev->mouse_button == sokol__sapp__MouseButton__left) {`
+		'-Wno-incompatible-function-pointer-types', // V uses enum types (e.g. os.Signal) and specific return types (e.g. struct*) in callbacks where C expects int and void* respectively
 		// enable additional warnings:
 		'-Wno-unknown-warning', // if a C compiler does not understand a certain flag, it should just ignore it
 		'-Wno-unknown-warning-option', // clang equivalent of the above
@@ -298,6 +371,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			'-Wno-sometimes-uninitialized', // produced after exhaustive matches
 			'-Wno-int-to-void-pointer-cast',
 		]
+		// Apple clang >= 17 treats -Wincompatible-function-pointer-types as an error by default.
+		// V generates code with enum types (e.g. os.Signal) in callbacks where C expects int,
+		// and specific struct* returns where C expects void* (e.g. sync.pool.ThreadCB).
+		ccoptions.args << '-Wno-incompatible-function-pointer-types'
+		ccoptions.args << '-Wno-typedef-redefinition' // V re-typedefs bool after includes to undo stdbool.h
 	}
 	if ccoptions.cc == .gcc {
 		if ccoptions.debug_mode {
@@ -674,6 +752,16 @@ pub fn (mut v Builder) tcc_quoted_path(p string) string {
 	return os.quoted_path(p)
 }
 
+fn (v &Builder) rsp_safe_arg(arg string) string {
+	if arg.starts_with('-B') && arg.len > 2 {
+		path := arg[2..]
+		if path.contains(' ') && !path.starts_with('"') {
+			return '-B"${path}"'
+		}
+	}
+	return arg
+}
+
 fn (v &Builder) c_project_source_name() string {
 	mut output_name := os.file_name(v.pref.out_name)
 	if output_name == '' {
@@ -843,6 +931,7 @@ pub fn (mut v Builder) cc() {
 		util.timing_measure(msg_mv)
 		return
 	}
+	v.ensure_imported_coroutines_runtime() or { verror(err.msg()) }
 	// Cross compiling for Windows
 	if v.pref.os == .windows && v.pref.ccompiler != 'msvc' {
 		$if !windows {
@@ -909,10 +998,11 @@ pub fn (mut v Builder) cc() {
 		//
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
+		rsp_args := all_args.map(v.rsp_safe_arg(it))
 		str_args := if v.pref.no_rsp {
-			all_args.join(' ').replace('\n', ' ')
+			rsp_args.join(' ').replace('\n', ' ')
 		} else {
-			all_args.join(' ')
+			rsp_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {

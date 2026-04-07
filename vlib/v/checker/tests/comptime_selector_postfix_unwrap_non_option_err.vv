@@ -1,0 +1,16 @@
+fn unwrap_field[T]() {
+	$if T is $struct {
+		$for field in T.fields {
+			tmp := T{}
+			_ = int(tmp.$(field.name) ?)
+		}
+	}
+}
+
+struct Test {
+	a int
+}
+
+fn main() {
+	unwrap_field[Test]()
+}

@@ -31,21 +31,28 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_recheck = old_recheck
 	}
 	for i, mut right in node.right {
-		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
-			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
-				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
+		if right in [ast.ArrayInit, ast.CallExpr, ast.ComptimeCall, ast.DumpExpr, ast.IfExpr,
+			ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.ParExpr, ast.SelectorExpr, ast.StructInit] {
+			if right in [ast.ArrayInit, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.StructInit]
+				&& node.left.len == node.right.len && !is_decl
+				&& node.left[i] in [ast.Ident, ast.IndexExpr, ast.SelectorExpr]
+				&& !node.left[i].is_blank_ident() {
 				mut expr := node.left[i]
+				old_is_index_assign := c.is_index_assign
+				if expr is ast.IndexExpr {
+					c.is_index_assign = true
+				}
 				c.expected_type = c.expr(mut expr)
+				c.is_index_assign = old_is_index_assign
+			}
+			if is_decl && node.left[i] is ast.Ident && (node.left[i] as ast.Ident).is_mut()
+				&& right is ast.StructInit && (right as ast.StructInit).is_anon {
+				c.anon_struct_should_be_mut = true
 			}
 			mut right_type := c.expr(mut right)
+			c.anon_struct_should_be_mut = false
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
-			}
-			right_type_sym := c.table.sym(right_type)
-			// fixed array returns an struct, but when assigning it must be the array type
-			if right_type_sym.info is ast.ArrayFixed {
-				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
 			}
 			if i == 0 {
 				right_first_type = right_type
@@ -53,15 +60,23 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.check_expr_option_or_result_call(right, right_first_type),
 				]
 			}
-			if right_type_sym.kind == .multi_return {
-				if node.right.len > 1 {
-					c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
-						right.pos())
+			if right_type != 0 {
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
 				}
-				node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
-					c.table.sym(it)))
-				right_len = node.right_types.len
-			} else if right_type == ast.void_type {
+				if right_type_sym.kind == .multi_return {
+					if node.right.len > 1 {
+						c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
+							right.pos())
+					}
+					node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
+						c.table.sym(it)))
+					right_len = node.right_types.len
+				}
+			}
+			if right_type == ast.void_type {
 				right_len = 0
 				if mut right is ast.IfExpr {
 					last_branch := right.branches.last()
@@ -81,10 +96,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expected_type = node.right_types[i]
 				}
 				mut right_type := c.expr(mut right)
-				right_type_sym := c.table.sym(right_type)
-				// fixed array returns an struct, but when assigning it must be the array type
-				if right_type_sym.info is ast.ArrayFixed {
-					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				if right_type != 0 {
+					right_type_sym := c.table.sym(right_type)
+					// fixed array returns an struct, but when assigning it must be the array type
+					if right_type_sym.info is ast.ArrayFixed {
+						right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+					}
 				}
 				if i == 0 {
 					right_first_type = right_type
@@ -113,6 +130,32 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 	}
 	if node.left.len != right_len {
+		if right_len == 0 && right_first_type == ast.void_type {
+			match right_first {
+				ast.ArrayInit, ast.MapInit, ast.StructInit {
+					if is_decl {
+						for i, mut left in node.left {
+							node.left_types << ast.void_type
+							if mut left is ast.Ident {
+								if left.info is ast.IdentVar {
+									mut ident_var_info := left.info as ast.IdentVar
+									ident_var_info.typ = ast.void_type
+									left.info = ident_var_info
+									if mut left.obj is ast.Var {
+										left.obj.typ = ast.void_type
+									}
+								}
+							}
+							if i < node.right_types.len && node.right_types[i] == 0 {
+								node.right_types[i] = ast.void_type
+							}
+						}
+					}
+					return
+				}
+				else {}
+			}
+		}
 		if mut right_first is ast.CallExpr {
 			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
@@ -145,7 +188,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		return
 	}
-
 	for i, mut left in node.left {
 		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
@@ -186,7 +228,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expected_type = c.unwrap_generic(left_type)
 			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
 				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
-				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
 
 		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
@@ -218,9 +259,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
-		} else if c.inside_recheck {
-			// on generic recheck phase it might be needed to resolve the rhs again
-			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
+		} else if c.inside_recheck && i < node.right.len {
+			// Generic rechecks reuse the same AST nodes, so cached rhs types for
+			// identifiers/selectors can be stale across concrete instantiations.
+			needs_rhs_recheck := c.comptime.has_comptime_expr(node.right[i])
+				|| node.right[i] in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ComptimeSelector, ast.PrefixExpr, ast.CastExpr, ast.UnsafeExpr]
+			if needs_rhs_recheck {
 				mut expr := mut node.right[i]
 				right_type := c.expr(mut expr)
 				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
@@ -250,10 +294,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime.comptime_for_field_type
 		}
-		if is_decl && left is ast.Ident && left.info is ast.IdentVar
-			&& (left.info as ast.IdentVar).share == .shared_t && c.table.sym(right_type).kind !in [.array, .map, .struct] {
-			c.fatal('shared variables must be structs, arrays or maps', right.pos())
-		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
@@ -273,7 +313,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(mut right)
 				}
 			}
-			if right.is_auto_deref_var() {
+			if right.is_auto_deref_var() && right_type.is_ptr() {
 				left_type = ast.mktyp(right_type.deref())
 			} else {
 				left_type = ast.mktyp(right_type)
@@ -410,6 +450,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						match mut left.obj {
 							ast.Var {
 								left.obj.typ = left_type
+								if is_decl && node.left.len == node.right.len && i < node.right.len {
+									left.obj.expr = node.right[i]
+								}
+								if is_decl && left.obj.generic_typ == 0
+									&& (left_type.has_flag(.generic)
+									|| c.type_has_unresolved_generic_parts(left_type)) {
+									left.obj.generic_typ = left_type
+									if left.scope != unsafe { nil } {
+										if mut scope_var := left.scope.find_var(left.name) {
+											scope_var.generic_typ = left_type
+										}
+									}
+								}
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
 								}
@@ -429,6 +482,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								// flag the variable as comptime/generic related on its declaration
 								if is_decl {
 									c.change_flags_if_comptime_expr(mut left, right)
+									if left.scope != unsafe { nil } {
+										left.scope.update_var_type(left.name, left.obj.typ)
+										if node.left.len == node.right.len && i < node.right.len {
+											if mut scope_var := left.scope.find_var(left.name) {
+												scope_var.expr = node.right[i]
+											}
+										}
+									}
 								}
 							}
 							ast.GlobalField {
@@ -615,8 +676,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !left.is_blank_ident()
-			&& right.is_lvalue() && right !is ast.ComptimeSelector
+		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
+			&& !left.is_blank_ident() && right.is_lvalue() && right !is ast.ComptimeSelector
 			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
@@ -624,11 +685,21 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
+			mut missing_fn_concrete_types := false
+			if right is ast.Ident {
+				ident := right as ast.Ident
+				if ident.kind == .function {
+					if func := c.table.find_fn(ident.name) {
+						missing_fn_concrete_types = func.generic_names.len > 0
+							&& ident.concrete_types.len == 0
+					}
+				}
+			}
 			if return_sym.kind == .placeholder {
 				c.error('unknown return type: cannot assign `${right}` as a function variable',
 					right.pos())
-			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
-				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
+			} else if !missing_fn_concrete_types && right !is ast.AnonFn
+				&& c.type_has_unresolved_generic_parts(right_sym.info.func.return_type) {
 				c.error('cannot assign `${right}` as a generic function variable', right.pos())
 			}
 		}
@@ -683,7 +754,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign, .minus_assign {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
-				left_deref := if left.is_auto_deref_var() {
+				left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
 					left_type.deref()
 				} else {
 					left_type
@@ -850,21 +921,34 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+				if left.is_auto_deref_arg() && left_type.is_ptr() {
+					left_deref := left_type.deref()
+					right_deref := if right.is_pure_literal() {
+						right.get_pure_type()
+					} else if right.is_auto_deref_var() && right_type.is_ptr() {
+						right_type.deref()
+					} else {
+						right_type
+					}
+					if left_deref.is_number() && right_deref.is_number() {
+						continue
+					}
+				}
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
 				if left.is_auto_deref_var() || right.is_auto_deref_var() {
-					left_deref := if left.is_auto_deref_var() {
+					left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
 						left_type.deref()
 					} else {
 						left_type
 					}
 					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
-					} else if right.is_auto_deref_var() {
+					} else if right.is_auto_deref_var() && right_type.is_ptr() {
 						right_type.deref()
 					} else {
 						right_type
 					}
-					if c.check_types(left_deref, right_deref) {
+					if c.check_types(right_deref, left_deref) {
 						continue
 					}
 				}

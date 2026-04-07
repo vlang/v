@@ -3,6 +3,18 @@ module checker
 import v.ast
 import v.token
 
+fn infix_expr_allows_auto_deref(expr ast.Expr) bool {
+	return expr is ast.Ident && expr.is_auto_deref_var()
+}
+
+fn infix_expr_is_zero_integer_literal(expr ast.Expr) bool {
+	return expr is ast.IntegerLiteral && expr.val == '0'
+}
+
+fn infix_expr_is_nil_like(expr ast.Expr) bool {
+	return expr.is_nil() || (expr is ast.UnsafeExpr && expr.expr.is_nil())
+}
+
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -173,7 +185,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('invalid number of operand for `${node.op}`. Only one allowed on each side.',
 			left_right_pos)
 	}
-	if left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
+	if left_type.is_any_kind_of_pointer() && !left_type.has_flag(.shared_f)
+		&& !node.left.is_auto_deref_var()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
@@ -309,7 +322,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface] {
 						elem_type := right_final_sym.array_info().elem_type
-						if node.left.is_auto_deref_var() {
+						if node.left.is_auto_deref_var() && left_type.is_ptr() {
 							left_type = left_type.deref()
 						}
 						c.check_expected(left_type, elem_type) or {
@@ -326,7 +339,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							}
 						} else {
 							elem_type := right_final_sym.array_info().elem_type
-							if node.left.is_auto_deref_var() {
+							if node.left.is_auto_deref_var() && left_type.is_ptr() {
 								left_type = left_type.deref()
 							}
 							c.check_expected(left_type, elem_type) or {
@@ -496,12 +509,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
-				deref_left_type := if node.left.is_auto_deref_var() {
+				deref_left_type := if node.left.is_auto_deref_var() && unwrapped_left_type.is_ptr() {
 					unwrapped_left_type.deref()
 				} else {
 					unwrapped_left_type
 				}
-				deref_right_type := if node.right.is_auto_deref_var() {
+				deref_right_type := if node.right.is_auto_deref_var()
+					&& unwrapped_right_type.is_ptr() {
 					unwrapped_right_type.deref()
 				} else {
 					unwrapped_right_type
@@ -747,6 +761,25 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if typ != ast.no_type {
+				$if trace_ci_fixes ? {
+					source_path := if node.pos.file_idx >= 0
+						&& node.pos.file_idx < c.table.filelist.len {
+						c.table.filelist[node.pos.file_idx]
+					} else {
+						c.file.path
+					}
+					if source_path.contains('decode_sumtype.v')
+						&& node.pos.line_nr + 1 in [12, 111, 138, 215] {
+						right_kind := match right_expr {
+							ast.Ident { 'ident:${right_expr.name}' }
+							ast.TypeNode { 'typenode:${c.table.type_to_str(right_expr.typ)}' }
+							ast.None { 'none' }
+							else { typeof(right_expr).name }
+						}
+						eprintln('infix is left=${node.left} left_type=${c.table.type_to_str(left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(typ)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
+							node.pos.line_nr + 1}')
+					}
+				}
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if left_type.has_flag(.option) && !c.inside_sql {
@@ -771,7 +804,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants
 						&& c.unwrap_generic(typ) !in left_sym.info.variants {
-						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',
+						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`',
 							right_pos)
 					}
 				} else if left_sym.info is ast.Interface {
@@ -787,20 +820,32 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.arrow { // `chan <- elem`
 			if left_sym.kind == .chan {
 				chan_info := left_sym.chan_info()
-				elem_type := chan_info.elem_type
-				if !c.check_types(right_type, elem_type) {
-					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+				mut elem_type := chan_info.elem_type
+				mut got_type := right_type
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+					if c.needs_unwrap_generic_type(got_type) {
+						got_type = c.table.unwrap_generic_type(got_type, c.table.cur_fn.generic_names,
+							c.table.cur_concrete_types)
+					}
+					if c.needs_unwrap_generic_type(elem_type) {
+						elem_type = c.table.unwrap_generic_type(elem_type, c.table.cur_fn.generic_names,
+							c.table.cur_concrete_types)
+					}
+				}
+				if !c.check_types(got_type, elem_type) {
+					c.error('cannot push `${c.table.type_to_str(got_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
 					c.fail_if_immutable(mut node.right)
 				}
-				if elem_type.is_ptr() && !right_type.is_ptr() {
+				if elem_type.is_ptr() && !got_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
 						right_pos)
-				} else if right_type.is_ptr() != elem_type.is_ptr() {
-					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+				} else if got_type.is_ptr() != elem_type.is_ptr() {
+					c.error('cannot push `${c.table.type_to_str(got_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
@@ -842,10 +887,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
-	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
+	// Skip operator restriction checks for generic parameters that were resolved to
+	// bool/string by recheck_concrete_type — the generic function itself allows any T.
+	is_generic_resolved := c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len > 0 && (node.left_type in c.table.cur_concrete_types
+		|| node.right_type in c.table.cur_concrete_types)
+	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and]
+		&& !is_generic_resolved {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			node.pos)
-	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
+	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge]
+		&& !is_generic_resolved {
 		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)
@@ -857,7 +909,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					node.pos)
 			}
 		} else if !c.pref.translated && !c.file.is_translated && !left_type.has_flag(.generic)
-			&& !right_type.has_flag(.generic) {
+			&& !right_type.has_flag(.generic) && !is_generic_resolved {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				node.pos)
@@ -899,22 +951,59 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		types_match := c.symmetric_check(left_type, right_type)
 			&& c.symmetric_check(right_type, left_type)
+		left_allows_auto_deref := infix_expr_allows_auto_deref(node.left)
+		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
+		unalias_left_type := c.table.unaliased_type(left_type)
+		unalias_right_type := c.table.unaliased_type(right_type)
+		left_is_any_kind_of_pointer := left_type.is_any_kind_of_pointer()
+			|| unalias_left_type.is_any_kind_of_pointer()
+		right_is_any_kind_of_pointer := right_type.is_any_kind_of_pointer()
+			|| unalias_right_type.is_any_kind_of_pointer()
+		allows_cstring_byte_compare :=
+			(unalias_right_type in ast.byteptr_types && unalias_left_type == ast.u8_type)
+			|| (unalias_right_type in ast.charptr_types && unalias_left_type == ast.char_type)
+		pointer_value_mismatch := left_is_any_kind_of_pointer != right_is_any_kind_of_pointer
 		mut types_match_after_deref := false
 		mut deref_left_type := left_type
 		mut deref_right_type := right_type
-		if !types_match && (node.left.is_auto_deref_var() || node.right.is_auto_deref_var()) {
-			deref_left_type = if node.left.is_auto_deref_var() {
+		if (!types_match || pointer_value_mismatch)
+			&& (left_allows_auto_deref || right_allows_auto_deref) {
+			deref_left_type = if left_allows_auto_deref && left_type.is_ptr() {
 				left_type.deref()
 			} else {
 				left_type
 			}
-			deref_right_type = if node.right.is_auto_deref_var() {
+			deref_right_type = if right_allows_auto_deref && right_type.is_ptr() {
 				right_type.deref()
 			} else {
 				right_type
 			}
 			types_match_after_deref = c.symmetric_check(deref_left_type, deref_right_type)
 				&& c.symmetric_check(deref_right_type, deref_left_type)
+		}
+		if node.op in [.eq, .ne] && right_is_any_kind_of_pointer && !left_is_any_kind_of_pointer
+			&& !allows_cstring_byte_compare && !infix_expr_is_zero_integer_literal(node.left)
+			&& !infix_expr_is_nil_like(node.left) && !infix_expr_is_nil_like(node.right)
+			&& !c.file.path.ends_with('.c.v') && left_sym.language == .v && right_sym.language == .v
+			&& !types_match_after_deref && !c.pref.translated && !c.file.is_translated
+			&& !c.inside_unsafe {
+			error_left_name := if left_allows_auto_deref {
+				c.table.type_to_str(deref_left_type)
+			} else {
+				c.table.type_to_str(left_type)
+			}
+			error_right_name := if right_allows_auto_deref {
+				c.table.type_to_str(deref_right_type)
+			} else {
+				c.table.type_to_str(right_type)
+			}
+			sugg := if left_type in ast.integer_type_idxs || right_type in ast.integer_type_idxs {
+				' (you can use it inside an `unsafe` block)'
+			} else {
+				''
+			}
+			c.error('infix expr: cannot use `${error_right_name}` (right expression) as `${error_left_name}`${sugg}',
+				left_right_pos)
 		}
 		if !types_match && !types_match_after_deref && !c.pref.translated && !c.file.is_translated {
 			// for type-unresolved consts
@@ -1035,7 +1124,8 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 		expr_key := smartcast_index_expr_scope_key(index_expr)
 		if var := scope.find_var(expr_key) {
 			if var.smartcasts.len > 0 {
-				cast_type := var.smartcasts.last()
+				cast_type := c.exposed_smartcast_type(var.orig_type, var.smartcasts.last(),
+					var.is_mut)
 				if cast_type != expr_type {
 					expr = ast.AsCast{
 						expr:      ast.Expr(index_expr)

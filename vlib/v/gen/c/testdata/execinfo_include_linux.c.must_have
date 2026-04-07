@@ -1,0 +1,3 @@
+#if defined(__has_include) && !defined(__TINYC__)
+#if __has_include(<execinfo.h>)
+#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)

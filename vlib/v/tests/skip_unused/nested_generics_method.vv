@@ -15,11 +15,11 @@ fn (mut c Calc[S]) next[T](input T) f64 {
 	}
 }
 
-fn (mut t TypeA) next[T](input T) f64 {
+fn (mut t TypeA) next[T](_input T) f64 {
 	return 10
 }
 
-fn (mut t TypeB) next[T](input T) f64 {
+fn (mut t TypeB) next[T](_input T) f64 {
 	return 11
 }
 
