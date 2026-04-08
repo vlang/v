@@ -269,7 +269,8 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 	// get list of files from directory
 	path := folder.trim_right(os.path_separator)
 	mut files := []string{}
-	os.walk_with_context(path, &files, fn (mut files []string, file string) {
+	os.walk_with_context(path, &files, fn (ctx voidptr, file string) {
+		mut files := unsafe { &[]string(ctx) }
 		files << file
 	})
 

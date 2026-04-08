@@ -660,9 +660,9 @@ pub fn (v &Builder) get_linker_args() []string {
 
 fn (v &Builder) only_linker_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
-	// in `build-mode`, we do not need -lxyz flags, since we are
-	// building an (.o) object file, that will be linked later.
-	if v.pref.build_mode != .build_module {
+	// in `build-mode` or when producing a .o file, we do not need -lxyz flags,
+	// since we are building an (.o) object file, that will be linked later.
+	if v.pref.build_mode != .build_module && !v.pref.is_o {
 		all << ccoptions.linker_flags
 		all << ccoptions.env_ldflags
 		all << ccoptions.ldflags

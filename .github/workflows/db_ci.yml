@@ -96,17 +96,10 @@ jobs:
       - name: Install ODBC dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --batch --no-tty --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y unixodbc unixodbc-dev tdsodbc
-      - name: Detect FreeTDS ODBC driver
-        id: odbc
-        run: |
-          driver="$(odbcinst -q -d | tr -d '[]' | grep -m1 FreeTDS || true)"
-          if [ -z "$driver" ]; then
-            odbcinst -q -d
-            exit 1
-          fi
-          echo "name=$driver" >> "$GITHUB_OUTPUT"
+          sudo ACCEPT_EULA=Y apt install --quiet -y msodbcsql18 unixodbc-dev
       - name: Wait for sql server
         run: |
           for _ in $(seq 1 60); do
@@ -118,5 +111,5 @@ jobs:
           exit 1
       - name: Run mssql driver tests
         env:
-          VMSSQL_CONN_STR: 'Driver={${{ steps.odbc.outputs.name }}};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TDS_Version=7.4;ClientCharset=UTF-8'
+          VMSSQL_CONN_STR: 'Driver={ODBC Driver 18 for SQL Server};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TrustServerCertificate=yes'
         run: ./v -d network -d started_mssql -silent test vlib/db/mssql/

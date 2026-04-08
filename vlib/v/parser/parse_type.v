@@ -1053,11 +1053,12 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 		mod := name.all_before_last('.')
 
 		idx := p.table.register_sym(ast.TypeSymbol{
-			kind:  .generic_inst
-			name:  bs_name
-			cname: util.no_dots(bs_cname)
-			mod:   mod
-			info:  ast.GenericInst{
+			kind:   .generic_inst
+			name:   bs_name
+			cname:  util.no_dots(bs_cname)
+			mod:    mod
+			is_pub: parent_sym.is_pub
+			info:   ast.GenericInst{
 				parent_idx:     parent_idx
 				concrete_types: concrete_types
 			}

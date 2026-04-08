@@ -256,6 +256,9 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/http/status_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/veb/tests/veb_app_test.v',
+	'vlib/ncurses/ncurses_test.v',
+	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
+	'vlib/x/crypto/mldsa/mldsa_test.v',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {

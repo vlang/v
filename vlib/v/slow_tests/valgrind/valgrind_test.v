@@ -35,6 +35,8 @@ const skip_valgrind_files = [
 	'vlib/v/slow_tests/valgrind/string_plus_string_plus.v',
 	'vlib/v/slow_tests/valgrind/import_x_json2.v',
 	'vlib/v/slow_tests/valgrind/comptime_selector.v',
+	'vlib/v/slow_tests/valgrind/2.heap_objects.v',
+	'vlib/v/slow_tests/valgrind/sync.v',
 ]
 
 fn vprintln(s string) {

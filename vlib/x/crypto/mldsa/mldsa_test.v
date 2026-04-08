@@ -1,3 +1,4 @@
+// vtest build: has_modern_openssl?
 // regenerate go test vecs: v run testdata/gen.vsh [go-source-path]
 
 module mldsa

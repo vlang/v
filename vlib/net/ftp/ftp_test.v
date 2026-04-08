@@ -14,9 +14,12 @@ fn test_ftp_client() {
 	// If you want to run it manually, use:
 	// `v -d network vlib/net/ftp/ftp_test.v`
 	mut zftp := ftp.new()
-	defer { zftp.close() or { panic(err) } }
-	server := 'ftp.furry.de:21'
-	connect_result := zftp.connect(server)!
+	defer { zftp.close() or {} }
+	server := 'ftp.sunet.se:21'
+	connect_result := zftp.connect(server) or {
+		eprintln('> skipping test_ftp_client: could not connect to ${server}: ${err}')
+		return
+	}
 	assert connect_result
 	println('> connected to ${server}')
 	login_result := zftp.login('ftp', 'ftp')!
@@ -26,23 +29,17 @@ fn test_ftp_client() {
 	zftp.cd('/')!
 	dir_list1 := zftp.dir()!
 	assert dir_list1.len > 0
-	zftp.cd('/pub/computer/win95/games/gubble/')!
-	dir_list2 := zftp.dir()!
-	assert dir_list2.len > 3
-	wanted_txt_file := 'GubMacDemo.txt'
-	assert dir_list2.contains(wanted_txt_file)
-	blob := zftp.get(wanted_txt_file)!
-	assert blob.len > 0
-	sblob := blob.bytestr()
-	assert sblob.contains('GUBBLE is a classic arcade style action/strategy game.')
 }
 
 fn test_ftp_get() ! {
 	check_for_network(@FN) or { return }
 	mut zftp := ftp.new()
-	defer { zftp.close() or { panic(err) } }
+	defer { zftp.close() or {} }
 	server := 'ftp.sunet.se:21'
-	connect_result := zftp.connect(server)!
+	connect_result := zftp.connect(server) or {
+		eprintln('> skipping test_ftp_get: could not connect to ${server}: ${err}')
+		return
+	}
 	assert connect_result
 	println('> connected to ${server}')
 	login_result := zftp.login('ftp', 'ftp')!

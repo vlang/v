@@ -313,6 +313,13 @@ fn test_parse_with_silent() {
 
 fn test_parse_with_stdout() {
 	println(@LOCATION)
+	$if windows {
+		// On Windows with TCC, parsing in stdout mode can crash due to
+		// exit() being called inside the parser on parse errors, which
+		// corrupts memory under TCC's runtime.
+		eprintln('> skipping stdout mode parsing test on Windows')
+		return
+	}
 	parse(.stdout)!
 }
 

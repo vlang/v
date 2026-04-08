@@ -233,6 +233,7 @@ pub:
 	vals             []string
 	is_flag          bool
 	is_multi_allowed bool
+	is_typedef       bool
 	uses_exprs       bool
 	typ              Type
 	attrs            map[string][]Attr

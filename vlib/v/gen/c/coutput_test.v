@@ -267,6 +267,11 @@ fn should_skip(relpath string) bool {
 		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
 		return true
 	}
+	if github_job == 'docker-ubuntu-musl' && (relpath.ends_with('print_boehm_leak.vv')
+		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')) {
+		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since boehm_leak gc mode has pthread issues on musl')
+		return true
+	}
 	if user_os == 'windows' {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')

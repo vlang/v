@@ -558,7 +558,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(';')
 		}
-		dot_or_ptr := g.dot_or_ptr(node.cond_type)
+		dot_or_ptr := if node.cond_type.has_flag(.shared_f) {
+			'->val.'
+		} else if node.cond_type.is_ptr() || resolved_cond_expr.is_auto_deref_var() {
+			'->'
+		} else {
+			g.dot_or_ptr(node.cond_type)
+		}
 		idx := g.new_tmp_var()
 		plus_plus_idx := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {

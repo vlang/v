@@ -288,7 +288,8 @@ fn test_walk_with_context() {
 		remove_tree()
 	}
 	mut res := []string{}
-	os.walk_with_context('myfolder', &res, fn (mut res []string, fpath string) {
+	os.walk_with_context('myfolder', &res, fn (ctx voidptr, fpath string) {
+		mut res := unsafe { &[]string(ctx) }
 		res << fpath
 	})
 	res = normalise_paths(res)

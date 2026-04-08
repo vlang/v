@@ -1123,11 +1123,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
 				} else {
-					mut actual_styp := styp
+					// For blank idents, use val_type to determine the C type
+					// instead of var_type (styp), because in generic functions
+					// the checker's left_types[i] for blank idents can be
+					// overwritten by a later generic instantiation.
+					mut blank_styp := g.styp(val_type)
 					if val is ast.Ident && val.is_auto_deref_var() {
-						actual_styp = '${styp}*'
+						blank_styp = '${blank_styp}*'
 					}
-					g.write('{${actual_styp} _ = ')
+					if blank_styp.ends_with('*') {
+						blank_styp = 'void*'
+					}
+					g.write('{${blank_styp} _ = ')
 				}
 				if (val in [ast.MatchExpr, ast.IfExpr, ast.ComptimeSelector] || is_fixed_array_var)
 					&& unaliased_right_sym.info is ast.ArrayFixed {

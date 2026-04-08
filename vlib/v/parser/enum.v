@@ -134,6 +134,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	is_flag := p.attrs.contains('flag')
+	is_typedef := p.attrs.contains('typedef')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
 	pubfn := if p.mod == 'main' { '@[flag_enum_fn] fn' } else { '@[flag_enum_fn] pub fn' }
 	if is_flag {
@@ -225,6 +226,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		info:   ast.Enum{
 			vals:             vals
 			is_flag:          is_flag
+			is_typedef:       is_typedef
 			is_multi_allowed: is_multi_allowed
 			uses_exprs:       uses_exprs
 			typ:              enum_type

@@ -2072,6 +2072,10 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 			}
 		}
 	}
+	if sym.kind == .enum && sym.info is ast.Enum && sym.info.is_typedef {
+		// @[typedef] enums are defined in a C header; use the original name without module prefix.
+		styp = sym.name.all_after_last('.')
+	}
 	return styp
 }
 
@@ -6287,6 +6291,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 }
 
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
+	// @[typedef] enums are already defined in a C header, don't redefine them.
+	if node.attrs.contains('typedef') {
+		return
+	}
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
 	// Explicit-size enums are emitted as typedef + defines, so all C compilers
@@ -6772,11 +6780,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 			name = 'builtin__print'
 		}
 	}
-	if node.kind == .constant
-		|| (node.obj is ast.ConstField && node.kind != .function)
-		|| (node.kind == .unresolved && node.mod != '' && node.mod != 'builtin'
-		&& !node.name.contains('.')
-		&& g.table.global_scope.find_const(node.mod + '.' + node.name) != none) {
+	mut is_const := node.kind == .constant || (node.obj is ast.ConstField && node.kind != .function)
+	if !is_const && node.kind == .unresolved && node.mod != '' && node.mod != 'builtin'
+		&& !node.name.contains('.') {
+		if g.table.global_scope.find_const(node.mod + '.' + node.name) != none {
+			is_const = true
+		}
+	}
+	if is_const {
 		if g.inside_opt_or_res && node.or_expr.kind != .absent && node.obj.typ.has_flag(.option) {
 			styp := g.base_type(node.obj.typ)
 			g.write('(*(${styp}*)')

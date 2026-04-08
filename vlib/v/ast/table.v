@@ -1015,6 +1015,22 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
+	// Allow overwriting a generic_inst with a more complete concrete type definition
+	// (struct, interface, sumtype). This happens when unwrap_generic_type creates a
+	// placeholder that gets prematurely converted to generic_inst by
+	// find_or_register_generic_inst during method resolution, before the full type
+	// can be registered.
+	if existing_symbol.kind == .generic_inst && typ.kind in [.struct, .interface, .sum_type] {
+		ngname := if typ.ngname != '' { typ.ngname } else { strip_generic_params(typ.name) }
+		t.type_symbols[existing_idx] = &TypeSymbol{
+			...typ
+			ngname:     ngname
+			methods:    existing_symbol.methods
+			idx:        existing_idx
+			is_builtin: existing_symbol.is_builtin
+		}
+		return existing_idx
+	}
 	// Override the already registered builtin types with the actual
 	// v struct declarations in the vlib/builtin module sources:
 	if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
@@ -1655,6 +1671,7 @@ pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_typ
 		cname:  inst_cname
 		ngname: parent_sym.ngname
 		mod:    parent_sym.mod
+		is_pub: parent_sym.is_pub
 		info:   GenericInst{
 			parent_idx:     parent_typ.idx()
 			concrete_types: concrete_types
