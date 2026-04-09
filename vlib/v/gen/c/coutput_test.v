@@ -268,8 +268,9 @@ fn should_skip(relpath string) bool {
 		return true
 	}
 	if github_job == 'docker-ubuntu-musl' && (relpath.ends_with('print_boehm_leak.vv')
-		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')) {
-		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since boehm_leak gc mode has pthread issues on musl')
+		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')
+		|| relpath.ends_with('gc_debugger_linux.vv')) {
+		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
 	if user_os == 'windows' {
