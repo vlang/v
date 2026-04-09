@@ -897,20 +897,32 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		&& g.cur_struct_init_typ != 0 {
 		struct_sym := g.table.sym(g.cur_struct_init_typ)
 		if struct_sym.info is ast.Struct {
-			for f in struct_sym.info.fields {
-				if f.name == sfield.name {
-					// Only cast named function type aliases (e.g. ThreadCB),
-					// not anonymous function types from generic structs which
-					// may generate non-existent type names.
-					fsym := g.table.sym(f.typ)
-					if !fsym.name.starts_with('fn ') {
-						field_styp := g.styp(f.typ)
-						expr_styp := g.styp(sfield.typ)
-						if field_styp != expr_styp {
-							g.write('(${field_styp})')
+			if struct_sym.info.is_typedef {
+				// For @[typedef] C structs, the actual C field types may differ
+				// from V's declarations (e.g. C has `const char*` but V uses `char*`).
+				// Use __typeof__ to cast to the actual C struct field type.
+				c_struct_name := if struct_sym.cname.starts_with('C__') {
+					struct_sym.cname[3..]
+				} else {
+					struct_sym.cname
+				}
+				g.write('(__typeof__(((${c_struct_name}){}).${sfield.name}))')
+			} else {
+				for f in struct_sym.info.fields {
+					if f.name == sfield.name {
+						// Only cast named function type aliases (e.g. ThreadCB),
+						// not anonymous function types from generic structs which
+						// may generate non-existent type names.
+						fsym := g.table.sym(f.typ)
+						if !fsym.name.starts_with('fn ') {
+							field_styp := g.styp(f.typ)
+							expr_styp := g.styp(sfield.typ)
+							if field_styp != expr_styp {
+								g.write('(${field_styp})')
+							}
 						}
+						break
 					}
-					break
 				}
 			}
 		}

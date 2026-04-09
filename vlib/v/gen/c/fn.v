@@ -5682,6 +5682,20 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		g.expected_arg_mut = old_expected_arg_mut
 	}
 	exp_sym := g.table.sym(expected_type)
+	// Cast function pointer arguments when the expected and actual types differ.
+	// V's checker allows coercing function types (e.g. Renderer* → voidptr in callbacks),
+	// but C compilers with -Werror=incompatible-pointer-types reject the mismatch.
+	// Only cast for V language calls with named function type aliases (not anonymous fn types).
+	if exp_sym.kind == .function && arg_sym.kind == .function && !arg.is_mut && lang == .v
+		&& !exp_sym.name.starts_with('fn ') {
+		exp_styp := g.styp(expected_type)
+		arg_styp := g.styp(arg_typ)
+		if exp_styp != arg_styp {
+			g.write('(${exp_styp})')
+			g.expr(arg.expr)
+			return
+		}
+	}
 	if arg.is_mut && exp_sym.kind in [.interface, .sum_type] {
 		expected_wrap_type := if expected_type.is_ptr() {
 			expected_type.deref()
