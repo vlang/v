@@ -35,9 +35,9 @@ fn test_connection_and_query() {
 		conn.close()
 	}
 
-	conn.query('drop table if exists vlang_mssql_test') or {}
+	conn.query("if object_id('vlang_mssql_test', 'U') is not null drop table vlang_mssql_test") or {}
 	defer {
-		conn.query('drop table if exists vlang_mssql_test') or {}
+		conn.query("if object_id('vlang_mssql_test', 'U') is not null drop table vlang_mssql_test") or {}
 	}
 
 	create_result := conn.query('create table vlang_mssql_test (

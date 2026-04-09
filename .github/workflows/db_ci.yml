@@ -96,7 +96,7 @@ jobs:
       - name: Install ODBC dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --batch --no-tty --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          [ -f /usr/share/keyrings/microsoft-prod.gpg ] || curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --batch --no-tty --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
           curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
           ./v retry -- sudo apt update
           sudo ACCEPT_EULA=Y apt install --quiet -y msodbcsql18 unixodbc-dev
