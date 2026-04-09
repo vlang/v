@@ -2072,10 +2072,6 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 			}
 		}
 	}
-	if sym.kind == .enum && sym.info is ast.Enum && sym.info.is_typedef {
-		// @[typedef] enums are defined in a C header; use the original name without module prefix.
-		styp = sym.name.all_after_last('.')
-	}
 	return styp
 }
 
@@ -2923,10 +2919,19 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 						}
 					}
 				}
+				// For @[heap] variables, the C-level variable is already a pointer
+				// even though the V-level type is a value type, so account for
+				// that extra indirection when computing how many '&' to add.
+				extra_muls := if expr is ast.Ident && g.resolved_ident_is_auto_heap(expr)
+					&& !expr_typ.is_ptr() {
+					1
+				} else {
+					0
+				}
 				if !expr.is_literal() && expr_typ != ast.nil_type
-					&& ret_typ.nr_muls() > expr_typ.nr_muls()
+					&& ret_typ.nr_muls() > expr_typ.nr_muls() + extra_muls
 					&& !ret_typ.has_flag(.option_mut_param_t) {
-					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
+					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls() - extra_muls))
 				} else if ret_typ.has_flag(.option_mut_param_t) {
 					if expr_typ.is_ptr() {
 						if ret_typ.nr_muls() < expr_typ.nr_muls() {
@@ -6291,10 +6296,6 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 }
 
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
-	// @[typedef] enums are already defined in a C header, don't redefine them.
-	if node.attrs.contains('typedef') {
-		return
-	}
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
 	// Explicit-size enums are emitted as typedef + defines, so all C compilers

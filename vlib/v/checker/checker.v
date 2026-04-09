@@ -1408,9 +1408,16 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 	}
 	match right {
 		ast.CastExpr {
-			if c.table.final_sym(c.unwrap_generic(right.typ)).kind == .interface {
-				mut expr := right.expr
-				c.fail_if_immutable(mut expr)
+			iface_sym := c.table.final_sym(c.unwrap_generic(right.typ))
+			if iface_sym.kind == .interface && iface_sym.info is ast.Interface {
+				// Only fail if the interface has mutable fields; casting an immutable
+				// reference to a read-only interface is safe because no mutation is
+				// possible through the interface.
+				has_mut_fields := iface_sym.info.fields.any(it.is_mut)
+				if has_mut_fields {
+					mut expr := right.expr
+					c.fail_if_immutable(mut expr)
+				}
 			}
 		}
 		ast.Ident {
