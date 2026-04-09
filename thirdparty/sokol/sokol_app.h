@@ -4036,7 +4036,7 @@ _SOKOL_PRIVATE sapp_desc _sapp_desc_defaults(const sapp_desc *desc) {
 #if defined(_SAPP_APPLE)
     res.gl.minor_version = 1;
 #else
-    res.gl.minor_version = 3;
+    res.gl.minor_version = 1;
 #endif
 #elif defined(SOKOL_GLES3)
     res.gl.major_version = 3;

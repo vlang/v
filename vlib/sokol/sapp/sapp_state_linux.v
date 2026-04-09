@@ -319,7 +319,7 @@ fn sapp_desc_defaults(desc &Desc) Desc {
 	}
 	if res.gl.major_version == 0 {
 		res.gl.major_version = 4
-		res.gl.minor_version = 3
+		res.gl.minor_version = 1
 	}
 	if res.clipboard_size == 0 {
 		res.clipboard_size = 8192
