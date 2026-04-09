@@ -3314,6 +3314,18 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		if resolved_left_type != 0 {
 			left_type = resolved_left_type
 		}
+	} else if node.left is ast.StructInit {
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			si_typ := if node.left.generic_typ != 0 {
+				node.left.generic_typ
+			} else {
+				node.left.typ
+			}
+			resolved := g.unwrap_generic(si_typ)
+			if resolved != 0 && !resolved.has_flag(.generic) {
+				left_type = resolved
+			}
+		}
 	}
 	if left_type == g.unwrap_generic(node.left_type) {
 		resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
@@ -3459,6 +3471,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				resolved := g.resolved_expr_type(node.left, node.left_type)
 				if resolved != 0 && resolved != left_type {
 					left_type = g.unwrap_generic(resolved)
+				}
+			}
+		}
+		ast.StructInit {
+			// In generic contexts, node.left_type may be stale from a previous
+			// checker instantiation (the checker overwrites AST types on each pass).
+			// Use the struct init's own .typ which preserves the generic flag.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				si_typ := if node.left.generic_typ != 0 {
+					node.left.generic_typ
+				} else {
+					node.left.typ
+				}
+				resolved := g.unwrap_generic(si_typ)
+				if resolved != 0 && !resolved.has_flag(.generic) {
+					left_type = resolved
 				}
 			}
 		}
