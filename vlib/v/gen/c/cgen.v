@@ -6298,6 +6298,31 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
+	// @[typedef] enums are already defined in a C header — don't redefine the enum,
+	// but emit #define aliases so that V-mangled field names resolve to the correct values.
+	if node.attrs.contains('typedef') {
+		c_name := node.name.all_after_last('.')
+		g.enum_typedefs.writeln('')
+		g.enum_typedefs.writeln('// @[typedef] enum ${c_name} — defined in C header')
+		g.enum_typedefs.writeln('typedef ${c_name} ${enum_name};')
+		mut cur_value := 0
+		for field in node.fields {
+			if field.has_expr {
+				expr_str := g.expr_string(field.expr)
+				g.enum_typedefs.writeln('#define ${enum_name}__${field.name} (${expr_str})')
+				// Try to track the integer value for subsequent fields
+				cur_value = expr_str.int() + 1
+			} else if is_flag {
+				// Not applicable for @[typedef] flag enums from C headers typically
+				g.enum_typedefs.writeln('#define ${enum_name}__${field.name} ${cur_value}')
+				cur_value++
+			} else {
+				g.enum_typedefs.writeln('#define ${enum_name}__${field.name} ${cur_value}')
+				cur_value++
+			}
+		}
+		return
+	}
 	// Explicit-size enums are emitted as typedef + defines, so all C compilers
 	// (including tinyc) respect the selected storage size.
 	if g.is_cc_msvc || node.typ != ast.int_type {
