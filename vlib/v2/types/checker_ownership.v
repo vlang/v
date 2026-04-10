@@ -233,14 +233,14 @@ fn (mut c Checker) ownership_mark_from_call_expr(lhs_name string, call ast.CallE
 		c.owned_vars[lhs_name] = pos
 		return true
 	}
-	// Check if the function returns a parameter and any arg was owned.
+	// Check if the function returns a specific parameter and that parameter's arg was owned.
 	// Note: ownership_check_call_args may have already moved the arg from owned_vars
 	// to moved_vars (since c.expr(rhs) runs before this), so also check moved_vars
 	// for args that were just moved into this specific function call.
-	returns_param_key := '${fn_name}__returns_param'
-	if returns_param_key in c.ownership_fn_params {
-		for arg in call.args {
-			arg_name := ownership_expr_ident_name(arg)
+	if fn_name in c.ownership_fn_returns_param {
+		param_idx := c.ownership_fn_returns_param[fn_name]
+		if param_idx >= 0 && param_idx < call.args.len {
+			arg_name := ownership_expr_ident_name(call.args[param_idx])
 			if arg_name.len > 0 {
 				if arg_name in c.owned_vars {
 					c.owned_vars[lhs_name] = pos
@@ -383,8 +383,7 @@ fn (mut c Checker) ownership_prescan_fn_bodies() {
 	for pending in c.pending_fn_bodies {
 		returned_param := ownership_prescan_returns_param(pending.decl)
 		if returned_param >= 0 {
-			key := '${pending.decl.name}__returns_param'
-			c.ownership_fn_params[key] = true
+			c.ownership_fn_returns_param[pending.decl.name] = returned_param
 		}
 	}
 }

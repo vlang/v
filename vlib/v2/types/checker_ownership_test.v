@@ -416,3 +416,43 @@ fn main() {
 	assert exit_code != 0, 'should fail: s1 from outer() is owned (transitively) and was moved'
 	assert output.contains('use of moved value: `s1`'), 'got: ${output}'
 }
+
+fn test_ownership_returns_param_wrong_arg_no_false_positive() {
+	// fn pick(a, b string) returns a — only the first param is returned.
+	// If b is owned but a is not, the result should NOT be owned.
+	code := "
+fn pick(a string, b string) string {
+	return a
+}
+
+fn main() {
+	a := 'hello'
+	b := 'world'.to_owned()
+	result := pick(a, b)
+	r2 := result
+	println(result)
+}
+"
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'pick returns a (not owned), not b (owned) — result should not be owned'
+}
+
+fn test_ownership_returns_param_correct_arg() {
+	// fn pick(a, b string) returns b — when b is owned, result should be owned.
+	code := "
+fn pick(a string, b string) string {
+	return b
+}
+
+fn main() {
+	a := 'hello'
+	b := 'world'.to_owned()
+	result := pick(a, b)
+	r2 := result
+	println(result)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'pick returns b (owned) — result should be owned and moved to r2'
+	assert output.contains('use of moved value: `result`'), 'got: ${output}'
+}

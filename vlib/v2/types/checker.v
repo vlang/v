@@ -380,6 +380,8 @@ mut:
 	ownership_fns map[string]bool // fn name -> returns ownership
 	// Function parameters that received owned values at call sites
 	ownership_fn_params map[string]bool // "fn_name__param_N" -> true
+	// Functions that return a specific parameter (index stored, -1 = not set)
+	ownership_fn_returns_param map[string]int // fn_name -> parameter index
 	// Current function name for ownership tracking
 	ownership_cur_fn string
 	// Borrow tracking: variables currently borrowed via &
