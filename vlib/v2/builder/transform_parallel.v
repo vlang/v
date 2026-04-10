@@ -15,8 +15,8 @@ struct TransformChunkArgs {
 	worker_idx int
 }
 
-fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 fn C.pthread_attr_init(attr voidptr) int
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
 fn C.pthread_attr_destroy(attr voidptr) int
@@ -56,7 +56,7 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 	chunk_size := (n_files + n_jobs - 1) / n_jobs // ceiling division
 	mut chunk_results := [][]ast.File{len: n_jobs}
 	mut worker_ptrs := []voidptr{len: n_jobs, init: unsafe { nil }}
-	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
+	mut thread_ids := []C.pthread_t{len: n_jobs}
 	mut args := []TransformChunkArgs{cap: n_jobs}
 
 	// ARM64-compiled code uses much more stack per function (one slot per SSA
@@ -79,7 +79,7 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 			worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 			worker_idx: chunk_idx
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, attr, transform_chunk_thread,
+		C.pthread_create(unsafe { &thread_ids[chunk_idx] }, attr, transform_chunk_thread,
 			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++

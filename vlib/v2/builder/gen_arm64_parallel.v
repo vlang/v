@@ -14,8 +14,8 @@ struct GenARM64ChunkArgs {
 	end_idx   int
 }
 
-fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 fn C.pthread_attr_init(attr voidptr) int
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
 fn C.pthread_attr_destroy(attr voidptr) int
@@ -47,7 +47,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 
 	// Split functions into chunks
 	chunk_size := (n_funcs + n_jobs - 1) / n_jobs
-	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
+	mut thread_ids := []C.pthread_t{len: n_jobs}
 	mut args := []GenARM64ChunkArgs{cap: n_jobs}
 
 	// Pre-create all workers on the main thread to avoid concurrent .clone() races.
@@ -76,7 +76,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 
 	for ci := 0; ci < chunk_idx; ci++ {
-		C.pthread_create(unsafe { voidptr(&thread_ids[ci]) }, attr, gen_arm64_chunk_thread,
+		C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_arm64_chunk_thread,
 			unsafe { voidptr(&args[ci]) })
 	}
 	C.pthread_attr_destroy(attr)

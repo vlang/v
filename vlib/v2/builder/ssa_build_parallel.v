@@ -22,8 +22,8 @@ struct SSABuildChunkArgs {
 	end_idx   int
 }
 
-fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.pthread_join(thread voidptr, retval voidptr) int
+fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 fn C.pthread_attr_init(attr voidptr) int
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
 fn C.pthread_attr_destroy(attr voidptr) int
@@ -119,7 +119,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	}
 
 	// Spawn worker threads
-	mut thread_ids := []voidptr{len: actual_chunks, init: unsafe { nil }}
+	mut thread_ids := []C.pthread_t{len: actual_chunks}
 	mut args := []SSABuildChunkArgs{cap: actual_chunks}
 
 	attr_buf := [64]u8{}
@@ -138,7 +138,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 			start_idx: i
 			end_idx:   end
 		}
-		C.pthread_create(unsafe { voidptr(&thread_ids[chunk_idx]) }, attr, ssa_build_chunk_thread,
+		C.pthread_create(unsafe { &thread_ids[chunk_idx] }, attr, ssa_build_chunk_thread,
 			unsafe { voidptr(&args[chunk_idx]) })
 		i = end
 		chunk_idx++
