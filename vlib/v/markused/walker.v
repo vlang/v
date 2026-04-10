@@ -1126,6 +1126,14 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			break
 		}
 	}
+	// Mark function pointer types used in expected arg types, so their typedefs are emitted.
+	// When cgen casts an argument to the expected function pointer type, the typedef must exist.
+	for exp_type in node.expected_arg_types {
+		exp_sym := w.table.sym(exp_type)
+		if exp_sym.kind == .function && !exp_sym.name.starts_with('fn ') {
+			w.mark_by_type(exp_type)
+		}
+	}
 	for concrete_type in node.concrete_types {
 		w.mark_by_type(concrete_type)
 	}

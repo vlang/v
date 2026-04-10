@@ -97,22 +97,16 @@ fn (d &Digest) clone() &Digest {
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
 pub fn new() &Digest {
-	mut d := &Digest{
-		h: []u32{len: 8}
-		x: []u8{len: chunk}
-	}
-	d.reset()
+	mut d := &Digest{}
+	d.init()
 	return d
 }
 
 // new224 returns a new Digest (implementing hash.Hash) computing the SHA224 checksum.
 pub fn new224() &Digest {
-	mut d := &Digest{
-		h:     []u32{len: 8}
-		x:     []u8{len: chunk}
-		is224: true
-	}
-	d.reset()
+	mut d := &Digest{}
+	d.is224 = true
+	d.init()
 	return d
 }
 

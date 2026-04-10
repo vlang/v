@@ -5,6 +5,9 @@ $if freebsd || openbsd {
 	#flag -L/usr/local/lib
 }
 #flag -I@VEXEROOT/thirdparty/sqlite
+$if tinyc {
+	#flag -DSQLITE_DISABLE_INTRINSIC
+}
 $if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else $if windows {

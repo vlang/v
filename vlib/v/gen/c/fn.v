@@ -5691,10 +5691,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		exp_styp := g.styp(expected_type)
 		arg_styp := g.styp(arg_typ)
 		if exp_styp != arg_styp {
-			if g.pref.skip_unused {
-				mut muttable := unsafe { &ast.Table(g.table) }
-				muttable.used_features.used_syms[expected_type.idx()] = true
-			}
 			g.write('(${exp_styp})')
 			g.expr(arg.expr)
 			return
