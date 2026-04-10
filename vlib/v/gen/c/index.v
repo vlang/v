@@ -567,7 +567,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	}
 	get_and_set_types := val_sym.kind in [.struct, .map, .array, .array_fixed]
-	use_get_and_set := node.is_setter && !g.inside_map_infix && !g.inside_left_shift
+	use_get_and_set := g.inside_left_shift || (node.is_setter && !g.inside_map_infix)
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || val_type == ast.string_type {
 			g.cur_indexexpr << node.pos.pos
@@ -609,8 +609,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('${zero} })))')
 		}
 	} else if !gen_or && (g.inside_map_postfix || g.inside_map_infix
-		|| g.inside_map_index || g.inside_array_index || (g.is_assign_lhs && !g.is_arraymap_set
-		&& get_and_set_types)) {
+		|| g.inside_map_index || g.inside_array_index || g.inside_left_shift
+		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types)) {
 		zero := g.type_default(val_type)
 		if use_get_and_set {
 			g.write('(*(${val_type_str}*)builtin__map_get_and_set((map*)')

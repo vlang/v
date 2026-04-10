@@ -428,10 +428,12 @@ fn test_map_push_directly() {
 	assert a['aaa'] == ['a', 'b', 'c']
 }
 
-fn test_map_push_missing_key_does_not_insert() {
+fn test_map_push_inserts_for_missing_key() {
 	mut a := map[string][]string{}
 	a['aaa'] << 'a'
-	assert a == map[string][]string{}
+	assert a == {
+		'aaa': ['a']
+	}
 }
 
 fn test_assign_directly() {
