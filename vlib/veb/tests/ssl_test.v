@@ -1,3 +1,4 @@
+// vtest build: !sanitized_job?
 import net.http
 import net.mbedtls
 import os
