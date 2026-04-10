@@ -12,6 +12,7 @@ pub enum Method {
 	definition      @['textDocument/definition']
 	completion      @['textDocument/completion']
 	signature_help  @['textDocument/signatureHelp']
+	hover           @['textDocument/hover']
 	set_trace       @['$/setTrace']
 	cancel_request  @['$/cancelRequest']
 	shutdown        @['shutdown']
@@ -51,6 +52,9 @@ fn (mut p Preferences) parse_line_info(line string) {
 	} else if third.starts_with('gd^') {
 		col = third[3..].int() - 1
 		Method.definition
+	} else if third.starts_with('hv^') {
+		col = third[3..].int() - 1
+		Method.hover
 	} else if third[0].is_digit() {
 		col = third.int() - 1
 		Method.completion

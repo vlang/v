@@ -3984,6 +3984,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 	defer {
 		if c.pref.is_vls {
 			c.ident_gotodef(node)
+			c.ident_hover(node)
 		}
 	}
 	match mut node {

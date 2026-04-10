@@ -111,6 +111,221 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 	exit(0)
 }
 
+fn (mut c Checker) ident_hover(node_ ast.Expr) {
+	if c.pref.linfo.method != .hover {
+		return
+	}
+	if !c.vls_is_the_node(node_.pos()) {
+		return
+	}
+	mut node := unsafe { node_ }
+	mut declaration := ''
+	mut doc := ''
+	match mut node {
+		ast.CallExpr {
+			if !c.vls_is_the_node(node.name_pos) {
+				return
+			}
+			f := c.get_fn_from_call_expr(node) or { return }
+			fn_name := f.name.all_after_last('.')
+			mut params := []string{cap: f.params.len}
+			for i, param in f.params {
+				if f.is_method && i == 0 {
+					continue
+				}
+				params << '${param.name} ${c.table.type_to_str(param.typ)}'
+			}
+			ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+				' ' + c.table.type_to_str(f.return_type)
+			} else {
+				''
+			}
+			declaration = 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+			receiver := if f.is_method {
+				c.table.sym(f.receiver_type).name.all_after_last('.')
+			} else {
+				''
+			}
+			if info := c.table.vls_info['fn_${f.mod}[${receiver}]${fn_name}'] {
+				doc = info.doc
+			}
+		}
+		ast.Ident {
+			for _, obj in c.table.global_scope.objects {
+				if obj is ast.ConstField && obj.name == node.name {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = 'const ${node.name.all_after_last('.')} ${type_str}'
+					if info := c.table.vls_info['const_${obj.name}'] {
+						doc = info.doc
+					}
+					break
+				} else if obj is ast.GlobalField && obj.name == node.name {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = '__global ${node.name.all_after_last('.')} ${type_str}'
+					break
+				}
+			}
+			if declaration == '' && !isnil(c.fn_scope) {
+				if obj := c.fn_scope.find_var(node.name) {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = '${node.name} ${type_str}'
+				}
+			}
+			if declaration == '' {
+				full_name := if node.mod != '' { '${node.mod}.${node.name}' } else { node.name }
+				idx := c.table.find_type_idx(full_name)
+				if idx > 0 {
+					sym := c.table.type_symbols[idx]
+					declaration = c.vls_hover_type_declaration(sym)
+					key := c.vls_hover_type_info_key(sym)
+					if info := c.table.vls_info['${key}_${sym.name}'] {
+						doc = info.doc
+					}
+				}
+			}
+		}
+		ast.SelectorExpr {
+			sym := c.table.sym(node.expr_type)
+			if field := c.table.find_field_with_embeds(sym, node.field_name) {
+				type_str := c.table.type_to_str(field.typ)
+				declaration = '${node.field_name} ${type_str}'
+			} else if method := c.table.find_method(sym, node.field_name) {
+				fn_name := method.name.all_after_last('.')
+				mut params := []string{cap: method.params.len}
+				for i, param in method.params {
+					if method.is_method && i == 0 {
+						continue
+					}
+					params << '${param.name} ${c.table.type_to_str(param.typ)}'
+				}
+				ret_str := if method.return_type != ast.no_type
+					&& method.return_type != ast.void_type {
+					' ' + c.table.type_to_str(method.return_type)
+				} else {
+					''
+				}
+				declaration = 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+				receiver_name := sym.name.all_after_last('.')
+				if info := c.table.vls_info['fn_${method.mod}[${receiver_name}]${fn_name}'] {
+					doc = info.doc
+				}
+			} else {
+				return
+			}
+		}
+		ast.StructInit {
+			if c.vls_is_the_node(node.name_pos) {
+				sym := c.table.sym(node.typ)
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			} else {
+				for field in node.init_fields {
+					if c.vls_is_the_node(field.name_pos) {
+						sym := c.table.sym(node.typ)
+						if struct_field := c.table.find_field_with_embeds(sym, field.name) {
+							type_str := c.table.type_to_str(struct_field.typ)
+							declaration = '${field.name} ${type_str}'
+						}
+						break
+					}
+				}
+			}
+		}
+		ast.EnumVal {
+			enum_name := if node.enum_name == '' && node.typ != ast.void_type && node.typ != 0 {
+				c.table.sym(node.typ).name
+			} else {
+				node.enum_name
+			}
+			declaration = '${enum_name.all_after_last('.')}.${node.val}'
+		}
+		ast.TypeNode {
+			typ_str := c.table.type_to_str(node.typ)
+			idx := c.table.find_type_idx(typ_str)
+			if idx > 0 {
+				sym := c.table.type_symbols[idx]
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			}
+		}
+		ast.CastExpr {
+			typ_str := if node.typname != '' {
+				node.typname
+			} else {
+				c.table.type_to_str(node.typ)
+			}
+			idx := c.table.find_type_idx(typ_str)
+			if idx > 0 {
+				sym := c.table.type_symbols[idx]
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			}
+		}
+		else {}
+	}
+	if declaration == '' {
+		exit(0)
+	}
+	c.vls_write_hover(declaration, doc)
+	exit(0)
+}
+
+fn (c &Checker) vls_hover_type_declaration(sym ast.TypeSymbol) string {
+	name := sym.name.all_after_last('.')
+	match sym.kind {
+		.struct {
+			return 'struct ${name}'
+		}
+		.enum {
+			return 'enum ${name}'
+		}
+		.interface {
+			return 'interface ${name}'
+		}
+		.alias {
+			alias_info := sym.info as ast.Alias
+			parent_str := c.table.type_to_str(alias_info.parent_type)
+			return 'type ${name} = ${parent_str}'
+		}
+		.sum_type {
+			sum_info := sym.info as ast.SumType
+			variants := sum_info.variants.map(c.table.type_to_str(it)).join(' | ')
+			return 'type ${name} = ${variants}'
+		}
+		else {
+			return name
+		}
+	}
+}
+
+fn (c &Checker) vls_hover_type_info_key(sym ast.TypeSymbol) string {
+	return match sym.kind {
+		.alias { 'aliastype' }
+		.sum_type { 'sumtype' }
+		else { '${sym.kind}' }
+	}
+}
+
+fn (c &Checker) vls_write_hover(declaration string, doc string) {
+	mut lines := ['```v', declaration, '```']
+	if doc.len > 0 {
+		lines << ''
+		lines << doc
+	}
+	value := lines.join('\n').replace('\\', '\\\\').replace('"', '\\"').replace('\n',
+		'\\n')
+	println('{"contents":{"kind":"markdown","value":"${value}"}}')
+}
+
 fn (mut c Checker) name_pos_gotodef(name string) ?token.Pos {
 	idx := c.table.find_type_idx(name)
 	if idx > 0 {

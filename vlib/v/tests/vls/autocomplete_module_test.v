@@ -36,6 +36,10 @@ const autocomplete_info_for_mod_struct = '{"details": [
 {"kind":2,"label":"add","detail":"void","declaration":"","documentation":""}
 ]}'
 
+const hover_info_for_public_fn1 = '{"contents":{"kind":"markdown","value":"```v\\nfn public_fn1(val int) string\\n```"}}'
+
+const hover_info_for_public_struct1 = '{"contents":{"kind":"markdown","value":"```v\\nstruct PublicStruct1\\n```"}}'
+
 const fn_signature_info_for_all_before_last = '{
 "signatures":[{
 	"label":"all_before_last(sub string) string",
@@ -57,6 +61,7 @@ enum Method {
 	definition      @['textDocument/definition']
 	completion      @['textDocument/completion']
 	signature_help  @['textDocument/signatureHelp']
+	hover           @['textDocument/hover']
 	set_trace       @['$/setTrace']
 	cancel_request  @['$/cancelRequest']
 	shutdown        @['shutdown']
@@ -109,6 +114,16 @@ const test_data = [
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
 		output: ''
+	},
+	TestData{
+		method: .hover
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
+		output: hover_info_for_public_fn1
+	},
+	TestData{
+		method: .hover
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
+		output: hover_info_for_public_struct1
 	},
 	TestData{
 		method: .definition
@@ -352,6 +367,9 @@ fn test_main() {
 				.signature_help {
 					check_valid_fn_signature(t.output)!
 				}
+				.hover {
+					check_valid_hover(t.output)!
+				}
 				else {}
 			}
 		}
@@ -407,6 +425,27 @@ fn check_valid_json_errors(message string) ! {
 		if result.col <= 0 {
 			return error('json_errors: col should > 0')
 		}
+	}
+}
+
+struct HoverContents {
+	kind  string
+	value string
+}
+
+struct HoverResult {
+	contents HoverContents
+}
+
+fn check_valid_hover(message string) ! {
+	result := json.decode(HoverResult, message) or {
+		return error('hover: fail to json decode: ${err}')
+	}
+	if result.contents.kind != 'markdown' {
+		return error('hover: contents.kind should be "markdown": ${result.contents.kind}')
+	}
+	if result.contents.value.len == 0 {
+		return error('hover: contents.value should not be empty')
 	}
 }
 
