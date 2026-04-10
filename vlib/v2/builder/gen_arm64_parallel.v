@@ -76,8 +76,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 
 	for ci := 0; ci < chunk_idx; ci++ {
-		C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_arm64_chunk_thread,
-			unsafe { voidptr(&args[ci]) })
+		C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_arm64_chunk_thread, unsafe { voidptr(&args[ci]) })
 	}
 	C.pthread_attr_destroy(attr)
 
