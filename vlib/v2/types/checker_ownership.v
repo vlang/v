@@ -187,6 +187,12 @@ fn (mut c Checker) ownership_check_return(stmt ast.ReturnStmt) {
 				is_fn_call: true
 				fn_name:    c.ownership_cur_fn
 			}
+		} else if ownership_is_to_owned_call(expr) {
+			// Direct return of .to_owned() call, e.g. `return 'x'.to_owned()`
+			c.ownership_fns[c.ownership_cur_fn] = true
+		} else if ownership_is_ownership_call(expr, c.ownership_fns) {
+			// Direct return of a function known to give ownership, e.g. `return gives_ownership()`
+			c.ownership_fns[c.ownership_cur_fn] = true
 		}
 	}
 }
@@ -404,6 +410,10 @@ fn ownership_prescan_returns_owned(stmts []ast.Stmt) bool {
 					if name.len > 0 && name in owned_locals {
 						return true
 					}
+					// Direct return of .to_owned(), e.g. `return 'x'.to_owned()`
+					if ownership_is_to_owned_call(expr) {
+						return true
+					}
 				}
 			}
 			else {}
@@ -447,6 +457,22 @@ fn ownership_is_to_owned_call(expr ast.Expr) bool {
 		if coce.lhs is ast.SelectorExpr {
 			sel := coce.lhs as ast.SelectorExpr
 			return sel.rhs.name == 'to_owned'
+		}
+	}
+	return false
+}
+
+// ownership_is_ownership_call checks if an expression is a call to a function
+// known to return ownership (present in ownership_fns).
+fn ownership_is_ownership_call(expr ast.Expr, ownership_fns map[string]bool) bool {
+	if expr is ast.CallExpr {
+		fn_name := ownership_call_fn_name(expr as ast.CallExpr)
+		return fn_name in ownership_fns
+	}
+	if expr is ast.CallOrCastExpr {
+		coce := expr as ast.CallOrCastExpr
+		if coce.lhs is ast.Ident {
+			return (coce.lhs as ast.Ident).name in ownership_fns
 		}
 	}
 	return false

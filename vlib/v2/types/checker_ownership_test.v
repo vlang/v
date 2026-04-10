@@ -356,3 +356,63 @@ fn main() {
 	exit_code, _ := run_ownership_check(code)
 	assert exit_code == 0, 'two immutable borrows should be allowed'
 }
+
+// === Direct return expression ownership tests ===
+
+fn test_ownership_direct_return_to_owned() {
+	// A function that directly returns .to_owned() (no intermediate variable)
+	// should still be marked as giving ownership
+	code := "
+fn gives_ownership() string {
+	return 'hello'.to_owned()
+}
+
+fn main() {
+	s1 := gives_ownership()
+	s2 := s1
+	println(s1)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s1 from gives_ownership() is owned and was moved'
+	assert output.contains('use of moved value: `s1`'), 'got: ${output}'
+}
+
+fn test_ownership_direct_return_to_owned_ok() {
+	// Direct return of .to_owned() — using result without moving is fine
+	code := "
+fn gives_ownership() string {
+	return 'hello'.to_owned()
+}
+
+fn main() {
+	s1 := gives_ownership()
+	println(s1)
+}
+"
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'using gives_ownership() result directly should be fine'
+}
+
+fn test_ownership_direct_return_ownership_fn() {
+	// A function that returns the result of another ownership-giving function
+	// should also be marked as giving ownership
+	code := "
+fn inner() string {
+	return 'hello'.to_owned()
+}
+
+fn outer() string {
+	return inner()
+}
+
+fn main() {
+	s1 := outer()
+	s2 := s1
+	println(s1)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s1 from outer() is owned (transitively) and was moved'
+	assert output.contains('use of moved value: `s1`'), 'got: ${output}'
+}
