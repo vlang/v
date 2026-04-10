@@ -34,6 +34,7 @@ pub struct Preferences {
 pub mut:
 	debug                 bool
 	verbose               bool
+	ownership             bool // -ownership: enable ownership checking for strings
 	skip_genv             bool
 	skip_builtin          bool
 	skip_imports          bool
@@ -283,15 +284,27 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	options := cmdline.only_options(args)
 
+	// Parse -ownership flag (must be after options is declared)
+	mut ownership := false
+	$if ownership ? {
+		ownership = '-ownership' in options
+		if ownership {
+			all_defines << 'ownership'
+		}
+	}
+
 	// Validate flags: error on unknown options
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
 		'-d', '-hot-fn', '-cc']
-	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
+	mut known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
 		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
 		'-single-backend', '-prod', '-prealloc']
+	$if ownership ? {
+		known_boolean_flags << '-ownership'
+	}
 	for opt in options {
 		if opt !in known_flags_with_values && opt !in known_boolean_flags {
 			eprintln('error: unknown flag `${opt}`')
@@ -311,6 +324,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -prod                  Production build: optimize with -O3 -flto')
 			eprintln('  -prealloc              Use arena allocation (faster, not thread-safe)')
 			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
+			$if ownership ? {
+				eprintln('  -ownership             Enable ownership checking for strings')
+			}
 			eprintln('  --debug                Enable debug mode')
 			eprintln('  -v, --verbose          Enable verbose output')
 			eprintln('  -cc <compiler>         C compiler to use (default: tcc, fallback: cc)')
@@ -342,6 +358,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		is_prod:               '-prod' in options
 		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
+		ownership:             ownership
 		gc_mode:               gc_mode
 		backend:               backend
 		arch:                  arch
