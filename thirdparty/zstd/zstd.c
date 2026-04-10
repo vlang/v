@@ -12673,9 +12673,10 @@ XXH_mult64to128(xxh_u64 lhs, xxh_u64 rhs)
      * In that case it is best to use the portable one.
      * https://github.com/Cyan4973/xxHash/issues/211#issuecomment-515575677
      */
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(__wasm__) \
+#if !defined(__TINYC__) && \
+    ((defined(__GNUC__) || defined(__clang__)) && !defined(__wasm__) \
     && defined(__SIZEOF_INT128__) \
-    || (defined(_INTEGRAL_MAX_BITS) && _INTEGRAL_MAX_BITS >= 128)
+    || (defined(_INTEGRAL_MAX_BITS) && _INTEGRAL_MAX_BITS >= 128))
 
     __uint128_t const product = (__uint128_t)lhs * (__uint128_t)rhs;
     XXH128_hash_t r128;

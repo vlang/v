@@ -70,8 +70,11 @@ fn (d &Digest) clone() &Digest {
 
 // new returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
 pub fn new() &Digest {
-	mut d := &Digest{}
-	d.init()
+	mut d := &Digest{
+		x: []u8{len: chunk}
+		h: []u32{len: 5}
+	}
+	d.reset()
 	return d
 }
 

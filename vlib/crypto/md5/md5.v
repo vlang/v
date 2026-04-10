@@ -64,8 +64,11 @@ fn (d &Digest) clone() &Digest {
 
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
 pub fn new() &Digest {
-	mut d := &Digest{}
-	d.init()
+	mut d := &Digest{
+		s: []u32{len: 4}
+		x: []u8{len: block_size}
+	}
+	d.reset()
 	return d
 }
 

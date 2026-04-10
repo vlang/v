@@ -143,9 +143,11 @@ fn (d &Digest) clone() &Digest {
 // internal
 fn new_digest(hash crypto.Hash) &Digest {
 	mut d := &Digest{
+		h:        []u64{len: 8}
+		x:        []u8{len: chunk}
 		function: hash
 	}
-	d.init()
+	d.reset()
 	return d
 }
 
