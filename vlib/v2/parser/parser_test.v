@@ -135,7 +135,9 @@ fn main() {
 fn trim_spaces(s string) string {
 	return s
 }
-') or { panic(err) }
+') or {
+		panic(err)
+	}
 	defer {
 		os.rm(tmp1) or {}
 		os.rm(tmp2) or {}

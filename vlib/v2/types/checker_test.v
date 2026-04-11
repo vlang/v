@@ -834,7 +834,9 @@ fn main() {
 }
 '
 	env := check_code(code)
-	method := env.lookup_method('Ignore', 'matched_dir_entry') or { panic('missing Ignore.matched_dir_entry') }
+	method := env.lookup_method('Ignore', 'matched_dir_entry') or {
+		panic('missing Ignore.matched_dir_entry')
+	}
 	assert '^a' in method.generic_params
 	assert method.params.len == 1
 	assert method.params[0].typ is Pointer
