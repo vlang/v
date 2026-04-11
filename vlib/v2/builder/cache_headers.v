@@ -1394,6 +1394,9 @@ fn header_type_node_is_usable(node ast.Type) bool {
 		ast.OptionType {
 			node.base_type !is ast.EmptyExpr && header_type_expr_is_usable(node.base_type)
 		}
+		ast.PointerType {
+			header_type_expr_is_usable(node.base_type)
+		}
 		ast.ResultType {
 			node.base_type !is ast.EmptyExpr && header_type_expr_is_usable(node.base_type)
 		}

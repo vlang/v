@@ -233,16 +233,19 @@ fn launch_v2_compiler(is_verbose bool, args []string, is_ownership bool) {
 	tool_name := if is_ownership { 'v2_ownership' } else { 'v2' }
 	mut v2_exe := os.getenv(delegated_v2_exe_env)
 	if v2_exe == '' {
-		v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+		v2_main_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+		v2_cmd_dir := os.join_path(vroot, 'cmd', 'v2')
+		v2_vlib_dir := os.join_path(vroot, 'vlib', 'v2')
 		v2_exe = cached_v2_executable_path(vroot, is_ownership)
 		v2_exe_dir := os.dir(v2_exe)
 		os.mkdir_all(v2_exe_dir) or {
 			eprintln('cannot create `${v2_exe_dir}`: ${err}')
 			exit(1)
 		}
-		if util.should_recompile_tool(vexe, v2_source, tool_name, v2_exe) {
+		if util.should_recompile_tool(vexe, v2_cmd_dir, tool_name, v2_exe)
+			|| util.should_recompile_tool(vexe, v2_vlib_dir, tool_name, v2_exe) {
 			d_flag := if is_ownership { '-d ownership ' } else { '' }
-			compilation_command := '${os.quoted_path(vexe)} ${d_flag}-o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_source)}'
+			compilation_command := '${os.quoted_path(vexe)} ${d_flag}-o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_main_source)}'
 			if is_verbose {
 				println('Compiling ${tool_name} with: "${compilation_command}"')
 			}
@@ -251,7 +254,7 @@ fn launch_v2_compiler(is_verbose bool, args []string, is_ownership bool) {
 			tool_compilation := os.execute(compilation_command)
 			os.chdir(current_work_dir) or {}
 			if tool_compilation.exit_code != 0 {
-				eprintln('cannot compile `${v2_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+				eprintln('cannot compile `${v2_main_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 				exit(1)
 			}
 		}

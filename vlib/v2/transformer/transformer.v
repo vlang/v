@@ -39,6 +39,9 @@ mut:
 	needed_str_fns map[string]string
 	// Track needed auto-generated clone functions (fn_name -> struct_name)
 	needed_clone_fns map[string]string
+	// Track needed auto-generated clone functions for sum types and option wrappers.
+	needed_sumtype_clone_fns map[string]types.SumType
+	needed_option_clone_fns  map[string]types.OptionType
 	// Track needed auto-generated array helper functions
 	needed_array_contains_fns   map[string]ArrayMethodInfo
 	needed_array_index_fns      map[string]ArrayMethodInfo
@@ -189,6 +192,8 @@ pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pr
 		env:                         unsafe { env }
 		needed_str_fns:              map[string]string{}
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -222,6 +227,8 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		synth_pos_counter:           -(worker_idx * 100_000)
 		needed_str_fns:              map[string]string{}
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -239,6 +246,12 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	}
 	for k, v in w.needed_clone_fns {
 		t.needed_clone_fns[k] = v
+	}
+	for k, v in w.needed_sumtype_clone_fns {
+		t.needed_sumtype_clone_fns[k] = v
+	}
+	for k, v in w.needed_option_clone_fns {
+		t.needed_option_clone_fns[k] = v
 	}
 	for k, v in w.needed_array_contains_fns {
 		t.needed_array_contains_fns[k] = v
@@ -790,7 +803,8 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if t.needed_str_fns.len > 0 {
 		generated_fns << t.generate_str_functions()
 	}
-	if t.needed_clone_fns.len > 0 {
+	if t.needed_clone_fns.len > 0 || t.needed_sumtype_clone_fns.len > 0
+		|| t.needed_option_clone_fns.len > 0 {
 		generated_fns << t.generate_clone_functions()
 	}
 	if t.needed_sort_fns.len > 0 {
@@ -8822,8 +8836,28 @@ fn (mut t Transformer) clone_value_expr(expr ast.Expr, typ types.Type) ast.Expr 
 				args: [expr]
 			})
 		}
+		types.OptionType {
+			if clone_fn_name := t.auto_option_clone_fn_name_for_type(resolved) {
+				return ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: clone_fn_name
+					}
+					args: [expr]
+				})
+			}
+		}
 		types.Struct {
 			if clone_fn_name := t.auto_clone_fn_name_for_type(resolved) {
+				return ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: clone_fn_name
+					}
+					args: [expr]
+				})
+			}
+		}
+		types.SumType {
+			if clone_fn_name := t.auto_sumtype_clone_fn_name_for_type(resolved) {
 				return ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: clone_fn_name
@@ -8871,8 +8905,8 @@ fn (mut t Transformer) generate_struct_clone_fn(fn_name string, struct_name stri
 			value: t.clone_value_expr(field_selector, field.typ)
 		}
 	}
-	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name),
-		[param_s])
+	module_name := clone_generated_fn_scope_module(struct_name)
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(struct_type)])
 	return ast.Stmt(ast.FnDecl{
 		name:  fn_name
 		typ:   ast.FnType{
@@ -8896,8 +8930,124 @@ fn (mut t Transformer) generate_struct_clone_fn(fn_name string, struct_name stri
 	})
 }
 
+fn (mut t Transformer) generate_sumtype_clone_fn(fn_name string, sum_type types.SumType) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  t.type_to_ast_type_expr(types.Type(sum_type))
+	}
+	module_name := t.clone_generated_fn_scope_module_for_type(types.Type(sum_type))
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(sum_type)])
+	mut branches := []ast.MatchBranch{cap: sum_type.variants.len}
+	for variant in sum_type.variants {
+		clone_expr := t.clone_value_expr(ast.Expr(ast.Ident{
+			name: 's'
+		}), variant)
+		wrapped_expr := ast.Expr(ast.CallExpr{
+			lhs:  t.type_to_ast_type_expr(types.Type(sum_type))
+			args: [clone_expr]
+		})
+		branches << ast.MatchBranch{
+			cond:  [t.type_to_ast_type_expr(variant)]
+			stmts: [
+				ast.Stmt(ast.ExprStmt{
+					expr: wrapped_expr
+				}),
+			]
+		}
+	}
+	return ast.Stmt(ast.FnDecl{
+		name:  fn_name
+		typ:   ast.FnType{
+			params:      [param_s]
+			return_type: t.type_to_ast_type_expr(types.Type(sum_type))
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.MatchExpr{
+						expr: ast.Expr(ast.Ident{
+							name: 's'
+						})
+						branches: branches
+					}),
+				]
+			}),
+		]
+	})
+}
+
+fn (mut t Transformer) generate_option_clone_fn(fn_name string, opt_type types.OptionType) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  t.type_to_ast_type_expr(types.Type(opt_type))
+	}
+	module_name := t.clone_generated_fn_scope_module_for_type(opt_type.base_type)
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(opt_type)])
+	synth_pos := t.next_synth_pos()
+	value_ident := ast.Ident{
+		name: 'value'
+		pos:  synth_pos
+	}
+	if_guard := ast.IfExpr{
+		cond: ast.Expr(ast.IfGuardExpr{
+			stmt: ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(value_ident)]
+				rhs: [
+					ast.Expr(ast.Ident{
+						name: 's'
+						pos:  synth_pos
+					}),
+				]
+				pos: synth_pos
+			}
+			pos: synth_pos
+		})
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					t.clone_value_expr(ast.Expr(value_ident), opt_type.base_type),
+				]
+			}),
+		]
+		pos:  synth_pos
+	}
+	return ast.Stmt(ast.FnDecl{
+		name:  fn_name
+		typ:   ast.FnType{
+			params:      [param_s]
+			return_type: t.type_to_ast_type_expr(types.Type(opt_type))
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(if_guard)
+			}),
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.Ident{
+						name: 'none'
+					}),
+				]
+			}),
+		]
+	})
+}
+
+fn (mut t Transformer) transform_generated_fn(stmt ast.Stmt, module_name string) ast.Stmt {
+	prev_module := t.cur_module
+	prev_scope := t.scope
+	t.cur_module = module_name
+	t.scope = t.get_module_scope(module_name) or { unsafe { nil } }
+	transformed := t.transform_stmt(stmt)
+	t.cur_module = prev_module
+	t.scope = prev_scope
+	return transformed
+}
+
 fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
-	mut result := []ast.Stmt{cap: t.needed_clone_fns.len}
+	mut result := []ast.Stmt{
+		cap: t.needed_clone_fns.len + t.needed_sumtype_clone_fns.len + t.needed_option_clone_fns.len
+	}
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
@@ -8908,10 +9058,11 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 			generated[fn_name] = true
 			found_new = true
 			if typ := t.lookup_struct_type_any_module(struct_name) {
-				result << t.generate_struct_clone_fn(fn_name, struct_name, typ)
+				result << t.transform_generated_fn(t.generate_struct_clone_fn(fn_name, struct_name,
+					typ), clone_generated_fn_scope_module(struct_name))
 				continue
 			}
-			result << ast.Stmt(ast.FnDecl{
+			result << t.transform_generated_fn(ast.Stmt(ast.FnDecl{
 				name:  fn_name
 				typ:   ast.FnType{
 					params:      [
@@ -8935,7 +9086,25 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 						]
 					}),
 				]
-			})
+			}), clone_generated_fn_scope_module(struct_name))
+		}
+		for fn_name, sum_type in t.needed_sumtype_clone_fns {
+			if fn_name in generated {
+				continue
+			}
+			generated[fn_name] = true
+			found_new = true
+			result << t.transform_generated_fn(t.generate_sumtype_clone_fn(fn_name, sum_type),
+				t.clone_generated_fn_scope_module_for_type(types.Type(sum_type)))
+		}
+		for fn_name, opt_type in t.needed_option_clone_fns {
+			if fn_name in generated {
+				continue
+			}
+			generated[fn_name] = true
+			found_new = true
+			result << t.transform_generated_fn(t.generate_option_clone_fn(fn_name, opt_type),
+				t.clone_generated_fn_scope_module_for_type(opt_type.base_type))
 		}
 		if !found_new {
 			break

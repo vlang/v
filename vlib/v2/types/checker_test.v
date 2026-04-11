@@ -781,3 +781,26 @@ fn test_scope_insert_replaces_module_placeholder_with_function() {
 	obj := scope.lookup_parent('optimize', 0) or { panic('missing optimize') }
 	assert obj is Fn
 }
+
+fn test_explicit_lifetime_syntax_in_fn_types_and_generic_args() {
+	code := '
+struct Ignore {}
+
+struct IgnoreMatch[^a] {}
+
+fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
+	return IgnoreMatch[^a]{}
+}
+'
+	env := check_code(code)
+	fn_type := env.lookup_fn('main', 'matched_dir_entry') or { panic('missing matched_dir_entry') }
+	assert '^a' in fn_type.generic_params
+	assert fn_type.params.len == 1
+	assert fn_type.params[0].typ is Pointer
+	ptr := fn_type.params[0].typ as Pointer
+	assert ptr.lifetime == 'a'
+	assert ptr.base_type.name() == 'Ignore'
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'IgnoreMatch' && t.generic_params == ['^a']
+	})
+}

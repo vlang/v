@@ -1408,7 +1408,7 @@ fn (mut p Parser) expr_or_type(min_bp token.BindingPower) ast.Expr {
 	// TODO: is there a better way to do this? see uses of `p.exp_pt`
 	exp_pt := p.exp_pt
 	p.exp_pt = true
-	expr := p.expr(min_bp)
+	expr := if p.tok == .xor { p.expect_type() } else { p.expr(min_bp) }
 	p.exp_pt = exp_pt
 	return expr
 }

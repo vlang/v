@@ -17,6 +17,8 @@ fn create_test_transformer() &Transformer {
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -36,6 +38,8 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 		env:                         unsafe { env }
 		scope:                       scope
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -286,6 +290,70 @@ fn use_clone(value Outer) Outer {
 	}
 	assert saw_lowered_call
 	assert saw_inner_clone
+	assert saw_outer_clone
+}
+
+fn test_transform_autogenerates_clone_helpers_for_sumtype_and_option_fields() {
+	files := transform_code_for_test('
+interface IClone {}
+
+struct Err implements IClone {
+	msg string
+}
+
+struct Leaf implements IClone {
+	name string
+}
+
+struct Empty {}
+
+type Choice = Empty | Leaf
+
+struct Outer implements IClone {
+	choice Choice
+	err    ?Err
+}
+
+fn use_clone(value Outer) Outer {
+	return value.clone()
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_choice_clone := false
+	mut saw_option_clone := false
+	mut saw_outer_clone := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'Choice__clone' {
+			saw_choice_clone = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Option_Err__clone' {
+			saw_option_clone = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Outer__clone' {
+			saw_outer_clone = true
+			assert stmt.stmts.len == 1
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.InitExpr
+			init := ret.exprs[0] as ast.InitExpr
+			assert init.fields.len == 2
+			assert init.fields[0].name == 'choice'
+			assert init.fields[0].value is ast.CallExpr
+			choice_call := init.fields[0].value as ast.CallExpr
+			assert choice_call.lhs is ast.Ident
+			assert (choice_call.lhs as ast.Ident).name == 'Choice__clone'
+			assert init.fields[1].name == 'err'
+			assert init.fields[1].value is ast.CastExpr
+			err_cast := init.fields[1].value as ast.CastExpr
+			assert err_cast.expr is ast.CallExpr
+			err_call := err_cast.expr as ast.CallExpr
+			assert err_call.lhs is ast.Ident
+			assert (err_call.lhs as ast.Ident).name == 'Option_Err__clone'
+		}
+	}
+	assert saw_choice_clone
+	assert saw_option_clone
 	assert saw_outer_clone
 }
 
@@ -1295,4 +1363,23 @@ fn test_transform_not_in_inline_array_wraps_with_not() {
 	assert prefix.expr is ast.InfixExpr
 	inner := prefix.expr as ast.InfixExpr
 	assert inner.op == .logical_or
+}
+
+fn test_transformer_preserves_pointer_lifetime_in_v_syntax_but_not_c_names() {
+	mut t := create_test_transformer()
+	ptr_type := types.Type(types.Pointer{
+		base_type: types.Type(types.NamedType('Foo'))
+		lifetime:  'a'
+	})
+
+	ast_expr := t.type_to_ast_type_expr(ptr_type)
+	assert ast_expr is ast.Type
+	assert (ast_expr as ast.Type) is ast.PointerType
+	ptr_ast := (ast_expr as ast.Type) as ast.PointerType
+	assert ptr_ast.lifetime == 'a'
+	assert ptr_ast.base_type is ast.Ident
+	assert (ptr_ast.base_type as ast.Ident).name == 'Foo'
+
+	assert t.types_type_to_v(ptr_type) == '&^a Foo'
+	assert t.type_to_c_name(ptr_type) == 'Fooptr'
 }

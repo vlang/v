@@ -1539,6 +1539,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.sb.write_string(c_static_v_string_expr_from_c_literal(c_lit))
 			}
 		}
+		ast.LifetimeExpr {
+			g.sb.write_string('lt__')
+			g.sb.write_string(node.name)
+		}
 		ast.Ident {
 			g.mark_needed_ierror_wrapper_from_ident(node.name)
 			if node.name == 'nil' {
