@@ -2423,17 +2423,17 @@ fn (mut c Checker) process_pending_struct_decls() {
 		c.scope = pending.scope
 		// Insert generic type parameters into scope so field types can reference them
 		mut generic_params := []string{}
-	for gp in pending.decl.generic_params {
-		gp_name := if gp is ast.Ident {
-			gp.name
-		} else if gp is ast.LifetimeExpr {
-			'^' + gp.name
-		} else {
-			''
-		}
-		if gp_name != '' {
-			generic_params << gp_name
-			c.scope.insert(gp_name, Type(NamedType(gp_name)))
+		for gp in pending.decl.generic_params {
+			gp_name := if gp is ast.Ident {
+				gp.name
+			} else if gp is ast.LifetimeExpr {
+				'^' + gp.name
+			} else {
+				''
+			}
+			if gp_name != '' {
+				generic_params << gp_name
+				c.scope.insert(gp_name, Type(NamedType(gp_name)))
 			}
 		}
 		mut implements_names := []string{}

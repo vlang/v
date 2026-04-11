@@ -203,7 +203,7 @@ pub:
 pub struct Pointer {
 pub:
 	base_type Type
-	lifetime string
+	lifetime  string
 }
 
 // struct String {

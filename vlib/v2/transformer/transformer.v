@@ -8906,7 +8906,9 @@ fn (mut t Transformer) generate_struct_clone_fn(fn_name string, struct_name stri
 		}
 	}
 	module_name := clone_generated_fn_scope_module(struct_name)
-	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(struct_type)])
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [
+		types.Type(struct_type),
+	])
 	return ast.Stmt(ast.FnDecl{
 		name:  fn_name
 		typ:   ast.FnType{
@@ -8936,7 +8938,9 @@ fn (mut t Transformer) generate_sumtype_clone_fn(fn_name string, sum_type types.
 		typ:  t.type_to_ast_type_expr(types.Type(sum_type))
 	}
 	module_name := t.clone_generated_fn_scope_module_for_type(types.Type(sum_type))
-	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(sum_type)])
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [
+		types.Type(sum_type),
+	])
 	mut branches := []ast.MatchBranch{cap: sum_type.variants.len}
 	for variant in sum_type.variants {
 		clone_expr := t.clone_value_expr(ast.Expr(ast.Ident{
@@ -8965,7 +8969,7 @@ fn (mut t Transformer) generate_sumtype_clone_fn(fn_name string, sum_type types.
 			ast.Stmt(ast.ReturnStmt{
 				exprs: [
 					ast.Expr(ast.MatchExpr{
-						expr: ast.Expr(ast.Ident{
+						expr:     ast.Expr(ast.Ident{
 							name: 's'
 						})
 						branches: branches
@@ -8982,14 +8986,16 @@ fn (mut t Transformer) generate_option_clone_fn(fn_name string, opt_type types.O
 		typ:  t.type_to_ast_type_expr(types.Type(opt_type))
 	}
 	module_name := t.clone_generated_fn_scope_module_for_type(opt_type.base_type)
-	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [types.Type(opt_type)])
+	t.register_generated_fn_scope_with_types(fn_name, module_name, [param_s], [
+		types.Type(opt_type),
+	])
 	synth_pos := t.next_synth_pos()
 	value_ident := ast.Ident{
 		name: 'value'
 		pos:  synth_pos
 	}
 	if_guard := ast.IfExpr{
-		cond: ast.Expr(ast.IfGuardExpr{
+		cond:  ast.Expr(ast.IfGuardExpr{
 			stmt: ast.AssignStmt{
 				op:  .decl_assign
 				lhs: [ast.Expr(value_ident)]
@@ -9001,7 +9007,7 @@ fn (mut t Transformer) generate_option_clone_fn(fn_name string, opt_type types.O
 				]
 				pos: synth_pos
 			}
-			pos: synth_pos
+			pos:  synth_pos
 		})
 		stmts: [
 			ast.Stmt(ast.ReturnStmt{
@@ -9010,7 +9016,7 @@ fn (mut t Transformer) generate_option_clone_fn(fn_name string, opt_type types.O
 				]
 			}),
 		]
-		pos:  synth_pos
+		pos:   synth_pos
 	}
 	return ast.Stmt(ast.FnDecl{
 		name:  fn_name
@@ -9045,9 +9051,8 @@ fn (mut t Transformer) transform_generated_fn(stmt ast.Stmt, module_name string)
 }
 
 fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
-	mut result := []ast.Stmt{
-		cap: t.needed_clone_fns.len + t.needed_sumtype_clone_fns.len + t.needed_option_clone_fns.len
-	}
+	mut result := []ast.Stmt{cap: t.needed_clone_fns.len + t.needed_sumtype_clone_fns.len +
+		t.needed_option_clone_fns.len}
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
@@ -9058,8 +9063,8 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 			generated[fn_name] = true
 			found_new = true
 			if typ := t.lookup_struct_type_any_module(struct_name) {
-				result << t.transform_generated_fn(t.generate_struct_clone_fn(fn_name, struct_name,
-					typ), clone_generated_fn_scope_module(struct_name))
+				result << t.transform_generated_fn(t.generate_struct_clone_fn(fn_name,
+					struct_name, typ), clone_generated_fn_scope_module(struct_name))
 				continue
 			}
 			result << t.transform_generated_fn(ast.Stmt(ast.FnDecl{

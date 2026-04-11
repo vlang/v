@@ -1055,7 +1055,7 @@ pub:
 pub struct PointerType {
 pub:
 	base_type Expr = empty_expr
-	lifetime string
+	lifetime  string
 }
 
 pub struct ResultType {
