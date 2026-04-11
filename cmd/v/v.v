@@ -207,14 +207,14 @@ fn invoke_help_and_exit(remaining []string) {
 }
 
 fn maybe_delegate_to_v2(command string, prefs &pref.Preferences) {
-	if !prefs.use_v2 {
+	is_ownership := '-ownership' in os.args
+	if !prefs.use_v2 && !is_ownership {
 		return
 	}
 	if !is_v2_relevant_command(command, prefs) {
-		eprintln('v: `-v2` currently supports direct compilation only. Use `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.')
+		eprintln('v: `-v2`/`-ownership` currently support direct compilation only. Use `v -v2 hello.v` or `v -ownership module_dir`.')
 		exit(1)
 	}
-	is_ownership := '-ownership' in os.args
 	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'), is_ownership)
 }
 
@@ -222,7 +222,7 @@ fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.path == '' || prefs.is_run || prefs.is_crun {
 		return false
 	}
-	return command.ends_with('.v') && prefs.path.ends_with('.v')
+	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
 }
 
 @[noreturn]

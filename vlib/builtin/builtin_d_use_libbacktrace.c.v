@@ -47,7 +47,7 @@ fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, lin
 	fn_name := if fn_name_ptr == unsafe { nil } {
 		'???'
 	} else {
-		(unsafe { fn_name_ptr.vstring() }).replace('__', '.')
+		demangle_v_symbol(unsafe { fn_name_ptr.vstring() })
 	}
 	// keep it for later
 	// pc_64 := u64(pc)

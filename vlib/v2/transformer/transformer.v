@@ -37,6 +37,8 @@ mut:
 	synth_pos_counter int = -1
 	// Track needed auto-generated str functions (type_name -> elem_type for arrays)
 	needed_str_fns map[string]string
+	// Track needed auto-generated clone functions (fn_name -> struct_name)
+	needed_clone_fns map[string]string
 	// Track needed auto-generated array helper functions
 	needed_array_contains_fns   map[string]ArrayMethodInfo
 	needed_array_index_fns      map[string]ArrayMethodInfo
@@ -186,6 +188,7 @@ pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pr
 		pref:                        unsafe { p }
 		env:                         unsafe { env }
 		needed_str_fns:              map[string]string{}
+		needed_clone_fns:            map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -218,6 +221,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		cached_fn_scopes:            t.cached_fn_scopes
 		synth_pos_counter:           -(worker_idx * 100_000)
 		needed_str_fns:              map[string]string{}
+		needed_clone_fns:            map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -232,6 +236,9 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	for k, v in w.needed_str_fns {
 		t.needed_str_fns[k] = v
+	}
+	for k, v in w.needed_clone_fns {
+		t.needed_clone_fns[k] = v
 	}
 	for k, v in w.needed_array_contains_fns {
 		t.needed_array_contains_fns[k] = v
@@ -782,6 +789,9 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	mut generated_fns := []ast.Stmt{}
 	if t.needed_str_fns.len > 0 {
 		generated_fns << t.generate_str_functions()
+	}
+	if t.needed_clone_fns.len > 0 {
+		generated_fns << t.generate_clone_functions()
 	}
 	if t.needed_sort_fns.len > 0 {
 		generated_fns << t.generate_sort_comparator_functions()
@@ -8761,6 +8771,177 @@ fn generated_fn_module(fn_name string, files []ast.File) string {
 		}
 	}
 	return ''
+}
+
+fn clone_generated_fn_scope_module(struct_name string) string {
+	if !struct_name.contains('__') {
+		return 'main'
+	}
+	return struct_name.all_before('__')
+}
+
+fn (mut t Transformer) clone_value_expr(expr ast.Expr, typ types.Type) ast.Expr {
+	resolved := types.resolve_alias(typ)
+	match resolved {
+		types.String {
+			return ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'string__clone'
+				}
+				args: [expr]
+			})
+		}
+		types.Array {
+			depth := t.get_array_nesting_depth(resolved)
+			if depth > 1 {
+				return ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'array__clone_to_depth'
+					}
+					args: [
+						expr,
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '${depth - 1}'
+						}),
+					]
+				})
+			}
+			return ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'array__clone'
+				}
+				args: [expr]
+			})
+		}
+		types.Map {
+			return ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'map__clone'
+				}
+				args: [expr]
+			})
+		}
+		types.Struct {
+			if clone_fn_name := t.auto_clone_fn_name_for_type(resolved) {
+				return ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: clone_fn_name
+					}
+					args: [expr]
+				})
+			}
+		}
+		else {}
+	}
+	return expr
+}
+
+fn (mut t Transformer) generate_struct_clone_fn(fn_name string, struct_name string, struct_type types.Struct) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: struct_name
+		}
+	}
+	mut fields := []ast.FieldInit{cap: struct_type.embedded.len + struct_type.fields.len}
+	for embedded in struct_type.embedded {
+		embedded_name := if embedded.name.contains('__') {
+			embedded.name.all_after_last('__')
+		} else {
+			embedded.name
+		}
+		if embedded_name == '' {
+			continue
+		}
+		field_selector := t.synth_selector(ast.Expr(ast.Ident{
+			name: 's'
+		}), embedded_name, types.Type(embedded))
+		fields << ast.FieldInit{
+			name:  embedded_name
+			value: t.clone_value_expr(field_selector, types.Type(embedded))
+		}
+	}
+	for field in struct_type.fields {
+		field_selector := t.synth_selector_from_struct(ast.Expr(ast.Ident{
+			name: 's'
+		}), field.name, struct_name)
+		fields << ast.FieldInit{
+			name:  field.name
+			value: t.clone_value_expr(field_selector, field.typ)
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name),
+		[param_s])
+	return ast.Stmt(ast.FnDecl{
+		name:  fn_name
+		typ:   ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: struct_name
+			}
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.InitExpr{
+						typ:    ast.Ident{
+							name: struct_name
+						}
+						fields: fields
+					}),
+				]
+			}),
+		]
+	})
+}
+
+fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
+	mut result := []ast.Stmt{cap: t.needed_clone_fns.len}
+	mut generated := map[string]bool{}
+	for {
+		mut found_new := false
+		for fn_name, struct_name in t.needed_clone_fns {
+			if fn_name in generated {
+				continue
+			}
+			generated[fn_name] = true
+			found_new = true
+			if typ := t.lookup_struct_type_any_module(struct_name) {
+				result << t.generate_struct_clone_fn(fn_name, struct_name, typ)
+				continue
+			}
+			result << ast.Stmt(ast.FnDecl{
+				name:  fn_name
+				typ:   ast.FnType{
+					params:      [
+						ast.Parameter{
+							name: 's'
+							typ:  ast.Ident{
+								name: struct_name
+							}
+						},
+					]
+					return_type: ast.Ident{
+						name: struct_name
+					}
+				}
+				stmts: [
+					ast.Stmt(ast.ReturnStmt{
+						exprs: [
+							ast.Expr(ast.Ident{
+								name: 's'
+							}),
+						]
+					}),
+				]
+			})
+		}
+		if !found_new {
+			break
+		}
+	}
+	return result
 }
 
 fn (mut t Transformer) generate_str_functions() []ast.Stmt {

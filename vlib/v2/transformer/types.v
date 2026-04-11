@@ -323,6 +323,91 @@ fn (t &Transformer) lookup_type(name string) ?types.Type {
 	return none
 }
 
+fn (t &Transformer) lookup_struct_type_any_module(name string) ?types.Struct {
+	if typ := t.lookup_type(name) {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	for _, scope in t.cached_scopes {
+		if obj := scope.objects[name] {
+			if obj is types.Type {
+				if obj is types.Struct {
+					return obj
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) struct_implements_name(st types.Struct, target string) bool {
+	for impl_name in st.implements {
+		if impl_name == target || impl_name.all_after_last('__') == target {
+			return true
+		}
+	}
+	if st.name != '' && st.implements.len == 0 {
+		if live_type := t.lookup_struct_type_any_module(st.name) {
+			if live_type.name != st.name {
+				return t.struct_implements_name(live_type, target)
+			}
+			for impl_name in live_type.implements {
+				if impl_name == target || impl_name.all_after_last('__') == target {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) register_needed_clone_struct(st types.Struct) string {
+	fn_name := '${t.type_to_c_name(types.Type(st))}__clone'
+	t.needed_clone_fns[fn_name] = st.name
+	return fn_name
+}
+
+fn (t &Transformer) clone_fn_name_for_type(typ types.Type) ?string {
+	mut base := typ
+	for base is types.Pointer {
+		base = (base as types.Pointer).base_type
+	}
+	base = types.resolve_alias(base)
+	if base is types.Struct {
+		st := base as types.Struct
+		if !t.struct_implements_name(st, 'IClone') {
+			return none
+		}
+		fn_name := '${t.type_to_c_name(types.Type(st))}__clone'
+		short_name := if st.name.contains('__') { st.name.all_after_last('__') } else { st.name }
+		if t.lookup_method_cached(st.name, 'clone') != none
+			|| (short_name != st.name && t.lookup_method_cached(short_name, 'clone') != none) {
+			return fn_name
+		}
+		return fn_name
+	}
+	return none
+}
+
+fn (mut t Transformer) auto_clone_fn_name_for_type(typ types.Type) ?string {
+	fn_name := t.clone_fn_name_for_type(typ) or { return none }
+	mut base := typ
+	for base is types.Pointer {
+		base = (base as types.Pointer).base_type
+	}
+	base = types.resolve_alias(base)
+	if base is types.Struct {
+		st := base as types.Struct
+		short_name := if st.name.contains('__') { st.name.all_after_last('__') } else { st.name }
+		if t.lookup_method_cached(st.name, 'clone') == none
+			&& (short_name == st.name || t.lookup_method_cached(short_name, 'clone') == none) {
+			t.needed_clone_fns[fn_name] = st.name
+		}
+	}
+	return fn_name
+}
+
 // is_flag_enum checks if a type name is a flag enum
 fn (t &Transformer) is_flag_enum(type_name string) bool {
 	typ := t.lookup_type(type_name) or { return false }

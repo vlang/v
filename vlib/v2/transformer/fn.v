@@ -1352,6 +1352,11 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 						}
 					}
 				}
+				if sel.rhs.name == 'clone' && expr.args.len == 0 {
+					if recv_type := t.get_expr_type(sel.lhs) {
+						_ = t.auto_clone_fn_name_for_type(recv_type)
+					}
+				}
 				// insert(i, arr) → insert_many(i, arr.data, arr.len)
 				if resolved.ends_with('__insert') && expr.args.len == 2 {
 					if arg_type := t.get_expr_type(expr.args[1]) {
@@ -1897,6 +1902,11 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 			if short_name != emb_name && t.lookup_method_cached(short_name, method_name) != none {
 				return '${emb_name}__${method_name}'
 			}
+		}
+	}
+	if method_name == 'clone' {
+		if generated := t.clone_fn_name_for_type(recv_type) {
+			return generated
 		}
 	}
 	return none

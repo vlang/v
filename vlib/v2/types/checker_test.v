@@ -94,6 +94,22 @@ fn test_basic_literal_string() {
 	assert has_type(env, 'string'), 'string literal should have string type'
 }
 
+fn test_iclone_struct_clone_returns_self_type() {
+	env := check_code('
+interface IClone {}
+
+struct Foo implements IClone {
+	x int
+}
+
+fn main() {
+	f := Foo{x: 1}
+	y := f.clone().x
+}
+')
+	assert has_type(env, 'int'), 'f.clone().x should type-check as int'
+}
+
 fn test_or_expr_accepts_int_literal_fallback() {
 	env := check_code('fn may_fail() !int { return 1 }
 fn main() { x := may_fail() or { 0 } }')

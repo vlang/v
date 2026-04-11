@@ -2457,7 +2457,19 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 	language := p.decl_language()
 	name := p.expect_name()
 	// p.log('ast.StructDecl: ${name}')
-	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
+	mut generic_params := []ast.Expr{}
+	mut impl_types := []ast.Expr{}
+	if p.tok == .lsbr {
+		generic_params = p.generic_list()
+	}
+	if p.tok == .name && p.lit == 'implements' {
+		p.next()
+		impl_types << p.expect_type()
+		for p.tok == .comma {
+			p.next()
+			impl_types << p.expect_type()
+		}
+	}
 	// probably C struct decl with no body or {}
 	if p.tok != .lcbr {
 		if language == .v {
@@ -2466,6 +2478,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 		return ast.StructDecl{
 			is_public:      is_public
 			is_union:       is_union
+			implements:     impl_types
 			language:       language
 			name:           name
 			generic_params: generic_params
@@ -2477,6 +2490,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 		attributes:     attributes
 		is_public:      is_public
 		is_union:       is_union
+		implements:     impl_types
 		embedded:       embedded
 		language:       language
 		name:           name

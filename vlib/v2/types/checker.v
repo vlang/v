@@ -1242,7 +1242,7 @@ fn (mut c Checker) infix_expr(expr ast.InfixExpr) Type {
 	$if ownership ? {
 		lhs_base := lhs_type.base_type()
 		if expr.op == .left_shift && (lhs_type is Array || lhs_base is Array) {
-			c.ownership_consume_expr(expr.rhs, expr.rhs.pos(), "array append")
+			c.ownership_consume_expr(expr.rhs, expr.rhs.pos(), 'array append')
 		}
 	}
 	c.expected_type = expected_type
@@ -1297,7 +1297,7 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 				}
 				c.expr(field.value)
 				$if ownership ? {
-					c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+					c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
 				}
 				c.expected_type = expected_type_prev
 			}
@@ -1307,7 +1307,7 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 			if field.value !is ast.EmptyExpr {
 				c.expr(field.value)
 				$if ownership ? {
-					c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+					c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
 				}
 			}
 		}
@@ -1384,8 +1384,8 @@ fn (mut c Checker) map_init_expr(expr ast.MapInitExpr) Type {
 		map_key_type = c.expr(expr.keys[0]).typed_default()
 		map_value_type = c.expr(expr.vals[0]).typed_default()
 		$if ownership ? {
-			c.ownership_consume_expr(expr.keys[0], expr.keys[0].pos(), "map key")
-			c.ownership_consume_expr(expr.vals[0], expr.vals[0].pos(), "map value")
+			c.ownership_consume_expr(expr.keys[0], expr.keys[0].pos(), 'map key')
+			c.ownership_consume_expr(expr.vals[0], expr.vals[0].pos(), 'map value')
 		}
 		has_map_type = true
 		inferred_from_first_entry = true
@@ -1401,8 +1401,8 @@ fn (mut c Checker) map_init_expr(expr ast.MapInitExpr) Type {
 		c.expected_type = to_optional_type(map_value_type)
 		val_type := c.expr(val_expr).typed_default()
 		$if ownership ? {
-			c.ownership_consume_expr(key_expr, key_expr.pos(), "map key")
-			c.ownership_consume_expr(val_expr, val_expr.pos(), "map value")
+			c.ownership_consume_expr(key_expr, key_expr.pos(), 'map key')
+			c.ownership_consume_expr(val_expr, val_expr.pos(), 'map value')
 		}
 		if !c.check_types(map_key_type, key_type) {
 			c.error_with_pos('invalid map key: expecting ${map_key_type.name()}, got ${key_type.name()}',
@@ -1540,7 +1540,8 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				// TODO: check all exprs
 				first_elem_type := c.expr(expr.exprs.first())
 				$if ownership ? {
-					c.ownership_consume_expr(expr.exprs.first(), expr.exprs.first().pos(), "array element")
+					c.ownership_consume_expr(expr.exprs.first(), expr.exprs.first().pos(),
+						'array element')
 				}
 				// NOTE: why did I have this shortcut here?
 				// if expr.exprs.len == 1 {
@@ -1569,7 +1570,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					}
 					mut elem_type := c.expr(elem_expr)
 					$if ownership ? {
-						c.ownership_consume_expr(elem_expr, elem_expr.pos(), "array element")
+						c.ownership_consume_expr(elem_expr, elem_expr.pos(), 'array element')
 					}
 					// TODO: best way to handle this?
 					if elem_type.is_number_literal() && first_elem_type.is_number() {
@@ -2405,6 +2406,19 @@ fn (mut c Checker) process_pending_struct_decls() {
 				c.scope.insert(gp_name, Type(NamedType(gp_name)))
 			}
 		}
+		mut implements_names := []string{}
+		for impl_expr in pending.decl.implements {
+			impl_type := c.type_expr(impl_expr)
+			impl_name := impl_type.name()
+			if impl_name != '' && impl_name != 'void' {
+				implements_names << impl_name
+				continue
+			}
+			fallback_name := c.type_ref_name(impl_expr)
+			if fallback_name != '' {
+				implements_names << fallback_name
+			}
+		}
 		mut fields := []Field{}
 		for field in pending.decl.fields {
 			field_typ := c.type_expr(field.typ)
@@ -2464,6 +2478,7 @@ fn (mut c Checker) process_pending_struct_decls() {
 					update_scope.objects[pending.decl.name] = object_from_type(Type(Struct{
 						name:           sd.name
 						generic_params: sd.generic_params
+						implements:     implements_names
 						fields:         fields
 						embedded:       embedded
 						is_soa:         is_soa
@@ -2641,7 +2656,7 @@ fn (mut c Checker) check_struct_field_defaults(files []ast.File) {
 						c.expected_type = to_optional_type(field_typ)
 						c.expr(field.value)
 						$if ownership ? {
-							c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+							c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
 						}
 						c.expected_type = prev_expected
 					}
@@ -2846,7 +2861,7 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 				} else if stmt.op in [.left_shift, .left_shift_assign] {
 					lhs_base := lhs_type.base_type()
 					if lhs_type is Array || lhs_base is Array {
-						c.ownership_consume_expr(rx, rx.pos(), "array append")
+						c.ownership_consume_expr(rx, rx.pos(), 'array append')
 					}
 				}
 			}
@@ -3443,9 +3458,10 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 		}
 	}
 	return Struct{
-		name:     actual_base.name
-		fields:   fields
-		embedded: embedded
+		name:       actual_base.name
+		implements: actual_base.implements
+		fields:     fields
+		embedded:   embedded
 	}
 }
 
@@ -3460,6 +3476,7 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 		return Struct{
 			name:           st.name
 			generic_params: st.generic_params
+			implements:     st.implements
 			is_soa:         st.is_soa
 		}
 	}
@@ -3484,6 +3501,7 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 	return Struct{
 		name:           st.name
 		generic_params: st.generic_params
+		implements:     st.implements
 		fields:         fields
 		embedded:       embedded
 		is_soa:         st.is_soa
@@ -4586,6 +4604,29 @@ fn (mut c Checker) resolve_interface_fields(iface Interface) []Field {
 	return iface.fields
 }
 
+fn (mut c Checker) struct_implements_name(st Struct, target string) bool {
+	for impl_name in st.implements {
+		if impl_name == target || impl_name.all_after_last('__') == target {
+			return true
+		}
+	}
+	if st.name != '' && st.implements.len == 0 {
+		if obj := c.lookup_type_by_name(st.name) {
+			if obj is Struct && obj.name != st.name {
+				return c.struct_implements_name(obj, target)
+			}
+			if obj is Struct {
+				for impl_name in obj.implements {
+					if impl_name == target || impl_name.all_after_last('__') == target {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 	// Strip @ prefix used to escape V keywords in field/method names (e.g., @type → type)
 	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
@@ -4862,6 +4903,9 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 					}
 					else {}
 				}
+			}
+			if name == 'clone' && c.struct_implements_name(t, 'IClone') {
+				return fn_with_return_type(empty_fn_type(), Type(t))
 			}
 			// If struct has no fields (stale copy from self-referential generic instantiation),
 			// look up the generic template from scope and use its field types.

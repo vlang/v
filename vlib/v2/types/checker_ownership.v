@@ -9,11 +9,11 @@ import v2.token
 // MovedVar tracks information about a variable that has been moved.
 pub struct MovedVar {
 pub:
-	moved_to   string    // name of the variable or function parameter it was moved to
-	move_pos   token.Pos // position where the move occurred
-	is_fn_call bool      // true if moved via function call argument
+	moved_to      string    // name of the variable or function parameter it was moved to
+	move_pos      token.Pos // position where the move occurred
+	is_fn_call    bool      // true if moved via function call argument
 	suggest_clone bool = true // show clone suggestion in diagnostics
-	fn_name    string    // function name (only when is_fn_call is true)
+	fn_name       string // function name (only when is_fn_call is true)
 }
 
 // BorrowInfo tracks an active borrow of a variable.

@@ -925,6 +925,7 @@ pub:
 	attributes     []Attribute
 	is_public      bool
 	is_union       bool
+	implements     []Expr
 	embedded       []Expr
 	language       Language = .v
 	name           string

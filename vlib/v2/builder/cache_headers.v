@@ -650,6 +650,7 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 					decl_stmts << ast.Stmt(ast.StructDecl{
 						is_public:      stmt.is_public
 						is_union:       stmt.is_union
+						implements:     stmt.implements
 						embedded:       stmt.embedded
 						language:       stmt.language
 						name:           stmt.name

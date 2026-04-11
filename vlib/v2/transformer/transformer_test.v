@@ -5,6 +5,7 @@ module transformer
 
 import os
 import v2.ast
+import v2.parser
 import v2.pref as vpref
 import v2.token
 import v2.types
@@ -15,6 +16,7 @@ fn create_test_transformer() &Transformer {
 	return &Transformer{
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
+		needed_clone_fns:            map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -33,10 +35,31 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		scope:                       scope
+		needed_clone_fns:            map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
 	}
+}
+
+fn transform_code_for_test(code string) []ast.File {
+	tmp_file := '/tmp/v2_transformer_test_${os.getpid()}.v'
+	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	return transformer.transform_files(files)
 }
 
 // string_type returns the builtin v2 string type.
@@ -203,6 +226,67 @@ fn test_transform_ident_vmodroot_empty_root() {
 	lit := result as ast.StringLiteral
 	assert lit.kind == .v
 	assert lit.value == "''"
+}
+
+fn test_transform_autogenerates_clone_helpers_for_iclone_structs() {
+	files := transform_code_for_test('
+interface IClone {}
+
+struct Inner implements IClone {
+	name string
+}
+
+struct Outer implements IClone {
+	inner Inner
+	nums []int
+}
+
+fn use_clone(value Outer) Outer {
+	return value.clone()
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_inner_clone := false
+	mut saw_outer_clone := false
+	mut saw_lowered_call := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'use_clone' {
+			assert stmt.stmts.len == 1
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.CallExpr
+			call := ret.exprs[0] as ast.CallExpr
+			assert call.lhs is ast.Ident
+			assert (call.lhs as ast.Ident).name == 'Outer__clone'
+			saw_lowered_call = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Inner__clone' {
+			saw_inner_clone = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Outer__clone' {
+			saw_outer_clone = true
+			assert stmt.stmts.len == 1
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.InitExpr
+			init := ret.exprs[0] as ast.InitExpr
+			assert init.fields.len == 2
+			assert init.fields[0].name == 'inner'
+			assert init.fields[0].value is ast.CallExpr
+			inner_call := init.fields[0].value as ast.CallExpr
+			assert inner_call.lhs is ast.Ident
+			assert (inner_call.lhs as ast.Ident).name == 'Inner__clone'
+			assert init.fields[1].name == 'nums'
+			assert init.fields[1].value is ast.CallExpr
+			nums_call := init.fields[1].value as ast.CallExpr
+			assert nums_call.lhs is ast.Ident
+			assert (nums_call.lhs as ast.Ident).name == 'array__clone'
+		}
+	}
+	assert saw_lowered_call
+	assert saw_inner_clone
+	assert saw_outer_clone
 }
 
 fn test_array_comparison_eq() {

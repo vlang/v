@@ -122,7 +122,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 					// addr:
 					lineinfo = '?? : address = 0x' + ptr_str(frame_addr)
 				}
-				sfunc := unsafe { tos3(fname) }
+				sfunc := demangle_v_symbol(unsafe { tos3(fname) })
 				snframe := i64(nframe).str()
 				eprint_space_padding(snframe, 2)
 				eprint(': ')

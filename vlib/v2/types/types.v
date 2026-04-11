@@ -231,6 +231,7 @@ pub struct Struct {
 pub:
 	name           string
 	generic_params []string
+	implements     []string
 pub mut:
 	embedded []Struct
 	// embedded       []Type

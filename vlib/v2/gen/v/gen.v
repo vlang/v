@@ -945,6 +945,15 @@ fn (mut g Gen) struct_decl(stmt ast.StructDecl) {
 	if stmt.generic_params.len > 0 {
 		g.generic_list(stmt.generic_params)
 	}
+	if stmt.implements.len > 0 {
+		g.write(' implements ')
+		for i, expr in stmt.implements {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.expr(expr)
+		}
+	}
 	g.struct_decl_fields(stmt.embedded, stmt.fields)
 }
 
