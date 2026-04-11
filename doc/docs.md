@@ -198,6 +198,7 @@ by using any of the following commands in a terminal:
 * [Memory management](#memory-management)
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
+    * [Ownership](ownership.md)
 * [ORM](#orm)
 * [Writing documentation](#writing-documentation)
     * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
