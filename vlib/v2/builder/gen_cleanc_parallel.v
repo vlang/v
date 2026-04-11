@@ -11,8 +11,11 @@ struct GenCleancChunkArgs {
 	file_indices_ptr voidptr // &[]int — file indices to process
 }
 
-fn C.pthread_create(thread voidptr, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.pthread_join(thread voidptr, retval voidptr) int
+@[typedef]
+struct C.pthread_t {}
+
+fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 fn C.pthread_attr_init(attr voidptr) int
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
 fn C.pthread_attr_destroy(attr voidptr) int
@@ -41,7 +44,7 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	// Split files into chunks using round-robin interleaving for balanced load.
 	// This avoids one worker getting all the heavy files (e.g., json2/decode.v, ui/window.v).
 	chunk_size := (n_files + n_jobs - 1) / n_jobs
-	mut thread_ids := []voidptr{len: n_jobs, init: unsafe { nil }}
+	mut thread_ids := []C.pthread_t{len: n_jobs}
 	mut args := []GenCleancChunkArgs{cap: n_jobs}
 	mut workers := []voidptr{cap: n_jobs}
 	mut chunk_indices := [][]int{cap: n_jobs}
@@ -75,8 +78,7 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 
 	for ci := 0; ci < chunk_idx; ci++ {
-		C.pthread_create(unsafe { voidptr(&thread_ids[ci]) }, attr, gen_cleanc_chunk_thread,
-			unsafe { voidptr(&args[ci]) })
+		C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_cleanc_chunk_thread, unsafe { voidptr(&args[ci]) })
 	}
 	C.pthread_attr_destroy(attr)
 

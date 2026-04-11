@@ -214,7 +214,8 @@ fn maybe_delegate_to_v2(command string, prefs &pref.Preferences) {
 		eprintln('v: `-v2` currently supports direct compilation only. Use `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.')
 		exit(1)
 	}
-	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'))
+	is_ownership := '-ownership' in os.args
+	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'), is_ownership)
 }
 
 fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
@@ -225,23 +226,25 @@ fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
 }
 
 @[noreturn]
-fn launch_v2_compiler(is_verbose bool, args []string) {
+fn launch_v2_compiler(is_verbose bool, args []string, is_ownership bool) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
+	tool_name := if is_ownership { 'v2_ownership' } else { 'v2' }
 	mut v2_exe := os.getenv(delegated_v2_exe_env)
 	if v2_exe == '' {
 		v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
-		v2_exe = cached_v2_executable_path(vroot)
+		v2_exe = cached_v2_executable_path(vroot, is_ownership)
 		v2_exe_dir := os.dir(v2_exe)
 		os.mkdir_all(v2_exe_dir) or {
 			eprintln('cannot create `${v2_exe_dir}`: ${err}')
 			exit(1)
 		}
-		if util.should_recompile_tool(vexe, v2_source, 'v2', v2_exe) {
-			compilation_command := '${os.quoted_path(vexe)} -o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_source)}'
+		if util.should_recompile_tool(vexe, v2_source, tool_name, v2_exe) {
+			d_flag := if is_ownership { '-d ownership ' } else { '' }
+			compilation_command := '${os.quoted_path(vexe)} ${d_flag}-o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_source)}'
 			if is_verbose {
-				println('Compiling v2 with: "${compilation_command}"')
+				println('Compiling ${tool_name} with: "${compilation_command}"')
 			}
 			current_work_dir := os.getwd()
 			os.chdir(vroot) or {}
@@ -265,10 +268,11 @@ fn launch_v2_compiler(is_verbose bool, args []string) {
 	exit(2)
 }
 
-fn cached_v2_executable_path(vroot string) string {
+fn cached_v2_executable_path(vroot string, is_ownership bool) string {
 	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
+	exe_name := if is_ownership { 'v2_ownership' } else { 'v2' }
 	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v2', vroot_hash,
-		'v2'))
+		exe_name))
 }
 
 fn rebuild(prefs &pref.Preferences) {

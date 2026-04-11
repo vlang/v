@@ -454,6 +454,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-v2' {
 				res.use_v2 = true
 			}
+			'-ownership' {
+				// Passed through to v2 compiler for ownership checking
+			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
