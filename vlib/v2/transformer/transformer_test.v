@@ -1383,3 +1383,80 @@ fn test_transformer_preserves_pointer_lifetime_in_v_syntax_but_not_c_names() {
 	assert t.types_type_to_v(ptr_type) == '&^a Foo'
 	assert t.type_to_c_name(ptr_type) == 'Fooptr'
 }
+
+fn test_transformer_preserves_lifetime_method_signature_and_nested_generic_return_type() {
+	files := transform_code_for_test('
+struct Ignore {}
+
+struct DirEntry {}
+
+struct Match[T] {
+	value T
+}
+
+struct IgnoreMatch[^a] {
+	ig &^a Ignore
+}
+
+fn (ig &^a Ignore) matched_dir_entry[^a](dent &DirEntry) Match[IgnoreMatch[^a]] {
+	return Match[IgnoreMatch[^a]]{
+		value: IgnoreMatch[^a]{
+			ig: ig
+		}
+	}
+}
+
+fn main() {
+	ig := Ignore{}
+	dent := DirEntry{}
+	ig.matched_dir_entry(&dent)
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_method := false
+	mut saw_call := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'matched_dir_entry' {
+			saw_method = true
+			assert stmt.is_method
+			assert stmt.receiver.typ is ast.Type
+			receiver_type := stmt.receiver.typ as ast.Type
+			assert receiver_type is ast.PointerType
+			receiver_ptr := receiver_type as ast.PointerType
+			assert receiver_ptr.lifetime == 'a'
+			assert stmt.typ.generic_params.len == 1
+			assert stmt.typ.generic_params[0] is ast.LifetimeExpr
+			assert (stmt.typ.generic_params[0] as ast.LifetimeExpr).name == 'a'
+			assert stmt.typ.return_type is ast.Type
+			return_type := stmt.typ.return_type as ast.Type
+			assert return_type is ast.GenericType
+			outer_generic := return_type as ast.GenericType
+			assert outer_generic.name is ast.Ident
+			assert (outer_generic.name as ast.Ident).name == 'Match'
+			assert outer_generic.params.len == 1
+			assert outer_generic.params[0] is ast.Type
+			inner_type := outer_generic.params[0] as ast.Type
+			assert inner_type is ast.GenericType
+			inner_generic := inner_type as ast.GenericType
+			assert inner_generic.name is ast.Ident
+			assert (inner_generic.name as ast.Ident).name == 'IgnoreMatch'
+			assert inner_generic.params.len == 1
+			assert inner_generic.params[0] is ast.LifetimeExpr
+			assert (inner_generic.params[0] as ast.LifetimeExpr).name == 'a'
+		}
+		if stmt is ast.FnDecl && stmt.name == 'main' {
+			assert stmt.stmts.len == 3
+			assert stmt.stmts[2] is ast.ExprStmt
+			expr_stmt := stmt.stmts[2] as ast.ExprStmt
+			assert expr_stmt.expr is ast.CallExpr
+			call := expr_stmt.expr as ast.CallExpr
+			assert call.lhs is ast.Ident
+			assert (call.lhs as ast.Ident).name == 'Ignore__matched_dir_entry'
+			assert call.args.len == 2
+			saw_call = true
+		}
+	}
+	assert saw_method
+	assert saw_call
+}
