@@ -92,7 +92,7 @@ fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
 		if exe_name.len == 0 {
 			return []string{}
 		}
-		base_addr := C._dyld_get_image_header(0)
+		base_addr := voidptr(C._dyld_get_image_header(0))
 		if base_addr == unsafe { nil } {
 			return []string{}
 		}
