@@ -456,3 +456,62 @@ fn main() {
 	assert exit_code != 0, 'pick returns b (owned) — result should be owned and moved to r2'
 	assert output.contains('use of moved value: `result`'), 'got: ${output}'
 }
+
+fn test_ownership_move_into_struct_field() {
+	code := "
+struct Probe {
+	text string
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	_ := Probe{
+		text: s
+	}
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s moved into struct field'
+	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}
+
+fn test_ownership_move_into_array_literal() {
+	code := "
+fn main() {
+	s := 'hello'.to_owned()
+	_ := [s]
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s moved into array literal'
+	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}
+
+fn test_ownership_move_into_array_append() {
+	code := "
+fn main() {
+	mut items := []string{}
+	s := 'hello'.to_owned()
+	items << s
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s moved into array append'
+	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}
+
+fn test_ownership_move_into_map_literal() {
+	code := "
+fn main() {
+	s := 'hello'.to_owned()
+	_ := {'k': s}
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: s moved into map literal'
+	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}

@@ -402,6 +402,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			'-Wno-incompatible-pointer-types', // V uses enum types (e.g. os.Signal) in callbacks where C expects int
 			'-Wno-missing-field-initializers', // @[typedef] C structs may have fields not present in V binding
 		]
+		// On macOS, `gcc` is actually Apple clang, which splits -Wincompatible-pointer-types
+		// and -Wincompatible-function-pointer-types into separate warnings.
+		ccoptions.args << '-Wno-incompatible-function-pointer-types'
 	}
 	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {

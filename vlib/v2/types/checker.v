@@ -1239,6 +1239,12 @@ fn (mut c Checker) infix_expr(expr ast.InfixExpr) Type {
 	expected_type := c.expected_type
 	c.set_infix_expected_type(expr, lhs_type)
 	rhs_type := c.infix_rhs_type(expr)
+	$if ownership ? {
+		lhs_base := lhs_type.base_type()
+		if expr.op == .left_shift && (lhs_type is Array || lhs_base is Array) {
+			c.ownership_consume_expr(expr.rhs, expr.rhs.pos(), "array append")
+		}
+	}
 	c.expected_type = expected_type
 	if expr.op.is_comparison() {
 		return bool_
@@ -1290,6 +1296,9 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 					}
 				}
 				c.expr(field.value)
+				$if ownership ? {
+					c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+				}
 				c.expected_type = expected_type_prev
 			}
 		}
@@ -1297,6 +1306,9 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 		for field in expr.fields {
 			if field.value !is ast.EmptyExpr {
 				c.expr(field.value)
+				$if ownership ? {
+					c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+				}
 			}
 		}
 	}
@@ -1371,6 +1383,10 @@ fn (mut c Checker) map_init_expr(expr ast.MapInitExpr) Type {
 	if !has_map_type {
 		map_key_type = c.expr(expr.keys[0]).typed_default()
 		map_value_type = c.expr(expr.vals[0]).typed_default()
+		$if ownership ? {
+			c.ownership_consume_expr(expr.keys[0], expr.keys[0].pos(), "map key")
+			c.ownership_consume_expr(expr.vals[0], expr.vals[0].pos(), "map value")
+		}
 		has_map_type = true
 		inferred_from_first_entry = true
 	}
@@ -1384,6 +1400,10 @@ fn (mut c Checker) map_init_expr(expr ast.MapInitExpr) Type {
 		key_type := c.expr(key_expr).typed_default()
 		c.expected_type = to_optional_type(map_value_type)
 		val_type := c.expr(val_expr).typed_default()
+		$if ownership ? {
+			c.ownership_consume_expr(key_expr, key_expr.pos(), "map key")
+			c.ownership_consume_expr(val_expr, val_expr.pos(), "map value")
+		}
 		if !c.check_types(map_key_type, key_type) {
 			c.error_with_pos('invalid map key: expecting ${map_key_type.name()}, got ${key_type.name()}',
 				key_expr.pos())
@@ -1519,6 +1539,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				is_fixed := !is_empty_expr(expr.len)
 				// TODO: check all exprs
 				first_elem_type := c.expr(expr.exprs.first())
+				$if ownership ? {
+					c.ownership_consume_expr(expr.exprs.first(), expr.exprs.first().pos(), "array element")
+				}
 				// NOTE: why did I have this shortcut here?
 				// if expr.exprs.len == 1 {
 				// 	if first_elem_type.is_number_literal() {
@@ -1545,6 +1568,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 						continue
 					}
 					mut elem_type := c.expr(elem_expr)
+					$if ownership ? {
+						c.ownership_consume_expr(elem_expr, elem_expr.pos(), "array element")
+					}
 					// TODO: best way to handle this?
 					if elem_type.is_number_literal() && first_elem_type.is_number() {
 						elem_type = first_elem_type
@@ -2614,6 +2640,9 @@ fn (mut c Checker) check_struct_field_defaults(files []ast.File) {
 						prev_expected := c.expected_type
 						c.expected_type = to_optional_type(field_typ)
 						c.expr(field.value)
+						$if ownership ? {
+							c.ownership_consume_expr(field.value, field.value.pos(), "struct field")
+						}
 						c.expected_type = prev_expected
 					}
 				}
@@ -2814,6 +2843,11 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 					c.ownership_check_reassign(lhs_name, stmt.pos)
 					// Also check if new value is owned (via .to_owned() or fn return)
 					c.ownership_mark_from_call(lhs_name, rx, stmt.pos)
+				} else if stmt.op in [.left_shift, .left_shift_assign] {
+					lhs_base := lhs_type.base_type()
+					if lhs_type is Array || lhs_base is Array {
+						c.ownership_consume_expr(rx, rx.pos(), "array append")
+					}
 				}
 			}
 		}

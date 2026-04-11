@@ -12,6 +12,7 @@ pub:
 	moved_to   string    // name of the variable or function parameter it was moved to
 	move_pos   token.Pos // position where the move occurred
 	is_fn_call bool      // true if moved via function call argument
+	suggest_clone bool = true // show clone suggestion in diagnostics
 	fn_name    string    // function name (only when is_fn_call is true)
 }
 
@@ -40,8 +41,10 @@ fn (mut c Checker) ownership_check_ident(name string, pos token.Pos) {
 			eprintln('  |     ${info.fn_name}(${name}.clone())')
 		} else {
 			eprintln('  --> value moved to `${info.moved_to}` at ${move_position}')
-			eprintln('help: consider cloning the value if the performance cost is acceptable')
-			eprintln('  |     ${info.moved_to} := ${name}.clone()')
+			if info.suggest_clone {
+				eprintln('help: consider cloning the value if the performance cost is acceptable')
+				eprintln('  |     ${info.moved_to} := ${name}.clone()')
+			}
 		}
 		exit(1)
 	}
@@ -83,6 +86,31 @@ fn (mut c Checker) ownership_check_assign(lhs_name string, rhs ast.Expr, assign_
 				c.ownership_add_borrow(ref_name, lhs_name, assign_pos, false)
 			}
 		}
+	}
+}
+
+fn (mut c Checker) ownership_consume_expr(expr ast.Expr, pos token.Pos, target string) {
+	name := ownership_expr_ident_name(expr)
+	if name.len == 0 || name !in c.owned_vars {
+		return
+	}
+	if name in c.borrowed_vars {
+		borrows := c.borrowed_vars[name]
+		if borrows.len > 0 {
+			borrow := borrows[0]
+			file := c.file_set.file(pos)
+			borrow_file := c.file_set.file(borrow.pos)
+			borrow_position := borrow_file.position(borrow.pos)
+			errors.error('cannot move `${name}` because it is borrowed', errors.details(file,
+				file.position(pos), 2), .error, file.position(pos))
+			eprintln('  --> `${name}` is borrowed by `${borrow.borrower}` at ${borrow_position}')
+			exit(1)
+		}
+	}
+	c.moved_vars[name] = MovedVar{
+		moved_to:      target
+		move_pos:      pos
+		suggest_clone: false
 	}
 }
 

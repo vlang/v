@@ -3384,6 +3384,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	mut left_sym := g.table.sym(left_type)
 	if left_type != 0 && left_type != g.unwrap_generic(node.receiver_type)
+		&& left_sym.kind != .aggregate
 		&& left_sym.has_method(node.name) && node.from_embed_types.len == 0 {
 		unwrapped_rec_type = left_type
 		typ_sym = left_sym
@@ -3521,8 +3522,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_type != 0 && (left_type != g.unwrap_generic(node.receiver_type)
 		|| left_type != unwrapped_rec_type) {
 		resolved_left_sym := g.table.sym(left_type)
-		if resolved_left_sym.has_method(method_name)
-			|| resolved_left_sym.has_method_with_generic_parent(method_name) {
+		if resolved_left_sym.kind != .aggregate
+			&& (resolved_left_sym.has_method(method_name)
+			|| resolved_left_sym.has_method_with_generic_parent(method_name)) {
 			unwrapped_rec_type = left_type
 			receiver_type = left_type.derive(node.receiver_type).clear_flag(.generic)
 		}
@@ -5750,7 +5752,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang a
 		}
 	}
 	if arg_sym.kind == .interface && exp_sym.kind == .interface && arg_typ != expected_type
-		&& !exp_is_ptr && !arg.is_mut {
+		&& !exp_is_ptr && !arg.is_mut && !expected_type.has_flag(.option) {
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
 		return
 	}

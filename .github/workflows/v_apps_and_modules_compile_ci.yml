@@ -76,7 +76,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream uses deprecated json2.raw_decode
         run: .github/workflows/compile_discordv.sh
       - name: Build herolib
         if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
@@ -191,7 +191,7 @@ jobs:
           VJOBS=1 v test /tmp/go2v/
 
       - name: Install UI through VPM and make sure its examples compile
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream vlang/ui has unused parameter notices that fail with -N -W
         run: |
           echo "Official VPM modules should be installable"
           v retry -- v install ui
