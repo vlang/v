@@ -87,3 +87,11 @@ fn test_comptime_if_infix_user_define() {
 	assert ret[0].string() == 'old_int'
 	assert ret[1].float_val() == 1.5
 }
+
+fn test_comptime_if_empty_top_level_stmt() {
+	mut e := eval.create()
+
+	ret := e.run('\$if windows {}')!
+
+	assert ret == []
+}

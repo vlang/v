@@ -279,6 +279,8 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 		ast.TypeDecl {}
 		ast.GlobalDecl {}
 		ast.HashStmt {}
+		ast.SemicolonStmt {}
+		ast.EmptyStmt {}
 		ast.ConstDecl {
 			// evaluate them later since they may use functions defined after this point
 			for field in stmt.fields {

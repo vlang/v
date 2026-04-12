@@ -22,6 +22,8 @@ pub fn (mut e Eval) stmts(stmts []ast.Stmt) {
 
 pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 	match stmt {
+		ast.SemicolonStmt {}
+		ast.EmptyStmt {}
 		ast.ExprStmt {
 			ret := e.expr(stmt.expr, stmt.typ)
 			if e.returning {
