@@ -13,6 +13,11 @@ show "Clone vtcc"
 .github/workflows/retry.sh git clone https://github.com/felipensp/vtcc --branch stable --quiet vtcc/
 du -s vtcc/
 ## TODO: just `./v vtcc`, later will cause V, to detect the compiler as tcc (which it is), and add `-fwrapv`, which causes the vtcc compiler to panic currently
+show "Patch vtcc: fix int(0x8000_0000) overflow (felipensp/vtcc#6 / vlang/v#26853)"
+## 0x8000_0000 = 2147483648 overflows V's int (max 2147483647).
+## This causes a V warning (soon: hard error) and TCC rejects the generated C.
+sed -i 's/const shf_private = int(0x8000_0000)/const shf_private = u32(0x8000_0000)/' vtcc/src/tccelf.v
+
 show "Compile vtcc"
 cd vtcc/
 v run make.vsh
