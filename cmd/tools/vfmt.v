@@ -145,19 +145,24 @@ fn main() {
 		}
 		errors++
 	}
-	ecode := if has_internal_error { 5 } else { 0 }
+	if has_internal_error {
+		// When some files could not be processed due to internal vfmt errors,
+		// exit with code 5 regardless of format-diff errors in other files.
+		// This prevents exit codes like 7 (2+5) that confuse downstream CI checks.
+		exit(5)
+	}
 	if errors > 0 {
 		if !foptions.is_diff {
 			eprintln('Encountered a total of: ${errors} formatting errors.')
 		}
 		match true {
-			foptions.is_noerror { exit(0 + ecode) }
-			foptions.is_verify { exit(1 + ecode) }
-			foptions.is_c { exit(2 + ecode) }
-			else { exit(1 + ecode) }
+			foptions.is_noerror { exit(0) }
+			foptions.is_verify { exit(1) }
+			foptions.is_c { exit(2) }
+			else { exit(1) }
 		}
 	}
-	exit(ecode)
+	exit(0)
 }
 
 fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) bool {
