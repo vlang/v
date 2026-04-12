@@ -285,6 +285,9 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 				e.future_register_consts[mod][file][field.name] = field
 			}
 		}
+		ast.Block {
+			e.register_symbol_stmts(stmt.stmts, mod, file)
+		}
 		ast.ExprStmt {
 			x := stmt.expr
 			match x {
