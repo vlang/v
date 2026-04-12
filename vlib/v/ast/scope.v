@@ -322,5 +322,5 @@ pub fn (mut sc Scope) mark_var_as_used(varname string) bool {
 }
 
 pub fn (sc &Scope) str() string {
-	return sc.show(0, 0)
+	return sc.show(0, 3)
 }

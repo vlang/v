@@ -972,7 +972,7 @@ pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 // })
 // assert a == ['1', '3', '5', 'hi']
 // ```
-pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
+pub fn (mut a array) sort_with_compare(callback fn (const_a voidptr, const_b voidptr) int) {
 	$if freestanding {
 		panic('sort_with_compare does not work with -freestanding')
 	} $else {
@@ -983,7 +983,7 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 // sorted_with_compare sorts a clone of the array. The original array is not modified.
 // It uses the results of the given function to determine sort order.
 // See also .sort_with_compare()
-pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
+pub fn (a &array) sorted_with_compare(callback fn (const_a voidptr, const_b voidptr) int) array {
 	mut r := a.clone()
 	unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
 	return r
