@@ -583,6 +583,10 @@ fn (mut g Gen) expr(expr ast.Expr) {
 				g.write(')')
 			}
 		}
+		ast.LifetimeExpr {
+			g.write('^')
+			g.write(expr.name)
+		}
 		ast.LambdaExpr {
 			g.write('|')
 			for i, arg in expr.args {
@@ -819,6 +823,15 @@ fn (mut g Gen) expr(expr ast.Expr) {
 					if expr.base_type !is ast.EmptyExpr {
 						g.expr(expr.base_type)
 					}
+				}
+				ast.PointerType {
+					g.write('&')
+					if expr.lifetime != '' {
+						g.write('^')
+						g.write(expr.lifetime)
+						g.write(' ')
+					}
+					g.expr(expr.base_type)
 				}
 				ast.ResultType {
 					g.write('!')

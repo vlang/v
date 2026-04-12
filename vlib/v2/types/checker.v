@@ -402,6 +402,9 @@ pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Enviro
 // Builtin types and main module types are not prefixed.
 fn (c &Checker) qualify_type_name(name string) string {
 	// Don't qualify builtin or main module types
+	if name.starts_with('^') {
+		return name
+	}
 	if c.cur_file_module == 'builtin' || c.cur_file_module == '' || c.cur_file_module == 'main' {
 		return name
 	}
@@ -413,8 +416,17 @@ fn (c &Checker) type_ref_name(expr ast.Expr) string {
 		ast.Ident {
 			return c.qualify_type_name(expr.name)
 		}
+		ast.LifetimeExpr {
+			return '^' + expr.name
+		}
 		ast.SelectorExpr {
 			return expr.name().replace('.', '__')
+		}
+		ast.Type {
+			if expr is ast.PointerType {
+				return c.type_ref_name(expr.base_type)
+			}
+			return 'Type'
 		}
 		else {
 			return expr.name().replace('.', '__')
@@ -874,6 +886,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			for gp in decl.generic_params {
 				if gp is ast.Ident {
 					generic_params << gp.name
+				} else if gp is ast.LifetimeExpr {
+					generic_params << '^' + gp.name
 				}
 			}
 			obj := Struct{
@@ -1768,6 +1782,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			}
 			return typ
 		}
+		ast.LifetimeExpr {
+			return Type(NamedType('^' + expr.name))
+		}
 		ast.IfExpr {
 			// if guard
 			if expr.cond is ast.IfGuardExpr {
@@ -2027,6 +2044,13 @@ fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
 		opt_type := type_expr as ast.OptionType
 		return OptionType{
 			base_type: c.type_expr(opt_type.base_type)
+		}
+	}
+	if type_expr is ast.PointerType {
+		ptr_type := type_expr as ast.PointerType
+		return Pointer{
+			base_type: c.type_expr(ptr_type.base_type)
+			lifetime:  ptr_type.lifetime
 		}
 	}
 	if type_expr is ast.ResultType {
@@ -2400,7 +2424,13 @@ fn (mut c Checker) process_pending_struct_decls() {
 		// Insert generic type parameters into scope so field types can reference them
 		mut generic_params := []string{}
 		for gp in pending.decl.generic_params {
-			gp_name := if gp is ast.Ident { gp.name } else { '' }
+			gp_name := if gp is ast.Ident {
+				gp.name
+			} else if gp is ast.LifetimeExpr {
+				'^' + gp.name
+			} else {
+				''
+			}
 			if gp_name != '' {
 				generic_params << gp_name
 				c.scope.insert(gp_name, Type(NamedType(gp_name)))
@@ -2607,6 +2637,8 @@ fn collect_fn_generic_params(decl ast.FnDecl) []string {
 	for gp in decl.typ.generic_params {
 		if gp is ast.Ident && gp.name !in params {
 			params << gp.name
+		} else if gp is ast.LifetimeExpr && '^' + gp.name !in params {
+			params << '^' + gp.name
 		}
 	}
 	if !decl.is_method {
@@ -2622,12 +2654,19 @@ fn collect_receiver_generic_params(mut params []string, expr ast.Expr) {
 			for arg in expr.args {
 				if arg is ast.Ident && arg.name !in params {
 					params << arg.name
+				} else if arg is ast.LifetimeExpr && '^' + arg.name !in params {
+					params << '^' + arg.name
 				}
 			}
 			collect_receiver_generic_params(mut params, expr.lhs)
 		}
 		ast.PrefixExpr {
 			collect_receiver_generic_params(mut params, expr.expr)
+		}
+		ast.Type {
+			if expr is ast.PointerType {
+				collect_receiver_generic_params(mut params, expr.base_type)
+			}
 		}
 		else {}
 	}
@@ -3517,6 +3556,7 @@ fn fix_self_ref_type(t Type, self_name string, self_fields []Field, self_embedde
 			if fixed := fix_self_ref_type(t.base_type, self_name, self_fields, self_embedded) {
 				return Type(Pointer{
 					base_type: fixed
+					lifetime:  t.lifetime
 				})
 			}
 		}
@@ -3624,6 +3664,7 @@ fn (mut c Checker) substitute_generic_type_with_stack(t Type, generic_type_map m
 			return Type(Pointer{
 				base_type: c.substitute_generic_type_with_stack(t.base_type, generic_type_map,
 					stack)
+				lifetime:  t.lifetime
 			})
 		}
 		ResultType {
@@ -4276,6 +4317,8 @@ fn (mut c Checker) fn_type_with_insert_params(fn_type ast.FnType, attributes FnT
 		if generic_param is ast.Ident {
 			// generic_params << NamedType(generic_param.name)
 			generic_params << generic_param.name
+		} else if generic_param is ast.LifetimeExpr {
+			generic_params << '^' + generic_param.name
 		} else {
 			// TODO: correct position
 			c.error_with_pos('expecting identifier', token.Pos{})

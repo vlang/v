@@ -70,19 +70,36 @@ fn (t &Transformer) lookup_fn_cached(module_name string, fn_name string) ?types.
 // register_generated_fn_scope creates a function scope for a transformer-generated function
 // (e.g. Array_int_contains, Array_string_str) and registers parameter types so cleanc
 // can resolve them via scope lookup instead of falling back to string-based inference.
+fn generated_fn_scope_key(fn_name string, module_name string) string {
+	if module_name == '' {
+		return fn_name
+	}
+	if fn_name.starts_with('${module_name}__') {
+		return fn_name
+	}
+	return '${module_name}__${fn_name}'
+}
+
 fn (mut t Transformer) register_generated_fn_scope(fn_name string, module_name string, params []ast.Parameter) {
+	t.register_generated_fn_scope_with_types(fn_name, module_name, params, []types.Type{})
+}
+
+fn (mut t Transformer) register_generated_fn_scope_with_types(fn_name string, module_name string, params []ast.Parameter, param_types []types.Type) {
 	parent := t.get_module_scope(module_name) or { return }
 	mut fn_scope := types.new_scope(parent)
-	for param in params {
-		type_name := t.expr_to_type_name(param.typ)
-		if type_name == '' {
+	for i, param in params {
+		if i < param_types.len {
+			fn_scope.insert(param.name, types.Object(param_types[i]))
 			continue
 		}
-		if param_type := t.c_name_to_type(type_name) {
-			fn_scope.insert(param.name, types.Object(param_type))
+		type_name := t.expr_to_type_name(param.typ)
+		if type_name != '' {
+			if param_type := t.c_name_to_type(type_name) {
+				fn_scope.insert(param.name, types.Object(param_type))
+			}
 		}
 	}
-	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	key := generated_fn_scope_key(fn_name, module_name)
 	t.cached_fn_scopes[key] = fn_scope
 }
 
@@ -368,6 +385,49 @@ fn (mut t Transformer) register_needed_clone_struct(st types.Struct) string {
 	return fn_name
 }
 
+fn (t &Transformer) clone_generated_fn_scope_module_for_type(typ types.Type) string {
+	resolved := types.resolve_alias(typ)
+	match resolved {
+		types.Struct {
+			return clone_generated_fn_scope_module(t.type_to_c_name(resolved))
+		}
+		types.SumType {
+			return clone_generated_fn_scope_module(t.type_to_c_name(resolved))
+		}
+		types.OptionType {
+			return t.clone_generated_fn_scope_module_for_type(resolved.base_type)
+		}
+		types.ResultType {
+			return t.clone_generated_fn_scope_module_for_type(resolved.base_type)
+		}
+		types.String, types.Array, types.ArrayFixed, types.Map, types.Pointer, types.Primitive,
+		types.Char, types.Rune, types.Nil, types.None, types.Void, types.ISize, types.USize {
+			return 'builtin'
+		}
+		else {
+			return 'main'
+		}
+	}
+}
+
+fn (mut t Transformer) register_needed_sumtype_clone(sum_t types.SumType) string {
+	fn_name := '${t.type_to_c_name(types.Type(sum_t))}__clone'
+	t.needed_sumtype_clone_fns[fn_name] = sum_t
+	return fn_name
+}
+
+fn (mut t Transformer) register_needed_option_clone(opt types.OptionType) string {
+	base_token := t.generic_specialization_token_from_type(opt.base_type)
+	module_name := t.clone_generated_fn_scope_module_for_type(opt.base_type)
+	fn_name := if module_name != '' && module_name != 'main' {
+		'${module_name}__Option_${base_token}__clone'
+	} else {
+		'Option_${base_token}__clone'
+	}
+	t.needed_option_clone_fns[fn_name] = opt
+	return fn_name
+}
+
 fn (t &Transformer) clone_fn_name_for_type(typ types.Type) ?string {
 	mut base := typ
 	for base is types.Pointer {
@@ -406,6 +466,30 @@ fn (mut t Transformer) auto_clone_fn_name_for_type(typ types.Type) ?string {
 		}
 	}
 	return fn_name
+}
+
+fn (mut t Transformer) auto_sumtype_clone_fn_name_for_type(typ types.Type) ?string {
+	mut base := typ
+	for base is types.Pointer {
+		base = (base as types.Pointer).base_type
+	}
+	base = types.resolve_alias(base)
+	if base is types.SumType {
+		return t.register_needed_sumtype_clone(base as types.SumType)
+	}
+	return none
+}
+
+fn (mut t Transformer) auto_option_clone_fn_name_for_type(typ types.Type) ?string {
+	mut base := typ
+	for base is types.Pointer {
+		base = (base as types.Pointer).base_type
+	}
+	base = types.resolve_alias(base)
+	if base is types.OptionType {
+		return t.register_needed_option_clone(base as types.OptionType)
+	}
+	return none
 }
 
 // is_flag_enum checks if a type name is a flag enum
@@ -680,6 +764,9 @@ fn (t &Transformer) v_type_name_to_c_name(v_name string) string {
 // qualify_type_name adds module prefix to type names that need it
 // e.g., "File" in ast module becomes "ast__File"
 fn (t &Transformer) qualify_type_name(type_name string) string {
+	if type_name.starts_with('^') {
+		return 'lt__' + type_name[1..]
+	}
 	// Don't qualify if already qualified (contains __) or is a primitive
 	if type_name.contains('__')
 		|| type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'void'] {
@@ -979,6 +1066,9 @@ fn (t &Transformer) type_expr_to_c_name(typ ast.Expr) string {
 		ast.Ident {
 			return typ.name.replace('.', '__')
 		}
+		ast.LifetimeExpr {
+			return 'lt__' + typ.name
+		}
 		ast.SelectorExpr {
 			if typ.lhs is ast.Ident {
 				return '${(typ.lhs as ast.Ident).name}__${typ.rhs.name}'
@@ -998,6 +1088,12 @@ fn (t &Transformer) type_expr_to_c_name(typ ast.Expr) string {
 			return t.type_expr_to_c_name(typ.expr)
 		}
 		ast.Type {
+			if typ is ast.PointerType {
+				base := t.type_expr_to_c_name(typ.base_type)
+				if base != '' {
+					return '${base}*'
+				}
+			}
 			// Handle composite types like []ast.Attribute, [3]int, map[string]int
 			return t.type_variant_name(typ)
 		}
@@ -1170,10 +1266,10 @@ fn (t &Transformer) type_to_ast_type_expr(typ types.Type) ast.Expr {
 			}))
 		}
 		types.Pointer {
-			return ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: t.type_to_ast_type_expr(typ.base_type)
-			})
+			return ast.Expr(ast.Type(ast.PointerType{
+				base_type: t.type_to_ast_type_expr(typ.base_type)
+				lifetime:  typ.lifetime
+			}))
 		}
 		types.OptionType {
 			return ast.Expr(ast.Type(ast.OptionType{
@@ -1385,6 +1481,10 @@ fn (t &Transformer) type_variant_name(typ ast.Type) string {
 		val_name := t.type_expr_name_full(typ.value_type)
 		return 'Map_${key_name}_${val_name}'
 	}
+	if typ is ast.PointerType {
+		base_name := t.type_expr_name(typ.base_type)
+		return '${base_name}ptr'
+	}
 	if typ is ast.GenericType {
 		// Foo[Bar] -> Foo (used for sumtype matching)
 		return t.type_expr_name(typ.name)
@@ -1397,6 +1497,7 @@ fn (t &Transformer) type_variant_name(typ ast.Type) string {
 		ast.NilType { 'NilType' }
 		ast.NoneType { 'NoneType' }
 		ast.OptionType { 'OptionType' }
+		ast.PointerType { 'PointerType' }
 		ast.ResultType { 'ResultType' }
 		ast.ThreadType { 'ThreadType' }
 		ast.TupleType { 'TupleType' }
@@ -1424,6 +1525,10 @@ fn (t &Transformer) type_variant_name_full(typ ast.Type) string {
 		val_name := t.type_expr_name_full(typ.value_type)
 		return 'Map_${key_name}_${val_name}'
 	}
+	if typ is ast.PointerType {
+		base_name := t.type_expr_name_full(typ.base_type)
+		return '${base_name}ptr'
+	}
 	return t.type_expr_name_full(typ)
 }
 
@@ -1431,6 +1536,9 @@ fn (t &Transformer) type_variant_name_full(typ ast.Type) string {
 fn (t &Transformer) type_expr_name(expr ast.Expr) string {
 	if expr is ast.Ident {
 		return expr.name
+	}
+	if expr is ast.LifetimeExpr {
+		return '^' + expr.name
 	}
 	if expr is ast.SelectorExpr {
 		// ast.Attribute -> 'Attribute' (use short name for matching)
@@ -1446,6 +1554,9 @@ fn (t &Transformer) type_expr_name(expr ast.Expr) string {
 fn (t &Transformer) type_expr_name_full(expr ast.Expr) string {
 	if expr is ast.Ident {
 		return expr.name
+	}
+	if expr is ast.LifetimeExpr {
+		return 'lt__' + expr.name
 	}
 	if expr is ast.SelectorExpr {
 		// ast.Attribute -> 'ast__Attribute' (full name with module prefix for C)
@@ -2978,6 +3089,9 @@ fn (t &Transformer) types_type_to_v(typ types.Type) string {
 		}
 		types.Pointer {
 			base := t.types_type_to_v(typ.base_type)
+			if typ.lifetime != '' {
+				return '&^${typ.lifetime} ' + base
+			}
 			return '&' + base
 		}
 		types.Array {
@@ -3042,6 +3156,12 @@ fn (t &Transformer) types_type_to_v(typ types.Type) string {
 		}
 		types.None {
 			return 'void'
+		}
+		types.NamedType {
+			if string(typ).starts_with('^') {
+				return string(typ)
+			}
+			return c_name_to_v_name(string(typ))
 		}
 		else {
 			return 'int'

@@ -83,10 +83,30 @@ fn calculate_length(s &string) int {
 
 fn main() {
 	s := 'hello'.to_owned()
-	len := calculate_length(&s)
-	println(s) // ok — s was borrowed, not moved
+len := calculate_length(&s)
+println(s) // ok — s was borrowed, not moved
 }
 ```
+
+### Explicit lifetimes
+
+Ownership mode also supports explicit named lifetimes with `^name`.
+
+Use `&^a T` for a borrowed reference with an explicit lifetime and `[^a]`
+in generic parameter and argument lists:
+
+```v okfmt
+struct Ignore {}
+
+struct IgnoreMatch[^a] {}
+
+fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
+	return IgnoreMatch[^a]{}
+}
+```
+
+`^` is used instead of Rust's `'` because `'` is already used for string and
+character literals in V.
 
 Multiple immutable borrows are allowed:
 

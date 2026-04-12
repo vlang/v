@@ -17,6 +17,8 @@ fn create_test_transformer() &Transformer {
 		pref:                        &vpref.Preferences{}
 		env:                         unsafe { env }
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -36,6 +38,8 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 		env:                         unsafe { env }
 		scope:                       scope
 		needed_clone_fns:            map[string]string{}
+		needed_sumtype_clone_fns:    map[string]types.SumType{}
+		needed_option_clone_fns:     map[string]types.OptionType{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
@@ -286,6 +290,70 @@ fn use_clone(value Outer) Outer {
 	}
 	assert saw_lowered_call
 	assert saw_inner_clone
+	assert saw_outer_clone
+}
+
+fn test_transform_autogenerates_clone_helpers_for_sumtype_and_option_fields() {
+	files := transform_code_for_test('
+interface IClone {}
+
+struct Err implements IClone {
+	msg string
+}
+
+struct Leaf implements IClone {
+	name string
+}
+
+struct Empty {}
+
+type Choice = Empty | Leaf
+
+struct Outer implements IClone {
+	choice Choice
+	err    ?Err
+}
+
+fn use_clone(value Outer) Outer {
+	return value.clone()
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_choice_clone := false
+	mut saw_option_clone := false
+	mut saw_outer_clone := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'Choice__clone' {
+			saw_choice_clone = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Option_Err__clone' {
+			saw_option_clone = true
+		}
+		if stmt is ast.FnDecl && stmt.name == 'Outer__clone' {
+			saw_outer_clone = true
+			assert stmt.stmts.len == 1
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.InitExpr
+			init := ret.exprs[0] as ast.InitExpr
+			assert init.fields.len == 2
+			assert init.fields[0].name == 'choice'
+			assert init.fields[0].value is ast.CallExpr
+			choice_call := init.fields[0].value as ast.CallExpr
+			assert choice_call.lhs is ast.Ident
+			assert (choice_call.lhs as ast.Ident).name == 'Choice__clone'
+			assert init.fields[1].name == 'err'
+			assert init.fields[1].value is ast.CastExpr
+			err_cast := init.fields[1].value as ast.CastExpr
+			assert err_cast.expr is ast.CallExpr
+			err_call := err_cast.expr as ast.CallExpr
+			assert err_call.lhs is ast.Ident
+			assert (err_call.lhs as ast.Ident).name == 'Option_Err__clone'
+		}
+	}
+	assert saw_choice_clone
+	assert saw_option_clone
 	assert saw_outer_clone
 }
 
@@ -1295,4 +1363,100 @@ fn test_transform_not_in_inline_array_wraps_with_not() {
 	assert prefix.expr is ast.InfixExpr
 	inner := prefix.expr as ast.InfixExpr
 	assert inner.op == .logical_or
+}
+
+fn test_transformer_preserves_pointer_lifetime_in_v_syntax_but_not_c_names() {
+	mut t := create_test_transformer()
+	ptr_type := types.Type(types.Pointer{
+		base_type: types.Type(types.NamedType('Foo'))
+		lifetime:  'a'
+	})
+
+	ast_expr := t.type_to_ast_type_expr(ptr_type)
+	assert ast_expr is ast.Type
+	assert (ast_expr as ast.Type) is ast.PointerType
+	ptr_ast := (ast_expr as ast.Type) as ast.PointerType
+	assert ptr_ast.lifetime == 'a'
+	assert ptr_ast.base_type is ast.Ident
+	assert (ptr_ast.base_type as ast.Ident).name == 'Foo'
+
+	assert t.types_type_to_v(ptr_type) == '&^a Foo'
+	assert t.type_to_c_name(ptr_type) == 'Fooptr'
+}
+
+fn test_transformer_preserves_lifetime_method_signature_and_nested_generic_return_type() {
+	files := transform_code_for_test('
+struct Ignore {}
+
+struct DirEntry {}
+
+struct Match[T] {
+	value T
+}
+
+struct IgnoreMatch[^a] {
+	ig &^a Ignore
+}
+
+fn (ig &^a Ignore) matched_dir_entry[^a](dent &DirEntry) Match[IgnoreMatch[^a]] {
+	return Match[IgnoreMatch[^a]]{
+		value: IgnoreMatch[^a]{
+			ig: ig
+		}
+	}
+}
+
+fn main() {
+	ig := Ignore{}
+	dent := DirEntry{}
+	ig.matched_dir_entry(&dent)
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_method := false
+	mut saw_call := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'matched_dir_entry' {
+			saw_method = true
+			assert stmt.is_method
+			assert stmt.receiver.typ is ast.Type
+			receiver_type := stmt.receiver.typ as ast.Type
+			assert receiver_type is ast.PointerType
+			receiver_ptr := receiver_type as ast.PointerType
+			assert receiver_ptr.lifetime == 'a'
+			assert stmt.typ.generic_params.len == 1
+			assert stmt.typ.generic_params[0] is ast.LifetimeExpr
+			assert (stmt.typ.generic_params[0] as ast.LifetimeExpr).name == 'a'
+			assert stmt.typ.return_type is ast.Type
+			return_type := stmt.typ.return_type as ast.Type
+			assert return_type is ast.GenericType
+			outer_generic := return_type as ast.GenericType
+			assert outer_generic.name is ast.Ident
+			assert (outer_generic.name as ast.Ident).name == 'Match'
+			assert outer_generic.params.len == 1
+			assert outer_generic.params[0] is ast.Type
+			inner_type := outer_generic.params[0] as ast.Type
+			assert inner_type is ast.GenericType
+			inner_generic := inner_type as ast.GenericType
+			assert inner_generic.name is ast.Ident
+			assert (inner_generic.name as ast.Ident).name == 'IgnoreMatch'
+			assert inner_generic.params.len == 1
+			assert inner_generic.params[0] is ast.LifetimeExpr
+			assert (inner_generic.params[0] as ast.LifetimeExpr).name == 'a'
+		}
+		if stmt is ast.FnDecl && stmt.name == 'main' {
+			assert stmt.stmts.len == 3
+			assert stmt.stmts[2] is ast.ExprStmt
+			expr_stmt := stmt.stmts[2] as ast.ExprStmt
+			assert expr_stmt.expr is ast.CallExpr
+			call := expr_stmt.expr as ast.CallExpr
+			assert call.lhs is ast.Ident
+			assert (call.lhs as ast.Ident).name == 'Ignore__matched_dir_entry'
+			assert call.args.len == 2
+			saw_call = true
+		}
+	}
+	assert saw_method
+	assert saw_call
 }

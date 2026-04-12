@@ -7,6 +7,15 @@ module cleanc
 import v2.ast
 import v2.types
 
+fn struct_generic_params_need_bindings(params []ast.Expr) bool {
+	for param in params {
+		if param !is ast.LifetimeExpr {
+			return true
+		}
+	}
+	return false
+}
+
 // collect_generic_struct_bindings scans all struct fields for GenericType
 // instantiations (e.g. LinkedList[ValueInfo]) and records the concrete type
 // bindings so that methods on generic structs can resolve their generic params.
@@ -507,7 +516,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Generic structs are emitted using concrete bindings recorded from
 	// GenericType instantiations, falling back to the first binding in env.
 	prev_generic_types := g.active_generic_types.clone()
-	if node.generic_params.len > 0 {
+	needs_runtime_generic_bindings := struct_generic_params_need_bindings(node.generic_params)
+	if needs_runtime_generic_bindings {
 		struct_c_name := g.get_struct_name(node)
 		if struct_c_name in g.generic_struct_bindings {
 			g.active_generic_types = g.generic_struct_bindings[struct_c_name].clone()
@@ -538,7 +548,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// For generic structs with active bindings, verify that all field types
 	// are already emitted. This prevents the last-resort pass from emitting
 	// a generic struct body before its concrete field types are defined.
-	if node.generic_params.len > 0 && g.active_generic_types.len > 0 {
+	if needs_runtime_generic_bindings && g.active_generic_types.len > 0 {
 		if !g.struct_fields_resolved(node) {
 			return
 		}
@@ -727,7 +737,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	}
 	// Emit additional generic struct instantiations (e.g. Node[StructFieldInfo]
 	// when Node[ValueInfo] was the primary binding).
-	if node.generic_params.len > 0 {
+	if needs_runtime_generic_bindings {
 		instances := g.generic_struct_instances[name]
 		for inst in instances {
 			if inst.c_name == name {

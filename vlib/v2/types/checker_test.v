@@ -781,3 +781,74 @@ fn test_scope_insert_replaces_module_placeholder_with_function() {
 	obj := scope.lookup_parent('optimize', 0) or { panic('missing optimize') }
 	assert obj is Fn
 }
+
+fn test_explicit_lifetime_syntax_in_fn_types_and_generic_args() {
+	code := '
+struct Ignore {}
+
+struct IgnoreMatch[^a] {}
+
+fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
+	return IgnoreMatch[^a]{}
+}
+'
+	env := check_code(code)
+	fn_type := env.lookup_fn('main', 'matched_dir_entry') or { panic('missing matched_dir_entry') }
+	assert '^a' in fn_type.generic_params
+	assert fn_type.params.len == 1
+	assert fn_type.params[0].typ is Pointer
+	ptr := fn_type.params[0].typ as Pointer
+	assert ptr.lifetime == 'a'
+	assert ptr.base_type.name() == 'Ignore'
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'IgnoreMatch' && t.generic_params == ['^a']
+	})
+}
+
+fn test_explicit_lifetime_method_receiver_and_nested_generic_return_type() {
+	code := '
+struct Ignore {}
+
+struct DirEntry {}
+
+struct Match[T] {
+	value T
+}
+
+struct IgnoreMatch[^a] {
+	ig &^a Ignore
+}
+
+fn (ig &^a Ignore) matched_dir_entry[^a](dent &DirEntry) Match[IgnoreMatch[^a]] {
+	return Match[IgnoreMatch[^a]]{
+		value: IgnoreMatch[^a]{
+			ig: ig
+		}
+	}
+}
+
+fn main() {
+	ig := Ignore{}
+	dent := DirEntry{}
+	ig.matched_dir_entry(&dent)
+}
+'
+	env := check_code(code)
+	method := env.lookup_method('Ignore', 'matched_dir_entry') or {
+		panic('missing Ignore.matched_dir_entry')
+	}
+	assert '^a' in method.generic_params
+	assert method.params.len == 1
+	assert method.params[0].typ is Pointer
+	dent_param := method.params[0].typ as Pointer
+	assert dent_param.lifetime == ''
+	assert dent_param.base_type.name() == 'DirEntry'
+	return_type := method.get_return_type() or { panic('missing matched_dir_entry return type') }
+	assert return_type.name() == 'Match'
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'IgnoreMatch' && t.generic_params == ['^a']
+	})
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'Match'
+	})
+}
