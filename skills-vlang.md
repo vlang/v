@@ -82,7 +82,8 @@ VAUTOFIX=1 ./vnew -silent vlib/v/compiler_errors_test.v
 - **PascalCase** for types/structs: `User`, `Customer`, `EmbedFileData`
 - Test functions prefixed with `test_`: `fn test_get_string() { ... }`
 - Module names match their directory name (no hierarchy in `module` line)
-- **No variable shadowing** — declaring a variable with a name already used in a parent scope is a compile error
+- **No variable shadowing** — declaring a variable with a name already used in a
+  parent scope is a compile error
 
 ### Imports
 ```v
@@ -256,7 +257,9 @@ fn (x int) bool { return x > 0 }
 ### Attribute
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is a compiler instruction specified inside `@[]` right before a function/struct/enum declaration and applies only to the following declaration. Attributes with arguments support both name: value and call-style name(value) syntax. Call-style attributes can also use named arguments.
+An attribute is a compiler instruction specified inside `@[]` right before a function/struct/enum 
+declaration and applies only to the following declaration. Attributes with arguments support both 
+name: value and call-style name(value) syntax. Call-style attributes can also use named arguments.
 
 ```
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
@@ -273,7 +276,8 @@ fn legacy_function2_call_style() {}
 ```
 
 ### Compile time reflection
-`$` is used as a prefix for compile time (also referred to as `comptime`) operations, such as the fields, attributes, values and methods of struct.
+`$` is used as a prefix for compile time (also referred to as `comptime`) operations, such as 
+the fields, attributes, values and methods of struct.
 
 ### Control Flow
 
