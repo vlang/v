@@ -1992,6 +1992,28 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 						}
 					}
 				}
+				ast.GenericInst {
+					parent_sym := c.table.sym(ast.new_type(typ_sym.info.parent_idx))
+					match parent_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
+							if rt := c.table.convert_generic_type(method.return_type,
+								generic_names, typ_sym.info.concrete_types)
+							{
+								method.return_type = rt
+							}
+							method.params = method.params.clone()
+							for mut param in method.params {
+								if pt := c.table.convert_generic_type(param.typ, generic_names,
+									typ_sym.info.concrete_types)
+								{
+									param.typ = pt
+								}
+							}
+						}
+						else {}
+					}
+				}
 				else {}
 			}
 			msg := c.table.is_same_method(imethod, method)

@@ -45,6 +45,9 @@ mut:
 	// manually.
 	takeover    bool
 	return_file string
+	// raw client file descriptor, used by the fasthttp backend to create a TcpConn
+	// on demand when takeover_conn() is called
+	client_fd int = -1
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
@@ -136,7 +139,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if ctx.res.status_code == 0 {
 		ctx.res.set_status(.ok)
 	}
-	if ctx.takeover {
+	if ctx.takeover && ctx.conn != unsafe { nil } {
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
 	}
 	// result is send in `veb.v`, `handle_route`
@@ -488,6 +491,26 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 // send multiple responses. Like with the SSE.
 pub fn (mut ctx Context) takeover_conn() {
 	ctx.takeover = true
+	// For the fasthttp backend: create a TcpConn from the raw fd on demand
+	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
+		// Set the fd to blocking mode — fasthttp uses non-blocking sockets,
+		// but TcpConn.write() expects blocking behavior for reliable writes.
+		flags := C.fcntl(ctx.client_fd, C.F_GETFL, 0)
+		if flags != -1 {
+			C.fcntl(ctx.client_fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+		}
+		ctx.conn = &net.TcpConn{
+			sock:          net.TcpSocket{
+				Socket: net.Socket{
+					handle: ctx.client_fd
+				}
+			}
+			handle:        ctx.client_fd
+			is_blocking:   true
+			read_timeout:  30 * time.second
+			write_timeout: 30 * time.second
+		}
+	}
 }
 
 // user_agent returns the user-agent header for the current client
@@ -510,7 +533,7 @@ pub fn (ctx &Context) ip() string {
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}
-	if ip == '' {
+	if ip == '' && ctx.conn != unsafe { nil } {
 		ip = ctx.conn.peer_ip() or { '' }
 	}
 	return ip

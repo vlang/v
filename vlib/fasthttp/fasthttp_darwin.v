@@ -2,13 +2,15 @@ module fasthttp
 
 import net
 import sync.stdatomic
-import time
 
 #include <sys/event.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <signal.h>
+
+fn C.signal(sig int, handler voidptr) voidptr
 
 const buf_size = max_connection_size
 const kqueue_max_events = 128
@@ -186,29 +188,10 @@ fn handle_write(server Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 	close_conn(server, kq, c_ptr, mut clients)
 }
 
-fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+// process_request handles a complete HTTP request: decodes, calls the handler,
+// sends the response (or handles takeover/sendfile). Runs in a spawned thread.
+fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
-	n := C.recv(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len, 0)
-	if n <= 0 {
-		if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-			C.send(c.fd, status_444_response.data, status_444_response.len, 0)
-			close_conn(server, kq, c_ptr, mut clients)
-			return
-		}
-		close_conn(server, kq, c_ptr, mut clients)
-		return
-	}
-
-	c.read_len += int(n)
-	if c.read_len == 0 {
-		return
-	}
-
-	if c.read_len >= buf_size {
-		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
-		close_conn(server, kq, c_ptr, mut clients)
-		return
-	}
 
 	mut req_buf := []u8{cap: c.read_len}
 	unsafe {
@@ -228,6 +211,20 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 	resp := server.request_handler(decoded) or {
 		send_bad_request(c.fd)
 		close_conn(server, kq, c_ptr, mut clients)
+		return
+	}
+
+	if resp.takeover {
+		// The handler has taken ownership of the connection.
+		// Remove from kqueue and tracking, but do NOT close the fd.
+		clients.delete(c.fd)
+		delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
+		delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+		if c.request_active {
+			server.end_request()
+			c.request_active = false
+		}
+		unsafe { free(c_ptr) }
 		return
 	}
 
@@ -257,6 +254,33 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 	close_conn(server, kq, c_ptr, mut clients)
 }
 
+fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+	mut c := unsafe { &Conn(c_ptr) }
+	n := C.recv(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len, 0)
+	if n <= 0 {
+		if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+			C.send(c.fd, status_444_response.data, status_444_response.len, 0)
+			close_conn(server, kq, c_ptr, mut clients)
+			return
+		}
+		close_conn(server, kq, c_ptr, mut clients)
+		return
+	}
+
+	c.read_len += int(n)
+	if c.read_len == 0 {
+		return
+	}
+
+	if c.read_len >= buf_size {
+		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
+		close_conn(server, kq, c_ptr, mut clients)
+		return
+	}
+
+	process_request(server, kq, c_ptr, mut clients)
+}
+
 fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 	for {
 		client_fd := C.accept(listen_fd, unsafe { nil }, unsafe { nil })
@@ -268,6 +292,10 @@ fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 			break
 		}
 		set_nonblocking(client_fd)
+		// Prevent SIGPIPE on writes to disconnected clients (macOS-specific).
+		// Without this, writing to a closed connection kills the entire server process.
+		nosigpipe_opt := 1
+		C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
 		mut c := &Conn{
 			fd:        client_fd
 			user_data: unsafe { nil }
@@ -298,6 +326,12 @@ fn (mut s Server) stop_accepting() {
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
+	// Ignore SIGPIPE process-wide. On macOS, writing to a disconnected socket
+	// sends SIGPIPE which terminates the process by default. SO_NOSIGPIPE is set
+	// per-socket on accept, but this is a safety net for any code path that might
+	// miss it (e.g. spawned SSE/WebSocket threads using TcpConn.write).
+	C.signal(C.SIGPIPE, C.SIG_IGN)
+
 	s.socket_fd = C.socket(s.family, net.SocketType.tcp, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')

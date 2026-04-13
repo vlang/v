@@ -241,6 +241,14 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		return
 	}
 
+	if response.takeover {
+		// The handler has taken ownership of the connection.
+		// Remove from epoll and tracking, but do NOT close the fd.
+		client_fds.delete(client_fd)
+		remove_fd_from_epoll(epoll_fd, client_fd)
+		return
+	}
+
 	if response.content.len > 0 {
 		mut send_error := false
 		mut pos := 0
@@ -327,7 +335,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		}
 	}
 
-	if server.is_shutting_down() {
+	if server.is_shutting_down() || response.should_close {
 		handle_client_closure(epoll_fd, client_fd, mut client_fds)
 	}
 }

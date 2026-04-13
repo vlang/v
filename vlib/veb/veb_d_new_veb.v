@@ -56,6 +56,9 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	}
 	println('[veb] Running multi-threaded app on ${server_protocol(params)}://${startup_host(params)}:${params.port}/')
 	flush_stdout()
+	$if A is BeforeAcceptApp {
+		global_app.before_accept_loop()
+	}
 	server.run() or { panic(err) }
 }
 
@@ -75,22 +78,28 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
-	// params.routes, params.controllers_sorted)
-	// Serialize the final `http.Response` into a byte array.
+
 	if completed_context.takeover {
-		eprintln('[veb] WARNING: ctx.takeover_conn() was called, but this is not supported by this server backend. The connection will be closed after this response.')
+		// The handler has taken over the connection (e.g. for SSE or WebSocket).
+		// The response was already sent directly over ctx.conn.
+		// Tell fasthttp to hand off the fd without closing it.
+		return fasthttp.HttpResponse{
+			takeover: true
+		}
 	}
 
 	if completed_context.return_type == .file {
 		return fasthttp.HttpResponse{
-			content:   completed_context.res.bytes()
-			file_path: completed_context.return_file
+			content:      completed_context.res.bytes()
+			file_path:    completed_context.return_file
+			should_close: completed_context.client_wants_to_close
 		}
 	}
 
 	// The fasthttp server expects a complete response buffer to be returned.
 	return fasthttp.HttpResponse{
-		content: completed_context.res.bytes()
+		content:      completed_context.res.bytes()
+		should_close: completed_context.client_wants_to_close
 	}
 } // handle_request_and_route is a unified function that creates the context,
 
@@ -117,17 +126,13 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	host, _ := urllib.split_host_port(host_with_port)
 	page_gen_start := if params.benchmark_page_generation { time.ticks() } else { 0 }
 	mut ctx := &Context{
-		req:            req
-		page_gen_start: page_gen_start
-		// page_gen_start: time.ticks()
-		query: query
-		form:  form
-		files: files
-	}
-	if connection_header := req.header.get(.connection) {
-		if connection_header.to_lower() == 'close' {
-			ctx.client_wants_to_close = true
-		}
+		req:                   req
+		page_gen_start:        page_gen_start
+		client_fd:             _client_fd
+		client_wants_to_close: true // fasthttp always closes connections after response
+		query:                 query
+		form:                  form
+		files:                 files
 	}
 	$if A is StaticApp {
 		ctx.custom_mime_types = app.static_mime_types.clone()

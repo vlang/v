@@ -141,7 +141,7 @@ enum ContentEncoding {
 	zstd
 }
 
-// send_compressed_response compresses the response body and sends it to the client.
+// send_compressed_response compresses the response body and updates the response.
 // Returns true if compression should be skipped, false if compression was applied.
 fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 	compressed, encoding_name := match encoding {
@@ -161,17 +161,15 @@ fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 		}
 	}
 
-	// Take over the connection to have full control over the response
-	ctx.takeover_conn()
-
 	// Set HTTP headers for compressed content
 	ctx.res.header.add(.content_encoding, encoding_name)
 	ctx.res.header.set(.vary, 'Accept-Encoding')
-	ctx.res.header.set(.content_length, compressed.len.str())
 
-	fast_send_resp_header(mut ctx.conn, ctx.res) or {}
-	ctx.conn.write_ptr(&u8(compressed.data), compressed.len) or {}
-	ctx.conn.close() or {}
+	// Replace the response body with the compressed data and update Content-Length.
+	// The normal response path will handle sending it.
+	ctx.res.body = compressed.bytestr()
+	ctx.res.header.set(.content_length, compressed.len.str())
+	ctx.already_compressed = true
 
 	return false
 }
