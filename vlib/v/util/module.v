@@ -172,8 +172,13 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 			}
 		}
 	}
-	if os.is_abs_path(pref_.path) && os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
-		rel_mod_path := path.replace(pref_.path.all_before_last(os.path_separator) +
+	if os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		abs_pref_path := if os.is_abs_path(pref_.path) {
+			pref_.path
+		} else {
+			os.join_path_single(os.getwd(), pref_.path)
+		}
+		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
 			full_mod_name :=

@@ -372,6 +372,8 @@ mut:
 	// Temporary recursion guard for debugging expression cycles.
 	expr_depth int
 	expr_stack []string
+	// Whether we are inside an unsafe{} block
+	inside_unsafe bool
 	// Ownership tracking: variables that hold owned values (from .to_owned())
 	owned_vars map[string]token.Pos // var name -> position where it became owned
 	// Variables that have been moved (assigned to another variable)
@@ -1112,10 +1114,13 @@ fn (mut c Checker) index_expr(expr ast.IndexExpr) Type {
 	mut container_type := lhs_type
 	// Const/global strings can be represented as pointer-to-string in some paths.
 	// For direct indexing/slicing expressions, treat them as plain strings.
+	// But inside unsafe blocks, &string is used as pointer-to-string-array,
+	// so indexing should yield string (via value_type on Pointer).
 	mut lhs_check := resolve_alias(lhs_type)
-	if lhs_check is Pointer {
+	if lhs_check is Pointer && !c.inside_unsafe {
 		mut ptr_base := resolve_alias((lhs_check as Pointer).base_type)
-		if ptr_base is String {
+		if ptr_base is String || (ptr_base is Struct && (ptr_base.name == 'string'
+			|| ptr_base.name.ends_with('__string'))) {
 			is_explicit_deref := expr.lhs is ast.PrefixExpr
 				&& (expr.lhs as ast.PrefixExpr).op == .mul
 			if !is_explicit_deref {
@@ -1885,12 +1890,17 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		}
 		ast.UnsafeExpr {
 			// TODO: proper
+			prev_inside_unsafe := c.inside_unsafe
+			c.inside_unsafe = true
 			c.stmt_list(expr.stmts)
 			last_expr_idx := trailing_expr_stmt_index(expr.stmts)
 			if last_expr_idx >= 0 {
 				last_stmt := expr.stmts[last_expr_idx] as ast.ExprStmt
-				return c.expr(last_stmt.expr)
+				ret := c.expr(last_stmt.expr)
+				c.inside_unsafe = prev_inside_unsafe
+				return ret
 			}
+			c.inside_unsafe = prev_inside_unsafe
 			// TODO: impl: avoid returning types everywhere / using void
 			// perhaps use a struct and set the type and other info in it when needed
 			return Type(void_)

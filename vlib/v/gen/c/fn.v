@@ -6040,7 +6040,7 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	// but C compilers with -Werror=incompatible-pointer-types reject the mismatch.
 	// Only cast for V language calls with named function type aliases (not anonymous fn types).
 	if exp_sym.kind == .function && arg_sym.kind == .function && !arg.is_mut && lang == .v
-		&& !exp_sym.name.starts_with('fn ') {
+		&& !exp_sym.name.starts_with('fn ') && !expected_type.has_flag(.option) {
 		exp_styp := g.styp(expected_type)
 		arg_styp := g.styp(arg_typ)
 		if exp_styp != arg_styp {
@@ -6348,6 +6348,8 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	}
 	if arg_typ.has_flag(.option) {
 		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+	} else if expected_type.has_flag(.option) && !arg_typ.has_flag(.option) {
+		g.expr_with_opt(arg.expr, arg_typ, expected_type)
 	} else {
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	}

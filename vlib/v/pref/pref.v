@@ -1108,11 +1108,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		if res.trace_fns.len == 0 {
 			res.trace_fns << '*'
 		}
-		for mut fpattern in res.trace_fns {
+		for i, fpattern in res.trace_fns {
 			if fpattern.contains('*') {
 				continue
 			}
-			fpattern = '*${fpattern}*'
+			res.trace_fns[i] = '*${fpattern}*'
 		}
 	}
 	if command == 'crun' {

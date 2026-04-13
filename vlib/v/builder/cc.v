@@ -715,14 +715,14 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	$if windows {
 		// Adding default options for tcc, gcc and clang as done in msvc.v.
 		// This is done before pre_args is added so that it can be overwritten if needed.
-		// -Wl,-stack=16777216 == /F 16777216
+		// -Wl,-stack=33554432 == /F33554432
 		// -Werror=implicit-function-declaration == /we4013
 		// /volatile:ms - there seems to be no equivalent,
 		// normally msvc should use /volatile:iso
 		// but it could have an impact on vinix if it is created with msvc.
 		if ccoptions.cc != .msvc {
 			if v.pref.os != .wasm32_emscripten {
-				all << '-Wl,-stack=16777216'
+				all << '-Wl,-stack=33554432'
 			}
 			if !v.pref.is_cstrict {
 				all << '-Werror=implicit-function-declaration'

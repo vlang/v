@@ -89,5 +89,5 @@ fn test_cross_reference_field_auto_str() {
 	widget.parent = window
 	window.widgets << widget
 	s := '${window}'.replace('\n', '|')
-	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &<circular>|    }]|}'
+	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
 }

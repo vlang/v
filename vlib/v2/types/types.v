@@ -416,6 +416,10 @@ fn value_type_with_depth(t Type, depth int) Type {
 				// Indexing it should yield `string`, not `u8`.
 				return string_
 			}
+			if t.base_type is Struct
+				&& (t.base_type.name == 'string' || t.base_type.name.ends_with('__string')) {
+				return string_
+			}
 			return value_type_with_depth(t.base_type, depth + 1)
 		}
 		Struct {

@@ -2366,7 +2366,12 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 	}
 	mut fields := []ast.FieldDecl{}
 	for {
-		name := p.expect_name()
+		mut name := p.expect_name()
+		// Handle qualified names like C.errno, C.stdin, etc.
+		for p.tok == .dot {
+			p.next()
+			name += '.' + p.expect_name_or_keyword()
+		}
 		if p.tok == .assign {
 			p.next()
 			fields << ast.FieldDecl{

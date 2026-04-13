@@ -183,7 +183,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		}
 		ast.Struct {
 			g.gen_str_for_struct(sym.info, sym.language, styp, g.table.type_to_str(typ.typ),
-				str_fn_name, sym.idx)
+				str_fn_name)
 		}
 		ast.Map {
 			g.gen_str_for_map(sym.info, styp, str_fn_name)
@@ -997,7 +997,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	return .si_i32
 }
 
-fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp string, typ_str string, str_fn_name string, type_idx int) {
+fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp string, typ_str string, str_fn_name string) {
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
@@ -1028,13 +1028,6 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		fn_builder.writeln('}')
 		return
 	}
-	if !allow_circular {
-		fn_builder.writeln('\tif (builtin__autostr_type_in_stack(${type_idx})) {')
-		fn_builder.writeln('\t\treturn _S("<circular>");')
-		fn_builder.writeln('\t}')
-		fn_builder.writeln('\tbuiltin__autostr_type_push(${type_idx});')
-	}
-
 	fn_builder.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
 
 	mut fn_body_surrounder := util.new_surrounder(info.fields.len)
@@ -1043,9 +1036,6 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		fn_body_surrounder.builder_write_befores(mut fn_builder)
 		fn_builder << fn_body
 		fn_body_surrounder.builder_write_afters(mut fn_builder)
-		if !allow_circular {
-			fn_builder.writeln('\tbuiltin__autostr_type_pop();')
-		}
 		fn_builder.writeln('\tbuiltin__string_free(&indents);')
 		fn_builder.writeln('\treturn res;')
 		fn_builder.writeln('}')
@@ -1186,11 +1176,27 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if field.typ in ast.charptr_types {
 				fn_body.write_string('builtin__tos4((byteptr)${func})')
 			} else {
-				if field.typ.is_ptr() && sym.kind in [.struct, .interface] {
-					funcprefix += '(indent_count > 25)? _S("<probably circular>") : '
-				}
-				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: ${funcprefix} | func: ${func}')
-				if caller_should_free {
+				if field.typ.is_ptr() && !field.typ.has_flag(.option)
+					&& sym.kind in [.struct, .interface] {
+					// Use address-based circular reference detection for pointer fields.
+					// This correctly detects actual circular references (same instance)
+					// without false positives from different instances of the same type.
+					tmpvar := g.new_tmp_var()
+					mut before := '\tstring ${tmpvar};\n'
+					before += '\tif (builtin__isnil((voidptr)${it_field_name}) || builtin__autostr_addr_in_stack((voidptr)${it_field_name})) {\n'
+					before += '\t\t${tmpvar} = ${funcprefix}builtin__isnil((voidptr)${it_field_name}) ? _S("nil") : _S("<circular>");\n'
+					before += '\t} else {\n'
+					before += '\t\tbuiltin__autostr_addr_push((voidptr)${it_field_name});\n'
+					before += '\t\t${tmpvar} = ${funcprefix}${func};\n'
+					before += '\t\tbuiltin__autostr_addr_pop();\n'
+					before += '\t}'
+					mut after := ''
+					if caller_should_free {
+						after = '\tbuiltin__string_free(&${tmpvar});'
+					}
+					fn_body_surrounder.add(before, after)
+					fn_body.write_string(tmpvar)
+				} else if caller_should_free {
 					tmpvar := g.new_tmp_var()
 					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}${func};',
 						'\tbuiltin__string_free(&${tmpvar});')
