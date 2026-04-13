@@ -8,7 +8,7 @@ import sokol.sgl
 import os
 import os.font
 
-struct FT {
+pub struct FT {
 pub:
 	fons        &fontstash.Context = unsafe { nil }
 	font_normal int

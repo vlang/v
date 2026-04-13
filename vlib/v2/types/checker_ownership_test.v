@@ -32,7 +32,8 @@ fn run_ownership_check(code string) (int, string) {
 	tmp_file := os.join_path(tmp_dir, 'test.v')
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	v2 := v2_ownership_exe()
-	res := os.execute('${os.quoted_path(v2)} -ownership -o ${os.join_path(tmp_dir, 'out')} ${os.quoted_path(tmp_file)} 2>&1')
+	res :=
+		os.execute('${os.quoted_path(v2)} -ownership -o ${os.join_path(tmp_dir, 'out')} ${os.quoted_path(tmp_file)} 2>&1')
 	return res.exit_code, res.output
 }
 

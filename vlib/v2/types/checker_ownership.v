@@ -32,8 +32,8 @@ fn (mut c Checker) ownership_check_ident(name string, pos token.Pos) {
 		file := c.file_set.file(pos)
 		move_file := c.file_set.file(info.move_pos)
 		move_position := move_file.position(info.move_pos)
-		errors.error('use of moved value: `${name}`', errors.details(file, file.position(pos),
-			2), .error, file.position(pos))
+		errors.error('use of moved value: `${name}`', errors.details(file, file.position(pos), 2),
+			.error, file.position(pos))
 		eprintln('  --> move occurs because `${name}` has type `string`, which does not implement the `Copy` interface')
 		if info.is_fn_call {
 			eprintln('  --> value moved into function `${info.fn_name}` at ${move_position}')
@@ -315,11 +315,11 @@ fn (mut c Checker) ownership_add_borrow(var_name string, borrower string, pos to
 			borrow_file := c.file_set.file(borrow.pos)
 			borrow_position := borrow_file.position(borrow.pos)
 			if borrow.is_mut {
-				errors.error('cannot borrow `${var_name}` as mutable more than once',
-					errors.details(file, file.position(pos), 2), .error, file.position(pos))
+				errors.error('cannot borrow `${var_name}` as mutable more than once', errors.details(file,
+					file.position(pos), 2), .error, file.position(pos))
 			} else {
-				errors.error('cannot borrow `${var_name}` as mutable because it is also borrowed as immutable',
-					errors.details(file, file.position(pos), 2), .error, file.position(pos))
+				errors.error('cannot borrow `${var_name}` as mutable because it is also borrowed as immutable', errors.details(file,
+					file.position(pos), 2), .error, file.position(pos))
 			}
 			eprintln('  --> previous borrow by `${borrow.borrower}` at ${borrow_position}')
 			exit(1)
@@ -331,8 +331,8 @@ fn (mut c Checker) ownership_add_borrow(var_name string, borrower string, pos to
 					file := c.file_set.file(pos)
 					borrow_file := c.file_set.file(borrow.pos)
 					borrow_position := borrow_file.position(borrow.pos)
-					errors.error('cannot borrow `${var_name}` as immutable because it is borrowed as mutable',
-						errors.details(file, file.position(pos), 2), .error, file.position(pos))
+					errors.error('cannot borrow `${var_name}` as immutable because it is borrowed as mutable', errors.details(file,
+						file.position(pos), 2), .error, file.position(pos))
 					eprintln('  --> mutable borrow by `${borrow.borrower}` at ${borrow_position}')
 					exit(1)
 				}

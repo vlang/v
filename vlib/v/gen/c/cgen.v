@@ -2431,7 +2431,19 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 			g.styp(func.return_type)
 		g.type_definitions.write_string('typedef ${ret_typ} (${msvc_call_conv}*${fn_name})(')
 		for i, param in func.params {
-			g.type_definitions.write_string(g.fn_param_type_decl(param.typ, ''))
+			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
+				&& param.name.starts_with('const_') {
+				'const '
+			} else {
+				''
+			}
+			if const_prefix != '' {
+				styp := g.styp(param.typ)
+				g.type_definitions.write_string(const_prefix +
+					g.const_pointer_param_type_name(param.typ, styp))
+			} else {
+				g.type_definitions.write_string(g.fn_param_type_decl(param.typ, ''))
+			}
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
 			}

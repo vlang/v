@@ -4883,9 +4883,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if to_type.has_flag(.option) && from_type == inner_to_type {
 		return to_type
 	} else if enforce_safe_voidptr_ref_cast && from_type == ast.voidptr_type_idx && to_type.is_ptr()
-		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+		&& !c.inside_unsafe && !c.pref.translated && !c.file.is_translated
+		&& to_sym.kind !in [.sum_type, .struct, .interface] {
 		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast voidptr to `${tt}` outside `unsafe`', node.pos)
+		c.warn('casting voidptr to `${tt}` is only allowed in `unsafe` code', node.pos)
 	} else if to_sym.kind == .sum_type {
 		to_sym_info := to_sym.info as ast.SumType
 		if c.pref.skip_unused && to_sym_info.concrete_types.len > 0 {
