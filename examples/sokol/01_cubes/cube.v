@@ -58,21 +58,6 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	return sg_img, sg_smp
 }
 
-fn destroy_texture(sg_img gfx.Image) {
-	gfx.destroy_image(sg_img)
-}
-
-// Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
-	sz := w * h * 4
-	mut tmp_sbc := gfx.ImageData{}
-	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr:  buf
-		size: usize(sz)
-	}
-	gfx.update_image(sg_img, &tmp_sbc)
-}
-
 fn draw_triangle() {
 	sgl.defaults()
 	sgl.begin_triangles()

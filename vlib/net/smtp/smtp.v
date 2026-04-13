@@ -38,6 +38,7 @@ pub:
 	from     string
 	ssl      bool
 	starttls bool
+	timeout  time.Duration
 }
 
 pub struct Client {
@@ -91,7 +92,13 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
+	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
+		return error('Connecting to server failed')
+	}
+	if c.timeout != 0 {
+		conn.set_read_timeout(c.timeout)
+		conn.set_write_timeout(c.timeout)
+	}
 	c.conn = conn
 
 	if c.ssl || c.encrypted {

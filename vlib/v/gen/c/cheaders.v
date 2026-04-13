@@ -361,7 +361,8 @@ static int v__vsnprintf(char *s, size_t n, const char *fmt, va_list ap) {
 	if (n > 0) {
 		const int written = _vsnprintf_s(s, n, _TRUNCATE, fmt, ap);
 		if (written < 0) {
-			s[n - 1] = 0;
+			s[n -
+	1] = 0;
 		}
 	}
 	return needed;

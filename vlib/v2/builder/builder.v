@@ -75,22 +75,28 @@ fn sanitize_staged_c_source(c_source string) string {
 	source = ensure_result_type(source, '_result_int', 'int')
 	source = ensure_result_type(source, '_result_rune', 'rune')
 	// Builtin function body replacements (V source doesn't lower correctly yet):
-	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)', sanitized_u64_to_hex_fn())
+	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)',
+		sanitized_u64_to_hex_fn())
 	source = replace_generated_c_fn(source, 'string u64_to_hex_no_leading_zeros(u64 nn, u8 len)',
 		sanitized_u64_to_hex_no_leading_zeros_fn())
-	source = replace_generated_c_fn(source, 'string u8__str_escaped(u8 b)', sanitized_u8_str_escaped_fn())
+	source = replace_generated_c_fn(source, 'string u8__str_escaped(u8 b)',
+		sanitized_u8_str_escaped_fn())
 	source = replace_generated_c_fn(source, 'int int_min(int a, int b)', sanitized_int_min_fn())
 	source = replace_generated_c_fn(source, 'int int_max(int a, int b)', sanitized_int_max_fn())
-	source = replace_generated_c_fn(source, 'int string__utf32_code(string _rune)', sanitized_string_utf32_code_fn())
-	source = replace_generated_c_fn(source, '_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes)',
+	source = replace_generated_c_fn(source, 'int string__utf32_code(string _rune)',
+		sanitized_string_utf32_code_fn())
+	source = replace_generated_c_fn(source,
+		'_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes)',
 		sanitized_array_u8_utf8_to_utf32_fn())
 	source = replace_generated_c_fn(source, 'rune impl_utf8_to_utf32(u8* _bytes, int _bytes_len)',
 		sanitized_impl_utf8_to_utf32_fn())
-	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)', sanitized_utf8_str_visible_length_fn())
+	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)',
+		sanitized_utf8_str_visible_length_fn())
 	// Array_u8_contains call convention:
 	source = source.replace("Array_u8_contains(res, '.')", "array__contains(res, &(u8[1]){'.'})")
 	// tos() buffer pointer cast:
-	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);', 'return tos(&((u8*)buf.data)[((int)(0))], i);')
+	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);',
+		'return tos(&((u8*)buf.data)[((int)(0))], i);')
 	// Pointer field access: &logger._object -> &logger->_object
 	// The C cast C.log__Logger(logger) is dropped by cleanc, leaving a missing -> dereference.
 	source = source.replace('&logger._object', '&logger->_object')
@@ -624,8 +630,8 @@ fn (mut b Builder) gen_cleanc() {
 
 	// Fast path: cache one core object (builtin+strconv), compile/link only the rest.
 	if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv') {
-		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
-			sw)
+		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, cc_link_flags,
+			error_limit_flag, mut sw)
 		{
 			return
 		}
@@ -641,8 +647,7 @@ fn (mut b Builder) gen_cleanc() {
 	}
 	os.write_file(staged_c_file, sanitize_staged_c_source(c_source)) or { panic(err) }
 	println('[*] Wrote ${staged_c_file}')
-	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
-		sw)
+	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut sw)
 }
 
 fn (b &Builder) is_cmd_v2_self_build() bool {
@@ -747,11 +752,14 @@ fn (mut b Builder) gen_ssa_c() {
 	if !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
 		&& b.ensure_core_cache_dir() {
 		cache_dir := b.core_cache_dir()
-		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
-			builtin_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name,
+			builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags,
+			error_limit_flag) or { '' }
 		if builtin_obj.len > 0 && vlib_cached_module_paths.len > 0 {
-			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
-				vlib_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
+				vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+				''
+			}
 		}
 	}
 
@@ -855,8 +863,7 @@ fn (mut b Builder) gen_cleanc_source(modules []string) string {
 }
 
 fn (mut b Builder) gen_cleanc_source_for_cache(modules []string, cache_bundle_name string) string {
-	return b.gen_cleanc_source_with_options(modules, true, cache_bundle_name, []string{},
-		false)
+	return b.gen_cleanc_source_with_options(modules, true, cache_bundle_name, []string{}, false)
 }
 
 fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cached_init_calls []string) string {
@@ -928,8 +935,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		return false
 	}
 
-	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
-		builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
+	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name,
+		builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
 		if os.getenv('V2_TRACE_CACHE') != '' {
 			eprintln('TRACE_CACHE cached_core=false reason=builtin_obj_failed')
 		}
@@ -937,8 +944,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	mut vlib_obj := ''
 	if vlib_cached_module_paths.len > 0 {
-		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
-			vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
+			vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
 			if os.getenv('V2_TRACE_CACHE') != '' {
 				eprintln('TRACE_CACHE cached_core=false reason=vlib_obj_failed')
 			}
@@ -1043,8 +1050,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	// Strip -c and -x flags from link command since we're linking, not compiling.
 	// -x objective-c would cause cc to treat .o files as source code.
-	mut link_flags := main_cc_flags.replace('-x objective-c', '').replace('-x c', '').replace(' -c ',
-		' ')
+	mut link_flags :=
+		main_cc_flags.replace('-x objective-c', '').replace('-x c', '').replace(' -c ', ' ')
 	mut link_cmd := '${main_cc} ${link_flags} -w "${main_obj}" "${builtin_obj}"'
 	if vlib_obj.len > 0 {
 		link_cmd += ' "${vlib_obj}"'
@@ -1641,8 +1648,7 @@ fn tcc_flags(cc string, vroot string) string {
 		return ''
 	}
 	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
-	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir,
-		'lib')}"'
+	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir, 'lib')}"'
 }
 
 // run_cc_cmd_or_exit runs a C compiler command, falling back from tcc to cc

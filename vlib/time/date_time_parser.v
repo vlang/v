@@ -218,7 +218,8 @@ fn (mut p DateTimeParser) parse() !Time {
 		match token {
 			'YYYY' {
 				year_ = p.must_be_int(4) or {
-					return error_invalid_time(0, 'end of string reached before the full year was specified')
+					return error_invalid_time(0,
+						'end of string reached before the full year was specified')
 				}
 			}
 			'YY' {
@@ -228,7 +229,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'M' {
 				month_ = p.must_be_int_with_minimum_length(1, 2, false) or {
-					return error_invalid_time(0, 'end of string reached before the month was specified')
+					return error_invalid_time(0,
+						'end of string reached before the month was specified')
 				}
 				if month_ < 1 || month_ > 12 {
 					return error_invalid_time(0, 'month must be  between 1 and 12')
@@ -236,7 +238,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'MM' {
 				month_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before the month was specified')
+					return error_invalid_time(0,
+						'end of string reached before the month was specified')
 				}
 				if month_ < 1 || month_ > 12 {
 					return error_invalid_time(0, 'month must be  between 01 and 12')
@@ -250,7 +253,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'D' {
 				day_in_month = p.must_be_int_with_minimum_length(1, 2, false) or {
-					return error_invalid_time(0, 'end of string reached before the day was specified')
+					return error_invalid_time(0,
+						'end of string reached before the day was specified')
 				}
 				if day_in_month < 1 || day_in_month > 31 {
 					return error_invalid_time(0, 'day must be  between 1 and 31')
@@ -258,7 +262,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'DD' {
 				day_in_month = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before the month was specified')
+					return error_invalid_time(0,
+						'end of string reached before the month was specified')
 				}
 				if day_in_month < 1 || day_in_month > 31 {
 					return error_invalid_time(0, 'day must be  between 01 and 31')
@@ -281,7 +286,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'H' {
 				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
@@ -289,7 +295,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'HH' {
 				hour_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
@@ -297,7 +304,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'h' {
 				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
@@ -305,7 +313,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'hh' {
 				hour_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
@@ -313,7 +322,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'k' {
 				hour_ = p.must_be_int(1) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
@@ -321,7 +331,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'kk' {
 				hour_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before hours where specified')
+					return error_invalid_time(0,
+						'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
@@ -329,7 +340,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'm' {
 				minute_ = p.must_be_int(1) or {
-					return error_invalid_time(0, 'end of string reached before minutes where specified')
+					return error_invalid_time(0,
+						'end of string reached before minutes where specified')
 				}
 				if minute_ < 0 || minute_ > 59 {
 					return error_invalid_time(0, 'minute must be between 0 and 59')
@@ -337,7 +349,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'mm' {
 				minute_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before minutes where specified')
+					return error_invalid_time(0,
+						'end of string reached before minutes where specified')
 				}
 				if minute_ < 0 || minute_ > 59 {
 					return error_invalid_time(0, 'minute must be between 00 and 59')
@@ -345,7 +358,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			's' {
 				second_ = p.must_be_int(1) or {
-					return error_invalid_time(0, 'end of string reached before seconds where specified')
+					return error_invalid_time(0,
+						'end of string reached before seconds where specified')
 				}
 				if second_ < 0 || second_ > 59 {
 					return error_invalid_time(0, 'second must be between 0 and 59')
@@ -353,7 +367,8 @@ fn (mut p DateTimeParser) parse() !Time {
 			}
 			'ss' {
 				second_ = p.must_be_int(2) or {
-					return error_invalid_time(0, 'end of string reached before seconds where specified')
+					return error_invalid_time(0,
+						'end of string reached before seconds where specified')
 				}
 				if second_ < 0 || second_ > 59 {
 					return error_invalid_time(0, 'second must be between 00 and 59')

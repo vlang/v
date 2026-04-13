@@ -270,8 +270,7 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 				}
 				for imethod in inter_sym.info.methods {
 					method := typ_sym.find_method_with_generic_parent(imethod.name) or {
-						c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`',
-							pos)
+						c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`', pos)
 						return 0
 					}
 					mut imethod_return_type := imethod.return_type
@@ -313,21 +312,24 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							}
 							inferred_type = ret_typ
 						} else if imret_sym.info is ast.SumType && mret_sym.info is ast.SumType {
-							im_generic_names := imret_sym.info.generic_types.map(c.table.sym(it).name)
+							im_generic_names :=
+								imret_sym.info.generic_types.map(c.table.sym(it).name)
 							if gt_name in im_generic_names
 								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
 								idx := im_generic_names.index(gt_name)
 								inferred_type = mret_sym.info.concrete_types[idx]
 							}
 						} else if imret_sym.info is ast.Interface && mret_sym.info is ast.Interface {
-							im_generic_names := imret_sym.info.generic_types.map(c.table.sym(it).name)
+							im_generic_names :=
+								imret_sym.info.generic_types.map(c.table.sym(it).name)
 							if gt_name in im_generic_names
 								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
 								idx := im_generic_names.index(gt_name)
 								inferred_type = mret_sym.info.concrete_types[idx]
 							}
 						} else if imret_sym.info is ast.Struct && mret_sym.info is ast.Struct {
-							im_generic_names := imret_sym.info.generic_types.map(c.table.sym(it).name)
+							im_generic_names :=
+								imret_sym.info.generic_types.map(c.table.sym(it).name)
 							if gt_name in im_generic_names
 								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
 								idx := im_generic_names.index(gt_name)

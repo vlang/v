@@ -103,8 +103,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.next()
 		where_expr = p.expr(0)
 
-		where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
-			[])
+		where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr, [])
 		if where_check_result is ast.NodeError {
 			return where_check_result
 		}
@@ -419,8 +418,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 
-		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
-			[])
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr, [])
 		if where_expr_result is ast.NodeError {
 			return ast.SqlStmtLine{}
 		}
@@ -430,8 +428,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 
-		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
-			[])
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr, [])
 		if where_expr_result is ast.NodeError {
 			return ast.SqlStmtLine{}
 		}
@@ -480,8 +477,7 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 			}
 		}
 
-		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.left,
-			[])
+		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.left, [])
 
 		if left_check_result is ast.NodeError {
 			return left_check_result

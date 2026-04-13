@@ -77,7 +77,7 @@ General Utilities
 // utf8util_char_len calculate the length in bytes of a utf8 char
 @[inline]
 fn utf8util_char_len(b u8) int {
-	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
+	return int(((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3) + 1)
 }
 
 // get_char get a char from position i and return an u32 with the unicode code
@@ -1104,8 +1104,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				return err_groups_max_nested, i + 1
 			}
 
-			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt,
-				i)
+			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt, i)
 
 			// manage question mark format error
 			if tmp_res < -1 {

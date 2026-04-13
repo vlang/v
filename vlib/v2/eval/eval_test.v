@@ -168,8 +168,10 @@ import os
 fn main() {
 	println(os.args.join("|"))
 }
-',
-		['alpha', 'beta']) or { panic(err) }
+', [
+		'alpha',
+		'beta',
+	]) or { panic(err) }
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -392,7 +394,8 @@ fn test_eval_sumtype_tag_from_type_value_uses_registered_type_kind() {
 	mut prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(&prefs)
-	type_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'types'), '.v').filter(!it.ends_with('_test.v'))
+	type_files :=
+		os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'types'), '.v').filter(!it.ends_with('_test.v'))
 	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
 	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
 	defer {
@@ -420,7 +423,8 @@ fn test_eval_type_sum_data_is_nil() {
 	mut prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(&prefs)
-	type_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'types'), '.v').filter(!it.ends_with('_test.v'))
+	type_files :=
+		os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'types'), '.v').filter(!it.ends_with('_test.v'))
 	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
 	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
 	defer {
@@ -441,7 +445,8 @@ fn test_eval_zero_value_for_sumtype_data_field() {
 	mut prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(&prefs)
-	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	ast_files :=
+		os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
 	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
 	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
 	defer {
@@ -463,7 +468,8 @@ fn test_eval_selector_on_sumtype_data_void_field_returns_zero_value() {
 	mut prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(&prefs)
-	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	ast_files :=
+		os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
 	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
 	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
 	defer {
@@ -507,7 +513,8 @@ fn test_eval_selector_on_sumtype_wrapper_variant_field_returns_zero_value() {
 	mut prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(&prefs)
-	ast_files := os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
+	ast_files :=
+		os.walk_ext(os.join_path(@VMODROOT, 'vlib', 'v2', 'ast'), '.v').filter(!it.ends_with('_test.v'))
 	dummy_main := os.join_path(os.temp_dir(), 'v2_eval_dummy_main_${os.getpid()}.v')
 	os.write_file(dummy_main, 'module main\nfn main() {}\n') or { panic(err) }
 	defer {

@@ -1,3 +1,5 @@
+import os
+
 folder := '/Users/foxjazz/Documents/EVE/logs/ChatLogs'
 entries := os.ls(folder) or { [] }
 _ = entries

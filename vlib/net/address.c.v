@@ -306,6 +306,7 @@ pub fn peer_addr_from_socket_handle(handle int) !Addr {
 		}
 	}
 	mut size := sizeof(Addr)
-	socket_error_message(C.getpeername(handle, voidptr(&addr), &size), 'peer_addr_from_socket_handle failed')!
+	socket_error_message(C.getpeername(handle, voidptr(&addr), &size),
+		'peer_addr_from_socket_handle failed')!
 	return addr
 }

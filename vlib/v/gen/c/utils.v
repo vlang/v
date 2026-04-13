@@ -128,8 +128,7 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 		return resolved_typ
 	}
 	mut muttable := unsafe { &ast.Table(g.table) }
-	unwrapped_typ := muttable.unwrap_generic_type_ex(typ, generic_names, concrete_types,
-		true)
+	unwrapped_typ := muttable.unwrap_generic_type_ex(typ, generic_names, concrete_types, true)
 	if unwrapped_typ != typ {
 		return unwrapped_typ
 	}
@@ -242,7 +241,8 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 		if (v.is_unwrapped || v.smartcasts.len > 0) && scope.parent != unsafe { nil } {
 			if mut parent_v := scope.parent.find_var(expr.name) {
 				if parent_v.generic_typ != 0 {
-					refreshed_parent_type := g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+					refreshed_parent_type :=
+						g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
 					if refreshed_parent_type != 0 {
 						parent_v.typ = refreshed_parent_type
 					}
@@ -253,7 +253,8 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 					&& parent_v.expr.name == expr.name) {
 					resolved_parent_expr_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
 					if resolved_parent_expr_type != 0 {
-						parent_v.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_parent_expr_type))
+						parent_v.typ =
+							g.unwrap_generic(g.recheck_concrete_type(resolved_parent_expr_type))
 					}
 				}
 				if v.is_unwrapped {
@@ -279,7 +280,8 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 		if v.is_inherited && scope.parent != unsafe { nil } {
 			if mut parent_v := scope.parent.find_var(expr.name) {
 				if parent_v.generic_typ != 0 {
-					refreshed_parent_type := g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+					refreshed_parent_type :=
+						g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
 					if refreshed_parent_type != 0 {
 						parent_v.typ = refreshed_parent_type
 					}
@@ -393,7 +395,8 @@ fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
 			return g.unwrap_generic(g.recheck_concrete_type(array_init.elem_type))
 		}
 		if array_init.typ != 0 {
-			elem_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(array_init.typ)))
+			elem_type :=
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(array_init.typ)))
 			if elem_type != 0 {
 				return g.unwrap_generic(elem_type)
 			}
@@ -595,7 +598,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					// since scope types may be stale from a previous checker instantiation
 					if g.cur_concrete_types.len > 0 && (g.cur_fn.receiver.typ.has_flag(.generic)
 						|| g.type_has_unresolved_generic_parts(g.cur_fn.receiver.typ)) {
-						resolved_receiver_type := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
+						resolved_receiver_type :=
+							g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
 						if resolved_receiver_type != 0 {
 							return resolved_receiver_type
 						}
@@ -604,7 +608,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					if scope_type != 0 {
 						return scope_type
 					}
-					resolved_receiver_type := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
+					resolved_receiver_type :=
+						g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.receiver.typ))
 					if resolved_receiver_type != 0 {
 						return resolved_receiver_type
 					}
@@ -743,7 +748,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 									source_field_type = parent_field.typ
 									match parent_sym.info {
 										ast.Struct, ast.Interface, ast.SumType {
-											generic_names = parent_sym.info.generic_types.map(g.table.sym(it).name)
+											generic_names =
+												parent_sym.info.generic_types.map(g.table.sym(it).name)
 										}
 										else {}
 									}
@@ -772,7 +778,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 							}
 							match parent_sym.info {
 								ast.Struct, ast.Interface, ast.SumType {
-									generic_names := parent_sym.info.generic_types.map(g.table.sym(it).name)
+									generic_names :=
+										parent_sym.info.generic_types.map(g.table.sym(it).name)
 									if generic_names.len == sym.info.concrete_types.len
 										&& sym.info.concrete_types.len > 0 {
 										mut muttable := unsafe { &ast.Table(g.table) }
@@ -820,7 +827,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				if expr.index is ast.RangeExpr {
 					mut slice_type := ast.Type(0)
 					if expr.left is ast.Ident {
-						resolved_left_type := g.resolve_current_fn_generic_param_type(expr.left.name)
+						resolved_left_type :=
+							g.resolve_current_fn_generic_param_type(expr.left.name)
 						if resolved_left_type != 0 {
 							slice_type = g.unwrap_generic(resolved_left_type)
 						}
@@ -839,12 +847,14 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					return slice_type
 				}
 				if expr.left is ast.Ident {
-					resolved_value_type := g.resolve_current_fn_generic_param_value_type(expr.left.name)
+					resolved_value_type :=
+						g.resolve_current_fn_generic_param_value_type(expr.left.name)
 					if resolved_value_type != 0 {
 						return g.unwrap_generic(resolved_value_type)
 					}
 				}
-				value_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(left_type)))
+				value_type :=
+					g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(left_type)))
 				if value_type != 0 {
 					return g.unwrap_generic(value_type)
 				}
@@ -895,6 +905,29 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			resolved := g.resolve_return_type(expr)
 			if resolved != ast.void_type {
 				return g.unwrap_generic(g.recheck_concrete_type(resolved))
+			}
+			// When resolve_return_type fails (e.g. fn field call where no method exists),
+			// try resolving from return_type_generic using receiver generic type names.
+			// This handles cases like Procedure[T,U].handle() calling p.function(p.value)
+			// where return_type is contaminated from the last checker pass but
+			// return_type_generic preserves the original generic return type (!U).
+			if expr.return_type_generic != 0 && expr.return_type_generic.has_flag(.generic)
+				&& g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+				&& g.cur_fn.receiver.typ.has_flag(.generic) && g.cur_concrete_types.len > 0 {
+				receiver_generic_names := g.table.generic_type_names(g.cur_fn.receiver.typ)
+				if receiver_generic_names.len == g.cur_concrete_types.len {
+					if gen_type := g.table.convert_generic_type(expr.return_type_generic,
+						receiver_generic_names, g.cur_concrete_types)
+					{
+						if !gen_type.has_flag(.generic) {
+							return if expr.or_block.kind == .absent {
+								gen_type
+							} else {
+								gen_type.clear_option_and_result()
+							}
+						}
+					}
+				}
 			}
 			if expr.return_type != 0 {
 				return if expr.or_block.kind == .absent {
@@ -1039,7 +1072,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					if resolved_inner_type.is_ptr() {
 						resolved_inner_type.deref()
 					} else {
-						resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(right_default))
+						resolved_right_type :=
+							g.unwrap_generic(g.recheck_concrete_type(right_default))
 						if resolved_right_type.is_ptr() {
 							resolved_right_type.deref()
 						} else {
@@ -1119,7 +1153,7 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 
 // generate function variable definition, e.g. `void (*var_name) (int, string)`
 fn (mut g Gen) fn_var_signature(var_type ast.Type, return_type ast.Type, arg_types []ast.Type, var_name string) string {
-	if var_type.has_flag(.option) {
+	if var_type.has_flag(.option) || var_type.has_flag(.result) {
 		return '${g.styp(var_type)} ${c_name(var_name)}'
 	}
 	ret_styp := g.styp(return_type)
@@ -1129,8 +1163,7 @@ fn (mut g Gen) fn_var_signature(var_type ast.Type, return_type ast.Type, arg_typ
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
 			func := arg_sym.info.func
-			arg_sig := g.fn_var_signature(arg_typ, func.return_type, func.params.map(it.typ),
-				'')
+			arg_sig := g.fn_var_signature(arg_typ, func.return_type, func.params.map(it.typ), '')
 			sig += arg_sig
 		} else {
 			arg_styp := g.styp(arg_typ)
@@ -1151,7 +1184,8 @@ fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string 
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
-			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
+			sig += g.anon_fn_cname(arg_sym.info.func.return_type,
+				arg_sym.info.func.params.map(it.typ))
 		} else {
 			sig += g.styp(arg_typ).replace('*', '_ptr')
 		}

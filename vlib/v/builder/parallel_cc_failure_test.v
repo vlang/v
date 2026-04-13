@@ -5,7 +5,7 @@ import os
 const parallel_cc_test_path = os.join_path(os.vtmp_dir(), 'parallel_cc_failure_test')
 const parallel_cc_vexe = @VEXE
 
-fn run_parallel_cc_failure_case(case_name string, files map[string]string) os.Result {
+fn run_parallel_cc_case(case_name string, files map[string]string) os.Result {
 	case_dir := os.join_path(parallel_cc_test_path, case_name)
 	os.rmdir_all(case_dir) or {}
 	os.mkdir_all(case_dir) or { panic(err) }
@@ -21,10 +21,14 @@ fn run_parallel_cc_failure_case(case_name string, files map[string]string) os.Re
 		'main.v'))}')
 }
 
+fn run_parallel_cc_failure_case(case_name string, files map[string]string) os.Result {
+	return run_parallel_cc_case(case_name, files)
+}
+
 fn test_parallel_cc_fails_when_c_compilation_fails() {
 	res := run_parallel_cc_failure_case('compile_fail', {
 		'main.v': 'module main
-#include "definitely_missing_parallel_cc_header.h"
+	#include "definitely_missing_parallel_cc_header.h"
 fn main() {}
 '
 	})
@@ -46,4 +50,17 @@ fn main() {
 	})
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('failed to link after parallel C compilation'), res.output
+}
+
+fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
+	res := run_parallel_cc_case('array_sort_compare_helper', {
+		'main.v': 'module main
+	fn main() {
+		mut xs := [3, 1, 2]
+		xs.sort(a < b)
+		println(xs)
+	}
+	'
+	})
+	assert res.exit_code == 0, res.output
 }

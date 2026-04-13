@@ -108,8 +108,7 @@ fn test_all() {
 	run_tests := get_tests_in_dir(run_dir, false)
 	su_dir_tests := get_tests_in_dir(su_dir, false)
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
-	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
-		false)
+	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir, false)
 
 	if os.user_os() == 'linux' {
 		mut su_tasks := Tasks{
@@ -176,10 +175,8 @@ fn test_all() {
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
 	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
-		false)
-	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
-		false)
+	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'], false)
+	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)

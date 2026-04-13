@@ -602,8 +602,8 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 
 			if p.mmapped() {
 				psize += prevsize + mmap_foot_pad()
-				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
-					psize)
+				if dl.system_allocator.free_(dl.system_allocator.data,
+					voidptr(usize(p) - prevsize), psize)
 				{
 					dl.footprint -= psize
 				}
@@ -696,8 +696,8 @@ fn (mut dl Dlmalloc) sys_trim(pad_ usize) bool {
 					if sp.can_release_part(&dl.system_allocator) {
 						if sp.size >= extra && !dl.has_segment_link(sp) {
 							newsize := sp.size - extra
-							if dl.system_allocator.free_part(dl.system_allocator.data,
-								sp.base, sp.size, newsize)
+							if dl.system_allocator.free_part(dl.system_allocator.data, sp.base,
+								sp.size, newsize)
 							{
 								released = extra
 							}
@@ -1578,8 +1578,8 @@ fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
 			if p.mmapped() {
 				psize += prevsize + mmap_foot_pad()
 
-				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
-					psize)
+				if dl.system_allocator.free_(dl.system_allocator.data,
+					voidptr(usize(p) - prevsize), psize)
 				{
 					dl.footprint -= psize
 				}

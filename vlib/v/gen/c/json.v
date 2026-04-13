@@ -340,8 +340,7 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 		dec.writeln('\tstring ${tmp} = ${js_dec_name('string')}(root);')
 		if is_option {
 			g.gen_str_to_enum(utyp, sym, tmp, '&res', '\t', mut dec)
-			g.gen_enum_to_str(utyp, sym, '*(${g.base_type(utyp)}*)val.data', 'o', '\t\t', mut
-				enc)
+			g.gen_enum_to_str(utyp, sym, '*(${g.base_type(utyp)}*)val.data', 'o', '\t\t', mut enc)
 		} else {
 			g.gen_str_to_enum(utyp, sym, tmp, 'res', '\t', mut dec)
 			g.gen_enum_to_str(utyp, sym, 'val', 'o', '\t', mut enc)
@@ -390,7 +389,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 }
 
 fn gen_struct_root_validation(ret_styp string, mut dec strings.Builder) {
-	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root)) {')
+	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root) && !cJSON_IsArray(root)) {')
 	dec.writeln('\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0} };')
 	dec.writeln('\t}')
 }
@@ -518,12 +517,10 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					tmp2 := g.new_tmp_var()
 					if utyp.has_flag(.option) {
 						enc.writeln('\t\tu64 ${tmp2} = *${var_data}${field_op}_${variant_typ};')
-						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut
-							enc)
+						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut enc)
 					} else {
 						enc.writeln('\t\tu64 ${tmp2} = *${var_data}${field_op}_${variant_typ};')
-						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut
-							enc)
+						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut enc)
 					}
 				}
 			} else if variant_sym.name == 'time.Time' {
@@ -559,15 +556,14 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\t${variant_typ} value;')
 					tmp2 := g.new_tmp_var()
 					dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
-					g.gen_enum_to_str(variant, variant_sym, tmp2, 'value', '\t\t', mut
-						dec)
+					g.gen_enum_to_str(variant, variant_sym, tmp2, 'value', '\t\t', mut dec)
 				}
 			} else if variant_sym.name == 'time.Time' {
 				gen_js_get(ret_styp, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
 			} else {
-				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, ret_styp, tmp, unmangled_variant_name, mut
-					dec, true)
+				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, ret_styp, tmp,
+					unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = *(${variant_typ}*)(${tmp}.data);')
 			}
 			if is_option {
@@ -592,8 +588,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\t}')
 			} else if !is_js_prim(variant_typ) && variant_sym.kind != .enum {
 				dec.writeln('\t\t\tif (strcmp("${unmangled_variant_name}", ${type_var}) == 0 && ${variant_sym.kind == .array} == cJSON_IsArray(root)) {')
-				g.gen_sumtype_variant_decode(variant_typ, sym.cname, ret_styp, prefix,
-					is_option, '\t\t\t\t', mut dec)
+				g.gen_sumtype_variant_decode(variant_typ, sym.cname, ret_styp, prefix, is_option,
+					'\t\t\t\t', mut dec)
 				dec.writeln('\t\t\t}')
 			}
 		}
@@ -815,8 +811,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if utyp.has_flag(.option) {
 					dec.writeln('\t\tres.state = 0;')
 				}
-				g.gen_prim_type_validation(field.name, field.typ, tmp, is_required, '${result_name}_${styp}', mut
-					dec)
+				g.gen_prim_type_validation(field.name, field.typ, tmp, is_required,
+					'${result_name}_${styp}', mut dec)
 				dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${dec_name}(jsonroot_${tmp});')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
@@ -828,8 +824,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				tmp := g.new_tmp_var()
 				is_option_field := field.typ.has_flag(.option)
 				if field.typ.has_flag(.option) {
-					gen_js_get_opt(js_dec_name(field_type), field_type, styp, tmp, name, mut
-						dec, is_required)
+					gen_js_get_opt(js_dec_name(field_type), field_type, styp, tmp, name, mut dec,
+						is_required)
 					dec.writeln('\tif (jsonroot_${tmp} && !cJSON_IsNull(jsonroot_${tmp})) {')
 				} else {
 					gen_js_get(styp, tmp, name, mut dec, is_required)
@@ -849,8 +845,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					} else {
 						tmp2 := g.new_tmp_var()
 						dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
-						g.gen_str_to_enum(field.typ, field_sym, tmp2, '${prefix}${op}${c_name(field.name)}',
-							'\t\t', mut dec)
+						g.gen_str_to_enum(field.typ, field_sym, tmp2,
+							'${prefix}${op}${c_name(field.name)}', '\t\t', mut dec)
 					}
 				}
 				if field.has_default_expr {
@@ -926,8 +922,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 							} else {
 								name
 							}
-							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info,
-								styp, mut enc, mut dec, prefix_embed)
+							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info, styp, mut
+								enc, mut dec, prefix_embed)
 							skip_embed = true
 							break
 						}
@@ -1023,15 +1019,17 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if field.typ.has_flag(.option) {
 					enc.writeln('${indent}\t{')
 					enc.writeln('${indent}\t\tcJSON *enum_val;')
-					g.gen_enum_to_str(field.typ, field_sym, '*(${g.base_type(field.typ)}*)${prefix_enc}${op}${c_name(field.name)}.data',
+					g.gen_enum_to_str(field.typ, field_sym,
+						'*(${g.base_type(field.typ)}*)${prefix_enc}${op}${c_name(field.name)}.data',
 						'enum_val', '${indent}\t\t', mut enc)
 					enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
 					enc.writeln('${indent}\t}')
 				} else {
 					enc.writeln('${indent}\t{')
 					enc.writeln('${indent}\t\tcJSON *enum_val;')
-					g.gen_enum_to_str(field.typ, field_sym, '${prefix_enc}${op}${c_name(field.name)}',
-						'enum_val', '${indent}\t\t', mut enc)
+					g.gen_enum_to_str(field.typ, field_sym,
+						'${prefix_enc}${op}${c_name(field.name)}', 'enum_val', '${indent}\t\t', mut
+						enc)
 					enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
 					enc.writeln('${indent}\t}')
 				}

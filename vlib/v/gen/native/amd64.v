@@ -1323,8 +1323,7 @@ fn (mut c Amd64) cg_gen_syscall(node ast.CallExpr) {
 				c.mov64(ra[i], i64(1))
 			}
 			else {
-				c.g.v_error('Unknown syscall ${expr.type_name()} argument type ${expr}',
-					node.pos)
+				c.g.v_error('Unknown syscall ${expr.type_name()} argument type ${expr}', node.pos)
 				return
 			}
 		}
@@ -2251,16 +2250,13 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rdx, .rcx)
 				c.bitor_reg(.rdx, .rax)
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg2)
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg2)
 			}
 			8 {
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg0)
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg0)
 			}
 			9...15 {
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg0)
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg0)
 				c.cg_mov_var_to_reg(.reg0, LocalVar{
 					offset: return_pos
 					typ:    ast.i64_type_idx
@@ -2270,16 +2266,13 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rax, .rcx)
 				c.bitor_reg(.rax, .rdx)
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg0,
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg0,
 					offset: 8
 				)
 			}
 			16 {
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg0)
-				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					.reg2,
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg0)
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .reg2,
 					offset: 8
 				)
 			}
@@ -2300,7 +2293,8 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 
 fn (mut c Amd64) cg_call_builtin(name Builtin) i64 {
 	c.g.println('; call builtin `${name}`: (the 0 will get replaced)')
-	call_addr := c.call(0) // the 0 will get replaced by the right addr when the function will be generated
+	call_addr :=
+		c.call(0) // the 0 will get replaced by the right addr when the function will be generated
 	return call_addr
 }
 
@@ -2604,8 +2598,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 					if right.is_fixed {
 						dest := c.g.allocate_by_type(name, ast.voidptr_type_idx)
 						c.g.expr(right)
-						c.cg_mov_reg_to_var(LocalVar{dest, ast.voidptr_type_idx, name},
-							.reg0)
+						c.cg_mov_reg_to_var(LocalVar{dest, ast.voidptr_type_idx, name}, .reg0)
 					} else if right.exprs.len == 0 {
 						// TODO: remove when ArrayInit for dynarrays will be solved in the transformer
 						// `[]int{len: 6, cap:10, init:22}`
@@ -4009,7 +4002,8 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 		name := params[i].name
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		c.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, c.fn_arg_sse_registers[idx])
+		c.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ },
+			c.fn_arg_sse_registers[idx])
 	}
 	// define args on stack
 	mut offset := i32(-2)
@@ -4292,8 +4286,7 @@ fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data
 		f2_ts := c.g.table.sym(field2.typ)
 
 		if f2_ts.info is ast.Struct {
-			c.copy_struct_to_struct(field2, f_offset + f2_offset, data_offset + f2_offset,
-				var)
+			c.copy_struct_to_struct(field2, f_offset + f2_offset, data_offset + f2_offset, var)
 		} else {
 			c.mov_reg(.rdx, .rax)
 			c.add(.rdx, data_offset + f2_offset)

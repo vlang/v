@@ -42,7 +42,8 @@ fn test_raw_empty_string() {
 }
 
 fn test_stringified_object_returns_error_for_raw_field() {
-	stringified_json := json.encode('{"metadata":{"topLevelProperty":{"nestedProperty1":"Value 1"}}}')
+	stringified_json :=
+		json.encode('{"metadata":{"topLevelProperty":{"nestedProperty1":"Value 1"}}}')
 	json.decode(TestRawStringifiedObject, stringified_json) or {
 		assert err.msg().starts_with('Json element is not an object:')
 		return

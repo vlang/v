@@ -76,7 +76,8 @@ fn test_decode_embed_roundtrip_with_flattened_keys() {
 }
 
 fn test_decode_embed_with_nested_objects() {
-	decoded := json.decode[Classifier]('{"History":{"history_events":[{"Environment":{"vflags":"legacy"}}]}}')!
+	decoded :=
+		json.decode[Classifier]('{"History":{"history_events":[{"Environment":{"vflags":"legacy"}}]}}')!
 	assert decoded.history_events.len == 1
 	assert decoded.history_events[0].Environment.vflags == 'legacy'
 }

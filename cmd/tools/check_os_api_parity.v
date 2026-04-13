@@ -55,8 +55,7 @@ fn main() {
 		}
 	}
 	if diff_modules.len > 0 {
-		eprintln(term.header('Found ${diff_modules.len} modules with different APIs',
-			'='))
+		eprintln(term.header('Found ${diff_modules.len} modules with different APIs', '='))
 		for m in diff_modules.keys() {
 			eprintln('Module: ${m}')
 		}

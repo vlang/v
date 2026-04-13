@@ -1,0 +1,14 @@
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:11:4: warning: unused function: `works`
+    9 | type Either[T, E] = Left[E] | Right[T]
+   10 | 
+   11 | fn works(v []Either[int, int]) {
+      |    ~~~~~
+   12 |     first := v[0]
+   13 |     match first {
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:21:4: warning: unused function: `doesntwork`
+   19 | }
+   20 | 
+   21 | fn doesntwork(v []Either[int, int]) {
+      |    ~~~~~~~~~~
+   22 |     match v[0] {
+   23 |         Left[int] {

@@ -74,16 +74,12 @@ const colors = [
 
 const frame_rate = 30 // fps
 
-const msg_display_time = 5 * frame_rate
 const w = 200
 const h = 100
 const space = ' '
 const spaces = '  '
 const select_color = 'Select color: '
 const select_size = 'Size: ＋  －'
-const help_1 = '╭────────╮'
-const help_2 = '│  HELP  │'
-const help_3 = '╰────────╯'
 
 struct App {
 mut:
@@ -423,7 +419,8 @@ fn (mut app App) draw_header() {
 		app.ui.reset()
 	}
 	//'tick: ${app.ui.frame_count} | ' +
-	app.ui.draw_text(3, 2, 'terminal size: (${app.ui.window_width}, ${app.ui.window_height}) | primary color: ${app.primary_color.hex()} | secondary color: ${app.secondary_color.hex()}')
+	app.ui.draw_text(3, 2,
+		'terminal size: (${app.ui.window_width}, ${app.ui.window_height}) | primary color: ${app.primary_color.hex()} | secondary color: ${app.secondary_color.hex()}')
 	app.ui.horizontal_separator(3)
 }
 

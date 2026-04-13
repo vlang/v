@@ -150,8 +150,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) !bool {
 	message_data_wide := message_data.to_wide()
-	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data_wide) },
-		os.smto_abortifhung, 5000, 0) == 0 {
+	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0,
+		unsafe { &u32(message_data_wide) }, os.smto_abortifhung, 5000, 0) == 0 {
 		return error('Could not broadcast WM_SETTINGCHANGE')
 	}
 	return true

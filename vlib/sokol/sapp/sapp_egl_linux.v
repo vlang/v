@@ -112,8 +112,8 @@ fn sapp_egl_create_surface(native_window voidptr) {
 }
 
 fn sapp_egl_make_current() {
-	if C.eglMakeCurrent(g_sapp_state.egl.display, g_sapp_state.egl.surface, g_sapp_state.egl.surface,
-		g_sapp_state.egl.context) == 0 {
+	if C.eglMakeCurrent(g_sapp_state.egl.display, g_sapp_state.egl.surface,
+		g_sapp_state.egl.surface, g_sapp_state.egl.context) == 0 {
 		eprintln('sokol_app: EGL: eglMakeCurrent failed')
 	}
 	mut fb := i32(0)
@@ -172,8 +172,8 @@ fn sapp_egl_init_x11() {
 	visual_info_template.visualid = VisualID(visual_id)
 
 	mut num_visuals := 0
-	visual_info := C.XGetVisualInfo(g_sapp_state.x11.display, visual_id_mask, &visual_info_template,
-		&num_visuals)
+	visual_info := C.XGetVisualInfo(g_sapp_state.x11.display, visual_id_mask,
+		&visual_info_template, &num_visuals)
 	if visual_info == unsafe { nil } {
 		eprintln('sokol_app: EGL: failed to get visual info')
 	}

@@ -79,9 +79,12 @@ fn test_new_defaults_missing_month_and_day() {
 
 fn test_new_rejects_invalid_values() {
 	assert_new_panics('time.new(year: 10000)', 'invalid time: year must be between -9999 and 9999')
-	assert_new_panics('time.new(year: 2024, month: 13)', 'invalid time: month must be between 1 and 12')
-	assert_new_panics('time.new(year: 2024, month: 2, day: 30)', 'invalid time: day must be between 1 and 29 for year 2024, month 2')
-	assert_new_panics('time.new(year: 2024, hour: 24)', 'invalid time: hour must be between 0 and 23')
+	assert_new_panics('time.new(year: 2024, month: 13)',
+		'invalid time: month must be between 1 and 12')
+	assert_new_panics('time.new(year: 2024, month: 2, day: 30)',
+		'invalid time: day must be between 1 and 29 for year 2024, month 2')
+	assert_new_panics('time.new(year: 2024, hour: 24)',
+		'invalid time: hour must be between 0 and 23')
 }
 
 fn test_unix() {

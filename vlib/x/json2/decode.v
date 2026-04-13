@@ -496,6 +496,18 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_value(mut unwrapped_val)!
 							new_val.$(field.name) = unwrapped_val
 						}
+					} $else $if field.indirections == 1 {
+						if decoder.current_node.value.value_kind == .null {
+							new_val.$(field.name) = unsafe { nil }
+
+							if decoder.current_node != unsafe { nil } {
+								decoder.current_node = decoder.current_node.next
+							}
+						} else {
+							mut decoded_ptr := create_decoded_ptr(new_val.$(field.name))
+							decoder.decode_value(mut decoded_ptr)!
+							new_val.$(field.name) = decoded_ptr
+						}
 					} $else {
 						decoder.decode_value(mut new_val.$(field.name))!
 					}
@@ -526,8 +538,9 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 				}
 			}
 			{
-				embed_result := decode_struct_key(mut decoder, new_val.$(field.name),
-					key_info, prefix + field.name + '.', mut seen_required)!
+				embed_result := decode_struct_key(mut decoder, new_val.$(field.name), key_info,
+
+					prefix + field.name + '.', mut seen_required)!
 				if embed_result.matched {
 					new_val.$(field.name) = embed_result.value
 					return StructKeyDecodeResult[T]{
@@ -554,8 +567,8 @@ fn check_required_struct_fields[T](mut decoder Decoder, val T, seen_required []s
 			decoder.decode_error('missing required field `${field.name}`')!
 		}
 		$if field.is_embed {
-			check_required_struct_fields(mut decoder, val.$(field.name), seen_required,
-				prefix + field.name + '.')!
+			check_required_struct_fields(mut decoder, val.$(field.name), seen_required, prefix +
+				field.name + '.')!
 		}
 		i++
 	}
@@ -804,7 +817,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											if unsafe {
 												vmemcmp(decoder.json.str +
 													decoder.current_node.next.value.position,
-													float_zero_in_string.str, float_zero_in_string.len) == 0
+													float_zero_in_string.str,
+													float_zero_in_string.len) == 0
 											} {
 												current_field_info = current_field_info.next
 												continue
@@ -819,7 +833,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						// check if the key matches the field name
 						if key_info.length - 2 == current_field_info.value.json_name_len {
 							if unsafe {
-								vmemcmp(decoder.json.str + key_info.position + 1, current_field_info.value.json_name_ptr,
+								vmemcmp(decoder.json.str + key_info.position + 1,
+									current_field_info.value.json_name_ptr,
 									current_field_info.value.json_name_len) == 0
 							} {
 								$for field in T.fields {
@@ -905,7 +920,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 															decoder.current_node = decoder.current_node.next
 														}
 													} else {
-														mut decoded_ptr := create_decoded_ptr(val.$(field.name))
+														mut decoded_ptr :=
+															create_decoded_ptr(val.$(field.name))
 														decoder.decode_value(mut decoded_ptr)!
 														val.$(field.name) = decoded_ptr
 													}
@@ -913,7 +929,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 													mut decoded_field_value := val.$(field.name)
 													decoder.decode_value(mut decoded_field_value)!
 													$if field.unaliased_typ is $map {
-														val.$(field.name) = decoded_field_value.move()
+														val.$(field.name) =
+															decoded_field_value.move()
 													} $else {
 														val.$(field.name) = decoded_field_value
 													}
@@ -944,7 +961,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					}
 					if !current_field_info.value.is_decoded {
 						decoder.decode_error('missing required field `${unsafe {
-							tos(current_field_info.value.field_name_str, current_field_info.value.field_name_len)
+							tos(current_field_info.value.field_name_str,
+								current_field_info.value.field_name_len)
 						}}`')!
 					}
 					current_field_info = current_field_info.next
@@ -1242,6 +1260,25 @@ fn has_exponent_number_syntax(str string) bool {
 
 fn scientific_number_to_integer_string(str string) !string {
 	if !has_exponent_number_syntax(str) {
+		// Handle plain decimal numbers with zero fractional part (e.g., "-123.0")
+		dot_pos := str.index_u8(`.`)
+		if dot_pos >= 0 {
+			frac := str[dot_pos + 1..]
+			mut all_zeros := frac.len > 0
+			for c in frac {
+				if c != `0` {
+					all_zeros = false
+					break
+				}
+			}
+			if all_zeros {
+				result := str[..dot_pos]
+				if result.len == 0 || result == '-' || result == '+' {
+					return '0'
+				}
+				return result
+			}
+		}
 		return str
 	}
 	if str.len == 0 {

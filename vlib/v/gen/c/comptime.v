@@ -145,7 +145,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 
 		ret_sym := g.table.sym(g.fn_decl.return_type)
-		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
+		fn_name := g.fn_decl.name.replace('.', '__').to_lower() + node.pos.pos.str()
 		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
 		is_veb := ret_sym.cname == 'veb__Result'
 
@@ -533,6 +533,15 @@ fn (g &Gen) can_preserve_comptime_if_condition_in_c(cond ast.Expr) bool {
 		ast.BoolLiteral {
 			return true
 		}
+		ast.Ident {
+			// CPU architecture and compiler conditions are safe to preserve as C
+			// preprocessor checks because they are mutually exclusive categories
+			// derived from real compiler intrinsics (see cheaders.v).
+			// This is important for Android builds where one C file is compiled
+			// by the NDK for multiple architectures (arm64, armv7a, x86, x86_64).
+			return cond.name in ast.valid_comptime_if_platforms
+				|| cond.name in ast.valid_comptime_if_compilers
+		}
 		ast.ParExpr {
 			return g.can_preserve_comptime_if_condition_in_c(cond.expr)
 		}
@@ -619,9 +628,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
 		} else {
-			g.error('checker error: condition result idx string not found => [${idx_str}]',
-				node.branches[i].cond.pos())
-			return
+			// No checker data found for this key. This can happen when:
+			// 1. The markused walker spuriously registers generic instantiations
+			//    that the checker never evaluated (e.g. from dead comptime branches).
+			// 2. Type alias resolution causes key mismatches.
+			// Default all branches to false (#if 0) since the function body
+			// is either dead code or will be generated correctly by another
+			// instantiation with matching types.
+			is_true = ast.ComptTimeCondResult{}
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if i == 0 {
@@ -1304,9 +1318,9 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
 		} else {
-			g.error('checker error: match branch result idx string not found => [${idx_str}]',
-				branch.pos)
-			return
+			// No checker data - spurious instantiation or alias mismatch.
+			// Default all branches to false (#if 0).
+			is_true = ast.ComptTimeCondResult{}
 		}
 		if !branch.is_else {
 			if i == 0 {

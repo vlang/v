@@ -167,13 +167,11 @@ fn inverse_ntt(f_ NttElement) RingElement {
 			for j < len2 {
 				mut t := f[start + j]
 				f[start + j] = field_add(t, f[start + len2 + j])
-				f[start + len2 + j] = field_montgomery_mul_sub(zeta, f[start + len2 + j],
-					t)
+				f[start + len2 + j] = field_montgomery_mul_sub(zeta, f[start + len2 + j], t)
 
 				t = f[start + j + 1]
 				f[start + j + 1] = field_add(t, f[start + len2 + j + 1])
-				f[start + len2 + j + 1] = field_montgomery_mul_sub(zeta, f[start + len2 + j + 1],
-					t)
+				f[start + len2 + j + 1] = field_montgomery_mul_sub(zeta, f[start + len2 + j + 1], t)
 
 				j += 2
 			}

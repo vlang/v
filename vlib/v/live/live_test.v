@@ -141,8 +141,8 @@ fn change_source(new string) {
 
 fn remove_live_attr_from_source() {
 	log.info('> remove @[live] attr from pmessage() while program is running ...')
-	source_without_live := live_program_source.replace('ORIGINAL', 'NO_LIVE').replace('@[live]\n',
-		'')
+	source_without_live :=
+		live_program_source.replace('ORIGINAL', 'NO_LIVE').replace('@[live]\n', '')
 	atomic_write_source(source_without_live)
 }
 

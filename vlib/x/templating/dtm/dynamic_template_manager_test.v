@@ -242,8 +242,7 @@ fn test_chandler_remaining_cache_template_used() {
 			need_to_delete:           true
 		}
 	}
-	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update,
-		3, 3)
+	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update, 3, 3)
 	assert can_delete == true
 	can_delete = dtmi.chandler_remaining_cache_template_used(CacheRequest.update, 2, 2)
 	assert can_delete == false
@@ -286,32 +285,32 @@ fn test_cache_request_route() {
 	mut current_content_checksum := 'checksumtest2'
 
 	mut request_type, _ := dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.update
 
 	current_content_checksum = 'checksumtest1'
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.cached
 
 	gen_at = (last_template_mod - 500)
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.exp_update
 
 	is_cache_exist = false
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.new
 }

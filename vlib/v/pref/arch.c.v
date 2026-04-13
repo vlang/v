@@ -1,6 +1,6 @@
 module pref
 
-const C.__V_architecture int
+pub const C.__V_architecture int
 
 pub enum Arch {
 	_auto

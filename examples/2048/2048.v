@@ -503,26 +503,6 @@ fn ai_empty_count(board AiBoard) int {
 	return empty_tiles
 }
 
-@[inline]
-fn ai_has_moves(board AiBoard) bool {
-	if ai_empty_count(board) > 0 {
-		return true
-	}
-	for y in 0 .. 4 {
-		for x in 0 .. 4 {
-			idx := y << 2 + x
-			value := ai_tile(board, idx)
-			if x < 3 && value == ai_tile(board, idx + 1) {
-				return true
-			}
-			if y < 3 && value == ai_tile(board, idx + 4) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 fn (ai &AiEngine) move_left(board AiBoard) (AiBoard, bool) {
 	mut res := AiBoard(0)
 	mut changed := false
@@ -1144,7 +1124,8 @@ fn (app &App) draw_tiles() {
 			th := tw // square tiles, w == h
 			xoffset := xstart + app.ui.padding_size + x * toffset
 			yoffset := ystart + app.ui.padding_size + y * toffset
-			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, app.theme.tile_colors[0])
+			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8,
+				app.theme.tile_colors[0])
 		}
 	}
 
@@ -1184,10 +1165,12 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 	if oidx != 0xFFFF_FFFF {
 		scaling := app.ui.tile_size * easing.in_out_quint(app.mtickers[y][x])
 		if ox != x {
-			dx = math.clip(int(scaling * (f64(ox) - f64(x))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+			dx = math.clip(int(scaling * (f64(ox) - f64(x))), -4 * app.ui.tile_size,
+				4 * app.ui.tile_size)
 		}
 		if oy != y {
-			dy = math.clip(int(scaling * (f64(oy) - f64(y))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+			dy = math.clip(int(scaling * (f64(oy) - f64(y))), -4 * app.ui.tile_size,
+				4 * app.ui.tile_size)
 		}
 	}
 	tile_color := if tidx < app.theme.tile_colors.len {

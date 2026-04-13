@@ -46,7 +46,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 					match expr.name.all_after('C.') {
 						'read' {
-							return Int{C.read(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
+							return Int{C.read(args[0].int_val(), args[1] as voidptr,
+								args[2].int_val()), 64}
 						}
 						'write' {
 							return Int{C.write(args[0].int_val(), args[1] as voidptr,
@@ -65,7 +66,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						'getcwd' {
 							unsafe {
 								return Ptr{
-									val: C.getcwd((args[0] as Ptr).val as voidptr, args[1].int_val())
+									val: C.getcwd((args[0] as Ptr).val as voidptr,
+										args[1].int_val())
 								}
 							}
 						}

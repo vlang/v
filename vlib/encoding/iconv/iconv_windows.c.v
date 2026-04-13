@@ -719,14 +719,14 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 			dst = utf16_to_utf32(unicode.data, unicode.len, true, false)!
 		}
 		else {
-			dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len / 2,
-				0, 0, 0, 0)
+			dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len / 2, 0, 0,
+				0, 0)
 			if dst_len == 0 {
 				return error('WideCharToMultiByte fail: src contain zero unicode character')
 			}
 			unsafe { dst.grow_len(dst_len) }
-			C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data,
-				dst.len, 0, 0)
+			C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data, dst.len, 0,
+				0)
 		}
 	}
 	return dst

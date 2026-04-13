@@ -84,7 +84,8 @@ fn main() {
 		event_fn:      on_event // it calls on every event
 		user_data:     app      // store user data
 	)
-	mut grid := initialise_grid() // initialize the grid variable and populate the matrix with each cell as empty
+	mut grid :=
+		initialise_grid() // initialize the grid variable and populate the matrix with each cell as empty
 	app.grid = grid // set grid to app attribute so you can access it by just passing app variable or with method of app
 	app.ui.dpi_scale = 1.0 // set scale this is use to make it responsive
 	app.start = &Point{ // set start point to -1, -1
@@ -451,12 +452,4 @@ fn (mut heap MinHeap) right_child(idx int) !int {
 // Index of parent of a node in heap //TODO heap not implemented
 fn (mut heap MinHeap) parent(idx int) int {
 	return (idx - 1) / 2
-}
-
-// comaparator of heap //TODO not used
-fn comparator(n1 Node, n2 Node) bool {
-	if n1.f_score == n2.f_score {
-		return n1.count > n2.count
-	}
-	return n1.f_score > n2.f_score
 }

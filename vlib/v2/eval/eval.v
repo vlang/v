@@ -394,14 +394,16 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 									file_name: file.name
 								}
 							}
-							normalized_receiver_name := receiver_type_name.trim_left('&').trim_right('*')
+							normalized_receiver_name :=
+								receiver_type_name.trim_left('&').trim_right('*')
 							if normalized_receiver_name != ''
 								&& normalized_receiver_name != receiver_type_name {
 								e.functions[file.mod]['${normalized_receiver_name}__${stmt.name}'] = FunctionDef{
 									decl:      stmt
 									file_name: file.name
 								}
-								short_normalized_name := normalized_receiver_name.all_after_last('.')
+								short_normalized_name :=
+									normalized_receiver_name.all_after_last('.')
 								if short_normalized_name != normalized_receiver_name {
 									e.functions[file.mod]['${short_normalized_name}__${stmt.name}'] = FunctionDef{
 										decl:      stmt
@@ -2486,8 +2488,8 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 				}
 			}
 			'write_file' {
-				os.write_file(e.expect_string_arg(args, 0) or { return MaybeValue{} },
-					e.expect_string_arg(args, 1) or { return MaybeValue{} }) or {
+				os.write_file(e.expect_string_arg(args, 0) or { return MaybeValue{} }, e.expect_string_arg(args,
+					1) or { return MaybeValue{} }) or {
 					return MaybeValue{
 						found: true
 						value: wrap_result_err(err.msg())
@@ -2763,8 +2765,9 @@ fn (mut e Eval) maybe_call_generated_array_helper(fn_name string, args []Value) 
 	if fn_name.ends_with('_join') && args.len >= 2 {
 		return MaybeValue{
 			found: true
-			value: array_value.values.map(e.value_string(it)).join(e.expect_string_arg(args,
-				1) or { return none })
+			value: array_value.values.map(e.value_string(it)).join(e.expect_string_arg(args, 1) or {
+				return none
+			})
 		}
 	}
 	if fn_name.ends_with('_str') {
@@ -4763,9 +4766,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 			if zero_payload := e.zero_value_for_sumtype_data_field(left.type_name, expr.rhs.name) {
 				return zero_payload
 			}
-			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name,
-				0)
-			{
+			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name, 0) {
 				return embedded_value
 			}
 			if field_type := e.lookup_struct_field_type(left.type_name, expr.rhs.name) {
@@ -5165,9 +5166,8 @@ fn decode_string_literal(raw string) string {
 	if s.len >= 2 && ((s[0] == `"` && s[s.len - 1] == `"`) || (s[0] == `'` && s[s.len - 1] == `'`)) {
 		s = s[1..s.len - 1]
 	}
-	return s.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\0',
-		'\0').replace('\\"', '"').replace("\\'", "'").replace('\\`', '`').replace('\\\\',
-		'\\').replace('\\$', '$')
+	return s.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\0', '\0').replace('\\"',
+		'"').replace("\\'", "'").replace('\\`', '`').replace('\\\\', '\\').replace('\\$', '$')
 }
 
 fn (mut e Eval) eval_unsafe_expr(expr ast.UnsafeExpr) !Value {
@@ -5311,8 +5311,7 @@ fn (mut e Eval) call_string_method(receiver string, method_name string, args []V
 			return receiver.repeat(int(e.value_as_int(args[0])!))
 		}
 		'replace' {
-			return receiver.replace(e.expect_string_arg(args, 0)!, e.expect_string_arg(args,
-				1)!)
+			return receiver.replace(e.expect_string_arg(args, 0)!, e.expect_string_arg(args, 1)!)
 		}
 		'split' {
 			return ArrayValue{

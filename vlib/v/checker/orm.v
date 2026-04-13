@@ -27,8 +27,8 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
 		&& c.table.cur_concrete_types.len > 0 {
 		if c.needs_unwrap_generic_type(node.table_expr.typ) {
-			node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
+			node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
+				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 		}
 		if c.needs_unwrap_generic_type(node.typ) {
 			node.typ = c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
@@ -193,13 +193,14 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			node.aggregate_field_type = ast.int_type
 			node.typ = ast.int_type.set_flag(.result)
 		} else {
-			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind, node.aggregate_field,
-				fields, table_sym.name, node.pos) or { return ast.void_type }
+			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind,
+				node.aggregate_field, fields, table_sym.name, node.pos) or { return ast.void_type }
 			node.aggregate_field_type = aggregate_field.typ
 			node.fields = [
 				aggregate_field,
 			]
-			node.typ = c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
+			node.typ =
+				c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
 		}
 	} else {
 		node.fields = fields
@@ -289,8 +290,8 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
 		&& c.table.cur_concrete_types.len > 0 && c.needs_unwrap_generic_type(node.table_expr.typ) {
-		node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types)
+		node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
+			c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
@@ -654,8 +655,7 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 	is_string := field_type.is_string()
 
 	if field_sym.kind in [.array, .struct] && !is_time {
-		c.orm_error('ORM aggregate functions do not support array or sub-struct fields',
-			pos)
+		c.orm_error('ORM aggregate functions do not support array or sub-struct fields', pos)
 		return none
 	}
 
@@ -787,53 +787,40 @@ fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_sym
 		}
 		ast.ArrayInit {
 			for item in expr.exprs {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, item,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, item, op)
 			}
 		}
 		ast.CallExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left, op)
 			for arg in expr.args {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, arg.expr,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, arg.expr, op)
 			}
 		}
 		ast.CastExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
-				op)
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.arg,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr, op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.arg, op)
 		}
 		ast.IndexExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
-				op)
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.index,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left, op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.index, op)
 		}
 		ast.InfixExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left,
-				op)
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.left, op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right, op)
 		}
 		ast.MapInit {
 			for key in expr.keys {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, key,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, key, op)
 			}
 			for val in expr.vals {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, val,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, val, op)
 			}
 		}
 		ast.ParExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr, op)
 		}
 		ast.PrefixExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right, op)
 		}
 		ast.SelectorExpr {
 			table_name := util.strip_mod_name(table_type_symbol.name)
@@ -848,8 +835,7 @@ fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_sym
 						expr.pos)
 				}
 			}
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr, op)
 		}
 		ast.StringInterLiteral {
 			for interpolated in expr.exprs {
@@ -859,13 +845,12 @@ fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_sym
 		}
 		ast.StructInit {
 			for init_field in expr.init_fields {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, init_field.expr,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol,
+					init_field.expr, op)
 			}
 		}
 		ast.UnsafeExpr {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr,
-				op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr, op)
 		}
 		else {}
 	}
@@ -894,20 +879,17 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 			}
 		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
 			|| expr.left is ast.PrefixExpr {
-			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				expr.left)
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.left)
 		} else if !(expr.left is ast.SelectorExpr
 			&& c.comptime.is_comptime_selector_field_name(expr.left, 'name')) {
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
 		if expr.op in [.ne, .eq, .lt, .gt, .ge, .le, .key_like, .key_ilike, .key_in, .not_in] {
-			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right,
-				expr.op)
+			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.right, expr.op)
 		} else if expr.right is ast.InfixExpr || expr.right is ast.ParExpr
 			|| expr.right is ast.PrefixExpr {
-			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				expr.right)
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.right)
 		}
 	} else if expr is ast.ParExpr {
 		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.expr)
@@ -946,8 +928,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 	if expr.or_expr.kind == .absent {
 		if c.inside_defer {
-			c.error('ORM returns a result, so it should have an `or {}` block at the end',
-				expr.pos)
+			c.error('ORM returns a result, so it should have an `or {}` block at the end', expr.pos)
 		} else {
 			c.error('ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
 				expr.pos)

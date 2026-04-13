@@ -57,7 +57,8 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		elog('> unable to compile V in debug mode: ${result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
 
-	result = runv('Compile', '${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
+	result = runv('Compile',
+		'${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
@@ -185,11 +186,13 @@ ${build_output}```
 ${expected_result}
 
 '
-	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}', '```v\n${file_content}\n```'))
+	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}',
+		'```v\n${file_content}\n```'))
 	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
 	if generated_uri.len > 8192 {
 		// GitHub doesn't support URLs longer than 8192 characters
-		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}', 'See attached file `${file_path}`'))
+		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}',
+			'See attached file `${file_path}`'))
 		generated_uri = 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
 		elog('> Your file is too big to be submitted.')
 		elog('> Go to the following URL, and attach your file:')

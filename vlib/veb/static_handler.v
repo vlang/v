@@ -58,8 +58,7 @@ fn (mut sh StaticHandler) scan_static_directory(directory_path string, mount_pat
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
-					host)!
+				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file, host)!
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				sh.host_serve_static(host, mount_path.trim_right('/') + '/' + file, full_path)!
 			}

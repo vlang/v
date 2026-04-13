@@ -561,7 +561,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
-		if found_path := find_module_path_from_search_root(p1, mod) {
+		if found_path := find_module_path_from_search_root(current_dir, mod) {
 			return found_path
 		}
 		parent_dir := os.dir(current_dir)
@@ -607,7 +607,8 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 			// the intended command may have been `v .` instead, so just suggest that:
 			old_cmd := util.bold('v ${b.pref.path}')
 			new_cmd := util.bold('v ${os.dir(b.pref.path)}')
-			eprintln(util.color('notice', 'If the code of your project is in a folder with multiple .v files, try `${new_cmd}` instead of `${old_cmd}`'))
+			eprintln(util.color('notice',
+				'If the code of your project is in a folder with multiple .v files, try `${new_cmd}` instead of `${old_cmd}`'))
 		}
 	}
 }
@@ -744,8 +745,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
-								false)
+							fheader := b.table.stringify_fn_decl(&stmt, 'main',
+								map[string]string{}, false)
 							redefines << FunctionRedefinition{
 								fpath:   file.path
 								fline:   stmt.pos.line_nr

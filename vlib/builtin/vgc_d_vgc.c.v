@@ -846,8 +846,7 @@ fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
 	if old_span.noscan {
 		new_ptr = vgc_malloc_noscan_opts(new_size, false)
 	} else if old_span.has_ptrmap {
-		new_ptr = vgc_malloc_typed_opts(new_size, old_span.ptrmap, old_span.ptr_words,
-			false)
+		new_ptr = vgc_malloc_typed_opts(new_size, old_span.ptrmap, old_span.ptr_words, false)
 	} else {
 		new_ptr = vgc_malloc_typed_opts(new_size, 0, 0, false)
 	}

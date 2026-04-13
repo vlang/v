@@ -83,8 +83,8 @@ fn test_orm_func_where() {
 
 	// and_or_combination
 	qb.reset()
-	qb.where('name = ? AND status = ? OR role = ? || id = ? && title = ?', 'Alice', 1,
-		'admin', 1, 'st')!
+	qb.where('name = ? AND status = ? OR role = ? || id = ? && title = ?', 'Alice', 1, 'admin', 1,
+		'st')!
 	assert qb.where.fields == ['name', 'status', 'role', 'id', 'title']
 	assert qb.where.kinds == [.eq, .eq, .eq, .eq, .eq]
 	assert qb.where.is_and == [true, false, false, true]

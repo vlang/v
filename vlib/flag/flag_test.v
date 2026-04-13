@@ -395,7 +395,8 @@ fn test_allow_abbreviations() {
 fn test_allow_kebab_options() {
 	default_value := 'this_is_the_default_value_of_long_option'
 	long_option_value := 'this_is_a_long_option_value_as_argument'
-	mut fp := flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value])
+	mut fp :=
+		flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value])
 	my_flag := fp.bool('my-long-flag', 0, false, 'flag with long-kebab-name')
 	my_option := fp.string('my-long-option', 0, default_value, 'string with long-kebab-name')
 	assert my_flag == true
@@ -484,7 +485,8 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option() {
 		'/abc',
 	])
 	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
-	vabc := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	vabc := fp.string('vabc', `x`, 'default',
+		'Another option that *may* conflict with v, but *should not*')
 	assert verbose == false
 	assert vabc == '/abc'
 }
@@ -496,7 +498,8 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option_bot
 		'/abc',
 	])
 	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
-	vabc := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	vabc := fp.string('vabc', `x`, 'default',
+		'Another option that *may* conflict with v, but *should not*')
 	assert verbose == true
 	assert vabc == '/abc'
 }

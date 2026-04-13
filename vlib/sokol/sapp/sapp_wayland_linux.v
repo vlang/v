@@ -310,7 +310,8 @@ $if sokol_wayland ? {
 		if g_sapp_state.wl.key_repeat_timer_fd >= 0 {
 			C.close(g_sapp_state.wl.key_repeat_timer_fd)
 		}
-		g_sapp_state.wl.key_repeat_timer_fd = C.timerfd_create(clock_monotonic, tfd_cloexec | tfd_nonblock)
+		g_sapp_state.wl.key_repeat_timer_fd = C.timerfd_create(clock_monotonic,
+			tfd_cloexec | tfd_nonblock)
 	}
 
 	fn wl_start_key_repeat(scancode u32) {
@@ -355,7 +356,8 @@ $if sokol_wayland ? {
 			if g_sapp_state.wl.xkb_state == unsafe { nil } {
 				return
 			}
-			keysym := C.xkb_state_key_get_one_sym(g_sapp_state.wl.xkb_state, g_sapp_state.wl.key_repeat_keycode)
+			keysym := C.xkb_state_key_get_one_sym(g_sapp_state.wl.xkb_state,
+				g_sapp_state.wl.key_repeat_keycode)
 			sapp_key := wl_translate_key(keysym)
 
 			if sapp_key != .invalid {
@@ -367,8 +369,8 @@ $if sokol_wayland ? {
 			}
 
 			mut buf := [8]u8{}
-			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state, g_sapp_state.wl.key_repeat_keycode,
-				&char(&buf[0]), usize(buf.len))
+			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state,
+				g_sapp_state.wl.key_repeat_keycode, &char(&buf[0]), usize(buf.len))
 			if count > 0 && count < buf.len {
 				codepoint := utf8_decode(&buf[0], count)
 				if codepoint > 0 && codepoint < 0x110000 {
@@ -600,10 +602,10 @@ $if sokol_wayland ? {
 			}
 			if g_sapp_state.wl.data_device_manager != unsafe { nil }
 				&& g_sapp_state.wl.data_device == unsafe { nil } {
-				g_sapp_state.wl.data_device = C.wl_data_device_manager_get_data_device(g_sapp_state.wl.data_device_manager,
-					seat)
-				C.wl_data_device_add_listener(g_sapp_state.wl.data_device, &wl_data_device_listener,
-					unsafe { nil })
+				g_sapp_state.wl.data_device =
+					C.wl_data_device_manager_get_data_device(g_sapp_state.wl.data_device_manager, seat)
+				C.wl_data_device_add_listener(g_sapp_state.wl.data_device,
+					&wl_data_device_listener, unsafe { nil })
 			}
 		} else if (caps & wl_seat_capability_pointer) == 0
 			&& g_sapp_state.wl.pointer != unsafe { nil } {
@@ -640,18 +642,18 @@ $if sokol_wayland ? {
 	fn wl_registry_handle_global(data voidptr, registry &C.wl_registry, name u32, iface &char, version u32) {
 		unsafe {
 			if C.strcmp(iface, c'wl_compositor') == 0 {
-				g_sapp_state.wl.compositor = &C.wl_compositor(C.wl_registry_bind(registry,
-					name, &C.wl_compositor_interface, 4))
+				g_sapp_state.wl.compositor = &C.wl_compositor(C.wl_registry_bind(registry, name,
+					&C.wl_compositor_interface, 4))
 			} else if C.strcmp(iface, c'xdg_wm_base') == 0 {
-				g_sapp_state.wl.xdg_wm_base = &C.xdg_wm_base(C.wl_registry_bind(registry,
-					name, &C.xdg_wm_base_interface, 1))
+				g_sapp_state.wl.xdg_wm_base = &C.xdg_wm_base(C.wl_registry_bind(registry, name,
+					&C.xdg_wm_base_interface, 1))
 			} else if C.strcmp(iface, c'wl_seat') == 0 {
-				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name, &C.wl_seat_interface,
-					5))
+				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name,
+					&C.wl_seat_interface, 5))
 				C.wl_seat_add_listener(g_sapp_state.wl.seat, &wl_seat_listener, nil)
 			} else if C.strcmp(iface, c'wl_shm') == 0 {
-				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name, &C.wl_shm_interface,
-					1))
+				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name,
+					&C.wl_shm_interface, 1))
 			} else if C.strcmp(iface, c'wl_data_device_manager') == 0 {
 				g_sapp_state.wl.data_device_manager = &C.wl_data_device_manager(C.wl_registry_bind(registry,
 					name, &C.wl_data_device_manager_interface, 3))
@@ -659,8 +661,8 @@ $if sokol_wayland ? {
 				g_sapp_state.wl.fractional_scale_mgr = &C.wp_fractional_scale_manager_v1(C.wl_registry_bind(registry,
 					name, &C.wp_fractional_scale_manager_v1_interface, 1))
 			} else if C.strcmp(iface, c'wp_viewporter') == 0 {
-				g_sapp_state.wl.viewporter = &C.wp_viewporter(C.wl_registry_bind(registry,
-					name, &C.wp_viewporter_interface, 1))
+				g_sapp_state.wl.viewporter = &C.wp_viewporter(C.wl_registry_bind(registry, name,
+					&C.wp_viewporter_interface, 1))
 			} else if C.strcmp(iface, c'wp_cursor_shape_manager_v1') == 0 {
 				g_sapp_state.wl.cursor_shape_manager = &C.wp_cursor_shape_manager_v1(C.wl_registry_bind(registry,
 					name, &C.wp_cursor_shape_manager_v1_interface, 1))
@@ -832,7 +834,8 @@ $if sokol_wayland ? {
 		mut buffer := [8192]u8{}
 		mut total_read := isize(0)
 		for {
-			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, usize(buffer.len - int(total_read) - 1))
+			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, usize(buffer.len -
+				int(total_read) - 1))
 			if n <= 0 {
 				break
 			}
@@ -1030,8 +1033,8 @@ $if sokol_wayland ? {
 		g_sapp_state.wl.fb_height = int(f32(g_sapp_state.wl.height) * g_sapp_state.wl.scale)
 
 		// Create EGL window
-		g_sapp_state.wl.egl_window = C.wl_egl_window_create(g_sapp_state.wl.surface, g_sapp_state.wl.fb_width,
-			g_sapp_state.wl.fb_height)
+		g_sapp_state.wl.egl_window = C.wl_egl_window_create(g_sapp_state.wl.surface,
+			g_sapp_state.wl.fb_width, g_sapp_state.wl.fb_height)
 		if g_sapp_state.wl.egl_window == unsafe { nil } {
 			eprintln('sokol_app: failed to create Wayland EGL window')
 			return

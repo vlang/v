@@ -496,7 +496,8 @@ fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSect
 		offset += i32(entry.str_name.len + 1)
 	}
 
-	sections << g.create_section('.strtab', elf_sht_strtab, 0, 0, 1, 0, g.create_string_table_section(names))
+	sections << g.create_section('.strtab', elf_sht_strtab, 0, 0, 1, 0,
+		g.create_string_table_section(names))
 
 	sections << // index of .strtab
 	g.create_section('.symtab', elf_sht_symtab, i32(sections.len - 1), local_symbols,
@@ -504,15 +505,16 @@ fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSect
 }
 
 fn (mut g Gen) create_relocation(name string, mut sections []Section, table []RelASection) Section {
-	mut section := g.create_section(name, elf_sht_rela, g.find_section_header('.symtab',
-		sections), 1, 8, 24, table)
+	mut section := g.create_section(name, elf_sht_rela, g.find_section_header('.symtab', sections),
+		1, 8, 24, table)
 	section.header.flags = i64(elf_shf_info_link)
 	sections << section
 	return section
 }
 
 fn (mut g Gen) create_progbits(name string, flags u64, data []u8) Section {
-	mut section := g.create_section(name, elf_sht_progbits, 0, 0, 1, data.len, ProgBitsSection{data})
+	mut section :=
+		g.create_section(name, elf_sht_progbits, 0, 0, 1, data.len, ProgBitsSection{data})
 	section.header.flags = i64(flags)
 	return section
 }
@@ -707,8 +709,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	g.symbol_table = [
 		SymbolTableSection{}, // first is null
-		g.create_symbol_table_section('main', elf_stt_notype, elf_stb_global, elf_stv_default,
-			0, 0, i16(g.find_section_header('.text', sections))), // main label points to entry point address
+		g.create_symbol_table_section('main', elf_stt_notype, elf_stb_global, elf_stv_default, 0,
+			0, i16(g.find_section_header('.text', sections))), // main label points to entry point address
 		g.create_symbol_table_section('_GLOBAL_OFFSET_TABLE_', elf_stt_notype, elf_stb_global,
 			elf_stv_default, 0, 0, 0),
 	]
@@ -733,8 +735,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	}
 
 	for symbol in g.extern_symbols {
-		g.symbol_table << g.create_symbol_table_section(symbol[2..], elf_stt_notype, elf_stb_global,
-			elf_stv_default, 0, 0, 0)
+		g.symbol_table << g.create_symbol_table_section(symbol[2..], elf_stt_notype,
+			elf_stb_global, elf_stv_default, 0, 0, 0)
 	}
 	g.create_symtab(mut sections, mut g.symbol_table) // create the .symtab section
 	g.create_relocation('.rela.text', mut sections, [])
@@ -925,8 +927,8 @@ pub fn (mut g Gen) elf_string_table() {
 pub fn (mut g Gen) gen_rela_section() {
 	mut relocations := []RelASection{}
 	for call_pos, symbol in g.extern_fn_calls {
-		relocations << g.create_rela_section(symbol, call_pos - g.code_start_pos + 2,
-			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
+		relocations << g.create_rela_section(symbol, call_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+			symbol[2..]), elf_r_amd64_gotpcrelx, -4)
 	}
 	for var_pos, symbol in g.extern_vars {
 		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos, g.symtab_get_index(g.symbol_table,

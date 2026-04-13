@@ -245,8 +245,8 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		mut send_error := false
 		mut pos := 0
 		for pos < response.content.len {
-			sent := C.send(client_fd, unsafe { &response.content[pos] }, response.content.len - pos,
-				C.MSG_NOSIGNAL)
+			sent := C.send(client_fd, unsafe { &response.content[pos] },
+				response.content.len - pos, C.MSG_NOSIGNAL)
 			if sent <= 0 {
 				eprintln('ERROR: send() failed with errno=${C.errno}')
 				send_error = true
@@ -391,8 +391,8 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
 
 				for {
-					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
-						0)
+					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] },
+						server.max_request_buffer_size - 1, 0)
 					if bytes_read < 0 {
 						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 							// No more data available right now

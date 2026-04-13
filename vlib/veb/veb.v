@@ -294,9 +294,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		ctx.custom_mime_types = global_app.static_mime_types.clone()
 	}
 	$if A is ControllerInterface {
-		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut
-			url, host)
-		{
+		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
 			return completed_context
 		}
 	}
@@ -467,7 +465,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 				// no need to check the result of `validate_middleware`, since a response has to be sent
 				// anyhow. This function makes sure no further middleware is executed.
-				validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
+				validate_middleware[X](mut user_context,
+					app.Middleware.get_global_handlers_after[X]())
 				// skip route-specific after-middleware if global already sent a response
 				if !user_context.Context.done {
 					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,

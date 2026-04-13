@@ -51,7 +51,8 @@ LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
 	// Message tobe signed and verified
 	message_tobe_signed := 'Example of ECDSA with P-384'.bytes()
 	// Message signature generated with SHA384 digest with associated key previously.
-	signature := hex.decode('3066023100b08f6ec77bb319fdb7bce55a2714d7e79cc645d834ee539d8903cfcc88c6fa90df1558856cb840b2dd82e82cd89d7046023100d9d482ca8a6545a3b081fbdd4bb9643a2b4eda4e21fd624833216596032471faae646891f8d2f0bbb86b796c36d3c390')!
+	signature :=
+		hex.decode('3066023100b08f6ec77bb319fdb7bce55a2714d7e79cc645d834ee539d8903cfcc88c6fa90df1558856cb840b2dd82e82cd89d7046023100d9d482ca8a6545a3b081fbdd4bb9643a2b4eda4e21fd624833216596032471faae646891f8d2f0bbb86b796c36d3c390')!
 
 	// loads a Privatekey and PublicKey from above sample
 	privkey := ecdsa.privkey_from_string(privkey_sample)!

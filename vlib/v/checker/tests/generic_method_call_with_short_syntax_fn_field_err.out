@@ -1,3 +1,10 @@
+vlib/v/checker/tests/generic_method_call_with_short_syntax_fn_field_err.vv:14:30: notice: unused parameter: `options`
+   12 | struct Middleware[T] {}
+   13 | 
+   14 | fn (mut m Middleware[T]) use(options Options[T]) {}
+      |                              ~~~~~~~
+   15 | 
+   16 | struct App {
 vlib/v/checker/tests/generic_method_call_with_short_syntax_fn_field_err.vv:33:10: error: cannot assign to field `handler`: expected `fn (mut Context) bool`, not `Options[Context]`
    31 | fn main() {
    32 |     mut app := &App{}

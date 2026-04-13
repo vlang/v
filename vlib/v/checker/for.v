@@ -79,7 +79,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
 				node.cond.pos().extend(node.high.pos()))
 		} else if typ_idx !in ast.integer_type_idxs {
-			c.error('range type can only be an integer type', node.cond.pos().extend(node.high.pos()))
+			c.error('range type can only be an integer type',
+				node.cond.pos().extend(node.high.pos()))
 		} else if high_type.has_option_or_result() {
 			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
 				node.high.pos())
@@ -311,6 +312,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
+			// Clear any smartcasts from a previous generic recheck pass,
+			// so they don't interfere with this iteration's type resolution.
+			node.scope.reset_smartcasts(node.val_var)
 			if is_comptime {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)

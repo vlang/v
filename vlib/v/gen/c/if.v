@@ -73,6 +73,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				return true
 			}
 			for arg in expr.args {
+				if arg.expr is ast.ArrayDecompose {
+					return true
+				}
 				if g.need_tmp_var_in_expr(arg.expr) {
 					return true
 				}
@@ -514,7 +517,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						} else {
 							'-> '
 						}
-						guard_typ := g.unwrap_generic(branch.cond.expr_type.clear_option_and_result())
+						guard_typ :=
+							g.unwrap_generic(branch.cond.expr_type.clear_option_and_result())
 						guard_is_heap_obj := g.table.final_sym(guard_typ).is_heap()
 							&& !guard_typ.is_ptr()
 						if guard_is_heap_obj {
@@ -529,7 +533,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						} else {
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info, guard_expr_type.nr_muls())
+								g.write_fntype_decl(left_var_name, expr_sym.info,
+									guard_expr_type.nr_muls())
 								if guard_expr_type.nr_muls() == 0 {
 									g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 								} else {

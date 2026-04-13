@@ -179,8 +179,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				c.comptime.inside_comptime_if = true
 				mut sb := strings.new_builder(256)
-				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
-					sb)
+				comptime_if_result, comptime_if_multi_pass_branch =
+					c.comptime_if_cond(mut branch.cond, mut sb)
 				if comptime_if_multi_pass_branch {
 					comptime_if_has_multi_pass_branch = true
 				}
@@ -488,8 +488,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								}
 							}
 						}
-						if c.is_interface_smartcast_sumtype_variant(stmt.expr, former_expected_type,
-							stmt.typ)
+						if c.is_interface_smartcast_sumtype_variant(stmt.expr,
+							former_expected_type, stmt.typ)
 						{
 							node.is_expr = true
 							node.typ = former_expected_type.clear_option_and_result()
@@ -613,8 +613,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		c.smartcast_none_guard_fallthrough(node.branches[0].cond, mut continuation_scope)
 	}
 	if node.typ == ast.none_type {
-		c.error('invalid if expression, must supply at least one value other than `none`',
-			node.pos)
+		c.error('invalid if expression, must supply at least one value other than `none`', node.pos)
 	}
 	// if only untyped literals were given default to int/f64
 	node.typ = ast.mktyp(node.typ)
@@ -760,8 +759,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 							&& (node.left as ast.Ident).name == c.comptime.comptime_for_field_var
 						if !skip_smartcast
 							&& (left_final_sym.kind in [.interface, .sum_type] || is_option_unwrap) {
-							c.smartcast(mut node.left, node.left_type, right_type, mut
-								scope, is_comptime, is_option_unwrap, false)
+							c.smartcast(mut node.left, node.left_type, right_type, mut scope,
+								is_comptime, is_option_unwrap, false)
 						}
 					}
 				}
@@ -772,6 +771,20 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 	} else if control_expr is ast.IfExpr && mut node is ast.NodeError { // IfExpr else branch
 		if control_expr.branches.len != 2 {
 			return
+		}
+		first_cond := control_expr.branches[0].cond
+		// `if x !is Type { ... } else { /* smartcast x to Type here */ }`
+		if first_cond is ast.InfixExpr && first_cond.op == .not_is
+			&& first_cond.left in [ast.Ident, ast.SelectorExpr] {
+			right_type := first_cond.right_type
+			left_type := first_cond.left_type
+			left_sym := c.table.final_sym(left_type)
+			is_option_unwrap := left_type.has_flag(.option) && !right_type.has_flag(.option)
+			if left_sym.kind in [.interface, .sum_type] || is_option_unwrap {
+				mut left_expr := first_cond.left
+				c.smartcast(mut left_expr, left_type, right_type, mut scope, false,
+					is_option_unwrap, false)
+			}
 		}
 		c.smartcast_none_guard_unwrap(control_expr.branches[0].cond, mut scope)
 	}
@@ -790,11 +803,11 @@ fn (mut c Checker) smartcast_none_guard_unwrap(cond ast.Expr, mut scope ast.Scop
 		to_type := cond_expr.left_type.clear_flag(.option)
 		if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
 			cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
-			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true,
-				true, false)
+			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true, true,
+				false)
 		} else {
-			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false,
-				true, false)
+			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false, true,
+				false)
 		}
 	}
 }
@@ -817,11 +830,11 @@ fn (mut c Checker) smartcast_none_guard_fallthrough(cond ast.Expr, mut scope ast
 			}
 			if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
 				cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
-				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope,
-					true, true, false)
+				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true,
+					true, false)
 			} else {
-				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope,
-					false, true, false)
+				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false,
+					true, false)
 			}
 		}
 	}

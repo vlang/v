@@ -144,7 +144,8 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 
 	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }
 
-	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}')
+	s := req.build_request_headers(req.method, host_name, port,
+		'${host.scheme}://${host_name}${port_part}${path}')
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host.host}:443')!
 
@@ -155,8 +156,8 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 			// client.shutdown()!
 			// return response_text
 		} $else {
-			response_text := req.do_request(req.build_request_headers(req.method, host_name,
-				port, path), mut client)!
+			response_text := req.do_request(req.build_request_headers(req.method, host_name, port, path), mut
+				client)!
 			client.shutdown()!
 			return response_text
 		}

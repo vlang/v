@@ -4,7 +4,7 @@ template_call_position_test.txt:3:2: error: undefined ident: `unknown_var` (veb 
     3 | @unknown_var
       |  ~~~~~~~~~~~
 called from vlib/v/checker/tests/template_call_position.vv:4:2
-    2 |
+    2 | 
     3 | fn main() {
     4 |     $tmpl('template_call_position_test.txt')
       |     ^
@@ -15,7 +15,7 @@ template_call_position_test.txt:3:2: error: expression does not return a value (
     3 | @unknown_var
       |  ~~~~~~~~~~~
 called from vlib/v/checker/tests/template_call_position.vv:4:2
-    2 |
+    2 | 
     3 | fn main() {
     4 |     $tmpl('template_call_position_test.txt')
       |     ^

@@ -106,12 +106,18 @@ fn process_cli_args() &Context {
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.is_silent = fp.bool('silent', `S`, false, 'Do not print progress at all.')
 	context.is_linear = fp.bool('linear', `L`, false, 'Print linear progress log. Suitable for CI.')
-	context.show_src = fp.bool('show_source', `E`, false, 'Print the partial source code that caused a fault/panic in the parser.')
-	context.period_ms = fp.int('progress_ms', `s`, 500, 'print a status report periodically, the period is given in milliseconds.')
-	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
-	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
-	context.timeout_ms = fp.int('timeout_ms', `t`, 250, 'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
-	context.path = fp.string('path', `p`, '', 'worker specific flag - path to the current source file, which will be parsed.')
+	context.show_src = fp.bool('show_source', `E`, false,
+		'Print the partial source code that caused a fault/panic in the parser.')
+	context.period_ms = fp.int('progress_ms', `s`, 500,
+		'print a status report periodically, the period is given in milliseconds.')
+	context.is_worker = fp.bool('worker', `w`, false,
+		'worker specific flag - is this a worker process, that can crash/panic.')
+	context.cut_index = fp.int('cut_index', `c`, 1,
+		'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
+	context.timeout_ms = fp.int('timeout_ms', `t`, 250,
+		'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
+	context.path = fp.string('path', `p`, '',
+		'worker specific flag - path to the current source file, which will be parsed.')
 
 	if context.is_help {
 		println(fp.usage())

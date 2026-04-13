@@ -814,14 +814,12 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				name := if mut node.expr is ast.Ident {
 					// var
 					if node.expr.info is ast.IdentVar && node.expr.language == .v {
-						g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
-							.result))).replace('*', '')
+						g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f, .result))).replace('*', '')
 					} else {
 						node.cname
 					}
 				} else if mut node.expr is ast.CallExpr {
-					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*',
-						'').replace('.', '__')
+					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*', '').replace('.', '__')
 				} else {
 					node.cname
 				}
@@ -1274,7 +1272,9 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
+			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names,
+				g.cur_concrete_types)
+			{
 				return t_typ
 			}
 		}
@@ -1284,7 +1284,9 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_struct_init_node.generic_types.map(g.unwrap_generic(it))) {
+						if t_typ := g.table.convert_generic_type(typ, generic_names,
+							g.cur_struct_init_node.generic_types.map(g.unwrap_generic(it)))
+						{
 							return t_typ
 						}
 					}
@@ -1296,11 +1298,15 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-					if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+					if t_typ := g.table.convert_generic_type(typ, generic_names,
+						sym.info.concrete_types)
+					{
 						return t_typ
 					}
 
-					if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
+					if t_typ := g.table.convert_generic_type(typ, generic_names,
+						g.cur_concrete_types)
+					{
 						return t_typ
 					}
 				}

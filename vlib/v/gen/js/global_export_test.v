@@ -27,7 +27,8 @@ fn test_js_backend_supports_exported_global_aliases() {
 	source_path := os.join_path(js_global_export_test_dir, 'global_export.v')
 	js_path := os.join_path(js_global_export_test_dir, 'global_export.js')
 	os.write_file(source_path, js_global_export_test_source) or { panic(err) }
-	compile_res := os.execute('${os.quoted_path(js_global_export_test_vexe)} -b js -w -o ${os.quoted_path(js_path)} ${os.quoted_path(source_path)}')
+	compile_res :=
+		os.execute('${os.quoted_path(js_global_export_test_vexe)} -b js -w -o ${os.quoted_path(js_path)} ${os.quoted_path(source_path)}')
 	if compile_res.exit_code != 0 {
 		panic(compile_res.output)
 	}

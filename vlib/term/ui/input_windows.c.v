@@ -58,7 +58,7 @@ pub fn init(cfg Config) &Context {
 	}
 	mut input_mode := u32(C.ENABLE_WINDOW_INPUT)
 	if ctx.cfg.mouse_enabled {
-		input_mode |= C.ENABLE_MOUSE_INPUT
+		input_mode |= u32(C.ENABLE_MOUSE_INPUT)
 	}
 	// enable window input and optionally mouse input events.
 	if !C.SetConsoleMode(stdin_handle, input_mode) {

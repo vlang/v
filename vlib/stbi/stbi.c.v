@@ -113,6 +113,8 @@ fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_ch
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 fn C.stbi_load_from_memory(buffer &u8, len i32, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 
+pub const C.STBI_rgb_alpha int
+
 @[params]
 pub struct LoadParams {
 pub:
@@ -154,8 +156,8 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 		ok:          true
 		nr_channels: params.desired_channels
 	}
-	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.original_nr_channels,
-		params.desired_channels)
+	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height,
+		&res.original_nr_channels, params.desired_channels)
 	if params.desired_channels == 0 {
 		res.nr_channels = res.original_nr_channels
 	}
@@ -189,8 +191,8 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data,
-		output_w, output_h, 0, img.nr_channels) {
+	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
+		output_h, 0, img.nr_channels) {
 		return error('stbi_image failed to resize file')
 	}
 	return res

@@ -63,7 +63,6 @@ const external_tools = [
 	'watch',
 	'where',
 ]
-const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 const delegated_v2_exe_env = 'V_V2_EXE'
 
 @[unsafe]
@@ -115,8 +114,7 @@ fn main() {
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
-		true)
+	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_v2(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {

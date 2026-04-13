@@ -26,8 +26,8 @@ fn open_existing_file(path string, mode LockMode) i64 {
 	path_wide := path.to_wide()
 	access := if mode == .shared { C.GENERIC_READ } else { C.GENERIC_READ | C.GENERIC_WRITE }
 	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
-	handle := C.CreateFileW(path_wide, access, share_mode, 0, C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL,
-		0)
+	handle := C.CreateFileW(path_wide, access, share_mode, 0, C.OPEN_EXISTING,
+		C.FILE_ATTRIBUTE_NORMAL, 0)
 	return file_handle(handle)
 }
 
@@ -39,8 +39,7 @@ fn (l &FileLock) lock_handle(handle voidptr, immediate bool) bool {
 	if l.target != .file {
 		return true
 	}
-	return C.v_filelock_lock(handle, int(l.mode == .exclusive), int(immediate), l.start,
-		l.len) == 0
+	return C.v_filelock_lock(handle, int(l.mode == .exclusive), int(immediate), l.start, l.len) == 0
 }
 
 fn (mut l FileLock) close_lock() {

@@ -88,7 +88,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		// `foo()?`
 		p.next()
 		if p.inside_defer {
-			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
+			p.error_with_pos('error propagation not allowed inside `defer` blocks',
+				p.prev_tok.pos())
 		}
 		or_kind = if is_not { .propagate_result } else { .propagate_option }
 		or_scope = p.scope
@@ -724,8 +725,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec.typ == ast.void_type {
-			p.error_with_pos('cannot use operator overloading with normal functions',
-				p.tok.pos())
+			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
 		}
 		if type_sym.has_method(name) {
 			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
@@ -769,11 +769,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 		if rec_generic_types.len > 0 {
-			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(), 'rec_generic_types') or {
-				return ast.FnDecl{
-					scope: unsafe { nil }
-				}
-			}
+			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(),
+				'rec_generic_types') or { return ast.FnDecl{
+				scope: unsafe { nil }
+			} }
 			fn_generic_names := generic_names.clone()
 			generic_names = p.table.generic_type_names(rec.typ)
 			if decl_generic_names.len != generic_names.len {
@@ -954,7 +953,8 @@ run them via `v file.v` instead',
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
 						if !p.pref.is_fmt {
-							name = p.prepend_mod('pure_v_but_overridden_by_${existing.file_mode}_${short_fn_name}')
+							name =
+								p.prepend_mod('pure_v_but_overridden_by_${existing.file_mode}_${short_fn_name}')
 						}
 					} else if !p.pref.translated {
 						p.table.redefined_fns << name
@@ -1144,12 +1144,14 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		rec.is_mut = p.tok.kind == .key_mut
 		if rec.is_mut {
 			ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .pos() expects &Token
-			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(ptoken2.pos()))
+			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`',
+				lpar_pos.extend(ptoken2.pos()))
 		}
 	}
 	if p.tok.kind == .key_shared {
 		ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .pos() expects &Token
-		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(ptoken2.pos()))
+		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`',
+			lpar_pos.extend(ptoken2.pos()))
 	}
 	rec.pos = rec_start_pos.extend(p.tok.pos())
 	is_amp := p.tok.kind == .amp
@@ -1423,7 +1425,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				}
 			}
 			if is_variadic {
-				param_type = ast.new_type(p.table.find_or_register_array(param_type)).set_flag(.variadic)
+				param_type =
+					ast.new_type(p.table.find_or_register_array(param_type)).set_flag(.variadic)
 			}
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
@@ -1543,8 +1546,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 						p.check_fn_mutable_arguments(typ, pos)
 					}
 				} else if is_shared || is_atomic {
-					p.error_with_pos('generic object cannot be `atomic` or `shared`',
-						pos)
+					p.error_with_pos('generic object cannot be `atomic` or `shared`', pos)
 					return []ast.Param{}, false, false, false
 				}
 				if typ.is_ptr() && p.table.sym(typ).kind == .struct {
@@ -1564,7 +1566,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 			}
 			if is_variadic {
 				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
-				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
+				typ =
+					ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
 			for i, para_name in param_names {
 				alanguage := p.table.sym(typ).language

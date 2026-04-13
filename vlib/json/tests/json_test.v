@@ -221,7 +221,8 @@ struct Country {
 }
 
 fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
+	country := json.decode(Country,
+		'{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
@@ -554,21 +555,24 @@ struct RequiredStruct {
 }
 
 fn test_required() {
-	nullish_one := json.decode(NullishStruct, '{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
+	nullish_one := json.decode(NullishStruct,
+		'{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
 	assert nullish_one.name == 'Peter'
 	assert nullish_one.lastname == ''
 	assert nullish_one.age == 28
 	assert nullish_one.salary == 95000.5
 	assert nullish_one.child.name == ''
 
-	nullish_two := json.decode(NullishStruct, '{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
+	nullish_two := json.decode(NullishStruct,
+		'{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
 	assert nullish_two.name == 'Peter'
 	assert nullish_two.lastname == 'Parker'
 	assert nullish_two.age == 28
 	assert nullish_two.salary == 95000.5
 	assert nullish_two.child.name == ''
 
-	nullish_third := json.decode(NullishStruct, '{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
+	nullish_third := json.decode(NullishStruct,
+		'{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
 	assert nullish_third.name == 'Peter'
 	assert nullish_third.lastname == ''
 	assert nullish_third.age == 28

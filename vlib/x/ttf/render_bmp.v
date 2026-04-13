@@ -494,7 +494,7 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -566,7 +566,7 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -663,7 +663,7 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -789,8 +789,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 				// bmp.line(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, color2)
 				// bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color2)
-				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2,
-					prev.x, prev.y, color)
+				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2, prev.x,
+					prev.y, color)
 				x0 = (prev.x + point.x) / 2
 				y0 = (prev.y + point.y) / 2
 			}
@@ -817,8 +817,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 					// bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
 					// u32(0xFF000000))
-					bmp.quadratic(x0, y0, start_point.x, start_point.y, (point.x + start_point.x) / 2,
-						(point.y + start_point.y) / 2, color)
+					bmp.quadratic(x0, y0, start_point.x, start_point.y,
+						(point.x + start_point.x) / 2, (point.y + start_point.y) / 2, color)
 				}
 			} else {
 				// last point not in a curve

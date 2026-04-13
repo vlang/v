@@ -1,5 +1,5 @@
 vlib/v/checker/tests/non_matching_functional_args.vv:27:6: error: cannot use `fn (mut Table)` as `fn (Table)` in argument 1 to `sum`
-   25 |
+   25 | 
    26 | fn main() {
    27 |     sum(fn (mut t Table) {
       |         ~~~~~~~~~~~~~~~~~~

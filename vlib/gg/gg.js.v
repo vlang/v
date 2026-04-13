@@ -485,7 +485,8 @@ pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c Color) {
 
 fn gg_animation_frame_fn(mut g Context) {
 	g.frame++
-	g.context.clearRect(JS.Number(0), JS.Number(0), JS.Number(g.config.width), JS.Number(g.config.height))
+	g.context.clearRect(JS.Number(0), JS.Number(0), JS.Number(g.config.width),
+		JS.Number(g.config.height))
 	// todo(playXE): handle events
 
 	if !isnil(g.config.frame_fn) {

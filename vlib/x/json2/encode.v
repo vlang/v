@@ -64,10 +64,16 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(f64(val))
 	} $else $if T.unaliased_typ is voidptr {
 		encoder.encode_number(0)
+	} $else $if T is $pointer {
+		if voidptr(val) == unsafe { nil } {
+			encoder.encode_null()
+		} else {
+			encoder.encode_value(*val)
+		}
 	} $else $if T.unaliased_typ is $array_fixed {
 		encoder.output << `[`
-		for i, item in val {
-			encoder.encode_value(item)
+		for i in 0 .. val.len {
+			encoder.encode_value(val[i])
 			if i < val.len - 1 {
 				encoder.output << `,`
 			}
@@ -125,11 +131,21 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
-		encoder.encode_custom[T](val)
+		integer_val := val.to_json()
+		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
 	} $else $if T is Encodable { // uses T, because alias could be implementing JsonEncoder, while the base type does not
-		encoder.encode_custom2[T](val)
+		integer_val := val.json_str()
+		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
 	} $else $if T.unaliased_typ is $struct {
-		unsafe { encoder.encode_struct[T](val) }
+		unsafe {
+			encoder.output << `{`
+			is_first := encoder.encode_struct_fields[T](val, true, [], '')
+			if encoder.prettify && !is_first {
+				encoder.decrement_level()
+				encoder.add_indent()
+			}
+			encoder.output << `}`
+		}
 	}
 }
 
@@ -190,7 +206,9 @@ fn (mut encoder Encoder) encode_string(val string) {
 			}
 			else {
 				if character < 0x20 { // control characters
-					unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+					unsafe {
+						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
+					}
 					buffer_end++
 					buffer_start = buffer_end
 
@@ -205,7 +223,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 				}
 				if encoder.escape_unicode {
 					if character >= 0b1111_0000 { // four bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						unicode_point_low := val[buffer_end..buffer_end + 4].bytes().byterune() or {
 							0
 						} - 0x10000
@@ -220,7 +241,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 						continue
 					} else if character >= 0b1110_0000 { // three bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						hex_string := '\\u${val[buffer_end..buffer_end + 3].bytes().byterune() or {
 							0
 						}:04x}'
@@ -232,7 +256,10 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 						continue
 					} else if character >= 0b1100_0000 { // two bytes
-						unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
+						unsafe {
+							encoder.output.push_many(val.str + buffer_start,
+								buffer_end - buffer_start)
+						}
 						hex_string := '\\u${val[buffer_end..buffer_end + 2].bytes().byterune() or {
 							0
 						}:04x}'
@@ -400,9 +427,14 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 }
 
 fn (mut encoder Encoder) encode_sumtype[T](val T) {
-	$for variant in T.variants {
-		if val is variant {
-			encoder.encode_value(val)
+	$if T is $pointer {
+		// Pointer types are handled by encode_value's $pointer branch;
+		// this instantiation is generated but never called.
+	} $else {
+		$for variant in T.variants {
+			if val is variant {
+				encoder.encode_value(val)
+			}
 		}
 	}
 }

@@ -67,7 +67,9 @@ fn color_highlight(code string, tb &ast.Table) string {
 		}
 		return lit
 	}
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ is_fmt: true })
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{
+		is_fmt: true
+	})
 	mut prev_prev := token.Token{}
 	mut prev := token.Token{}
 	mut tok := s.scan()

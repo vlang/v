@@ -108,8 +108,7 @@ fn main() {
 	println(somemoduletwo.name())
 }
 ')!
-	os.write_file(os.join_path(project_dir, 'modules', 'somemoduletwo', 'somemoduletwo.v'),
-		'module somemoduletwo
+	os.write_file(os.join_path(project_dir, 'modules', 'somemoduletwo', 'somemoduletwo.v'), 'module somemoduletwo
 
 pub fn name() string {
 	return "somemoduletwo"
@@ -130,8 +129,7 @@ fn test_thirdparty_object_build_with_multiline_cflags() {
 	}
 	mut p := os.new_process(vexe)
 	p.set_work_folder(@VEXEROOT)
-	p.set_args(['run', os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'project_with_c_code',
-		'main.v')])
+	p.set_args(['run', os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'project_with_c_code', 'main.v')])
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.wait()

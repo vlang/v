@@ -340,7 +340,8 @@ fn app_init(mut app App) {
 	app.pip_viewer = sgl.make_pipeline(&pipdesc)
 
 	// load logo
-	app.logo_texture, app.logo_sampler, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
+	app.logo_texture, app.logo_sampler, app.logo_w, app.logo_h =
+		app.load_texture_from_file(app.logo_path)
 	app.logo_ratio = f32(app.img_w) / f32(app.img_h)
 
 	app.img_w = app.logo_w

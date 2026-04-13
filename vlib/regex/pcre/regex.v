@@ -243,8 +243,7 @@ pub fn compile(pattern string) !Regex {
 	initial_flags := Flags{false, false, false}
 
 	// Phase 1: AST Parsing
-	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut
-		group_map)!
+	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut group_map)!
 
 	root := Node{
 		typ:   .group

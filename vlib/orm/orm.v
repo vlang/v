@@ -459,7 +459,8 @@ fn trim_attr_arg(arg string) string {
 
 fn tenant_filter_array_primitive_type[T](value []T) int {
 	if value.len > 0 {
-		return tenant_filter_primitive_type(Primitive(value[0]))
+		first := value[0]
+		return tenant_filter_primitive_type(Primitive(first))
 	}
 	return type_idx['int']
 }

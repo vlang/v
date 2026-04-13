@@ -117,7 +117,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
-					g.const_decl_simple_define(field.mod, field.name, const_name, g.expr_string(field_expr))
+					g.const_decl_simple_define(field.mod, field.name, const_name,
+						g.expr_string(field_expr))
 				} else if field.expr is ast.CastExpr {
 					if field.expr.expr is ast.ArrayInit {
 						if field.expr.expr.is_fixed && g.pref.build_mode != .build_module {
@@ -350,8 +351,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if expr_sym.kind == .function {
 		// allow for: `const xyz = abc`, where `abc` is `fn abc() {}`
 		func := (expr_sym.info as ast.FnType).func
-		def = g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ),
-			cname)
+		def = g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ), cname)
 	}
 	init_str := init.str().trim_right('\n')
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
@@ -398,8 +398,7 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 				init.writeln(g.expr_string_surround('\tmemcpy(${cname}[${i}], ', elem_expr,
 					', sizeof(${elem_styp}));'))
 			} else {
-				init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr,
-					';'))
+				init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))
 			}
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))

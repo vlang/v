@@ -2,7 +2,7 @@ module sessions
 
 import time
 
-struct MemoryStoreSessions[T] {
+pub struct MemoryStoreSessions[T] {
 pub mut:
 	created_at time.Time
 	data       T

@@ -2101,7 +2101,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// ValueID 0 is the SSA null/invalid sentinel.
 			if ptr_id <= 0 || ptr_id >= g.mod.values.len {
 				g.emit_mov_imm64(dest_reg, 0)
-			} else if data_word_id := g.sumtype_data_word_load_source(ptr_id, g.mod.values[val_id].typ) {
+			} else if data_word_id := g.sumtype_data_word_load_source(ptr_id,
+				g.mod.values[val_id].typ)
+			{
 				if trace_load {
 					eprintln('ARM64 LOAD fn=${g.cur_func_name} val=${val_id} ptr=${ptr_id} sumtype_data_word=${data_word_id}')
 				}
@@ -2191,8 +2193,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							if ptr_is_null_const {
 								g.zero_fp_bytes(result_offset, result_size)
 							} else {
-								g.copy_ptr_to_fp_bytes(load_src_ptr_reg, result_offset,
-									result_size)
+								g.copy_ptr_to_fp_bytes(load_src_ptr_reg, result_offset, result_size)
 							}
 							loaded_into_aggregate_slot = true
 						} else if dest_reg != load_src_ptr_reg {
@@ -2292,8 +2293,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit_mov_imm(0, 1)
 				g.emit_mov_imm(1, u64(alloc_size))
 				sym_idx := g.macho.add_undefined('_calloc')
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-					true)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
 				g.emit(asm_bl_reloc())
 				g.store_reg_to_val(0, val_id)
 			} else {
@@ -2527,8 +2527,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 					// Call function
 					sym_idx := g.macho.add_undefined('_' + fn_name)
-					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-						true)
+					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
 					g.emit(asm_bl_reloc())
 
 					// Restore stack
@@ -2604,11 +2603,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 										continue
 									}
 									if cnt > 1 {
-										g.load_struct_arg_word_to_reg(9, instr.operands[a + 1],
-											ri, expected_struct_typ, instr.operands[0])
+										g.load_struct_arg_word_to_reg(9, instr.operands[a + 1], ri,
+											expected_struct_typ, instr.operands[0])
 									} else {
-										g.load_call_arg_to_reg(9, instr.operands[a + 1],
-											a, instr)
+										g.load_call_arg_to_reg(9, instr.operands[a + 1], a, instr)
 									}
 									g.emit(asm_str_imm(Reg(9), sp, u32(stack_idx)))
 									stack_idx++
@@ -2656,8 +2654,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 
 					sym_idx := g.macho.add_undefined('_' + fn_name)
-					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-						true)
+					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
 					g.emit(asm_bl_reloc())
 
 					if stack_space > 0 {
@@ -2796,8 +2793,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						if target_reg >= 8 {
 							continue
 						}
-						g.load_struct_arg_word_to_reg(target_reg, instr.operands[a + 1],
-							ri, expected_struct_typ, instr.operands[0])
+						g.load_struct_arg_word_to_reg(target_reg, instr.operands[a + 1], ri,
+							expected_struct_typ, instr.operands[0])
 					}
 				} else {
 					g.load_call_arg_to_reg(reg, instr.operands[a + 1], a, instr)
@@ -2916,8 +2913,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						if target_reg >= 8 {
 							continue
 						}
-						g.load_struct_arg_word_to_reg(target_reg, instr.operands[a + 1],
-							ri, expected_struct_typ, instr.operands[0])
+						g.load_struct_arg_word_to_reg(target_reg, instr.operands[a + 1], ri,
+							expected_struct_typ, instr.operands[0])
 					}
 				} else {
 					g.load_call_arg_to_reg(reg, instr.operands[a + 1], a, instr)
@@ -2928,8 +2925,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				// Direct call by symbol.
 				sym_idx := g.macho.add_undefined('_' + fn_val.name)
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-					true)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
 				g.emit(asm_bl_reloc())
 			} else {
 				// Indirect call through function pointer value.
@@ -3145,8 +3141,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					} else {
 						if source_chunks > 1 || ret_typ.kind == .struct_t {
-							g.load_struct_src_address_to_reg(8, ret_val_id, actual_struct_typ_id,
-								0)
+							g.load_struct_src_address_to_reg(8, ret_val_id, actual_struct_typ_id, 0)
 							for i in 0 .. num_chunks {
 								if i < 8 {
 									if i < source_chunks {
@@ -3557,7 +3552,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 								mut can_copy := false
 								mut src_is_null_ptr := false
 								mut src_copy_uses_pointee := false
-								src_is_ptr_carried := g.large_aggregate_stack_value_is_pointer(src_id)
+								src_is_ptr_carried :=
+									g.large_aggregate_stack_value_is_pointer(src_id)
 								if src_id > 0 && src_id < g.mod.values.len {
 									src_typ_id := g.mod.values[src_id].typ
 									if src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
@@ -3581,12 +3577,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 												can_reinterpret_ptr = false
 											}
 											if can_reinterpret_ptr {
-												src_is_null_ptr = g.is_effective_null_pointer_value(src_id)
+												src_is_null_ptr =
+													g.is_effective_null_pointer_value(src_id)
 												if src_id in g.reg_map {
 													src_ptr_reg = g.reg_map[src_id]
 												} else if src_off := g.stack_map[src_id] {
-													g.emit_ldr_reg_offset(src_ptr_reg,
-														29, src_off)
+													g.emit_ldr_reg_offset(src_ptr_reg, 29, src_off)
 												} else {
 													g.load_val_to_reg(src_ptr_reg, src_id)
 												}
@@ -3654,10 +3650,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 									if src_is_null_ptr {
 										g.zero_fp_bytes(dest_off, dest_size)
 									} else {
-										g.copy_ptr_to_fp_bytes(src_ptr_reg, dest_off,
-											copy_size)
+										g.copy_ptr_to_fp_bytes(src_ptr_reg, dest_off, copy_size)
 										if copy_size < dest_size {
-											g.zero_fp_bytes(dest_off + copy_size, dest_size - copy_size)
+											g.zero_fp_bytes(dest_off + copy_size,
+												dest_size - copy_size)
 										}
 									}
 									copied_aggregate = true
@@ -3759,12 +3755,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 											}
 										}
 										if can_use_ptr_source {
-											src_is_null_ptr = g.is_effective_null_pointer_value(src_id)
+											src_is_null_ptr =
+												g.is_effective_null_pointer_value(src_id)
 											if src_id in g.reg_map {
 												src_ptr_reg = g.reg_map[src_id]
 											} else if src_off := g.stack_map[src_id] {
-												g.emit_ldr_reg_offset(src_ptr_reg, 29,
-													src_off)
+												g.emit_ldr_reg_offset(src_ptr_reg, 29, src_off)
 											} else {
 												g.load_val_to_reg(src_ptr_reg, src_id)
 											}
@@ -3892,8 +3888,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			struct_offset := base_offset + 8
 			str_off, _ := g.struct_field_offset_and_size(instr.typ, 0, 0, 8)
 			len_off, len_size := g.struct_field_offset_and_size(instr.typ, 1, 8, 8)
-			is_lit_off, is_lit_size := g.struct_field_offset_and_size(instr.typ, 2, 16,
-				8)
+			is_lit_off, is_lit_size := g.struct_field_offset_and_size(instr.typ, 2, 16, 8)
 
 			// Store str field
 			g.load_val_to_reg(8, str_ptr_id)
@@ -3964,8 +3959,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 									tuple_is_agg_typ = true
 									tuple_is_large_agg = g.type_size(load_ptr_typ.elem_type) > 16
 									if load_elem_typ.kind == .struct_t && idx >= 0 {
-										field_byte_off = g.struct_field_offset_bytes(load_ptr_typ.elem_type,
-											idx)
+										field_byte_off =
+											g.struct_field_offset_bytes(load_ptr_typ.elem_type, idx)
 										if idx < load_elem_typ.fields.len {
 											field_elem_size = g.type_size(load_elem_typ.fields[idx])
 											if field_elem_size <= 0 {
@@ -4009,8 +4004,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						if g.is_effective_null_pointer_value(scalar_load_agg_src_ptr_id) {
 							g.zero_fp_bytes(dst_offset, result_size)
 						} else {
-							g.copy_ptr_offset_to_fp_bytes(agg_ptr_reg, field_byte_off,
-								dst_offset, result_size)
+							g.copy_ptr_offset_to_fp_bytes(agg_ptr_reg, field_byte_off, dst_offset,
+								result_size)
 						}
 						handled_scalar_load_struct_extract = true
 					}
@@ -4638,8 +4633,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						// through scalar-typed values. Recover the wrapper address and
 						// copy the full bytes instead of falling back to a single-word store.
 						mut src_ptr_reg := 12
-						g.load_struct_src_address_to_reg(src_ptr_reg, field_id, field_typ_id,
-							0)
+						g.load_struct_src_address_to_reg(src_ptr_reg, field_id, field_typ_id, 0)
 						for w in 0 .. field_chunks {
 							g.emit(asm_ldr_imm(Reg(10), Reg(src_ptr_reg), u32(w)))
 							g.emit_str_reg_offset(10, 29, result_offset + field_off + w * 8)
@@ -4837,8 +4831,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					// Keep full wrapper bytes for small sumtype fields carried through
 					// scalar temporaries instead of truncating to the first word.
 					mut src_ptr_reg := 12
-					g.load_struct_src_address_to_reg(src_ptr_reg, elem_id, elem_typ_id,
-						0)
+					g.load_struct_src_address_to_reg(src_ptr_reg, elem_id, elem_typ_id, 0)
 					for i in 0 .. elem_chunks {
 						g.emit(asm_ldr_imm(Reg(10), Reg(src_ptr_reg), u32(i)))
 						g.emit_str_reg_offset(10, 29, result_offset + elem_off + i * 8)
@@ -5022,12 +5015,14 @@ fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id i
 		.bitcast, .zext, .sext, .trunc {
 			if instr.operands.len > 0 {
 				return g.alloca_store_value_is_pointer_like_inner(instr.operands[0], for_alloca_id,
+
 					depth + 1, mut seen_allocas)
 			}
 		}
 		.assign {
 			if instr.operands.len >= 2 {
 				return g.alloca_store_value_is_pointer_like_inner(instr.operands[1], for_alloca_id,
+
 					depth + 1, mut seen_allocas)
 			}
 		}
@@ -5101,8 +5096,8 @@ fn (mut g Gen) alloca_slot_stores_pointer_like_values(alloca_id int, param_elem_
 		return cached == 1
 	}
 	mut seen_allocas := map[int]bool{}
-	result := g.alloca_slot_stores_pointer_like_values_inner(alloca_id, param_elem_typ_id,
-		0, mut seen_allocas)
+	result := g.alloca_slot_stores_pointer_like_values_inner(alloca_id, param_elem_typ_id, 0, mut
+		seen_allocas)
 	g.alloca_ptr_cache[alloca_id] = if result { u8(1) } else { u8(2) }
 	return result
 }
@@ -5739,8 +5734,8 @@ fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_stru
 					return
 				}
 			}
-			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(val_id, expected_struct_typ,
-				0)
+			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(val_id,
+				expected_struct_typ, 0)
 			{
 				if trace_struct_addr {
 					eprintln('ARM64 STRUCT_ADDR fn=${g.cur_func_name} mode=unwrap_match val=${val_id} wrapper=${wrapper_id} expected=${expected_struct_typ}')
@@ -6028,8 +6023,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			g.macho.str_data << str_content
 			g.macho.str_data << 0
 
-			sym_idx := g.macho.add_symbol('L_str_${str_offset}', u64(str_offset), false,
-				2)
+			sym_idx := g.macho.add_symbol('L_str_${str_offset}', u64(str_offset), false, 2)
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
 			g.emit(asm_adrp(Reg(reg)))
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
@@ -6060,11 +6054,9 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		if is_external {
 			// External global: load address through GOT
 			sym_idx := g.macho.add_undefined('_' + val.name)
-			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_page21,
-				true)
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_page21, true)
 			g.emit(asm_adrp(Reg(reg)))
-			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_pageoff12,
-				false)
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_pageoff12, false)
 			g.emit(asm_ldr_pageoff(Reg(reg)))
 		} else {
 			// Local global: direct address
@@ -6110,15 +6102,13 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 
 			str_off, _ := g.struct_field_offset_and_size(val.typ, 0, 0, 8)
 			len_off, len_size := g.struct_field_offset_and_size(val.typ, 1, 8, 8)
-			is_lit_off, is_lit_size := g.struct_field_offset_and_size(val.typ, 2, 16,
-				8)
+			is_lit_off, is_lit_size := g.struct_field_offset_and_size(val.typ, 2, 16, 8)
 			if trace_strlit && g.cur_func_name == 'transformer__Transformer__transform_if_expr' {
 				eprintln('ARM64 STRLIT init fn=${g.cur_func_name} val=${val_id} typ=${val.typ} base=${base_offset} str_off=${str_off} len_off=${len_off} len_size=${len_size} lit_off=${is_lit_off} lit_size=${is_lit_size} slen=${str_len} name=`${str_content}`')
 			}
 
 			// Store str pointer: load address of string data
-			sym_idx := g.macho.add_symbol('L_str_${str_offset2}', u64(str_offset2), false,
-				2)
+			sym_idx := g.macho.add_symbol('L_str_${str_offset2}', u64(str_offset2), false, 2)
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
 			g.emit(asm_adrp(Reg(reg)))
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
@@ -6161,8 +6151,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			}
 		}
 		g.macho.str_data << 0 // null terminator
-		sym_idx := g.macho.add_symbol('L_cstr_${str_offset2}', u64(str_offset2), false,
-			2)
+		sym_idx := g.macho.add_symbol('L_cstr_${str_offset2}', u64(str_offset2), false, 2)
 		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
 		g.emit(asm_adrp(Reg(reg)))
 		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
@@ -7484,8 +7473,7 @@ fn (mut g Gen) pointer_carried_aggregate_size_bytes(ptr_id int, depth int, mut s
 						}
 					}
 				}
-				base_size := g.pointer_carried_aggregate_size_bytes(base_id, depth + 1, mut
-					seen)
+				base_size := g.pointer_carried_aggregate_size_bytes(base_id, depth + 1, mut seen)
 				if field_size > 8 {
 					return field_size
 				}
@@ -7506,8 +7494,7 @@ fn (mut g Gen) pointer_carried_aggregate_size_bytes(ptr_id int, depth int, mut s
 			}
 			mut min_size := 0
 			for op_id in ptr_instr.operands {
-				op_size := g.pointer_carried_aggregate_size_bytes(op_id, depth + 1, mut
-					seen)
+				op_size := g.pointer_carried_aggregate_size_bytes(op_id, depth + 1, mut seen)
 				if op_size <= 8 {
 					return 0
 				}
@@ -7607,8 +7594,7 @@ fn (mut g Gen) inferred_aggregate_carried_size_bytes(val_id int, depth int, mut 
 				return 0
 			}
 			src_id := instr.operands[0]
-			mut inferred := g.inferred_aggregate_carried_size_bytes(src_id, depth + 1, mut
-				seen)
+			mut inferred := g.inferred_aggregate_carried_size_bytes(src_id, depth + 1, mut seen)
 			if op == .bitcast && src_id > 0 && src_id < g.mod.values.len {
 				src_typ_id := g.mod.values[src_id].typ
 				if src_typ_id > 0 && src_typ_id < g.mod.type_store.types.len {
@@ -7647,8 +7633,7 @@ fn (mut g Gen) inferred_aggregate_carried_size_bytes(val_id int, depth int, mut 
 			if g.scalar_value_is_pointer_payload(val_id, 0) {
 				return 0
 			}
-			return g.pointer_carried_aggregate_size_bytes(instr.operands[0], depth + 1, mut
-				seen)
+			return g.pointer_carried_aggregate_size_bytes(instr.operands[0], depth + 1, mut seen)
 		}
 		.extractvalue {
 			return g.extractvalue_carried_field_size_bytes(instr, depth + 1, mut seen)
@@ -7672,8 +7657,7 @@ fn (mut g Gen) inferred_aggregate_carried_size_bytes(val_id int, depth int, mut 
 			}
 			mut min_size := 0
 			for op_id in instr.operands {
-				op_size := g.inferred_aggregate_carried_size_bytes(op_id, depth + 1, mut
-					seen)
+				op_size := g.inferred_aggregate_carried_size_bytes(op_id, depth + 1, mut seen)
 				if op_size <= 8 {
 					return 0
 				}
@@ -8430,12 +8414,13 @@ fn (g &Gen) sumtype_wrapper_source_from_data_ptr(ptr_id int, expected_wrapper_ty
 				return tuple_id
 			}
 			if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(src_id, expected_wrapper_typ,
+
 				depth + 1)
 			{
 				return wrapper_id
 			}
-			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(src_id, expected_wrapper_typ,
-				depth + 1)
+			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(src_id,
+				expected_wrapper_typ, depth + 1)
 			{
 				return wrapper_id
 			}
@@ -8447,8 +8432,8 @@ fn (g &Gen) sumtype_wrapper_source_from_data_ptr(ptr_id int, expected_wrapper_ty
 		}
 		.phi {
 			for op_id in instr.operands {
-				if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(op_id, expected_wrapper_typ,
-					depth + 1)
+				if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(op_id,
+					expected_wrapper_typ, depth + 1)
 				{
 					return wrapper_id
 				}
@@ -8487,8 +8472,8 @@ fn (g &Gen) sumtype_wrapper_source_from_unwrapped_value(val_id int, expected_wra
 			// wrapper/payload at the call site where we also have guard context.
 			if instr.operands.len > 0 {
 				src_id := instr.operands[0]
-				if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(src_id, expected_wrapper_typ,
-					depth + 1)
+				if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(src_id,
+					expected_wrapper_typ, depth + 1)
 				{
 					return wrapper_id
 				}
@@ -8500,12 +8485,13 @@ fn (g &Gen) sumtype_wrapper_source_from_unwrapped_value(val_id int, expected_wra
 			}
 			src_idx := if op == .assign && instr.operands.len > 1 { 1 } else { 0 }
 			src_id := instr.operands[src_idx]
-			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(src_id, expected_wrapper_typ,
-				depth + 1)
+			if wrapper_id := g.sumtype_wrapper_source_from_unwrapped_value(src_id,
+				expected_wrapper_typ, depth + 1)
 			{
 				return wrapper_id
 			}
 			if wrapper_id := g.sumtype_wrapper_source_from_data_ptr(src_id, expected_wrapper_typ,
+
 				depth + 1)
 			{
 				return wrapper_id

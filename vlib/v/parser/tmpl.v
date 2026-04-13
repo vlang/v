@@ -265,7 +265,8 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	// escaped by cgen, unless it's a `veb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
 	literal_dollar := tmpl_str_end + 'sb_${fn_name}.write_u8(36)\n' + tmpl_str_start
-	rewritten_line := escape_bare_tmpl_dollar_interpolations(rewrite_complex_template_at_expressions(line))
+	rewritten_line :=
+		escape_bare_tmpl_dollar_interpolations(rewrite_complex_template_at_expressions(line))
 	mut sb := strings.new_builder(rewritten_line.len + 16)
 	mut i := 0
 	for i < rewritten_line.len {
@@ -742,7 +743,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -785,7 +787,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -818,7 +821,8 @@ fn veb_tmpl_${fn_name}() string {
 				p.append_tmpl_line_info(template_file, tline_number, 1)
 				source.write_string(tmpl_str_start)
 				if control.has_inline_body {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, control.inline_body))
+					source.writeln(insert_template_code(fn_name, tmpl_str_start,
+						control.inline_body))
 					p.append_tmpl_line_info(template_file, tline_number, 1)
 				}
 				if control.closes_inline_block {
@@ -969,7 +973,8 @@ fn veb_tmpl_${fn_name}() string {
 				key := line_[pos + 5..end]
 				if key.len > 0 {
 					// Replace '%raw key' with just '${key}'
-					line_ = line_.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+					line_ = line_.replace('%raw ${key}',
+						'\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
 				}
 				search_start = pos + 1
 			} else {

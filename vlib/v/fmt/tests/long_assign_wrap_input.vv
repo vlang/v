@@ -49,9 +49,12 @@ fn main() {
 		if true {
 			if true {
 				if true {
-					enum_stmt = v.extract_const_or_enum(decl.tree, enum_stmt, enum_stmt.name.len > 0)
-					mut imp_name := v.get_name(tree.child['Path'].tree, .snake_case, .other)#[1..-1].replace('/', '.')
-					values[v.get_name(field_name.tree, .snake_case, .field)] = BasicValueStmt{v.get_type(field.tree)}
+					enum_stmt = v.extract_const_or_enum(decl.tree, enum_stmt,
+						enum_stmt.name.len > 0)
+					mut imp_name :=
+						v.get_name(tree.child['Path'].tree, .snake_case, .other)#[1..-1].replace('/', '.')
+					values[v.get_name(field_name.tree, .snake_case, .field)] =
+						BasicValueStmt{v.get_type(field.tree)}
 					println(imp_name)
 				}
 			}

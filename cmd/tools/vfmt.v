@@ -232,19 +232,6 @@ fn (foptions &FormatOptions) format_pipe() {
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
 }
 
-fn print_compiler_options(compiler_params &pref.Preferences) {
-	eprintln('         os: ' + compiler_params.os.str())
-	eprintln('  ccompiler: ${compiler_params.ccompiler}')
-	eprintln('       path: ${compiler_params.path} ')
-	eprintln('   out_name: ${compiler_params.out_name} ')
-	eprintln('      vroot: ${compiler_params.vroot} ')
-	eprintln('lookup_path: ${compiler_params.lookup_path} ')
-	eprintln('   out_name: ${compiler_params.out_name} ')
-	eprintln('     cflags: ${compiler_params.cflags} ')
-	eprintln('    is_test: ${compiler_params.is_test} ')
-	eprintln('  is_script: ${compiler_params.is_script} ')
-}
-
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
 	if formatted_file_path == '' {
 		return
@@ -308,11 +295,6 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 	}
 	print(formatted_fc)
 	flush_stdout()
-}
-
-fn read_source_lines(file string) ![]string {
-	source_lines := os.read_lines(file) or { return error('can not read ${file}') }
-	return source_lines
 }
 
 @[noreturn]

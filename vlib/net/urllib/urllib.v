@@ -574,8 +574,7 @@ fn parse_host(host string) !string {
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-				''))
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ', ''))
 		}
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
 		// the zone identifier, and the zone identifier can use basically
@@ -594,8 +593,7 @@ fn parse_host(host string) !string {
 		if i != -1 {
 			colon_port := host[i..]
 			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-					''))
+				return error(error_msg('parse_host: invalid port ${colon_port} after host ', ''))
 			}
 		}
 	}

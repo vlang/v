@@ -66,7 +66,8 @@ fn str_tmp_expr_advanced() {
 }
 
 fn str_tmp_expr_advanced_var_decl() {
-	a := handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
+	a :=
+		handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 	println(a)
 }
 
@@ -84,7 +85,8 @@ fn str_inter() {
 
 fn str_replace() {
 	mut s := 'hello world'
-	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
+	s =
+		s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
 
 	mut s2 := 'aa' + 'bb'

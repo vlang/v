@@ -51,9 +51,8 @@ fn test_all_v_repl_files() {
 		bmark:   benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
-	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/slow_tests/repl/nothing.repl') or {
-		panic(err)
-	}
+	runner.run_repl_file(os.cache_dir(), session.options.vexec,
+		'vlib/v/slow_tests/repl/nothing.repl') or { panic(err) }
 	session.bmark.set_total_expected_steps(session.options.files.len)
 	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
 	pool_repl.set_shared_context(session)

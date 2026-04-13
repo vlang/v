@@ -239,8 +239,7 @@ $if !new_veb ? {
 		if params.file_responses[fd].pos == params.file_responses[fd].total {
 			// file is done writing
 			params.file_responses[fd].done()
-			handle_complete_request(params.file_responses[fd].should_close_conn, mut pv,
-				fd)
+			handle_complete_request(params.file_responses[fd].should_close_conn, mut pv, fd)
 			return
 		}
 	}
@@ -289,8 +288,7 @@ $if !new_veb ? {
 			// done writing
 			params.string_responses[fd].done()
 			pv.close_conn(fd)
-			handle_complete_request(params.string_responses[fd].should_close_conn, mut
-				pv, fd)
+			handle_complete_request(params.string_responses[fd].should_close_conn, mut pv, fd)
 			return
 		}
 	}
@@ -501,8 +499,7 @@ $if !new_veb ? {
 					// See Context.send_file for why we use max_read instead of max_write.
 					if completed_context.res.body.len < max_read {
 						fast_send_resp(mut conn, completed_context.res) or {}
-						handle_complete_request(completed_context.client_wants_to_close, mut
-							pv, fd)
+						handle_complete_request(completed_context.client_wants_to_close, mut pv, fd)
 					} else {
 						params.string_responses[fd].open = true
 						params.string_responses[fd].str = completed_context.res.body
@@ -541,12 +538,12 @@ $if !new_veb ? {
 						}
 						// Termux file responses are sent inline because deferred write events can
 						// leave static responses stalled.
-						send_file_inline(mut conn, mut file, length.i64(), params.timeout_in_seconds) or {
+						send_file_inline(mut conn, mut file, length.i64(),
+							params.timeout_in_seconds) or {
 							pv.close_conn(fd)
 							return
 						}
-						handle_complete_request(completed_context.client_wants_to_close, mut
-							pv, fd)
+						handle_complete_request(completed_context.client_wants_to_close, mut pv, fd)
 					} $else {
 						params.file_responses[fd].total = length.i64()
 						params.file_responses[fd].file = os.open(completed_context.return_file) or {
@@ -634,9 +631,7 @@ $if !new_veb ? {
 		}
 		// match controller paths
 		$if A is ControllerInterface {
-			if completed_context := handle_controllers[X](params.controllers, ctx, mut
-				url, host)
-			{
+			if completed_context := handle_controllers[X](params.controllers, ctx, mut url, host) {
 				return completed_context
 			}
 		}

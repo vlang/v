@@ -70,17 +70,70 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 			if host_os == .macos && p.os == .linux {
 				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
 				if p.arch == ._auto {
-					p.arch = .amd64
-					p.build_options << '-arch amd64'
+					p.set_default_arch(.amd64)
 				}
 				p.parse_define('use_bundled_libgc')
 			}
 		}
 	}
-	if p.arch == ._auto {
-		p.arch = get_host_arch()
-		p.build_options << '-arch ${p.arch}'
+}
+
+fn (mut p Preferences) set_default_arch(arch Arch) {
+	if p.arch != ._auto || arch == ._auto {
+		return
 	}
+	p.arch = arch
+	p.build_options << '-arch ${arch}'
+}
+
+fn arch_from_ccompiler_name(ccompiler string) Arch {
+	name := os.file_name(ccompiler).to_lower_ascii()
+	if name.contains('x86_64') || name.contains('amd64') {
+		return .amd64
+	}
+	if name.contains('aarch64') || name.contains('arm64-v8a') || name.contains('arm64') {
+		return .arm64
+	}
+	if name.contains('armeabi-v7a') || name.contains('armv7')
+		|| name.contains('arm-linux-androideabi') || name.contains('arm32') {
+		return .arm32
+	}
+	if name.contains('riscv64') {
+		return .rv64
+	}
+	if name.contains('riscv32') {
+		return .rv32
+	}
+	if name.contains('i686') || name.contains('i386') || name.contains('x86') {
+		return .i386
+	}
+	if name.contains('s390x') {
+		return .s390x
+	}
+	if name.contains('ppc64le') {
+		return .ppc64le
+	}
+	if name.contains('loongarch64') {
+		return .loongarch64
+	}
+	if name.contains('sparc64') {
+		return .sparc64
+	}
+	if name.contains('ppc64') {
+		return .ppc64
+	}
+	return ._auto
+}
+
+fn (mut p Preferences) resolve_default_arch() {
+	if p.arch != ._auto {
+		return
+	}
+	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
+	if p.os != host_os {
+		p.set_default_arch(arch_from_ccompiler_name(p.ccompiler))
+	}
+	p.set_default_arch(get_host_arch())
 }
 
 pub fn (mut p Preferences) defines_map_unique_keys() string {
@@ -178,6 +231,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.default_cpp_compiler()
 	}
 	p.find_cc_if_cross_compiling()
+	p.resolve_default_arch()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.disable_tcc_shared_backtraces()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')

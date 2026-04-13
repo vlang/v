@@ -239,7 +239,8 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.println('; label ${start_label} (start of for loop)')
 
 	// Condition
-	mut cjmp_addr := g.condition(node.cond, false) // jmp if false, location of `jne *00 00 00 00*` (to be patched by LabelPatch)
+	mut cjmp_addr :=
+		g.condition(node.cond, false) // jmp if false, location of `jne *00 00 00 00*` (to be patched by LabelPatch)
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
 		id:  end_label
@@ -418,8 +419,9 @@ fn (mut g Gen) gen_flag_hash_stmt(node ast.HashStmt) {
 			return
 		}
 		// g.v_error('`-D` and `-I` flags are not supported with the native backend', node.pos)
-		println(util.formatted_error('warn', '`-D` and `-I` flags are not supported with the native backend',
-			g.current_file.path, node.pos))
+		println(util.formatted_error('warn',
+			'`-D` and `-I` flags are not supported with the native backend', g.current_file.path,
+			node.pos))
 	} else {
 		g.v_error('unknown `#flag` format: `${node.main}`', node.pos)
 	}

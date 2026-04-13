@@ -64,8 +64,10 @@ fn test_http_proxy_do() {
 		proxy := new_http_proxy(env_proxy)!
 		mut header := new_header(key: .user_agent, value: 'vlib')
 		header.add_custom('X-Vlang-Test', 'proxied')!
-		res := proxy.http_do(urllib.parse('http://httpbin.org/headers')!, Method.get,
-			'/headers', &Request{ proxy: proxy, header: header })!
+		res := proxy.http_do(urllib.parse('http://httpbin.org/headers')!, Method.get, '/headers', &Request{
+			proxy:  proxy
+			header: header
+		})!
 		println(res.status_code)
 		println('he4aders ${res.header}')
 		assert res.status_code == 200

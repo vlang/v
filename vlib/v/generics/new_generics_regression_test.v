@@ -30,11 +30,14 @@ fn testsuite_begin() {
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {
-	run_new_generic_solver_tests('vlib/math/vec', '${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec',
-		expected_summary_vec, expected_summsvc_vec, failing_math_vec_tests[..])
-	run_new_generic_solver_tests('vlib/flag', '${os.quoted_path(vexe)} -new-generic-solver test vlib/flag/',
-		expected_summary_flag, expected_summsvc_flag, failing_flag_tests[..])
-	run_new_generic_solver_tests('vlib/v/tests/generics/', '${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
+	run_new_generic_solver_tests('vlib/math/vec',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec', expected_summary_vec,
+		expected_summsvc_vec, failing_math_vec_tests[..])
+	run_new_generic_solver_tests('vlib/flag',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/flag/', expected_summary_flag,
+		expected_summsvc_flag, failing_flag_tests[..])
+	run_new_generic_solver_tests('vlib/v/tests/generics/',
+		'${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
 		expected_summary_generics, expected_summsvc_generics, failing_tests[..])
 }
 
@@ -96,7 +99,8 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		}
 	}
 	if found_clean_summary {
-		log.info('>>> Found an accepted clean summary: ${term.colorize(term.yellow, actual_clean_summary)}, OK')
+		log.info('>>> Found an accepted clean summary: ${term.colorize(term.yellow,
+			actual_clean_summary)}, OK')
 		println('')
 		return
 	}
@@ -106,24 +110,23 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		assert found_expected_failure, 'expected failing test ${known} , was not found.\nRun `v -new-generic-solver test ${root_label}` manually to verify, and then edit ${@FILE} to reflect the new state.'
 
 		if vtrace_output {
-			eprintln('>>>>> found_expected_failure ${idx + 1} `${term.colorize(term.green,
-				known)}`, OK')
+			eprintln('>>>>> found_expected_failure ${idx + 1} `${term.colorize(term.green, known)}`, OK')
 		}
 	}
 	log.info('>>> Found the expected summary: ${term.colorize(term.yellow, actual_expected_summary)}, OK')
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 104 failed, 171 passed, 275 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 106 failed, 174 passed, 280 total.'
 // The exact failure count varies slightly across compilers:
-// gcc/tcc: 102, clang: 103, msvc/windows-gcc: 104.
-const expected_summary_generics = 'Summary for all V _test.v files: 102 failed, 173 passed, 275 total.'
+// gcc/tcc: 104, clang: 105, msvc/windows-gcc: 106.
+const expected_summary_generics = 'Summary for all V _test.v files: 104 failed, 176 passed, 280 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
-const expected_summsvc_flag = 'Summary for all V _test.v files: 2 failed, 17 passed, 19 total.'
-const expected_summary_flag = 'Summary for all V _test.v files: 2 failed, 17 passed, 19 total.'
-const expected_summsvc_flag_clean = 'Summary for all V _test.v files: 19 passed, 19 total.'
-const expected_summary_flag_clean = 'Summary for all V _test.v files: 19 passed, 19 total.'
+const expected_summsvc_flag = 'Summary for all V _test.v files: 20 passed, 20 total.'
+const expected_summary_flag = 'Summary for all V _test.v files: 20 passed, 20 total.'
+const expected_summsvc_flag_clean = 'Summary for all V _test.v files: 20 passed, 20 total.'
+const expected_summary_flag_clean = 'Summary for all V _test.v files: 20 passed, 20 total.'
 const failing_tests = [
 	'vlib/v/tests/generics/checks_for_operator_overrides_should_happen_on_the_concrete_types_when_using_generics_test.v',
 	'vlib/v/tests/generics/default_type_with_ref_test.v',
@@ -148,7 +151,9 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_interface_nested_generic_type_infer_test.v',
 	'vlib/v/tests/generics/generic_interface_test.v',
 	'vlib/v/tests/generics/generic_map_alias_test.v',
+	'vlib/v/tests/generics/generic_match_generic_interface_type_test.v',
 	'vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v',
+	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',
 	'vlib/v/tests/generics/generic_receiver_embed_test.v',
 	'vlib/v/tests/generics/generic_recursive_fn_test.v',
@@ -179,6 +184,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_assign_reference_generic_struct_test.v',
 	'vlib/v/tests/generics/generics_call_with_reference_arg_test.v',
 	'vlib/v/tests/generics/generics_chans_select_test.v',
+	'vlib/v/tests/generics/generics_fn_field_multi_instance_test.v',
 	'vlib/v/tests/generics/generics_fn_return_generic_interface_test.v',
 	'vlib/v/tests/generics/generics_fn_return_result_test.v',
 	'vlib/v/tests/generics/generics_fn_variable_3_test.v',
@@ -234,7 +240,4 @@ const failing_math_vec_tests = [
 	'vlib/math/vec/vec4_test.v',
 ]!
 
-const failing_flag_tests = [
-	'vlib/flag/default_flag_options_test.v',
-	'vlib/flag/usage_example_test.v',
-]!
+const failing_flag_tests = []string{}

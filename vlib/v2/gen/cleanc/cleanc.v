@@ -581,8 +581,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.collect_runtime_const_targets()
 	g.register_builder_methods()
 	g.build_generic_spec_index()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'setup')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
 	// Pre-collect all global variable names so they can be module-qualified
 	for file in g.files {

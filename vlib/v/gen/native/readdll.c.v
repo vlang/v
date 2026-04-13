@@ -106,7 +106,8 @@ fn get_dllexports(mut file os.File) !map[string]bool {
 			}
 
 			sec_hdroffset = opt_hdroffset + u32(pe_opt_hdr_size)
-			read_pe_data_dir(mut file, opt_hdroffset + pe32_plus_opt_hdr_size, pe_export_data_dir_index)!
+			read_pe_data_dir(mut file, opt_hdroffset + pe32_plus_opt_hdr_size,
+				pe_export_data_dir_index)!
 		}
 		u16(PeMachine.i386) {
 			return error('32-bit (i386) dlls not supported yet')

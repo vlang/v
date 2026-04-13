@@ -188,8 +188,8 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		if func2.blocks.len > 0 {
 			entry := func2.blocks[0]
 			total_blocks_in_funcs += func2.blocks.len
-			bv, bs := rename_recursive(mut m, entry, mut ctx, promotable, mut stack_counts,
-				&dom, cfg)
+			bv, bs :=
+				rename_recursive(mut m, entry, mut ctx, promotable, mut stack_counts, &dom, cfg)
 			total_blocks_visited += bv
 			total_blocks_skipped += bs
 		}
@@ -612,6 +612,5 @@ fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotab
 }
 
 fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
-	return rename_iterative(mut m, blk_id, mut ctx, promotable, mut stack_counts, dom,
-		cfg)
+	return rename_iterative(mut m, blk_id, mut ctx, promotable, mut stack_counts, dom, cfg)
 }

@@ -250,8 +250,7 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 	c.read_len = 0
 
 	if send_pending(c_ptr) {
-		add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
-			c)
+		add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
 		return
 	}
 
@@ -332,8 +331,8 @@ pub fn (mut s Server) run() ! {
 		return error('kqueue creation failed')
 	}
 
-	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
-		unsafe { nil })
+	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ),
+		u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), unsafe { nil })
 
 	listen_fd := s.socket_fd
 	s.mark_running()

@@ -101,8 +101,9 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 					} else {
 						base_name
 					}
-					g.record_generic_struct_bindings_with_parent(struct_base, base_name,
-						[e.expr], parent_bindings)
+					g.record_generic_struct_bindings_with_parent(struct_base, base_name, [
+						e.expr,
+					], parent_bindings)
 				} else if !is_generic_placeholder_type_name(arg_name) {
 					struct_base := if base_name.contains('__') {
 						base_name.all_after_last('__')

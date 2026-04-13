@@ -690,8 +690,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		}
 	}
 
-	name_and_version := doc_add_name_and_version(app_name, app_version, dc.options, mut
-		docs)
+	name_and_version := doc_add_name_and_version(app_name, app_version, dc.options, mut docs)
 
 	// Resolve the description if visible
 	if dc.options.show.has(.description) {
@@ -875,8 +874,8 @@ fn keep_at_max(str string, max int) string {
 			// At this point we are refitting the doc string so user provided newlines can not be kept
 			// ... at least not without a tremendous increase in code complexity, that highly likely
 			// will not suit all use-cases anyway.
-			fitted += keep_at_max(s[last_possible_break..].replace('\n', ' ').trim(' '),
-				safe_max).trim(' ')
+			fitted +=
+				keep_at_max(s[last_possible_break..].replace('\n', ' ').trim(' '), safe_max).trim(' ')
 		} else if width > safe_max {
 			break
 		}
@@ -1071,8 +1070,8 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1098,8 +1097,8 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (V style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (V style) ${fm.dbg_match(flag_ctx, field, next,
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1135,8 +1134,8 @@ fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field Struc
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name || flag_name == field.short {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1195,8 +1194,8 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1255,8 +1254,8 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1282,8 +1281,8 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field,
+				next, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1378,8 +1377,8 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1409,8 +1408,8 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (GNU style) ${fm.dbg_match(flag_ctx,
-				field, arg, '')}')
+			trace_println('${@FN}: found match for (GNU style) ${fm.dbg_match(flag_ctx, field, arg,
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1475,8 +1474,8 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 					pos:        flag_ctx.pos
 				}
 				if field.hints.has(.is_bool) {
-					trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx,
-						field, 'true', '')}')
+					trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
+						'true', '')}')
 					fm.field_map_flag[mf.field_name] = mf
 					fm.handled_pos << flag_ctx.pos
 				} else {
@@ -1536,8 +1535,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1550,8 +1549,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		}
 
 		if field.short == flag_name {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1569,8 +1568,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		if field.hints.has(.can_repeat) {
 			mut do_continue := false
 			if count_of_first_letter_repeats == flag_name.len {
-				trace_println('${@FN}: found match for (repeatable) ${fm.dbg_match(flag_ctx,
-					field, 'true', '')}')
+				trace_println('${@FN}: found match for (repeatable) ${fm.dbg_match(flag_ctx, field,
+					'true', '')}')
 				fm.field_map_flag[field.name] = FlagData{
 					raw:        flag_raw
 					field_name: field.name
@@ -1681,8 +1680,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		return true
 	} else if flag_name == field.match_name && !(field.hints.has(.short_only)
 		&& flag_name == field.short) {
-		trace_println('${@FN}: found match for (repeats) ${fm.dbg_match(flag_ctx, field,
-			next, '')}')
+		trace_println('${@FN}: found match for (repeats) ${fm.dbg_match(flag_ctx, field, next, '')}')
 		if next == '' {
 			return error('flag "${flag_raw}" expects an argument')
 		}
@@ -1738,8 +1736,8 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx, field,
+				next, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name

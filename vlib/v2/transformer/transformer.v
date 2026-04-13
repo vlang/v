@@ -1284,8 +1284,7 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 					if !t.needs_runtime_const_init(field.value, is_native) {
 						continue
 					}
-					t.record_runtime_const_init(file.mod, field.name, field.value, mut
-						known)
+					t.record_runtime_const_init(file.mod, field.name, field.value, mut known)
 				}
 			}
 		}
@@ -1305,8 +1304,7 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 						if !t.expr_depends_on_runtime_const(field.value, file.mod, known) {
 							continue
 						}
-						t.record_runtime_const_init(file.mod, field.name, field.value, mut
-							known)
+						t.record_runtime_const_init(file.mod, field.name, field.value, mut known)
 						changed = true
 					}
 				}
@@ -2308,7 +2306,9 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 				return path
 			}
 			for i, inner in expr.exprs {
-				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inner, target_id,
+					'${prefix}/expr[${i}]')
+				{
 					return path
 				}
 			}
@@ -2334,7 +2334,9 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 				return path
 			}
 			for i, field in expr.fields {
-				if path := find_target_or_expr_path_in_expr(field.value, target_id, '${prefix}/field[${i}]') {
+				if path := find_target_or_expr_path_in_expr(field.value, target_id,
+					'${prefix}/field[${i}]')
+				{
 					return path
 				}
 			}
@@ -2415,14 +2417,18 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 				return path
 			}
 			for i, field in expr.fields {
-				if path := find_target_or_expr_path_in_expr(field.value, target_id, '${prefix}/field[${i}]') {
+				if path := find_target_or_expr_path_in_expr(field.value, target_id,
+					'${prefix}/field[${i}]')
+				{
 					return path
 				}
 			}
 		}
 		ast.KeywordOperator {
 			for i, inner in expr.exprs {
-				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inner, target_id,
+					'${prefix}/expr[${i}]')
+				{
 					return path
 				}
 			}
@@ -2432,12 +2438,16 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 		}
 		ast.LockExpr {
 			for i, inner in expr.lock_exprs {
-				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/lock[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inner, target_id,
+					'${prefix}/lock[${i}]')
+				{
 					return path
 				}
 			}
 			for i, inner in expr.rlock_exprs {
-				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/rlock[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inner, target_id,
+					'${prefix}/rlock[${i}]')
+				{
 					return path
 				}
 			}
@@ -2499,14 +2509,18 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 		}
 		ast.StringInterLiteral {
 			for i, inter in expr.inters {
-				if path := find_target_or_expr_path_in_expr(inter.expr, target_id, '${prefix}/expr[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inter.expr, target_id,
+					'${prefix}/expr[${i}]')
+				{
 					return path
 				}
 			}
 		}
 		ast.Tuple {
 			for i, inner in expr.exprs {
-				if path := find_target_or_expr_path_in_expr(inner, target_id, '${prefix}/expr[${i}]') {
+				if path := find_target_or_expr_path_in_expr(inner, target_id,
+					'${prefix}/expr[${i}]')
+				{
 					return path
 				}
 			}
@@ -3430,8 +3444,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		// checker records them as `string` instead of `!string`.
 		idx_expr := call_expr as ast.IndexExpr
 		mut stmts := []ast.Stmt{}
-		result_expr := t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut
-			stmts)
+		result_expr := t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut stmts)
 		stmts << ast.AssignStmt{
 			op:  stmt.op
 			lhs: stmt.lhs
@@ -6181,7 +6194,9 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 			}
 			// If wrapping failed but we have a smartcast context, use the variant from it
 			if smartcast_variant != '' {
-				if wrapped := t.build_sumtype_init(transformed, smartcast_variant, t.cur_fn_ret_type_name) {
+				if wrapped := t.build_sumtype_init(transformed, smartcast_variant,
+					t.cur_fn_ret_type_name)
+				{
 					exprs << wrapped
 					continue
 				}
@@ -8871,8 +8886,9 @@ fn (mut t Transformer) generate_struct_clone_fn(fn_name string, struct_name stri
 			value: t.clone_value_expr(field_selector, field.typ)
 		}
 	}
-	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name),
-		[param_s])
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name), [
+		param_s,
+	])
 	return ast.Stmt(ast.FnDecl{
 		name:  fn_name
 		typ:   ast.FnType{
@@ -9123,8 +9139,7 @@ fn (mut t Transformer) generate_array_method_functions() []ast.Stmt {
 	mut index_names := t.needed_array_index_fns.keys()
 	index_names.sort()
 	for fn_name in index_names {
-		result << t.generate_array_method_fn(fn_name, t.needed_array_index_fns[fn_name],
-			.index)
+		result << t.generate_array_method_fn(fn_name, t.needed_array_index_fns[fn_name], .index)
 	}
 	mut last_index_names := t.needed_array_last_index_fns.keys()
 	last_index_names.sort()
@@ -9919,7 +9934,8 @@ fn (mut t Transformer) generate_map_str_fn(fn_name string, elem_type string) ast
 		name: 'DenseArray'
 	}))
 	// key_values.len selector: m.key_values.len
-	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len', types.Type(types.int_))
+	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len',
+		types.Type(types.int_))
 	kv_ref := ast.Expr(ast.PrefixExpr{
 		op:   .amp
 		expr: key_values_expr
@@ -10332,11 +10348,9 @@ fn (mut t Transformer) expand_assert_stmt(stmt ast.AssertStmt) []ast.Stmt {
 	if stmt.expr is ast.InfixExpr && stmt.expr.op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		if assert_expr_is_simple(stmt.expr.lhs) && assert_expr_is_simple(stmt.expr.rhs) {
 			// eprintln("    Left value: `${lhs}`")
-			body_stmts << t.make_eprintln_inter('    Left value: `', stmt.expr.lhs, '`',
-				pos)
+			body_stmts << t.make_eprintln_inter('    Left value: `', stmt.expr.lhs, '`', pos)
 			// eprintln("   Right value: `${rhs}`")
-			body_stmts << t.make_eprintln_inter('   Right value: `', stmt.expr.rhs, '`',
-				pos)
+			body_stmts << t.make_eprintln_inter('   Right value: `', stmt.expr.rhs, '`', pos)
 		}
 	}
 

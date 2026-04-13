@@ -165,8 +165,7 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 		]
 		return_type: return_type
 	}
-	expected_fn_type := ast.new_type(c.table.find_or_register_fn_type(expected_fn, true,
-		false))
+	expected_fn_type := ast.new_type(c.table.find_or_register_fn_type(expected_fn, true, false))
 	c.lambda_expr(mut expr, expected_fn_type)
 }
 

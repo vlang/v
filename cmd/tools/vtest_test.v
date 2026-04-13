@@ -56,7 +56,8 @@ fn test_with_several_test_files() {
 
 fn test_with_stats_and_several_test_files() {
 	// There should be more OKs here, since the output will have the inner OKs for each individual test fn:
-	res := os.execute_or_exit('${os.quoted_path(mytest_exe)} -stats test ${os.quoted_path(tpath_passing)}')
+	res :=
+		os.execute_or_exit('${os.quoted_path(mytest_exe)} -stats test ${os.quoted_path(tpath_passing)}')
 	assert res.output.contains('1 assert'), res.output
 	assert res.output.contains('3 asserts'), res.output
 	assert res.output.contains('2 passed, 2 total'), res.output

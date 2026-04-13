@@ -326,8 +326,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 									t_concrete_types << g.cur_concrete_types[index]
 								}
 							} else {
-								if tt := g.table.convert_generic_type(t_typ, g.cur_fn.generic_names,
-									g.cur_concrete_types)
+								if tt := g.table.convert_generic_type(t_typ,
+									g.cur_fn.generic_names, g.cur_concrete_types)
 								{
 									t_concrete_types << tt
 								}
@@ -375,8 +375,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						// workaround for tcc bug, is_auto_deref_var := ... issue #24331
 						is_auto_deref_var := node.update_expr.is_auto_deref_var()
 						g.fixed_array_update_expr_field(g.expr_string(node.update_expr),
-							node.update_expr_type, field.name, is_auto_deref_var, update_expr_sym.info.elem_type,
-							update_expr_sym.info.size, node.is_update_embed)
+							node.update_expr_type, field.name, is_auto_deref_var,
+							update_expr_sym.info.elem_type, update_expr_sym.info.size,
+							node.is_update_embed)
 					} else {
 						g.write('(')
 						g.expr(node.update_expr)
@@ -607,8 +608,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 					} else {
 						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var,
-							true)
+						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var, true)
 					}
 				} else {
 					g.struct_init(default_init)
@@ -641,18 +641,19 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return true
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
-			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var, true)
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ, tmp_var,
+				true)
 			return true
 		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
-			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var, true)
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ, tmp_var,
+				true)
 			return true
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			old_inside_memset := g.inside_memset
 			g.inside_memset = true
 			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ,
+
 				field.default_expr !is ast.CallExpr && field.default_expr !is ast.CastExpr)
 			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
 			g.inside_memset = old_inside_memset
@@ -840,7 +841,8 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 				if field_sym.info.is_anon {
 					field_is_anon = true
 					// Recursively generate code for this anon struct (this is the field's type)
-					g.struct_decl(field_sym.info, field_sym.cname, true, field.typ.has_flag(.option))
+					g.struct_decl(field_sym.info, field_sym.cname, true,
+						field.typ.has_flag(.option))
 					// Now the field's name
 					g.type_definitions.writeln(' ${field_name}${size_suffix};')
 				}
@@ -966,8 +968,7 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
 				ast.CastExpr, ast.CallExpr {
-					tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type,
-						false)
+					tmp_var := g.expr_with_var(ast.Expr(sfield.expr), sfield.expected_type, false)
 					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 						field_unwrap_sym.info.size)
 				}
@@ -1012,8 +1013,7 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.expr_opt_with_cast(ast.Expr(sfield.expr), field_unwrap_typ, sfield.expected_type)
 	} else if field_unwrap_sym.kind == .function && sfield.expected_type.has_flag(.option) {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var,
-			true)
+		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var, true)
 	} else {
 		g.left_is_opt = true
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)

@@ -262,8 +262,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
-				node.right_types << c.check_expr_option_or_result_call(node.right[i],
-					right_type)
+				node.right_types << c.check_expr_option_or_result_call(node.right[i], right_type)
 			}
 		} else if c.inside_recheck && i < node.right.len {
 			// Generic rechecks reuse the same AST nodes, so cached rhs types for
@@ -273,8 +272,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if needs_rhs_recheck {
 				mut expr := mut node.right[i]
 				right_type := c.expr(mut expr)
-				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
-					right_type)
+				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i], right_type)
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
@@ -400,8 +398,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				} else if left.kind == .blank_ident {
 					if !is_decl && mut right is ast.None {
-						c.error('cannot assign a `none` value to blank `_` identifier',
-							right.pos)
+						c.error('cannot assign a `none` value to blank `_` identifier', right.pos)
 					}
 					left_type = right_type
 					node.left_types[i] = right_type
@@ -537,8 +534,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 					}
 				} else if left.op == .amp {
-					c.error('cannot use a reference on the left side of `${node.op}`',
-						left.pos)
+					c.error('cannot use a reference on the left side of `${node.op}`', left.pos)
 				} else {
 					c.error('cannot use `${left.op}` on the left of `${node.op}`', left.pos)
 				}
@@ -750,8 +746,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if right_sym.kind == .map {
 					c.error('maps cannot be static', left.pos)
 				} else if !right.is_constant() {
-					c.error('cannot initialized static variable with non-constant value',
-						left.pos)
+					c.error('cannot initialized static variable with non-constant value', left.pos)
 				}
 			}
 		}
@@ -920,8 +915,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
 								node.pos)
 						} else {
-							c.error('mismatched types `${left_name}` and `${right_name}`',
-								node.pos)
+							c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
 						}
 					}
 				}
@@ -975,8 +969,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if left_type_unwrapped.is_ptr() && right_type_unwrapped.is_int()
 					&& node.op in [.plus_assign, .minus_assign] {
 					if !c.inside_unsafe {
-						c.warn('pointer arithmetic is only allowed in `unsafe` blocks',
-							node.pos)
+						c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 					}
 				} else {
 					if c.comptime.comptime_for_field_var != '' && left is ast.ComptimeSelector {
@@ -999,11 +992,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 								if left_sym.kind == .array_fixed && right_sym.kind == .array
 									&& right is ast.ArrayInit {
 									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
-									c.error('cannot assign to `${left}`: ${err.msg()}',
-										right.pos())
+									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
 								} else {
-									c.error('cannot assign to `${left}`: ${err.msg()}',
-										right.pos())
+									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
 								}
 							}
 						}

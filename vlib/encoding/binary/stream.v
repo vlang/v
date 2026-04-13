@@ -105,6 +105,16 @@ fn size_value[T](data T) int {
 		return 4
 	} $else $if T is u64 || T is i64 || T is f64 {
 		return 8
+	} $else $if T is $array_fixed {
+		mut total := 0
+		for i in 0 .. data.len {
+			value_size := size_value(data[i])
+			if value_size < 0 {
+				return -1
+			}
+			total += value_size
+		}
+		return total
 	} $else $if T is $array {
 		mut total := 0
 		for value in data {
@@ -186,6 +196,10 @@ fn read_value[T](mut reader io.Reader, order ByteOrder, mut data T) ! {
 				u: order.u64(buf)
 			}.f
 		}
+	} $else $if T is $array_fixed {
+		for i in 0 .. data.len {
+			read_value(mut reader, order, mut data[i])!
+		}
 	} $else $if T is $array {
 		$if T is []u8 {
 			read_full(mut reader, mut data)!
@@ -255,6 +269,10 @@ fn write_value[T](mut writer io.Writer, order ByteOrder, data T) ! {
 		}
 		order.put_u64(mut buf, bits)
 		write_full(mut writer, buf)!
+	} $else $if T is $array_fixed {
+		for i in 0 .. data.len {
+			write_value(mut writer, order, data[i])!
+		}
 	} $else $if T is $array {
 		$if T is []u8 {
 			write_full(mut writer, data)!

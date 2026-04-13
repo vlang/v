@@ -180,8 +180,7 @@ fn ssl_error(ret int, ssl voidptr) !SSLError {
 			return error_with_code('net.openssl unrecoverable syscall (${res})', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})',
-				res)
+			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})', res)
 		}
 		else {
 			return unsafe { SSLError(res) }

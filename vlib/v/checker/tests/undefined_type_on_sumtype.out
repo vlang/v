@@ -9,5 +9,5 @@ vlib/v/checker/tests/undefined_type_on_sumtype.vv:1:17: error: unknown type `Tok
 Did you mean `Ok[[]Token]`?
     1 | type ParseRes = Result[[]Token, ParseErr]
       |                 ~~~~~~~~~~~~~~~~~~~~~~~~~
-    2 |
+    2 | 
     3 | // Token type is unknown

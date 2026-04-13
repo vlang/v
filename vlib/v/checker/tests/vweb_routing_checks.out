@@ -13,3 +13,73 @@ vlib/v/checker/tests/vweb_routing_checks.vv:26:1: warning: mismatched parameters
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    27 |     return app.html('works')
    28 | }
+vlib/vweb/vweb.v:801:11: error: field `App.req` is not public
+  799 | 
+  800 |             // Skip if the HTTP request method does not match the attributes
+  801 |             if app.req.method in route.methods {
+      |                    ~~~
+  802 |                 // Used for route matching
+  803 |                 route_words := route.path_words // route.path.split('/').filter(it != '')
+vlib/vweb/vweb.v:822:14: error: field `App.req` is not public
+  820 |                         }
+  821 | 
+  822 |                         if app.req.method == .post && method.args.len > 0 {
+      |                                ~~~
+  823 |                             // Populate method args with form values
+  824 |                             mut args := []string{cap: method.args.len}
+vlib/vweb/vweb.v:826:21: error: field `App.form` is not public
+  824 |                             mut args := []string{cap: method.args.len}
+  825 |                             for param in method.args {
+  826 |                                 args << app.form[param.name]
+      |                                             ~~~~
+  827 |                             }
+  828 |
+vlib/vweb/vweb.v:981:21: error: field `App.static_files` is not public
+  979 | fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
+  980 |     // TODO: handle url parameters properly - for now, ignore them
+  981 |     static_file := app.static_files[url.path] or { return false }
+      |                        ~~~~~~~~~~~~
+  982 |     mime_type := app.static_mime_types[url.path] or { return false }
+  983 |     static_host := app.static_hosts[url.path] or { '' }
+vlib/vweb/vweb.v:982:19: error: field `App.static_mime_types` is not public
+  980 |     // TODO: handle url parameters properly - for now, ignore them
+  981 |     static_file := app.static_files[url.path] or { return false }
+  982 |     mime_type := app.static_mime_types[url.path] or { return false }
+      |                      ~~~~~~~~~~~~~~~~~
+  983 |     static_host := app.static_hosts[url.path] or { '' }
+  984 |     if static_file == '' || mime_type == '' {
+vlib/vweb/vweb.v:983:21: error: field `App.static_hosts` is not public
+  981 |     static_file := app.static_files[url.path] or { return false }
+  982 |     mime_type := app.static_mime_types[url.path] or { return false }
+  983 |     static_host := app.static_hosts[url.path] or { '' }
+      |                        ~~~~~~~~~~~~
+  984 |     if static_file == '' || mime_type == '' {
+  985 |         return false
+vlib/vweb/vweb.v:991:23: error: field `App.conn` is not public
+  989 |     }
+  990 |     data := os.read_file(static_file) or {
+  991 |         send_string(mut app.conn, http_404.bytestr()) or {}
+      |                             ~~~~
+  992 |         return true
+  993 |     }
+vlib/vweb/vweb.v:666:48: error: field `App.static_files` is not public
+  664 | 
+  665 |     // copy static files
+  666 |     request_app.Context.static_files = global_app.static_files.clone()
+      |                                                   ~~~~~~~~~~~~
+  667 |     request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+  668 |     request_app.Context.static_hosts = global_app.static_hosts.clone()
+vlib/vweb/vweb.v:667:53: error: field `App.static_mime_types` is not public
+  665 |     // copy static files
+  666 |     request_app.Context.static_files = global_app.static_files.clone()
+  667 |     request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+      |                                                        ~~~~~~~~~~~~~~~~~
+  668 |     request_app.Context.static_hosts = global_app.static_hosts.clone()
+  669 |
+vlib/vweb/vweb.v:668:48: error: field `App.static_hosts` is not public
+  666 |     request_app.Context.static_files = global_app.static_files.clone()
+  667 |     request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+  668 |     request_app.Context.static_hosts = global_app.static_hosts.clone()
+      |                                                   ~~~~~~~~~~~~
+  669 | 
+  670 |     return request_app

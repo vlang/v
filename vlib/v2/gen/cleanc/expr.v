@@ -2555,8 +2555,8 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 		// Fallback: try to infer variant from expression structure
 		inferred := g.infer_sum_variant_from_expr(type_name, variants, expr)
 		if inferred.tag >= 0 {
-			g.gen_sum_type_wrap(type_name, inferred.field_name, inferred.tag, inferred.is_primitive,
-				expr, inferred.inner_type)
+			g.gen_sum_type_wrap(type_name, inferred.field_name, inferred.tag,
+				inferred.is_primitive, expr, inferred.inner_type)
 			return
 		}
 	}

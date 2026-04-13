@@ -9,8 +9,7 @@ fn test_hash_compiles() {
 	assert hash.sum64_string('abc', 2).hex_full() == '41981296238e0d1d'
 	assert hash.sum64_string('message digest', 3).hex_full() == '41bba71e1ae831d7'
 	assert hash.sum64_string('abcdefghijklmnopqrstuvwxyz', 4).hex_full() == '065f27868866278a'
-	assert hash.sum64_string('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-		5).hex_full() == 'b9121e0f1a9bdd97'
+	assert hash.sum64_string('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 5).hex_full() == 'b9121e0f1a9bdd97'
 	assert hash.sum64_string('12345678901234567890123456789012345678901234567890123456789012345678901234567890',
 		6).hex_full() == 'a54abb9fbc9e4e82'
 	assert hash.sum64([]u8{len: 1}, 0).hex_full() == '34e55bcc2fdda5ac'

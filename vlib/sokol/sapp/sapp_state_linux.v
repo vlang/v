@@ -346,7 +346,9 @@ fn sapp_init_state(desc &Desc) {
 	g_sapp_state.clipboard.enabled = g_sapp_state.desc.enable_clipboard
 	if g_sapp_state.clipboard.enabled {
 		g_sapp_state.clipboard.buf_size = g_sapp_state.desc.clipboard_size
-		g_sapp_state.clipboard.buffer = unsafe { &char(C.calloc(1, usize(g_sapp_state.clipboard.buf_size))) }
+		g_sapp_state.clipboard.buffer = unsafe {
+			&char(C.calloc(1, usize(g_sapp_state.clipboard.buf_size)))
+		}
 	}
 	g_sapp_state.drop.enabled = g_sapp_state.desc.enable_dragndrop
 	if g_sapp_state.drop.enabled {

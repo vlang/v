@@ -53,7 +53,8 @@ fn test_hours_k_and_kk() {
 
 fn test_zero_date() {
 	zero_date := time.Time{}
-	res := zero_date.custom_format('M MM Mo MMM MMMM |1| D DD DDD DDDD |2| d dd ddd dddd |3| YY YYYY a A |4| H HH h hh k kk i ii e |5| m mm s ss |6| Do DDDo Q Qo QQ |7| N NN |8| M/D/YYYY N-HH:mm:ss Qo?a')
+	res :=
+		zero_date.custom_format('M MM Mo MMM MMMM |1| D DD DDD DDDD |2| d dd ddd dddd |3| YY YYYY a A |4| H HH h hh k kk i ii e |5| m mm s ss |6| Do DDDo Q Qo QQ |7| N NN |8| M/D/YYYY N-HH:mm:ss Qo?a')
 	assert res == '0 00 0th Jan January |1| 0 00 0 000 |2| -1 Mo Mon Monday |3|  0 am AM |4| 0 00 12 12 24 24 0 00 e |5| 0 00 0 00 |6| 0th 0th 1 1st 01 |7| AD Anno Domini |8| 0/0/0 AD-00:00:00 1st?am'
 }
 

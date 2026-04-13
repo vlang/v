@@ -123,13 +123,15 @@ fn main() {
 		_ := chacha20poly1305.psiv_decrypt(out1, key, nonce, ad)!
 
 		// Benchmark Standard AEAD_CHACHA20_POLY1305 encryption
-		std_encrypt_time := benchmark_aead_std_encrypt(test_msg, key, nonce, ad, benchmark_iterations)
+		std_encrypt_time := benchmark_aead_std_encrypt(test_msg, key, nonce, ad,
+			benchmark_iterations)
 
 		// Benchmark Standard AEAD_CHACHA20_POLY1305 decryption
 		std_decrypt_time := benchmark_aead_std_decrypt(out0, key, nonce, ad, benchmark_iterations)
 
 		// Benchmark AEAD_CHACHA20_POLY1305 PSIV encryption
-		psiv_encrypt_time := benchmark_aead_psiv_encrypt(test_msg, key, nonce, ad, benchmark_iterations)
+		psiv_encrypt_time := benchmark_aead_psiv_encrypt(test_msg, key, nonce, ad,
+			benchmark_iterations)
 
 		// Benchmark AEAD_CHACHA20_POLY1305 PSIV decryption
 		psiv_decrypt_time := benchmark_aead_psiv_decrypt(out1, key, nonce, ad, benchmark_iterations)

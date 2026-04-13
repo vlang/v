@@ -1,4 +1,5 @@
 import common { Task, exec }
+import os
 
 fn test_symlink() {
 	exec('v symlink')
@@ -17,7 +18,8 @@ fn all_code_is_formatted() {
 	if common.is_github_job {
 		exec('VJOBS=1 v -silent test-cleancode')
 	} else {
-		exec('v -progress test-cleancode')
+		vjobs := os.getenv_opt('VJOBS') or { '1' }
+		exec('VJOBS=${vjobs} v -progress test-cleancode')
 	}
 }
 
@@ -38,7 +40,11 @@ fn verify_v_test_works() {
 }
 
 fn install_iconv() {
-	exec('brew install libiconv')
+	// Skip Homebrew when iconv is already linkable for V on this machine.
+	if os.system('v -silent test vlib/encoding/iconv/') == 0 {
+		return
+	}
+	exec('brew list --versions libiconv >/dev/null 2>&1 || brew install libiconv')
 }
 
 fn test_pure_v_math_module() {
@@ -49,7 +55,8 @@ fn self_tests() {
 	if common.is_github_job {
 		exec('VJOBS=1 v -silent test-self vlib')
 	} else {
-		exec('v -progress test-self vlib')
+		vjobs := os.getenv_opt('VJOBS') or { '1' }
+		exec('VJOBS=${vjobs} v -progress test-self vlib')
 	}
 }
 

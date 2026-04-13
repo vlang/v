@@ -5,8 +5,6 @@ import veb
 // import vweb.assets
 import time
 
-const port = 8081
-
 pub struct Context {
 	veb.Context
 }

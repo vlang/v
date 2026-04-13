@@ -65,13 +65,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.infix_expr_left_shift_op(node)
 		}
 		.right_shift {
-			g.write('(')
-			if g.pref.translated || g.file.is_translated {
-				g.gen_plain_infix_expr(node)
-			} else {
-				g.gen_safe_shift_expr(node)
-			}
-			g.write(')')
+			g.gen_safe_shift_expr(node)
 		}
 		.and, .logical_or {
 			g.infix_expr_and_or_op(node)
@@ -146,7 +140,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				&& left_sym.kind !in [.sum_type, .interface]
 			is_option_introduction := resolved_left.has_flag(.option)
 				&& !left_type.has_flag(.option)
-			if !is_sumtype_override && !is_option_introduction {
+			// Don't strip option flag when comparing with none — the scope
+			// may have an unwrapped smartcast from a fallthrough guard, but
+			// the none check itself needs the option type.
+			is_option_removal_for_none := left_type.has_flag(.option)
+				&& !resolved_left.has_flag(.option) && node.right is ast.None
+			if !is_sumtype_override && !is_option_introduction && !is_option_removal_for_none {
 				left_type = resolved_left
 			}
 		}
@@ -171,7 +170,6 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
 	mut eq_operator_expects_ptr := false
-	mut eq_method := ast.Fn{}
 	if m := g.table.find_method(left.sym, '==') {
 		// For != on generic struct types, check if the == operator was defined on
 		// a generic parent (receiver type has generic flag or is a different type).
@@ -184,7 +182,6 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if !skip_for_generic_ne {
 			has_defined_eq_operator = true
 			eq_operator_expects_ptr = m.receiver_type.is_ptr()
-			eq_method = m
 		}
 	}
 	// TODO: investigate why the following is needed for vlib/v/tests/string_alias_test.v and vlib/v/tests/anon_fn_with_alias_args_test.v
@@ -243,24 +240,33 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.op == .ne {
 			g.write('!')
 		}
-		mut method_name := if has_alias_eq_op_overload {
-			g.styp(left.typ.set_nr_muls(0))
+		if left.sym.kind == .struct && (left.sym.info as ast.Struct).generic_types.len > 0 {
+			concrete_types := (left.sym.info as ast.Struct).concrete_types
+			mut method_name := '${left.sym.cname}__eq'
+			if left.unaliased_sym.is_builtin() {
+				method_name = 'builtin__${method_name}'
+			}
+			method_name = g.generic_fn_name(concrete_types, method_name)
+			g.write(method_name)
 		} else {
-			g.styp(left.unaliased.set_nr_muls(0))
+			mut method_name := if has_alias_eq_op_overload {
+				g.styp(left.typ.set_nr_muls(0))
+			} else {
+				g.styp(left.unaliased.set_nr_muls(0))
+			}
+			mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
+			if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
+				&& left.sym.info is ast.Alias {
+				alias_info := left.sym.info as ast.Alias
+				parent_sym := g.table.sym(alias_info.parent_type)
+				is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
+			}
+			if is_builtin_or_alias_to_builtin {
+				method_name = 'builtin__${method_name}'
+			}
+			g.write(method_name)
+			g.write('__eq')
 		}
-		mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
-		if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
-			&& left.sym.info is ast.Alias {
-			alias_info := left.sym.info as ast.Alias
-			parent_sym := g.table.sym(alias_info.parent_type)
-			is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
-		}
-		if is_builtin_or_alias_to_builtin {
-			method_name = 'builtin__${method_name}'
-		}
-		mut eq_fn_name := '${method_name}__eq'
-		eq_fn_name = g.specialized_method_name_from_receiver(eq_method, left.typ, eq_fn_name)
-		g.write(eq_fn_name)
 		g.write('(')
 		g.write('*'.repeat(left.typ.nr_muls()))
 		if eq_operator_expects_ptr {
@@ -974,7 +980,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 					if left is ast.Ident && left.or_expr.kind == .absent
 						&& array_expr is ast.StringLiteral {
 						var := g.expr_string(left)
-						slit := cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
+						slit :=
+							cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
 						mut needs_deref := false
 						if left.info is ast.IdentVar && left.obj is ast.Var {
 							if g.table.sym(left.obj.typ).kind in [.interface, .sum_type] {
@@ -1367,7 +1374,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		mut elem_type := g.unwrap_generic(g.recheck_concrete_type(array_info.elem_type))
 		if elem_type == 0 || elem_type.has_flag(.generic)
 			|| g.type_has_unresolved_generic_parts(elem_type) {
-			resolved_elem_type := g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(resolved_left.typ)))
+			resolved_elem_type :=
+				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(resolved_left.typ)))
 			if resolved_elem_type != 0 {
 				elem_type = g.unwrap_generic(resolved_elem_type)
 			}
@@ -1473,14 +1481,16 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 			expected_push_many_sym := g.table.final_sym(g.unwrap_generic(expected_push_many_atype))
 			if expected_push_many_sym.kind == .array {
-				mut push_many_elem_type := g.unwrap_generic(g.recheck_concrete_type(expected_push_many_sym.array_info().elem_type))
+				mut push_many_elem_type :=
+					g.unwrap_generic(g.recheck_concrete_type(expected_push_many_sym.array_info().elem_type))
 				if push_many_elem_type == ast.int_literal_type {
 					push_many_elem_type = ast.int_type
 				} else if push_many_elem_type == ast.float_literal_type {
 					push_many_elem_type = ast.f64_type
 				}
 				if push_many_elem_type != expected_push_many_sym.array_info().elem_type {
-					expected_push_many_atype = ast.idx_to_type(g.table.find_or_register_array(push_many_elem_type))
+					expected_push_many_atype =
+						ast.idx_to_type(g.table.find_or_register_array(push_many_elem_type))
 				}
 			}
 			old_inside_left_shift := g.inside_left_shift
@@ -1573,13 +1583,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 		}
 	} else {
-		g.write('(')
-		if g.pref.translated || g.file.is_translated {
-			g.gen_plain_infix_expr(node)
-		} else {
-			g.gen_safe_shift_expr(node)
-		}
-		g.write(')')
+		g.gen_safe_shift_expr(node)
 	}
 }
 
@@ -1674,12 +1678,41 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar] {
-		old_inside_opt_or_res := g.inside_opt_or_res
-		g.inside_opt_or_res = true
-		g.write('(')
-		g.expr(node.left)
-		g.write(')')
-		g.inside_opt_or_res = old_inside_opt_or_res
+		// When a sumtype variable has been comptime-smartcast to an option variant
+		// (e.g. `$if t is ?string { if t == none { ... } }`), we need to access the
+		// sumtype's variant field directly rather than using .data on the sumtype.
+		if node.left is ast.Ident && node.left.obj is ast.Var
+			&& node.left.obj.ct_type_var == .smartcast {
+			obj_sym := g.table.sym(g.unwrap_generic(node.left.obj.typ))
+			if obj_sym.kind == .sum_type {
+				ctyp := g.unwrap_generic(g.type_resolver.get_type(node.left))
+				cur_variant_sym := g.table.sym(ctyp)
+				variant_name := g.get_sumtype_variant_name(ctyp, cur_variant_sym)
+				dot := if node.left.obj.orig_type.is_ptr() { '->' } else { '.' }
+				// Sumtype stores option variants as pointers, so use -> to access state
+				g.write('${node.left.name}${dot}_${variant_name}->state')
+				g.write(' ${node.op.str()} 2') // none state
+				return
+			}
+		}
+		// For Ident nodes that have been unwrapped by a smartcast (e.g. from a
+		// none-guard fallthrough), write the variable name directly to avoid
+		// g.expr() generating the unwrapped data access instead of the option wrapper.
+		if node.left is ast.Ident && node.left.obj is ast.Var && node.left.obj.is_unwrapped {
+			name := c_name(node.left.name)
+			if node.left.is_auto_heap() {
+				g.write('(*${name})')
+			} else {
+				g.write(name)
+			}
+		} else {
+			old_inside_opt_or_res := g.inside_opt_or_res
+			g.inside_opt_or_res = true
+			g.write('(')
+			g.expr(node.left)
+			g.write(')')
+			g.inside_opt_or_res = old_inside_opt_or_res
+		}
 		dot_or_ptr := if !node.left_type.has_flag(.option_mut_param_t) { '.' } else { '->' }
 		g.write('${dot_or_ptr}state')
 	} else {

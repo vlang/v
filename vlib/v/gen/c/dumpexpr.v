@@ -19,8 +19,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			resolved_call_type := g.resolve_return_type(node.expr)
 			if resolved_call_type != ast.void_type {
 				expr_type = g.unwrap_generic(resolved_call_type)
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
 	}
@@ -29,13 +28,12 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			resolved_postfix_type := g.resolve_return_type(node.expr.expr)
 			if resolved_postfix_type != ast.void_type {
 				expr_type = g.unwrap_generic(resolved_postfix_type)
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
 	}
-	resolved_expr_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
-		expr_type))
+	resolved_expr_type :=
+		g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr, expr_type))
 	if resolved_expr_type != 0 && resolved_expr_type != expr_type {
 		expr_type = resolved_expr_type
 		name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
@@ -89,12 +87,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 						}
 					}
 				}
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		} else if node.expr is ast.CallExpr {
-			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-				'')
+			name =
+				g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 		} else {
 			expr_type = g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 				expr_type))
@@ -151,8 +148,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
 			break
 		}
-		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-			'')
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 		&& (node.expr.expr as ast.Ident).ct_expr {
 		ct_expr_type := g.comptime_selector_type(node.expr)
@@ -166,8 +162,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if ct_sym.kind !in [.sum_type, .interface] || node_sym.kind in [.sum_type, .interface]
 			|| expr_type.has_option_or_result() {
 			expr_type = ct_expr_type
-			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-				'')
+			name =
+				g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 		}
 	}
 
@@ -192,8 +188,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				} else {
 					current_fn_ident_type
 				}
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
 		if expr_type.is_ptr() && expr_type.has_flag(.option) {
@@ -202,7 +197,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 					expr_type = scope_var.typ
 					// For mut option params, the type is ?&T. Strip the inner pointer
 					// from the name since __ptr is appended separately from is_ptr().
-					mut cleared_typ := expr_type.clear_flags(.shared_f, .result, .option_mut_param_t)
+					mut cleared_typ := expr_type.clear_flags(.shared_f, .result,
+						.option_mut_param_t)
 					if cleared_typ.has_flag(.option) {
 						inner := cleared_typ.clear_option_and_result()
 						if inner.is_ptr() {
@@ -242,9 +238,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if expr_type.has_flag(.option_mut_param_t) {
 			g.write('*')
 		}
-		if node.expr is ast.Ident && node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
-			&& !expr_type.is_ptr() {
-			g.write('*')
+		if node.expr is ast.Ident && node.expr.obj is ast.Var {
+			if node.expr.obj.is_auto_deref && !expr_type.is_ptr() {
+				g.write('*')
+			}
 		}
 		for {
 			if node.expr is ast.Ident {
@@ -368,7 +365,8 @@ fn (mut g Gen) dump_expr_definitions() {
 		int_str := g.get_str_fn(ast.int_type)
 		surrounder.add('\tstring sline = ${int_str}(line);', '\tbuiltin__string_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
-			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tbuiltin__string_free(&value);')
+			surrounder.add('\tstring value = ${to_string_fn_name}();',
+				'\tbuiltin__string_free(&value);')
 		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _S("none");', '\tbuiltin__string_free(&value);')
 		} else if is_ptr {

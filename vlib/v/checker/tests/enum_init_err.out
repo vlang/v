@@ -1,5 +1,5 @@
 vlib/v/checker/tests/enum_init_err.vv:8:7: error: cannot initialize enums
-    6 |
+    6 | 
     7 | fn main() {
     8 |     a := Hello{}
       |          ~~~~~~~

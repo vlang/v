@@ -28,7 +28,8 @@ fn testsuite_begin() {
 fn test_middleware_vweb_app_can_be_compiled() {
 	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/vweb/tests/middleware_test_server.vv')
 	// TODO: find out why it does not compile with -usecache and -g
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/vweb/tests/middleware_test_server.v')
+	did_server_compile :=
+		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/vweb/tests/middleware_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }

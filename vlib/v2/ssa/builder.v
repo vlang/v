@@ -551,7 +551,8 @@ fn (mut b Builder) build_unwrapped_postfix(expr ast.PostfixExpr, wrapped_val Val
 	}
 	fail_block := b.mod.add_block(b.cur_func, 'postfix_fail')
 	ok_block := b.mod.add_block(b.cur_func, 'postfix_ok')
-	b.mod.add_instr(.br, b.cur_block, 0, [fail_cond, b.mod.blocks[fail_block].val_id, b.mod.blocks[ok_block].val_id])
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[fail_cond, b.mod.blocks[fail_block].val_id, b.mod.blocks[ok_block].val_id])
 	b.add_edge(b.cur_block, fail_block)
 	b.add_edge(b.cur_block, ok_block)
 
@@ -653,7 +654,8 @@ fn (mut b Builder) build_wrapper_value(wrapper_type TypeID, success bool, payloa
 	} else {
 		b.mod.get_or_add_const(flag_type, if success { '0' } else { '1' })
 	}
-	wrapper = b.mod.add_instr(.insertvalue, b.cur_block, wrapper_type, [wrapper, flag_val, flag_idx])
+	wrapper = b.mod.add_instr(.insertvalue, b.cur_block, wrapper_type,
+		[wrapper, flag_val, flag_idx])
 	if !success {
 		err_type := wrapper_info.fields[1]
 		mut err_val := payload
@@ -662,7 +664,8 @@ fn (mut b Builder) build_wrapper_value(wrapper_type TypeID, success bool, payloa
 		} else if b.mod.values[err_val].typ != err_type {
 			err_val = b.cast_value_to_type(err_val, err_type)
 		}
-		wrapper = b.mod.add_instr(.insertvalue, b.cur_block, wrapper_type, [wrapper, err_val, err_idx])
+		wrapper = b.mod.add_instr(.insertvalue, b.cur_block, wrapper_type,
+			[wrapper, err_val, err_idx])
 	}
 	if has_payload && b.wrapper_has_data(wrapper_type) {
 		data_idx := b.mod.get_or_add_const(i32_t, '2')
@@ -1196,8 +1199,7 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 								b.mod.type_store.get_int(8)
 							}
 							if is_fixed_array {
-								b.mod.add_global_with_data(const_name, elem_type, true,
-									arr_data)
+								b.mod.add_global_with_data(const_name, elem_type, true, arr_data)
 								b.const_array_globals[const_name] = true
 								b.const_array_globals[field.name] = true
 								b.const_array_elem_count[const_name] = field.value.exprs.len
@@ -1206,8 +1208,7 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 							} else {
 								// Dynamic array constant: serialize data, create array struct global
 								data_name := '${const_name}__data'
-								b.mod.add_global_with_data(data_name, elem_type, true,
-									arr_data)
+								b.mod.add_global_with_data(data_name, elem_type, true, arr_data)
 								b.const_array_globals[data_name] = true
 								// Add array struct global (initialized in _vinit)
 								arr_struct_type := b.get_array_type()
@@ -2616,8 +2617,8 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 			if ident := b.unwrap_ident(lhs) {
 				if stmt.op == .decl_assign {
 					elem_type := b.mod.values[elem_val].typ
-					alloca := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(elem_type),
-						[]ValueID{})
+					alloca := b.mod.add_instr(.alloca, b.cur_block,
+						b.mod.type_store.get_ptr(elem_type), []ValueID{})
 					b.mod.add_instr(.store, b.cur_block, 0, [elem_val, alloca])
 					b.vars[ident.name] = alloca
 				} else if ident.name == '_' {
@@ -2777,12 +2778,15 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 								} else {
 									OpCode.sitofp
 								}
-								actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
-									[rhs_val])
+								actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ, [
+									rhs_val,
+								])
 							}
 						}
-						result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-							[loaded, actual_rhs])
+						result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ, [
+							loaded,
+							actual_rhs,
+						])
 						b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
 					}
 				}
@@ -2842,12 +2846,15 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 							} else {
 								OpCode.sitofp
 							}
-							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
-								[rhs_val])
+							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ, [
+								rhs_val,
+							])
 						}
 					}
-					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-						[loaded, actual_rhs])
+					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ, [
+						loaded,
+						actual_rhs,
+					])
 					b.mod.add_instr(.store, b.cur_block, 0, [result, base])
 				}
 			}
@@ -2965,12 +2972,15 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 							} else {
 								OpCode.sitofp
 							}
-							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ,
-								[rhs_val])
+							actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ, [
+								rhs_val,
+							])
 						}
 					}
-					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ,
-						[loaded, actual_rhs])
+					result := b.mod.add_instr(op, b.cur_block, b.mod.values[loaded].typ, [
+						loaded,
+						actual_rhs,
+					])
 					b.mod.add_instr(.store, b.cur_block, 0, [result, base])
 				}
 			}
@@ -3065,7 +3075,8 @@ fn (mut b Builder) build_for(stmt ast.ForStmt) {
 	b.cur_block = cond_block
 	if has_cond {
 		cond_val := b.build_expr(stmt.cond)
-		b.mod.add_instr(.br, b.cur_block, 0, [cond_val, b.mod.blocks[body_block].val_id, b.mod.blocks[exit_block].val_id])
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[body_block].val_id, b.mod.blocks[exit_block].val_id])
 		b.add_edge(cond_block, body_block)
 		b.add_edge(cond_block, exit_block)
 	} else {
@@ -3122,7 +3133,8 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 
 	// Condition
 	cond_val := b.build_expr(node.cond)
-	b.mod.add_instr(.br, b.cur_block, 0, [cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
 	b.add_edge(b.cur_block, then_block)
 	b.add_edge(b.cur_block, else_block)
 
@@ -3211,7 +3223,8 @@ fn (mut b Builder) build_assert(stmt ast.AssertStmt) {
 	pass_block := b.mod.add_block(b.cur_func, 'assert_pass')
 	fail_block := b.mod.add_block(b.cur_func, 'assert_fail')
 
-	b.mod.add_instr(.br, b.cur_block, 0, [cond, b.mod.blocks[pass_block].val_id, b.mod.blocks[fail_block].val_id])
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond, b.mod.blocks[pass_block].val_id, b.mod.blocks[fail_block].val_id])
 	b.add_edge(b.cur_block, pass_block)
 	b.add_edge(b.cur_block, fail_block)
 
@@ -3377,8 +3390,7 @@ fn (mut b Builder) build_basic_literal(lit ast.BasicLiteral) ValueID {
 					if val.len >= 10 {
 						parsed := val.i64()
 						if parsed > 2147483647 || parsed < -2147483648 {
-							return b.mod.get_or_add_const(b.mod.type_store.get_int(64),
-								val)
+							return b.mod.get_or_add_const(b.mod.type_store.get_int(64), val)
 						}
 					}
 				}
@@ -3556,8 +3568,7 @@ fn (mut b Builder) build_string_inter_literal(expr ast.StringInterLiteral) Value
 				i32_t := b.mod.type_store.get_int(32)
 				snprintf_ref := b.get_or_create_fn_ref('snprintf', i32_t)
 				size_val := b.mod.get_or_add_const(i32_t, '64')
-				fmt_val := b.mod.add_value_node(.c_string_literal, ptr_type, inter.resolved_fmt,
-					0)
+				fmt_val := b.mod.add_value_node(.c_string_literal, ptr_type, inter.resolved_fmt, 0)
 				sn_len := b.mod.add_instr(.call, b.cur_block, i32_t, [snprintf_ref, buf_ptr, size_val,
 					fmt_val, formatted_val])
 				// 4. Call builtin__tos(buf_ptr, len) to make a V string
@@ -3858,7 +3869,8 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 		rhs_block := b.mod.add_block(b.cur_func, 'or_rhs')
 		merge_block := b.mod.add_block(b.cur_func, 'or_merge')
 		// If LHS is true, short-circuit to merge; else evaluate RHS
-		b.mod.add_instr(.br, b.cur_block, 0, [lhs, b.mod.blocks[merge_block].val_id, b.mod.blocks[rhs_block].val_id])
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[lhs, b.mod.blocks[merge_block].val_id, b.mod.blocks[rhs_block].val_id])
 		b.add_edge(b.cur_block, merge_block)
 		b.add_edge(b.cur_block, rhs_block)
 		// RHS block
@@ -3885,7 +3897,8 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 		rhs_block := b.mod.add_block(b.cur_func, 'and_rhs')
 		merge_block := b.mod.add_block(b.cur_func, 'and_merge')
 		// If LHS is false, short-circuit to merge with false; else evaluate RHS
-		b.mod.add_instr(.br, b.cur_block, 0, [lhs, b.mod.blocks[rhs_block].val_id, b.mod.blocks[merge_block].val_id])
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[lhs, b.mod.blocks[rhs_block].val_id, b.mod.blocks[merge_block].val_id])
 		b.add_edge(b.cur_block, rhs_block)
 		b.add_edge(b.cur_block, merge_block)
 		// RHS block
@@ -3976,7 +3989,8 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 				fn_ref := b.get_or_create_fn_ref('builtin__string__<', bool_type)
 				lt_lhs := if expr.op in [.gt, .le] { string_rhs } else { string_lhs }
 				lt_rhs := if expr.op in [.gt, .le] { string_lhs } else { string_rhs }
-				lt_result := b.mod.add_instr(.call, b.cur_block, bool_type, [fn_ref, lt_lhs, lt_rhs])
+				lt_result := b.mod.add_instr(.call, b.cur_block, bool_type,
+					[fn_ref, lt_lhs, lt_rhs])
 				if expr.op in [.le, .ge] {
 					return b.mod.add_instr(.xor, b.cur_block, bool_type, [lt_result,
 						b.mod.get_or_add_const(bool_type, '1')])
@@ -3985,7 +3999,8 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 			}
 			if expr.op == .plus {
 				fn_ref := b.get_or_create_fn_ref('builtin__string__+', str_type)
-				return b.mod.add_instr(.call, b.cur_block, str_type, [fn_ref, string_lhs, string_rhs])
+				return b.mod.add_instr(.call, b.cur_block, str_type,
+					[fn_ref, string_lhs, string_rhs])
 			}
 		}
 	}
@@ -4033,8 +4048,10 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 			ptr_type := b.mod.values[ptr_val].typ
 			if expr.op == .minus {
 				// ptr - int: negate the integer, then GEP
-				int_val = b.mod.add_instr(.sub, b.cur_block, b.mod.values[int_val].typ,
-					[b.mod.get_or_add_const(b.mod.values[int_val].typ, '0'), int_val])
+				int_val = b.mod.add_instr(.sub, b.cur_block, b.mod.values[int_val].typ, [
+					b.mod.get_or_add_const(b.mod.values[int_val].typ, '0'),
+					int_val,
+				])
 			}
 			return b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_type, [
 				ptr_val,
@@ -5357,11 +5374,13 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		// Try: EnumType__value (local) or module__EnumType__value (qualified)
 		enum_key := '${expr.lhs.name}__${expr.rhs.name}'
 		if enum_key in b.enum_values {
-			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), b.enum_values[enum_key].str())
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32),
+				b.enum_values[enum_key].str())
 		}
 		qualified_key := '${b.cur_module}__${enum_key}'
 		if qualified_key in b.enum_values {
-			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), b.enum_values[qualified_key].str())
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32),
+				b.enum_values[qualified_key].str())
 		}
 	}
 
@@ -5849,8 +5868,10 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 					alloca_ptr := instr.operands[0]
 					elem_type := base_typ.elem_type
 					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
-					elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
-						[alloca_ptr, index])
+					elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+						alloca_ptr,
+						index,
+					])
 					return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
 				}
 				if instr.op == .extractvalue && instr.operands.len >= 2 {
@@ -5901,8 +5922,10 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 			}
 			// GEP to the element address, then load
 			elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
-			elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
-				[base_val, index])
+			elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+				base_val,
+				index,
+			])
 			return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
 		}
 	}
@@ -6047,7 +6070,8 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	}
 
 	cond := b.build_expr(node.cond)
-	b.mod.add_instr(.br, b.cur_block, 0, [cond, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
 	b.add_edge(b.cur_block, then_block)
 	b.add_edge(b.cur_block, else_block)
 
@@ -6253,8 +6277,7 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 					i32_t := b.mod.type_store.get_int(32)
 					for i in 0 .. arr_len {
 						idx := b.mod.get_or_add_const(i32_t, i.str())
-						gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
-							[
+						gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
 							alloca,
 							idx,
 						])
@@ -6449,14 +6472,12 @@ fn (mut b Builder) heap_copy_from_address(addr ValueID) ?ValueID {
 		for fi, field_type in elem_info.fields {
 			field_ptr_type := b.mod.type_store.get_ptr(field_type)
 			idx_val := b.mod.get_or_add_const(int32_t, fi.str())
-			src_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type,
-				[
+			src_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
 				addr,
 				idx_val,
 			])
 			fval := b.mod.add_instr(.load, b.cur_block, field_type, [src_fptr])
-			dst_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type,
-				[
+			dst_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
 				heap_ptr,
 				idx_val,
 			])
@@ -6486,8 +6507,7 @@ fn (mut b Builder) heap_copy_value(val ValueID) ?ValueID {
 			field_ptr_type := b.mod.type_store.get_ptr(field_type)
 			idx_val := b.mod.get_or_add_const(int32_t, fi.str())
 			field_val := b.mod.add_instr(.extractvalue, b.cur_block, field_type, [val, idx_val])
-			field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type,
-				[
+			field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
 				heap_ptr,
 				idx_val,
 			])
@@ -7211,8 +7231,8 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			if result_type == 0 {
 				result_type = b.expr_type(ast.Expr(expr))
 			}
-			return b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(result_type),
-				[base, idx_val])
+			return b.mod.add_instr(.get_element_ptr, b.cur_block,
+				b.mod.type_store.get_ptr(result_type), [base, idx_val])
 		}
 		ast.ParenExpr {
 			return b.build_addr(expr.expr)
@@ -7316,12 +7336,14 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 						}
 					}
 					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
-					return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
-						[base2, index])
+					return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+						base2,
+						index,
+					])
 				}
 			}
-			return b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(result_type),
-				[base2, index])
+			return b.mod.add_instr(.get_element_ptr, b.cur_block,
+				b.mod.type_store.get_ptr(result_type), [base2, index])
 		}
 		else {
 			return 0
@@ -7487,7 +7509,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	check_elem_block := b.mod.add_block(func_idx, 'check_elem')
 	ret_false_block := b.mod.add_block(func_idx, 'ret_false')
 	ret_true_block := b.mod.add_block(func_idx, 'ret_true')
-	b.mod.add_instr(.br, entry, 0, [len_eq, b.mod.blocks[check_elem_block].val_id, b.mod.blocks[ret_false_block].val_id])
+	b.mod.add_instr(.br, entry, 0,
+		[len_eq, b.mod.blocks[check_elem_block].val_id, b.mod.blocks[ret_false_block].val_id])
 
 	// ret_false: return 0
 	zero_i1 := b.mod.get_or_add_const(i1_t, '0')
@@ -7551,7 +7574,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 
 	map_loop_header := b.mod.add_block(func_idx, 'map_loop_header')
 	memcmp_block := b.mod.add_block(func_idx, 'memcmp')
-	b.mod.add_instr(.br, check_map_block, 0, [is_map, b.mod.blocks[map_loop_header].val_id, b.mod.blocks[memcmp_block].val_id])
+	b.mod.add_instr(.br, check_map_block, 0,
+		[is_map, b.mod.blocks[map_loop_header].val_id, b.mod.blocks[memcmp_block].val_id])
 
 	// --- String element comparison loop ---
 	// Loop header: i stored in alloca, check if i < len
@@ -7561,7 +7585,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	b.mod.add_instr(.store, str_loop_header, 0, [zero_i32, alloca_i])
 
 	str_loop_cond := b.mod.add_block(func_idx, 'str_loop_cond')
-	b.mod.add_instr(.br, str_loop_header, 0, [one_i1, b.mod.blocks[str_loop_cond].val_id, b.mod.blocks[str_loop_cond].val_id])
+	b.mod.add_instr(.br, str_loop_header, 0,
+		[one_i1, b.mod.blocks[str_loop_cond].val_id, b.mod.blocks[str_loop_cond].val_id])
 
 	// Loop condition: load i, compare with len
 	cur_i := b.mod.add_instr(.load, str_loop_cond, i32_t, [alloca_i])
@@ -7569,7 +7594,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	i_lt_len := b.mod.add_instr(.lt, str_loop_cond, i1_t, [cur_i, cur_len])
 
 	str_loop_body := b.mod.add_block(func_idx, 'str_loop_body')
-	b.mod.add_instr(.br, str_loop_cond, 0, [i_lt_len, b.mod.blocks[str_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
+	b.mod.add_instr(.br, str_loop_cond, 0,
+		[i_lt_len, b.mod.blocks[str_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
 
 	// Loop body: compare strings at index i
 	cur_data_a := b.mod.add_instr(.load, str_loop_body, ptr_t, [alloca_data_a])
@@ -7596,13 +7622,15 @@ fn (mut b Builder) generate_array_eq_stub() {
 
 	// If not equal, return false
 	str_loop_inc := b.mod.add_block(func_idx, 'str_loop_inc')
-	b.mod.add_instr(.br, str_loop_body, 0, [str_eq, b.mod.blocks[str_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
+	b.mod.add_instr(.br, str_loop_body, 0,
+		[str_eq, b.mod.blocks[str_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
 
 	// Loop increment: i++
 	one_i32 := b.mod.get_or_add_const(i32_t, '1')
 	next_i := b.mod.add_instr(.add, str_loop_inc, i32_t, [cur_i2, one_i32])
 	b.mod.add_instr(.store, str_loop_inc, 0, [next_i, alloca_i])
-	b.mod.add_instr(.br, str_loop_inc, 0, [one_i1, b.mod.blocks[str_loop_cond].val_id, b.mod.blocks[str_loop_cond].val_id])
+	b.mod.add_instr(.br, str_loop_inc, 0,
+		[one_i1, b.mod.blocks[str_loop_cond].val_id, b.mod.blocks[str_loop_cond].val_id])
 
 	// --- Nested array element comparison loop (recursive array__eq) ---
 	alloca_ai := b.mod.add_instr(.alloca, arr_loop_header, b.mod.type_store.get_ptr(i32_t),
@@ -7610,7 +7638,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	b.mod.add_instr(.store, arr_loop_header, 0, [zero_i32, alloca_ai])
 
 	arr_loop_cond := b.mod.add_block(func_idx, 'arr_loop_cond')
-	b.mod.add_instr(.br, arr_loop_header, 0, [one_i1, b.mod.blocks[arr_loop_cond].val_id, b.mod.blocks[arr_loop_cond].val_id])
+	b.mod.add_instr(.br, arr_loop_header, 0,
+		[one_i1, b.mod.blocks[arr_loop_cond].val_id, b.mod.blocks[arr_loop_cond].val_id])
 
 	// Loop condition: load i, compare with len
 	acur_i := b.mod.add_instr(.load, arr_loop_cond, i32_t, [alloca_ai])
@@ -7618,7 +7647,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	ai_lt_len := b.mod.add_instr(.lt, arr_loop_cond, i1_t, [acur_i, acur_len])
 
 	arr_loop_body := b.mod.add_block(func_idx, 'arr_loop_body')
-	b.mod.add_instr(.br, arr_loop_cond, 0, [ai_lt_len, b.mod.blocks[arr_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
+	b.mod.add_instr(.br, arr_loop_cond, 0,
+		[ai_lt_len, b.mod.blocks[arr_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
 
 	// Loop body: compare array elements at index i
 	acur_data_a := b.mod.add_instr(.load, arr_loop_body, ptr_t, [alloca_data_a])
@@ -7645,12 +7675,14 @@ fn (mut b Builder) generate_array_eq_stub() {
 
 	// If not equal, return false
 	arr_loop_inc := b.mod.add_block(func_idx, 'arr_loop_inc')
-	b.mod.add_instr(.br, arr_loop_body, 0, [arr_eq, b.mod.blocks[arr_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
+	b.mod.add_instr(.br, arr_loop_body, 0,
+		[arr_eq, b.mod.blocks[arr_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
 
 	// Loop increment: i++
 	anext_i := b.mod.add_instr(.add, arr_loop_inc, i32_t, [acur_i2, one_i32])
 	b.mod.add_instr(.store, arr_loop_inc, 0, [anext_i, alloca_ai])
-	b.mod.add_instr(.br, arr_loop_inc, 0, [one_i1, b.mod.blocks[arr_loop_cond].val_id, b.mod.blocks[arr_loop_cond].val_id])
+	b.mod.add_instr(.br, arr_loop_inc, 0,
+		[one_i1, b.mod.blocks[arr_loop_cond].val_id, b.mod.blocks[arr_loop_cond].val_id])
 
 	// --- Map element comparison loop (call map_map_eq for each element) ---
 	alloca_mi := b.mod.add_instr(.alloca, map_loop_header, b.mod.type_store.get_ptr(i32_t),
@@ -7658,7 +7690,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	b.mod.add_instr(.store, map_loop_header, 0, [zero_i32, alloca_mi])
 
 	map_loop_cond := b.mod.add_block(func_idx, 'map_loop_cond')
-	b.mod.add_instr(.br, map_loop_header, 0, [one_i1, b.mod.blocks[map_loop_cond].val_id, b.mod.blocks[map_loop_cond].val_id])
+	b.mod.add_instr(.br, map_loop_header, 0,
+		[one_i1, b.mod.blocks[map_loop_cond].val_id, b.mod.blocks[map_loop_cond].val_id])
 
 	// Loop condition: load i, compare with len
 	mcur_i := b.mod.add_instr(.load, map_loop_cond, i32_t, [alloca_mi])
@@ -7666,7 +7699,8 @@ fn (mut b Builder) generate_array_eq_stub() {
 	mi_lt_len := b.mod.add_instr(.lt, map_loop_cond, i1_t, [mcur_i, mcur_len])
 
 	map_loop_body := b.mod.add_block(func_idx, 'map_loop_body')
-	b.mod.add_instr(.br, map_loop_cond, 0, [mi_lt_len, b.mod.blocks[map_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
+	b.mod.add_instr(.br, map_loop_cond, 0,
+		[mi_lt_len, b.mod.blocks[map_loop_body].val_id, b.mod.blocks[ret_true_block].val_id])
 
 	// Loop body: compare map elements at index i
 	mcur_data_a := b.mod.add_instr(.load, map_loop_body, ptr_t, [alloca_data_a])
@@ -7694,12 +7728,14 @@ fn (mut b Builder) generate_array_eq_stub() {
 
 	// If not equal, return false
 	map_loop_inc := b.mod.add_block(func_idx, 'map_loop_inc')
-	b.mod.add_instr(.br, map_loop_body, 0, [map_eq, b.mod.blocks[map_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
+	b.mod.add_instr(.br, map_loop_body, 0,
+		[map_eq, b.mod.blocks[map_loop_inc].val_id, b.mod.blocks[ret_false_block].val_id])
 
 	// Loop increment: i++
 	mnext_i := b.mod.add_instr(.add, map_loop_inc, i32_t, [mcur_i2, one_i32])
 	b.mod.add_instr(.store, map_loop_inc, 0, [mnext_i, alloca_mi])
-	b.mod.add_instr(.br, map_loop_inc, 0, [one_i1, b.mod.blocks[map_loop_cond].val_id, b.mod.blocks[map_loop_cond].val_id])
+	b.mod.add_instr(.br, map_loop_inc, 0,
+		[one_i1, b.mod.blocks[map_loop_cond].val_id, b.mod.blocks[map_loop_cond].val_id])
 
 	// --- memcmp fallback block ---
 	ld_a := b.mod.add_instr(.load, memcmp_block, ptr_t, [alloca_data_a])
@@ -7922,7 +7958,8 @@ fn (mut b Builder) generate_wyhash_body(func_idx int) {
 	blk_long := b.mod.add_block(func_idx, 'long')
 	blk_final := b.mod.add_block(func_idx, 'final')
 
-	b.mod.add_instr(.br, entry, 0, [len_le_16, b.mod.blocks[blk_short].val_id, b.mod.blocks[blk_long].val_id])
+	b.mod.add_instr(.br, entry, 0,
+		[len_le_16, b.mod.blocks[blk_short].val_id, b.mod.blocks[blk_long].val_id])
 
 	// === SHORT PATH (len <= 16) ===
 	// Branch: len >= 4?
@@ -7931,7 +7968,8 @@ fn (mut b Builder) generate_wyhash_body(func_idx int) {
 	blk_short_4_16 := b.mod.add_block(func_idx, 'short_4_16')
 	blk_short_0_3 := b.mod.add_block(func_idx, 'short_0_3')
 
-	b.mod.add_instr(.br, blk_short, 0, [len_ge_4, b.mod.blocks[blk_short_4_16].val_id, b.mod.blocks[blk_short_0_3].val_id])
+	b.mod.add_instr(.br, blk_short, 0,
+		[len_ge_4, b.mod.blocks[blk_short_4_16].val_id, b.mod.blocks[blk_short_0_3].val_id])
 
 	// --- SHORT 4-16 block ---
 	// a = (_wyr4(p) << 32) | _wyr4(p + ((len>>3)<<2))
@@ -7984,7 +8022,8 @@ fn (mut b Builder) generate_wyhash_body(func_idx int) {
 	// Branch: len > 0?
 	len_gt_0 := b.mod.add_instr(.gt, blk_short_0_3, i1_t, [param_len, zero_64])
 	blk_wyr3 := b.mod.add_block(func_idx, 'wyr3')
-	b.mod.add_instr(.br, blk_short_0_3, 0, [len_gt_0, b.mod.blocks[blk_wyr3].val_id, b.mod.blocks[blk_final].val_id]) // len==0: a=0, b=0 already stored
+	b.mod.add_instr(.br, blk_short_0_3, 0,
+		[len_gt_0, b.mod.blocks[blk_wyr3].val_id, b.mod.blocks[blk_final].val_id]) // len==0: a=0, b=0 already stored
 
 	// --- WYR3 block (len 1-3) ---
 	// a = _wyr3(p, len) = (p[0] << 16) | (p[len>>1] << 8) | p[len-1]

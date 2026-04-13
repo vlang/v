@@ -1,44 +1,20 @@
 &Expr(ParExpr{
     expr: Expr(InfixExpr{
-        left: Expr(InfixExpr{
-            left: unknown sum type value
-            right: unknown sum type value
-        })
-        right: Expr(InfixExpr{
-            left: unknown sum type value
-            right: unknown sum type value
-        })
+        left: Expr(<circular>)
+        right: Expr(<circular>)
     })
 })
 &Expr(ParExpr{
     expr: Expr(InfixExpr{
-        left: Expr(InfixExpr{
-            left: unknown sum type value
-            right: unknown sum type value
-        })
-        right: Expr(InfixExpr{
-            left: unknown sum type value
-            right: unknown sum type value
-        })
+        left: Expr(<circular>)
+        right: Expr(<circular>)
     })
 })
 &Expr(InfixExpr{
-    left: Expr(InfixExpr{
-        left: unknown sum type value
-        right: unknown sum type value
-    })
-    right: Expr(InfixExpr{
-        left: unknown sum type value
-        right: unknown sum type value
-    })
+    left: Expr(<circular>)
+    right: Expr(<circular>)
 })
 &Expr(InfixExpr{
-    left: Expr(InfixExpr{
-        left: unknown sum type value
-        right: unknown sum type value
-    })
-    right: Expr(InfixExpr{
-        left: unknown sum type value
-        right: unknown sum type value
-    })
+    left: Expr(<circular>)
+    right: Expr(<circular>)
 })

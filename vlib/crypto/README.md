@@ -81,7 +81,8 @@ fn main() {
 
 fn make_token(secret string) string {
 	header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
-	payload := base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
+	payload :=
+		base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
 	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
 		sha256.sum, sha256.block_size))
 	jwt := '${header}.${payload}.${signature}'

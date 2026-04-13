@@ -105,7 +105,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	ctx.done = true
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
-			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
+			ctx.res.body = response.replace('</html>',
+				'<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
 		} else {
 			ctx.res.body = response.clone()
 		}
@@ -244,16 +245,12 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			}
 			// Try zstd first if enabled, then gzip
 			if use_zstd {
-				if result := ctx.serve_compressed_static(content_type, file_path, data,
-					.zstd)
-				{
+				if result := ctx.serve_compressed_static(content_type, file_path, data, .zstd) {
 					return result
 				}
 			}
 			if use_gzip {
-				if result := ctx.serve_compressed_static(content_type, file_path, data,
-					.gzip)
-				{
+				if result := ctx.serve_compressed_static(content_type, file_path, data, .gzip) {
 					return result
 				}
 			}
@@ -352,8 +349,7 @@ fn (mut ctx Context) serve_precompressed_file(content_type string, file_path str
 	}
 	// Then try veb-managed cache files under os.cache_dir().
 	cached_path := static_compression_cache_path(file_path, ext)
-	return ctx.serve_compressed_path_if_fresh(content_type, cached_path, encoding_name,
-		orig_mtime)
+	return ctx.serve_compressed_path_if_fresh(content_type, cached_path, encoding_name, orig_mtime)
 }
 
 // serve_compressed_static compresses data and serves it, optionally caching to disk.

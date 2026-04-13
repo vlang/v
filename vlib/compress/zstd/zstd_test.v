@@ -297,18 +297,21 @@ fn assert_decompress_error(data []u8, reason string) ! {
 }
 
 fn test_zstd_invalid_too_small() {
-	assert_decompress_error([]u8{}, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error([]u8{},
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_invalid_magic_numbers() {
-	assert_decompress_error([]u8{len: 100}, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error([]u8{len: 100},
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_invalid_compression() {
 	mut data := []u8{len: 100}
 	data[0] = 0x1f
 	data[1] = 0x8b
-	assert_decompress_error(data, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error(data,
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_with_corruption1() {

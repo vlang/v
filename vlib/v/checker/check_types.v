@@ -502,7 +502,8 @@ fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, st
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
 fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
-	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
+	clean_expected_typ :=
+		c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {
 		return true
 		// The following if confition should catch the bugs descripted in the issue
@@ -615,6 +616,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			if parent_elem_sym.info is ast.Array {
 				array_info := parent_elem_sym.array_info()
 				elem_type := c.table.find_or_register_array_with_dims(array_info.elem_type,
+
 					array_info.nr_dims + exp_sym.info.nr_dims)
 				if c.table.type_to_str(got) == c.table.type_to_str(ast.idx_to_type(elem_type)) {
 					return true
@@ -808,7 +810,8 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						if node.ct_left_value_evaled {
 							if lval := node.ct_left_value.i64() {
 								if lval < 0 {
-									c.error('invalid bitshift of a negative number', node.left.pos())
+									c.error('invalid bitshift of a negative number',
+										node.left.pos())
 									return left_type
 								}
 							}
@@ -1119,8 +1122,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 				} else {
 					for t in node.init_fields {
 						if ft.name == t.name && t.typ != 0 {
-							inferred_typ := c.infer_composite_generic_type(gt_name, ft.typ,
-								t.typ)
+							inferred_typ := c.infer_composite_generic_type(gt_name, ft.typ, t.typ)
 							if inferred_typ != ast.void_type {
 								concrete_types << ast.mktyp(inferred_typ)
 								continue gname
@@ -1144,7 +1146,8 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										} else {
 											for init_field in node.init_fields {
 												if init_field.name != t.name && init_field.typ != 0 {
-													field := sym.info.fields.filter(it.name == init_field.name)
+													field :=
+														sym.info.fields.filter(it.name == init_field.name)
 													if field.len > 0 {
 														if c.table.sym(field[0].typ).name == gt_name {
 															concrete_types << ast.mktyp(init_field.typ)
@@ -1205,7 +1208,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				if node.left_type.has_flag(.generic) {
 					match sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+							receiver_generic_names :=
+								sym.info.generic_types.map(c.table.sym(it).name)
 							if gt_name in receiver_generic_names {
 								idx := receiver_generic_names.index(gt_name)
 								typ = sym.info.generic_types[idx]
@@ -1224,11 +1228,21 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 									typ = c.table.cur_concrete_types[idx]
 								}
 							} else { // in non-generic fn
-								receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+								receiver_generic_names :=
+									sym.info.generic_types.map(c.table.sym(it).name)
 								if gt_name in receiver_generic_names
 									&& sym.info.generic_types.len == sym.info.concrete_types.len {
 									idx := receiver_generic_names.index(gt_name)
 									typ = sym.info.concrete_types[idx]
+								} else if gt_name in func.generic_names
+									&& sym.info.generic_types.len == sym.info.concrete_types.len {
+									// Method uses a different generic name than the struct
+									// (e.g. struct Foo[T] with method fn (f Foo[U]) ...)
+									// Map by position in the method's generic names.
+									fn_idx := func.generic_names.index(gt_name)
+									if fn_idx < sym.info.concrete_types.len {
+										typ = sym.info.concrete_types[fn_idx]
+									}
 								}
 							}
 						}
@@ -1239,7 +1253,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
 							match parent_sym.info {
 								ast.Struct, ast.Interface, ast.SumType {
-									receiver_generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
+									receiver_generic_names :=
+										parent_sym.info.generic_types.map(c.table.sym(it).name)
 									if gt_name in receiver_generic_names
 										&& receiver_generic_names.len == sym.info.concrete_types.len {
 										idx := receiver_generic_names.index(gt_name)
@@ -1310,14 +1325,15 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				if arg.expr.is_auto_deref_var() && typ.is_ptr() {
 					if !arg.is_mut {
 						typ = typ.deref()
-					} else if arg.expr is ast.Ident && arg.expr.obj is ast.Var
-						&& arg.expr.obj.generic_typ == 0 {
-						// Non-generic auto-deref mut param: obj.typ includes the
-						// mut pointer (e.g. mut ctx Context → obj.typ=&Context),
-						// so strip it for generic inference.
-						// Generic auto-deref mut params (generic_typ != 0) already
-						// have the correct resolved type without extra mut pointer.
-						typ = typ.deref()
+					} else if arg.expr is ast.Ident && arg.expr.obj is ast.Var {
+						if arg.expr.obj.generic_typ == 0 {
+							// Non-generic auto-deref mut param: obj.typ includes the
+							// mut pointer (e.g. mut ctx Context → obj.typ=&Context),
+							// so strip it for generic inference.
+							// Generic auto-deref mut params (generic_typ != 0) already
+							// have the correct resolved type without extra mut pointer.
+							typ = typ.deref()
+						}
 					}
 				}
 				// resolve &T &&T ...
@@ -1420,8 +1436,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 							// resolve lambda with generic return type
 							if arg.expr is ast.LambdaExpr && typ.has_flag(.generic) {
-								typ = c.type_resolver.unwrap_generic_expr(arg.expr.expr,
-									typ)
+								typ = c.type_resolver.unwrap_generic_expr(arg.expr.expr, typ)
 								if typ.has_flag(.generic) {
 									lambda_ret_gt_name := c.table.type_to_str(typ)
 									idx := func.generic_names.index(lambda_ret_gt_name)
@@ -1464,20 +1479,22 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ = if has_concrete_caller_types && cur_param.typ.has_flag(.generic) {
 							if cur_param.is_mut && cur_param.orig_typ != 0
 								&& cur_param.orig_typ.has_flag(.generic) {
-								c.table.unwrap_generic_type(cur_param.orig_typ, c.table.cur_fn.generic_names,
-									c.table.cur_concrete_types)
+								c.table.unwrap_generic_type(cur_param.orig_typ,
+									c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 							} else {
-								c.table.unwrap_generic_param_type(cur_param, c.table.cur_fn.generic_names,
-									c.table.cur_concrete_types)
+								c.table.unwrap_generic_param_type(cur_param,
+									c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 							}
 						} else {
 							cur_param.typ
 						}
 						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
 						if cparam_type_sym.kind == .array {
-							typ = c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+							typ =
+								c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 						} else if cparam_type_sym.kind == .array_fixed {
-							typ = c.type_resolver.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
+							typ =
+								c.type_resolver.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
 						}
 						typ = c.unwrap_generic(typ)
 						break
@@ -1489,8 +1506,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `${gt_name}` in call to `${func.name}`',
-				node.pos)
+			c.error('could not infer generic type `${gt_name}` in call to `${func.name}`', node.pos)
 			return
 		}
 		if c.pref.is_verbose {

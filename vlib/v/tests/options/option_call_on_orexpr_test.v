@@ -18,8 +18,7 @@ fn find_any_startswith_string_unwrapped(a []string, b []string, search string) ?
 }
 
 fn test_main() {
-	var1 := find_any_startswith_string(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
-		'dead')
+	var1 := find_any_startswith_string(['foobar', 'barfoo'], ['deadbeef', 'beefdead'], 'dead')
 	assert var1 or { panic('unreachable') } == 'deadbeef'
 	dump(var1)
 

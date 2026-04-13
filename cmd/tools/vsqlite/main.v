@@ -330,7 +330,8 @@ fn (mut app App) exec_file(path string) {
 		trimmed := stmt.trim_space()
 		// Strip comment-only lines to decide if the chunk has real SQL,
 		// but pass the original (with comments) to SQLite so it can parse them.
-		sql_content := trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
+		sql_content :=
+			trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
 		if sql_content == '' {
 			continue
 		}
@@ -348,7 +349,8 @@ fn (mut app App) read_file_repl(path string) {
 	mut count := 0
 	for stmt in split_statements(content) {
 		trimmed := stmt.trim_space()
-		sql_content := trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
+		sql_content :=
+			trimmed.split('\n').filter(!it.trim_space().starts_with('--')).join('\n').trim_space()
 		if sql_content == '' {
 			continue
 		}

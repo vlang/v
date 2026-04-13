@@ -44,194 +44,195 @@ mut:
 	out        strings.Builder
 	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
-	cheaders                   strings.Builder
-	preincludes                strings.Builder // allows includes to go before `definitions`
-	postincludes               strings.Builder // allows includes to go after all the rest of the code generation
-	includes                   strings.Builder // all C #includes required by V modules
-	typedefs                   strings.Builder
-	enum_typedefs              strings.Builder // enum types
-	definitions                strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	type_definitions           strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	sort_fn_definitions        strings.Builder // sort fns
-	alias_definitions          strings.Builder // alias fixed array of non-builtin
-	hotcode_definitions        strings.Builder // -live declarations & functions
-	channel_definitions        strings.Builder // channel related code
-	thread_definitions         strings.Builder // thread defines
-	comptime_definitions       strings.Builder // custom defines, given by -d/-define flags on the CLI
-	type_default_vars          strings.Builder // type_default() var declarations
-	cleanup                    strings.Builder
-	cleanups                   map[string]strings.Builder // contents of `void _vcleanup(){}`
-	gowrappers                 strings.Builder            // all go callsite wrappers
-	waiter_fn_definitions      strings.Builder            // waiter fns definitions
-	auto_str_funcs             strings.Builder            // function bodies of all auto generated _str funcs
-	dump_funcs                 strings.Builder            // function bodies of all auto generated _str funcs
-	pcs_declarations           strings.Builder            // -prof profile counter declarations for each function
-	cov_declarations           strings.Builder            // -cov coverage
-	embedded_data              strings.Builder            // data to embed in the executable/binary
-	shared_types               strings.Builder            // shared/lock types
-	shared_functions           strings.Builder            // shared constructors
-	out_options_forward        strings.Builder            // forward `option_xxxx` types
-	out_options                strings.Builder            // `option_xxxx` types
-	out_results_forward        strings.Builder            // forward`result_xxxx` types
-	out_results                strings.Builder            // `result_xxxx` types
-	json_forward_decls         strings.Builder            // json type forward decls
-	sql_buf                    strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
-	global_const_defs          map[string]GlobalConstDef
-	vsafe_arithmetic_ops       map[string]VSafeArithmeticOp // 'VSAFE_DIV_u8' -> {11, /}, 'VSAFE_MOD_u8' -> {11,%}, 'VSAFE_MOD_i64' -> the same but with 9
-	sorted_global_const_names  []string
-	file                       &ast.File  = unsafe { nil }
-	table                      &ast.Table = unsafe { nil }
-	styp_cache                 map[ast.Type]string
-	no_eq_method_types         map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
-	unique_file_path_hash      u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
-	fn_decl                    &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
-	last_fn_c_name             string
-	tmp_count                  int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count_af               int  // a separate tmp var counter for autofree fn calls
-	tmp_count_declarations     int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count           int  // like tmp_count but global and not reset in each function
-	discard_or_result          bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_direct_array_access     bool // inside a `[direct_array_access fn a() {}` function
-	is_assign_lhs              bool // inside left part of assign expr (for array_set(), etc)
-	is_void_expr_stmt          bool // ExprStmt whose result is discarded
-	is_arraymap_set            bool // map or array set value state
-	is_amp                     bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
-	is_sql                     bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared                  bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled          bool // is it safe to generate #line directives when -g is passed
-	is_autofree                bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
-	is_autofree_tmp            bool // when generating autofree temporary variables
-	is_builtin_mod             bool
-	is_json_fn                 bool // inside json.encode()
-	is_js_call                 bool // for handling a special type arg #1 `json.decode(User, ...)`
-	is_fn_index_call           bool
-	is_cc_msvc                 bool // g.pref.ccompiler == 'msvc'
-	is_option_auto_heap        bool
-	vlines_path                string            // set to the proper path for generating #line directives
-	options_pos_forward        int               // insertion point to forward
-	options_forward            []string          // to forward
-	options                    map[string]string // to avoid duplicates
-	results_forward            []string          // to forward
-	results                    map[string]string // to avoid duplicates
-	done_options               shared []string   // to avoid duplicates
-	done_results               shared []string   // to avoid duplicates
-	array_typedefs             []string          // to avoid duplicate array typedefs
-	written_array_typedefs     int
-	done_typedef_phase         bool              // set after write_typedef_types() completes
-	late_chan_types            shared []string   // concrete channel cnames discovered during file generation
-	emitted_chan_types         map[string]bool   // concrete channel typedefs/helpers already emitted
-	chan_pop_options           map[string]string // types for `x := <-ch or {...}`
-	chan_push_options          map[string]string // types for `ch <- x or {...}`
-	mtxs                       string            // array of mutexes if the `lock` has multiple variables
-	tmp_var_ptr                map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
-	labeled_loops              map[string]&ast.Stmt
-	contains_ptr_cache         map[ast.Type]bool
-	inner_loop                 &ast.Stmt = unsafe { nil }
-	cur_indexexpr              []int          // list of nested indexexpr which generates array_set/map_set
-	shareds                    map[int]string // types with hidden mutex for which decl has been emitted
-	coverage_files             map[u64]&CoverageInfo
-	inside_smartcast           bool
-	inside_ternary             int  // ?: comma separated statements on a single line
-	inside_map_postfix         bool // inside map++/-- postfix expr
-	inside_map_infix           bool // inside map<</+=/-= infix expr
-	inside_left_shift          bool // generating the left operand of `<<`
-	inside_assign              bool
-	inside_map_index           bool
-	inside_array_index         bool
-	inside_array_fixed_struct  bool
-	inside_opt_or_res          bool
-	inside_opt_data            bool
-	inside_if_option           bool
-	inside_if_result           bool
-	inside_match_option        bool
-	inside_match_result        bool
-	inside_vweb_tmpl           bool
-	inside_return              bool
-	inside_return_tmpl         bool
-	inside_struct_init         bool
-	inside_or_block            bool
-	inside_call                bool
-	inside_curry_call          bool // inside foo()()!, foo()()?, foo()()
-	inside_dump_fn             bool
-	inside_c_extern            bool // inside `@[c_extern] fn C.somename(param1 int, param2 voidptr, param3 &char) &char`
-	active_call_generic_names  []string
-	active_call_concrete_types []ast.Type
-	expected_fixed_arr         bool
-	inside_for_c_stmt          bool
-	inside_cast_in_heap        int // inside cast to interface type in heap (resolve recursive calls)
-	inside_cast                bool
-	inside_sumtype_cast        bool
-	inside_selector            bool
-	inside_selector_lhs        bool
-	inside_selector_deref      bool // indicates if the inside selector was already dereferenced
-	inside_memset              bool
-	inside_const               bool
-	inside_array_item          bool
-	inside_const_opt_or_res    bool
-	inside_lambda              bool
-	inside_cinit               bool
-	inside_global_decl         bool
-	inside_interface_deref     bool
-	inside_assign_fn_var       bool
-	outer_tmp_var              string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
-	last_tmp_call_var          []string
-	last_if_option_type        ast.Type // stores the expected if type on nested if expr
-	loop_depth                 int
-	unsafe_level               int
-	ternary_names              map[string]string
-	ternary_level_names        map[string][]string
-	arraymap_set_pos           int              // map or array set value position
-	stmt_path_pos              []int            // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos              bool             // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt                bool             // left hand side on assignment is an option
-	right_is_opt               bool             // right hand side on assignment is an option
-	assign_ct_type             map[int]ast.Type // left hand side resolved comptime type
-	indent                     int
-	empty_line                 bool
-	assign_op                  token.Kind // *=, =, etc (for array_set)
-	defer_stmts                []ast.DeferStmt
-	defer_ifdef                string
-	defer_profile_code         string
-	defer_vars                 []string
-	closure_structs            []string
-	str_types                  []StrType       // types that need automatic str() generation
-	generated_str_fns          []StrType       // types that already have a str() function
-	str_fn_names               shared []string // remove duplicate function names
-	threaded_fns               shared []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns                 shared []string // functions that wait for `go xxx()` to finish
-	needed_equality_fns        []ast.Type
-	generated_eq_fns           []ast.Type
-	array_sort_fn              shared []string
-	array_contains_types       []ast.Type
-	array_index_types          []ast.Type
-	array_last_index_types     []ast.Type
-	array_get_types            []ast.Type
-	auto_fn_definitions        []string // auto generated functions definition list
-	sumtype_casting_fns        []SumtypeCastingFn
-	anon_fn_definitions        []string        // anon generated functions definition list
-	anon_fns                   shared []string // remove duplicate anon generated functions
-	sumtype_definitions        map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	trace_fn_definitions       []string
-	json_types                 []ast.Type           // to avoid json gen duplicates
-	json_types_pos             map[ast.Type]token.Pos
-	json_gen_pos               token.Pos
-	pcs                        []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	hotcode_fn_names           []string
-	hotcode_fpaths             []string
-	embedded_files             []ast.EmbeddedFile
-	sql_i                      int
-	sql_stmt_name              string
-	sql_bind_name              string
-	sql_idents                 []string
-	sql_idents_types           []ast.Type
-	sql_left_type              ast.Type
-	sql_table_name             string
-	sql_table_typ              ast.Type // the table type, used for generic types lookup
-	sql_fkey                   string
-	sql_parent_id              string
-	sql_side                   SqlExprSide // left or right, to distinguish idents in `name == name`
-	sql_last_stmt_out_len      int
-	strs_to_free0              []string // strings.Builder
+	cheaders                           strings.Builder
+	preincludes                        strings.Builder // allows includes to go before `definitions`
+	postincludes                       strings.Builder // allows includes to go after all the rest of the code generation
+	includes                           strings.Builder // all C #includes required by V modules
+	typedefs                           strings.Builder
+	enum_typedefs                      strings.Builder // enum types
+	definitions                        strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	type_definitions                   strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	sort_fn_definitions                strings.Builder // sort fns
+	alias_definitions                  strings.Builder // alias fixed array of non-builtin
+	hotcode_definitions                strings.Builder // -live declarations & functions
+	channel_definitions                strings.Builder // channel related code
+	thread_definitions                 strings.Builder // thread defines
+	comptime_definitions               strings.Builder // custom defines, given by -d/-define flags on the CLI
+	type_default_vars                  strings.Builder // type_default() var declarations
+	cleanup                            strings.Builder
+	cleanups                           map[string]strings.Builder // contents of `void _vcleanup(){}`
+	gowrappers                         strings.Builder            // all go callsite wrappers
+	waiter_fn_definitions              strings.Builder            // waiter fns definitions
+	auto_str_funcs                     strings.Builder            // function bodies of all auto generated _str funcs
+	dump_funcs                         strings.Builder            // function bodies of all auto generated _str funcs
+	pcs_declarations                   strings.Builder            // -prof profile counter declarations for each function
+	cov_declarations                   strings.Builder            // -cov coverage
+	embedded_data                      strings.Builder            // data to embed in the executable/binary
+	shared_types                       strings.Builder            // shared/lock types
+	shared_functions                   strings.Builder            // shared constructors
+	out_options_forward                strings.Builder            // forward `option_xxxx` types
+	out_options                        strings.Builder            // `option_xxxx` types
+	out_results_forward                strings.Builder            // forward`result_xxxx` types
+	out_results                        strings.Builder            // `result_xxxx` types
+	json_forward_decls                 strings.Builder            // json type forward decls
+	sql_buf                            strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
+	global_const_defs                  map[string]GlobalConstDef
+	vsafe_arithmetic_ops               map[string]VSafeArithmeticOp // 'VSAFE_DIV_u8' -> {11, /}, 'VSAFE_MOD_u8' -> {11,%}, 'VSAFE_MOD_i64' -> the same but with 9
+	sorted_global_const_names          []string
+	file                               &ast.File  = unsafe { nil }
+	table                              &ast.Table = unsafe { nil }
+	styp_cache                         map[ast.Type]string
+	no_eq_method_types                 map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
+	unique_file_path_hash              u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
+	fn_decl                            &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name                     string
+	tmp_count                          int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count_af                       int  // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations             int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count                   int  // like tmp_count but global and not reset in each function
+	discard_or_result                  bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_direct_array_access             bool // inside a `[direct_array_access fn a() {}` function
+	is_assign_lhs                      bool // inside left part of assign expr (for array_set(), etc)
+	is_void_expr_stmt                  bool // ExprStmt whose result is discarded
+	is_arraymap_set                    bool // map or array set value state
+	is_amp                             bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
+	is_sql                             bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared                          bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled                  bool // is it safe to generate #line directives when -g is passed
+	is_autofree                        bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
+	is_autofree_tmp                    bool // when generating autofree temporary variables
+	is_builtin_mod                     bool
+	is_json_fn                         bool // inside json.encode()
+	is_js_call                         bool // for handling a special type arg #1 `json.decode(User, ...)`
+	is_fn_index_call                   bool
+	is_cc_msvc                         bool // g.pref.ccompiler == 'msvc'
+	is_option_auto_heap                bool
+	vlines_path                        string            // set to the proper path for generating #line directives
+	options_pos_forward                int               // insertion point to forward
+	options_forward                    []string          // to forward
+	options                            map[string]string // to avoid duplicates
+	results_forward                    []string          // to forward
+	results                            map[string]string // to avoid duplicates
+	done_options                       shared []string   // to avoid duplicates
+	done_results                       shared []string   // to avoid duplicates
+	array_typedefs                     []string          // to avoid duplicate array typedefs
+	written_array_typedefs             int
+	done_typedef_phase                 bool              // set after write_typedef_types() completes
+	late_chan_types                    shared []string   // concrete channel cnames discovered during file generation
+	emitted_chan_types                 map[string]bool   // concrete channel typedefs/helpers already emitted
+	chan_pop_options                   map[string]string // types for `x := <-ch or {...}`
+	chan_push_options                  map[string]string // types for `ch <- x or {...}`
+	mtxs                               string            // array of mutexes if the `lock` has multiple variables
+	tmp_var_ptr                        map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
+	labeled_loops                      map[string]&ast.Stmt
+	contains_ptr_cache                 map[ast.Type]bool
+	inner_loop                         &ast.Stmt = unsafe { nil }
+	cur_indexexpr                      []int          // list of nested indexexpr which generates array_set/map_set
+	shareds                            map[int]string // types with hidden mutex for which decl has been emitted
+	coverage_files                     map[u64]&CoverageInfo
+	inside_smartcast                   bool
+	inside_ternary                     int  // ?: comma separated statements on a single line
+	inside_map_postfix                 bool // inside map++/-- postfix expr
+	inside_map_infix                   bool // inside map<</+=/-= infix expr
+	inside_left_shift                  bool // generating the left operand of `<<`
+	inside_assign                      bool
+	inside_map_index                   bool
+	inside_array_index                 bool
+	inside_array_fixed_struct          bool
+	inside_opt_or_res                  bool
+	inside_opt_data                    bool
+	inside_if_option                   bool
+	inside_if_result                   bool
+	inside_match_option                bool
+	inside_match_result                bool
+	inside_vweb_tmpl                   bool
+	inside_return                      bool
+	inside_return_tmpl                 bool
+	inside_struct_init                 bool
+	inside_or_block                    bool
+	inside_call                        bool
+	inside_curry_call                  bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn                     bool
+	inside_c_extern                    bool // inside `@[c_extern] fn C.somename(param1 int, param2 voidptr, param3 &char) &char`
+	active_call_generic_names          []string
+	active_call_concrete_types         []ast.Type
+	expected_fixed_arr                 bool
+	inside_for_c_stmt                  bool
+	inside_cast_in_heap                int // inside cast to interface type in heap (resolve recursive calls)
+	inside_cast                        bool
+	inside_sumtype_cast                bool
+	inside_selector                    bool
+	inside_selector_lhs                bool
+	inside_selector_deref              bool // indicates if the inside selector was already dereferenced
+	inside_memset                      bool
+	inside_const                       bool
+	inside_array_item                  bool
+	inside_const_opt_or_res            bool
+	inside_lambda                      bool
+	inside_cinit                       bool
+	inside_global_decl                 bool
+	inside_interface_deref             bool
+	inside_assign_fn_var               bool
+	outer_tmp_var                      string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
+	last_tmp_call_var                  []string
+	last_if_option_type                ast.Type // stores the expected if type on nested if expr
+	loop_depth                         int
+	unsafe_level                       int
+	ternary_names                      map[string]string
+	ternary_level_names                map[string][]string
+	arraymap_set_pos                   int              // map or array set value position
+	stmt_path_pos                      []int            // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos                      bool             // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt                        bool             // left hand side on assignment is an option
+	right_is_opt                       bool             // right hand side on assignment is an option
+	assign_ct_type                     map[int]ast.Type // left hand side resolved comptime type
+	indent                             int
+	empty_line                         bool
+	assign_op                          token.Kind // *=, =, etc (for array_set)
+	defer_stmts                        []ast.DeferStmt
+	defer_ifdef                        string
+	defer_profile_code                 string
+	defer_vars                         []string
+	closure_structs                    []string
+	str_types                          []StrType       // types that need automatic str() generation
+	generated_str_fns                  []StrType       // types that already have a str() function
+	str_fn_names                       shared []string // remove duplicate function names
+	threaded_fns                       shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns                         shared []string // functions that wait for `go xxx()` to finish
+	needed_equality_fns                []ast.Type
+	generated_eq_fns                   []ast.Type
+	generated_array_interface_cast_fns shared map[string]bool
+	array_sort_fn                      shared []string
+	array_contains_types               []ast.Type
+	array_index_types                  []ast.Type
+	array_last_index_types             []ast.Type
+	array_get_types                    []ast.Type
+	auto_fn_definitions                []string // auto generated functions definition list
+	sumtype_casting_fns                []SumtypeCastingFn
+	anon_fn_definitions                []string        // anon generated functions definition list
+	anon_fns                           shared []string // remove duplicate anon generated functions
+	sumtype_definitions                map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	trace_fn_definitions               []string
+	json_types                         []ast.Type // to avoid json gen duplicates
+	json_types_pos                     map[ast.Type]token.Pos
+	json_gen_pos                       token.Pos
+	pcs                                []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	hotcode_fn_names                   []string
+	hotcode_fpaths                     []string
+	embedded_files                     []ast.EmbeddedFile
+	sql_i                              int
+	sql_stmt_name                      string
+	sql_bind_name                      string
+	sql_idents                         []string
+	sql_idents_types                   []ast.Type
+	sql_left_type                      ast.Type
+	sql_table_name                     string
+	sql_table_typ                      ast.Type // the table type, used for generic types lookup
+	sql_fkey                           string
+	sql_parent_id                      string
+	sql_side                           SqlExprSide // left or right, to distinguish idents in `name == name`
+	sql_last_stmt_out_len              int
+	strs_to_free0                      []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -316,10 +317,13 @@ pub:
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
-	if pref_.build_mode == .build_module {
+	if pref_.build_mode == .build_module || pref_.is_o {
 		for file in files {
-			if file.path.contains(pref_.path)
+			if pref_.build_mode == .build_module && file.path.contains(pref_.path)
 				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+				module_built = file.mod.name
+				break
+			} else if pref_.is_o && file.path.contains(pref_.path) {
 				module_built = file.mod.name
 				break
 			}
@@ -381,7 +385,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: pref_.should_use_segfault_handler()
-		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
+		static_modifier:      if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
 		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
@@ -503,6 +507,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.array_get_types << g.array_get_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
+			for k, v in g.json_types_pos {
+				if k !in global_g.json_types_pos || global_g.json_types_pos[k] == token.Pos{} {
+					global_g.json_types_pos[k] = v
+				}
+			}
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
@@ -533,6 +542,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	global_g.gen_jsons()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
+	// Pre-register auto-str types for interface implementing types that need str()
+	// but don't have an explicit str() method. This must happen before final_gen_str
+	// processing so all transitive str types are included.
+	global_g.register_auto_str_for_interfaces()
 	for i := 0; i < global_g.str_types.len; i++ {
 		global_g.final_gen_str(global_g.str_types[i])
 	}
@@ -764,7 +777,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	if g.waiter_fn_definitions.len > 0 {
 		if g.pref.parallel_cc {
-			g.extern_out.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.bytestr())
+			g.extern_out.write_string2('\n// V gowrappers waiter fns:\n',
+				g.waiter_fn_definitions.bytestr())
 		}
 		helpers.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
 	}
@@ -897,6 +911,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		anon_fn:                unsafe { nil }
 		indent:                 -1
 		module_built:           global_g.module_built
+		static_non_parallel:    global_g.static_non_parallel
+		static_modifier:        global_g.static_modifier
 		timers:                 util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
@@ -914,7 +930,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		results_forward:        global_g.results_forward
 		done_options:           global_g.done_options
 		done_results:           global_g.done_results
-		late_chan_types:         global_g.late_chan_types
+		late_chan_types:        global_g.late_chan_types
 		is_autofree:            global_g.pref.autofree
 		obf_table:              global_g.obf_table
 		referenced_fns:         global_g.referenced_fns
@@ -923,8 +939,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		done_typedef_phase:     global_g.done_typedef_phase
 		array_typedefs:         global_g.array_typedefs.clone()
 		written_array_typedefs: global_g.written_array_typedefs
-		static_modifier:        global_g.static_modifier
-		static_non_parallel:    global_g.static_non_parallel
 		has_reflection:         'v.reflection' in global_g.table.modules
 		has_debugger:           'v.debug' in global_g.table.modules
 		reflection_strings:     global_g.reflection_strings
@@ -1048,9 +1062,11 @@ pub fn (mut g Gen) init() {
 				// int64_t etc; allow a fallback to <stdint.h> for toolchains that do not ship <inttypes.h>.
 				g.cheaders.writeln(get_inttypes_or_stdint_include_text('The C compiler can not find <stdint.h>.${install_compiler_msg}'))
 				if g.pref.os == .ios {
-					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>', 'The C compiler can not find <stdbool.h>.${install_compiler_msg}')) // bool, true, false
+					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>',
+						'The C compiler can not find <stdbool.h>.${install_compiler_msg}')) // bool, true, false
 				}
-				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>.${install_compiler_msg}')) // size_t, ptrdiff_t
+				g.cheaders.writeln(get_guarded_include_text('<stddef.h>',
+					'The C compiler can not find <stddef.h>.${install_compiler_msg}')) // size_t, ptrdiff_t
 			}
 		}
 		if g.pref.nofloat {
@@ -1145,6 +1161,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.build_mode == .build_module {
 		g.comptime_definitions.writeln('#define _VBUILDMODULE (1)')
 	}
+	if g.pref.is_o {
+		g.comptime_definitions.writeln('#define _VOBJECTFILE (1)')
+	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
 	}
@@ -1157,6 +1176,10 @@ pub fn (mut g Gen) init() {
 	// muttable.used_features.used_fns['eprintln'] = true
 	// muttable.used_features.used_fns['print_backtrace'] = true
 	// muttable.used_features.used_fns['exit'] = true
+}
+
+fn (g &Gen) should_use_object_local_linkage(mod string) bool {
+	return g.pref.is_o && g.module_built != '' && mod != g.module_built
 }
 
 pub fn (mut g Gen) finish() {
@@ -1204,7 +1227,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 				continue
 			}
-			static_prefix := if g.pref.build_mode == .build_module { 'static ' } else { '' }
+			static_prefix := if g.pref.build_mode == .build_module || g.pref.is_o {
+				'static '
+			} else {
+				''
+			}
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
 				continue
@@ -1215,8 +1242,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\tif( sidx == _v_type_idx_${g.get_sumtype_variant_name(v,
-						subtype)}() ) return "${util.strip_main_name(subtype.name)}";')
+					g.writeln('\tif( sidx == _v_type_idx_${g.get_sumtype_variant_name(v, subtype)}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
@@ -1295,9 +1321,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln2('\treturn _S("unknown ${util.strip_main_name(sym.name)}");', '}')
 			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
 			if g.pref.build_mode != .build_module {
-				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-				g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-				if g.pref.parallel_cc {
+				interface_idx_static_prefix := if g.pref.is_o { 'static ' } else { '' }
+				g.definitions.writeln('${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+				g.writeln2('',
+					'${interface_idx_static_prefix}u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+				if g.pref.parallel_cc && interface_idx_static_prefix == '' {
 					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
 				for t in inter_info.types {
@@ -3803,11 +3831,16 @@ fn (mut g Gen) gen_interface_to_interface_conversion(expr ast.Expr, expr_type as
 	g.write(')')
 
 	mut info := expr_type_sym.info as ast.Interface
+	right_info := to_sym.info as ast.Interface
 	lock info.conversions {
 		if to_type !in info.conversions {
-			left_variants := g.table.iface_types[expr_type_sym.name]
-			right_variants := g.table.iface_types[to_sym.name]
-			info.conversions[to_type] = left_variants.filter(it in right_variants)
+			// For conversion into an empty interface, all of the left's variants
+			// are valid (empty interfaces accept anything).
+			if right_info.methods.len == 0 && right_info.fields.len == 0 {
+				info.conversions[to_type] = info.types.clone()
+			} else {
+				info.conversions[to_type] = info.types.filter(it in right_info.types)
+			}
 		}
 	}
 	expr_type_sym.info = info
@@ -3852,8 +3885,8 @@ fn (mut g Gen) expr_with_array_element_upcast(expr ast.Expr, got_type ast.Type, 
 		}
 		g.writeln('${expected_elem_styp} ${converted_tmp} = ${fname}(&(((${got_elem_styp}*)${source_tmp}_orig.data)[${index_tmp}]));')
 	} else {
-		g.write_prepared_var(item_tmp, got_elem_type, got_elem_styp, source_tmp, index_tmp,
-			true, false)
+		g.write_prepared_var(item_tmp, got_elem_type, got_elem_styp, source_tmp, index_tmp, true,
+			false)
 		g.write('${expected_elem_styp} ${converted_tmp} = ')
 		g.expr_with_cast(ast.Ident{
 			name: item_tmp
@@ -3917,8 +3950,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-				true, false, got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp, true,
+				false, got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
@@ -3999,8 +4032,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		mut sumtype_got_styp := got_styp
 		mut sumtype_got_is_fn := got_is_fn
 		mut sumtype_got_is_ptr := got_is_ptr
-		nil_sumtype_variant := g.single_pointer_sumtype_nil_variant(unwrapped_expected_type,
-			expr, got_type)
+		nil_sumtype_variant := g.single_pointer_sumtype_nil_variant(unwrapped_expected_type, expr,
+			got_type)
 		if nil_sumtype_variant != 0 {
 			sumtype_got_type = nil_sumtype_variant
 			sumtype_got_sym = g.table.sym(sumtype_got_type)
@@ -4222,6 +4255,9 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
+	if stmt.templates.len == 0 {
+		g.writeln('""')
+	}
 	for template_tmp in stmt.templates {
 		mut template := template_tmp
 		g.write('"')
@@ -4904,7 +4940,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
-			} else if !handled_atomic_postfix && node.op == .question {
+			} else if node.op == .question {
 				mut expr_type := ast.void_type
 				if mut node.expr is ast.ComptimeSelector {
 					if node.expr.field_expr is ast.SelectorExpr
@@ -5400,14 +5436,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 								name_type = g.type_resolver.typeof_field_type(resolved,
 									node.field_name)
 							} else {
-								name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
-									g.resolve_typeof_expr_type(node.expr.expr, name_type)),
-									node.field_name)
+								name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+									name_type)), node.field_name)
 							}
 						} else {
-							name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
-								g.resolve_typeof_expr_type(node.expr.expr, name_type)),
-								node.field_name)
+							name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+								name_type)), node.field_name)
 						}
 						// For mut params (auto_deref), strip pointer so that
 						// typeof(mut_param).idx == typeof(val_param).idx
@@ -5426,8 +5460,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name in ['key_type', 'value_type', 'element_type'] {
 					// `T.<field_name>`, `typeof(expr).<field_name>`
 					mut name_type := node.name_type
-					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr,
-						g.resolve_typeof_expr_type(node.expr, name_type)), node.field_name)
+					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr, g.resolve_typeof_expr_type(node.expr,
+						name_type)), node.field_name)
 					g.write(int(name_type).str())
 					return
 				} else if node.field_name == 'indirections' {
@@ -5438,8 +5472,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							if resolved != 0 {
 								name_type = resolved
 							} else {
-								name_type = g.type_resolver.typeof_type(node.expr.expr,
-									g.resolve_typeof_expr_type(node.expr.expr, name_type))
+								name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+									name_type))
 							}
 						} else {
 							name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
@@ -5961,8 +5995,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		|| is_interface_smartcast_selector
 	is_interface_smartcast_lhs := is_interface_smartcast_expr || is_interface_smartcast_selector
 	exposed_interface_smartcast_type := if is_interface_smartcast_expr {
-		g.exposed_smartcast_type(smartcast_expr_var.orig_type, smartcast_expr_var.smartcasts.last(),
-			smartcast_expr_var.is_mut)
+		g.exposed_smartcast_type(smartcast_expr_var.orig_type,
+			smartcast_expr_var.smartcasts.last(), smartcast_expr_var.is_mut)
 	} else {
 		ast.void_type
 	}
@@ -6553,7 +6587,8 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('->mtx);')
 	} else {
 		mtxs = g.new_tmp_var()
-		g.writeln2('uintptr_t _arr_${mtxs}[${node.lockeds.len}];', 'bool _isrlck_${mtxs}[${node.lockeds.len}];')
+		g.writeln2('uintptr_t _arr_${mtxs}[${node.lockeds.len}];',
+			'bool _isrlck_${mtxs}[${node.lockeds.len}];')
 		mut j := 0
 		for i, is_rlock in node.is_rlock {
 			if !is_rlock {
@@ -6585,7 +6620,8 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		}
 		g.writeln2('for (${ast.int_type_name} ${mtxs}=0; ${mtxs}<${node.lockeds.len}; ${mtxs}++) {',
 			'\tif (${mtxs} && _arr_${mtxs}[${mtxs}] == _arr_${mtxs}[${mtxs}-1]) continue;')
-		g.writeln2('\tif (_isrlck_${mtxs}[${mtxs}])', '\t\tsync__RwMutex_rlock((sync__RwMutex*)_arr_${mtxs}[${mtxs}]);')
+		g.writeln2('\tif (_isrlck_${mtxs}[${mtxs}])',
+			'\t\tsync__RwMutex_rlock((sync__RwMutex*)_arr_${mtxs}[${mtxs}]);')
 		g.writeln2('\telse', '\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_${mtxs}[${mtxs}]);')
 		g.writeln('}')
 	}
@@ -7248,7 +7284,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if has_resolved_var && resolved_var.smartcasts.len > 0 && !skip_smartcasts {
 				mut smartcast_types := resolved_var.smartcasts.clone()
 				if resolved_var.orig_type.has_flag(.option) {
-					unwrapped_option_type := g.unwrap_generic(g.recheck_concrete_type(resolved_var.typ.clear_option_and_result()))
+					unwrapped_option_type :=
+						g.unwrap_generic(g.recheck_concrete_type(resolved_var.typ.clear_option_and_result()))
 					if unwrapped_option_type != 0
 						&& g.table.final_sym(unwrapped_option_type).kind == .function {
 						smartcast_types = [unwrapped_option_type]
@@ -7393,8 +7430,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface] {
-									g.write('${dot}_${g.get_sumtype_variant_name(typ,
-										cast_sym)}')
+									g.write('${dot}_${g.get_sumtype_variant_name(typ, cast_sym)}')
 								}
 								if i != 0 && unwrap_sumtype {
 									g.write(')')
@@ -7517,6 +7553,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
 			g.expr_with_cast(ast.Expr(node.expr), g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 				ast.void_type), effective_node_typ)
+		} else if node_typ_is_option
+			&& g.table.unaliased_type(expr_type) == node_typ.clear_option_and_result() {
+			// Wrapping an already-correct sumtype/interface value in an option:
+			// ?SumType(value) where value is already SumType
+			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, effective_node_typ)
 		} else {
@@ -8082,7 +8123,8 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 		// continue or break
 		if g.needs_scope_cleanup() && !g.is_builtin_mod {
 			g.trace_autofree('// free before continue/break')
-			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, g.branch_parent_pos)
+			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
+				g.branch_parent_pos)
 		}
 		g.writeln('${node.kind};')
 	}
@@ -8406,8 +8448,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	} else if exprs_len >= 1 {
 		if ret_expr_types.len == 0 {
-			g.checker_bug('node.exprs.len == ${node.exprs.len} && node.types.len == 0',
-				node.pos)
+			g.checker_bug('node.exprs.len == ${node.exprs.len} && node.types.len == 0', node.pos)
 		}
 		// normal return
 		return_sym := g.table.final_sym(type0)
@@ -8644,7 +8685,8 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 		return
 	}
 
-	g.writeln2('\t// we call these functions in debug mode so that the C compiler', '\t// does not optimize them and we can access them in the debugger.')
+	g.writeln2('\t// we call these functions in debug mode so that the C compiler',
+		'\t// does not optimize them and we can access them in the debugger.')
 	for _, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
 			sum_info := sym.info as ast.SumType
@@ -8955,7 +8997,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
 					// generate field option types for fixed array of option struct/interface/sumtype
 					// before the struct declaration
-					opt_fields := sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
+					opt_fields :=
+						sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
 					for opt_field in opt_fields {
 						field_sym := g.table.final_sym(opt_field.typ)
 						arr := field_sym.info as ast.ArrayFixed
@@ -9361,7 +9404,8 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								}
 							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
 								g.write('builtin___option_ok(&(${cast_typ}[]) { ')
-								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ,
+									return_type.clear_option_and_result())
 								g.writeln(' }, (${option_name}*)&${cvar_name}, sizeof(${cast_typ}));')
 								g.indent--
 								return
@@ -9401,7 +9445,8 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					} else {
 						old_inside_opt_data := g.inside_opt_data
 						g.inside_opt_data = true
-						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ,
+							return_type.clear_option_and_result())
 						g.inside_opt_data = old_inside_opt_data
 					}
 					if is_array_fixed {
@@ -9456,8 +9501,8 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 	}
 	stmts := or_block.stmts
 	if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-		g.gen_or_block_stmts(cvar_name, g.base_type(return_type), stmts, return_type,
-			false, or_block.scope, or_block.pos)
+		g.gen_or_block_stmts(cvar_name, g.base_type(return_type), stmts, return_type, false,
+			or_block.scope, or_block.pos)
 	} else {
 		g.stmts(stmts)
 		if stmts.len > 0 {
@@ -9616,7 +9661,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else if g.fn_decl.return_type.clear_option_and_result() == return_type.clear_option_and_result() {
 				styp := g.styp(g.fn_decl.return_type).replace('*', '_ptr')
 				err_obj := g.new_tmp_var()
-				g.writeln2('\t${styp} ${err_obj};', '\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(_option));')
+				g.writeln2('\t${styp} ${err_obj};',
+					'\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(_option));')
 				g.writeln('\treturn ${err_obj};')
 			} else {
 				g.write('\treturn ')
@@ -10003,6 +10049,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	defer {
 		g.inside_selector_lhs = old_inside_selector_lhs
 	}
+	// When expr_type and typ refer to the same sumtype (e.g. from assert autocasts
+	// after `assert a != none` where a is ?SumType), just emit the expression directly.
+	// The ident codegen already handles any needed smartcast/option unwrapping.
+	if expr_type_sym.kind == .sum_type && g.unwrap_generic(node.expr_type) == unwrapped_node_typ {
+		g.expr(node.expr)
+		return
+	}
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
@@ -10059,11 +10112,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 
 		mut info := expr_type_sym.info as ast.Interface
+		right_info := sym.info as ast.Interface
 		lock info.conversions {
 			if node.typ !in info.conversions {
-				left_variants := g.table.iface_types[expr_type_sym.name]
-				right_variants := g.table.iface_types[sym.name]
-				info.conversions[node.typ] = left_variants.filter(it in right_variants)
+				if right_info.methods.len == 0 && right_info.fields.len == 0 {
+					info.conversions[node.typ] = info.types.clone()
+				} else {
+					info.conversions[node.typ] = info.types.filter(it in right_info.types)
+				}
 			}
 		}
 		expr_type_sym.info = info
@@ -10134,12 +10190,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		} else if node.expr is ast.SelectorExpr {
 			if node.expr.expr is ast.Ident && node.expr.typ.has_flag(.option)
 				&& !unwrapped_node_typ.has_flag(.option) {
-				g.unwrap_option_type(node.expr.typ, '${node.expr.expr.name}.${node.expr.field_name}',
-					node.expr.expr.is_auto_heap())
+				g.unwrap_option_type(node.expr.typ,
+					'${node.expr.expr.name}.${node.expr.field_name}', node.expr.expr.is_auto_heap())
 				is_optional_ident_var = true
 			} else if node.expr.expr is ast.SelectorExpr && node.expr.typ.has_flag(.option) {
 				if node.expr.expr.expr is ast.Ident {
-					g.unwrap_option_type(node.expr.typ, '${node.expr.expr.expr.name}.${node.expr.expr.field_name}.${node.expr.field_name}',
+					g.unwrap_option_type(node.expr.typ,
+						'${node.expr.expr.expr.name}.${node.expr.expr.field_name}.${node.expr.field_name}',
 						node.expr.expr.expr.is_auto_heap())
 					is_optional_ident_var = true
 				}
@@ -10191,6 +10248,37 @@ fn (mut g Gen) register_iface_return_types() {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			if method.return_type.has_flag(.result) {
 				g.register_result(method.return_type)
+			}
+		}
+	}
+}
+
+// Pre-register auto-str functions for types that implement interfaces requiring str()
+// but don't have an explicit str() method. This ensures the auto-str functions are
+// generated during the main str_types processing loop, before interface_table() runs.
+fn (mut g Gen) register_auto_str_for_interfaces() {
+	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
+	for isym in interfaces {
+		inter_info := isym.info as ast.Interface
+		if inter_info.is_generic {
+			continue
+		}
+		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
+			continue
+		}
+		inter_methods := inter_info.get_methods()
+		has_str := 'str' in inter_methods
+		if !has_str {
+			continue
+		}
+		for st in inter_info.types {
+			if st == ast.voidptr_type || st == ast.nil_type {
+				continue
+			}
+			st_sym := g.table.sym(st)
+			if st_sym.kind in [.struct, .enum, .sum_type, .array, .array_fixed, .map]
+				&& !st_sym.has_method_with_generic_parent('str') {
+				g.get_str_fn(ast.mktyp(st))
 			}
 		}
 	}
@@ -10329,9 +10417,7 @@ fn (mut g Gen) interface_table() string {
 						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
 						if st != ast.voidptr_type && st != ast.nil_type {
 							if st_sym.kind == .struct {
-								if _, embeds := g.table.find_field_from_embeds(st_sym,
-									field.name)
-								{
+								if _, embeds := g.table.find_field_from_embeds(st_sym, field.name) {
 									mut typ_name := ''
 									for i, embed in embeds {
 										esym := g.table.sym(embed)
@@ -10548,6 +10634,28 @@ return ${cast_shared_struct_str};
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type
 					&& st != ast.nil_type {
 					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
+				}
+			}
+			// For interface methods not found in the type's explicit methods,
+			// check if auto-generated methods (like str) can fill the gap.
+			// The auto-str functions were already generated by register_auto_str_for_interfaces()
+			// before the main str_types processing loop.
+			if g.pref.build_mode != .build_module && st != ast.voidptr_type && st != ast.nil_type {
+				filled_methods := ordered_methods.filter(it.name in methodidx).map(it.name)
+				for imethod_name in inter_methods {
+					if imethod_name in filled_methods {
+						continue
+					}
+					if imethod_name == 'str'
+						&& st_sym.kind in [.struct, .enum, .sum_type, .array, .array_fixed, .map] {
+						str_fn_name := g.get_str_fn(ast.mktyp(st))
+						iwpostfix := '_Interface_${interface_name}_method_wrapper'
+						wrapper_name := '${cctype}_str${iwpostfix}'
+						methods_wrapper.writeln('static inline string ${wrapper_name}(${cctype}* x) {')
+						methods_wrapper.writeln('\treturn ${str_fn_name}(*x);')
+						methods_wrapper.writeln('}')
+						methods_struct.writeln('\t\t._method_str = (void*) ${wrapper_name},')
+					}
 				}
 			}
 
@@ -10813,6 +10921,75 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 		}
 	}
 	return ''
+}
+
+fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
+	if g.pref.gc_mode == .vgc {
+		ptrmap, _ := g.vgc_ptrmap(typ)
+		if ptrmap.len > 0 {
+			g.write('HEAP_vgc(${styp}, (')
+			return
+		}
+	}
+	g.write('HEAP(${styp}, (')
+}
+
+// write_heap_alloc_close writes the closing part of a HEAP_vgc or HEAP call.
+fn (mut g Gen) write_heap_alloc_close(typ ast.Type) {
+	if g.pref.gc_mode == .vgc {
+		ptrmap, nptrs := g.vgc_ptrmap(typ)
+		if ptrmap.len > 0 {
+			g.write('), ${ptrmap}, ${nptrs})')
+			return
+		}
+	}
+	g.write('))')
+}
+
+// vgc_ptrmap computes a precise pointer bitmap for simple VGC heap allocations.
+fn (mut g Gen) vgc_ptrmap(typ ast.Type) (string, string) {
+	if g.pref.gc_mode != .vgc {
+		return '', ''
+	}
+	if !g.contains_ptr(typ) {
+		return '', ''
+	}
+	unwrapped := g.unwrap_generic(typ)
+	sym := g.table.final_sym(unwrapped)
+	if sym.kind != .struct {
+		return '', ''
+	}
+	info := sym.info as ast.Struct
+	styp := g.styp(unwrapped)
+	mut parts := []string{}
+	mut nptrs := 0
+	for embed in info.embeds {
+		if g.contains_ptr(embed) {
+			return '', ''
+		}
+	}
+	for field in info.fields {
+		if field.typ.is_any_kind_of_pointer() || field.typ.is_ptr() {
+			fname := c_name(field.name)
+			parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+			nptrs++
+		} else {
+			fsym := g.table.final_sym(field.typ)
+			if fsym.kind in [.array, .map, .string] {
+				fname := c_name(field.name)
+				parts << '(1ULL << (offsetof(${styp}, ${fname}) / sizeof(void*)))'
+				nptrs++
+			} else if fsym.kind in [.interface, .sum_type] {
+				return '', ''
+			} else if g.contains_ptr(field.typ) {
+				return '', ''
+			}
+		}
+	}
+	if parts.len == 0 {
+		return '', ''
+	}
+	return '(uint64_t)(${parts.join(' | ')})', '${nptrs}'
 }
 
 // vint2int rename `_vint_t` to `int`

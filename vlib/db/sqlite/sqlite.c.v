@@ -444,8 +444,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 			}
 			// Param values to bind
 			for i, param in params_row {
-				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,
-					0)
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
 				if code != sqlite_ok {
 					return db.error_message(code, query)
 				}
@@ -587,7 +586,8 @@ pub fn (mut db DB) release_savepoint(savepoint string) ! {
 
 // tables returns the names of all user tables in the database.
 pub fn (db &DB) tables() ![]string {
-	rows := db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")!
+	rows :=
+		db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")!
 	return rows.map(it.vals[0])
 }
 
@@ -607,7 +607,8 @@ pub fn (db &DB) schema(table string) !string {
 	} else {
 		''
 	}
-	rows := db.exec("SELECT sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') ${filter} AND sql IS NOT NULL ORDER BY type, name")!
+	rows :=
+		db.exec("SELECT sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') ${filter} AND sql IS NOT NULL ORDER BY type, name")!
 	return rows.map(it.vals[0]).join('\n\n')
 }
 

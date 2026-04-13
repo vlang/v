@@ -306,7 +306,8 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -usecache keeps repeated REPL checks responsive by reusing cached modules.
 	// -w suppresses warnings from this synthetic println probe.
 	// -check just does syntax and checker analysis without generating/running code.
-	os_response := os.execute('${os.quoted_path(vexe)} -usecache -w -check ${os.quoted_path(check_file)}')
+	os_response :=
+		os.execute('${os.quoted_path(vexe)} -usecache -w -check ${os.quoted_path(check_file)}')
 	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
@@ -612,8 +613,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 		} else {
 			func_call, fntype := r.function_call(r.line)
-			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
-				'"'), '')
+			filter_line :=
+				r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"', '"'), '')
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1
 				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {
@@ -855,7 +856,8 @@ fn repl_check_vfile(file string) !os.Result {
 	}
 	// Declaration-only REPL lines do not need code generation or execution.
 	// Cached checks keep repeated imports and definitions responsive.
-	s := os.execute('${os.quoted_path(vexe)} -usecache -message-limit 1 -repl -check ${os.quoted_path(file)}')
+	s :=
+		os.execute('${os.quoted_path(vexe)} -usecache -message-limit 1 -repl -check ${os.quoted_path(file)}')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

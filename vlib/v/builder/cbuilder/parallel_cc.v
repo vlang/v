@@ -102,7 +102,8 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	for x in pp.get_results[os.Result]() {
 		failed += if x.exit_code == 0 { 0 } else { 1 }
 	}
-	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
+	eprint_time(sw,
+		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
 	if failed > 0 {
 		return error_with_code('failed parallel C compilation', failed)
 	}

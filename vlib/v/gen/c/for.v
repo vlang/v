@@ -332,7 +332,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 		}
-		base_val_type := g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
+		base_val_type :=
+			g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
 		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
 		node.scope.update_var_type(node.val_var, node.val_type)
 	}
@@ -731,8 +732,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			left_type_name := util.no_dots(left_cc_type)
 			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
 		} else {
-			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type,
-				fn_name)
+			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type, fn_name)
 		}
 		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {

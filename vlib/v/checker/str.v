@@ -41,7 +41,6 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	}
 }
 
-<<<<<<< HEAD
 fn (mut c Checker) check_string_inter_lit_format_expr(mut expr ast.Expr, what string) {
 	if expr is ast.EmptyExpr {
 		return
@@ -50,31 +49,11 @@ fn (mut c Checker) check_string_inter_lit_format_expr(mut expr ast.Expr, what st
 	c.expected_type = ast.int_type
 	mut typ := c.expr(mut expr)
 	c.expected_type = expected_type
-	typ = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
-		typ))
+	typ = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr, typ))
 	typ = c.table.unalias_num_type(typ)
 	if typ != ast.int_type && !typ.is_int_literal() {
 		c.error('${what} expression should return `int`', expr.pos())
 	}
-}
-
-fn (mut c Checker) get_string_inter_default_fmt(expr ast.Expr, ftyp ast.Type, typ ast.Type) u8 {
-	if expr is ast.Ident {
-		if expr.obj is ast.Var {
-			obj := expr.obj
-			if obj.typ.is_ptr() && !obj.is_arg {
-				pointee_typ := obj.typ.deref()
-				if c.table.final_sym(pointee_typ).kind != .enum {
-					final_pointee_typ := c.table.final_type(pointee_typ)
-					if final_pointee_typ.is_number()
-						|| final_pointee_typ in [ast.string_type, ast.bool_type] {
-						return `p`
-					}
-				}
-			}
-		}
-	}
-	return c.get_default_fmt(ftyp, typ)
 }
 
 fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
@@ -85,8 +64,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		c.expected_type = ast.string_type
 		mut ftyp := c.expr(mut expr)
 		c.expected_type = expected_type
-		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
-			ftyp))
+		ftyp = c.type_resolver.get_type_or_default(expr,
+			c.check_expr_option_or_result_call(expr, ftyp))
 		if ftyp == ast.void_type || ftyp == 0 {
 			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
@@ -127,7 +106,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
-			fmt = c.get_string_inter_default_fmt(expr, ftyp, typ)
+			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
 				if typ != ast.void_type && !(typ.has_flag(.generic) && (c.inside_lambda
 					|| c.table.cur_concrete_types.len > 0

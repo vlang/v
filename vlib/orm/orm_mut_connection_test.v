@@ -32,8 +32,7 @@ fn (mut db Database) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE` queries
 fn (mut db Database) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	mut query, _ := orm.orm_stmt_gen(.sqlite, table, '', .update, true, ':', 1, data,
-		where)
+	mut query, _ := orm.orm_stmt_gen(.sqlite, table, '', .update, true, ':', 1, data, where)
 
 	db.query(query)!
 }
@@ -66,8 +65,9 @@ fn sqlite_type_from_v(typ int) !string {
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
 fn (mut db Database) create(table orm.Table, fields []orm.TableField) ! {
-	mut query := orm.orm_table_gen(.sqlite, table, '', true, 0, fields, sqlite_type_from_v,
-		false) or { return err }
+	mut query := orm.orm_table_gen(.sqlite, table, '', true, 0, fields, sqlite_type_from_v, false) or {
+		return err
+	}
 	db.query(query)!
 }
 

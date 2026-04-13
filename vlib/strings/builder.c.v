@@ -394,7 +394,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						string_char = c
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 						// Write the opening quote
@@ -404,7 +405,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						// Start of a new block
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 
@@ -457,7 +459,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						// Any other character
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 						b.write_rune(c)

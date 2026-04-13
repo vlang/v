@@ -46,8 +46,8 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert first.ccompiler_set_by_flag
 	assert first.ccompiler == custom_cc
 
-	second, _ := pref.parse_args_and_show_errors(['help'], ['', '-os', target_os, '-cc', custom_cc],
-		false)
+	second, _ := pref.parse_args_and_show_errors(['help'],
+		['', '-os', target_os, '-cc', custom_cc], false)
 	assert second.ccompiler_set_by_flag
 	assert second.ccompiler == custom_cc
 }
@@ -91,6 +91,35 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
+	if pref.get_host_os() == .windows {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', target], false)
+	assert prefs.arch == .amd64
+	assert prefs.ccompiler == 'x86_64-w64-mingw32-gcc'
+}
+
+fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	old_cross_compiler := os.getenv('VCROSS_COMPILER_NAME')
+	defer {
+		os.setenv('VCROSS_COMPILER_NAME', old_cross_compiler, true)
+	}
+	for compiler_name, expected_arch in {
+		'aarch64-linux-android21-clang':    pref.Arch.arm64
+		'armv7a-linux-androideabi21-clang': pref.Arch.arm32
+		'i686-linux-android21-clang':       pref.Arch.i386
+		'x86_64-linux-android21-clang':     pref.Arch.amd64
+	} {
+		os.setenv('VCROSS_COMPILER_NAME', compiler_name, true)
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'android', target], false)
+		assert prefs.arch == expected_arch
+		assert prefs.ccompiler == compiler_name
+	}
+}
+
 fn test_musl_defaults_to_no_gc() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', target], false)
@@ -100,8 +129,7 @@ fn test_musl_defaults_to_no_gc() {
 
 fn test_musl_keeps_explicit_gc_selection() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', '-gc', 'boehm', target],
-		false)
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', '-gc', 'boehm', target], false)
 	assert prefs.is_musl
 	assert prefs.gc_mode == .boehm_full_opt
 }
@@ -110,7 +138,8 @@ fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
 
-	too_many_targets_res := os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
+	too_many_targets_res :=
+		os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
 	assert too_many_targets_res.output.trim_space() == 'Too many targets. Specify just one target: <target.v|target_directory>.'
 
 	unknown_arg_res := os.execute('${vexe} -xyz')
@@ -132,13 +161,15 @@ fn test_unknown_option_flags_no_run() {
 	os.chdir(os.dir(@VEXE))!
 	os.rm(tfile) or {}
 
-	res1 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} examples/hello_world.v --an-unknown-option')
+	res1 :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} examples/hello_world.v --an-unknown-option')
 	assert res1.exit_code == 1, res1.output
 	assert res1.output.starts_with('Unknown argument')
 	assert res1.output.contains('--an-unknown-option')
 	assert !os.exists(tfile)
 
-	res2 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} --an-unknown-option examples/hello_world.v')
+	res2 :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} --an-unknown-option examples/hello_world.v')
 	assert res2.exit_code == 1, res2.output
 	assert res2.output.starts_with('Unknown argument')
 	assert res2.output.contains('--an-unknown-option')
@@ -146,19 +177,22 @@ fn test_unknown_option_flags_no_run() {
 }
 
 fn test_unknown_option_flags_with_run() {
-	res_run_o := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} run examples/hello_world.v --an-unknown-option')
+	res_run_o :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} run examples/hello_world.v --an-unknown-option')
 	assert res_run_o.exit_code == 0, res_run_o.output
 	assert res_run_o.output == '' // because of -o, there should not be an actual run, since compilation stopped after generating the .c file
 	assert os.exists(tfile)
 	os.rm(tfile) or {}
 
-	res_run_no_o_unknown_before_run := os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
+	res_run_no_o_unknown_before_run :=
+		os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
 	assert res_run_no_o_unknown_before_run.exit_code == 1, res_run_no_o_unknown_before_run.output
 	assert res_run_no_o_unknown_before_run.output.starts_with('Unknown argument')
 	assert res_run_no_o_unknown_before_run.output.contains('--an-unknown-option')
 	assert !os.exists(tfile)
 
-	res_run_no_o := os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
+	res_run_no_o :=
+		os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
 	assert res_run_no_o.exit_code == 0, res_run_no_o.output
 	assert res_run_no_o.output.trim_space() == 'Hello, World!'
 	assert !os.exists(tfile)
@@ -166,8 +200,7 @@ fn test_unknown_option_flags_with_run() {
 
 fn test_generate_c_project_flag_parsing() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['-generate-c-project', 'cproj', target],
-		false)
+	prefs, _ := pref.parse_args_and_show_errors([], ['-generate-c-project', 'cproj', target], false)
 	assert prefs.generate_c_project == 'cproj'
 	assert prefs.use_cache == false
 }
@@ -200,7 +233,8 @@ fn test_output_flag_accepts_directory_path() {
 	}
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	output_arg := output_dir + os.path_separator
-	res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(target)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(target)}')
 	assert res.exit_code == 0, res.output
 	assert os.is_dir(output_dir)
 	mut expected_output := os.join_path(output_dir, 'hello_world')

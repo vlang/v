@@ -482,8 +482,7 @@ fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	assert param_bld != 0
 
 	// push the group, private and public key bytes infos into the builder
-	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str),
-		0)
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str), 0)
 	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
 	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, pub_bytes.len)
 	if n <= 0 || m <= 0 || o <= 0 {

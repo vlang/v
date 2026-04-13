@@ -3054,43 +3054,43 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			}
 		}
 		.arm32 {
-			arm32 := gen_all_registers(mut t, arm_no_number_register_list, arm_with_number_register_list,
-				32)
+			arm32 := gen_all_registers(mut t, arm_no_number_register_list,
+				arm_with_number_register_list, 32)
 			for k, v in arm32 {
 				res[k] = v
 			}
 		}
 		.arm64 {
-			arm64 := gen_all_registers(mut t, arm_no_number_register_list, arm_with_number_register_list,
-				64)
+			arm64 := gen_all_registers(mut t, arm_no_number_register_list,
+				arm_with_number_register_list, 64)
 			for k, v in arm64 {
 				res[k] = v
 			}
 		}
 		.rv32 {
-			rv32 := gen_all_registers(mut t, riscv_no_number_register_list, riscv_with_number_register_list,
-				32)
+			rv32 := gen_all_registers(mut t, riscv_no_number_register_list,
+				riscv_with_number_register_list, 32)
 			for k, v in rv32 {
 				res[k] = v
 			}
 		}
 		.rv64 {
-			rv64 := gen_all_registers(mut t, riscv_no_number_register_list, riscv_with_number_register_list,
-				64)
+			rv64 := gen_all_registers(mut t, riscv_no_number_register_list,
+				riscv_with_number_register_list, 64)
 			for k, v in rv64 {
 				res[k] = v
 			}
 		}
 		.s390x {
-			s390x := gen_all_registers(mut t, s390x_no_number_register_list, s390x_with_number_register_list,
-				64)
+			s390x := gen_all_registers(mut t, s390x_no_number_register_list,
+				s390x_with_number_register_list, 64)
 			for k, v in s390x {
 				res[k] = v
 			}
 		}
 		.ppc64le {
-			ppc64le := gen_all_registers(mut t, ppc64le_no_number_register_list, ppc64le_with_number_register_list,
-				64)
+			ppc64le := gen_all_registers(mut t, ppc64le_no_number_register_list,
+				ppc64le_with_number_register_list, 64)
 			for k, v in ppc64le {
 				res[k] = v
 			}

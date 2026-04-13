@@ -124,8 +124,7 @@ pub fn (mut ch Channel) close() {
 		return
 	}
 	mut nulladr := unsafe { nil }
-	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr),
-		isize(-1)) {
+	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr), isize(-1)) {
 		nulladr = unsafe { nil }
 	}
 	ch.readsem_im.post()
@@ -188,8 +187,8 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				// there is a reader waiting for us
 				unsafe { C.memcpy(wradr, src, ch.objsize) }
 				mut nulladr := unsafe { nil }
-				for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr),
-					isize(wradr)) {
+				for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written),
+					voidptr(&nulladr), isize(wradr)) {
 					nulladr = unsafe { nil }
 				}
 				ch.readsem_im.post()
@@ -383,8 +382,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					// there is a writer waiting for us
 					unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 					mut nulladr := unsafe { nil }
-					for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_read), voidptr(&nulladr),
-						isize(rdadr)) {
+					for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_read),
+						voidptr(&nulladr), isize(rdadr)) {
 						nulladr = unsafe { nil }
 					}
 					ch.writesem_im.post()
@@ -564,8 +563,7 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 		sub_mtx.lock()
 		subscr[i].prev = unsafe { subscriber }
 		unsafe {
-			subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(subscriber),
-				&subscr[i]))
+			subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(subscriber), &subscr[i]))
 		}
 		if voidptr(subscr[i].nxt) != unsafe { nil } {
 			subscr[i].nxt.prev = unsafe { &subscr[i].nxt }

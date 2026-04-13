@@ -82,7 +82,8 @@ fn frame(mut app App) {
 		update_rain_column(mut rc, app.cols, app.rows)
 		draw_rain_column(rc, app)
 	}
-	app.ctx.draw_text(app.screen_size.width / 2 - 190, app.screen_size.height - 15, 'press `f` to toggle fullscreen, Up/Down arrows to change speed',
+	app.ctx.draw_text(app.screen_size.width / 2 - 190, app.screen_size.height - 15,
+		'press `f` to toggle fullscreen, Up/Down arrows to change speed',
 		color: gg.gray
 	)
 	app.ctx.end()
@@ -149,8 +150,7 @@ fn draw_rain_column(rc RainColumn, app App) {
 			}
 			if i < rc.drops.len {
 				app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)
-				app.ctx.draw_text(x, y, rc.drops[(i + 10) % rc.drops.len].ascii_str(),
-					cfg)
+				app.ctx.draw_text(x, y, rc.drops[(i + 10) % rc.drops.len].ascii_str(), cfg)
 			} else {
 				vprintln('BAD i: ${i} | rc.drops.len: ${rc.drops.len}')
 			}

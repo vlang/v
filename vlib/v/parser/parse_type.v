@@ -52,7 +52,9 @@ fn (mut p Parser) eval_array_fixed_sizes(mut size_expr ast.Expr) (int, bool) {
 					size_unresolved = false
 				}
 				ast.EnumVal {
-					if val := p.table.find_enum_field_val(size_expr.expr.enum_name, size_expr.expr.val) {
+					if val := p.table.find_enum_field_val(size_expr.expr.enum_name,
+						size_expr.expr.val)
+					{
 						fixed_size = int(val)
 						size_unresolved = false
 					}
@@ -137,6 +139,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
+
 			p.array_dim == 1 && p.fixed_array_dim == 1 && !is_option && p.inside_fn_return)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
@@ -611,14 +614,15 @@ fn (mut p Parser) parse_type() ast.Type {
 			p.chan_type_error()
 			return 0
 		}
-		if typ == ast.void_type {
+		if is_option && typ == ast.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0
 		}
 		sym := p.table.sym(typ)
 		if p.inside_fn_concrete_type && sym.info is ast.Struct {
 			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
-				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
+				p.error_with_pos('missing concrete type on generic type',
+					option_pos.extend(p.prev_tok.pos()))
 			}
 		}
 
@@ -836,9 +840,8 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 }
 
 fn (mut p Parser) find_or_register_placeholder_generic_type(sym &ast.TypeSymbol) ast.Type {
-	generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(), 'struct_init_generic_types') or {
-		return ast.no_type
-	}
+	generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
+		'struct_init_generic_types') or { return ast.no_type }
 	mut sym_name := sym.name + '<'
 	for i, gt in generic_names {
 		sym_name += gt

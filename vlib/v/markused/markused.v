@@ -242,8 +242,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	// handle assertions and testing framework callbacks:
 	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
-		all_fn_root_names << 'tos3'
 	}
+	// tos3 is used by cgen for typeof() on sum_types at runtime:
+	all_fn_root_names << 'tos3'
 	if pref_.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
@@ -258,7 +259,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
-	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
+	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter',
+		'x.vweb.Context')
 
 	if 'debug_used_features' in pref_.compile_defines {
 		eprintln('> debug_used_features: ${table.used_features}')
@@ -399,9 +401,8 @@ fn all_global_decl_in_stmts(stmts []ast.Stmt, mut all_fns map[string]ast.FnDecl,
 						if node.expr.is_comptime {
 							// top level comptime $if
 							for branch in node.expr.branches {
-								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut
-									all_consts, mut all_globals, mut all_decltypes, mut
-									all_structs)
+								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut all_consts, mut
+									all_globals, mut all_decltypes, mut all_structs)
 							}
 						}
 					}
@@ -409,9 +410,8 @@ fn all_global_decl_in_stmts(stmts []ast.Stmt, mut all_fns map[string]ast.FnDecl,
 						if node.expr.is_comptime {
 							// top level comptime $match
 							for branch in node.expr.branches {
-								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut
-									all_consts, mut all_globals, mut all_decltypes, mut
-									all_structs)
+								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut all_consts, mut
+									all_globals, mut all_decltypes, mut all_structs)
 							}
 						}
 					}
@@ -434,8 +434,8 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_decltypes := map[string]ast.TypeDecl{}
 	mut all_structs := map[string]ast.StructDecl{}
 	for i in 0 .. ast_files.len {
-		all_global_decl_in_stmts(ast_files[i].stmts, mut all_fns, mut all_consts, mut
-			all_globals, mut all_decltypes, mut all_structs)
+		all_global_decl_in_stmts(ast_files[i].stmts, mut all_fns, mut all_consts, mut all_globals, mut
+			all_decltypes, mut all_structs)
 	}
 	return all_fns, all_consts, all_globals, all_decltypes, all_structs
 }

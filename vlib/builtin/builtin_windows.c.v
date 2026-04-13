@@ -74,8 +74,10 @@ fn builtin_init() {
 	C.SetConsoleOutputCP(cp_utf8)
 	at_exit(restore_codepage) or {}
 	if is_terminal(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(std_output_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
-		C.SetConsoleMode(C.GetStdHandle(std_error_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+		C.SetConsoleMode(C.GetStdHandle(std_output_handle),
+			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+		C.SetConsoleMode(C.GetStdHandle(std_error_handle),
+			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		unsafe {
 			C.setbuf(C.stdout, 0)
 			C.setbuf(C.stderr, 0)

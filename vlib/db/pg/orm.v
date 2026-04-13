@@ -30,15 +30,16 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
-	query, converted_data := orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1,
-		data, orm.QueryData{})
+	query, converted_data :=
+		orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1, data, orm.QueryData{})
 	pg_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	where_with_tenant := orm.apply_tenant_filter(table, where)
-	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where_with_tenant)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data,
+		where_with_tenant)
 	pg_stmt_worker(db, query, data, where_with_tenant)!
 }
 

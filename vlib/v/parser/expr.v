@@ -259,7 +259,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			mut pos := p.tok.pos()
 			p.next()
 			if p.inside_unsafe {
-				return p.error_with_pos('already inside `unsafe` block', pos)
+				err := p.error_with_pos('already inside `unsafe` block', pos)
+				if p.tok.kind != .eof {
+					p.recover_until_closing_rcbr()
+				}
+				return err
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
@@ -831,7 +835,8 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 		// `foo()?`
 		p.next()
 		if p.inside_defer {
-			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
+			p.error_with_pos('error propagation not allowed inside `defer` blocks',
+				p.prev_tok.pos())
 		}
 		return ast.OrExpr{
 			kind:  if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }

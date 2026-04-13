@@ -19,7 +19,8 @@ fn main() {
 		os.mkdir_all(vmodules)!
 		println('C2V is not installed. Cloning C2V to ${c2v_dir} ...')
 		os.chdir(vmodules)!
-		res := os.execute('${os.quoted_path(vexe)} retry -- git clone --filter=blob:none https://github.com/vlang/c2v')
+		res :=
+			os.execute('${os.quoted_path(vexe)} retry -- git clone --filter=blob:none https://github.com/vlang/c2v')
 		if res.exit_code != 0 {
 			eprintln('Failed to download C2V.')
 			exit(1)
@@ -29,7 +30,8 @@ fn main() {
 	if !os.exists(c2v_bin) {
 		os.chdir(c2v_dir)!
 		println('Compiling c2v ...')
-		res2 := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
+		res2 :=
+			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
 		if res2.exit_code != 0 {
 			eprintln(res2.output)
 			eprintln('Failed to compile C2V. This should not happen. Please report it via GitHub.')

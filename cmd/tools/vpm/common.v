@@ -83,7 +83,8 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 	is_initial_selection := selected_server_url(false, '') == ''
 	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
-		verbose_println_more(@FILE_LINE, @FN, 'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
+		verbose_println_more(@FILE_LINE, @FN,
+			'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
 		r := http.get(modurl) or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
@@ -179,7 +180,8 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 		return error(final_error)
 	}
 	name = name.trim_string_right('.git')
-	verbose_println_more(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
+	verbose_println_more(@FILE_LINE, @FN,
+		'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
 	return publisher, name
 }
 
@@ -273,7 +275,8 @@ fn normalize_repo_lookup_url(raw_url string) !string {
 		return error('failed to parse module URL `${raw_url}`.')
 	}
 	host := url.hostname().trim_space().to_lower()
-	path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git').to_lower()
+	path :=
+		url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git').to_lower()
 	if host == '' || path == '' {
 		return error('failed to normalize module URL `${raw_url}`.')
 	}

@@ -67,8 +67,8 @@ fn test_orm_stmt_gen_h2_insert_default_values() {
 	table := orm.Table{
 		name: 'Test'
 	}
-	query, _ := orm.orm_stmt_gen(.h2, table, '"', .insert, false, '?', 1, orm.QueryData{},
-		orm.QueryData{})
+	query, _ :=
+		orm.orm_stmt_gen(.h2, table, '"', .insert, false, '?', 1, orm.QueryData{}, orm.QueryData{})
 	assert query == 'INSERT INTO "Test" DEFAULT VALUES;'
 }
 

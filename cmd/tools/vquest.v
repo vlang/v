@@ -152,7 +152,8 @@ const solve_flags = [
 ]
 
 fn run_confirm(cmd cli.Command) ! {
-	run_issue(cmd, confirm_search_query, 'still unconfirmed', 'Help us by confirming and triaging this issue:')!
+	run_issue(cmd, confirm_search_query, 'still unconfirmed',
+		'Help us by confirming and triaging this issue:')!
 }
 
 fn run_fix(cmd cli.Command) ! {
@@ -160,7 +161,8 @@ fn run_fix(cmd cli.Command) ! {
 }
 
 fn run_implement(cmd cli.Command) ! {
-	run_issue(cmd, feature_search_query, 'feature request', 'Help us by implementing the issue in a PR, or triage it:')!
+	run_issue(cmd, feature_search_query, 'feature request',
+		'Help us by implementing the issue in a PR, or triage it:')!
 }
 
 fn run_solve(cmd cli.Command) ! {
@@ -188,7 +190,8 @@ fn run_solve(cmd cli.Command) ! {
 	}
 	start_page, end_page := resolve_page_range(cmd, max_pages)!
 	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
-	eprintln(term.colorize(term.gray, 'Found: ${total} bugs reproducible on ${os_label}. Fetching from page: ${page} in [${start_page}, ${end_page}] ...'))
+	eprintln(term.colorize(term.gray,
+		'Found: ${total} bugs reproducible on ${os_label}. Fetching from page: ${page} in [${start_page}, ${end_page}] ...'))
 
 	issue := fetch_issue_from_page(query, page)!
 	details := fetch_issue_details(issue.number)!
@@ -273,7 +276,8 @@ fn run_issue(cmd cli.Command, issue_query string, issue_label string, help_label
 	}
 	start_page, end_page := resolve_page_range(cmd, max_pages)!
 	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
-	eprintln(term.colorize(term.gray, 'Found: ${total} ${issue_label} issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
+	eprintln(term.colorize(term.gray,
+		'Found: ${total} ${issue_label} issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
 	issue := fetch_issue_from_page(issue_query, page)!
 	println(term.colorize(term.green, help_label))
 	println(issue.html_url)
@@ -284,7 +288,8 @@ fn run_issue(cmd cli.Command, issue_query string, issue_label string, help_label
 }
 
 fn run_document(_cmd cli.Command) ! {
-	res := os.execute('${os.quoted_path(@VEXE)} missdoc --exclude vlib/v --exclude /linux_bare/ --exclude /wasm_bare/ @vlib')
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} missdoc --exclude vlib/v --exclude /linux_bare/ --exclude /wasm_bare/ @vlib')
 	if res.exit_code != 0 {
 		return error('v missdoc failed: ${res.output}')
 	}

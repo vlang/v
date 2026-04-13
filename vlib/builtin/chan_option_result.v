@@ -176,8 +176,7 @@ fn _option_clone(current &_option, mut option _option, size int) {
 			err:   current.err
 		}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError),
-			size)
+		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
 	}
 }
 

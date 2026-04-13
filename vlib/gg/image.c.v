@@ -342,8 +342,8 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				} else {
 					config.img_rect.height
 				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
-					height, img)
+				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
+					img)
 				return
 			}
 		}

@@ -29,7 +29,8 @@ fn test_v_run_file_from_path_with_spaces() {
 		os.rmdir_all(spaced_dir) or {}
 	}
 	os.cp(echo_os_args, spaced_echo_os_args)!
-	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(spaced_echo_os_args)} 1 "Learn V" 3')
+	res :=
+		os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(spaced_echo_os_args)} 1 "Learn V" 3')
 	println(res)
 	assert res.exit_code == 0
 	assert res.output.starts_with("['1', 'Learn V', '3']")

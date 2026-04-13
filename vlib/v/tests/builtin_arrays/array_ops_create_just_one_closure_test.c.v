@@ -1,3 +1,6 @@
+@[has_globals]
+module main
+
 struct C.builtin__closure__Closure {
 	closure_cap int
 }

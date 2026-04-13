@@ -22,8 +22,7 @@ fn (mut g Gen) set_file_module(file ast.File) {
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 	if g.cur_fn_name == 'decode_value' && stmts.len > 0 {
-		C.fprintf(C.stderr, c'[gen_stmts] cur_fn=%s stmts.len=%d\n', g.cur_fn_name.str,
-			stmts.len)
+		C.fprintf(C.stderr, c'[gen_stmts] cur_fn=%s stmts.len=%d\n', g.cur_fn_name.str, stmts.len)
 	}
 	for i in 0 .. stmts.len {
 		if g.cur_fn_name == 'decode_value' {
@@ -51,8 +50,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				is_if := node.expr is ast.IfExpr
 				is_call := node.expr is ast.CallExpr
 				is_ident := node.expr is ast.Ident
-				C.fprintf(C.stderr, c'[gen_stmt/ExprStmt] valid=%d comptime=%d if=%d call=%d ident=%d\n',
-					if expr_has_valid_data(node.expr) { 1 } else { 0 }, if is_comptime {
+				C.fprintf(C.stderr,
+					c'[gen_stmt/ExprStmt] valid=%d comptime=%d if=%d call=%d ident=%d\n', if expr_has_valid_data(node.expr) {
+					1
+				} else {
+					0
+				}, if is_comptime {
 					1
 				} else {
 					0

@@ -662,7 +662,8 @@ fn gg_resize_window(width int, height int) {
 			return
 		}
 		C.SetWindowPos(hwnd, unsafe { nil }, int(current_rect.left), int(current_rect.top),
-			int(rect.right - rect.left), int(rect.bottom - rect.top), u32(C.SWP_NOZORDER | C.SWP_NOACTIVATE))
+			int(rect.right - rect.left), int(rect.bottom - rect.top),
+			u32(C.SWP_NOZORDER | C.SWP_NOACTIVATE))
 	} $else $if linux && !sokol_wayland ? {
 		display := sapp.x11_get_display()
 		window := u64(usize(sapp.x11_get_window()))
@@ -878,16 +879,18 @@ pub fn (ctx &Context) show_fps() {
 	fps_text := int(0.5 + 1.0 / frame_duration).str()
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
-		fps.width, fps.height = ctx.text_size('00') // usual size; prevents blinking on variable width fonts
+		fps.width, fps.height =
+			ctx.text_size('00') // usual size; prevents blinking on variable width fonts
 	}
 	char_width := ctx.fps.text_config.size / 2
 	mut full_width := ctx.fps.width
 	if char_width * fps_text.len > ctx.fps.width {
 		full_width += (fps_text.len - 2) * char_width
 	}
-	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4, ctx.fps.background_color)
-	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
-		fps_text, ctx.fps.text_config)
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4,
+		ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2, fps_text,
+		ctx.fps.text_config)
 }
 
 fn (mut ctx Context) set_scale() {
@@ -976,7 +979,8 @@ pub fn screen_size() Size {
 		}
 		for i := 0; i < resources.noutput; i++ {
 			if unsafe { u64(resources.outputs[i]) } == primary_output {
-				output_info := C.XRRGetOutputInfo(display, resources, unsafe { resources.outputs[i] })
+				output_info := C.XRRGetOutputInfo(display, resources,
+					unsafe { resources.outputs[i] })
 				if output_info == unsafe { nil } {
 					return Size{}
 				}

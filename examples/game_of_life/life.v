@@ -4,10 +4,6 @@ import time
 
 const cell = '█'
 const nothing = ' '
-const switches = {
-	cell:    nothing
-	nothing: cell
-}
 const transformers = [nothing, cell]
 
 struct Game {

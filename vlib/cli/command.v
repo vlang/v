@@ -322,7 +322,8 @@ fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 
 fn (cmd &Command) check_help_flag() {
 	if cmd.defaults.parsed.help.flag && cmd.flags.contains('help') {
-		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
+		help_flag :=
+			cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			cmd.execute_help()
 			exit(0)
@@ -332,7 +333,8 @@ fn (cmd &Command) check_help_flag() {
 
 fn (cmd &Command) check_man_flag() {
 	if cmd.defaults.parsed.man.flag && cmd.flags.contains('man') {
-		man_flag := cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
+		man_flag :=
+			cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
 		if man_flag {
 			cmd.execute_man()
 			exit(0)
@@ -342,7 +344,8 @@ fn (cmd &Command) check_man_flag() {
 
 fn (cmd &Command) check_version_flag() {
 	if cmd.defaults.parsed.version.flag && cmd.version != '' && cmd.flags.contains('version') {
-		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
+		version_flag :=
+			cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
 			print_version_for_command(cmd) or { panic(err) }
 			exit(0)
@@ -362,7 +365,8 @@ fn (cmd &Command) check_required_flags() {
 // execute_help executes the callback registered for the `-h`/`--help` flag option.
 pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
-		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
+		help_cmd :=
+			cmd.commands.get('help') or { return } // ignore error and handle command normally
 		if !isnil(help_cmd.execute) {
 			help_cmd.execute(help_cmd) or { panic(err) }
 			return

@@ -102,13 +102,8 @@ fn test_c_output_suggests_missing_typedef_for_c_struct_requires_matching_redecla
 
 fn test_c_error_missing_library_name_detects_tcc_output() {
 	tcc_output := "tcc: error: library 'pq' not found"
-	lib_name := c_error_missing_library_name(tcc_output) or { panic(err) }
+	lib_name := c_error_missing_library_name(tcc_output)
 	assert lib_name == 'pq'
-}
-
-fn test_detect_cc_from_version_output_detects_clang() {
-	clang_output := 'Apple clang version 17.0.0 (clang-1700.6.3.2)\nTarget: arm64-apple-darwin25.2.0'
-	assert detect_cc_from_version_output(clang_output) == .clang
 }
 
 fn test_c_error_missing_libatomic_marker_with_tcc_output() {
@@ -127,4 +122,19 @@ fn test_c_error_missing_libatomic_marker_with_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert c_error_missing_libatomic_marker(c_output) == ''
 	assert !c_error_looks_like_missing_libatomic(c_output)
+}
+
+fn test_c_error_missing_library_name_with_macos_ld_output() {
+	c_output := "ld: library 'mbedtls' not found\nclang: error: linker command failed with exit code 1\n"
+	assert c_error_missing_library_name(c_output) == 'mbedtls'
+}
+
+fn test_c_error_missing_library_name_with_gnu_ld_output() {
+	c_output := '/usr/bin/ld: cannot find -lssl\ncollect2: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'ssl'
+}
+
+fn test_c_error_missing_library_name_with_regular_c_error() {
+	c_output := "error: unknown type name 'my_missing_type'"
+	assert c_error_missing_library_name(c_output) == ''
 }

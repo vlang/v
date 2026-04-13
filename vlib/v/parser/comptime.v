@@ -159,10 +159,10 @@ fn (p &Parser) resolve_tmpl_path_expr_with_depth(expr ast.Expr, depth int) ?stri
 					if expr.args.len == 0 {
 						return ''
 					}
-					mut path := p.resolve_tmpl_path_expr_with_depth(expr.args[0].expr,
-						depth + 1)?
+					mut path := p.resolve_tmpl_path_expr_with_depth(expr.args[0].expr, depth + 1)?
 					for arg in expr.args[1..] {
 						path = os.join_path_single(path, p.resolve_tmpl_path_expr_with_depth(arg.expr,
+
 							depth + 1)?)
 					}
 					return path
@@ -172,8 +172,9 @@ fn (p &Parser) resolve_tmpl_path_expr_with_depth(expr ast.Expr, depth int) ?stri
 						return none
 					}
 					return os.join_path_single(p.resolve_tmpl_path_expr_with_depth(expr.args[0].expr,
-						depth + 1)?, p.resolve_tmpl_path_expr_with_depth(expr.args[1].expr,
-						depth + 1)?)
+
+						depth + 1)?, p.resolve_tmpl_path_expr_with_depth(expr.args[1].expr, depth +
+						1)?)
 				}
 				else {
 					return none
@@ -284,13 +285,15 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		import_mods := p.ast_imports.map(it.mod)
 		if name == 'vweb' {
 			if 'vweb' !in import_mods && 'x.vweb' !in import_mods {
-				p.error_with_pos('`\$vweb` cannot be used without importing vweb', start_pos.extend(p.prev_tok.pos()))
+				p.error_with_pos('`\$vweb` cannot be used without importing vweb',
+					start_pos.extend(p.prev_tok.pos()))
 				return err_node
 			}
 			p.register_used_import('vweb')
 		} else if name == 'veb' {
 			if 'veb' !in import_mods {
-				p.error_with_pos('`\$veb` cannot be used without importing veb', start_pos.extend(p.prev_tok.pos()))
+				p.error_with_pos('`\$veb` cannot be used without importing veb',
+					start_pos.extend(p.prev_tok.pos()))
 				return err_node
 			}
 			p.register_used_import('veb')
@@ -486,7 +489,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
+	tmp_fn_name := p.cur_fn_name.replace('.', '__').to_lower() + start_pos.pos.str()
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}

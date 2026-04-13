@@ -8,7 +8,8 @@ const vexe = os.getenv('VEXE')
 
 const vroot = os.dir(vexe)
 
-const basepath = os.real_path(os.join_path(vroot, 'vlib', 'v', 'tests', 'multiple_paths_in_vmodules'))
+const basepath = os.real_path(os.join_path(vroot, 'vlib', 'v', 'tests',
+	'multiple_paths_in_vmodules'))
 
 const mainvv = os.join_path(basepath, 'main.vv')
 
