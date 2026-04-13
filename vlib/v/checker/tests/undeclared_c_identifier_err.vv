@@ -1,5 +1,0 @@
-#include <errno.h>
-
-fn main() {
-	println(C.errono)
-}

@@ -83,7 +83,7 @@ pub:
 	elem_type Type
 }
 
-struct Channel {
+pub struct Channel {
 pub:
 	elem_type ?Type
 }
