@@ -5,13 +5,13 @@ fn test_string_interpolation_reference_default_fmt() {
 
 	f := f32(1.25)
 	fp := &f
-	assert '${fp}' == ptr_str(fp)
+	assert '${fp}' == '1.25'
 
 	r := rune(`A`)
 	rp := &r
-	assert '${rp}' == ptr_str(rp)
+	assert '${rp}' == '65'
 
 	i := 123
 	ip := &i
-	assert '${ip}' == ptr_str(ip)
+	assert '${ip}' == '123'
 }

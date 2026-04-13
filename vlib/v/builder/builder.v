@@ -482,6 +482,12 @@ fn find_module_path_from_search_root(search_path string, mod string) !string {
 	if os.is_dir(try_path) {
 		return try_path
 	}
+	// Single-file modules: check if a .v file with the module name exists in the search directory.
+	// In this case, the module's source is a single file (e.g., `priv_sym.v`) rather than a subdirectory.
+	// Return the search directory itself, since V loads all .v files in a directory as part of the module.
+	if os.is_file(try_path + '.v') {
+		return search_path
+	}
 	if src_try_path := find_module_path_from_vmod_root(search_path, mod) {
 		return src_try_path
 	}

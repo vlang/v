@@ -2341,10 +2341,8 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
-	allow_none_as_option_value := ret_type.has_flag(.option)
-		&& (expr is ast.IndexExpr || expr is ast.CallExpr)
-	default_or_type := if ret_type.has_flag(.option)
-		&& (expr is ast.IndexExpr || expr is ast.CallExpr) {
+	allow_none_as_option_value := expr is ast.IndexExpr && ret_type.has_flag(.option)
+	default_or_type := if expr is ast.IndexExpr && ret_type.has_flag(.option) {
 		ret_type
 	} else {
 		expr_return_type.clear_option_and_result()
