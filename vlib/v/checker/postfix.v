@@ -8,7 +8,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	is_non_void_pointer := typ.is_any_kind_of_pointer() && !typ.has_flag(.shared_f)
 		&& typ_sym.kind != .voidptr
 	mut unwrapped_question_type := c.unwrap_generic(c.type_resolver.get_type(node.expr))
-	if c.table.sym(unwrapped_question_type).kind == .alias {
+	if unwrapped_question_type != 0 && c.table.sym(unwrapped_question_type).kind == .alias {
 		unaliased_question_type := c.table.unaliased_type(unwrapped_question_type)
 		if unaliased_question_type.has_option_or_result() {
 			unwrapped_question_type = c.unwrap_generic(unaliased_question_type)
