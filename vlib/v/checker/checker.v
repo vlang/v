@@ -6090,7 +6090,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			return x.typ
 		}
 		c_name := node.name.all_after('C.')
-		if !c.pref.translated && !c.file.is_translated && c_name.to_upper() != c_name {
+		if !c.pref.translated && !c.file.is_translated && c_name.len > 0 && c_name[0] >= `a`
+			&& c_name[0] <= `z` {
 			c.error('undefined C identifier: `${node.name}`', node.pos)
 			return ast.int_type
 		}
