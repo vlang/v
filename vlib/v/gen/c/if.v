@@ -302,8 +302,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else if resolved_sym.kind == .function && resolved_sym.info is ast.FnType {
+				param_types := resolved_sym.info.func.params.map(it.typ)
 				g.writeln('${g.fn_var_signature(resolved_typ, resolved_sym.info.func.return_type,
-					resolved_sym.info.func.params.map(it.typ), tmp)}; /* if prepend */')
+					param_types, tmp)}; /* if prepend */')
 				declared_tmp = true
 			} else {
 				g.write('${styp} ')

@@ -28,7 +28,7 @@ fn main() {
 	println(t5)
 	t6 := typeof(charptr(0))
 	println(t6)
-	t7 := typeof(&u8(3))
+	t7 := typeof(unsafe { &u8(3) })
 	println(t7)
 
 	// functions

@@ -5280,11 +5280,11 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		} else {
 			scope.register(ast.Var{
 				name:            t
-				typ:             ast.string_type
+				typ:             arg.typ
 				is_autofree_tmp: true
 				pos:             node.pos
 			})
-			s = 'string ${t} = '
+			s = '${g.styp(arg.typ)} ${t} = '
 		}
 		g.is_autofree_tmp = true
 		old_is_autofree := g.is_autofree
