@@ -44,14 +44,14 @@ fn get_parent_mod(input_dir string) !string {
 	}
 	mut tbl := ast.new_table()
 	file_ast := parser.parse_file(v_files[0], mut tbl, .skip_comments, prefs)
-	if file_ast.mod.name == 'main' {
+	if file_ast.mod.short_name == 'main' {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 	if parent_mod.len > 0 {
-		return '${parent_mod}.${file_ast.mod.name}'
+		return '${parent_mod}.${file_ast.mod.short_name}'
 	}
-	return file_ast.mod.name
+	return file_ast.mod.short_name
 }
 
 // lookup_module_with_path looks up the path of a given module name.
