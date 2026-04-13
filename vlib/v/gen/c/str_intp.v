@@ -595,7 +595,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				node_.expr_types[i] = field_typ
 			}
 			// Update format specifier if it was auto-determined and the type changed
-			if !node_.need_fmts[i] {
+			if !node_.need_fmts[i] && fmts[i] == `_` {
 				ftyp_sym := g.table.sym(field_typ)
 				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 					g.table.unalias_num_type(field_typ)

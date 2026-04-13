@@ -1,11 +1,11 @@
-vlib/v/checker/tests/voidptr_cast_to_ref_outside_unsafe_err.vv:3:6: error: cannot cast voidptr to `&u32` outside `unsafe`
+vlib/v/checker/tests/voidptr_cast_to_ref_outside_unsafe_err.vv:3:6: warning: casting voidptr to `&u32` is only allowed in `unsafe` code
     1 | fn main() {
     2 |     some_ptr := voidptr(1234)
     3 |     _ = &u32(some_ptr)
       |         ~~~~~~~~~~~~~~
     4 |     _ = &u32(voidptr(5678))
     5 | }
-vlib/v/checker/tests/voidptr_cast_to_ref_outside_unsafe_err.vv:4:6: error: cannot cast voidptr to `&u32` outside `unsafe`
+vlib/v/checker/tests/voidptr_cast_to_ref_outside_unsafe_err.vv:4:6: warning: casting voidptr to `&u32` is only allowed in `unsafe` code
     2 |     some_ptr := voidptr(1234)
     3 |     _ = &u32(some_ptr)
     4 |     _ = &u32(voidptr(5678))
