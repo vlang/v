@@ -2544,10 +2544,8 @@ pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
 
 pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	f.expr(node.left)
-	if node.index is ast.RangeExpr {
-		if node.index.is_gated {
-			f.write('#')
-		}
+	if node.is_gated {
+		f.write('#')
 	}
 	last_index_expr_state := f.is_index_expr
 	f.is_index_expr = true

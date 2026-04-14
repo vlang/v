@@ -2156,6 +2156,11 @@ fn (s string) at(idx int) u8 {
 	return unsafe { s.str[idx] }
 }
 
+@[markused]
+fn (s string) at_ni(idx int) u8 {
+	return s.at(v_ni_index(idx, s.len))
+}
+
 // version of `at()` that is used in `a[i] or {`
 // return an error when the index is out of range
 fn (s string) at_with_check(idx int) ?u8 {
@@ -2165,6 +2170,11 @@ fn (s string) at_with_check(idx int) ?u8 {
 	unsafe {
 		return s.str[idx]
 	}
+}
+
+@[markused]
+fn (s string) at_with_check_ni(idx int) ?u8 {
+	return s.at_with_check(v_ni_index(idx, s.len))
 }
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not

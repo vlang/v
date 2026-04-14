@@ -38,12 +38,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			gen_or := node.or_expr.kind != .absent || node.is_option
+			string_at_fn := if node.is_gated {
+				'builtin__string_at_ni'
+			} else {
+				'builtin__string_at'
+			}
+			string_at_with_check_fn := if node.is_gated {
+				'builtin__string_at_with_check_ni'
+			} else {
+				'builtin__string_at_with_check'
+			}
 			if gen_or {
 				tmp_opt := g.new_tmp_var()
 				cur_line := g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
 				opt_elem_type := g.styp(ast.u8_type.set_flag(.option))
-				g.write('${opt_elem_type} ${tmp_opt} = builtin__string_at_with_check(')
+				g.write('${opt_elem_type} ${tmp_opt} = ${string_at_with_check_fn}(')
 				g.expr(ast.Expr(node.left))
 				g.write(', ')
 				g.expr(node.index)
@@ -53,14 +63,15 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				g.write('\n${cur_line}*(byte*)&${tmp_opt}.data')
 			} else {
-				is_direct_array_access := g.is_direct_array_access || node.is_direct
+				is_direct_array_access := !node.is_gated
+					&& (g.is_direct_array_access || node.is_direct)
 				if is_direct_array_access {
 					g.expr(ast.Expr(node.left))
 					g.write('.str[ ')
 					g.expr(node.index)
 					g.write(']')
 				} else {
-					g.write('builtin__string_at(')
+					g.write('${string_at_fn}(')
 					g.expr(ast.Expr(node.left))
 					g.write(', ')
 					g.expr(node.index)
@@ -249,22 +260,29 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(elem_type) }
 	result_type_str := if result_sym.kind == .function { 'voidptr' } else { g.styp(result_type) }
 	left_is_shared := array_left_type.has_flag(.shared_f)
+	array_get_fn := if node.is_gated { 'builtin__array_get_ni' } else { 'builtin__array_get' }
+	array_get_with_check_fn := if node.is_gated {
+		'builtin__array_get_with_check_ni'
+	} else {
+		'builtin__array_get_with_check'
+	}
+	array_set_fn := if node.is_gated { 'builtin__array_set_ni' } else { 'builtin__array_set' }
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
-		is_direct_array_access := g.is_direct_array_access || node.is_direct
+		is_direct_array_access := !node.is_gated && (g.is_direct_array_access || node.is_direct)
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {
 			g.write('((${elem_type_str}*)')
 		} else if is_op_assign {
-			g.write('(*(${elem_type_str}*)builtin__array_get(')
+			g.write('(*(${elem_type_str}*)${array_get_fn}(')
 			if left_is_ptr && !left_is_shared {
 				g.write('*')
 			}
 		} else {
 			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true // special handling of assign_op and closing with '})'
-			g.write('builtin__array_set(')
+			g.write('${array_set_fn}(')
 			if !left_is_ptr || left_is_shared {
 				g.write('&')
 			}
@@ -321,7 +339,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := g.is_direct_array_access || node.is_direct
+		is_direct_array_access := !node.is_gated && (g.is_direct_array_access || node.is_direct)
 		is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
@@ -338,7 +356,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 		tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
 		if gen_or {
-			g.write('${elem_type_str}* ${tmp_opt_ptr} = (${elem_type_str}*)(builtin__array_get_with_check(')
+			g.write('${elem_type_str}* ${tmp_opt_ptr} = (${elem_type_str}*)(${array_get_with_check_fn}(')
 			if left_is_ptr && !left_is_shared {
 				g.write('*')
 			}
@@ -353,7 +371,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 					if is_direct_array_access {
 						g.write(')((${elem_type_str}*)')
 					} else {
-						g.write(')(*(${elem_type_str}*)builtin__array_get(')
+						g.write(')(*(${elem_type_str}*)${array_get_fn}(')
 					}
 				}
 				if left_is_ptr && !left_is_shared && !is_direct_array_access {
@@ -362,7 +380,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			} else if is_direct_array_access {
 				g.write('((${elem_type_str}*)')
 			} else {
-				g.write('(*(${elem_type_str}*)builtin__array_get(')
+				g.write('(*(${elem_type_str}*)${array_get_fn}(')
 				if left_is_ptr && !left_is_shared {
 					g.write('*')
 				}
@@ -481,7 +499,11 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	}
 	g.write('[')
-	if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {
+	if node.is_gated {
+		g.write('builtin__v_fixed_index_ni(')
+		g.expr(node.index)
+		g.write(', ${info.size})')
+	} else if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {
 		g.expr(node.index)
 	} else {
 		// bounds check

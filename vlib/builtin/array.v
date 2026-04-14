@@ -28,6 +28,11 @@ pub enum ArrayFlags {
 	nofree   // `.data` will never be freed
 }
 
+@[inline]
+fn v_ni_index(i int, len int) int {
+	return if i < 0 { len + i } else { i }
+}
+
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
 	panic_on_negative_len(mylen)
@@ -493,6 +498,11 @@ fn (a array) get(i int) voidptr {
 	}
 }
 
+@[markused]
+fn (a array) get_ni(i int) voidptr {
+	return a.get(v_ni_index(i, a.len))
+}
+
 // Private function. Used to implement x = a[i] or { ... }
 fn (a array) get_with_check(i int) voidptr {
 	if i < 0 || i >= a.len {
@@ -501,6 +511,11 @@ fn (a array) get_with_check(i int) voidptr {
 	unsafe {
 		return &u8(a.data) + u64(i) * u64(a.element_size)
 	}
+}
+
+@[markused]
+fn (a array) get_with_check_ni(i int) voidptr {
+	return a.get_with_check(v_ni_index(i, a.len))
 }
 
 // first returns the first element of the `array`.
@@ -768,6 +783,11 @@ fn (mut a array) set(i int, val voidptr) {
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
+}
+
+@[markused]
+fn (mut a array) set_ni(i int, val voidptr) {
+	a.set(v_ni_index(i, a.len), val)
 }
 
 fn (mut a array) push(val voidptr) {

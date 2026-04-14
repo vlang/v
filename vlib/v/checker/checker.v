@@ -7469,6 +7469,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	} else { // [1]
 		if typ_sym.kind == .map {
+			if node.is_gated {
+				c.error('`#[]` negative indexing is only supported for arrays, fixed arrays, and strings',
+					node.pos)
+			}
 			info := typ_sym.info as ast.Map
 			old_expected_type := c.expected_type
 			c.expected_type = info.key_type
@@ -7491,11 +7495,12 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 		} else {
 			index_type := c.expr(mut node.index)
-			// for [1] case #[1] is not allowed!
-			if node.is_gated == true {
-				c.error('`#[]` allowed only for ranges', node.pos)
+			if node.is_gated && (typ.is_ptr() || typ.is_pointer()
+				|| typ_sym.kind !in [.array, .array_fixed, .string]) {
+				c.error('`#[]` negative indexing is only supported for arrays, fixed arrays, and strings',
+					node.pos)
 			}
-			c.check_index(typ_sym, node.index, index_type, node.pos, false, false)
+			c.check_index(typ_sym, node.index, index_type, node.pos, false, node.is_gated)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {
