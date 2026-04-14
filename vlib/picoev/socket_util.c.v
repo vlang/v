@@ -1,7 +1,7 @@
 module picoev
 
 import net
-import picohttpparser
+import pico_http_parser
 
 #include <errno.h>
 $if windows {
@@ -127,7 +127,7 @@ fn listen(config Config) !int {
 	net.socket_error_message(C.listen(fd, C.SOMAXCONN),
 		'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 	setup_sock(fd) or {
-		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
+		config.err_cb(config.user_data, pico_http_parser.Request{}, mut &pico_http_parser.Response{},
 			err)
 	}
 	return fd
