@@ -222,6 +222,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	if got_ == expected_ {
 		return
 	}
+	if c.table.fully_unaliased_type(got_) == c.table.fully_unaliased_type(expected_) {
+		return
+	}
 	mut expected := c.table.unaliased_type(expected_)
 	is_aliased := expected != expected_
 	is_exp_sumtype := c.table.type_kind(expected_) == .sum_type
@@ -515,6 +518,9 @@ fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if got == expected {
+		return true
+	}
+	if c.table.fully_unaliased_type(got) == c.table.fully_unaliased_type(expected) {
 		return true
 	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
@@ -921,6 +927,9 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 }
 
 fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
+	if c.table.fully_unaliased_type(got) == c.table.fully_unaliased_type(expected) {
+		return
+	}
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}

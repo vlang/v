@@ -1027,6 +1027,25 @@ pub fn (t &Table) unaliased_type(typ Type) Type {
 	return typ
 }
 
+// fully_unaliased_type unwraps alias chains while preserving pointer indirections and flags.
+@[inline]
+pub fn (t &Table) fully_unaliased_type(typ Type) Type {
+	mut unaliased := typ
+	mut extra_flags := u32(typ) & 0xff00_0000
+	for {
+		sym := t.sym(unaliased)
+		if sym.info is Alias {
+			parent_typ := sym.info.parent_type
+			unaliased = Type(u32(parent_typ.set_nr_muls(parent_typ.nr_muls() +
+				unaliased.nr_muls())) | extra_flags)
+			extra_flags |= u32(unaliased) & 0xff00_0000
+			continue
+		}
+		return unaliased
+	}
+	return unaliased
+}
+
 // update_sym_by_idx replaces the symbol on the `existing_idx`, with the new `sym`
 pub fn (mut t Table) update_sym_by_idx(existing_idx int, sym &TypeSymbol) {
 	t.delete_cached_type_to_str(idx_to_type(existing_idx), 0)
