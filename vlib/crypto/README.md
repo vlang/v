@@ -103,3 +103,16 @@ fn decode_payload(token string) !JwtPayload {
 	return payload
 }
 ```
+
+### Argon2 Password Hashing
+
+```v
+import crypto.argon2
+
+fn main() {
+	hash := argon2.generate_from_password('correct horse battery staple'.bytes())!
+	println(hash)
+
+	argon2.compare_hash_and_password('correct horse battery staple'.bytes(), hash.bytes())!
+}
+```
