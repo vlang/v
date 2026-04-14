@@ -178,8 +178,7 @@ that's done by the `$veb.html()` line.
 
 Now let's display some articles!
 
-We'll be using V's built-in ORM and a SQLite database.
-(V ORM will also support MySQL, Postgre, and SQL Server soon.)
+We'll be using [V's built-in ORM](https://docs.vlang.io/orm.html) and a SQLite database.
 
 Add a SQLite handle to `App`:
 
