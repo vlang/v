@@ -1716,9 +1716,11 @@ fn (mut p Parser) name_expr() ast.Expr {
 					p.add_defer_var(ident)
 					return node
 				}
+				// prepend the full import
+				mod = p.imports[p.tok.lit]
+			} else if p.mod.all_after_last('.') == p.tok.lit {
+				mod = p.mod
 			}
-			// prepend the full import
-			mod = p.imports[p.tok.lit]
 		}
 		line_nr := p.tok.line_nr
 		p.next()
