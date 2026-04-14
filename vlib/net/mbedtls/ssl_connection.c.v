@@ -360,14 +360,28 @@ pub:
 }
 
 fn ssl_read_timeout_ms(timeout time.Duration) u32 {
-	timeout_ms := timeout.milliseconds()
-	if timeout_ms <= 0 {
+	if timeout <= 0 || timeout == net.infinite_timeout {
 		return 0
 	}
+	timeout_ms := timeout.milliseconds()
 	if timeout_ms > i64(max_u32) {
 		return max_u32
 	}
 	return u32(timeout_ms)
+}
+
+fn ssl_timeout_deadline(timeout time.Duration) time.Time {
+	if timeout <= 0 || timeout == net.infinite_timeout {
+		return time.unix(0)
+	}
+	return time.now().add(timeout)
+}
+
+fn ssl_remaining_timeout(deadline time.Time) time.Duration {
+	if deadline.unix() == 0 {
+		return net.infinite_timeout
+	}
+	return deadline - time.now()
 }
 
 // read_timeout returns the current SSL read timeout.
@@ -608,7 +622,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
@@ -622,7 +636,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		} else {
 			match res {
 				C.MBEDTLS_ERR_SSL_WANT_READ {
-					s.wait_for_read(deadline - time.now()) or {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err}, C.MBEDTLS_ERR_SSL_WANT_READ')
 						}
@@ -630,7 +644,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					}
 				}
 				C.MBEDTLS_ERR_SSL_WANT_WRITE {
-					s.wait_for_write(deadline - time.now()) or {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err}, C.MBEDTLS_ERR_SSL_WANT_WRITE')
 						}
@@ -686,7 +700,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
@@ -696,11 +710,11 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			if sent <= 0 {
 				match sent {
 					C.MBEDTLS_ERR_SSL_WANT_READ {
-						s.wait_for_read(deadline - time.now())!
+						s.wait_for_read(ssl_remaining_timeout(deadline))!
 						continue
 					}
 					C.MBEDTLS_ERR_SSL_WANT_WRITE {
-						s.wait_for_write(deadline - time.now())!
+						s.wait_for_write(ssl_remaining_timeout(deadline))!
 						continue
 					}
 					else {
@@ -740,9 +754,10 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	deadline := time.now().add(timeout)
-	mut remaining_time := timeout.milliseconds()
-	for remaining_time > 0 {
+	is_infinite := timeout <= 0 || timeout == net.infinite_timeout
+	deadline := ssl_timeout_deadline(timeout)
+	mut remaining_time := if is_infinite { i64(0) } else { timeout.milliseconds() }
+	for is_infinite || remaining_time > 0 {
 		seconds := remaining_time / 1000
 		microseconds := (remaining_time % 1000) * 1000
 
@@ -750,7 +765,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
-		timeval_timeout := if timeout < 0 { &C.timeval(unsafe { nil }) } else { &tt }
+		timeval_timeout := if is_infinite { &C.timeval(unsafe { nil }) } else { &tt }
 
 		mut res := -1
 		match test {
@@ -767,7 +782,9 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		if res < 0 {
 			if C.errno == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
-				remaining_time = (deadline - time.now()).milliseconds()
+				if !is_infinite {
+					remaining_time = ssl_remaining_timeout(deadline).milliseconds()
+				}
 				continue
 			}
 			cerr := C.errno

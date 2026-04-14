@@ -84,7 +84,7 @@ pub enum OPCode {
 @[params]
 pub struct ClientOpt {
 pub:
-	read_timeout  i64         = 30 * time.second
+	read_timeout  i64         = net.infinite_timeout
 	write_timeout i64         = 30 * time.second
 	logger        &log.Logger = default_logger
 	proxy_url     string // optional proxy URL used to open the websocket TCP tunnel
