@@ -219,6 +219,20 @@ pub fn greet() string {
 fn greet() string'
 }
 
+fn test_doc_generates_for_modules_without_public_symbols() {
+	mod_dir := 'module_without_public_symbols'
+	os.mkdir(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'module_without_public_symbols.v'), 'module module_without_public_symbols
+
+const internal = 1
+')!
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${os.quoted_path('./' + mod_dir)}') or {
+		panic(err)
+	}
+	assert res.exit_code == 0
+	assert res.output.replace('\r\n', '\n').trim_space() == 'module module_without_public_symbols'
+}
+
 fn test_resolve_relative_markdown_link() {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	assert resolve_relative_markdown_link(base, 'parser_test.v') == 'https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v'

@@ -368,9 +368,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				exit(1)
 			}
 		}
-		if dcs.contents.len == 0 {
-			continue
-		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme := vd.get_readme(dirpath)
 			if readme.path != '' {
