@@ -10613,7 +10613,11 @@ return ${cast_shared_struct_str};
 				name = g.specialized_method_name_from_receiver(method, st, name)
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
+				_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
+					ast.Fn{}, []ast.Type{}
+				}
+				needs_embed_wrapper := embed_types.len > 0 && method.name !in method_names
+				if cctype == cctype2 && (!method.params[0].typ.is_ptr() || needs_embed_wrapper) {
 					if method.name !in aliased_method_names {
 						method_call = '${cctype}_${name}'
 					} else {
@@ -10648,16 +10652,20 @@ return ${cast_shared_struct_str};
 					if method.return_type != ast.void_type {
 						methods_wrapper.write_string('return ')
 					}
-					_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
-						ast.Fn{}, []ast.Type{}
-					}
-					if embed_types.len > 0 && method.name !in method_names {
+					if needs_embed_wrapper {
 						embed_sym := g.table.sym(embed_types.last())
 						mut method_name := '${embed_sym.cname}_${method.name}'
 						if embed_sym.is_builtin() {
 							method_name = 'builtin__${method_name}'
 						}
-						methods_wrapper.write_string('${method_name}(${fargs[0]}')
+						last_embed_is_ptr := embed_types.last().is_any_kind_of_pointer()
+						methods_wrapper.write_string('${method_name}(')
+						if method.params[0].typ.is_ptr() && !last_embed_is_ptr {
+							methods_wrapper.write_string('&')
+						} else if !method.params[0].typ.is_ptr() && last_embed_is_ptr {
+							methods_wrapper.write_string('*')
+						}
+						methods_wrapper.write_string(fargs[0])
 						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
 							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
