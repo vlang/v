@@ -14,6 +14,15 @@ fn (mut g Gen) equality_fn(typ ast.Type) string {
 }
 
 @[inline]
+fn string_eq_expr(left string, right string, is_ptr bool) string {
+	return if is_ptr {
+		'(${left} == ${right} || (${left} != 0 && ${right} != 0 && (((*${left}).len == (*${right}).len && (*${left}).len == 0) || builtin__fast_string_eq(*${left}, *${right}))))'
+	} else {
+		'(((${left}).len == (${right}).len && (${left}).len == 0) || builtin__fast_string_eq(${left}, ${right}))'
+	}
+}
+
+@[inline]
 fn (mut g Gen) eq_fn_key(typ ast.Type) ast.Type {
 	return g.unwrap_generic(typ).set_nr_muls(0)
 }
@@ -392,7 +401,9 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${left_len}; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem.sym.kind == .string {
-		fn_builder.writeln('\t\tif (!builtin__string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
+		left_arg := '*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem})))'
+		right_arg := '*((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem})))'
+		fn_builder.writeln('\t\tif (!${string_eq_expr(left_arg, right_arg, elem.typ.is_ptr())}) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
@@ -481,7 +492,9 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
-		fn_builder.writeln('\t\tif (!builtin__string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
+		left_arg := '${left}[i]'
+		right_arg := '${right}[i]'
+		fn_builder.writeln('\t\tif (!${string_eq_expr(left_arg, right_arg, elem.typ.is_ptr())}) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(${left}[i], ${right}[i])) {')
