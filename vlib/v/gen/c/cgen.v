@@ -5464,7 +5464,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 				mut has_slice_call := false
-				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
+				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
 					if has_slice_call {
