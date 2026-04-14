@@ -5,6 +5,11 @@ module checker
 import v.ast
 import v.token
 
+@[inline]
+fn array_init_result_type(node ast.ArrayInit) ast.Type {
+	return if node.alias_type != ast.void_type { node.alias_type } else { node.typ }
+}
+
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	$if trace_ci_fixes ? {
 		if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
@@ -210,10 +215,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
 			resolved := c.recheck_concrete_type(node.typ)
 			if resolved != node.typ && !resolved.has_flag(.generic) {
-				return resolved
+				return if node.alias_type != ast.void_type { node.alias_type } else { resolved }
 			}
 		}
-		return node.typ
+		return array_init_result_type(node)
 	}
 
 	if node.is_fixed {
@@ -401,7 +406,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.check_array_init_default_expr(mut node)
 		}
 	}
-	return node.typ
+	return array_init_result_type(node)
 }
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
