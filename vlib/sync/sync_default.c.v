@@ -135,7 +135,7 @@ pub fn (mut m Mutex) destroy() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) rlock() {
-	C.pthread_rwlock_rdlock(&m.mutex)
+	should_be_zero(C.pthread_rwlock_rdlock(&m.mutex))
 }
 
 // lock locks the given RwMutex instance for writing.
@@ -146,7 +146,7 @@ pub fn (mut m RwMutex) rlock() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) lock() {
-	C.pthread_rwlock_wrlock(&m.mutex)
+	should_be_zero(C.pthread_rwlock_wrlock(&m.mutex))
 }
 
 // try_rlock try to lock the given RwMutex instance for reading and return immediately.
