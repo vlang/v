@@ -94,8 +94,38 @@ fn js_stacktrace() string {
 	return stacktrace
 }
 
+// v_clone_value preserves standalone JS semantics for V clone methods.
+#function v_clone_value(value) {
+#if (value === null || value === undefined) return value;
+#if (value instanceof $ref) return new $ref(v_clone_value(value.val));
+#if (value instanceof array) return array_clone(value);
+#if (value instanceof map) {
+#let cloned = {}
+#for (const key in value.map) cloned[key] = { key: v_clone_value(value.map[key].key), val: v_clone_value(value.map[key].val) }
+#return new map(cloned);
+#}
+#if (typeof value !== 'object') return value;
+#if (typeof value.$toJS === 'function') return value;
+#let cloned;
+#try {
+#cloned = typeof value.constructor === 'function' ? new value.constructor({}) : Object.create(Object.getPrototypeOf(value));
+#} catch (e) {
+#cloned = Object.create(Object.getPrototypeOf(value) || Object.prototype);
+#}
+#for (const key of Object.keys(value)) cloned[key] = v_clone_value(value[key]);
+#return cloned;
+#}
+
 pub fn print_backtrace() {
 	println(js_stacktrace())
+}
+
+pub fn (a array) clone() array {
+	mut res := empty_array()
+	#const cloned = a.arr.arr.slice(a.arr.index_start.valueOf(), a.arr.index_start.valueOf() + a.len.valueOf()).map(v_clone_value)
+	#res = new array(new array_buffer({arr: cloned, len: new int(cloned.length), cap: new int(cloned.length), index_start: new int(0), has_slice: new bool(false)}))
+
+	return res
 }
 
 // Check for nil value

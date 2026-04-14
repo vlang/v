@@ -18,9 +18,10 @@ const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'conti
 	'document', 'Promise']
 // used to generate type structs
 const v_types = ['i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-	'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+	'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'char', 'any',
+	'voidptr']
 const shallow_equatables = [ast.Kind.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
-	.int_literal, .float_literal, .bool, .string]
+	.int_literal, .float_literal, .bool, .string, .char]
 const option_name = '_option'
 
 struct SourcemapHelper {
