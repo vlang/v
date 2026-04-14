@@ -17,6 +17,8 @@ const w_ok = 2
 
 const r_ok = 4
 
+const read_lines_chunk_size = 128 * 1024
+
 pub struct Result {
 pub:
 	exit_code int
@@ -136,10 +138,61 @@ pub fn mv(source string, target string, opts MvParams) ! {
 // read_lines reads the file in `path` into an array of lines.
 @[manualfree]
 pub fn read_lines(path string) ![]string {
-	buf := read_file(path)!
-	res := buf.split_into_lines()
-	unsafe { buf.free() }
-	return res
+	mut file := open(path)!
+	defer {
+		file.close()
+	}
+	return read_lines_from_open_file(mut file)
+}
+
+@[manualfree]
+fn read_lines_from_open_file(mut file File) ![]string {
+	mut buf := []u8{len: read_lines_chunk_size}
+	mut lines := []string{}
+	mut line := strings.new_builder(read_lines_chunk_size)
+	mut pending_cr := false
+	for {
+		nread := file.read(mut buf) or {
+			if err is Eof {
+				break
+			}
+			unsafe {
+				line.free()
+				lines.free()
+			}
+			return err
+		}
+		if nread <= 0 {
+			break
+		}
+		mut segment_start := 0
+		for i := 0; i < nread; i++ {
+			c := buf[i]
+			if pending_cr {
+				pending_cr = false
+				if c == `\n` {
+					segment_start = i + 1
+					continue
+				}
+			}
+			if c == `\n` || c == `\r` {
+				if i > segment_start {
+					line << buf[segment_start..i]
+				}
+				lines << line.str()
+				segment_start = i + 1
+				pending_cr = c == `\r`
+			}
+		}
+		if segment_start < nread {
+			line << buf[segment_start..nread]
+		}
+	}
+	if line.len > 0 {
+		lines << line.str()
+	}
+	unsafe { line.free() }
+	return lines
 }
 
 // write_lines writes the given array of `lines` to `path`.
