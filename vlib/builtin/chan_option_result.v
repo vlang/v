@@ -13,9 +13,9 @@ The real implementation is in `vlib/sync/channels.v`
 */
 
 // close closes the channel for further push transactions.
-// closed channels cannot be pushed to, however they can be popped
-// from as long as there is still objects available in the channel buffer.
-pub fn (ch chan) close() {}
+// closed channels cannot be pushed to, and after the buffer is drained
+// `<-ch or {}` and `<-ch?` use `err` or default to `channel closed`.
+pub fn (ch chan) close(err ...IError) {}
 
 // try_pop returns `ChanState.success` if an object is popped from the channel.
 // try_pop effectively pops from the channel without waiting for objects to become available.

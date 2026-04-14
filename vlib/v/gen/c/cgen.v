@@ -2186,7 +2186,7 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
 	${opt_el_type} _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return (${opt_el_type}){ .state = 2, .err = builtin___v_error(_S("channel closed")), .data = {E_STRUCT} };
+		return (${opt_el_type}){ .state = 2, .err = sync__Channel_closed_error(ch), .data = {E_STRUCT} };
 	}
 	return _tmp;
 }')

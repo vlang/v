@@ -4859,6 +4859,8 @@ to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
 handled using an `or {}` block (see [Handling options/results](#handling-optionsresults)).
+An optional `IError` can be passed to `close(err)` so receive operations that use
+`or {}` or `?` can distinguish an error termination from a normal close.
 
 ```v wip
 ch := chan int{}
@@ -4872,6 +4874,12 @@ m := <-ch or {
 
 // propagate error
 y := <-ch2 ?
+
+ch2.close(error('worker failed'))
+z := <-ch2 or {
+	println(err.msg())
+	0.0
+}
 ```
 
 Note: buffered channels can be closed while they have unread values in them.

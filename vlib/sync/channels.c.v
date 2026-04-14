@@ -53,6 +53,7 @@ mut:
 	write_sub_mtx    &SpinLock
 	read_sub_mtx     &SpinLock
 	closed           u16
+	close_err        IError = none
 pub:
 	cap u32 // queue length in #objects
 }
@@ -118,10 +119,16 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 	}
 }
 
-pub fn (mut ch Channel) close() {
+// close closes the channel and optionally stores an error that will be
+// returned by receive operations that use `or {}` or `?` after the
+// buffered values have been drained.
+pub fn (mut ch Channel) close(errs ...IError) {
 	open_val := u16(0)
 	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
 		return
+	}
+	if errs.len > 0 {
+		ch.close_err = errs[0]
 	}
 	mut nulladr := unsafe { nil }
 	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr), isize(-1)) {
@@ -147,6 +154,14 @@ pub fn (mut ch Channel) close() {
 
 	// Do not destroy `read_sub_mtx` and `write_sub_mtx` here,
 	// because we can read from a closed channel later.
+}
+
+@[inline]
+fn (ch &Channel) closed_error() IError {
+	if ch.close_err !is None__ {
+		return ch.close_err
+	}
+	return error('channel closed')
 }
 
 @[inline]
