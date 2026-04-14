@@ -86,3 +86,58 @@ fn test_orm_update_with_option_selector_or_block() {
 	assert rows.len == 1
 	assert rows[0].updated_at.unix() == expected_updated_at.unix()
 }
+
+struct OrmUpdateThing {
+	id    int @[primary]
+	value string
+}
+
+struct OrmUpdateCommit {
+	id    int @[primary]
+	tag   string
+	thing OrmUpdateThing
+}
+
+fn test_orm_update_with_struct_field() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table OrmUpdateThing
+		create table OrmUpdateCommit
+	}!
+
+	second := OrmUpdateThing{
+		id:    2
+		value: 'goodbye'
+	}
+	sql db {
+		insert second into OrmUpdateThing
+	}!
+
+	commit := OrmUpdateCommit{
+		id:    1
+		tag:   'head'
+		thing: OrmUpdateThing{
+			id:    1
+			value: 'hello'
+		}
+	}
+	sql db {
+		insert commit into OrmUpdateCommit
+	}!
+
+	sql db {
+		update OrmUpdateCommit set thing = second where tag == 'head'
+	}!
+
+	rows := sql db {
+		select from OrmUpdateCommit where tag == 'head'
+	}!
+
+	assert rows.len == 1
+	assert rows[0].thing.id == second.id
+	assert rows[0].thing.value == 'goodbye'
+}
