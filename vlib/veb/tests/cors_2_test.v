@@ -4,7 +4,7 @@ import os
 import time
 
 const port = 13012
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
 const cors_options = veb.CorsOptions{
@@ -46,7 +46,7 @@ fn testsuite_begin() {
 	mut app := &App{}
 	app.use(veb.cors[Context](cors_options))
 
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 }
