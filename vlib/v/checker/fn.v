@@ -3142,7 +3142,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('method with `shared` receiver cannot be called inside `lock`/`rlock` block',
 			node.pos)
 	}
-	if method.params[0].is_mut {
+	requires_mut_receiver := method.params[0].is_mut
+		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
+	if requires_mut_receiver {
 		to_lock, pos := c.check_for_mut_receiver(mut node.left)
 		// node.is_mut = true
 		if to_lock != '' && rec_share != .shared_t {
