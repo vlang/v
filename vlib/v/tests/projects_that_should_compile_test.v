@@ -149,3 +149,51 @@ fn test_custom_print_should_compile_with_no_builtin() {
 	_ = vrun_ok('-o ${os.quoted_path(output_path)} -no-builtin', source_path)
 	assert os.exists(output_path)
 }
+
+fn test_generic_recursive_self_method_call_should_compile() {
+	source_path := os.join_path(os.vtmp_dir(),
+		'generic_recursive_self_method_call_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'generic_recursive_self_method_call_${os.getpid()}')
+	mut expected_output_path := output_path
+	$if windows {
+		expected_output_path += '.exe'
+	}
+	source := [
+		'struct Decoder {}',
+		'',
+		'struct StructTypePointer[T] {',
+		'mut:',
+		'\tval &T',
+		'}',
+		'',
+		'pub fn decode[T](val string) !T {',
+		'\tmut decoder := Decoder{}',
+		'',
+		'\tmut result := T{}',
+		'\tdecoder.decode_value(mut result)!',
+		'\treturn result',
+		'}',
+		'',
+		'fn (mut decoder Decoder) decode_value[T](mut val T) ! {',
+		'\t\$if T.indirections != 0 {',
+		'\t\tunsafe {',
+		'\t\t\t*val = 2',
+		'\t\t}',
+		'\t} \$else \$if T is \$struct {',
+		'\t\tdecode_value(mut val.val)!',
+		'\t}',
+		'}',
+		'',
+		'fn main() {',
+		"\tassert *decode[StructTypePointer[int]]('2')!.val == 2",
+		'}',
+	].join_lines()
+	write_file(source_path, source)
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+		os.rm(expected_output_path) or {}
+	}
+	_ = vrun_ok('-o ${os.quoted_path(output_path)}', source_path)
+	assert os.exists(expected_output_path)
+}

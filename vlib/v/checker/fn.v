@@ -1234,6 +1234,37 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	return node.typ
 }
 
+fn (mut c Checker) resolve_self_method_call(mut node ast.CallExpr) bool {
+	if node.is_method || node.name == '' {
+		return false
+	}
+	if c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method {
+		return false
+	}
+	if node.name.contains('.') && !node.name.starts_with('${c.mod}.') {
+		return false
+	}
+	call_name := node.name.all_after_last('.')
+	current_method_name := c.table.cur_fn.name.all_after_last('.')
+	if call_name != current_method_name {
+		return false
+	}
+	receiver_name := c.table.cur_fn.receiver.name
+	node.left = ast.Ident{
+		pos:   node.pos
+		scope: node.scope
+		mod:   c.mod
+		name:  receiver_name
+	}
+	node.name = call_name
+	node.left_type = c.expr(mut node.left)
+	if node.left_type == ast.void_type {
+		return false
+	}
+	node.is_method = true
+	return true
+}
+
 fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	// Check whether the inner function definition is before the call
 	if node.scope != unsafe { nil } {
@@ -1941,6 +1972,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 
 	if !found {
+		if c.resolve_self_method_call(mut node) {
+			return c.method_call(mut node, mut continue_check)
+		}
 		continue_check = false
 		if dot_index := fn_name.index('.') {
 			if !fn_name[0].is_capital() {
