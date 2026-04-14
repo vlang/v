@@ -1996,7 +1996,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					&& unwrapped_styp.starts_with('_v_') {
 					unwrapped_styp = unwrapped_styp[3..]
 				}
-				if node.is_return_used {
+				// Synthesized/transformed call nodes may lose `is_return_used`
+				// even though the enclosing C generation path is still
+				// emitting a value expression (struct fields, call args, etc).
+				// In those cases `is_gen_or_and_assign_rhs` still tells us that
+				// the unwrapped result is needed in the current expression.
+				if node.is_return_used || is_gen_or_and_assign_rhs {
 					is_fn := g.table.final_sym(unwrapped_typ).kind == .function
 					// return value is used, so we need to write the unwrapped temporary var
 					if is_fn && unwrapped_typ.nr_muls() > 0 {
