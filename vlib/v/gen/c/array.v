@@ -2319,11 +2319,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 		} else {
 			g.write(expr_str)
 			if !expr_str.ends_with(']') {
-				if field_type.is_ptr() {
-					g.write('->')
-				} else {
-					g.write('.')
-				}
+				g.write(g.dot_or_ptr(field_type))
 				if is_update_embed {
 					g.write(embed_field)
 				}

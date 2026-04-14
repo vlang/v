@@ -385,11 +385,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					}
 				}
 				if !is_arr_fixed {
-					if node.update_expr_type.is_ptr() {
-						g.write('->')
-					} else {
-						g.write('.')
-					}
+					g.write(g.dot_or_ptr(node.update_expr_type))
 					if node.is_update_embed {
 						g.write(g.get_embed_field_name(node.update_expr_type, field.name))
 					}
