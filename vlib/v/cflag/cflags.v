@@ -82,6 +82,9 @@ pub fn (cf &CFlag) format() ?string {
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
 		value = '"' + os.real_path(value) + '"'
+		if cf.name in ['-I', '-L'] {
+			return '${cf.name}${value}'.trim_space()
+		}
 	}
 	return '${cf.name} ${value}'.trim_space()
 }
