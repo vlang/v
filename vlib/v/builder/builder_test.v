@@ -246,3 +246,13 @@ fn test_run_with_obscure_source_filenames() {
 		assert os.read_file(src_file)! == source
 	}
 }
+
+fn test_macos_2048_build_does_not_force_deployment_target() {
+	$if !macos {
+		return
+	}
+	game_path := os.join_path(@VEXEROOT, 'examples', '2048', '2048.v')
+	flags_output := run_v_ok('${os.quoted_path(vexe)} -dump-c-flags - ${os.quoted_path(game_path)}')
+	assert flags_output.contains('-fobjc-arc')
+	assert !flags_output.contains('-mmacosx-version-min=')
+}
