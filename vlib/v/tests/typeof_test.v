@@ -202,3 +202,12 @@ fn test_variadic_type() {
 	assert variadic_bool(true, false) == '...bool'
 	assert variadic_f64(3.1, 3.2) == '...f64'
 }
+
+fn test_typeof_typ_field() {
+	a := 123
+	b := &a
+	assert typeof(a).typ == typeof(a).idx
+	assert typeof(a).typ == typeof[int]().idx
+	assert typeof(b).typ == typeof(b).idx
+	assert typeof[FooBar]().typ == typeof[FooBar]().idx
+}

@@ -3484,7 +3484,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 				if node.field_name == 'name' {
 					g.type_name(it.name_type)
 					return
-				} else if node.field_name == 'idx' {
+				} else if node.field_name in ['idx', 'typ'] {
 					g.write('new int(')
 					g.write('${int(g.unwrap_generic(it.name_type))}')
 					g.write(')')
