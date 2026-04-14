@@ -49,6 +49,9 @@ fn test_veb_application_compiles() {
 	okres := http.fetch(url: 'http://127.0.0.1:${port}/ok')!
 	assert okres.status_code == 200
 	assert okres.body == '{"success":true,"result":123}'
+	hello := http.fetch(url: 'http://127.0.0.1:${port}/hello')!
+	assert hello.status_code == 200
+	assert hello.body == 'hello world'
 }
 
 @['/new_article'; post]
@@ -79,6 +82,10 @@ pub fn (mut app App) time_json(mut ctx Context) veb.Result {
 	return ctx.json({
 		'time': time.now().format()
 	})
+}
+
+fn (app App) hello(mut ctx Context) veb.Result {
+	return ctx.text('hello world')
 }
 
 fn (mut app App) time_json_pretty(mut ctx Context) veb.Result {
