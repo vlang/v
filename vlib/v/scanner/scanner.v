@@ -812,6 +812,16 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.question, '?', 1)
 			}
 			single_quote, double_quote {
+				if s.is_likely_unclosed_string_interpolation(c) {
+					s.error_with_pos('expected `}` to close string interpolation', token.Pos{
+						len:       1
+						line_nr:   s.line_nr
+						pos:       s.pos
+						col:       u16_col(s.current_column() - 1)
+						file_idx:  s.file_idx
+						last_line: s.line_nr
+					})
+				}
 				s.str_helper_tokens << c
 				start_line := s.line_nr
 				ident_string := s.ident_string()
@@ -1855,6 +1865,16 @@ fn (s Scanner) str_quote() u8 {
 		return c
 	}
 	return 255
+}
+
+@[direct_array_access; inline]
+fn (s &Scanner) is_likely_unclosed_string_interpolation(current_quote u8) bool {
+	if current_quote != s.quote || s.str_helper_tokens.len == 0 || s.str_quote() != 255
+		|| s.all_tokens.len == 0 {
+		return false
+	}
+	prev_tok := s.all_tokens[s.all_tokens.len - 1]
+	return prev_tok.kind in [.number, .string, .chartoken, .rpar, .rsbr, .rcbr]
 }
 
 @[inline]
