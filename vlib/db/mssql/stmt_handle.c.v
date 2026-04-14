@@ -11,8 +11,9 @@ mut:
 	column_count int = -1
 	// columns
 	buffers [][]char
-	// indicators for each column (i64 is the same size as C.SQLLEN on 64-bit)
-	indicators []i64
+	// indicators for each column. Use a V pointer-sized integer to avoid arrays
+	// of C typedefs in generated code while still matching SQLLEN width.
+	indicators []isize
 }
 
 // new_hstmt constructs a new statement handle
@@ -72,7 +73,7 @@ fn (mut h HStmt) prepare_read() ! {
 	h.column_count = column_count // remember the count because read will need it
 
 	h.buffers = [][]char{len: h.column_count}
-	h.indicators = []i64{len: h.column_count}
+	h.indicators = []isize{len: h.column_count}
 
 	for i := 0; i < h.column_count; i++ {
 		i_col := C.SQLUSMALLINT(i + 1) // col number starts with 1
