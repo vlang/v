@@ -1491,7 +1491,8 @@ println(m.keys()) // ['one', 'two']
 m.delete('two')
 ```
 
-Maps can have keys of type string, rune, integer, float or voidptr.
+Maps can have keys of type string, rune, integer, float, voidptr,
+enum, or fixed arrays of those supported key types.
 
 The whole map can be initialized using this short syntax:
 

@@ -2392,7 +2392,6 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					g.writeln(';')
 				} else if sym.kind == .map {
 					info := sym.info as ast.Map
-					skeytyp := g.styp(info.key_type)
 					styp := g.styp(info.value_type)
 					zero := g.type_default(info.value_type)
 					val_sym := g.table.sym(info.value_type)
@@ -2411,9 +2410,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					} else {
 						g.expr(left.left)
 					}
-					g.write(', &(${skeytyp}[]){')
-					g.expr(left.index)
-					g.write('}')
+					g.write(', ')
+					g.write_map_key_arg(left.index, info.key_type)
 					if val_sym.kind == .function {
 						g.writeln(', &(voidptr[]){ ${zero} });')
 					} else {

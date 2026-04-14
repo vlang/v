@@ -1315,26 +1315,36 @@ pub fn (t &Table) supports_map_key_type(typ Type) bool {
 	if typ == 0 || typ.has_flag(.generic) {
 		return true
 	}
-	mut current_typ := typ.clear_flags()
-	for {
-		if current_typ.nr_muls() > 0 {
+	mut seen := map[int]bool{}
+	return t.supports_map_key_type_in_type(typ.clear_flags(), mut seen)
+}
+
+fn (t &Table) supports_map_key_type_in_type(typ Type, mut seen map[int]bool) bool {
+	current_typ := typ.clear_flags()
+	if current_typ.nr_muls() > 0 {
+		return false
+	}
+	type_idx := current_typ.idx()
+	if seen[type_idx] {
+		return true
+	}
+	seen[type_idx] = true
+	sym := t.sym(current_typ)
+	match sym.kind {
+		.alias {
+			return t.supports_map_key_type_in_type((sym.info as Alias).parent_type, mut seen)
+		}
+		.array_fixed {
+			return t.supports_map_key_type_in_type((sym.info as ArrayFixed).elem_type, mut seen)
+		}
+		.u8, .i8, .char, .i16, .u16, .enum, .int, .i32, .u32, .rune, .f32, .voidptr, .u64, .i64,
+		.f64, .string {
+			return true
+		}
+		else {
 			return false
 		}
-		sym := t.sym(current_typ)
-		match sym.kind {
-			.alias {
-				current_typ = (sym.info as Alias).parent_type.clear_flags()
-			}
-			.u8, .i8, .char, .i16, .u16, .enum, .int, .i32, .u32, .rune, .f32, .voidptr, .u64,
-			.i64, .f64, .string {
-				return true
-			}
-			else {
-				return false
-			}
-		}
 	}
-	return false
 }
 
 // array_source_name generates the original name for the v source.

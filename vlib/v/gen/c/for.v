@@ -737,7 +737,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.key_var != '_' {
 			key_styp := g.styp(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('${key_styp} ${key} = *(${key_styp}*)builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
+			if g.table.final_sym(node.key_type).kind == .array_fixed {
+				g.writeln('${key_styp} ${key};')
+				g.writeln('memcpy(${key}, builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${key_styp}));')
+			} else {
+				g.writeln('${key_styp} ${key} = *(${key_styp}*)builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
+			}
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == ast.string_type {
 				g.writeln('${key} = builtin__string_clone(${key});')

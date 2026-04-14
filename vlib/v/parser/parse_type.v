@@ -203,16 +203,15 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	key_sym := p.table.sym(key_type)
 	is_alias := key_sym.kind == .alias
-	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| key_sym.kind in [.enum, .placeholder, .any]
-		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
+	key_type_supported := p.table.supports_map_key_type(key_type)
+		|| key_sym.kind in [.placeholder, .any]
 	if !key_type_supported {
 		if is_alias {
 			p.error('cannot use the alias type as the parent type is unsupported')
 			return 0
 		}
 		s := p.table.type_to_str(key_type)
-		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `${s}`)',
+		p.error_with_pos('maps only support string, integer, float, rune, enum, fixed array or voidptr keys for now (not `${s}`)',
 			p.tok.pos())
 		return 0
 	}

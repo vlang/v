@@ -576,7 +576,6 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			val_type = candidate_val_type
 		}
 	}
-	key_type_str := g.styp(key_type)
 	val_sym := g.table.final_sym(val_type)
 	left_is_shared := map_left_type.has_flag(.shared_f)
 	val_type_str := if val_sym.kind == .function {
@@ -615,15 +614,14 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if left_is_shared {
 			g.write('->val')
 		}
-		g.write(', &(${key_type_str}[]){')
+		g.write(', ')
 		old_is_arraymap_set := g.is_arraymap_set
 		old_is_assign_lhs := g.is_assign_lhs
 		g.is_arraymap_set = false
 		g.is_assign_lhs = false
-		g.expr(node.index)
+		g.write_map_key_arg(node.index, key_type)
 		g.is_arraymap_set = old_is_arraymap_set
 		g.is_assign_lhs = old_is_assign_lhs
-		g.write('}')
 		g.arraymap_set_pos = g.out.len
 		g.write(', &(${val_type_str}[]) { ')
 		if g.assign_op != .assign && val_type != ast.string_type {
@@ -646,12 +644,12 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if left_is_shared {
 			g.write('->val')
 		}
-		g.write(', &(${key_type_str}[]){')
+		g.write(', ')
 		old_is_assign_lhs := g.is_assign_lhs
 		g.is_assign_lhs = false
-		g.expr(node.index)
+		g.write_map_key_arg(node.index, key_type)
 		g.is_assign_lhs = old_is_assign_lhs
-		g.write('}, &(${val_type_str}[]){ ${zero} }))')
+		g.write(', &(${val_type_str}[]){ ${zero} }))')
 	} else {
 		zero := g.type_default(val_type)
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
@@ -694,9 +692,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('.val')
 			}
 		}
-		g.write('), &(${key_type_str}[]){')
-		g.expr(node.index)
-		g.write('}')
+		g.write('), ')
+		g.write_map_key_arg(node.index, key_type)
 		if gen_or {
 			g.write('))')
 		} else if is_fn_last_index_call {
