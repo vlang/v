@@ -1,5 +1,7 @@
 import os
 
+const assert_failed_defer_cleanup_path = os.join_path(os.vtmp_dir(), 'v_assert_failed_defer_cleanup_test.txt')
+
 fn vroot_path(relpath string) string {
 	return os.real_path(os.join_path(@VMODROOT, relpath))
 }
@@ -31,4 +33,16 @@ fn test_sizeof_in_assert() {
 
 	assert res.output.contains('sizeof_used_in_assert_test.v:15: fn test_assert_sizeof')
 	assert res.output.contains('assert sizeof(main.Abc) == sizeof(main.Xyz)')
+}
+
+fn test_assert_failure_runs_scoped_defer_cleanup() {
+	defer {
+		os.rm(assert_failed_defer_cleanup_path) or {}
+	}
+	os.rm(assert_failed_defer_cleanup_path) or {}
+	res := vexecute('vlib/v/tests/testdata/assert_with_scoped_defer_cleanup_failing_test.v')
+	assert res.exit_code == 1
+	assert res.output.contains('assert_with_scoped_defer_cleanup_failing_test.v')
+	assert res.output.contains('assert false')
+	assert !os.exists(assert_failed_defer_cleanup_path)
 }
