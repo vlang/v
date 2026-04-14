@@ -1,3 +1,5 @@
+import arrays
+
 const result = ['0: a', '1: b', '2: c', '3: d']
 
 fn mapi[T, U](arr []T, callback fn (int, T) U) []U {
@@ -18,4 +20,13 @@ fn test_main() {
 		return '${i}: ${e}'
 	})
 	assert arr_3 == result
+}
+
+fn count_chars_fold(strs []string) int {
+	return arrays.fold(strs, 0, |acc, s| acc + utf8_str_visible_length(s))
+}
+
+fn test_lambda_inferred_for_multi_generic_fold_callback() {
+	input := ['abc', 'def', 'здравей']
+	assert count_chars_fold(input) == 13
 }

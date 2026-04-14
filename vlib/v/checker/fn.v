@@ -3830,10 +3830,16 @@ fn (c &Checker) generic_lambda_concrete_types(lambda &ast.LambdaExpr, caller_gen
 	return concrete_types
 }
 
-fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, caller_generic_names []string, mut lambda ast.LambdaExpr) {
+fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, generic_names []string, mut lambda ast.LambdaExpr) {
 	// Calling fn is generic and lambda arg also is generic
 	if node.concrete_types.len > 0 && lambda.func != unsafe { nil }
 		&& lambda.func.decl.generic_names.len > 0 {
+		if generic_names.len == node.concrete_types.len {
+			unsafe {
+				mut p := &[]string(&lambda.func.decl.generic_names)
+				*p = generic_names.clone()
+			}
+		}
 		lambda.call_ctx = unsafe { node }
 		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, caller_generic_names,
 			node.concrete_types)
