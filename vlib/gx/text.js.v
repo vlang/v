@@ -1,14 +1,17 @@
-@[deprecated(msg: 'module gx is deprecated, use import gg instead', after: '2026-01-24')]
+@[deprecated: 'module gx is deprecated, use import gg instead']
+@[deprecated_after: '2026-01-24']
 module gx
 
-@[deprecated(msg: 'use gg.HorizontalAlign instead', after: '2026-01-24')]
+@[deprecated: 'use gg.HorizontalAlign instead']
+@[deprecated_after: '2026-01-24']
 pub enum HorizontalAlign {
 	left
 	center
 	right
 }
 
-@[deprecated(msg: 'use gg.VerticalAlign instead', after: '2026-01-24')]
+@[deprecated: 'use gg.VerticalAlign instead']
+@[deprecated_after: '2026-01-24']
 pub enum VerticalAlign {
 	top
 	middle

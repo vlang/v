@@ -1,4 +1,5 @@
-@[deprecated(msg: 'use xxx.yyy', after: '2999-01-01')]
+@[deprecated: 'use xxx.yyy']
+@[deprecated_after: '2999-01-01']
 module ttt
 
 pub fn f() int {

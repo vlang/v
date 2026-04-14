@@ -238,7 +238,8 @@ pub fn (f Any) bool() bool {
 }
 
 // arr uses `Any` as an array.
-@[deprecated(msg: 'use as_array() instead', after: '2026-03-27')]
+@[deprecated: 'use as_array() instead']
+@[deprecated_after: '2026-03-27']
 pub fn (f Any) arr() []Any {
 	return f.as_array()
 }

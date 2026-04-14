@@ -1,7 +1,7 @@
 @[unsafe()]
 fn allow_unsafe_parentheses() {}
 
-@[deprecated('use new_fn instead', '2999-10-09')]
+@[deprecated('use new_fn instead')]
 fn old_positional() {}
 
 @[deprecated(msg: 'use new_fn instead', after: '2999-10-10')]

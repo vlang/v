@@ -1,8 +1,0 @@
-@[deprecated('use new_fn instead')]
-fn old_positional() {}
-
-@[deprecated(msg: 'use newer_fn instead')]
-fn old_named() {}
-
-@[deprecated(after: '2999-10-10')]
-fn old_after_only() {}

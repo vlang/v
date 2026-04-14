@@ -1,5 +1,5 @@
 // vfmt off
-@[deprecated('use NewPositional instead', '2999-01-01')]
+@[deprecated('use NewPositional instead')]
 struct OldPositional {}
 
 @[deprecated(msg: 'use NewNamed instead', after: '2999-01-01')]
@@ -14,17 +14,12 @@ struct CustomNamed {}
 
 fn test_attribute_call_syntax_positional_and_named_args() {
 	mut positional_msg := ''
-	mut positional_after := ''
 	$for attr in OldPositional.attributes {
 		if attr.name == 'deprecated' {
 			positional_msg = attr.arg
 		}
-		if attr.name == 'deprecated_after' {
-			positional_after = attr.arg
-		}
 	}
 	assert positional_msg == 'use NewPositional instead'
-	assert positional_after == '2999-01-01'
 
 	mut named_msg := ''
 	mut named_after := ''

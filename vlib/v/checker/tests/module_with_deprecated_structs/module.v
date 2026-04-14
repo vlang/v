@@ -4,14 +4,16 @@ pub struct Xyz {
 pub mut:
 	a int
 	b int @[deprecated]
-	c int @[deprecated(msg: 'c use Xyz.a instead', after: '2021-03-01')]
-	d int @[deprecated(msg: 'd use Xyz.a instead', after: '2999-03-01')]
+	c int @[deprecated: 'c use Xyz.a instead'; deprecated_after: '2021-03-01']
+	d int @[deprecated: 'd use Xyz.a instead'; deprecated_after: '2999-03-01']
 }
 
-@[deprecated(msg: 'use New instead', after: '2021-03-01')]
+@[deprecated: 'use New instead']
+@[deprecated_after: '2021-03-01']
 pub struct Old {}
 
-@[deprecated(msg: 'use Future instead', after: '2999-03-01')]
+@[deprecated: 'use Future instead']
+@[deprecated_after: '2999-03-01']
 pub struct Present {}
 
 fn some_internal_function() {
