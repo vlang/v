@@ -78,6 +78,16 @@ fn test_slice_delete() {
 	assert c == [3.75, 4.25, -1.5]
 }
 
+fn test_delete_last_uses_in_place_fast_path() {
+	mut a := [1, 2, 3, 4]
+	b := unsafe { a[..a.len] }
+	old_data := a.data
+	a.delete(a.len - 1)
+	assert a == [1, 2, 3]
+	assert b == [1, 2, 3, 4]
+	assert a.data == old_data
+}
+
 fn test_delete_many() {
 	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
 	b := unsafe { a[2..6] }

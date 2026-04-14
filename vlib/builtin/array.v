@@ -353,10 +353,11 @@ fn (mut a array) prepend_many(val voidptr, size int) {
 }
 
 // delete deletes array element at index `i`.
-// This is exactly the same as calling `.delete_many(i, 1)`.
-// NOTE: This function does NOT operate in-place. Internally, it
-// creates a copy of the array, skipping over the element at `i`,
-// and then points the original variable to the new memory location.
+// Deleting the last element uses the same in-place fast path as `.delete_last()`.
+// NOTE: When deleting the last element, this operates in-place.
+// Other positions create a copy of the array, skipping over the
+// element at `i`, and then point the original variable to the new
+// memory location.
 //
 // Example:
 // ```v
@@ -364,6 +365,13 @@ fn (mut a array) prepend_many(val voidptr, size int) {
 // a.delete(1) // a is now ['0', '2', '3', '4', '5']
 // ```
 pub fn (mut a array) delete(i int) {
+	if i < 0 || i >= a.len {
+		panic_n2('array.delete: index out of range (i,a.len):', i, a.len)
+	}
+	if i == a.len - 1 {
+		a.len--
+		return
+	}
 	a.delete_many(i, 1)
 }
 
