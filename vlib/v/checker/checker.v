@@ -3020,6 +3020,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 		node.typ = c.unwrap_generic(fn_type)
+		if c.type_has_unresolved_generic_parts(fn_type) {
+			c.error('cannot use `${node.expr}.${node.field_name}` as a generic function value',
+				node.pos)
+			c.table.used_features.anon_fn = true
+			return fn_type
+		}
 		c.table.used_features.anon_fn = true
 		return fn_type
 	}
