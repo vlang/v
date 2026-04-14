@@ -704,11 +704,22 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 			|| c.type_has_unresolved_generic_parts(exp_arg_typ) {
 			continue
 		}
-		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
+		if !c.have_identical_fn_arg_type(got_arg_typ, exp_arg_typ) {
 			return false
 		}
 	}
 	return true
+}
+
+fn (mut c Checker) have_identical_fn_arg_type(got ast.Type, expected ast.Type) bool {
+	got_unaliased := c.table.unaliased_type(got)
+	expected_unaliased := c.table.unaliased_type(expected)
+	got_final_sym := c.table.final_sym(got_unaliased)
+	expected_final_sym := c.table.final_sym(expected_unaliased)
+	if got_final_sym.kind == .function && expected_final_sym.kind == .function {
+		return c.check_matching_function_symbols(got_final_sym, expected_final_sym)
+	}
+	return got_unaliased.idx() == expected_unaliased.idx()
 }
 
 fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, right_type_ ast.Type) ast.Type {
