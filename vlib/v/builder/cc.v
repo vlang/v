@@ -1779,7 +1779,8 @@ fn missing_compiler_info() string {
 }
 
 fn is_tcc_compilation_failure(ccompiler string, cc_kind CC, output string) bool {
-	return cc_kind == .tcc || is_tcc_compiler_name(ccompiler) || is_tcc_error_output(output)
+	return cc_kind == .tcc || is_tcc_compiler_name(ccompiler) || is_tcc_alias_compiler(ccompiler)
+		|| is_tcc_error_output(output)
 }
 
 fn is_tcc_compiler_name(ccompiler string) bool {
