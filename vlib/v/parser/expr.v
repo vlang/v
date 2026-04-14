@@ -397,10 +397,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.lcbr {
-			// Map `{"age": 20}`
-			p.next()
-			node = p.map_init()
-			p.check(.rcbr)
+			if p.is_sql_query_data_expr() {
+				node = p.sql_query_data_expr()
+			} else {
+				// Map `{"age": 20}`
+				p.next()
+				node = p.map_init()
+				p.check(.rcbr)
+			}
 		}
 		.key_fn {
 			if p.expecting_type {

@@ -454,6 +454,9 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 				sub_struct = c.expr(mut sub_struct) as ast.SqlExpr
 			}
 		}
+		ast.SqlQueryDataExpr {
+			node.items = c.sql_query_data_items(node.items)
+		}
 		ast.StringInterLiteral {
 			node.exprs = c.exprs(mut node.exprs)
 			node.fwidth_exprs = c.exprs(mut node.fwidth_exprs)
@@ -471,4 +474,28 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		else {}
 	}
 	return node
+}
+
+fn (mut c Comptime) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.SqlQueryDataItem {
+	mut new_items := []ast.SqlQueryDataItem{cap: items.len}
+	for item in items {
+		mut item_copy := item
+		new_items << c.sql_query_data_item(mut item_copy)
+	}
+	return new_items
+}
+
+fn (mut c Comptime) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
+	match mut item {
+		ast.SqlQueryDataLeaf {
+			item.expr = c.expr(mut item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for mut branch in item.branches {
+				branch.cond = c.expr(mut branch.cond)
+				branch.items = c.sql_query_data_items(branch.items)
+			}
+		}
+	}
+	return item
 }

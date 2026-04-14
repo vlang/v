@@ -5538,6 +5538,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.sql_select_expr(node)
 			}
 		}
+		ast.SqlQueryDataExpr {
+			left := g.go_before_last_stmt()
+			query_var := g.emit_sql_query_data(node, false)
+			g.write2(left, query_var)
+		}
 		ast.StringLiteral {
 			g.string_literal(node)
 		}

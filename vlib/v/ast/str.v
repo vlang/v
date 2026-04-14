@@ -752,6 +752,9 @@ pub fn (x Expr) str() string {
 		SqlExpr {
 			return 'ast.SqlExpr'
 		}
+		SqlQueryDataExpr {
+			return 'ast.SqlQueryDataExpr'
+		}
 	}
 	return '[unhandled expr type ${x.type_name()}]'
 }

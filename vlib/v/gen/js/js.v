@@ -1083,6 +1083,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.SqlExpr {
 			// TODO
 		}
+		ast.SqlQueryDataExpr {
+			// TODO
+		}
 		ast.StringInterLiteral {
 			g.gen_string_inter_literal(node)
 		}

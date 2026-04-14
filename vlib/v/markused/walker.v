@@ -1018,6 +1018,39 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 			w.uses_orm = true
 		}
+		ast.SqlQueryDataExpr {
+			for item in node.items {
+				match item {
+					ast.SqlQueryDataLeaf {
+						w.expr(item.expr)
+					}
+					ast.SqlQueryDataIf {
+						for branch in item.branches {
+							w.expr(branch.cond)
+							for branch_item in branch.items {
+								match branch_item {
+									ast.SqlQueryDataLeaf {
+										w.expr(branch_item.expr)
+									}
+									ast.SqlQueryDataIf {
+										for nested_branch in branch_item.branches {
+											w.expr(nested_branch.cond)
+											for nested_item in nested_branch.items {
+												if nested_item is ast.SqlQueryDataLeaf {
+													w.expr(nested_item.expr)
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			w.mark_by_type(node.typ)
+			w.uses_orm = true
+		}
 		ast.StructInit {
 			if node.typ == 0 {
 				return

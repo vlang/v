@@ -642,6 +642,9 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.SqlExpr {
 			f.sql_expr(node)
 		}
+		ast.SqlQueryDataExpr {
+			f.write('{}')
+		}
 		ast.StringLiteral {
 			f.string_literal(node)
 		}

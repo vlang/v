@@ -705,6 +705,9 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SqlExpr {
 			return t.sql_expr(mut node)
 		}
+		ast.SqlQueryDataExpr {
+			node.items = t.sql_query_data_items(node.items)
+		}
 		ast.StringInterLiteral {
 			for mut expr in node.exprs {
 				expr = t.expr(mut expr)
@@ -735,6 +738,30 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		else {}
 	}
 	return node
+}
+
+fn (mut t Transformer) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.SqlQueryDataItem {
+	mut new_items := []ast.SqlQueryDataItem{cap: items.len}
+	for item in items {
+		mut item_copy := item
+		new_items << t.sql_query_data_item(mut item_copy)
+	}
+	return new_items
+}
+
+fn (mut t Transformer) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
+	match mut item {
+		ast.SqlQueryDataLeaf {
+			item.expr = t.expr(mut item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for mut branch in item.branches {
+				branch.cond = t.expr(mut branch.cond)
+				branch.items = t.sql_query_data_items(branch.items)
+			}
+		}
+	}
+	return item
 }
 
 pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) {
