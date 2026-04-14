@@ -12,6 +12,8 @@ const delayed_output_exe_filename = os.join_path(tfolder, 'delayed_output.exe')
 const delayed_output_source_filename = os.join_path(tfolder, 'delayed_output.v')
 const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
 const utf16le_output_source_filename = os.join_path(tfolder, 'utf16le_output.v')
+const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
+const stdin_exit_source_filename = os.join_path(tfolder, 'stdin_exit.v')
 const echo_process_source_code = '
 module main
 import io
@@ -51,6 +53,16 @@ fn main() {
 }
 '
 
+const stdin_exit_source_code = '
+module main
+import os
+
+fn main() {
+	_ = os.get_raw_line()
+	exit(7)
+}
+'
+
 const echo_wait_timeout = 5 // seconds
 
 fn testsuite_begin() {
@@ -78,6 +90,10 @@ fn testsuite_begin() {
 	os.write_file(utf16le_output_source_filename, utf16le_output_source_code)!
 	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(utf16le_output_exe_filename)} ${os.quoted_path(utf16le_output_source_filename)}')
 	assert os.exists(utf16le_output_exe_filename)
+
+	os.write_file(stdin_exit_source_filename, stdin_exit_source_code)!
+	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stdin_exit_exe_filename)} ${os.quoted_path(stdin_exit_source_filename)}')
+	assert os.exists(stdin_exit_exe_filename)
 }
 
 fn testsuite_end() {
@@ -168,6 +184,30 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 	p.close()
 	assert output.contains('V_OS_TEST_PORT=exact_path'), 'stdout:\n${output}\nstderr:\n${errors}'
 	assert !output.contains('stale-prefix-exe'), output
+}
+
+fn test_new_process_uses_path_for_bare_command_names() {
+	$if windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	path_dir := os.join_path(tfolder, 'path_bin')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	path_exe := os.join_path(path_dir, 'process_from_path.exe')
+	os.cp(test_os_process, path_exe)!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	mut p := os.new_process('process_from_path.exe')
+	p.set_args(['-exitcode', '7'])
+	p.set_work_folder(os.real_path(os.temp_dir()))
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 7
+	p.close()
 }
 
 fn test_run() {
@@ -267,6 +307,19 @@ fn test_stdin_write() {
 	echo(mut p, 'hello')
 	echo(mut p, 'world')
 	p.signal_kill()
+	p.close()
+}
+
+fn test_close_before_wait_preserves_exit_code() {
+	eprintln(@FN)
+	mut p := os.new_process(stdin_exit_exe_filename)
+	p.set_redirect_stdio()
+	p.run()
+	p.stdin_write('hello\n')
+	p.close()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 7
 	p.close()
 }
 

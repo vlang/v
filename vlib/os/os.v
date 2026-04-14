@@ -585,20 +585,20 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable searches the environment PATH for the absolute path of the given executable name.
-pub fn find_abs_path_of_executable(exe_name string) !string {
-	if exe_name == '' {
-		return error('expected non empty `exe_name`')
-	}
-
+fn find_abs_path_of_executable_in_path_env(exe_name string, env_path string) !string {
 	for suffix in executable_suffixes {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return fexepath
 		}
+		if fexepath.contains(path_separator) {
+			if is_file(fexepath) && is_executable(fexepath) {
+				return abs_path(fexepath)
+			}
+			continue
+		}
 		mut res := ''
-		path := getenv('PATH')
-		paths := path.split(path_delimiter)
+		paths := env_path.split(path_delimiter)
 		for p in paths {
 			found_abs_path := join_path_single(p, fexepath)
 			$if trace_find_abs_path_of_executable ? {
@@ -614,6 +614,14 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 		}
 	}
 	return error_failed_to_find_executable()
+}
+
+// find_abs_path_of_executable searches the environment PATH for the absolute path of the given executable name.
+pub fn find_abs_path_of_executable(exe_name string) !string {
+	if exe_name == '' {
+		return error('expected non empty `exe_name`')
+	}
+	return find_abs_path_of_executable_in_path_env(exe_name, getenv('PATH'))
 }
 
 // exists_in_system_path returns `true` if `prog` exists in the system's PATH.
