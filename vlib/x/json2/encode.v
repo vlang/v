@@ -533,6 +533,38 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 	return *field_infos
 }
 
+fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
+	$if T is $option {
+		if val == none {
+			unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+		} else {
+			encoder.encode_value(get_value_from_optional(val))
+		}
+	} $else $if T.indirections == 1 {
+		encoder.encode_value(*val)
+	} $else $if T.indirections == 2 {
+		encoder.encode_value(**val)
+	} $else $if T.indirections == 3 {
+		encoder.encode_value(***val)
+	} $else {
+		encoder.encode_value(val)
+	}
+}
+
+fn struct_field_is_none[T](val T) bool {
+	$if T is $option {
+		return val == none
+	}
+	return false
+}
+
+fn struct_field_is_nil[T](val T) bool {
+	$if T.indirections != 0 {
+		return val == unsafe { nil }
+	}
+	return false
+}
+
 @[unsafe]
 fn (mut encoder Encoder) encode_struct[T](val T) {
 	encoder.output << `{`
@@ -560,71 +592,100 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 			mut write_field := true
 
-			if field_info.is_skip {
-				write_field = false
-			} else {
-				if field_info.is_omitempty {
-					$if field.typ is $option {
-						write_field = check_not_empty(val.$(field.name)) or { false }
-					} $else {
-						write_field = check_not_empty(val.$(field.name)) or { false }
-					}
-				}
+			$if field.typ is $shared {
+				shared field_value := unsafe { val.$(field.name) }
+				rlock field_value {
+					if field_info.is_skip {
+						write_field = false
+					} else {
+						if field_info.is_omitempty {
+							write_field = check_not_empty(field_value) or { false }
+						}
 
-				if !field_info.is_required {
-					$if field.typ is $option {
-						if val.$(field.name) == none {
+						if !field_info.is_required && struct_field_is_none(field_value) {
 							write_field = false
 						}
 					}
-				}
-			}
 
-			$if field.indirections != 0 {
-				if val.$(field.name) == unsafe { nil } {
+					if struct_field_is_nil(field_value) {
+						write_field = false
+					}
+
+					if write_field {
+						if is_first {
+							if encoder.prettify {
+								encoder.increment_level()
+							}
+							is_first = false
+						} else {
+							encoder.output << `,`
+						}
+						if encoder.prettify {
+							encoder.add_indent()
+						}
+
+						if field_info.key_name in old_used_keys {
+							encoder.encode_string(prefix + field_info.key_name)
+						} else {
+							encoder.encode_string(field_info.key_name)
+							used_keys << field_info.key_name
+						}
+
+						encoder.output << `:`
+						if encoder.prettify {
+							encoder.output << ` `
+						}
+
+						encoder.encode_struct_field_value(field_value)
+					}
+				}
+			} $else {
+				if field_info.is_skip {
+					write_field = false
+				} else {
+					if field_info.is_omitempty {
+						$if field.typ is $option {
+							write_field = check_not_empty(val.$(field.name)) or { false }
+						} $else {
+							write_field = check_not_empty(val.$(field.name)) or { false }
+						}
+					}
+
+					if !field_info.is_required && struct_field_is_none(val.$(field.name)) {
+						write_field = false
+					}
+				}
+
+				if struct_field_is_nil(val.$(field.name)) {
 					write_field = false
 				}
-			}
 
-			if write_field {
-				if is_first {
-					if encoder.prettify {
-						encoder.increment_level()
-					}
-					is_first = false
-				} else {
-					encoder.output << `,`
-				}
-				if encoder.prettify {
-					encoder.add_indent()
-				}
-
-				if field_info.key_name in old_used_keys {
-					encoder.encode_string(prefix + field_info.key_name)
-				} else {
-					encoder.encode_string(field_info.key_name)
-					used_keys << field_info.key_name
-				}
-
-				encoder.output << `:`
-				if encoder.prettify {
-					encoder.output << ` `
-				}
-
-				$if field is $option {
-					if val.$(field.name) == none {
-						unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+				if write_field {
+					if is_first {
+						if encoder.prettify {
+							encoder.increment_level()
+						}
+						is_first = false
 					} else {
-						encoder.encode_value(get_value_from_optional(val.$(field.name)))
+						encoder.output << `,`
 					}
-				} $else $if field.indirections == 1 {
-					encoder.encode_value(*val.$(field.name))
-				} $else $if field.indirections == 2 {
-					encoder.encode_value(**val.$(field.name))
-				} $else $if field.indirections == 3 {
-					encoder.encode_value(***val.$(field.name))
-				} $else {
-					encoder.encode_value(val.$(field.name))
+					if encoder.prettify {
+						encoder.add_indent()
+					}
+
+					if field_info.key_name in old_used_keys {
+						encoder.encode_string(prefix + field_info.key_name)
+					} else {
+						encoder.encode_string(field_info.key_name)
+						used_keys << field_info.key_name
+					}
+
+					encoder.output << `:`
+					if encoder.prettify {
+						encoder.output << ` `
+					}
+
+					encoder.encode_struct_field_value(val.$(field.name))
 				}
 			}
 		}
@@ -633,8 +694,16 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 	$for field in T.fields {
 		$if field.is_embed {
 			new_prefix := prefix + field.name + '.'
-			is_first = encoder.encode_struct_fields(val.$(field.name), is_first, used_keys,
-				new_prefix)
+			$if field.typ is $shared {
+				shared field_value := unsafe { val.$(field.name) }
+				rlock field_value {
+					is_first = encoder.encode_struct_fields(field_value, is_first, used_keys,
+						new_prefix)
+				}
+			} $else {
+				is_first = encoder.encode_struct_fields(val.$(field.name), is_first, used_keys,
+					new_prefix)
+			}
 		}
 	}
 	return is_first
