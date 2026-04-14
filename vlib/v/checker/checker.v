@@ -1952,6 +1952,14 @@ fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string 
 }
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
+	return c.type_implements_with_mut_receiver(typ, interface_type, pos, false)
+}
+
+fn (mut c Checker) type_implements_allowing_mut_receiver(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
+	return c.type_implements_with_mut_receiver(typ, interface_type, pos, true)
+}
+
+fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_type ast.Type, pos token.Pos, allow_mut_receiver bool) bool {
 	mut resolved_interface_type := c.unwrap_generic(interface_type)
 	if typ == resolved_interface_type {
 		return true
@@ -2009,7 +2017,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// terminate early, since otherwise we get an infinite recursion/segfault:
 				return false
 			}
-			return c.type_implements(typ, inferred_type, pos)
+			return c.type_implements_with_mut_receiver(typ, inferred_type, pos, allow_mut_receiver)
 		}
 	}
 	if inter_sym.kind == .generic_inst {
@@ -2021,10 +2029,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	// do not check the same type more than once
 	if mut inter_sym.info is ast.Interface {
-		for t in inter_sym.info.types {
-			if t.idx() == utyp.idx() {
-				return true
-			}
+		if inter_sym.info.has_implementor(utyp, allow_mut_receiver) {
+			return true
 		}
 	}
 	if utyp.idx() == resolved_interface_type.idx() {
@@ -2046,7 +2052,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				mut source_types := []ast.Type{}
 				match typ_sym.info {
 					ast.Interface {
-						source_types = typ_sym.info.types.clone()
+						source_types = typ_sym.info.implementor_types(true)
 					}
 					else {}
 				}
@@ -2158,6 +2164,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	} else {
 		inter_sym.methods
 	}
+	mut requires_mut_receiver := false
 	// voidptr is an escape hatch, it should be allowed to be passed
 	if utyp != ast.voidptr_type && utyp != ast.nil_type && !(interface_type.has_flag(.option)
 		&& utyp == ast.none_type) {
@@ -2179,8 +2186,72 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					continue
 				}
 			}
-			method = c.resolve_method_for_concrete_type(method, typ_sym)
-			msg := c.table.is_same_method(imethod, method)
+			// Resolve generic parameters for concrete generic types
+			match typ_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					if typ_sym.info.concrete_types.len > 0
+						&& typ_sym.info.parent_type.has_flag(.generic) {
+						parent_sym := c.table.sym(typ_sym.info.parent_type)
+						match parent_sym.info {
+							ast.Struct, ast.Interface, ast.SumType {
+								generic_names :=
+									parent_sym.info.generic_types.map(c.table.sym(it).name)
+								if rt := c.table.convert_generic_type(method.return_type,
+									generic_names, typ_sym.info.concrete_types)
+								{
+									method.return_type = rt
+								}
+								method.params = method.params.clone()
+								for mut param in method.params {
+									if pt := c.table.convert_generic_type(param.typ, generic_names,
+										typ_sym.info.concrete_types)
+									{
+										param.typ = pt
+									}
+								}
+							}
+							else {}
+						}
+					}
+				}
+				ast.GenericInst {
+					parent_sym := c.table.sym(ast.new_type(typ_sym.info.parent_idx))
+					match parent_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
+							if rt := c.table.convert_generic_type(method.return_type,
+								generic_names, typ_sym.info.concrete_types)
+							{
+								method.return_type = rt
+							}
+							method.params = method.params.clone()
+							for mut param in method.params {
+								if pt := c.table.convert_generic_type(param.typ, generic_names,
+									typ_sym.info.concrete_types)
+								{
+									param.typ = pt
+								}
+							}
+						}
+						else {}
+					}
+				}
+				else {}
+			}
+			mut checked_method := ast.Fn{
+				...imethod
+				params: imethod.params.clone()
+			}
+			mut used_mut_receiver := false
+			if allow_mut_receiver && checked_method.params.len > 0 && method.params.len > 0
+				&& !checked_method.params[0].is_mut && method.params[0].is_mut {
+				checked_method.params[0] = ast.Param{
+					...checked_method.params[0]
+					is_mut: true
+				}
+				used_mut_receiver = true
+			}
+			msg := c.table.is_same_method(checked_method, method)
 			if msg.len > 0 {
 				sig := c.table.fn_signature(imethod, skip_receiver: false)
 				typ_sig := c.table.fn_signature(method, skip_receiver: false)
@@ -2189,6 +2260,9 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				c.error('`${styp}` incorrectly implements method `${imethod.name}` of interface `${inter_sym.name}`: ${msg}',
 					pos)
 				return false
+			}
+			if used_mut_receiver {
+				requires_mut_receiver = true
 			}
 		}
 
@@ -2220,8 +2294,14 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		if !is_interface_upcast && utyp != ast.voidptr_type && utyp != ast.nil_type
-			&& utyp != ast.none_type && !inter_sym.info.types.contains(utyp) {
-			inter_sym.info.types << utyp
+			&& utyp != ast.none_type {
+			if requires_mut_receiver {
+				if !inter_sym.info.mut_types.contains(utyp) {
+					inter_sym.info.mut_types << utyp
+				}
+			} else if !inter_sym.info.types.contains(utyp) {
+				inter_sym.info.types << utyp
+			}
 		}
 		if !inter_sym.info.types.contains(ast.voidptr_type) {
 			inter_sym.info.types << ast.voidptr_type
