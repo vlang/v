@@ -5,6 +5,11 @@ import v.token
 import v.util
 import strings
 
+struct EnumDeclFieldState {
+mut:
+	uses_exprs bool
+}
+
 fn (mut p Parser) enum_val_expr(mod string) ast.EnumVal {
 	// `Color.green`
 	mut enum_name := p.check_name()
@@ -36,6 +41,104 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	return ast.EnumVal{
 		val: val
 		pos: start_pos.extend(p.prev_tok.pos())
+	}
+}
+
+fn (mut p Parser) enum_decl_field(mut enum_attrs map[string][]ast.Attr, mut state EnumDeclFieldState) ast.EnumField {
+	pre_comments := p.eat_comments()
+	pos := p.tok.pos()
+	has_prev_newline := p.has_prev_newline()
+	has_break_line := has_prev_newline || p.has_prev_line_comment_or_label()
+	val := p.check_name()
+	mut expr := ast.empty_expr
+	mut has_expr := false
+	if p.tok.kind == .assign {
+		p.next()
+		old_assign_rhs := p.inside_assign_rhs
+		p.inside_assign_rhs = true
+		expr = p.expr(0)
+		p.inside_assign_rhs = old_assign_rhs
+		has_expr = true
+		state.uses_exprs = true
+	}
+	mut attrs := []ast.Attr{}
+	if p.tok.kind == .lsbr || p.tok.kind == .at {
+		p.attributes()
+		attrs << p.attrs
+		enum_attrs[val] = attrs
+		p.attrs = []
+	}
+	comments := p.eat_comments(same_line: true)
+	next_comments := p.eat_comments(follow_up: true)
+	return ast.EnumField{
+		name:             val
+		source_name:      source_name(val)
+		pos:              pos
+		expr:             expr
+		has_expr:         has_expr
+		has_prev_newline: has_prev_newline
+		has_break_line:   has_break_line
+		pre_comments:     pre_comments
+		comments:         comments
+		next_comments:    next_comments
+		attrs:            attrs
+	}
+}
+
+fn (mut p Parser) enum_decl_fields(mut vals []string, mut fields []ast.EnumField, mut enum_attrs map[string][]ast.Attr, mut state EnumDeclFieldState) {
+	for p.tok.kind != .eof && p.tok.kind != .rcbr {
+		if p.tok.kind == .dollar && p.peek_tok.kind == .key_if {
+			p.enum_decl_comptime_fields(mut vals, mut fields, mut enum_attrs, mut state)
+			continue
+		}
+		field := p.enum_decl_field(mut enum_attrs, mut state)
+		if field.name == '' {
+			return
+		}
+		vals << field.name
+		fields << field
+	}
+}
+
+fn (mut p Parser) enum_decl_comptime_fields(mut vals []string, mut fields []ast.EnumField, mut enum_attrs map[string][]ast.Attr, mut state EnumDeclFieldState) {
+	p.check(.dollar)
+	mut has_true_branch := false
+	for {
+		if p.tok.kind == .key_else {
+			p.check(.key_else)
+			if p.tok.kind == .lcbr {
+				if has_true_branch {
+					p.skip_scope()
+				} else {
+					p.check(.lcbr)
+					p.enum_decl_fields(mut vals, mut fields, mut enum_attrs, mut state)
+					p.check(.rcbr)
+				}
+				break
+			}
+			p.check(.dollar)
+		}
+		old_inside_ct_if_expr := p.inside_ct_if_expr
+		p.inside_ct_if_expr = true
+		p.check(.key_if)
+		mut cond := p.expr(0)
+		p.inside_ct_if_expr = old_inside_ct_if_expr
+		is_true := p.comptime_if_cond(mut cond)
+		if is_true && !has_true_branch {
+			has_true_branch = true
+			p.check(.lcbr)
+			p.enum_decl_fields(mut vals, mut fields, mut enum_attrs, mut state)
+			p.check(.rcbr)
+		} else if p.tok.kind == .lcbr {
+			p.skip_scope()
+		} else {
+			p.check(.lcbr)
+		}
+		if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
+			p.check(.dollar)
+			continue
+		}
+		break
 	}
 }
 
@@ -87,50 +190,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
-	mut uses_exprs := false
+	mut state := EnumDeclFieldState{}
 	mut enum_attrs := map[string][]ast.Attr{}
-	for p.tok.kind != .eof && p.tok.kind != .rcbr {
-		pre_comments := p.eat_comments()
-		pos := p.tok.pos()
-		has_prev_newline := p.has_prev_newline()
-		has_break_line := has_prev_newline || p.has_prev_line_comment_or_label()
-		val := p.check_name()
-		vals << val
-		mut expr := ast.empty_expr
-		mut has_expr := false
-		// p.warn('enum val ${val}')
-		if p.tok.kind == .assign {
-			p.next()
-			old_assign_rhs := p.inside_assign_rhs
-			p.inside_assign_rhs = true
-			expr = p.expr(0)
-			p.inside_assign_rhs = old_assign_rhs
-			has_expr = true
-			uses_exprs = true
-		}
-		mut attrs := []ast.Attr{}
-		if p.tok.kind == .lsbr || p.tok.kind == .at {
-			p.attributes()
-			attrs << p.attrs
-			enum_attrs[val] = attrs
-			p.attrs = []
-		}
-		comments := p.eat_comments(same_line: true)
-		next_comments := p.eat_comments(follow_up: true)
-		fields << ast.EnumField{
-			name:             val
-			source_name:      source_name(val)
-			pos:              pos
-			expr:             expr
-			has_expr:         has_expr
-			has_prev_newline: has_prev_newline
-			has_break_line:   has_break_line
-			pre_comments:     pre_comments
-			comments:         comments
-			next_comments:    next_comments
-			attrs:            attrs
-		}
-	}
+	p.enum_decl_fields(mut vals, mut fields, mut enum_attrs, mut state)
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	is_flag := p.attrs.contains('flag')
@@ -228,7 +290,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_flag:          is_flag
 			is_typedef:       is_typedef
 			is_multi_allowed: is_multi_allowed
-			uses_exprs:       uses_exprs
+			uses_exprs:       state.uses_exprs
 			typ:              enum_type
 			attrs:            enum_attrs
 		}

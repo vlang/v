@@ -3756,6 +3756,17 @@ println('Grocery IDs: ${g1}, ${g2}, ${g3}')
 
 Output: `Grocery IDs: 0, 5, 6`.
 
+Compile-time `$if` blocks can also be used inside enum bodies to include fields conditionally.
+
+```v
+enum Feature {
+	base
+	$if beta ? {
+		beta_extension
+	}
+}
+```
+
 Operations are not allowed on enum variables; they must be explicitly cast to `int`.
 
 Enums can have methods, just like structs.
