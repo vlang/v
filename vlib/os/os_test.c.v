@@ -4,6 +4,17 @@ import os
 // the different tests. It would be removed in testsuite_end(), so
 // individual os tests do not need to clean up after themselves.
 const tfolder = os.join_path(os.vtmp_dir(), 'os_tests')
+const utf16le_stdout_source_code = '
+module main
+
+import os
+
+fn main() {
+	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+	mut out := os.stdout()
+	out.write(payload) or { panic(err) }
+}
+'
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
 // thus it can be used for other consts too:
@@ -1069,6 +1080,20 @@ fn test_execute_fc_get_output() {
 	result := os.execute('c:\\windows\\system32\\fc.exe /?')
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
+}
+
+fn test_execute_decodes_utf16le_output() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	source_path := os.join_path_single(tfolder, 'utf16le_stdout.v')
+	os.write_file(source_path, utf16le_stdout_source_code)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)}')
+	assert result.exit_code == 0, result.output
+	assert result.output == 'OK\n', result.output
 }
 
 fn test_reading_from_proc_cpuinfo() {

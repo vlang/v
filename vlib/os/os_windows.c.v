@@ -118,6 +118,88 @@ fn wide_ptr_to_string(wstr &u16) string {
 	return unsafe { string_from_wide(wstr) }
 }
 
+fn looks_like_utf16le_captured_output(raw string) bool {
+	if raw.len < 2 || raw.len % 2 != 0 {
+		return false
+	}
+	if raw[0] == 0xff && raw[1] == 0xfe {
+		return true
+	}
+	sample_len := if raw.len > 128 { 128 } else { raw.len }
+	mut checked_pairs := 0
+	mut zero_high_bytes := 0
+	for i := 1; i < sample_len; i += 2 {
+		checked_pairs++
+		if raw[i] == 0 {
+			zero_high_bytes++
+		}
+	}
+	return checked_pairs > 0 && zero_high_bytes * 4 >= checked_pairs * 3
+}
+
+fn looks_like_utf16be_captured_output(raw string) bool {
+	if raw.len < 2 || raw.len % 2 != 0 {
+		return false
+	}
+	if raw[0] == 0xfe && raw[1] == 0xff {
+		return true
+	}
+	sample_len := if raw.len > 128 { 128 } else { raw.len }
+	mut checked_pairs := 0
+	mut zero_low_bytes := 0
+	for i := 0; i < sample_len; i += 2 {
+		checked_pairs++
+		if raw[i] == 0 {
+			zero_low_bytes++
+		}
+	}
+	return checked_pairs > 0 && zero_low_bytes * 4 >= checked_pairs * 3
+}
+
+@[manualfree]
+fn utf16_captured_output_to_string(raw string, little_endian bool) string {
+	mut start := 0
+	if little_endian && raw[0] == 0xff && raw[1] == 0xfe {
+		start = 2
+	} else if !little_endian && raw[0] == 0xfe && raw[1] == 0xff {
+		start = 2
+	}
+	pairs := (raw.len - start) / 2
+	mut wide := []u16{len: pairs + 1, init: u16(0)}
+	for idx := 0; idx < pairs; idx++ {
+		base := start + idx * 2
+		b0 := u16(raw[base])
+		b1 := u16(raw[base + 1])
+		wide[idx] = if little_endian { b0 | (b1 << 8) } else { (b0 << 8) | b1 }
+	}
+	res := unsafe { string_from_wide2(wide.data, pairs) }
+	unsafe { wide.free() }
+	return res
+}
+
+@[manualfree]
+fn decode_windows_captured_output(raw string) string {
+	if raw.len == 0 {
+		return ''
+	}
+	if looks_like_utf16le_captured_output(raw) {
+		return utf16_captured_output_to_string(raw, true)
+	}
+	if looks_like_utf16be_captured_output(raw) {
+		return utf16_captured_output_to_string(raw, false)
+	}
+	if validate.utf8_string(raw) {
+		return raw
+	}
+	mut wide := raw.to_wide(from_ansi: true)
+	if isnil(wide) {
+		return raw
+	}
+	res := unsafe { string_from_wide(wide) }
+	unsafe { free(wide) }
+	return res
+}
+
 pub struct C._utimbuf {
 	actime  i64
 	modtime i64
@@ -404,11 +486,7 @@ pub fn raw_execute(cmd string) Result {
 			break
 		}
 	}
-	// encoding: from ANSI to UTF-8
-	soutput_str := read_data.str()
-	soutput := if validate.utf8_string(soutput_str) { soutput_str } else { string_from_wide(soutput_str.to_wide(
-			from_ansi: true
-		)) }
+	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)

@@ -280,7 +280,7 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	unsafe {
 		C.ReadFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_read), 0)
 	}
-	return buf[..bytes_read].bytestr(), bytes_read
+	return decode_windows_captured_output(buf[..bytes_read].bytestr()), bytes_read
 }
 
 fn (mut p Process) win_is_pending(idx int) bool {
@@ -333,7 +333,7 @@ fn (mut p Process) win_slurp(idx int) string {
 			break
 		}
 	}
-	soutput := read_data.str()
+	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
 	//	if idx == 1 {
 	//		close_valid_handle(&wdata.child_stdout_read)
