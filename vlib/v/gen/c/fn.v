@@ -119,6 +119,50 @@ fn (g &Gen) resolve_method_decl_fkey_for_type(typ ast.Type, method_name string) 
 	return ''
 }
 
+fn free_method_calls_free_on_receiver(method ast.Fn) bool {
+	if method.source_fn == unsafe { nil } {
+		return false
+	}
+	fn_decl := unsafe { &ast.FnDecl(method.source_fn) }
+	if fn_decl.receiver.name == '' {
+		return false
+	}
+	root := ast.Node(ast.Stmt(*fn_decl))
+	return free_method_calls_free_on_receiver_walk(root, fn_decl.receiver.name)
+}
+
+fn free_method_calls_free_on_receiver_walk(node ast.Node, receiver_name string) bool {
+	if node is ast.Expr {
+		match node {
+			ast.AnonFn, ast.LambdaExpr {
+				return false
+			}
+			ast.CallExpr {
+				if node.name == 'free' && node.args.len == 1
+					&& free_method_matches_receiver_expr(node.args[0].expr, receiver_name) {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	for child in node.children() {
+		if free_method_calls_free_on_receiver_walk(child, receiver_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn free_method_matches_receiver_expr(expr ast.Expr, receiver_name string) bool {
+	return match expr {
+		ast.Ident { expr.name == receiver_name }
+		ast.CastExpr { free_method_matches_receiver_expr(expr.expr, receiver_name) }
+		ast.ParExpr { free_method_matches_receiver_expr(expr.expr, receiver_name) }
+		else { false }
+	}
+}
+
 fn (mut g Gen) node_decl_fkey(node ast.FnDecl) string {
 	if node.is_method && !node.name.contains('_T_') {
 		receiver_sym := g.table.sym(node.receiver.typ)
@@ -4638,6 +4682,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
+	mut free_receiver_heap_copy := ''
+	if is_free_method && has_method && node.left is ast.Ident && !left_type.is_ptr()
+		&& !g.resolved_ident_is_auto_heap(node.left)
+		&& free_method_calls_free_on_receiver(full_method) {
+		stmt_line := g.go_before_last_stmt()
+		alloc_size := '(sizeof(${rec_cc_type}) == 0) ? 1 : sizeof(${rec_cc_type})'
+		g.empty_line = true
+		free_receiver_heap_copy = g.new_tmp_var()
+		g.writeln('${rec_cc_type}* ${free_receiver_heap_copy} = (${rec_cc_type}*)builtin__vcalloc(${alloc_size});')
+		g.writeln('*${free_receiver_heap_copy} = ${c_name(node.left.name)};')
+		g.write(stmt_line)
+	}
 	receiver_needs_ref := receiver_type.is_ptr() || receiver_is_mut
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !receiver_needs_ref && left_type.is_ptr() && node.kind == .str {
@@ -4672,8 +4728,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		else {}
 	}
-	if receiver_needs_ref && (!left_type.is_ptr() || node.from_embed_types.len != 0
-		|| (left_type.has_flag(.shared_f) && node.kind != .str)) {
+	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type.is_ptr()
+		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
@@ -4700,12 +4756,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				cast_n++
 			}
 		}
-	} else if !receiver_needs_ref && left_type.is_ptr() && node.kind != .str
-		&& node.from_embed_types.len == 0 {
+	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type.is_ptr()
+		&& node.kind != .str && node.from_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
 			g.write('*'.repeat(left_type.nr_muls()))
 		}
-	} else if !is_range_slice && node.from_embed_types.len == 0 && node.kind != .str {
+	} else if free_receiver_heap_copy == '' && !is_range_slice && node.from_embed_types.len == 0
+		&& node.kind != .str {
 		diff := left_type.nr_muls() - receiver_type.nr_muls()
 		if diff > 0 {
 			g.write('*'.repeat(diff))
@@ -4718,7 +4775,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if node.left is ast.MapInit {
+		if free_receiver_heap_copy != '' {
+			g.write(free_receiver_heap_copy)
+		} else if node.left is ast.MapInit {
 			g.write('(map[]){')
 			g.expr(ast.Expr(node.left))
 			g.write('}[0]')
