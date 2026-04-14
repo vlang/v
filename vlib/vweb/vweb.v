@@ -156,10 +156,10 @@ pub struct Context {
 mut:
 	content_type string          = 'text/plain'
 	status       string          = '200 OK'
-	ctx          context.Context = context.EmptyContext{}
+	ctx          context.Context = context.EmptyContext{} @[skip]
 pub mut:
 	// HTTP Request
-	req http.Request
+	req http.Request @[skip]
 	// TODO: Response
 	done bool
 	// time.ticks() from start of vweb connection handle.
