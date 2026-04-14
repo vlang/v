@@ -416,6 +416,7 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		v.post_process_c_compiler_output(r.full_cl_exe_path, res)
 	}
+	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
 	// println(res)
 	// println('C OUTPUT:')
 }

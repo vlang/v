@@ -1022,6 +1022,7 @@ pub fn (mut v Builder) cc() {
 		}
 		return
 	}
+	v.ensure_windows_icon_flag_is_valid()
 	if v.pref.should_output_to_stdout() {
 		// output to stdout
 		content := os.read_file(v.out_name_c) or { panic(err) }
@@ -1229,6 +1230,7 @@ pub fn (mut v Builder) cc() {
 		}
 		break
 	}
+	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -1499,6 +1501,7 @@ fn (mut c Builder) cc_windows_cross() {
 	c.setup_ccompiler_options(c.pref.ccompiler)
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
+	icon_object := c.prepare_cross_windows_icon_resource() or { verror(err.msg()) }
 	mut args := []string{}
 	args << '${c.pref.cflags}'
 	args << '-o ${os.quoted_path(c.pref.out_name)}'
@@ -1548,6 +1551,9 @@ fn (mut c Builder) cc_windows_cross() {
 	// add the thirdparty .o files, produced by all the #flag directives:
 	args << cflags.c_options_only_object_files()
 	args << os.quoted_path(c.out_name_c)
+	if icon_object != '' {
+		args << os.quoted_path(icon_object)
+	}
 
 	mut c_options_after_target := []string{}
 	if c.pref.ccompiler == 'msvc' {

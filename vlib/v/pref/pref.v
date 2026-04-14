@@ -266,6 +266,7 @@ pub mut:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
 	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	icon_path          string    // Windows executable icon file (.ico or .png)
 	is_vls             bool
 	json_errors        bool // -json-errors, for VLS and other tools
 	new_transform      bool // temporary for the new transformer
@@ -348,6 +349,23 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	exit(tmp_result)
 }
 
+fn inline_icon_option_value(arg string) ?string {
+	for prefix in ['-icon=', '--icon=', '-seticon=', '--seticon='] {
+		if arg.starts_with(prefix) {
+			return arg[prefix.len..]
+		}
+	}
+	return none
+}
+
+fn set_icon_path(mut res Preferences, raw_path string, option_name string) {
+	if raw_path == '' {
+		eprintln_exit('missing value for `${option_name}`')
+	}
+	res.icon_path = os.real_path(raw_path)
+	res.build_options << '-icon "${res.icon_path}"'
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	use_v2_requested := '-v2' in args
@@ -371,6 +389,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		if inline_icon_path := inline_icon_option_value(arg) {
+			set_icon_path(mut res, inline_icon_path, arg.all_before('='))
+			continue
+		}
 		match arg {
 			'--' {
 				break
@@ -502,6 +524,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					eprintln('valid values are: ${valid}')
 					exit(1)
 				}
+				i++
+			}
+			'-icon', '--icon', '-seticon', '--seticon' {
+				set_icon_path(mut res, cmdline.option(args[i..], arg, ''), arg)
 				i++
 			}
 			'-gc' {

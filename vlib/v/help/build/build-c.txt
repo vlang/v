@@ -58,6 +58,12 @@ see also `v help build`.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
 
+   -icon <path>
+   --icon=<path>
+   -seticon <path>
+      Embed the provided `.ico` or `.png` file as the icon of the generated
+      Windows executable. Use it only when V is producing a Windows `.exe`.
+
    -showcc
       Prints the C command that is used to build the program.
 
