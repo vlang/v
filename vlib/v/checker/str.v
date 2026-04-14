@@ -41,9 +41,20 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	}
 }
 
-fn (mut c Checker) get_string_inter_default_fmt(_ ast.Expr, ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.nr_muls() > 0 && ftyp.idx() in [ast.string_type_idx, ast.bool_type_idx] {
-		return `p`
+fn (mut c Checker) get_string_inter_default_fmt(expr ast.Expr, ftyp ast.Type, typ ast.Type) u8 {
+	if expr is ast.Ident {
+		if expr.obj is ast.Var {
+			obj := expr.obj
+			if obj.typ.is_ptr() && !obj.is_arg {
+				pointee_typ := obj.typ.deref()
+				if c.table.final_sym(pointee_typ).kind != .enum {
+					final_pointee_typ := c.table.final_type(pointee_typ)
+					if final_pointee_typ in [ast.string_type, ast.bool_type] {
+						return `p`
+					}
+				}
+			}
+		}
 	}
 	return c.get_default_fmt(ftyp, typ)
 }
