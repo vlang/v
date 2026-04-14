@@ -369,6 +369,16 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 	return res
 }
 
+fn cgen_vattrs(attrs []ast.Attr) []string {
+	mut res := []string{cap: attrs.len}
+	for attr in attrs {
+		name := cescape_nonascii(util.smart_quote(attr.name, false))
+		arg := cescape_nonascii(util.smart_quote(attr.arg, false))
+		res << '((VAttribute){.name=_S("${name}"),.has_arg=${attr.has_arg},.arg=_S("${arg}"),.kind=AttributeKind__${attr.kind}})'
+	}
+	return res
+}
+
 fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
 		val := cescape_nonascii(util.smart_quote(node.val, false))
@@ -928,11 +938,16 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('\t${node.val_var}.location = _S("${mlocation}:${method.name_pos.line_nr + 1}:${method.name_pos.col}");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
+				g.writeln('\t${node.val_var}.attributes = builtin____new_array_with_default(0, 0, sizeof(VAttribute), 0);')
 			} else {
 				attrs := cgen_attrs(method.attrs)
+				vattrs := cgen_vattrs(method.attrs)
 				g.writeln(
 					'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 					attrs.join(', ') + '}));\n')
+				g.writeln(
+					'\t${node.val_var}.attributes = builtin__new_array_from_c_array(${vattrs.len}, ${vattrs.len}, sizeof(VAttribute), _MOV((VAttribute[${vattrs.len}]){' +
+					vattrs.join(', ') + '}));\n')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
