@@ -319,19 +319,27 @@ pub fn (t &Table) type_has_implicit_str_method(typ Type, method &Fn) bool {
 	if typ.has_option_or_result() {
 		return false
 	}
-	if typ.is_any_kind_of_pointer() {
-		return false
-	}
 	sym := t.sym(typ.clear_flag(.variadic))
 	if sym.has_method_with_generic_parent('str') {
 		return false
+	}
+	if sym.kind == .char && typ.nr_muls() == 0 {
+		return false
+	}
+	if sym.kind == .function {
+		return false
+	}
+	if typ.is_any_kind_of_pointer() || typ in voidptr_types || typ in byteptr_types
+		|| typ in charptr_types || typ == nil_type {
+		return true
 	}
 	match sym.info {
 		Alias, Array, ArrayFixed, Enum, FnType, Struct, Map, MultiReturn, SumType, Chan, Thread {
 			return sym.name != 'nil'
 		}
 		else {
-			return false
+			return sym.kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize,
+				.f32, .f64, .rune, .bool, .string, .generic_inst]
 		}
 	}
 }
@@ -2259,6 +2267,9 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 		// verify methods
 		for imethod in inter_sym.info.methods {
+			if t.is_compatible_auto_str_method(imethod) && typ.nr_muls() == 0 && sym.kind == .char {
+				return false
+			}
 			if method := t.find_method_with_embeds(sym, imethod.name) {
 				msg := t.is_same_method(imethod, method)
 				if msg.len > 0 {
