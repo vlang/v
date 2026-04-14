@@ -380,6 +380,17 @@ fn sub(x int, y int) int {
 
 Again, the type comes after the argument's name.
 
+When a function signature spans multiple lines, commas between parameters are optional:
+
+```v nofmt
+fn greet(
+	salutation string
+	name string
+) string {
+	return 'Hey, ${salutation} ${name}!'
+}
+```
+
 Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
 

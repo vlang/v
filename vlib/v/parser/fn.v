@@ -428,6 +428,12 @@ fn (p &Parser) is_start_of_call_arg_expr() bool {
 	}
 }
 
+@[inline]
+fn (p &Parser) can_omit_comma_between_fn_params() bool {
+	return p.tok.line_nr > p.prev_tok.line_nr
+		&& p.tok.kind in [.name, .key_mut, .key_shared, .key_atomic, .ellipsis]
+}
+
 fn (mut p Parser) call_args() []ast.CallArg {
 	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
@@ -1579,6 +1585,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				if alanguage != .v {
 					p.check_for_impure_v(alanguage, type_pos[i])
 				}
+				can_omit_comma := p.can_omit_comma_between_fn_params()
 				params << ast.Param{
 					pos:        param_pos[i]
 					name:       para_name
@@ -1591,8 +1598,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
 				prev_param_newline = param_pos[i].line_nr
-				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
-				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
+				if is_variadic && ((p.tok.kind == .comma && p.peek_tok.kind != .rpar)
+					|| can_omit_comma) {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${para_name}',
 						param_pos[i])
 					return []ast.Param{}, false, false, false
@@ -1602,7 +1609,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false, false
 			}
-			if p.tok.kind != .rpar {
+			if p.tok.kind == .comma {
+				p.next()
+			} else if p.tok.kind != .rpar && !p.can_omit_comma_between_fn_params() {
 				p.check(.comma)
 			}
 		}
