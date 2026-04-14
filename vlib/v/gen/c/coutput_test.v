@@ -265,14 +265,14 @@ pub fn get_file_options(file string) FileOptions {
 const github_job = os.getenv('GITHUB_JOB')
 
 fn should_skip(relpath string) bool {
-	if github_job == 'docker-ubuntu-musl' && relpath.ends_with('autofree_sql_or_block.vv') {
-		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
+	if github_job.contains('musl') && relpath.ends_with('autofree_sql_or_block.vv') {
+		eprintln('> skipping ${relpath} on ${github_job}, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
 		return true
 	}
-	if github_job == 'docker-ubuntu-musl' && (relpath.ends_with('print_boehm_leak.vv')
+	if github_job.contains('musl') && (relpath.ends_with('print_boehm_leak.vv')
 		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')
 		|| relpath.ends_with('gc_debugger_linux.vv')) {
-		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since gc related tests are not compatible with `-gc none`')
+		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
 	if user_os == 'windows' {
@@ -295,6 +295,10 @@ fn should_skip(relpath string) bool {
 		$if msvc {
 			if relpath.contains('_not_msvc_windows.vv') {
 				eprintln('> skipping ${relpath} on msvc')
+				return true
+			}
+			if relpath.contains('asm_') {
+				eprintln('> skipping ${relpath} on msvc, since it uses gcc-style inline asm')
 				return true
 			}
 		}

@@ -668,14 +668,17 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	// Restore V's bool definition: system headers (e.g. macOS mach/vm_statistics.h)
 	// may include <stdbool.h> which redefines bool to _Bool via a macro,
 	// overriding V's `typedef u8 bool;` and causing type mismatches in clang.
+	// In C23, bool is a keyword, so we must not redefine it.
 	b.writeln('#if !defined(__cplusplus) && !defined(CUSTOM_DEFINE_no_bool)')
 	b.writeln('#ifdef bool')
 	b.writeln('#undef bool')
 	b.writeln('#endif')
+	b.writeln('#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L')
 	b.writeln('#ifdef CUSTOM_DEFINE_4bytebool')
 	b.writeln('typedef int bool;')
 	b.writeln('#else')
 	b.writeln('typedef u8 bool;')
+	b.writeln('#endif')
 	b.writeln('#endif')
 	b.writeln('#endif')
 	b.writeln('\n// V global/const #define ... :')
@@ -766,7 +769,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			if var := g.global_const_defs[var_name] {
 				if !var.def.starts_with('#define') {
 					helpers.writeln(var.def)
-					if var.def.contains(' = ') {
+					if var.def.starts_with('/*') || var.def.starts_with('extern ') {
+						// skip C globals (comment-only placeholders) and
+						// already extern declarations (e.g. extern C globals)
+						g.extern_out.writeln(var.def)
+					} else if var.def.contains(' = ') {
 						g.extern_out.writeln('extern ${var.def.all_before(' = ')};')
 					} else {
 						g.extern_out.writeln('extern ${var.def}')
@@ -10602,7 +10609,7 @@ return ${cast_shared_struct_str};
 					// hack to mutate typ
 					params[0] = ast.Param{
 						...params[0]
-						typ: st.set_nr_muls(1)
+						typ: ast.mktyp(st).set_nr_muls(1)
 					}
 					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false, false)
 					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)

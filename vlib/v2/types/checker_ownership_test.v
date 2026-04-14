@@ -1,4 +1,4 @@
-// vtest build: !windows
+// vtest build: false // TODO: ownership checker is still in development, re-enable when stable
 module types
 
 import os

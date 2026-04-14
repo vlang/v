@@ -99,8 +99,16 @@ pub fn fd_is_pending(fd int) bool {
 		return false
 	}
 	mut bytes_avail := int(0)
-	// `select` marks EOF as readable, while `FIONREAD` reports the number of unread bytes.
-	$if !windows {
+	$if windows {
+		handle := voidptr(C._get_osfhandle(fd))
+		if handle != voidptr(-1) {
+			if C.PeekNamedPipe(handle, unsafe { nil }, int(0), unsafe { nil },
+				voidptr(&bytes_avail), unsafe { nil })
+			{
+				return bytes_avail > 0
+			}
+		}
+	} $else {
 		if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
 			return bytes_avail > 0
 		}
