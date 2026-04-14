@@ -36,14 +36,23 @@ pub:
 	retry int
 }
 
+// new_connection creates an SSE connection wrapper for a live vweb request connection.
+// Call it from a route handler; `app.conn` is nil before a request is being handled.
 pub fn new_connection(conn &net.TcpConn) &SSEConnection {
 	return &SSEConnection{
 		conn: unsafe { conn }
 	}
 }
 
-// sse_start is used to send the start of a Server Side Event response.
+fn (sse &SSEConnection) ensure_connection() ! {
+	if sse.conn == unsafe { nil } {
+		return error('SSE connection is not available; create it from a live vweb request connection (for example `app.conn` in a route handler)')
+	}
+}
+
+// start sends the initial SSE response headers.
 pub fn (mut sse SSEConnection) start() ! {
+	sse.ensure_connection()!
 	sse.conn.set_write_timeout(sse.write_timeout)
 	mut start_sb := strings.new_builder(512)
 	start_sb.write_string('HTTP/1.1 200')
@@ -60,6 +69,7 @@ pub fn (mut sse SSEConnection) start() ! {
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
+	sse.ensure_connection()!
 	mut sb := strings.new_builder(512)
 	if message.id != '' {
 		sb.write_string('id: ${message.id}\n')
