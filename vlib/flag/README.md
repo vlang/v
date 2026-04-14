@@ -211,3 +211,8 @@ fn main() {
 	println(additional_args.join_lines())
 }
 ```
+
+When you need to distinguish between "flag not provided" and a falsey/default value,
+pass a typed option default. For example,
+`fp.bool('a_bool', 0, ?bool(none), '...')` returns `?bool`, and
+`fp.string('a_string', 0, ?string(none), '...')` returns `?string`.

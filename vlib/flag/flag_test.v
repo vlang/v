@@ -8,6 +8,42 @@ fn test_if_flag_not_given_return_default_values() {
 	assert 'stuff' == fp.string('a_string', 0, 'stuff', '')
 }
 
+fn test_if_flag_not_given_can_return_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	assert fp.bool('a_bool', 0, ?bool(none), '') == none
+	assert fp.int('an_int', 0, ?int(none), '') == none
+	assert fp.float('a_float', 0, ?f64(none), '') == none
+	assert fp.string('a_string', 0, ?string(none), '') == none
+}
+
+fn test_if_flag_not_given_preserves_typed_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	a_bool := fp.bool('a_bool', 0, ?bool(true), '')
+	an_int := fp.int('an_int', 0, ?int(42), '')
+	a_float := fp.float('a_float', 0, ?f64(1.5), '')
+	a_string := fp.string('a_string', 0, ?string('stuff'), '')
+	if value := a_bool {
+		assert value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 1.5
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
+}
+
 fn test_could_define_application_name_and_version() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('test app')
@@ -21,6 +57,41 @@ fn test_could_define_application_name_and_version() {
 fn test_bool_flags_do_not_need_an_value() {
 	mut fp := flag.new_flag_parser(['--a_bool'])
 	assert true == fp.bool('a_bool', 0, false, '')
+}
+
+fn test_flag_values_can_be_returned_as_options() {
+	mut fp := flag.new_flag_parser([
+		'--an_int',
+		'42',
+		'--a_float=2.0',
+		'--a_string',
+		'stuff',
+		'--a_bool=false',
+	])
+	a_bool := fp.bool('a_bool', 0, ?bool(none), '')
+	an_int := fp.int('an_int', 0, ?int(none), '')
+	a_float := fp.float('a_float', 0, ?f64(none), '')
+	a_string := fp.string('a_string', 0, ?string(none), '')
+	if value := a_bool {
+		assert !value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 2.0
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
 }
 
 fn test_flags_could_be_defined_with_eq() {

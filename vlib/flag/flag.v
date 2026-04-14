@@ -347,12 +347,13 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string, c FlagCo
 	return parsed == 'true'
 }
 
-// bool defines and parses a string flag/option named `name`.
+// bool defines and parses a bool flag/option named `name`.
 // If that flag is given by the user, then it returns its parsed bool value.
 // When it is not, it returns the default value in `bdefault`.
+// Use a typed option default like `?bool(none)` to receive an optional result.
 // This version supports abbreviations.
 // This version supports a custom value description.
-pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string, c FlagConfig) bool {
+pub fn (mut fs FlagParser) bool[T](name string, abbr u8, bdefault T, usage string, c FlagConfig) T {
 	value := fs.bool_opt(name, abbr, usage, c) or { return bdefault }
 	return value
 }
@@ -400,9 +401,10 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string, c FlagCon
 // int defines and parses an integer flag, named `name`.
 // When the flag is given by the user, it returns its parsed integer value.
 // When it is not, it returns the integer value in `idefault`.
+// Use a typed option default like `?int(none)` to receive an optional result.
 // This version supports abbreviations.
 // This version supports a custom value description.
-pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string, c FlagConfig) int {
+pub fn (mut fs FlagParser) int[T](name string, abbr u8, idefault T, usage string, c FlagConfig) T {
 	value := fs.int_opt(name, abbr, usage, c) or { return idefault }
 	return value
 }
@@ -449,9 +451,10 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagC
 // float defines and parses a floating point flag, named `name`.
 // When the flag is given by the user, it returns its parsed floating point value.
 // When it is not, it returns the value in `fdefault`.
+// Use a typed option default like `?f64(none)` to receive an optional result.
 // This version supports abbreviations.
 // This version supports a custom value description.
-pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string, c FlagConfig) f64 {
+pub fn (mut fs FlagParser) float[T](name string, abbr u8, fdefault T, usage string, c FlagConfig) T {
 	value := fs.float_opt(name, abbr, usage, c) or { return fdefault }
 	return value
 }
@@ -493,9 +496,10 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string, c Flag
 // string defines and parses a string flag/option, named `name`.
 // If that flag is given as an option, then its parsed value is returned as a string.
 // When it is not, it returns the default string value in `sdefault`.
+// Use a typed option default like `?string(none)` to receive an optional result.
 // This version supports abbreviations.
 // This version supports a custom value description.
-pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string, c FlagConfig) string {
+pub fn (mut fs FlagParser) string[T](name string, abbr u8, sdefault T, usage string, c FlagConfig) T {
 	value := fs.string_opt(name, abbr, usage, c) or { return sdefault }
 	return value
 }
