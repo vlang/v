@@ -1433,8 +1433,9 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 	if flag_name.len <= 1 {
 		return
 	}
-	// Do not handle multiple `-vv`, `map_posix_short` does that
-	if flag_name[0] == flag_name[1] {
+	first_letter := flag_name[0].ascii_str()
+	// Do not handle repeated-only bundles like `-vv`; `map_posix_short` does that.
+	if flag_name.count(first_letter) == flag_name.len {
 		return
 	}
 
@@ -1477,6 +1478,19 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 					trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
 						'true', '')}')
 					fm.field_map_flag[mf.field_name] = mf
+					fm.handled_pos << flag_ctx.pos
+				} else if field.hints.has(.can_repeat) {
+					repeats := if existing := fm.field_map_flag[mf.field_name] {
+						existing.repeats + 1
+					} else {
+						1
+					}
+					trace_println('${@FN}: found match for (repeatable cluster) ${fm.dbg_match(flag_ctx,
+						field, '${repeats}', '')}')
+					fm.field_map_flag[mf.field_name] = FlagData{
+						...mf
+						repeats: repeats
+					}
 					fm.handled_pos << flag_ctx.pos
 				} else {
 					mut arg := split[i + 1..].clone().join('')
