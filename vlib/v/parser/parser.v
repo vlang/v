@@ -1217,6 +1217,14 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				extra = p.expr(0)
 				// dump(extra)
 				extra_pos = extra_pos.extend(p.tok.pos())
+			} else if p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n')
+				&& p.tok.kind !in [.comment, .semicolon, .rcbr, .eof] {
+				line_nr := p.tok.line_nr
+				err := p.unexpected(got: p.tok.str(), expecting: '`,`')
+				for p.tok.kind != .eof && p.tok.line_nr == line_nr {
+					p.next()
+				}
+				return err
 			}
 			return ast.AssertStmt{
 				expr:      expr
