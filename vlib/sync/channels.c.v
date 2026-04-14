@@ -21,6 +21,20 @@ mut:
 	nxt  &Subscription  = unsafe { nil }
 }
 
+// append_subscription keeps select waiters in FIFO order, so the oldest waiter
+// is woken first when a channel becomes ready.
+fn append_subscription(head &&Subscription, sub &Subscription) {
+	unsafe {
+		mut link := head
+		for *link != 0 {
+			link = &(*link).nxt
+		}
+		sub.prev = link
+		sub.nxt = nil
+		*link = sub
+	}
+}
+
 pub enum Direction {
 	pop
 	push
@@ -600,12 +614,8 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 			ch.read_sub_mtx, &ch.read_subscriber
 		}
 		sub_mtx.lock()
-		subscr[i].prev = unsafe { subscriber }
 		unsafe {
-			subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(subscriber), &subscr[i]))
-		}
-		if voidptr(subscr[i].nxt) != unsafe { nil } {
-			subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
+			append_subscription(subscriber, &subscr[i])
 		}
 		sub_mtx.unlock()
 	}
