@@ -138,7 +138,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		name = name.after('__static__')
 	}
 	f.write_string(name)
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<=', '[]', '[]='] {
 		f.write_string(' ')
 	}
 	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)

@@ -7592,8 +7592,9 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.error('unknown type for expression `${node.left}`', node.pos)
 		return typ
 	}
-	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
+	receiver_sym := c.table.sym(c.unwrap_generic(typ))
+	mut typ_sym := c.table.final_sym(typ)
 	match typ_sym.kind {
 		.map {
 			node.is_map = true
@@ -7618,18 +7619,6 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
-	is_aggregate_arr := typ_sym.kind == .aggregate
-		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
-	if typ_sym.kind !in [.array, .array_fixed, .string, .map]
-		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface])
-		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
-		&& !is_aggregate_arr {
-		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
-	}
-	if is_aggregate_arr {
-		// treating indexexpr of sumtype of array types
-		typ = (typ_sym.info as ast.Aggregate).types[0]
-	}
 	if typ.has_flag(.option) {
 		left_pos := node.left.pos()
 		if node.left is ast.Ident && node.left.or_expr.kind == .absent {
@@ -7645,6 +7634,53 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	} else if typ.has_flag(.result) {
 		c.error('type `!${typ_sym.name}` is a Result, it does not support indexing',
 			node.left.pos())
+	}
+	if receiver_sym.kind in [.struct, .alias, .generic_inst] {
+		if _ := c.table.find_method(receiver_sym, '[]') {
+			if node.index is ast.RangeExpr {
+				c.error('range expressions are not supported for overloaded index operators',
+					node.pos)
+				return ast.void_type
+			}
+			if node.or_expr.kind != .absent {
+				c.error('custom error handling on overloaded index expressions is not supported yet',
+					node.or_expr.pos)
+			}
+			if node.is_gated {
+				c.error('`#[]` negative indexing is not supported for overloaded index operators',
+					node.pos)
+			}
+			method := c.table.find_method(receiver_sym, '[]') or { ast.Fn{} }
+			c.mark_fn_decl_as_referenced(method.fkey())
+			old_expected_type := c.expected_type
+			c.expected_type = method.params[1].typ
+			index_type := c.expr(mut node.index)
+			c.expected_type = old_expected_type
+			node.index_type = index_type
+			c.check_expected(index_type, method.params[1].typ) or {
+				c.error('cannot use `${c.table.type_to_str(index_type)}` as `${c.table.type_to_str(method.params[1].typ)}` in argument 1 to `${receiver_sym.name}[]`',
+					node.index.pos())
+				return ast.void_type
+			}
+			if setter := c.table.find_method(receiver_sym, '[]=') {
+				node.setter_arg_type = setter.params[2].typ
+			}
+			node.is_index_operator = true
+			node.typ = method.return_type
+			return node.typ
+		}
+	}
+	is_aggregate_arr := typ_sym.kind == .aggregate
+		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map]
+		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface])
+		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
+		&& !is_aggregate_arr {
+		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
+	}
+	if is_aggregate_arr {
+		// treating indexexpr of sumtype of array types
+		typ = (typ_sym.info as ast.Aggregate).types[0]
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
 		c.error('cannot assign to s[i] since V strings are immutable\n' +

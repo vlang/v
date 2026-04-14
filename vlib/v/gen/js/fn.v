@@ -626,7 +626,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '**', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 
@@ -799,7 +799,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '**', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 	g.writeln('(function () { ')

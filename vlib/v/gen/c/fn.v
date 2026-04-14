@@ -602,6 +602,9 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	if node.is_c_extern {
 		return true
 	}
+	if node.is_method && node.name in ['[]', '[]='] {
+		return true
+	}
 	if node.mod == 'builtin' && node.name in ['print', 'println', 'eprint', 'eprintln'] {
 		return true
 	}
@@ -1336,7 +1339,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	mut name := node.name
-	if name in ['+', '-', '*', '**', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 	if node.is_method {

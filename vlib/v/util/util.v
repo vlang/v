@@ -435,6 +435,8 @@ pub fn replace_op(s string) string {
 		'**' { '_pow' }
 		'/' { '_div' }
 		'%' { '_mod' }
+		'[]' { '_index' }
+		'[]=' { '_index_set' }
 		'<' { '_lt' }
 		'>' { '_gt' }
 		'==' { '_eq' }

@@ -3016,11 +3016,18 @@ fn (mut t Table) convert_generic_default_expr(expr Expr, generic_names []string,
 		IndexExpr {
 			return Expr(IndexExpr{
 				...expr
-				index:     t.convert_generic_default_expr(expr.index, generic_names, concrete_types)
-				left:      t.convert_generic_default_expr(expr.left, generic_names, concrete_types)
-				left_type: t.convert_generic_expr_type(expr.left_type, generic_names,
+				index:           t.convert_generic_default_expr(expr.index, generic_names,
 					concrete_types)
-				typ:       t.convert_generic_expr_type(expr.typ, generic_names, concrete_types)
+				left:            t.convert_generic_default_expr(expr.left, generic_names,
+					concrete_types)
+				left_type:       t.convert_generic_expr_type(expr.left_type, generic_names,
+					concrete_types)
+				index_type:      t.convert_generic_expr_type(expr.index_type, generic_names,
+					concrete_types)
+				setter_arg_type: t.convert_generic_expr_type(expr.setter_arg_type, generic_names,
+					concrete_types)
+				typ:             t.convert_generic_expr_type(expr.typ, generic_names,
+					concrete_types)
 			})
 		}
 		InfixExpr {

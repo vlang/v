@@ -1345,6 +1345,33 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			if stmt.op == .decl_assign {
 				g.write(if g.inside_loop || is_mut { 'let ' } else { 'const ' })
 			}
+			if left is ast.IndexExpr && left.is_index_operator {
+				if stmt.op == .assign {
+					g.index_operator_call(left.left, left.left_type, left.index, left.index_type,
+						'[]=', val, stmt.right_types[i])
+				} else {
+					infix_op := token.assign_op_to_infix_op(stmt.op)
+					op_expr := ast.InfixExpr{
+						left:          ast.Expr(left)
+						right:         val
+						op:            infix_op
+						pos:           stmt.pos
+						left_type:     left.typ
+						right_type:    stmt.right_types[i]
+						promoted_type: left.typ
+					}
+					g.index_operator_call(left.left, left.left_type, left.index, left.index_type,
+						'[]=', ast.Expr(op_expr), left.typ)
+				}
+				if semicolon {
+					if g.inside_loop {
+						g.write('; ')
+					} else {
+						g.writeln(';')
+					}
+				}
+				continue
+			}
 
 			mut array_set := false
 			mut map_set := false
@@ -3023,6 +3050,11 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
+	if expr.is_index_operator {
+		g.index_operator_call(expr.left, expr.left_type, expr.index, expr.index_type, '[]',
+			ast.empty_expr, ast.void_type)
+		return
+	}
 	left_sym := g.table.sym(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
@@ -3900,11 +3932,66 @@ fn replace_op(s string) string {
 		'**' { '_pow' }
 		'/' { '_div' }
 		'%' { '_mod' }
+		'[]' { '_index' }
+		'[]=' { '_index_set' }
 		'<' { '_lt' }
 		'>' { '_gt' }
 		'==' { '_eq' }
 		else { '' }
 	}
+}
+
+struct JsIndexOperatorMethodInfo {
+	method        ast.Fn
+	name          string
+	receiver_type ast.Type
+}
+
+fn (mut g JsGen) resolved_index_operator_receiver_type(receiver ast.Expr, receiver_type ast.Type) ast.Type {
+	_ = receiver
+	return g.unwrap_generic(receiver_type)
+}
+
+fn (mut g JsGen) index_operator_method_info(receiver ast.Expr, receiver_type ast.Type, op string) ?JsIndexOperatorMethodInfo {
+	resolved_receiver_type := g.resolved_index_operator_receiver_type(receiver, receiver_type)
+	receiver_info := g.unwrap(if resolved_receiver_type != 0 {
+		resolved_receiver_type
+	} else {
+		receiver_type
+	})
+	mut method := ast.Fn{}
+	if receiver_info.sym.has_method(op) || receiver_info.sym.has_method_with_generic_parent(op) {
+		method = receiver_info.sym.find_method_with_generic_parent(op) or {
+			receiver_info.sym.find_method(op) or { return none }
+		}
+	} else if receiver_info.unaliased_sym.has_method_with_generic_parent(op) {
+		method = receiver_info.unaliased_sym.find_method_with_generic_parent(op) or { return none }
+	} else {
+		return none
+	}
+	method_name := g.styp(receiver_info.unaliased.set_nr_muls(0)) + '_' + util.replace_op(op)
+	return JsIndexOperatorMethodInfo{
+		method:        method
+		name:          method_name
+		receiver_type: receiver_info.typ
+	}
+}
+
+fn (mut g JsGen) index_operator_call(receiver ast.Expr, receiver_type ast.Type, index ast.Expr, index_type ast.Type, op string, value ast.Expr, value_type ast.Type) {
+	info := g.index_operator_method_info(receiver, receiver_type, op) or {
+		verror('missing `${op}` overload for `${g.table.type_to_str(receiver_type)}`')
+		return
+	}
+	g.write(info.name)
+	g.write('(')
+	g.op_arg(receiver, info.method.params[0].typ, info.receiver_type)
+	g.write(', ')
+	g.op_arg(index, info.method.params[1].typ, index_type)
+	if op == '[]=' {
+		g.write(', ')
+		g.op_arg(value, info.method.params[2].typ, value_type)
+	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {

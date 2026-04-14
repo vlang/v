@@ -738,6 +738,28 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
 		}
 		p.next()
+	} else if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(2).kind == .lpar {
+		name = '[]'
+		if rec.typ == ast.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
+		}
+		if type_sym.has_method(name) {
+			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
+		}
+		p.next()
+		p.next()
+	} else if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(2).kind == .assign
+		&& p.peek_token(3).kind == .lpar {
+		name = '[]='
+		if rec.typ == ast.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
+		}
+		if type_sym.has_method(name) {
+			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
+		}
+		p.next()
+		p.next()
+		p.next()
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
