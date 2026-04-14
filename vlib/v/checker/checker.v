@@ -2711,7 +2711,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			else {
 				if node.field_name == 'name' {
 					return ast.string_type
-				} else if node.field_name in ['idx', 'unaliased_typ', 'key_type', 'value_type',
+				} else if node.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type',
 					'element_type'] {
 					return ast.int_type
 				} else if node.field_name == 'indirections' {

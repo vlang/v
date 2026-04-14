@@ -138,7 +138,7 @@ pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) a
 		'name' {
 			return ast.string_type
 		}
-		'idx' {
+		'idx', 'typ' {
 			return t.resolver.unwrap_generic(typ)
 		}
 		'unaliased_typ' {
