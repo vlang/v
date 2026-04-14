@@ -130,10 +130,27 @@ shutdown. Once shutdown begins, it stops accepting new requests, waits for
 in-flight requests to finish, and only then exits. This is useful for deploys,
 tests, and management endpoints that trigger a stop after sending a response.
 
-The lifecycle controls come from the underlying `fasthttp.ServerHandle`
-(`wait_till_running()` and `shutdown(timeout: ...)`). If you need explicit
-server lifecycle management, use those lower-level hooks in the process that
-starts your app.
+You can store the server handle in your app by adding an optional
+`init_server(server &veb.Server)` method:
+
+```v
+module main
+
+import veb
+
+pub struct App {
+pub mut:
+	server &veb.Server = unsafe { nil }
+}
+
+pub fn (mut app App) init_server(server &veb.Server) {
+	app.server = server
+}
+```
+
+`veb.Server` forwards `wait_till_running()` and `shutdown(timeout: ...)`
+to the `new_veb` backend. These lifecycle controls are available only when
+running with `-d new_veb` without SSL.
 
 ## Defining endpoints
 

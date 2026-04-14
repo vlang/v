@@ -20,6 +20,7 @@ $if !new_veb ? {
 		if params.port <= 0 || params.port > 65535 {
 			return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 		}
+		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		if ssl_enabled(params) {
 			run_at_with_ssl[A, X](mut global_app, params)!
 			return

@@ -27,6 +27,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
 	if ssl_enabled(params) {
+		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		run_at_with_ssl[A, X](mut global_app, params)!
 		return
 	}
@@ -54,6 +55,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		eprintln('Failed to create server: ${err}')
 		return
 	}
+	maybe_init_server[A](mut global_app, new_server_with_lifecycle(server.handle()))
 	println('[veb] Running multi-threaded app on ${server_protocol(params)}://${startup_host(params)}:${params.port}/')
 	flush_stdout()
 	$if A is BeforeAcceptApp {
