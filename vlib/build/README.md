@@ -7,7 +7,7 @@
 > See also: [build_system example](https://github.com/vlang/v/tree/master/examples/build_system)
 
 ```v
-#!/usr/bin/env -S v run
+#!/usr/bin/env v
 
 import build
 // .vsh automatically imports `os`, so you don't need this typically
@@ -37,6 +37,9 @@ context.task(
 
 context.run()
 ```
+
+For portable `.vsh` scripts, prefer `#!/usr/bin/env v`.
+That works on BusyBox and OpenBSD too, where `/usr/bin/env -S` is not available.
 
 ## Pre-Compiling
 
