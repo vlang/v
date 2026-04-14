@@ -42,6 +42,9 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 }
 
 fn (mut c Checker) get_string_inter_default_fmt(_ ast.Expr, ftyp ast.Type, typ ast.Type) u8 {
+	if ftyp.nr_muls() > 0 && ftyp.idx() in [ast.string_type_idx, ast.bool_type_idx] {
+		return `p`
+	}
 	return c.get_default_fmt(ftyp, typ)
 }
 

@@ -87,6 +87,11 @@ $if !windows {
 	fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 }
 
+$if windows {
+	fn C._get_osfhandle(fd int) voidptr
+	fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
+}
+
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
 fn C.FD_SET(fd i32, fdset &C.fd_set)
