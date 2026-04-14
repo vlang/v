@@ -447,7 +447,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if node.typ == ast.void_type {
 							// first branch of if expression
 							node.is_expr = true
-							if stmt.expr.is_auto_deref_var() {
+							if stmt.expr.is_auto_deref_var() && stmt.typ.is_ptr() {
 								node.typ = stmt.typ.deref()
 							} else {
 								node.typ = stmt.typ

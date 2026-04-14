@@ -6593,12 +6593,15 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut orig_type := 0
 			mut is_inherited := false
 			mut is_auto_heap := false
+			mut is_auto_deref := false
 			mut ct_type_var := ast.ComptimeVarKind.no_comptime
 			mut is_ct_type_unwrapped := false
 			if mut expr.obj is ast.Var {
 				is_ct_type_unwrapped = expr.obj.ct_type_var != ast.ComptimeVarKind.no_comptime
 				is_mut = expr.obj.is_mut
 				is_auto_heap = expr.obj.is_auto_heap
+				is_auto_deref = expr.obj.is_auto_deref && c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.is_method && c.table.cur_fn.receiver.name == expr.name
 				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
@@ -6631,6 +6634,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 									pos:               expr.pos
 									is_used:           true
 									is_mut:            expr.is_mut
+									is_auto_deref:     is_auto_deref
 									is_inherited:      is_inherited
 									is_auto_heap:      is_auto_heap
 									smartcasts:        [to_type]
@@ -6654,6 +6658,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					pos:               expr.pos
 					is_used:           true
 					is_mut:            expr.is_mut || is_mut
+					is_auto_deref:     is_auto_deref
 					is_inherited:      is_inherited
 					is_auto_heap:      is_auto_heap
 					is_unwrapped:      is_option_unwrap

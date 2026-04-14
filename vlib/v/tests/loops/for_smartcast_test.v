@@ -54,3 +54,25 @@ fn test_conditional_break() {
 	}
 	assert true
 }
+
+type ReceiverExpr = ReceiverPar | int
+
+struct ReceiverPar {
+	expr ReceiverExpr
+}
+
+fn (mut expr ReceiverExpr) strip_par() ReceiverExpr {
+	for mut expr is ReceiverPar {
+		expr = expr.expr
+	}
+	return expr
+}
+
+fn test_receiver_var_smartcast() {
+	mut expr := ReceiverExpr(ReceiverPar{
+		expr: ReceiverExpr(ReceiverPar{
+			expr: ReceiverExpr(1)
+		})
+	})
+	assert expr.strip_par() == ReceiverExpr(1)
+}

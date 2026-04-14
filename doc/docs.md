@@ -4247,6 +4247,8 @@ if mut w is Mars {
 Otherwise `w` would keep its original type.
 > This works for both simple variables and complex expressions like `user.name`
 > and `values[i]`.
+> The same rule applies to mutable method receivers, for example
+> `fn (mut w World) fn_name() { for mut w is Mars { ... } }`.
 
 Smart casts also work on indexed expressions in `match` branches:
 

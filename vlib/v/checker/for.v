@@ -344,7 +344,11 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	}
 	if mut node.cond is ast.InfixExpr && node.cond.op == .key_is {
 		if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
-			if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
+			left_kind := c.table.type_kind(node.cond.left_type)
+			is_receiver_smartcast := left_kind == .placeholder && node.cond.left.is_auto_deref_var()
+				&& node.cond.left_type.is_ptr()
+				&& c.table.final_sym(node.cond.left_type).kind in [.sum_type, .interface]
+			if left_kind in [.sum_type, .interface] || is_receiver_smartcast {
 				c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
 					node.scope, false, false, false)
 			}
