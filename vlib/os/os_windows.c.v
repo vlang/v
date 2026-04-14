@@ -395,16 +395,42 @@ pub fn get_error_msg(code int) string {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-// In opposition to `raw_execute` this function will safeguard against content that is known to cause
-// a lot of problems when executing shell commands on Windows.
+// In opposition to `raw_execute` this function rejects `&&`, `||`, and linefeeds when they appear
+// outside double-quoted strings before delegating to `cmd.exe`.
 pub fn execute(cmd string) Result {
-	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
+	if windows_execute_has_forbidden_shell_operator(cmd) {
 		return Result{
 			exit_code: -1
-			output:    ';, &&, || and \\n are not allowed in shell commands'
+			output:    '&&, || and \\n are not allowed in shell commands'
 		}
 	}
 	return unsafe { raw_execute(cmd) }
+}
+
+// windows_execute_has_forbidden_shell_operator rejects only the command chaining operators that `cmd.exe`
+// treats specially outside double-quoted strings.
+fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
+	mut in_double_quotes := false
+	for i := 0; i < cmd.len; i++ {
+		ch := cmd[i]
+		if ch == `"` {
+			in_double_quotes = !in_double_quotes
+			continue
+		}
+		if ch == `\n` {
+			return true
+		}
+		if in_double_quotes {
+			continue
+		}
+		if ch == `&` && i + 1 < cmd.len && cmd[i + 1] == `&` {
+			return true
+		}
+		if ch == `|` && i + 1 < cmd.len && cmd[i + 1] == `|` {
+			return true
+		}
+	}
+	return false
 }
 
 // raw_execute starts the specified command, waits for it to complete, and returns its output.

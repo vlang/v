@@ -1061,6 +1061,15 @@ fn test_execute_with_linefeeds() {
 	assert result2.exit_code == 1
 }
 
+fn test_execute_with_semicolon_inside_quoted_string_on_windows() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	result := os.execute('echo "hello;"')
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == '"hello;"'
+}
+
 fn test_execute_pipe_into_vfmt() {
 	producer_script := os.join_path_single(tfolder, 'pipe_into_vfmt.v')
 	os.write_file(producer_script, "fn main() {\n\tprint('fn main(){println(1)}\\n')\n}\n")!
