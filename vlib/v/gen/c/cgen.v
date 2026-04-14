@@ -7835,6 +7835,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for i, typ in smartcast_types {
 						is_option_unwrap := i == 0 && is_option
 							&& typ == resolved_var.orig_type.clear_flag(.option)
+						smartcast_final_sym := g.table.final_sym(g.unwrap_generic(typ))
+						sumtype_fn_value_smartcast := obj_sym.kind == .sum_type && !is_auto_heap
+							&& smartcast_final_sym.info is ast.FnType && !is_option_unwrap
 						g.write('(')
 						if i == 0 && resolved_var.is_unwrapped
 							&& resolved_var.ct_type_var == .smartcast {
@@ -7850,7 +7853,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									styp := g.base_type(resolved_var.typ)
 									g.write('*(${styp}*)')
 								}
-							} else if !g.arg_no_auto_deref && !typ.is_ptr() {
+							} else if !g.arg_no_auto_deref && !sumtype_fn_value_smartcast {
 								g.write('*')
 							}
 						} else if interface_var_needs_deref
@@ -7869,6 +7872,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for i, typ in smartcast_types {
 						is_option_unwrap := is_option && typ == resolved_var.typ.clear_flag(.option)
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
+						final_cast_sym := g.table.final_sym(g.unwrap_generic(typ))
+						sumtype_fn_value_smartcast := obj_sym.kind == .sum_type && !is_auto_heap
+							&& final_cast_sym.info is ast.FnType && !is_option_unwrap
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
 							if cast_sym.cname != obj_sym.cname {
 								ptr := '*'.repeat(resolved_var.typ.nr_muls())
@@ -7882,6 +7888,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('${ptr}${node.name}')
 							}
 						} else {
+							if sumtype_fn_value_smartcast {
+								g.write('(${g.styp(typ)})')
+							}
 							mut is_ptr := false
 							if i == 0 {
 								if resolved_var.is_inherited {
