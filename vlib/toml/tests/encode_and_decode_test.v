@@ -73,6 +73,10 @@ struct Doc {
 	items []Item
 }
 
+struct MapDoc {
+	items map[string]Item
+}
+
 fn test_encode_and_decode() {
 	// *¹
 	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
@@ -314,6 +318,29 @@ name = "item #2"
 [[items]]
 name = "item #3"'
 	assert toml.decode[Doc](array_of_tables)! == doc
+}
+
+fn test_map_of_struct_decode() {
+	doc := MapDoc{
+		items: {
+			'first':  Item{
+				name: 'first one'
+			}
+			'second': Item{
+				name: 'second one'
+			}
+		}
+	}
+
+	encoded := toml.encode[MapDoc](doc)
+	assert toml.decode[MapDoc](encoded)! == doc
+
+	table_doc := '[items.first]
+name = "first one"
+
+[items.second]
+name = "second one"'
+	assert toml.decode[MapDoc](table_doc)! == doc
 }
 
 fn test_decode_doc() {
