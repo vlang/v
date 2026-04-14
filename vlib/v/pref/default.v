@@ -375,7 +375,7 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
-	bundled_tcc := usable_bundled_tcc_compiler(os.dir(vexe_path()), p.is_musl)
+	bundled_tcc := usable_bundled_tcc_compiler(os.dir(vexe_path()))
 	if p.ccompiler == 'tcc' {
 		p.ccompiler = if bundled_tcc != '' { bundled_tcc } else { 'tcc' }
 		return
@@ -395,32 +395,24 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 	}
 }
 
-fn usable_bundled_tcc_compiler(vroot string, is_musl bool) string {
+fn usable_bundled_tcc_compiler(vroot string) string {
 	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	if !os.exists(vtccexe) {
+	if !os.is_file(vtccexe) || !os.is_executable(vtccexe) {
 		return ''
 	}
-	if is_musl {
-		tcc_probe := os.execute('${os.quoted_path(vtccexe)} -v')
-		if tcc_probe.exit_code != 0 {
-			return ''
-		}
+	// Unsupported hosts can still have a placeholder `thirdparty/tcc/` checkout.
+	tcc_probe := os.execute('${os.quoted_path(vtccexe)} -v')
+	if tcc_probe.exit_code != 0 {
+		return ''
 	}
 	return vtccexe
-}
-
-fn host_uses_musl() bool {
-	$if linux {
-		return os.execute('ldd --version').output.contains('musl')
-	}
-	return false
 }
 
 // default_tcc_compiler returns the bundled TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	return usable_bundled_tcc_compiler(vroot, host_uses_musl())
+	return usable_bundled_tcc_compiler(vroot)
 }
 
 pub fn (mut p Preferences) default_c_compiler() {

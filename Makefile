@@ -10,6 +10,10 @@ BOOTSTRAP_LDFLAGS := $(strip $(BOOTSTRAP_LDFLAGS) -latomic)
 endif
 endif
 
+ifneq ($(filter $(shell uname -s 2>/dev/null),FreeBSD NetBSD OpenBSD),)
+BOOTSTRAP_LDFLAGS := $(strip $(BOOTSTRAP_LDFLAGS) -lexecinfo)
+endif
+
 BOOTSTRAP_VFLAGS := $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 
 .PHONY: all check download_vc v
@@ -33,7 +37,7 @@ download_vc:
 	fi
 
 v:
-	$(CC) $(CFLAGS) -std=gnu11 -w -o v1 vc/v.c -lm -lexecinfo -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CFLAGS) -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 	./v1 -no-parallel -o v2 $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	./v2 -o v $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	rm -rf v1 v2

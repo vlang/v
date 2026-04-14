@@ -2,7 +2,7 @@ module pref
 
 import os
 
-fn test_usable_bundled_tcc_compiler_skips_broken_binary_on_musl() {
+fn test_usable_bundled_tcc_compiler_skips_broken_binary() {
 	$if windows {
 		return
 	}
@@ -11,10 +11,10 @@ fn test_usable_bundled_tcc_compiler_skips_broken_binary_on_musl() {
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	assert usable_bundled_tcc_compiler(test_root, true) == ''
+	assert usable_bundled_tcc_compiler(test_root) == ''
 }
 
-fn test_usable_bundled_tcc_compiler_accepts_working_binary_on_musl() {
+fn test_usable_bundled_tcc_compiler_accepts_working_binary() {
 	$if windows {
 		return
 	}
@@ -23,19 +23,20 @@ fn test_usable_bundled_tcc_compiler_accepts_working_binary_on_musl() {
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	assert usable_bundled_tcc_compiler(test_root, true) == tcc_path
+	assert usable_bundled_tcc_compiler(test_root) == tcc_path
 }
 
-fn test_usable_bundled_tcc_compiler_does_not_probe_off_musl() {
+fn test_usable_bundled_tcc_compiler_rejects_non_executable_file() {
 	$if windows {
 		return
 	}
 	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
-	tcc_path := prepare_test_tcc_binary(test_root, 'exit 1')
+	tcc_path := prepare_test_tcc_binary(test_root, 'exit 0')
+	os.chmod(tcc_path, 0o600) or { panic(err) }
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	assert usable_bundled_tcc_compiler(test_root, false) == tcc_path
+	assert usable_bundled_tcc_compiler(test_root) == ''
 }
 
 fn test_try_to_use_tcc_by_default_keeps_explicit_system_tcc_on_musl() {
@@ -83,6 +84,28 @@ fn test_try_to_use_tcc_by_default_skips_broken_bundled_tcc_on_musl() {
 	mut prefs := Preferences{
 		is_musl: true
 	}
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == ''
+}
+
+fn test_try_to_use_tcc_by_default_skips_broken_bundled_tcc_off_musl() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 1')
+	fake_vexe := os.join_path(test_root, 'v')
+	old_vexe := os.getenv('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	defer {
+		if old_vexe == '' {
+			os.unsetenv('VEXE')
+		} else {
+			os.setenv('VEXE', old_vexe, true)
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	mut prefs := Preferences{}
 	prefs.try_to_use_tcc_by_default()
 	assert prefs.ccompiler == ''
 }
