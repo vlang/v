@@ -1,0 +1,30 @@
+// vtest vflags: -cstrict -cc clang
+
+struct Object {
+mut:
+	context bool
+}
+
+fn (mut o Object) f(x int) int {
+	match x {
+		0 {
+			old := o.context
+			defer(fn) {
+				o.context = old
+			}
+			o.context = true
+		}
+		1 {
+			return 123
+		}
+		else {}
+	}
+	return 42
+}
+
+fn main() {
+	mut o := Object{}
+	println('${o.f(0)} ${o.context}')
+	println('${o.f(1)} ${o.context}')
+	println('${o.f(2)} ${o.context}')
+}
