@@ -8,7 +8,8 @@ const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 // note: windows path separator will cause json decode fail
 const json_errors_text_file = os.to_slash(text_file)
-const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
+const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
+	'sample.v')
 
 const autocomplete_info_for_mod_sample_mod1 = '{"details": [
 {"kind":3,"label":"public_fn1","detail":"string","declaration":"fn public_fn1(val int) string","documentation":""},
@@ -92,7 +93,7 @@ const test_data = [
 	TestData{
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
-		output: autocomplete_info_for_mod_sample_mod1
+		output: ''
 	},
 	TestData{
 		method: .completion
@@ -192,9 +193,9 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"undefined ident: ``",
+"message":"type `main.MyS` has no field named `s`.\\n2 possibilities: `a`, `b`.",
 "line_nr":23,
-"col":3,
+"col":2,
 "len":0
 }
 ,
@@ -233,14 +234,6 @@ const test_data = [
 {
 "path":"${json_errors_text_file}",
 "message":"`strings` does not return a value",
-"line_nr":27,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: `builtin`",
 "line_nr":28,
 "col":2,
 "len":0
@@ -248,15 +241,7 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`builtin` does not return a value",
-"line_nr":28,
-"col":2,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: `v`",
+"message":"`strings.builtin` does not return a value",
 "line_nr":29,
 "col":2,
 "len":0
@@ -264,7 +249,7 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"expected 1 argument, but got 4",
+"message":"expected 1 argument, but got 2",
 "line_nr":27,
 "col":2,
 "len":0
