@@ -1302,7 +1302,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	mut concrete_types := []ast.Type{}
 	node.concrete_types = node.raw_concrete_types
 	for concrete_type in node.concrete_types {
-		if concrete_type.has_flag(.generic) {
+		if concrete_type.has_flag(.generic)
+			|| (c.type_has_unresolved_generic_parts(concrete_type)
+			&& c.table.sym(concrete_type).kind != .placeholder) {
 			has_generic = true
 			concrete_types << c.unwrap_generic(concrete_type)
 		} else {
