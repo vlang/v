@@ -450,6 +450,15 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 		}
 
 		// str_intp
+		if sub_sym.kind == .function {
+			res := 'builtin__str_intp(2, _MOV((StrIntpData[]){
+				{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${func_name}()}, 0, 0, 0},
+				{_S(")"), 0, {0}, 0, 0, 0}
+			}))'
+			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+				' return ${res};\n')
+			continue
+		}
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if typ == ast.string_type {
 			mut val := '${func_name}(${deref}(${sub_sym.cname}*)x._${sub_sym.cname}'
