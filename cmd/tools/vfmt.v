@@ -166,7 +166,7 @@ fn main() {
 }
 
 fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) bool {
-	fcontent := foptions.formated_content_from_file(prefs, fpath)
+	fcontent := foptions.formated_content_from_file(prefs, fpath) or { return false }
 	content := os.read_file(fpath) or { return false }
 	return fcontent == content
 }
@@ -188,9 +188,12 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
-fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
+fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) !string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		return error('the file contains parser errors')
+	}
 	table.new_int = foptions.is_new_int
 	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	return formated_content
@@ -209,6 +212,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		exit(2)
+	}
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
@@ -222,6 +228,9 @@ fn (foptions &FormatOptions) format_pipe() {
 	prefs, mut table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		exit(1)
+	}
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
