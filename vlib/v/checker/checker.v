@@ -2308,7 +2308,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
 					c.cur_or_expr = last_cur_or_expr
 				}
-				return ret_type.clear_flag(.result)
+				return if expr.or_block.kind == .absent {
+					ret_type.clear_flag(.result)
+				} else {
+					ret_type.clear_flag(.option).clear_flag(.result)
+				}
 			} else {
 				c.expr_or_block_err(expr.or_block.kind, expr.name, expr.or_block.pos, false)
 			}
@@ -2338,7 +2342,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 							c.cur_or_expr = last_cur_or_expr
 						}
 					}
-					return ret_type.clear_flag(.result)
+					return if expr.or_block.kind == .absent {
+						ret_type.clear_flag(.result)
+					} else {
+						ret_type.clear_flag(.option).clear_flag(.result)
+					}
 				} else {
 					c.expr_or_block_err(expr.or_block.kind, expr.field_name, expr.or_block.pos,
 						true)
@@ -2924,10 +2932,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				if scope_field != unsafe { nil } {
 					sf_smartcast_type := c.exposed_smartcast_type(scope_field.orig_type,
 						scope_field.smartcasts.last(), scope_field.is_mut)
-					if c.inside_sql {
+					if c.inside_sql && node.or_block.kind == .absent {
 						node.typ = sf_smartcast_type
 					}
-					return sf_smartcast_type
+					if node.or_block.kind == .absent {
+						return sf_smartcast_type
+					}
 				}
 			}
 		}

@@ -1823,6 +1823,28 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
 			return
 		}
+	} else if !g.inside_curry_call && node.left is ast.SelectorExpr && node.name == '' {
+		if node.or_block.kind == .absent {
+			g.expr(ast.Expr(node.left))
+		} else {
+			ret_typ := node.return_type
+
+			line := g.go_before_last_stmt()
+			g.empty_line = true
+
+			tmp_res := g.new_tmp_var()
+			g.write('${g.styp(ret_typ)} ${tmp_res} = ')
+
+			g.last_tmp_call_var << tmp_res
+			g.expr(ast.Expr(node.left))
+
+			old_inside_curry_call := g.inside_curry_call
+			g.inside_curry_call = true
+			g.expr(node)
+			g.inside_curry_call = old_inside_curry_call
+			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
+			return
+		}
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true

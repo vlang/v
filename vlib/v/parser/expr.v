@@ -661,7 +661,16 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	p.process_custom_orm_operators()
 
 	// Infix
-	for precedence < p.tok.kind.precedence() {
+	for {
+		if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr
+			&& node in [ast.CallExpr, ast.IndexExpr, ast.SelectorExpr] {
+			node = p.call_expr_with_left(node)
+			p.is_stmt_ident = is_stmt_ident
+			continue
+		}
+		if precedence >= p.tok.kind.precedence() {
+			return node
+		}
 		if p.tok.kind == .dot {
 			// no spaces or line break before dot in map_init
 			if (p.inside_map_init || p.inside_array_lit)
@@ -684,38 +693,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			} else {
 				node = p.index_expr(node, false)
 			}
-
 			p.is_stmt_ident = is_stmt_ident
-			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
-				p.next()
-				pos := p.tok.pos()
-				args := p.call_args()
-				p.check(.rpar)
-				or_block := p.gen_or_block()
-				node = ast.CallExpr{
-					left:           node
-					args:           args
-					pos:            pos
-					scope:          p.scope
-					or_block:       or_block
-					is_return_used: p.expecting_value
-				}
-				p.is_stmt_ident = is_stmt_ident
-				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
-					p.next()
-					pos2 := p.tok.pos()
-					args2 := p.call_args()
-					p.check(.rpar)
-					or_block2 := p.gen_or_block()
-					node = ast.CallExpr{
-						left:     node
-						args:     args2
-						pos:      pos2
-						scope:    p.scope
-						or_block: or_block2
-					}
-				}
-			}
 		} else if p.tok.kind == .key_as && p.tok.line_nr == p.prev_tok.line_nr {
 			// sum type as cast `x := SumType as Variant`
 			if !p.inside_asm {
@@ -817,6 +795,22 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 		}
 	}
 	return node
+}
+
+fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
+	p.next()
+	pos := p.tok.pos()
+	args := p.call_args()
+	p.check(.rpar)
+	or_block := p.gen_or_block()
+	return ast.CallExpr{
+		left:           left
+		args:           args
+		pos:            pos
+		scope:          p.scope
+		or_block:       or_block
+		is_return_used: p.expecting_value
+	}
 }
 
 fn (mut p Parser) gen_or_block() ast.OrExpr {

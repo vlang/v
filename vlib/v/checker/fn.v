@@ -1121,8 +1121,24 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
-	left_type := c.expr(mut node.left)
-	c.check_expr_option_or_result_call(node.left, left_type)
+	mut left_type := ast.void_type
+	match mut node.left {
+		ast.SelectorExpr {
+			if node.name == '' && node.left.or_block.kind != .absent {
+				left_type = c.selector_expr(mut node.left)
+			} else {
+				left_type = c.expr(mut node.left)
+			}
+		}
+		else {
+			left_type = c.expr(mut node.left)
+		}
+	}
+	if node.name == '' {
+		left_type = c.check_expr_option_or_result_call(node.left, left_type)
+	} else {
+		c.check_expr_option_or_result_call(node.left, left_type)
+	}
 	// TODO: merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -1524,6 +1540,23 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				node.return_type = sym.info.func.return_type
 				found = true
 				func = sym.info.func
+			}
+		}
+	}
+	if !found && node.name == '' && node.left_type != 0 {
+		left_sym := c.table.final_sym(c.unwrap_generic(node.left_type))
+		if left_sym.info is ast.FnType {
+			func = left_sym.info.func
+			found = true
+			node.is_fn_var = true
+			node.fn_var_type = node.left_type
+		} else if left_sym.info is ast.GenericInst {
+			parent_sym := c.table.sym(ast.new_type(left_sym.info.parent_idx))
+			if parent_sym.info is ast.FnType {
+				func = parent_sym.info.func
+				found = true
+				node.is_fn_var = true
+				node.fn_var_type = node.left_type
 			}
 		}
 	}
