@@ -743,6 +743,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.SqlExpr {
 			f.sql_expr(node)
 		}
+		ast.SqlQueryDataExpr {
+			f.sql_query_data_expr(node)
+		}
 		ast.StringLiteral {
 			f.string_literal(node)
 		}
@@ -790,7 +793,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
-		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr {
+		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.SqlQueryDataExpr {
 			return false
 		}
 		ast.AnonFn {
@@ -1674,47 +1677,56 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
 		.update {
-			mut has_multiline_update_expr := false
-			for expr in node.update_exprs {
-				if f.node_str(expr).contains('\n') {
-					has_multiline_update_expr = true
-					break
-				}
-			}
-			if has_multiline_update_expr {
-				f.writeln('update ${table_name} set')
-				// SQL block lines use a manual extra tab, so nested update values need two
-				// formatter indent levels to stay visually nested.
-				f.indent += 2
-				for i, col in node.updated_columns {
-					f.write('${col} = ')
-					f.expr(node.update_exprs[i])
-					if i < node.updated_columns.len - 1 {
-						f.write(',')
-					}
-					f.writeln('')
-				}
-				f.indent -= 2
-			} else {
-				f.write('update ${table_name} set ')
-				for i, col in node.updated_columns {
-					f.write('${col} = ')
-					f.expr(node.update_exprs[i])
-					if i < node.updated_columns.len - 1 {
-						f.write(', ')
-					} else {
-						f.write(' ')
-					}
-					f.wrap_long_line(3, true)
-				}
-			}
-			if has_multiline_update_expr {
-				f.write('\twhere ')
-			} else {
+			if node.is_dynamic {
+				f.write('dynamic update ${table_name} set ')
+				f.expr(node.update_data_expr)
+				f.write(' ')
 				f.write('where ')
+				f.expr(node.where_expr)
+				f.writeln('')
+			} else {
+				mut has_multiline_update_expr := false
+				for expr in node.update_exprs {
+					if f.node_str(expr).contains('\n') {
+						has_multiline_update_expr = true
+						break
+					}
+				}
+				if has_multiline_update_expr {
+					f.writeln('update ${table_name} set')
+					// SQL block lines use a manual extra tab, so nested update values need two
+					// formatter indent levels to stay visually nested.
+					f.indent += 2
+					for i, col in node.updated_columns {
+						f.write('${col} = ')
+						f.expr(node.update_exprs[i])
+						if i < node.updated_columns.len - 1 {
+							f.write(',')
+						}
+						f.writeln('')
+					}
+					f.indent -= 2
+				} else {
+					f.write('update ${table_name} set ')
+					for i, col in node.updated_columns {
+						f.write('${col} = ')
+						f.expr(node.update_exprs[i])
+						if i < node.updated_columns.len - 1 {
+							f.write(', ')
+						} else {
+							f.write(' ')
+						}
+						f.wrap_long_line(3, true)
+					}
+				}
+				if has_multiline_update_expr {
+					f.write('\twhere ')
+				} else {
+					f.write('where ')
+				}
+				f.expr(node.where_expr)
+				f.writeln('')
 			}
-			f.expr(node.where_expr)
-			f.writeln('')
 		}
 		.delete {
 			f.write('delete from ${table_name} where ')
@@ -3240,10 +3252,14 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
+	f.write('\t')
+	if node.is_dynamic {
+		f.write('dynamic ')
+	}
 	if node.is_insert {
-		f.write('\tinsert ')
+		f.write('insert ')
 	} else {
-		f.write('\tselect ')
+		f.write('select ')
 	}
 	if node.has_distinct {
 		f.write('distinct ')
@@ -3317,6 +3333,75 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.writeln('')
 	f.write('}')
 	f.or_expr(node.or_expr)
+}
+
+pub fn (mut f Fmt) sql_query_data_expr(node ast.SqlQueryDataExpr) {
+	if node.items.len == 0 {
+		f.write('{}')
+		return
+	}
+	f.writeln('{')
+	f.indent++
+	for idx, item in node.items {
+		f.write_indent()
+		f.sql_query_data_item(item)
+		if idx < node.items.len - 1 {
+			f.writeln(',')
+		} else {
+			f.writeln('')
+		}
+	}
+	f.indent--
+	f.write_indent()
+	f.write('}')
+}
+
+fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
+	match item {
+		ast.SqlQueryDataLeaf {
+			f.expr(item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for idx, branch in item.branches {
+				if idx == 0 {
+					f.write('if ')
+					f.expr(branch.cond)
+					f.write(' ')
+				} else if branch.cond is ast.EmptyExpr {
+					f.write('else ')
+				} else {
+					f.write('else if ')
+					f.expr(branch.cond)
+					f.write(' ')
+				}
+				f.sql_query_data_branch_items(branch.items)
+				if idx < item.branches.len - 1 {
+					f.write(' ')
+				}
+			}
+		}
+	}
+}
+
+fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem) {
+	if items.len == 0 {
+		f.write('{}')
+		return
+	}
+	f.writeln('{')
+	f.indent++
+	for idx, item in items {
+		f.write_indent()
+		f.sql_query_data_item(item)
+		if idx < items.len - 1 {
+			f.writeln(',')
+		} else {
+			f.writeln('')
+		}
+	}
+	f.indent--
+	f.write_indent()
+	f.write('}')
 }
 
 pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {

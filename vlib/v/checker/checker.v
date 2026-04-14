@@ -4916,6 +4916,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.SqlExpr {
 			return c.sql_expr(mut node)
 		}
+		ast.SqlQueryDataExpr {
+			return c.sql_query_data_expr(mut node)
+		}
 		ast.StringLiteral {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`

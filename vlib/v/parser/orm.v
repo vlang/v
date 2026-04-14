@@ -10,6 +10,7 @@ struct SqlPrefix {
 	pos              token.Pos
 	db_expr          ast.Expr
 	tmp_inside_match bool
+	is_dynamic       bool
 }
 
 fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
@@ -57,19 +58,28 @@ fn (mut p Parser) sql_prefix() SqlPrefix {
 		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	p.check(.lcbr)
+	mut is_dynamic := false
+	if p.tok.kind == .name && p.tok.lit == 'dynamic' {
+		is_dynamic = true
+		p.next()
+	}
 	return SqlPrefix{
 		pos:              pos
 		db_expr:          db_expr
 		tmp_inside_match: tmp_inside_match
+		is_dynamic:       is_dynamic
 	}
 }
 
 fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
-	// p.check(.key_select)
+	is_dynamic := prefix.is_dynamic
 	is_select := p.tok.kind == .key_select
 	is_insert := p.tok.lit == 'insert'
 	if !is_select && !is_insert {
 		p.error('expected "select" or "insert" in an ORM expression')
+	}
+	if is_dynamic && !is_select {
+		p.error('expected "select" after `dynamic` in an ORM expression')
 	}
 	p.next()
 	// kind := if is_select { ast.SqlExprKind.select_ } else { ast.SqlExprKind.insert }
@@ -138,10 +148,11 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 	if has_where {
 		p.next()
 		where_expr = p.expr(0)
-
-		where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr, [])
-		if where_check_result is ast.NodeError {
-			return where_check_result
+		if !is_dynamic {
+			where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr, [])
+			if where_check_result is ast.NodeError {
+				return where_check_result
+			}
 		}
 	}
 
@@ -215,6 +226,7 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 		has_distinct:    has_distinct
 		is_array:        aggregate_kind == .none
 		is_generated:    false
+		is_dynamic:      is_dynamic
 		inserted_var:    inserted_var
 		pos:             prefix.pos.extend(p.prev_tok.pos())
 		table_expr:      ast.TypeNode{
@@ -347,6 +359,11 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	pre_comments := p.eat_comments()
 	mut n := p.check_name() // insert
+	mut is_dynamic := false
+	if n == 'dynamic' {
+		is_dynamic = true
+		n = p.check_name()
+	}
 	pos := p.tok.pos()
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
@@ -372,6 +389,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			}
 			scope:        p.scope
 			is_generated: false
+			is_dynamic:   is_dynamic
 			pre_comments: pre_comments
 			end_comments: end_comments
 		}
@@ -393,10 +411,15 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				pos: typ_pos
 			}
 			is_generated: false
+			is_dynamic:   is_dynamic
 			scope:        p.scope
 			pre_comments: pre_comments
 			end_comments: end_comments
 		}
+	}
+	if is_dynamic && kind != .update {
+		p.error('`dynamic` is only supported for ORM `select` and `update` queries')
+		return ast.SqlStmtLine{}
 	}
 	mut inserted_var := ''
 	mut table_type := ast.no_type
@@ -416,6 +439,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	n = p.check_name() // into
 	mut updated_columns := []string{}
 	mut update_exprs := []ast.Expr{cap: 5}
+	mut update_data_expr := ast.empty_expr
 	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
 		return ast.SqlStmtLine{}
@@ -424,15 +448,19 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			p.error('expecting `set`')
 			return ast.SqlStmtLine{}
 		}
-		for {
-			column := p.check_name()
-			updated_columns << column
-			p.check(.assign)
-			update_exprs << p.expr(0)
-			if p.tok.kind == .comma {
-				p.check(.comma)
-			} else {
-				break
+		if is_dynamic {
+			update_data_expr = p.expr(0)
+		} else {
+			for {
+				column := p.check_name()
+				updated_columns << column
+				p.check(.assign)
+				update_exprs << p.expr(0)
+				if p.tok.kind == .comma {
+					p.check(.comma)
+				} else {
+					break
+				}
 			}
 		}
 	} else if kind == .delete && n != 'from' {
@@ -466,20 +494,135 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	}
 	end_comments := p.eat_comments()
 	return ast.SqlStmtLine{
-		table_expr:      ast.TypeNode{
+		table_expr:       ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
-		object_var:      inserted_var
-		pos:             pos
-		updated_columns: updated_columns
-		update_exprs:    update_exprs
-		kind:            kind
-		where_expr:      where_expr
-		is_generated:    false
-		scope:           p.scope
-		pre_comments:    pre_comments
-		end_comments:    end_comments
+		object_var:       inserted_var
+		pos:              pos
+		updated_columns:  updated_columns
+		update_exprs:     update_exprs
+		update_data_expr: update_data_expr
+		kind:             kind
+		where_expr:       where_expr
+		is_generated:     false
+		is_dynamic:       is_dynamic
+		scope:            p.scope
+		pre_comments:     pre_comments
+		end_comments:     end_comments
+	}
+}
+
+fn (p &Parser) is_sql_query_data_expr() bool {
+	if p.tok.kind != .lcbr {
+		return false
+	}
+	mut idx := 1
+	for p.peek_token(idx).kind == .comment {
+		idx++
+	}
+	first := p.peek_token(idx)
+	if first.kind == .key_if {
+		return true
+	}
+	if first.kind != .name {
+		return false
+	}
+	idx++
+	for p.peek_token(idx).kind == .dot && p.peek_token(idx + 1).kind == .name {
+		idx += 2
+	}
+	return is_sql_query_data_operator(p.peek_token(idx).kind)
+}
+
+fn is_sql_query_data_operator(kind token.Kind) bool {
+	return kind in [.eq, .ne, .gt, .lt, .ge, .le, .key_like, .key_ilike, .key_in, .not_in, .key_is,
+		.not_is]
+}
+
+fn (mut p Parser) sql_query_data_expr() ast.Expr {
+	start_pos := p.tok.pos()
+	items := p.parse_sql_query_data_items_block()
+	return ast.SqlQueryDataExpr{
+		pos:   start_pos.extend(p.prev_tok.pos())
+		items: items
+	}
+}
+
+fn (mut p Parser) parse_sql_query_data_items_block() []ast.SqlQueryDataItem {
+	p.check(.lcbr)
+	mut items := []ast.SqlQueryDataItem{}
+	for {
+		p.eat_comments()
+		if p.tok.kind == .rcbr {
+			break
+		}
+		if p.tok.kind == .eof {
+			p.unexpected(got: 'eof, while parsing a dynamic ORM expression')
+			break
+		}
+		items << p.parse_sql_query_data_item()
+		p.eat_comments()
+		if p.tok.kind == .comma {
+			p.next()
+			continue
+		}
+		if p.tok.kind != .rcbr {
+			p.error('expected `,` or `}` in a dynamic ORM expression')
+			break
+		}
+	}
+	p.check(.rcbr)
+	return items
+}
+
+fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
+	if p.tok.kind == .key_if {
+		return p.parse_sql_query_data_if_item()
+	}
+	expr := p.expr(0)
+	return ast.SqlQueryDataLeaf{
+		pos:  expr.pos()
+		expr: expr
+	}
+}
+
+fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
+	start_pos := p.tok.pos()
+	mut branches := []ast.SqlQueryDataBranch{}
+	mut has_else := false
+	for {
+		branch_pos := p.tok.pos()
+		p.check(.key_if)
+		cond := p.expr(0)
+		items := p.parse_sql_query_data_items_block()
+		branches << ast.SqlQueryDataBranch{
+			pos:   branch_pos.extend(p.prev_tok.pos())
+			cond:  cond
+			items: items
+		}
+		p.eat_comments()
+		if p.tok.kind != .key_else {
+			break
+		}
+		has_else = true
+		else_pos := p.tok.pos()
+		p.next()
+		if p.tok.kind == .key_if {
+			continue
+		}
+		else_items := p.parse_sql_query_data_items_block()
+		branches << ast.SqlQueryDataBranch{
+			pos:   else_pos.extend(p.prev_tok.pos())
+			cond:  ast.empty_expr
+			items: else_items
+		}
+		break
+	}
+	return ast.SqlQueryDataIf{
+		pos:      start_pos.extend(p.prev_tok.pos())
+		branches: branches
+		has_else: has_else
 	}
 }
 

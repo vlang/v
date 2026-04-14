@@ -1195,6 +1195,17 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				sub_struct = g.expr(mut sub_struct) as ast.SqlExpr
 			}
 		}
+		ast.SqlQueryDataExpr {
+			items := g.sql_query_data_items(node.items)
+			if g.cur_concrete_types.len > 0 {
+				return ast.Expr(ast.SqlQueryDataExpr{
+					...node
+					items: items
+					typ:   g.unwrap_generic(node.typ)
+				})
+			}
+			node.items = items
+		}
 		ast.StringInterLiteral {
 			if g.cur_concrete_types.len > 0 {
 				mut exprs := node.exprs.clone()
@@ -1281,6 +1292,30 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		else {}
 	}
 	return node
+}
+
+fn (mut g Generics) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.SqlQueryDataItem {
+	mut new_items := []ast.SqlQueryDataItem{cap: items.len}
+	for item in items {
+		mut item_copy := item
+		new_items << g.sql_query_data_item(mut item_copy)
+	}
+	return new_items
+}
+
+fn (mut g Generics) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
+	match mut item {
+		ast.SqlQueryDataLeaf {
+			item.expr = g.expr(mut item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for mut branch in item.branches {
+				branch.cond = g.expr(mut branch.cond)
+				branch.items = g.sql_query_data_items(branch.items)
+			}
+		}
+	}
+	return item
 }
 
 fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {

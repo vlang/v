@@ -51,6 +51,190 @@ enum SqlExprSide {
 	right
 }
 
+fn sql_query_data_field_name(expr ast.Expr) string {
+	return match expr {
+		ast.Ident { expr.name }
+		ast.SelectorExpr { '${sql_query_data_field_name(expr.expr)}.${expr.field_name}' }
+		ast.ParExpr { sql_query_data_field_name(expr.expr) }
+		else { '' }
+	}
+}
+
+fn sql_query_data_op_kind(expr ast.InfixExpr) string {
+	is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
+	return match expr.op {
+		.ne {
+			if is_nil_comparison {
+				'orm__OperationKind__is_not_null'
+			} else {
+				'orm__OperationKind__neq'
+			}
+		}
+		.eq {
+			if is_nil_comparison {
+				'orm__OperationKind__is_null'
+			} else {
+				'orm__OperationKind__eq'
+			}
+		}
+		.lt {
+			'orm__OperationKind__lt'
+		}
+		.gt {
+			'orm__OperationKind__gt'
+		}
+		.ge {
+			'orm__OperationKind__ge'
+		}
+		.le {
+			'orm__OperationKind__le'
+		}
+		.key_like {
+			'orm__OperationKind__orm_like'
+		}
+		.key_ilike {
+			'orm__OperationKind__orm_ilike'
+		}
+		.key_is {
+			'orm__OperationKind__is_null'
+		}
+		.not_is {
+			'orm__OperationKind__is_not_null'
+		}
+		.key_in {
+			'orm__OperationKind__in'
+		}
+		.not_in {
+			'orm__OperationKind__not_in'
+		}
+		else {
+			'orm__OperationKind__eq'
+		}
+	}
+}
+
+fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
+	mut current := expr
+	for {
+		current = current.remove_par()
+		match current {
+			ast.SqlQueryDataExpr {
+				return current as ast.SqlQueryDataExpr
+			}
+			ast.Ident {
+				obj := current.obj
+				match obj {
+					ast.Var {
+						if obj.is_mut {
+							return none
+						}
+						current = obj.expr
+						continue
+					}
+					ast.ConstField {
+						current = obj.expr
+						continue
+					}
+					else {}
+				}
+				return none
+			}
+			else {
+				return none
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) emit_sql_query_data(node ast.SqlQueryDataExpr, resolve_columns bool) string {
+	query_var := g.new_tmp_var()
+	g.writeln('orm__QueryData ${query_var} = (orm__QueryData){')
+	g.indent++
+	g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+	g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.indent--
+	g.writeln('};')
+	g.emit_sql_query_data_items(query_var, node.items, resolve_columns)
+	return query_var
+}
+
+fn (mut g Gen) emit_dynamic_sql_query_data(expr ast.Expr) string {
+	node := g.resolve_sql_query_data_expr(expr) or {
+		verror('ORM: expected a dynamic query-data block or immutable alias')
+	}
+	return g.emit_sql_query_data(node, true)
+}
+
+fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryDataItem, resolve_columns bool) {
+	for item in items {
+		match item {
+			ast.SqlQueryDataLeaf {
+				g.emit_sql_query_data_leaf(query_var, item, resolve_columns)
+			}
+			ast.SqlQueryDataIf {
+				for idx, branch in item.branches {
+					is_else := branch.cond is ast.EmptyExpr
+					if idx == 0 {
+						if is_else {
+							g.writeln('else {')
+						} else {
+							g.write('if (')
+							g.expr(branch.cond)
+							g.writeln(') {')
+						}
+					} else if is_else {
+						g.writeln('else {')
+					} else {
+						g.write('else if (')
+						g.expr(branch.cond)
+						g.writeln(') {')
+					}
+					g.indent++
+					g.emit_sql_query_data_items(query_var, branch.items, resolve_columns)
+					g.indent--
+					g.writeln('}')
+				}
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_leaf(query_var string, node ast.SqlQueryDataLeaf, resolve_columns bool) {
+	mut expr := node.expr
+	expr_ := expr.remove_par()
+	if expr_ is ast.InfixExpr {
+		mut field_name := sql_query_data_field_name(expr_.left)
+		if resolve_columns {
+			field := g.get_orm_current_table_field(field_name) or {
+				verror('field "${field_name}" does not exist on "${g.sql_table_name}"')
+			}
+			field_name = g.get_orm_column_name_from_struct_field(field)
+		}
+		is_nil_comparison := expr_.right is ast.Nil && expr_.op in [.eq, .ne]
+		ignore_rhs := expr_.op in [.key_is, .not_is] || is_nil_comparison
+		g.writeln('if (${query_var}.fields.len > 0) {')
+		g.indent++
+		g.writeln('builtin__array_push(&${query_var}.is_and, _MOV((bool[1]){ true }));')
+		g.indent--
+		g.writeln('}')
+		g.writeln('builtin__array_push(&${query_var}.fields, _MOV((string[1]){ _S("${field_name}") }));')
+		g.writeln('builtin__array_push(&${query_var}.kinds, _MOV((orm__OperationKind[1]){ ${sql_query_data_op_kind(expr_)} }));')
+		if !ignore_rhs {
+			g.write('builtin__array_push(&${query_var}.data, _MOV((orm__Primitive[1]){')
+			g.write_orm_expr_to_primitive(expr_.right)
+			g.writeln('}));')
+		}
+	} else {
+		verror('ORM: dynamic query-data leaf must be an infix expression')
+	}
+}
+
 // All databases that are supported by ORM
 // must implement the `Connection` interface from the file `vlib/orm/orm.v`
 // The main function of the cgen for ORM is to identify the current database type,
@@ -342,61 +526,69 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 
 // write_orm_update writes C code that calls ORM functions for updating rows.
 fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, _ []ast.Attr) {
+	mut dynamic_update_data_var := ''
+	if node.is_dynamic {
+		dynamic_update_data_var = g.emit_dynamic_sql_query_data(node.update_data_expr)
+	}
 	g.writeln('// sql { update `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.write_orm_table_struct(node.table_expr.typ)
 	g.writeln(',')
-	g.writeln('(orm__QueryData){')
-	g.indent++
-	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
-
-	if node.updated_columns.len > 0 {
-		g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
-		g.indent++
-		g.writeln('_MOV((string[${node.updated_columns.len}]){')
-		g.indent++
-		for field in node.updated_columns {
-			g.writeln('_S("${field}"),')
-		}
-		g.indent--
-		g.writeln('})')
-		g.indent--
+	if node.is_dynamic {
+		g.writeln('${dynamic_update_data_var},')
 	} else {
-		g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
-	}
-
-	g.writeln2('),',
-		'.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
-
-	if node.update_exprs.len > 0 {
+		g.writeln('(orm__QueryData){')
 		g.indent++
-		g.writeln('_MOV((orm__Primitive[${node.update_exprs.len}]){')
-		g.indent++
-		for i, e in node.update_exprs {
-			column := node.updated_columns[i]
-			if field := g.get_orm_field_by_column_name(node.fields, column) {
-				final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
-				sym := g.table.sym(final_field_typ)
-				if sym.kind == .struct && sym.name != 'time.Time' {
-					g.write_orm_struct_field_expr_to_primitive(field, e)
-					continue
-				}
+		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+
+		if node.updated_columns.len > 0 {
+			g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
+			g.indent++
+			g.writeln('_MOV((string[${node.updated_columns.len}]){')
+			g.indent++
+			for field in node.updated_columns {
+				g.writeln('_S("${field}"),')
 			}
-			g.write_orm_expr_to_primitive(e)
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		} else {
+			g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 		}
-		g.indent--
-		g.writeln('})')
-		g.indent--
-	}
 
-	g.writeln('),')
-	g.indent--
-	g.writeln('},')
+		g.writeln2('),',
+			'.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+
+		if node.update_exprs.len > 0 {
+			g.indent++
+			g.writeln('_MOV((orm__Primitive[${node.update_exprs.len}]){')
+			g.indent++
+			for i, e in node.update_exprs {
+				column := node.updated_columns[i]
+				if field := g.get_orm_field_by_column_name(node.fields, column) {
+					final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
+					sym := g.table.sym(final_field_typ)
+					if sym.kind == .struct && sym.name != 'time.Time' {
+						g.write_orm_struct_field_expr_to_primitive(field, e)
+						continue
+					}
+				}
+				g.write_orm_expr_to_primitive(e)
+			}
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		}
+
+		g.writeln('),')
+		g.indent--
+		g.writeln('},')
+	}
 	g.write_orm_where(node.where_expr)
 	g.indent--
 	g.writeln(');')
@@ -1043,6 +1235,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, result_var string) {
 	mut fields := []ast.StructField{}
 	mut primary_field := g.get_orm_struct_primary_field(node.fields) or { ast.StructField{} }
+	mut dynamic_where_var := ''
 
 	for field in node.fields {
 		mut skip := false
@@ -1063,6 +1256,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 	g.sql_table_typ = node.table_expr.typ
+	if node.has_where && node.is_dynamic {
+		dynamic_where_var = g.emit_dynamic_sql_query_data(node.where_expr)
+	}
 
 	g.writeln('// sql { select from `${table_name}` }')
 	g.writeln('${result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
@@ -1211,7 +1407,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln(')},')
 
 	if node.has_where {
-		g.write_orm_where(node.where_expr)
+		if node.is_dynamic {
+			g.writeln('${dynamic_where_var}')
+		} else {
+			g.write_orm_where(node.where_expr)
+		}
 	} else {
 		g.writeln('(orm__QueryData) {')
 		g.indent++
