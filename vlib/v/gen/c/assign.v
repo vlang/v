@@ -118,6 +118,34 @@ fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
 	}
 }
 
+fn (mut g Gen) decl_assign_struct_init_needs_tmp(expr ast.Expr) bool {
+	node := match expr {
+		ast.StructInit {
+			expr
+		}
+		ast.ParExpr {
+			if expr.expr is ast.StructInit {
+				expr.expr
+			} else {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+	sym := g.table.final_sym(g.unwrap_generic(g.recheck_concrete_type(node.typ)))
+	if sym.info !is ast.Struct {
+		return false
+	}
+	info := sym.info as ast.Struct
+	if node.no_keys {
+		return node.init_fields.len < info.fields.len
+	}
+	init_field_names := node.init_fields.map(it.name)
+	return info.fields.any(it.name !in init_field_names)
+}
+
 fn (mut g Gen) gen_self_recursing_anon_fn_capture_patch(left ast.Expr, anon_fn ast.AnonFn) {
 	if left !is ast.Ident || anon_fn.inherited_vars.len == 0 {
 		return
@@ -1665,6 +1693,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(',')
 			}
+			mut decl_tmp_var := ''
+			mut decl_stmt_str := ''
+			if is_decl && g.inside_ternary == 0 && !node.is_static && !var_type.has_flag(.shared_f)
+				&& g.decl_assign_struct_init_needs_tmp(val) {
+				decl_stmt_str = g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				decl_tmp_var = g.new_tmp_var()
+				g.write('${styp} ')
+				if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
+					g.write('*')
+				}
+				g.write('${decl_tmp_var} ${op} ')
+			}
 			mut cloned := false
 			if g.is_autofree {
 				if right_sym.kind in [.array, .string] && !unwrapped_val_type.has_flag(.shared_f) {
@@ -1945,6 +1986,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.cur_indexexpr.delete(cur_indexexpr)
 				g.write(' })')
 				g.is_arraymap_set = g.cur_indexexpr.len > 0
+			}
+			if decl_tmp_var != '' {
+				g.writeln(';')
+				g.write2(decl_stmt_str, ' ')
+				g.write(decl_tmp_var)
 			}
 			g.is_shared = false
 		}
