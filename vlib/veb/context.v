@@ -59,7 +59,7 @@ pub:
 pub mut:
 	// how the http response should be handled by veb's backend
 	return_type       ContextReturnType = .normal
-	req               http.Request
+	req               http.Request @[skip]
 	custom_mime_types map[string]string
 	// TCP connection to client. Only for advanced usage!
 	conn &net.TcpConn = unsafe { nil }
