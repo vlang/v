@@ -2,6 +2,12 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+// TextureFilter controls how gg samples textures when images are scaled.
+pub enum TextureFilter {
+	linear
+	nearest
+}
+
 // DrawImageConfig struct defines the various options
 // that can be used to draw an image onto the screen
 pub struct DrawImageConfig {

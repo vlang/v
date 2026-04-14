@@ -30,6 +30,14 @@ fn test_new_context_sets_borderless_window_flag() {
 	assert ctx.window.borderless_window == true
 }
 
+fn test_new_context_sets_texture_filter() {
+	ctx := gg.new_context(
+		width:          100
+		texture_filter: .nearest
+	)
+	assert ctx.config.texture_filter == .nearest
+}
+
 fn test_create_image_from_byte_array_loads_rgba_pixels() {
 	mut ctx := gg.new_context(width: 100)
 	background_bytes := os.read_bytes(background_path)!
@@ -38,5 +46,25 @@ fn test_create_image_from_byte_array_loads_rgba_pixels() {
 	assert img.height > 0
 	assert img.nr_channels == 4
 	assert !isnil(img.data)
+	assert img.texture_filter == .linear
 	assert ctx.get_cached_image_by_idx(img.id).nr_channels == 4
+}
+
+fn test_create_image_from_byte_array_uses_context_texture_filter() {
+	mut ctx := gg.new_context(
+		width:          100
+		texture_filter: .nearest
+	)
+	background_bytes := os.read_bytes(background_path)!
+	img := ctx.create_image_from_byte_array(background_bytes)!
+	assert img.texture_filter == .nearest
+	assert ctx.get_cached_image_by_idx(img.id).texture_filter == .nearest
+}
+
+fn test_create_image_from_byte_array_with_filter_overrides_context_default() {
+	mut ctx := gg.new_context(width: 100)
+	background_bytes := os.read_bytes(background_path)!
+	img := ctx.create_image_from_byte_array_with_filter(background_bytes, .nearest)!
+	assert img.texture_filter == .nearest
+	assert ctx.get_cached_image_by_idx(img.id).texture_filter == .nearest
 }

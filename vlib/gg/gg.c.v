@@ -139,10 +139,11 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale         f32 = 1.0
-	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
-	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
+	fullscreen     bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	scale          f32 = 1.0
+	sample_count   int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	texture_filter TextureFilter = .linear // default texture filter for newly created images; use `.nearest` for pixel art scaling
+	swap_interval  int           = 1       // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
 	// ved needs this
 	// init_text bool
 	font_path             string
