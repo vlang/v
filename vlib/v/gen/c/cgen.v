@@ -4009,11 +4009,15 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		// stable address, including stack-rooted lvalues and slice results.
 		needs_interface_cast_promotion := is_interface_cast
 			&& g.expr_needs_heap_promotion_for_interface_cast(expr)
+		// Value-to-interface conversions should preserve value semantics by storing a detached copy.
+		// The only exception is an explicit mutable borrow, which must keep aliasing the original.
+		needs_interface_value_copy := is_interface_cast && !g.expected_arg_mut && !got_is_ptr
+			&& expr.is_lvalue()
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface || needs_interface_cast_promotion) {
+			|| is_primitive_to_interface || needs_interface_cast_promotion || needs_interface_value_copy) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
