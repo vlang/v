@@ -173,6 +173,10 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		unsafe {
 			for remaining_bytes > 0 {
 				x = C.write(fd, ptr, remaining_bytes)
+				if x <= 0 {
+					// Detached/invalid stdio must not trap the process in an infinite loop.
+					break
+				}
 				ptr += x
 				remaining_bytes -= x
 			}
@@ -185,6 +189,10 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		unsafe {
 			for remaining_bytes > 0 {
 				x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+				if x <= 0 {
+					// GUI programs on Windows may not have a writable stdout/stderr stream.
+					break
+				}
 				ptr += x
 				remaining_bytes -= x
 			}
