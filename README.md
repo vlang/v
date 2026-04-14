@@ -258,6 +258,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 ## Editor/IDE Plugins
 
 - [Atom](https://github.com/vlang/awesome-v#atom)
+- [CodeLite](doc/codelite.md)
 - [Emacs](https://github.com/vlang/awesome-v#emacs)
 - [JetBrains](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html)
 - [Sublime Text 3](https://github.com/vlang/awesome-v#sublime-text-3)

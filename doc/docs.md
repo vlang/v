@@ -8014,6 +8014,7 @@ use `v help`, `v help build` and `v help build-c`.
 
 **Visual debugging Setup:**
 
+* [CodeLite](codelite.md)
 * [Visual Studio Code](vscode.md)
 
 ### Native Backend binaries
