@@ -653,6 +653,16 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
 		return false
 	}
+	got_return_type := c.table.unaliased_type(got_fn.return_type)
+	exp_return_type := c.table.unaliased_type(exp_fn.return_type)
+	got_return_sym := c.table.final_sym(got_return_type)
+	exp_return_sym := c.table.final_sym(exp_return_type)
+	if got_return_type != exp_return_type && !c.type_has_unresolved_generic_parts(got_return_type)
+		&& !c.type_has_unresolved_generic_parts(exp_return_type)
+		&& (got_return_sym.kind in [.voidptr, .any] || exp_return_sym.kind in [.voidptr, .any])
+		&& (!got_return_type.is_any_kind_of_pointer() || !exp_return_type.is_any_kind_of_pointer()) {
+		return false
+	}
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
