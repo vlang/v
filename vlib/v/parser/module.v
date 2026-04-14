@@ -12,6 +12,15 @@ fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
 }
 
+fn (p &Parser) import_alias_for_mod(mod string) ?string {
+	for alias, imported_mod in p.imports {
+		if imported_mod == mod {
+			return alias
+		}
+	}
+	return none
+}
+
 fn (p &Parser) prepend_mod(name string) string {
 	// println('prepend_mod() name=${name} p.mod=${p.mod} expr_mod=${p.expr_mod}')
 	if p.expr_mod != '' {
@@ -34,16 +43,15 @@ fn (mut p Parser) register_used_import(alias string) {
 }
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
-	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	mod_name := sym_name.all_before_last('.')
+	short_import_name := mod_name.all_after_last('.')
 	short_symbol_name := sym_name.all_after_last('.')
 	if p.is_imported_symbol(short_symbol_name) {
 		p.imported_symbols_used[short_symbol_name] = true
 	}
-	for alias, mod in p.imports {
-		if mod == short_import_name {
-			p.register_used_import(alias)
-			return
-		}
+	if alias := p.import_alias_for_mod(mod_name) {
+		p.register_used_import(alias)
+		return
 	}
 	p.register_used_import(short_import_name)
 }
