@@ -1687,8 +1687,23 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				else {}
 			}
 			if elem_type.has_flag(.shared_f) {
-				c.error('you have to create a handle and `lock` it to modify `shared` ${kind} element',
-					expr.left.pos().extend(expr.pos))
+				expr_name := ast.Expr(expr).str()
+				if expr_name !in c.locked_names {
+					if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+						if expr_name in c.rlocked_names {
+							c.error('${expr_name} has an `rlock` but needs a `lock`',
+								expr.left.pos().extend(expr.pos))
+						} else {
+							c.error('${expr_name} must be added to the `lock` list above',
+								expr.left.pos().extend(expr.pos))
+						}
+					} else {
+						c.error('you have to create a handle and `lock` it to modify `shared` ${kind} element',
+							expr.left.pos().extend(expr.pos))
+					}
+					return '', expr.pos
+				}
+				return '', expr.pos
 			}
 			to_lock, pos = c.fail_if_immutable(mut expr.left)
 		}
@@ -6849,6 +6864,14 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		mut expr_ := node.lockeds[i]
 		e_typ := c.expr(mut expr_)
 		id_name := node.lockeds[i].str()
+		if expr_ is ast.IndexExpr && (expr_ as ast.IndexExpr).left_type != 0 {
+			index_expr := expr_ as ast.IndexExpr
+			left_sym := c.table.final_sym(c.unwrap_generic(index_expr.left_type))
+			if left_sym.kind !in [.array, .array_fixed] {
+				c.error('`${id_name}` cannot be locked - only indexed elements of arrays or fixed arrays are supported',
+					node.lockeds[i].pos())
+			}
+		}
 		if !e_typ.has_flag(.shared_f) {
 			obj_type := if node.lockeds[i] is ast.Ident { 'variable' } else { 'struct element' }
 			c.error('`${id_name}` must be declared as `shared` ${obj_type} to be locked',
@@ -8016,6 +8039,7 @@ fn (mut c Checker) ensure_supported_map_key_types_in_type(typ ast.Type, pos toke
 // return true if a violation of a shared variable access rule is detected
 fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) bool {
 	mut pos := token.Pos{}
+	mut shared_expr_name := ''
 	match expr {
 		ast.Ident {
 			if typ.has_flag(.shared_f) {
@@ -8060,11 +8084,13 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 		}
 		ast.IndexExpr {
 			pos = expr.left.pos().extend(expr.pos)
+			shared_expr_name = ast.Expr(expr).str()
+			if typ.has_flag(.shared_f)
+				&& (shared_expr_name in c.rlocked_names || shared_expr_name in c.locked_names) {
+				return false
+			}
 			if c.fail_if_unreadable(expr.left, expr.left_type, what) {
 				return true
-			}
-			if typ.has_flag(.shared_f) && expr.left is ast.SelectorExpr {
-				return false
 			}
 		}
 		ast.InfixExpr {
@@ -8081,8 +8107,14 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 		}
 	}
 	if typ.has_flag(.shared_f) {
-		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut ${what}',
-			pos)
+		if shared_expr_name != '' && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+			action := if what == 'argument' { 'passed' } else { 'used' }
+			c.error('`${shared_expr_name}` is `shared` and must be `rlock`ed or `lock`ed to be ${action} as non-mut ${what}',
+				pos)
+		} else {
+			c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut ${what}',
+				pos)
+		}
 		return true
 	}
 	return false

@@ -2597,10 +2597,44 @@ pub fn (expr Expr) is_auto_deref_arg() bool {
 	}
 }
 
-// returns if an expression can be used in `lock x, y.z {`
+// returns if an expression can be used as an index in `lock arr[i] {`
+pub fn (e &Expr) is_lockable_index() bool {
+	return match e {
+		BoolLiteral, CharLiteral, EnumVal, FloatLiteral, IntegerLiteral, StringLiteral {
+			true
+		}
+		CastExpr {
+			e.expr.is_lockable_index()
+		}
+		ComptimeSelector {
+			true
+		}
+		Ident {
+			true
+		}
+		InfixExpr {
+			e.left.is_lockable_index() && e.right.is_lockable_index()
+		}
+		ParExpr {
+			e.expr.is_lockable_index()
+		}
+		PrefixExpr {
+			e.right.is_lockable_index()
+		}
+		SelectorExpr {
+			e.expr.is_lockable_index()
+		}
+		else {
+			false
+		}
+	}
+}
+
+// returns if an expression can be used in `lock x, y.z, arr[i] {`
 pub fn (e &Expr) is_lockable() bool {
 	return match e {
 		Ident { true }
+		IndexExpr { e.left.is_lockable() && e.index !is RangeExpr && e.index.is_lockable_index() }
 		SelectorExpr { e.expr.is_lockable() }
 		ComptimeSelector { true }
 		else { false }

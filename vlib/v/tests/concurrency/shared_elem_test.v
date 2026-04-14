@@ -169,6 +169,32 @@ fn test_array_of_shared() {
 	assert f == -17
 }
 
+struct FooWithSharedArray {
+mut:
+	bars []shared Xyz
+}
+
+fn test_lock_element_in_array_of_shared_structs() {
+	mut foo := FooWithSharedArray{}
+	foo.bars << Xyz{
+		n: 3
+	}
+	foo.bars << Xyz{
+		n: 7
+	}
+	lock foo.bars[0] {
+		foo.bars[0].n = 11
+	}
+	first := rlock foo.bars[0] {
+		foo.bars[0].n
+	}
+	second := rlock foo.bars[1] {
+		foo.bars[1].n
+	}
+	assert first == 11
+	assert second == 7
+}
+
 // Test for issue #16234: empty shared struct initialized as null causing segmentation fault
 struct EmptyStruct {}
 
