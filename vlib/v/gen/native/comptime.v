@@ -82,156 +82,26 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 }
 
 fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
-	return match name {
-		//
-		// Operating systems
-		//
-		'windows' {
-			g.pref.os == .windows
-		}
-		'ios' {
-			g.pref.os == .ios
-		}
-		'macos', 'mac', 'darwin' {
-			g.pref.os == .macos
-		}
-		'linux' {
-			g.pref.os == .linux
-		}
-		'serenity' {
-			g.pref.os == .serenity
-		}
-		'plan9' {
-			g.pref.os == .plan9
-		}
-		'vinix' {
-			g.pref.os == .vinix
-		}
-		'freebsd' {
-			g.pref.os == .freebsd
-		}
-		'openbsd' {
-			g.pref.os == .openbsd
-		}
-		'netbsd' {
-			g.pref.os == .netbsd
-		}
-		'bsd' {
-			g.pref.os in [.freebsd, .openbsd, .netbsd]
-		}
-		'dragonfly' {
-			g.pref.os == .dragonfly
-		}
-		'android' {
-			g.pref.os == .android
-		}
-		'termux' {
-			g.pref.os == .termux
-		}
-		'solaris' {
-			g.pref.os == .solaris
-		}
-		'haiku' {
-			g.pref.os == .haiku
-		}
-		'qnx' {
-			g.pref.os == .qnx
-		}
-		//
-		// C compilers, these will probably always be false
-		//
-		'gcc' {
-			g.pref.ccompiler_type == .gcc
-		}
-		'tinyc' {
-			g.pref.ccompiler_type == .tinyc
-		}
-		'clang' {
-			g.pref.ccompiler_type == .clang
-		}
-		'mingw' {
-			g.pref.ccompiler_type == .mingw
-		}
-		'msvc' {
-			g.pref.ccompiler_type == .msvc
-		}
-		'cplusplus' {
-			g.pref.ccompiler_type == .cplusplus
-		}
-		//
-		// Platforms
-		//
-		'amd64', 'x64' {
-			g.pref.arch == .amd64
-		}
-		'arm64' {
-			g.pref.arch == .arm64
-		}
-		'x86', 'x32', 'i386', 'arm32', 'rv32' {
-			false // native only supports 64-bit systems
-		}
-		'rv64', 's390x', 'ppc64le', 'loongarch64', 'sparc64', 'ppc64' {
-			false // not support yet
-		}
-		'little_endian' {
-			true // all systems targeted by native should be little-endian
-		}
-		'big_endian' {
-			false // all systems targeted by native should be little-endian
-		}
-		'autofree' {
-			false
-		}
-		//
-		// Other
-		//
-		'native' {
-			true
-		}
-		'debug' {
-			g.pref.is_debug
-		}
-		'prod' {
-			g.pref.is_prod
-		}
-		'test' {
-			g.pref.is_test
-		}
-		'js' {
-			g.pref.arch == .js_node
-		}
-		'glibc' {
-			g.pref.is_glibc
-		}
-		'prealloc' {
-			g.pref.prealloc
-		}
-		'no_bounds_checking' {
-			false // TODO
-		}
-		'freestanding' {
-			g.pref.arch == .js_freestanding
-		}
-		'no_segfault_handler' {
-			false // TODO
-		}
-		'no_backtrace' {
-			false // TODO
+	if is_comptime_option {
+		return name in g.pref.compile_defines
+	}
+	match name {
+		'no_segfault_handler', 'no_backtrace' {
+			return false
 		}
 		'no_main' {
-			g.pref.is_script
+			return g.pref.is_script
 		}
 		'threads' {
-			true
+			return g.table.gostmts > 0
 		}
-		else {
-			if is_comptime_option
-				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				true
-			} else {
-				g.n_error('${@LOCATION} Unhandled os ifdef name "${name}".')
-				false
-			}
+		else {}
+	}
+	return ast.eval_comptime_not_user_defined_ident(name, g.pref) or {
+		if name in g.pref.compile_defines {
+			return true
 		}
+		g.n_error('${@LOCATION} Unhandled os ifdef name "${name}".')
+		return false
 	}
 }
