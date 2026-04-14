@@ -3883,6 +3883,11 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 				'string', 'asciz', 'ascii'] { // all tcc-supported assembler directives
 				c.error('unknown assembler directive: `${template.name}`', template.pos)
 			}
+		} else if expected_operands := asm_expected_operand_count(stmt.arch, template.name) {
+			if template.args.len != expected_operands {
+				c.error('asm instruction `${template.name}` expects ${expected_operands} operands, but got ${template.args.len}',
+					template.pos)
+			}
 		}
 		for mut arg in template.args {
 			c.asm_arg(arg, stmt, aliases)
@@ -3890,6 +3895,16 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	}
 	for mut clob in stmt.clobbered {
 		c.asm_arg(clob.reg, stmt, aliases)
+	}
+}
+
+fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
+	if arch !in [.amd64, .i386] {
+		return none
+	}
+	return match name {
+		'mov' { 2 }
+		else { none }
 	}
 }
 
