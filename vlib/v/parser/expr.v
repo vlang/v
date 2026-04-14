@@ -241,9 +241,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			node = p.expr(0)
 			comments << p.eat_comments()
 			p.check(.rpar)
+			rpar_pos := p.prev_tok.pos()
+			p.attach_or_block_to_parenthesized_expr(mut node)
 			node = ast.ParExpr{
 				expr:     node
-				pos:      pos.extend(p.prev_tok.pos())
+				pos:      pos.extend(rpar_pos)
 				comments: comments
 			}
 		}
@@ -861,6 +863,121 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 			kind:  ast.OrKind.absent
 			scope: ast.empty_scope
 			pos:   p.tok.pos()
+		}
+	}
+}
+
+fn (mut p Parser) attach_or_block_to_parenthesized_expr(mut expr ast.Expr) bool {
+	if p.tok.kind != .key_orelse {
+		return false
+	}
+	match mut expr {
+		ast.CallExpr {
+			if expr.or_block.kind == .block {
+				return false
+			}
+			or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
+			expr.or_block = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.ComptimeCall {
+			if expr.or_block.kind == .block {
+				return false
+			}
+			or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
+			expr.or_block = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.Ident {
+			if expr.or_expr.kind == .block {
+				return false
+			}
+			err_var_mode := if expr.or_expr.kind in [.propagate_option, .propagate_result] {
+				OrBlockErrVarMode.with_err_var
+			} else {
+				OrBlockErrVarMode.no_err_var
+			}
+			or_stmts, or_pos, or_scope := p.or_block(err_var_mode)
+			expr.or_expr = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.IndexExpr {
+			if expr.or_expr.kind == .block {
+				return false
+			}
+			err_var_mode := if expr.or_expr.kind in [.propagate_option, .propagate_result] {
+				OrBlockErrVarMode.with_err_var
+			} else {
+				OrBlockErrVarMode.no_err_var
+			}
+			or_stmts, or_pos, or_scope := p.or_block(err_var_mode)
+			expr.or_expr = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.InfixExpr {
+			if expr.op != .arrow || expr.or_block.kind == .block {
+				return false
+			}
+			or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
+			expr.or_block = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.ParExpr {
+			return p.attach_or_block_to_parenthesized_expr(mut expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op != .arrow || expr.or_block.kind == .block {
+				return false
+			}
+			or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
+			expr.or_block = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind == .block {
+				return false
+			}
+			or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
+			expr.or_block = ast.OrExpr{
+				kind:  .block
+				stmts: or_stmts
+				pos:   or_pos
+				scope: or_scope
+			}
+			return true
+		}
+		else {
+			return false
 		}
 	}
 }
