@@ -10,3 +10,4 @@ channel count from the source file as metadata.
 When uploading to `sokol.gfx`, size the upload from `width * height * nr_channels`.
 If you load with `desired_channels: 0`, convert the data yourself or use a matching pixel format
 before creating a texture.
+Also call `gfx.setup(...)` before `gfx.make_image(...)` and `gfx.make_sampler(...)`.
