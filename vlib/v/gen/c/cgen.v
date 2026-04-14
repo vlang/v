@@ -3941,6 +3941,9 @@ fn (mut g Gen) expr_has_stable_interface_cast_address(expr ast.Expr) bool {
 			return g.expr_has_stable_interface_cast_address(expr.expr)
 		}
 		ast.IndexExpr {
+			if expr.index is ast.RangeExpr {
+				return false
+			}
 			if expr.left_type.is_ptr() {
 				return true
 			}
@@ -3996,11 +3999,15 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		// Interface casts must not store pointers into stack-rooted lvalues such as
 		// local variables or fields on by-value fn args (`p.email`).
 		is_stack_rooted_interface_expr = is_interface_cast && g.interface_expr_needs_heap(expr)
+		// Interface casts must not store pointers into expressions without a
+		// stable address, including stack-rooted lvalues and slice results.
+		needs_interface_cast_promotion := is_interface_cast
+			&& g.expr_needs_heap_promotion_for_interface_cast(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface || is_stack_rooted_interface_expr) {
+			|| is_primitive_to_interface || needs_interface_cast_promotion) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
@@ -6466,9 +6473,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut is_interface_smartcast_selector := false
 	if node.expr is ast.SelectorExpr {
-		if node.expr.expr is ast.Ident && node.expr.expr.obj is ast.Var
-			&& node.expr.field_name.starts_with('_')
-			&& g.table.is_interface_smartcast(node.expr.expr.obj) {
+		base_selector_type := g.unwrap_generic(g.resolved_expr_type(node.expr.expr,
+			node.expr.expr_type))
+		if node.expr.field_name.starts_with('_')
+			&& g.table.final_sym(base_selector_type).kind == .interface {
 			is_interface_smartcast_selector = true
 		}
 	}
@@ -6637,10 +6645,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	interface_smartcast_expr_is_dereferenced := is_interface_smartcast_expr
 		&& smartcast_expr_var.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
+	interface_smartcast_selector_emits_ptr := is_interface_smartcast_selector
+		|| (is_interface_smartcast_expr
+		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind != .interface)
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
 		false
 	} else {
 		field_is_opt || expr_is_auto_heap
+			|| interface_smartcast_selector_emits_ptr
 			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
 			|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
 			|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
