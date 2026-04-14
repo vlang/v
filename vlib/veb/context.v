@@ -495,9 +495,11 @@ pub fn (mut ctx Context) takeover_conn() {
 	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
 		// Set the fd to blocking mode — fasthttp uses non-blocking sockets,
 		// but TcpConn.write() expects blocking behavior for reliable writes.
-		flags := C.fcntl(ctx.client_fd, C.F_GETFL, 0)
-		if flags != -1 {
-			C.fcntl(ctx.client_fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+		$if !windows {
+			flags := C.fcntl(ctx.client_fd, C.F_GETFL, 0)
+			if flags != -1 {
+				C.fcntl(ctx.client_fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+			}
 		}
 		ctx.conn = &net.TcpConn{
 			sock:          net.TcpSocket{

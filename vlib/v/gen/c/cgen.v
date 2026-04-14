@@ -8987,6 +8987,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		if sym.name.starts_with('C.') {
 			if sym.info is ast.Struct && sym.info.is_anon {
 				// For `C___VAnonStruct`, we need to create a new struct to make auto_str work.
+			} else if sym.info is ast.Struct && g.should_emit_private_c_struct(sym, sym.info) {
+				// Private C tags like `C._gpgme_key` are often only forward-declared in headers.
+				// When they are defined in a plain `.v` file, cgen needs to emit the backing
+				// struct body instead of assuming the C headers will provide it.
 			} else {
 				continue
 			}
@@ -8998,6 +9002,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			g.typedefs.writeln('typedef struct none none;')
 		}
 		mut name := sym.scoped_cname()
+		if sym.name.starts_with('C.') && sym.info is ast.Struct
+			&& g.should_emit_private_c_struct(sym, sym.info) {
+			name = sym.name.all_after('C.')
+		}
 		if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
 			if name in ['map', 'mapnode', 'SortedMap', 'MapMode', 'DenseArray'] {
 				continue

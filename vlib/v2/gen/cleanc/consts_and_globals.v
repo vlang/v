@@ -402,10 +402,15 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 
 fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
-		name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 			'${g.cur_module}__${field.name}'
 		} else {
 			field.name
+		}
+		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
+		// Skip C globals that are already provided by C headers or cheaders.
+		if field.name.starts_with('C.') {
+			continue
 		}
 		key := 'global_${name}'
 		if key in g.emitted_types {
@@ -461,10 +466,15 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 
 fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 	for field in node.fields {
-		name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 			'${g.cur_module}__${field.name}'
 		} else {
 			field.name
+		}
+		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
+		// Skip C globals that are already provided by C headers or cheaders.
+		if field.name.starts_with('C.') {
+			continue
 		}
 		key := 'extern_global_${name}'
 		if key in g.emitted_types {

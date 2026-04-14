@@ -1028,6 +1028,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		fn_builder.writeln('}')
 		return
 	}
+	if !allow_circular {
+		fn_builder.writeln('\tif (indent_count > 20) {')
+		fn_builder.writeln('\t\treturn _S("<circular>");')
+		fn_builder.writeln('\t}')
+	}
 	fn_builder.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
 
 	mut fn_body_surrounder := util.new_surrounder(info.fields.len)
@@ -1176,8 +1181,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if field.typ in ast.charptr_types {
 				fn_body.write_string('builtin__tos4((byteptr)${func})')
 			} else {
-				if field.typ.is_ptr() && !field.typ.has_flag(.option)
-					&& sym.kind in [.struct, .interface] {
+				is_ptr_field := field.typ.is_ptr() && sym.kind in [.struct, .interface]
+				is_opt_ptr_field := field.typ.has_flag(.option) && field.typ.is_ptr()
+					&& sym.kind in [.struct, .interface]
+				if is_ptr_field && !field.typ.has_flag(.option) {
 					// Use address-based circular reference detection for pointer fields.
 					// This correctly detects actual circular references (same instance)
 					// without false positives from different instances of the same type.
@@ -1189,6 +1196,29 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 					before += '\t\tbuiltin__autostr_addr_push((voidptr)${it_field_name});\n'
 					before += '\t\t${tmpvar} = ${funcprefix}${func};\n'
 					before += '\t\tbuiltin__autostr_addr_pop();\n'
+					before += '\t}'
+					mut after := ''
+					if caller_should_free {
+						after = '\tbuiltin__string_free(&${tmpvar});'
+					}
+					fn_body_surrounder.add(before, after)
+					fn_body.write_string(tmpvar)
+				} else if is_opt_ptr_field {
+					// Use address-based circular reference detection for option pointer fields (?&Struct).
+					// Extract the pointer from the option struct's data field.
+					tmpvar := g.new_tmp_var()
+					mut before := '\tstring ${tmpvar};\n'
+					before += '\tif (${it_field_name}.state != 0) {\n'
+					before += '\t\t${tmpvar} = ${funcprefix}_S("Option(none)");\n'
+					before += '\t} else {\n'
+					before += '\t\tvoidptr ${tmpvar}_addr = *(voidptr*)${it_field_name}.data;\n'
+					before += '\t\tif (builtin__isnil(${tmpvar}_addr) || builtin__autostr_addr_in_stack(${tmpvar}_addr)) {\n'
+					before += '\t\t\t${tmpvar} = ${funcprefix}builtin__isnil(${tmpvar}_addr) ? _S("Option(nil)") : _S("<circular>");\n'
+					before += '\t\t} else {\n'
+					before += '\t\t\tbuiltin__autostr_addr_push(${tmpvar}_addr);\n'
+					before += '\t\t\t${tmpvar} = ${funcprefix}${func};\n'
+					before += '\t\t\tbuiltin__autostr_addr_pop();\n'
+					before += '\t\t}\n'
 					before += '\t}'
 					mut after := ''
 					if caller_should_free {

@@ -7,10 +7,10 @@ import runtime
 import net
 import time
 
-#include <fcntl.h>
 #include <errno.h>
 
 $if !windows {
+	#include <fcntl.h>
 	#include <sys/socket.h>
 	#include <netinet/in.h>
 	#include <netinet/tcp.h>

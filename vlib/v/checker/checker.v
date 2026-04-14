@@ -2395,7 +2395,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, defa
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr]
 						&& !(last_stmt_typ == ast.none_type && allow_none_as_option_value
-						&& default_or_type.has_flag(.option)) {
+						&& default_or_type.has_flag(.option)) && !(last_stmt_typ == ast.none_type
+						&& c.inside_return && ret_type.has_flag(.option)) {
 						expected_type_name := c.table.type_to_str(default_or_type)
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
@@ -6113,7 +6114,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		c_name := node.name.all_after('C.')
 		if !c.pref.translated && !c.file.is_translated && c_name.len > 0 && c_name[0] >= `a`
-			&& c_name[0] <= `z` {
+			&& c_name[0] <= `z` && c_name !in c.table.export_names.values() {
 			c.error('undefined C identifier: `${node.name}`', node.pos)
 			return ast.int_type
 		}
