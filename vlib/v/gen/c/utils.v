@@ -224,6 +224,19 @@ fn (g Gen) expr_has_or_block(expr ast.Expr) bool {
 	}
 }
 
+fn (g &Gen) is_auto_deref_source_ident(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		ident := expr as ast.Ident
+		if ident.obj is ast.Var && ident.obj.is_auto_deref {
+			return true
+		}
+		if source_var := ident.scope.find_var(ident.name) {
+			return source_var.is_auto_deref
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	mut scope := if expr.scope != unsafe { nil } {
 		expr.scope.innermost(expr.pos.pos)
@@ -265,6 +278,10 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 						&& !g.type_has_unresolved_generic_parts(call_like_type) {
 						refreshed_expr_type = call_like_type
 					}
+				}
+				// Keep `mut x := param` as a value copy when re-resolving locals.
+				if g.is_auto_deref_source_ident(v.expr) && refreshed_expr_type.is_ptr() {
+					refreshed_expr_type = refreshed_expr_type.deref()
 				}
 				// If the variable was initialized with an `or {}` block that
 				// unwraps the option/result, clear the flag from the resolved type
@@ -316,7 +333,7 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 					|| g.type_has_unresolved_generic_parts(parent_v.typ)) {
 					resolved_parent_expr_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
 					if resolved_parent_expr_type != 0 {
-						parent_v.typ =
+						mut refreshed_parent_type :=
 							g.unwrap_generic(g.recheck_concrete_type(resolved_parent_expr_type))
 						if g.type_has_unresolved_generic_parts(parent_v.typ) {
 							call_like_type := g.resolved_call_like_expr_type(parent_v.expr)
@@ -325,6 +342,11 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 								parent_v.typ = call_like_type
 							}
 						}
+						if g.is_auto_deref_source_ident(parent_v.expr)
+							&& refreshed_parent_type.is_ptr() {
+							refreshed_parent_type = refreshed_parent_type.deref()
+						}
+						parent_v.typ = refreshed_parent_type
 					}
 				}
 				if v.is_unwrapped {
