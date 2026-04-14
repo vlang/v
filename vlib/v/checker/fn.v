@@ -8,6 +8,24 @@ import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
+@[inline]
+fn (c &Checker) implicit_mutability_enabled() bool {
+	return c.pref.disable_explicit_mutability
+		&& (!os.dir(c.file.path).contains('vlib') || c.file.path.ends_with('.vv'))
+}
+
+@[inline]
+fn (c &Checker) implicit_mut_call_arg(param ast.Param, arg ast.CallArg) ast.CallArg {
+	if !c.implicit_mutability_enabled() || arg.is_mut || !param.is_mut
+		|| param.typ.share() != .mut_t {
+		return arg
+	}
+	return ast.CallArg{
+		...arg
+		is_mut: true
+	}
+}
+
 fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
 	if func.mod != 'os' || !func.is_method {
 		return
@@ -2056,6 +2074,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_arg.pos)
 		}
+		call_arg = c.implicit_mut_call_arg(param, call_arg)
+		node.args[i] = call_arg
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
@@ -2927,6 +2947,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 						c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
 							arg.pos)
 					}
+					arg = c.implicit_mut_call_arg(param, arg)
+					node.args[i] = arg
 					if arg.is_mut {
 						to_lock, pos := c.fail_if_immutable(mut arg.expr)
 						if !param.is_mut {
@@ -2973,7 +2995,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		if left_sym.kind in [.struct, .aggregate, .interface, .sum_type] {
-			if c.smartcast_mut_pos != token.Pos{} {
+			if c.smartcast_mut_pos != token.Pos{} && !c.implicit_mutability_enabled() {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
 			}
@@ -3278,6 +3300,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				arg.pos)
 		}
+		arg = c.implicit_mut_call_arg(param, arg)
+		node.args[i] = arg
 		if arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut arg.expr)
 			if !param_is_mut {

@@ -232,7 +232,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						name:         lx.name
 						expr:         if left.len == right.len { right[i] } else { ast.empty_expr }
 						share:        share
-						is_mut:       lx.is_mut || p.inside_for
+						is_mut:       p.scope_var_is_mut(lx.is_mut || p.inside_for)
 						is_static:    is_static
 						is_volatile:  is_volatile
 						pos:          lx.pos

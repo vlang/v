@@ -97,9 +97,10 @@ fn test_all() {
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
 	js_checker_tests := ['js_number_requires_explicit_cast.vv']
+	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
-		&& it !in js_checker_tests)
+		&& it !in js_checker_tests && it !in disable_explicit_mutability_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -180,6 +181,8 @@ fn test_all() {
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out',
+		disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)

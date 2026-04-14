@@ -139,6 +139,10 @@ NB: the build flags are shared with the run command too:
     extensively (like `math.big`), without constantly edititing their source code to remove/add
     the tag. Note: this option overrides -no-bounds-checking .
 
+  -disable-explicit-mutability, --disable-explicit-mutability
+    Allow ordinary variables and mutable call arguments in user code to omit explicit `mut`.
+    `mut`/`shared`/`atomic` in function and method signatures remain unchanged.
+
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
     The profile results will be stored in `file.txt`.

@@ -187,27 +187,28 @@ pub mut:
 	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
 	compress    bool     // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
-	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
-	enable_globals   bool   // allow __global for low level code
-	is_bare          bool   // set by -freestanding
-	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
-	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
-	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	no_closures      bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
-	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
-	lookup_path      []string
-	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
-	output_es5       bool
-	prealloc         bool
-	vroot            string
-	vlib             string   // absolute path to the vlib/ folder
-	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
-	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
-	out_name         string
-	out_name_is_dir  bool   // true when `-o`/`-output` was passed with a trailing path separator
-	path             string // Path to file/folder to compile
-	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
-	linfo            LineInfo
+	no_builtin                  bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
+	enable_globals              bool   // allow __global for low level code
+	disable_explicit_mutability bool   // allow ordinary variables to be mutated without explicit `mut` annotations
+	is_bare                     bool   // set by -freestanding
+	bare_builtin_dir            string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
+	no_preludes                 bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude              string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	no_closures                 bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
+	cmain                       string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
+	lookup_path                 []string
+	output_cross_c              bool // true, when the user passed `-os cross` or `-cross`
+	output_es5                  bool
+	prealloc                    bool
+	vroot                       string
+	vlib                        string   // absolute path to the vlib/ folder
+	vmodules_paths              []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
+	out_name_c                  string   // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name                    string
+	out_name_is_dir             bool   // true when `-o`/`-output` was passed with a trailing path separator
+	path                        string // Path to file/folder to compile
+	line_info                   string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
+	linfo                       LineInfo
 
 	run_only  []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	exclude   []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
@@ -620,6 +621,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-enable-globals' {
 				res.enable_globals = true
+			}
+			'--disable-explicit-mutability', '-disable-explicit-mutability' {
+				res.disable_explicit_mutability = true
+				res.build_options << arg
 			}
 			'-autofree' {
 				res.autofree = true

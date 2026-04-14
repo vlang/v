@@ -1141,7 +1141,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 
 			p.scope.register(ast.Var{
 				name:         ident.name
-				is_mut:       ident.is_mut
+				is_mut:       p.scope_var_is_mut(ident.is_mut)
 				is_stack_obj: true
 				pos:          ident.pos
 				is_used:      true

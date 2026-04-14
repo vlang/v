@@ -2232,6 +2232,17 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	}
 }
 
+@[inline]
+fn (p &Parser) implicit_mutability_enabled() bool {
+	return p.pref.disable_explicit_mutability
+		&& (!p.inside_vlib_file || p.file_path.ends_with('.vv'))
+}
+
+@[inline]
+fn (p &Parser) scope_var_is_mut(is_mut bool) bool {
+	return is_mut || p.implicit_mutability_enabled()
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	prev_line := p.prev_tok.pos().line_nr
 	p.next()

@@ -3006,7 +3006,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return node.typ
 		}
 		if final_sym.kind == .struct {
-			if c.smartcast_mut_pos != token.Pos{} {
+			if c.smartcast_mut_pos != token.Pos{} && !c.implicit_mutability_enabled() {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
 			}
@@ -3015,7 +3015,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.error(suggestion.say(unknown_field_msg), node.pos)
 			return ast.void_type
 		}
-		if c.smartcast_mut_pos != token.Pos{} {
+		if c.smartcast_mut_pos != token.Pos{} && !c.implicit_mutability_enabled() {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
 		}
@@ -6564,9 +6564,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			if field != unsafe { nil } {
 				smartcasts << field.smartcasts
 			}
-			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option)
-				|| allow_mut_selector_smartcast {
+			// smartcast either if the value is immutable or if mutability is allowed here
+			if !is_mut || expr.is_mut || c.implicit_mutability_enabled() || is_option_unwrap
+				|| orig_type.has_flag(.option) || allow_mut_selector_smartcast {
 				sc_type := if scope_smartcast_type != ast.no_type {
 					scope_smartcast_type
 				} else {
@@ -6616,8 +6616,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					.no_comptime
 				}
 			}
-			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if (!is_mut || expr.is_mut || is_option_unwrap) && !is_already_casted {
+			// smartcast either if the value is immutable or if mutability is allowed here
+			if (!is_mut || expr.is_mut || c.implicit_mutability_enabled()
+				|| is_option_unwrap) && !is_already_casted {
 				sc_type := if scope_smartcast_type != ast.no_type {
 					scope_smartcast_type
 				} else {
@@ -6672,7 +6673,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				} else {
 					scope.register(new_var)
 				}
-			} else if is_mut && !expr.is_mut {
+			} else if is_mut && !expr.is_mut && !c.implicit_mutability_enabled() {
 				c.smartcast_mut_pos = expr.pos
 			}
 		}

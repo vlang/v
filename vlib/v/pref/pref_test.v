@@ -52,6 +52,19 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn test_disable_explicit_mutability_flag() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target],
+		false)
+	assert prefs.disable_explicit_mutability
+	assert prefs.build_options.contains('-disable-explicit-mutability')
+
+	prefs2, _ := pref.parse_args_and_show_errors([], ['--disable-explicit-mutability', target],
+		false)
+	assert prefs2.disable_explicit_mutability
+	assert prefs2.build_options.contains('--disable-explicit-mutability')
+}
+
 fn new_wasm_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .wasm

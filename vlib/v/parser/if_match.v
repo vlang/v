@@ -112,7 +112,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 					is_mut = true
 					p.next()
 				}
-				var.is_mut = is_mut
+				var.is_mut = p.scope_var_is_mut(is_mut)
 				var.pos = p.tok.pos()
 				var.name = p.check_name()
 				var_names << var.name

@@ -871,12 +871,17 @@ run them via `v file.v` instead',
 					scope: unsafe { nil }
 				}
 			}
+			effective_is_mut := if is_method && k == 0 {
+				param.is_mut
+			} else {
+				p.scope_var_is_mut(param.is_mut)
+			}
 			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
 				name:          param.name
 				typ:           param.typ
 				generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
-				is_mut:        param.is_mut
+				is_mut:        effective_is_mut
 				is_auto_deref: param.is_mut
 				is_stack_obj:  is_stack_obj
 				pos:           param.pos
@@ -1238,7 +1243,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name:          param.name
 			typ:           param.typ
 			generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
-			is_mut:        param.is_mut
+			is_mut:        p.scope_var_is_mut(param.is_mut)
 			is_auto_deref: param.is_mut
 			pos:           param.pos
 			is_used:       true
@@ -1690,12 +1695,12 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			has_inherited: var.is_inherited
 			is_used:       false
 			is_changed:    false
-			is_mut:        is_mut
+			is_mut:        p.scope_var_is_mut(is_mut)
 		})
 		vars << ast.Param{
 			pos:       var_pos
 			name:      var_name
-			is_mut:    is_mut
+			is_mut:    p.scope_var_is_mut(is_mut)
 			is_atomic: is_atomic
 			is_shared: is_shared
 		}
