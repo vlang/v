@@ -30,6 +30,19 @@ fn test_if_subcommands_parse_args() {
 	cmd.parse(['command', 'subcommand', 'arg0', 'arg1'])
 }
 
+fn test_if_subcommand_alias_parses_args() {
+	mut cmd := cli.Command{
+		name: 'command'
+	}
+	subcmd := cli.Command{
+		name:    'subcommand'
+		alias:   'sc'
+		execute: if_subcommands_parse_args_func
+	}
+	cmd.add_command(subcmd)
+	cmd.parse(['command', 'sc', 'arg0', 'arg1'])
+}
+
 fn if_subcommands_parse_args_func(cmd cli.Command) ! {
 	assert cmd.name == 'subcommand' && cmd.args == ['arg0', 'arg1']
 }
@@ -203,6 +216,62 @@ fn test_command_setup() {
 	cmd.setup()
 	assert cmd.commands[0].parent.name == 'root'
 	assert cmd.commands[0].commands[0].parent.name == 'child'
+}
+
+fn test_help_message_lists_command_aliases() {
+	cmd := cli.Command{
+		name:        'command'
+		description: 'description'
+		commands:    [
+			cli.Command{
+				name:        'sub'
+				alias:       's'
+				description: 'subcommand'
+			},
+		]
+	}
+	assert cmd.help_message() == r'Usage: command [commands]
+
+description
+
+Commands:
+  sub (s)             subcommand
+'
+}
+
+fn test_manpage_lists_command_aliases() {
+	mut cmd := cli.Command{
+		name:        'command'
+		description: 'description'
+		commands:    [
+			cli.Command{
+				name:        'sub'
+				alias:       's'
+				description: 'subcommand'
+			},
+		]
+	}
+	cmd.setup()
+	assert cmd.manpage().after_char(`\n`) == r'.Dt COMMAND 1
+.Os
+.Sh NAME
+.Nm command
+.Nd description
+.Sh SYNOPSIS
+.Nm command
+.Nm command
+.Ar subcommand
+.Sh DESCRIPTION
+description
+.Pp
+The subcommands are as follows:
+.Bl -tag -width indent
+.It Cm sub Pq Cm s
+subcommand
+.El
+.Sh SEE ALSO
+.Xr command-sub 1
+'
 }
 
 // helper functions

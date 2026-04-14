@@ -23,7 +23,7 @@ fn man_cmd() Command {
 pub fn print_manpage_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
-			if sub_cmd.name == cmd.args[0] {
+			if sub_cmd.matches(cmd.args[0]) {
 				man_cmd := unsafe { &sub_cmd }
 				print(man_cmd.manpage())
 				return
@@ -134,7 +134,11 @@ pub fn (cmd &Command) manpage() string {
 		mdoc += '.Pp\nThe subcommands are as follows:\n'
 		mdoc += '.Bl -tag -width indent\n'
 		for c in cmd.commands {
-			mdoc += '.It Cm ${c.name}\n'
+			mdoc += '.It Cm ${c.name}'
+			if c.alias != '' {
+				mdoc += ' Pq Cm ${c.alias}'
+			}
+			mdoc += '\n'
 			if c.description != '' {
 				mdoc += '${c.description}\n'
 			}
