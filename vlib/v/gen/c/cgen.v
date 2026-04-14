@@ -5251,7 +5251,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		ast.LambdaExpr {
 			if node.call_ctx != unsafe { nil } {
 				save_cur_concrete_types := g.cur_concrete_types
-				call_concrete := node.call_ctx.concrete_types
+				call_concrete := g.active_call_lambda_concrete_types(node)
 				// Only override cur_concrete_types if the call context has
 				// fully resolved (non-generic) types. When inside a generic
 				// function instantiation, g.cur_concrete_types already has

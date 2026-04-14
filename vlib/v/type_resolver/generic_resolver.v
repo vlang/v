@@ -13,6 +13,10 @@ pub fn (mut ct TypeResolver) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 		ast.ParExpr {
 			return ct.unwrap_generic_expr(expr.expr, default_typ)
 		}
+		ast.SelectorExpr {
+			typ := ct.get_type(expr)
+			return if typ != ast.void_type { ct.resolver.unwrap_generic(typ) } else { default_typ }
+		}
 		ast.CastExpr {
 			return expr.typ
 		}

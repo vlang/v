@@ -2613,7 +2613,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						}
 						if mut call_arg.expr is ast.LambdaExpr {
 							// Calling fn is generic and lambda arg also is generic
-							c.handle_generic_lambda_arg(node, mut call_arg.expr)
+							c.handle_generic_lambda_arg(node, func.generic_names, mut call_arg.expr)
 							continue
 						}
 						if c.is_optional_array_arg_compatible(utyp, unwrap_typ) {
@@ -2624,7 +2624,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					// When check succeeds (e.g. after lambda re-check with concrete types),
 					// still set call_ctx on lambda args for generic context in cgen:
 					if mut call_arg.expr is ast.LambdaExpr {
-						c.handle_generic_lambda_arg(node, mut call_arg.expr)
+						c.handle_generic_lambda_arg(node, func.generic_names, mut call_arg.expr)
 					}
 				}
 			}
@@ -3613,7 +3613,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		if mut arg.expr is ast.LambdaExpr {
 			// Calling fn is generic and lambda arg also is generic
-			c.handle_generic_lambda_arg(node, mut arg.expr)
+			c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
 		}
 		param_typ_sym := c.table.sym(exp_arg_typ)
 		if param_typ_sym.kind == .struct && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
@@ -3668,6 +3668,14 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.infer_fn_generic_types(method, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
+	if method_generic_names_len > 0 && node.concrete_types.len > 0 {
+		for i, mut arg in node.args {
+			if mut arg.expr is ast.LambdaExpr {
+				c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
+				node.args[i] = arg
+			}
+		}
+	}
 	if concrete_types.len == method_generic_names_len && concrete_types.all(!it.has_flag(.generic)) {
 		c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 		need_recheck, _ := c.type_resolver.resolve_fn_generic_args(c.table.cur_fn, method, mut node)
@@ -3709,12 +3717,40 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	return node.return_type
 }
 
-fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, mut lambda ast.LambdaExpr) {
+fn (c &Checker) generic_lambda_concrete_types(lambda &ast.LambdaExpr, caller_generic_names []string, caller_concrete_types []ast.Type) []ast.Type {
+	if lambda == unsafe { nil } || lambda.func == unsafe { nil }
+		|| lambda.func.decl.generic_names.len == 0 {
+		return []ast.Type{}
+	}
+	if caller_concrete_types.len == lambda.func.decl.generic_names.len
+		&& (caller_generic_names.len == 0 || caller_generic_names.len == caller_concrete_types.len) {
+		return caller_concrete_types.clone()
+	}
+	if caller_generic_names.len == 0 || caller_generic_names.len != caller_concrete_types.len {
+		return []ast.Type{}
+	}
+	mut concrete_types := []ast.Type{cap: lambda.func.decl.generic_names.len}
+	for generic_name in lambda.func.decl.generic_names {
+		idx := caller_generic_names.index(generic_name)
+		if idx < 0 || idx >= caller_concrete_types.len {
+			return []ast.Type{}
+		}
+		concrete_types << caller_concrete_types[idx]
+	}
+	return concrete_types
+}
+
+fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, caller_generic_names []string, mut lambda ast.LambdaExpr) {
 	// Calling fn is generic and lambda arg also is generic
 	if node.concrete_types.len > 0 && lambda.func != unsafe { nil }
 		&& lambda.func.decl.generic_names.len > 0 {
 		lambda.call_ctx = unsafe { node }
-		if c.table.register_fn_concrete_types(lambda.func.decl.fkey(), node.concrete_types) {
+		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, caller_generic_names,
+			node.concrete_types)
+		if lambda_concrete_types.len == 0 {
+			return
+		}
+		if c.table.register_fn_concrete_types(lambda.func.decl.fkey(), lambda_concrete_types) {
 			lambda.func.decl.ninstances++
 		}
 	}
