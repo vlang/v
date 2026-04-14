@@ -51,6 +51,7 @@ $if $pkgconfig('openssl') {
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
 pub struct C.SSL {
@@ -127,7 +128,7 @@ fn C.SSL_do_handshake(&C.SSL) i32
 
 fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
-fn C.SSL_get1_peer_certificate(ssl &C.SSL) &C.X509
+fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 
@@ -147,26 +148,16 @@ fn C.SSL_write(ssl &C.SSL, buf voidptr, buflen i32) i32
 
 fn C.SSL_read(ssl &C.SSL, buf voidptr, buflen i32) i32
 
-fn C.SSL_load_error_strings()
-
-fn C.SSL_library_init() i32
-
 fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
 fn C.TLSv1_2_method() voidptr
 
-fn C.OPENSSL_init_ssl(opts u64, settings &C.OPENSSL_INIT_SETTINGS) i32
+fn C.v_net_openssl_init_ssl() i32
 
 fn init() {
-	$if ssl_pre_1_1_version ? {
-		// OPENSSL_VERSION_NUMBER < 0x10100000L
-		C.SSL_load_error_strings()
-		C.SSL_library_init()
-	} $else {
-		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
-	}
+	C.v_net_openssl_init_ssl()
 }
 
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic

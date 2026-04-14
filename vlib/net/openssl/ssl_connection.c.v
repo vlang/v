@@ -237,11 +237,7 @@ fn (mut s SSLConn) complete_connect() ! {
 			}
 			return error('net.openssl SSLConn.complete_connect, could not validate SSL certificate. (${err_res}),err')
 		}
-		$if openbsd {
-			pcert = C.SSL_get_peer_certificate(voidptr(s.ssl))
-		} $else {
-			pcert = C.SSL_get1_peer_certificate(voidptr(s.ssl))
-		}
+		pcert = C.v_net_openssl_get1_peer_certificate(s.ssl)
 		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)
