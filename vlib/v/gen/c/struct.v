@@ -364,6 +364,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						sfield.expected_type = tt
 					}
 				}
+				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					resolved_sfield_typ := g.resolved_expr_type(ast.Expr(sfield.expr), sfield.typ)
+					if resolved_sfield_typ != 0 {
+						sfield.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_sfield_typ))
+					}
+				}
 				if node.no_keys && sym.kind == .struct {
 					sym_info := sym.info as ast.Struct
 					if sym_info.fields.len == node.init_fields.len {
@@ -559,6 +565,13 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 			}
 			if resolved_field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', resolved_field.pos)
+			}
+		}
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			resolved_field_typ := g.resolved_expr_type(ast.Expr(resolved_field.expr),
+				resolved_field.typ)
+			if resolved_field_typ != 0 {
+				resolved_field.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
 			}
 		}
 		g.struct_init_ptr_field(tmp_var, resolved_field, language)

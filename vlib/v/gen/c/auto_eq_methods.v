@@ -461,6 +461,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 	elem_info := left_typ.sym.array_fixed_info()
 	elem := g.unwrap(elem_info.elem_type)
+	ptr_elem_styp := g.styp(elem.typ)
 	size := elem_info.size
 	mut arg_styp := ptr_styp
 	if elem_info.is_fn_ret {
@@ -469,9 +470,8 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	g.definitions.writeln('${g.static_non_parallel}bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b);')
 
 	is_option := left_type.has_flag(.option)
-	inner_type := g.base_type(left_typ.typ.set_nr_muls(0))
-	left := if is_option { '(*(${inner_type}*)a.data)' } else { 'a' }
-	right := if is_option { '(*(${inner_type}*)b.data)' } else { 'b' }
+	left_item := if is_option { '((${ptr_elem_styp}*)a.data)' } else { 'a' }
+	right_item := if is_option { '((${ptr_elem_styp}*)b.data)' } else { 'b' }
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
@@ -493,34 +493,34 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
-		left_arg := '${left}[i]'
-		right_arg := '${right}[i]'
+		left_arg := '${left_item}[i]'
+		right_arg := '${right_item}[i]'
 		fn_builder.writeln('\t\tif (!${string_eq_expr(left_arg, right_arg, elem.typ.is_ptr())}) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .interface && !elem.typ.is_ptr() {
 		eq_fn := g.gen_interface_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .array_fixed && !elem.typ.is_ptr() {
 		eq_fn := g.gen_fixed_array_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .map && !elem.typ.is_ptr() {
 		eq_fn := g.gen_map_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .alias && !elem.typ.is_ptr() {
 		eq_fn := g.gen_alias_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(${left}[i], ${right}[i])) {')
+		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(${left_item}[i], ${right_item}[i])) {')
 	} else if elem.sym.kind == .function {
-		fn_builder.writeln('\t\tif (${left}[i] != ${right}[i]) {')
+		fn_builder.writeln('\t\tif (${left_item}[i] != ${right_item}[i]) {')
 	} else {
-		fn_builder.writeln('\t\tif (${left}[i] != ${right}[i]) {')
+		fn_builder.writeln('\t\tif (${left_item}[i] != ${right_item}[i]) {')
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
