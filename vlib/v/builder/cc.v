@@ -1773,6 +1773,14 @@ fn is_tcc_alias_compiler(ccompiler string) bool {
 		|| lcc_version.contains('\ntcc') || lcc_version.starts_with('tcc')
 }
 
+fn ccompiler_is_available(ccompiler string) bool {
+	if ccompiler.contains('/') || ccompiler.contains('\\') {
+		return os.is_file(ccompiler) && os.is_executable(ccompiler)
+	}
+	os.find_abs_path_of_executable(ccompiler) or { return false }
+	return true
+}
+
 fn first_available_ccompiler(excluded []string) string {
 	for candidate in ['cc', 'clang', 'gcc'] {
 		if candidate in excluded {

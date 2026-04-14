@@ -3,6 +3,14 @@ module builder
 import os
 import v.pref
 
+fn test_ccompiler_is_available_with_existing_absolute_path() {
+	assert ccompiler_is_available(@VEXE)
+}
+
+fn test_ccompiler_is_available_with_missing_compiler() {
+	assert !ccompiler_is_available('missing_compiler_17126_for_builder_test')
+}
+
 fn test_c_error_looks_like_cpp_header_with_clang_style_output() {
 	clang_output := "error: unknown type name 'namespace'\nerror: expected ';' after top level declarator"
 	assert c_error_looks_like_cpp_header(clang_output)

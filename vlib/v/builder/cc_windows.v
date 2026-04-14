@@ -10,6 +10,13 @@ pub fn (mut v Builder) find_win_cc() ! {
 	$if !windows {
 		return
 	}
+	if v.pref.ccompiler_set_by_flag && v.pref.ccompiler != 'msvc' {
+		if !ccompiler_is_available(v.pref.ccompiler) {
+			return error('C compiler `${v.pref.ccompiler}` was requested with `-cc`, but was not found.')
+		}
+		v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+		return
+	}
 	cmd_version := '${v.quote_compiler_name(v.pref.ccompiler)} -v'
 	ccompiler_version_res := os.execute(cmd_version)
 	if ccompiler_version_res.exit_code != 0 {

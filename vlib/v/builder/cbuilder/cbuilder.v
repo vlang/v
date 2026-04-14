@@ -19,6 +19,9 @@ pub fn compile_c(mut b builder.Builder) {
 	}
 	$if windows {
 		b.find_win_cc() or {
+			if b.pref.ccompiler_set_by_flag && b.pref.ccompiler != 'msvc' {
+				builder.verror(err.msg())
+			}
 			builder.verror('
 ==================
 Error: no C compiler detected.
