@@ -3595,6 +3595,21 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	}
 }
 
+fn (mut c Checker) thread_array_wait_return_type(thread_ret_type ast.Type) ast.Type {
+	payload_type := thread_ret_type.clear_option_and_result()
+	if payload_type == ast.void_type {
+		return thread_ret_type
+	}
+	mut return_type := ast.idx_to_type(c.table.find_or_register_array(payload_type))
+	if thread_ret_type.has_flag(.option) {
+		return_type = return_type.set_flag(.option)
+	}
+	if thread_ret_type.has_flag(.result) {
+		return_type = return_type.set_flag(.result)
+	}
+	return return_type
+}
+
 fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	// TODO: copypasta from spawn_expr
 	ret_type := c.call_expr(mut node.call_expr)
@@ -4321,14 +4336,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('`.wait()` does not have any arguments', arg0.pos)
 			}
 			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
-			if thread_ret_type.has_flag(.option) {
-				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
-					node.pos)
-			} else if thread_ret_type.has_flag(.result) {
-				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
-					node.pos)
-			}
-			node.return_type = c.table.find_or_register_array(thread_ret_type)
+			node.return_type = c.thread_array_wait_return_type(thread_ret_type)
 		} else {
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())
@@ -4618,14 +4626,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				c.error('`.wait()` does not have any arguments', arg0.pos)
 			}
 			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
-			if thread_ret_type.has_flag(.option) {
-				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
-					node.pos)
-			} else if thread_ret_type.has_flag(.result) {
-				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
-					node.pos)
-			}
-			node.return_type = c.table.find_or_register_array(thread_ret_type)
+			node.return_type = c.thread_array_wait_return_type(thread_ret_type)
 		} else {
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())

@@ -4750,6 +4750,28 @@ fn main() {
 // Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
 ```
 
+When the spawned function returns `?T` or `!T`, waiting on the thread array returns
+`?[]T` or `![]T`. That means the batch can be handled with `or`, `?`, or `!` the same
+way as a single thread handle.
+
+```v
+fn maybe_square(i int) !int {
+	if i < 0 {
+		return error('negative input')
+	}
+	return i * i
+}
+
+fn main() {
+	mut threads := []thread !int{}
+	for i in 1 .. 4 {
+		threads << spawn maybe_square(i)
+	}
+	values := threads.wait() or { panic(err) }
+	println(values)
+}
+```
+
 ### Channels
 
 Channels are the preferred way to communicate between threads. They allow threads to exchange data

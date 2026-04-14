@@ -1811,10 +1811,29 @@ fn (mut g Gen) register_thread_wait_call(eltyp string) {
 	g.gowrappers.writeln('}')
 }
 
-fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
-	is_void := eltyp == 'void'
-	thread_typ := if is_void { '__v_thread' } else { '__v_thread_${eltyp}' }
-	ret_typ := if is_void { 'void' } else { 'Array_${eltyp}' }
+fn (mut g Gen) thread_array_wait_return_type(thread_ret_type ast.Type) ast.Type {
+	payload_type := thread_ret_type.clear_option_and_result()
+	if payload_type == ast.void_type {
+		return thread_ret_type
+	}
+	mut return_type := ast.idx_to_type(g.table.find_or_register_array(payload_type))
+	if thread_ret_type.has_flag(.option) {
+		return_type = return_type.set_flag(.option)
+	}
+	if thread_ret_type.has_flag(.result) {
+		return_type = return_type.set_flag(.result)
+	}
+	return return_type
+}
+
+fn (mut g Gen) register_thread_array_wait_call(thread_ret_type ast.Type) string {
+	payload_type := thread_ret_type.clear_option_and_result()
+	is_plain_void := thread_ret_type == ast.void_type
+	is_void_payload := payload_type == ast.void_type
+	thread_typ := g.gen_gohandle_name(thread_ret_type)
+	waiter_fn_name := '${thread_typ}_wait'
+	ret_type := g.thread_array_wait_return_type(thread_ret_type)
+	ret_styp := g.styp(ret_type)
 	thread_arr_typ := 'Array_${thread_typ}'
 	fn_name := '${thread_arr_typ}_wait'
 	mut should_register := false
@@ -1825,43 +1844,125 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 		}
 	}
 	if should_register {
-		if is_void {
-			g.register_thread_void_wait_call()
-			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
-			g.gowrappers.writeln('
-void ${fn_name}(${thread_arr_typ} a) {
-	for (${ast.int_type_name} i = 0; i < a.len; ++i) {
-		${thread_typ} t = ((${thread_typ}*)a.data)[i];
-		if (t == 0) continue;
-		__v_thread_wait(t);
-	}
-}')
-		} else {
-			g.register_thread_wait_call(eltyp)
-			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
-			g.gowrappers.writeln('
-${ret_typ} ${fn_name}(${thread_arr_typ} a) {
-	${ret_typ} res = builtin____new_array_with_default(a.len, a.len, sizeof(${eltyp}), 0);
-	for (${ast.int_type_name} i = 0; i < a.len; ++i) {
-		${thread_typ} t = ((${thread_typ}*)a.data)[i];')
-			if g.pref.os == .windows {
-				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
-			} else {
-				g.gowrappers.writeln('\t\tif (t == 0) continue;')
-			}
-			g.gowrappers.writeln('\t\t((${eltyp}*)res.data)[i] = __v_thread_${eltyp}_wait(t);
-	}
-	return res;
-}')
+		thread_ret_styp := g.styp(thread_ret_type)
+		g.create_waiter_handler(thread_ret_type, thread_ret_styp, thread_typ)
+		g.waiter_fn_definitions.writeln('${ret_styp} ${fn_name}(${thread_arr_typ} a);')
+		g.gowrappers.writeln('
+${ret_styp} ${fn_name}(${thread_arr_typ} a) {')
+		if !is_void_payload {
+			payload_arr_styp := g.base_type(ret_type.clear_option_and_result())
+			payload_styp := g.styp(payload_type)
+			g.gowrappers.writeln('\t${payload_arr_styp} res = builtin____new_array_with_default(a.len, a.len, sizeof(${payload_styp}), 0);')
 		}
+		if thread_ret_type.has_option_or_result() {
+			g.gowrappers.writeln('\tbool has_failure = false;')
+			g.gowrappers.writeln('\t${thread_ret_styp} first_failure = {0};')
+		}
+		g.gowrappers.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i) {')
+		g.gowrappers.writeln('\t\t${thread_typ} t = ((${thread_typ}*)a.data)[i];')
+		if g.pref.os == .windows {
+			if is_plain_void {
+				g.gowrappers.writeln('\t\tif (t == 0) continue;')
+			} else {
+				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
+			}
+		} else {
+			g.gowrappers.writeln('\t\tif (t == 0) continue;')
+		}
+		if thread_ret_type.has_flag(.option) {
+			payload_arr_styp := if is_void_payload {
+				''
+			} else {
+				g.base_type(ret_type.clear_option_and_result())
+			}
+			payload_styp := if is_void_payload { '' } else { g.styp(payload_type) }
+			g.gowrappers.writeln('\t\t${thread_ret_styp} waited = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t\tif (waited.state != 0) {')
+			g.gowrappers.writeln('\t\t\tif (!has_failure) {')
+			g.gowrappers.writeln('\t\t\t\thas_failure = true;')
+			g.gowrappers.writeln('\t\t\t\tfirst_failure = waited;')
+			g.gowrappers.writeln('\t\t\t}')
+			g.gowrappers.writeln('\t\t\tcontinue;')
+			g.gowrappers.writeln('\t\t}')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = *((${payload_styp}*)waited.data);')
+			}
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\tif (has_failure) {')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\tbuiltin__array_free(&res);')
+			}
+			if is_void_payload {
+				g.gowrappers.writeln('\t\treturn first_failure;')
+			} else {
+				g.gowrappers.writeln('\t\treturn (${ret_styp}){ .state = first_failure.state, .err = first_failure.err, .data = {E_STRUCT} };')
+			}
+			g.gowrappers.writeln('\t}')
+			if is_void_payload {
+				g.gowrappers.writeln('\treturn (${ret_styp}){0};')
+			} else {
+				g.gowrappers.writeln('\t${ret_styp} waited_all = {0};')
+				g.gowrappers.writeln('\tbuiltin___option_ok(&(${payload_arr_styp}[]) { res }, (${option_name}*)(&waited_all), sizeof(${payload_arr_styp}));')
+				g.gowrappers.writeln('\treturn waited_all;')
+			}
+		} else if thread_ret_type.has_flag(.result) {
+			payload_arr_styp := if is_void_payload {
+				''
+			} else {
+				g.base_type(ret_type.clear_option_and_result())
+			}
+			payload_styp := if is_void_payload { '' } else { g.styp(payload_type) }
+			g.gowrappers.writeln('\t\t${thread_ret_styp} waited = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t\tif (waited.is_error) {')
+			g.gowrappers.writeln('\t\t\tif (!has_failure) {')
+			g.gowrappers.writeln('\t\t\t\thas_failure = true;')
+			g.gowrappers.writeln('\t\t\t\tfirst_failure = waited;')
+			g.gowrappers.writeln('\t\t\t}')
+			g.gowrappers.writeln('\t\t\tcontinue;')
+			g.gowrappers.writeln('\t\t}')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = *((${payload_styp}*)waited.data);')
+			}
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\tif (has_failure) {')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\tbuiltin__array_free(&res);')
+			}
+			if is_void_payload {
+				g.gowrappers.writeln('\t\treturn first_failure;')
+			} else {
+				g.gowrappers.writeln('\t\treturn (${ret_styp}){ .is_error = true, .err = first_failure.err, .data = {E_STRUCT} };')
+			}
+			g.gowrappers.writeln('\t}')
+			if is_void_payload {
+				g.gowrappers.writeln('\treturn (${ret_styp}){0};')
+			} else {
+				g.gowrappers.writeln('\t${ret_styp} waited_all = {0};')
+				g.gowrappers.writeln('\tbuiltin___result_ok(&(${payload_arr_styp}[]) { res }, (${result_name}*)(&waited_all), sizeof(${payload_arr_styp}));')
+				g.gowrappers.writeln('\treturn waited_all;')
+			}
+		} else if is_void_payload {
+			g.gowrappers.writeln('\t\t${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t}')
+		} else {
+			payload_styp := g.styp(payload_type)
+			g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\treturn res;')
+		}
+		g.gowrappers.writeln('}')
 	}
 	return fn_name
 }
 
-fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp string) string {
-	is_void := eltyp == 'void'
-	thread_typ := if is_void { '__v_thread' } else { '__v_thread_${eltyp}' }
-	ret_typ := if is_void { 'void' } else { 'Array_${eltyp}' }
+fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, thread_ret_type ast.Type) string {
+	payload_type := thread_ret_type.clear_option_and_result()
+	is_plain_void := thread_ret_type == ast.void_type
+	is_void_payload := payload_type == ast.void_type
+	thread_typ := g.gen_gohandle_name(thread_ret_type)
+	waiter_fn_name := '${thread_typ}_wait'
+	ret_type := g.thread_array_wait_return_type(thread_ret_type)
+	ret_styp := g.styp(ret_type)
 	rec_sym := g.table.sym(node.receiver_type)
 	len := (rec_sym.info as ast.ArrayFixed).size
 	thread_arr_typ := rec_sym.cname
@@ -1874,35 +1975,113 @@ fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp st
 		}
 	}
 	if should_register {
-		if is_void {
-			g.register_thread_void_wait_call()
-			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
-			g.gowrappers.writeln('
-void ${fn_name}(${thread_arr_typ} a) {
-	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
-		${thread_typ} t = a[i];
-		if (t == 0) continue;
-		__v_thread_wait(t);
-	}
-}')
-		} else {
-			g.register_thread_wait_call(eltyp)
-			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
-			g.gowrappers.writeln('
-${ret_typ} ${fn_name}(${thread_arr_typ} a) {
-	${ret_typ} res = builtin____new_array_with_default(${len}, ${len}, sizeof(${eltyp}), 0);
-	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
-		${thread_typ} t = ((${thread_typ}*)a)[i];')
-			if g.pref.os == .windows {
-				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
-			} else {
-				g.gowrappers.writeln('\t\tif (t == 0) continue;')
-			}
-			g.gowrappers.writeln('\t\t((${eltyp}*)res.data)[i] = __v_thread_${eltyp}_wait(t);
-	}
-	return res;
-}')
+		thread_ret_styp := g.styp(thread_ret_type)
+		g.create_waiter_handler(thread_ret_type, thread_ret_styp, thread_typ)
+		g.waiter_fn_definitions.writeln('${ret_styp} ${fn_name}(${thread_arr_typ} a);')
+		g.gowrappers.writeln('
+${ret_styp} ${fn_name}(${thread_arr_typ} a) {')
+		if !is_void_payload {
+			payload_arr_styp := g.base_type(ret_type.clear_option_and_result())
+			payload_styp := g.styp(payload_type)
+			g.gowrappers.writeln('\t${payload_arr_styp} res = builtin____new_array_with_default(${len}, ${len}, sizeof(${payload_styp}), 0);')
 		}
+		if thread_ret_type.has_option_or_result() {
+			g.gowrappers.writeln('\tbool has_failure = false;')
+			g.gowrappers.writeln('\t${thread_ret_styp} first_failure = {0};')
+		}
+		g.gowrappers.writeln('\tfor (${ast.int_type_name} i = 0; i < ${len}; ++i) {')
+		g.gowrappers.writeln('\t\t${thread_typ} t = a[i];')
+		if g.pref.os == .windows {
+			if is_plain_void {
+				g.gowrappers.writeln('\t\tif (t == 0) continue;')
+			} else {
+				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
+			}
+		} else {
+			g.gowrappers.writeln('\t\tif (t == 0) continue;')
+		}
+		if thread_ret_type.has_flag(.option) {
+			payload_arr_styp := if is_void_payload {
+				''
+			} else {
+				g.base_type(ret_type.clear_option_and_result())
+			}
+			payload_styp := if is_void_payload { '' } else { g.styp(payload_type) }
+			g.gowrappers.writeln('\t\t${thread_ret_styp} waited = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t\tif (waited.state != 0) {')
+			g.gowrappers.writeln('\t\t\tif (!has_failure) {')
+			g.gowrappers.writeln('\t\t\t\thas_failure = true;')
+			g.gowrappers.writeln('\t\t\t\tfirst_failure = waited;')
+			g.gowrappers.writeln('\t\t\t}')
+			g.gowrappers.writeln('\t\t\tcontinue;')
+			g.gowrappers.writeln('\t\t}')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = *((${payload_styp}*)waited.data);')
+			}
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\tif (has_failure) {')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\tbuiltin__array_free(&res);')
+			}
+			if is_void_payload {
+				g.gowrappers.writeln('\t\treturn first_failure;')
+			} else {
+				g.gowrappers.writeln('\t\treturn (${ret_styp}){ .state = first_failure.state, .err = first_failure.err, .data = {E_STRUCT} };')
+			}
+			g.gowrappers.writeln('\t}')
+			if is_void_payload {
+				g.gowrappers.writeln('\treturn (${ret_styp}){0};')
+			} else {
+				g.gowrappers.writeln('\t${ret_styp} waited_all = {0};')
+				g.gowrappers.writeln('\tbuiltin___option_ok(&(${payload_arr_styp}[]) { res }, (${option_name}*)(&waited_all), sizeof(${payload_arr_styp}));')
+				g.gowrappers.writeln('\treturn waited_all;')
+			}
+		} else if thread_ret_type.has_flag(.result) {
+			payload_arr_styp := if is_void_payload {
+				''
+			} else {
+				g.base_type(ret_type.clear_option_and_result())
+			}
+			payload_styp := if is_void_payload { '' } else { g.styp(payload_type) }
+			g.gowrappers.writeln('\t\t${thread_ret_styp} waited = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t\tif (waited.is_error) {')
+			g.gowrappers.writeln('\t\t\tif (!has_failure) {')
+			g.gowrappers.writeln('\t\t\t\thas_failure = true;')
+			g.gowrappers.writeln('\t\t\t\tfirst_failure = waited;')
+			g.gowrappers.writeln('\t\t\t}')
+			g.gowrappers.writeln('\t\t\tcontinue;')
+			g.gowrappers.writeln('\t\t}')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = *((${payload_styp}*)waited.data);')
+			}
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\tif (has_failure) {')
+			if !is_void_payload {
+				g.gowrappers.writeln('\t\tbuiltin__array_free(&res);')
+			}
+			if is_void_payload {
+				g.gowrappers.writeln('\t\treturn first_failure;')
+			} else {
+				g.gowrappers.writeln('\t\treturn (${ret_styp}){ .is_error = true, .err = first_failure.err, .data = {E_STRUCT} };')
+			}
+			g.gowrappers.writeln('\t}')
+			if is_void_payload {
+				g.gowrappers.writeln('\treturn (${ret_styp}){0};')
+			} else {
+				g.gowrappers.writeln('\t${ret_styp} waited_all = {0};')
+				g.gowrappers.writeln('\tbuiltin___result_ok(&(${payload_arr_styp}[]) { res }, (${result_name}*)(&waited_all), sizeof(${payload_arr_styp}));')
+				g.gowrappers.writeln('\treturn waited_all;')
+			}
+		} else if is_void_payload {
+			g.gowrappers.writeln('\t\t${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t}')
+		} else {
+			payload_styp := g.styp(payload_type)
+			g.gowrappers.writeln('\t\t((${payload_styp}*)res.data)[i] = ${waiter_fn_name}(t);')
+			g.gowrappers.writeln('\t}')
+			g.gowrappers.writeln('\treturn res;')
+		}
+		g.gowrappers.writeln('}')
 	}
 	return fn_name
 }
