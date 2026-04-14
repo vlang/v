@@ -1373,12 +1373,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 				continue
 			}
 			already_generated_ifaces[sym.cname] = true
+			impl_types := inter_info.implementor_types(true)
 			g.definitions.writeln('${g.static_non_parallel}string v_typeof_interface_${sym.cname}(u32 sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern string v_typeof_interface_${sym.cname}(u32 sidx);')
 			}
 			g.writeln('${g.static_non_parallel}string v_typeof_interface_${sym.cname}(u32 sidx) {')
-			for t in inter_info.types {
+			for t in impl_types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.kind == .interface {
 					continue
@@ -1402,7 +1403,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if g.pref.parallel_cc && interface_idx_static_prefix == '' {
 					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
-				for t in inter_info.types {
+				for t in impl_types {
 					sub_sym := g.table.sym(ast.mktyp(t))
 					if sub_sym.kind == .interface {
 						continue
@@ -2633,12 +2634,13 @@ pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
 	struct_name := c_name(sym.cname)
+	impl_types := info.implementor_types(true)
 	g.type_definitions.writeln('struct ${struct_name} {')
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
-	for variant in info.types {
+	for variant in impl_types {
 		mk_typ := ast.mktyp(variant)
-		if mk_typ != variant && mk_typ in info.types {
+		if mk_typ != variant && mk_typ in impl_types {
 			continue
 		}
 		vsym := g.table.sym(mk_typ)
@@ -10873,6 +10875,7 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		already_generated_ifaces[isym.cname] = true
+		impl_types := inter_info.implementor_types(true)
 		// interface_name is for example Speaker
 		interface_name := isym.cname
 		// generate a struct that references interface methods
@@ -10907,7 +10910,7 @@ fn (mut g Gen) interface_table() string {
 		//
 		// Exclude interface types from the table length — an interface can't
 		// be its own concrete implementor (happens with nested generic interfaces).
-		iname_table_length := inter_info.types.filter(g.table.sym(it).kind != .interface).len
+		iname_table_length := impl_types.filter(g.table.sym(it).kind != .interface).len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
 			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
@@ -10928,7 +10931,7 @@ fn (mut g Gen) interface_table() string {
 		mut already_generated_mwrappers := map[string]int{}
 		iinidx_minimum_base := 1000 // Note: NOT 0, to avoid map entries set to 0 later, so `if already_generated_mwrappers[name] > 0 {` works.
 		mut current_iinidx := iinidx_minimum_base
-		for st in inter_info.types {
+		for st in impl_types {
 			st_sym_info := g.table.sym(st)
 			// Skip interface types that appear in their own implementors list.
 			// An interface can't be its own concrete implementor; this happens

@@ -213,10 +213,11 @@ pub mut:
 @[minify]
 pub struct Interface {
 pub mut:
-	types   []Type // all types that implement this interface
-	fields  []StructField
-	methods []Fn
-	embeds  []Type
+	types     []Type // all types that implement this interface immutably
+	mut_types []Type // all types that require a mutable interface binding
+	fields    []StructField
+	methods   []Fn
+	embeds    []Type
 	// `I1 is I2` conversions
 	conversions shared map[int][]Type
 	// generic interface support
@@ -226,6 +227,26 @@ pub mut:
 	concrete_types []Type
 	parent_type    Type
 	name_pos       token.Pos
+}
+
+pub fn (info &Interface) has_implementor(typ Type, include_mut_types bool) bool {
+	if info.types.any(it.idx() == typ.idx()) {
+		return true
+	}
+	return include_mut_types && info.mut_types.any(it.idx() == typ.idx())
+}
+
+pub fn (info &Interface) implementor_types(include_mut_types bool) []Type {
+	mut implementors := info.types.clone()
+	if !include_mut_types {
+		return implementors
+	}
+	for typ in info.mut_types {
+		if !implementors.any(it.idx() == typ.idx()) {
+			implementors << typ
+		}
+	}
+	return implementors
 }
 
 pub struct Enum {
