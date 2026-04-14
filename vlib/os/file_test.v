@@ -507,6 +507,14 @@ fn test_read_lines() {
 	assert lines == some_lines_content.split_into_lines()
 }
 
+fn test_read_lines_with_long_line_and_mixed_line_endings() {
+	long_line := 'a'.repeat(200_000)
+	content := '${long_line}\r\nmiddle\rlast\n\n'
+	os.write_file(tfile, content)!
+	lines := os.read_lines(tfile)!
+	assert lines == content.split_into_lines()
+}
+
 fn test_write_lines() {
 	wline1_file := os.join_path_single(tfolder, 'wline1.txt')
 	wline2_file := os.join_path_single(tfolder, 'wline2.txt')
