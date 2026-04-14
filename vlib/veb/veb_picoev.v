@@ -43,6 +43,7 @@ $if !new_veb ? {
 		pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * max_read + 1) }
 		defer { unsafe { free(pico_context.buf) } }
 		pico_context.body_buffers = [][]u8{len: picoev.max_fds}
+		pico_context.chunked_body_trackers = []ChunkedBodyTracker{len: picoev.max_fds}
 		pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 		pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 		pico_context.string_responses = []StringResponse{len: picoev.max_fds}
@@ -116,6 +117,134 @@ $if !new_veb ? {
 
 	struct IncompleteChunkedRequestBodyError {
 		Error
+	}
+
+	enum ChunkedBodyTrackerState {
+		chunk_size
+		chunk_data
+		chunk_data_crlf_start
+		chunk_data_crlf_end
+		trailer_line
+	}
+
+	struct ChunkedBodyTracker {
+	mut:
+		state      ChunkedBodyTrackerState = .chunk_size
+		line_buf   []u8
+		chunk_left u64
+		complete   bool
+		invalid    bool
+	}
+
+	fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
+		if tracker.complete || tracker.invalid || data.len == 0 {
+			return tracker.complete
+		}
+		mut i := 0
+		for i < data.len {
+			match tracker.state {
+				.chunk_size {
+					ch := data[i]
+					i++
+					if ch == `\r` {
+						continue
+					}
+					if ch != `\n` {
+						tracker.line_buf << ch
+						continue
+					}
+					chunk_size := parse_chunked_size_line_fast(tracker.line_buf) or {
+						tracker.invalid = true
+						return false
+					}
+					tracker.line_buf.clear()
+					if chunk_size == 0 {
+						tracker.state = .trailer_line
+						continue
+					}
+					tracker.chunk_left = chunk_size
+					tracker.state = .chunk_data
+				}
+				.chunk_data {
+					available := data.len - i
+					if tracker.chunk_left < u64(available) {
+						i += int(tracker.chunk_left)
+						tracker.chunk_left = 0
+					} else {
+						tracker.chunk_left -= u64(available)
+						i = data.len
+					}
+					if tracker.chunk_left == 0 {
+						tracker.state = .chunk_data_crlf_start
+					}
+				}
+				.chunk_data_crlf_start {
+					if data[i] != `\r` {
+						tracker.invalid = true
+						return false
+					}
+					i++
+					tracker.state = .chunk_data_crlf_end
+				}
+				.chunk_data_crlf_end {
+					if data[i] != `\n` {
+						tracker.invalid = true
+						return false
+					}
+					i++
+					tracker.state = .chunk_size
+				}
+				.trailer_line {
+					ch := data[i]
+					i++
+					if ch == `\r` {
+						continue
+					}
+					if ch != `\n` {
+						tracker.line_buf << ch
+						continue
+					}
+					if tracker.line_buf.len == 0 {
+						tracker.complete = true
+						return true
+					}
+					tracker.line_buf.clear()
+				}
+			}
+		}
+		return tracker.complete
+	}
+
+	fn parse_chunked_size_line_fast(line []u8) !u64 {
+		mut size := u64(0)
+		mut has_digit := false
+		for ch in line {
+			if ch == `;` {
+				break
+			}
+			if !ch.is_hex_digit() {
+				return error('invalid chunk size')
+			}
+			has_digit = true
+			size = (size << 4) | u64(chunked_hex_value(ch))
+		}
+		if !has_digit {
+			return error('invalid chunk size')
+		}
+		return size
+	}
+
+	fn chunked_hex_value(ch u8) u8 {
+		if `0` <= ch && ch <= `9` {
+			return ch - `0`
+		}
+		if `a` <= ch && ch <= `f` {
+			return ch - `a` + 10
+		}
+		if `A` <= ch && ch <= `F` {
+			return ch - `A` + 10
+		}
+		return 0
 	}
 
 	fn (err IncompleteChunkedRequestBodyError) msg() string {
@@ -376,21 +505,37 @@ $if !new_veb ? {
 					return
 				}
 				if n > 0 {
-					req.data += buf[0..n].bytestr()
+					append_request_body(mut params, fd, buf[0..n], 0)
 					params.idx[fd] += n
+					params.chunked_body_trackers[fd].advance(buf[0..n])
+					if params.chunked_body_trackers[fd].invalid {
+						eprintln('[veb] error decoding chunked request body: invalid chunked body')
+						fast_send_resp(mut conn, http.new_response(
+							status: .bad_request
+							body:   'Invalid chunked request body'
+							header: http.new_header(
+								key:   .content_type
+								value: 'text/plain'
+							).join(headers_close)
+						)) or {}
+						pv.close_conn(fd)
+						params.request_done(fd)
+						return
+					}
 				}
 			}
-			req.data = decode_chunked_request_body(req.data) or {
-				if err is IncompleteChunkedRequestBodyError {
-					if params.idx[fd] == 0 {
-						params.idx[fd] = -1
-					}
-					params.incomplete_requests[fd] = req
-					$if trace_handle_read ? {
-						eprintln('>>>>> request is NOT complete (chunked), fd: ${fd} | req.data.len: ${req.data.len} | params.idx[fd]: ${params.idx[fd]}')
-					}
-					return
+			if !params.chunked_body_trackers[fd].complete {
+				if params.idx[fd] == 0 {
+					params.idx[fd] = -1
 				}
+				params.incomplete_requests[fd] = req
+				$if trace_handle_read ? {
+					eprintln('>>>>> request is NOT complete (chunked), fd: ${fd} | raw_body_buffer.len: ${params.body_buffers[fd].len} | params.idx[fd]: ${params.idx[fd]}')
+				}
+				return
+			}
+			raw_body := finalize_request_body(mut params, fd)
+			req.data = decode_chunked_request_body(raw_body) or {
 				eprintln('[veb] error decoding chunked request body: ${err}')
 				fast_send_resp(mut conn, http.new_response(
 					status: .bad_request
