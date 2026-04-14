@@ -312,7 +312,7 @@ pub fn (this_os OS) is_target_of(target string) bool {
 	if (this_os == .windows && target == 'nix')
 		|| (this_os != .windows && target == 'windows')
 		|| (this_os != .linux && target == 'linux')
-		|| (this_os != .macos && target in ['darwin', 'macos'])
+		|| (this_os != .macos && target in ['darwin', 'macos', 'mac'])
 		|| (this_os != .ios && target == 'ios')
 		|| (this_os != .freebsd && target == 'freebsd')
 		|| (this_os != .openbsd && target == 'openbsd')

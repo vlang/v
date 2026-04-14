@@ -52,6 +52,16 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn test_mac_is_alias_for_macos() {
+	os_kind := pref.os_from_string('mac') or {
+		assert false, err.msg()
+		return
+	}
+	assert os_kind == .macos
+	assert pref.OS.macos.is_target_of('mac')
+	assert !pref.OS.linux.is_target_of('mac')
+}
+
 fn test_disable_explicit_mutability_flag() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target], false)
