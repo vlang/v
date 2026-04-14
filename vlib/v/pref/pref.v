@@ -1331,7 +1331,7 @@ pub fn cc_from_string(s string) CompilerType {
 		cc.contains('gcc') { .gcc }
 		cc.contains('clang') { .clang }
 		cc.contains('emcc') { .emcc }
-		cc.contains('msvc') { .msvc }
+		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') { .msvc }
 		cc.contains('mingw') { .mingw }
 		cc.contains('++') { .cplusplus }
 		else { .gcc }

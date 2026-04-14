@@ -72,7 +72,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 	table.pointer_size = if pref_.m64 && pref_.backend != .wasm { 8 } else { 4 }
 	mut msvc := MsvcResult{}
-	if pref_.ccompiler == 'msvc' {
+	if pref_.ccompiler_type == .msvc || pref.cc_from_string(pref_.ccompiler) == .msvc {
 		$if windows {
 			msvc = find_msvc(pref_.m64) or {
 				MsvcResult{

@@ -421,7 +421,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			cc_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc' { .tcc }
 			cc_file_name.contains('gcc') || cc_file_name.contains('g++') || ccoptions.guessed_compiler == 'gcc' { .gcc }
 			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
-			cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
+			cc_file_name == 'cl' || cc_file_name == 'cl.exe' || cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' || v.pref.ccompiler_type == .msvc { .msvc }
 			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
 			cc_file_name.contains('emcc') || ccoptions.guessed_compiler == 'emcc' { .emcc }
 			else { .unknown }
@@ -1105,7 +1105,7 @@ pub fn (mut v Builder) cc() {
 		}
 		v.handle_usecache(vexe)
 		$if windows {
-			if ccompiler == 'msvc' {
+			if v.ccoptions.cc == .msvc || v.pref.ccompiler_type == .msvc {
 				v.cc_msvc()
 				return
 			}

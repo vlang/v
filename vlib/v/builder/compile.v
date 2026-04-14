@@ -13,6 +13,15 @@ pub type FnBackend = fn (mut b Builder)
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	check_if_input_file_exists(pref_)
 	check_if_output_folder_is_writable(pref_)
+	$if windows {
+		if pref_.backend == .c {
+			// Resolve the effective Windows C compiler before builder initialization.
+			mut probe := Builder{
+				pref: pref_
+			}
+			probe.find_win_cc() or {}
+		}
+	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
