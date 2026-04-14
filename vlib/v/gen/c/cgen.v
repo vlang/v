@@ -3867,20 +3867,45 @@ fn (g &Gen) can_reuse_sumtype_variant_storage(exp ast.Type, got_is_ptr bool) boo
 	return g.expected_arg_mut || (exp.is_ptr() && (got_is_ptr || g.expected_arg_mut))
 }
 
-fn (g &Gen) interface_expr_needs_heap(expr ast.Expr) bool {
-	match expr {
+fn (g &Gen) ident_unwraps_option_or_result(expr ast.Ident) bool {
+	if expr.obj is ast.Var && assign_expr_unwraps_option_or_result(expr.obj.expr) {
+		return true
+	}
+	if expr.scope != unsafe { nil } {
+		if v := expr.scope.find_var(expr.name) {
+			return assign_expr_unwraps_option_or_result(v.expr)
+		}
+	}
+	return false
+}
+
+fn (g &Gen) expr_root_ident_unwraps_option_or_result(expr ast.Expr) bool {
+	return match expr {
 		ast.Ident {
-			if expr.obj is ast.Var {
-				return !expr.obj.typ.is_ptr() && !expr.is_auto_heap()
-			}
-			return false
+			g.ident_unwraps_option_or_result(expr)
 		}
 		ast.SelectorExpr {
-			root := expr.root_ident() or { return false }
-			if root.obj is ast.Var {
-				return !root.obj.typ.is_ptr() && !root.is_auto_heap()
-			}
-			return false
+			g.expr_root_ident_unwraps_option_or_result(expr.expr)
+		}
+		ast.IndexExpr {
+			g.expr_root_ident_unwraps_option_or_result(expr.left)
+		}
+		ast.ParExpr {
+			g.expr_root_ident_unwraps_option_or_result(expr.expr)
+		}
+		ast.UnsafeExpr {
+			g.expr_root_ident_unwraps_option_or_result(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) interface_expr_needs_heap(expr ast.Expr) bool {
+	match expr {
+		ast.Ident, ast.SelectorExpr, ast.IndexExpr {
+			return !g.expr_has_stable_interface_cast_address(expr)
 		}
 		ast.ParExpr {
 			return g.interface_expr_needs_heap(expr.expr)
@@ -3900,7 +3925,7 @@ fn (mut g Gen) expr_has_stable_interface_cast_address(expr ast.Expr) bool {
 			if expr.kind == .global {
 				return true
 			}
-			return g.resolved_ident_is_auto_heap(expr)
+			return g.resolved_ident_is_auto_heap(expr) && !g.ident_unwraps_option_or_result(expr)
 		}
 		ast.SelectorExpr {
 			if expr.expr_type.is_ptr() {
@@ -3941,6 +3966,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	is_interface_cast := !got_is_fn && fname.contains('_to_Interface_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
+	mut is_stack_rooted_interface_expr := false
 	if exp.is_ptr() {
 		if (expr is ast.UnsafeExpr && expr.expr is ast.Nil) || got == ast.nil_type {
 			g.write('(void*)0')
@@ -3962,7 +3988,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 
 		// Interface casts must not store pointers into stack-rooted lvalues such as
 		// local variables or fields on by-value fn args (`p.email`).
-		is_stack_rooted_interface_expr := is_interface_cast && g.interface_expr_needs_heap(expr)
+		is_stack_rooted_interface_expr = is_interface_cast && g.interface_expr_needs_heap(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
@@ -4000,7 +4026,12 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		g.inside_sumtype_cast = true
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
+		old_inside_assign_fn_var := g.inside_assign_fn_var
+		if is_stack_rooted_interface_expr && g.expr_root_ident_unwraps_option_or_result(expr) {
+			g.inside_assign_fn_var = true
+		}
 		g.expr(expr)
+		g.inside_assign_fn_var = old_inside_assign_fn_var
 		g.left_is_opt = old_left_is_opt
 		g.inside_sumtype_cast = old_inside_sumtype_cast
 	}
