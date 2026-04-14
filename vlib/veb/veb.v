@@ -76,9 +76,12 @@ pub fn run[A, X](mut global_app A, port int) {
 pub struct RunParams {
 pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
-	family                    net.AddrFamily = .ip6
-	host                      string
-	port                      int  = default_port
+	family net.AddrFamily = .ip6
+	host   string
+	port   int = default_port
+	// number of picoev event loops for the default non-SSL backend.
+	// keep `1` to preserve the historical single-loop behavior.
+	nr_workers                int  = 1
 	show_startup_message      bool = true
 	timeout_in_seconds        int  = 30
 	max_request_buffer_size   int  = 8192
