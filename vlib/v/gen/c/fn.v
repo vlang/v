@@ -5989,6 +5989,52 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
+fn (mut g Gen) write_multi_ref_arg(arg ast.CallArg, arg_typ ast.Type, expected_type ast.Type, lang ast.Language) bool {
+	if lang != .v || g.is_json_fn || !expected_type.is_ptr() || expected_type.has_option_or_result()
+		|| expected_type.nr_muls() <= 1 || expected_type.nr_muls() <= arg_typ.nr_muls()
+		|| arg_typ.has_flag(.shared_f) || expected_type.has_flag(.shared_f) {
+		return false
+	}
+	expected_deref_type := expected_type.deref()
+	expected_deref_sym := g.table.sym(expected_deref_type)
+	arg_sym := g.table.sym(arg_typ)
+	if expected_deref_sym.kind in [.interface, .sum_type] || arg_sym.kind == .function
+		|| arg.expr is ast.None {
+		return false
+	}
+	if arg.expr is ast.Ident
+		&& (arg.expr.language == .c || g.table.is_interface_smartcast(arg.expr.obj)) {
+		return false
+	}
+	// Build the first reference level from the original storage when possible,
+	// then materialize deeper levels through compound-literal temporaries.
+	extra_refs := expected_type.nr_muls() - arg_typ.nr_muls()
+	for level := extra_refs - 1; level > 0; level-- {
+		ref_type := arg_typ.set_nr_muls(arg_typ.nr_muls() + level)
+		g.write('ADDR(${g.styp(ref_type)}, ')
+	}
+	old_arg_no_auto_deref := g.arg_no_auto_deref
+	if arg.expr.is_auto_deref_var() {
+		g.arg_no_auto_deref = true
+	}
+	defer {
+		g.arg_no_auto_deref = old_arg_no_auto_deref
+	}
+	is_auto_heap_ident := arg.expr is ast.Ident && g.resolved_ident_is_auto_heap(arg.expr)
+	if is_auto_heap_ident {
+		g.write_raw_receiver_expr(arg.expr)
+	} else if arg.expr.is_lvalue() {
+		g.write('&')
+		g.expr(arg.expr)
+	} else {
+		g.write('ADDR(${g.styp(arg_typ)}, ')
+		g.expr_with_cast(arg.expr, arg_typ, arg_typ)
+		g.write(')')
+	}
+	g.write(')'.repeat(extra_refs - 1))
+	return true
+}
+
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang ast.Language, is_smartcast bool) {
 	g.ref_or_deref_arg_ex(arg, expected_type_, lang, is_smartcast, false)
@@ -6127,6 +6173,9 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	if arg_sym.kind == .interface && exp_sym.kind == .interface && arg_typ != expected_type
 		&& !exp_is_ptr && !arg.is_mut && !expected_type.has_flag(.option) {
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+		return
+	}
+	if g.write_multi_ref_arg(arg, arg_typ, expected_type, lang) {
 		return
 	}
 	is_auto_heap_ident := arg.expr is ast.Ident && g.resolved_ident_is_auto_heap(arg.expr)
