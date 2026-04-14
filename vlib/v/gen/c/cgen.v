@@ -9746,6 +9746,19 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	} else {
 		g.type_default_no_sumtype(first_typ)
 	}
+	sumtype_info := sym.info as ast.SumType
+	if sumtype_info.fields.len > 0 && !g.inside_global_decl && !g.inside_const {
+		// Route local defaults through the cast helper so common-field pointers stay valid.
+		fname := g.get_sumtype_casting_fn(first_typ, typ_)
+		mut first_default := g.type_default(first_typ)
+		if first_default[0] == `{` {
+			first_default = '(${first_styp})${first_default}'
+		}
+		if first_sym.info is ast.FnType {
+			return '${fname}(${first_default})'
+		}
+		return '${fname}(HEAP(${first_styp}, (${first_default})), true)'
+	}
 	if default_str[0] == `{` {
 		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${u32(first_typ)}}'
 	} else {
