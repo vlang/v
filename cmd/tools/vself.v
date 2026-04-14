@@ -37,6 +37,10 @@ fn main() {
 			// Use tcc by default for V, since tinycc is much faster and also
 			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
 			args << '-cc tcc'
+		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
+			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
+			// prefer the system compiler for self-builds there.
+			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		}
 	}
 	if !has_gc_arg(args) {

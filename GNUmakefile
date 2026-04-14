@@ -121,7 +121,19 @@ ifeq ($(TCCARCH),arm)
 BOOTSTRAP_LDFLAGS := $(strip $(BOOTSTRAP_LDFLAGS) -latomic)
 endif
 endif
-BOOTSTRAP_VFLAGS := $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
+BOOTSTRAP_CCOMPILER_VFLAG :=
+ifeq ($(LINUX),1)
+ifneq ($(filter $(TCCARCH),arm64 aarch64),)
+ifeq ($(filter -cc,$(VFLAGS)),)
+ifeq ($(findstring -cc=,$(VFLAGS)),)
+	# Bundled TCC can hang when bootstrapping V on Linux ARM64, so use the
+	# same system compiler as the initial `v1` build unless the user overrode it.
+	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+endif
+endif
+endif
+endif
+BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
