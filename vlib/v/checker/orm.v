@@ -74,7 +74,8 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 
 	for field in non_primitive_fields {
-		if c.table.sym(field.typ).kind == .array && !has_primary {
+		field_sym := c.table.sym(field.typ.clear_flag(.option))
+		if field_sym.kind == .array && !has_primary {
 			c.orm_error('a struct that has a field that holds an array must have a primary key',
 				field.pos)
 		}
@@ -157,7 +158,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			or_block:    ast.OrExpr{}
 		}
 
-		if c.table.sym(field.typ).kind == .array {
+		if field_sym.kind == .array {
 			mut where_expr := subquery_expr.where_expr
 			if mut where_expr is ast.InfixExpr {
 				where_expr.left_type = primary_field.typ
@@ -448,7 +449,7 @@ fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.
 }
 
 fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructField) {
-	field_type := c.table.sym(field.typ)
+	field_type := c.table.sym(field.typ.clear_flag(.option))
 	mut has_fkey_attr := false
 
 	for attr in field.attrs {
@@ -988,10 +989,12 @@ fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
 // is referred to by the provided field.  For example, the `[]Child` field
 // refers to the foreign table `Child`.
 fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.Type {
-	if c.table.sym(table_field.typ).kind == .struct {
-		return table_field.typ
-	} else if c.table.sym(table_field.typ).kind == .array {
-		return c.table.sym(table_field.typ).array_info().elem_type
+	field_type := table_field.typ.clear_flag(.option)
+	field_sym := c.table.sym(field_type)
+	if field_sym.kind == .struct {
+		return field_type
+	} else if field_sym.kind == .array {
+		return field_sym.array_info().elem_type
 	} else {
 		return ast.no_type
 	}
@@ -1003,10 +1006,11 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 	mut res := []ast.StructField{}
 	for field in fields {
 		type_with_no_option_flag := field.typ.clear_flag(.option)
-		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct
-		is_array := c.table.sym(type_with_no_option_flag).kind == .array
+		field_sym := c.table.sym(type_with_no_option_flag)
+		is_struct := field_sym.kind == .struct
+		is_array := field_sym.kind == .array
 		is_array_with_struct_elements := is_array
-			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct
+			&& c.table.sym(field_sym.array_info().elem_type).kind == .struct
 		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
 
 		if (is_struct || is_array_with_struct_elements) && !is_time {
