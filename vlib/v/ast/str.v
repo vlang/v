@@ -714,7 +714,12 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			sname := global_table.sym(x.typ).name
+			idx := x.typ.idx()
+			sname := if idx > 0 && idx < global_table.type_symbols.len {
+				global_table.type_symbols[idx].name
+			} else {
+				'unknown'
+			}
 			return '${sname}{....}'
 		}
 		ArrayDecompose {

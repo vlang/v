@@ -13,12 +13,12 @@ $if tinyc && (freebsd || openbsd) {
 		openssl.SSLConn
 	}
 
+	@[params]
 	pub struct SSLConnectConfig {
 		openssl.SSLConnectConfig
 	}
 
 	// new_ssl_conn returns a new SSLConn with the given config.
-	@[params]
 	pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		c := openssl.new_ssl_conn(config.SSLConnectConfig) or { return err }
 		return &SSLConn{c}
@@ -28,12 +28,12 @@ $if tinyc && (freebsd || openbsd) {
 		mbedtls.SSLConn
 	}
 
+	@[params]
 	pub struct SSLConnectConfig {
 		mbedtls.SSLConnectConfig
 	}
 
 	// new_ssl_conn returns a new SSLConn with the given config.
-	@[params]
 	pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		c := mbedtls.new_ssl_conn(config.SSLConnectConfig) or { return err }
 		return &SSLConn{c}

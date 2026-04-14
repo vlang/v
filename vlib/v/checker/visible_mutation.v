@@ -101,9 +101,7 @@ fn (mut c Checker) expr_has_visible_mutation(expr ast.Expr, root_name string, ro
 			}
 		}
 		ast.PostfixExpr {
-			if is_visible_root_mutation(c.expr_mutation_visibility(expr.expr, root_name,
-				root_type))
-			{
+			if is_visible_root_mutation(c.expr_mutation_visibility(expr.expr, root_name, root_type)) {
 				return true
 			}
 		}

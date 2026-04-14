@@ -34,6 +34,11 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool, pos token.Pos) {
 		g.error('Gen.write_defer_stmts() has received a scope that is nil', pos)
 	}
 
+	prev_inside_defer_generation := g.inside_defer_generation
+	g.inside_defer_generation = true
+	defer {
+		g.inside_defer_generation = prev_inside_defer_generation
+	}
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]

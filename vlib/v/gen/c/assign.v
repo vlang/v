@@ -138,6 +138,9 @@ fn (mut g Gen) decl_assign_struct_init_needs_tmp(expr ast.Expr) bool {
 	if sym.info !is ast.Struct {
 		return false
 	}
+	if g.styp(node.typ) in skip_struct_init {
+		return false
+	}
 	info := sym.info as ast.Struct
 	if node.no_keys {
 		return node.init_fields.len < info.fields.len

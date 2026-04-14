@@ -54,8 +54,7 @@ fn test_cross_compile_keeps_explicit_cc() {
 
 fn test_disable_explicit_mutability_flag() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target],
-		false)
+	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target], false)
 	assert prefs.disable_explicit_mutability
 	assert prefs.build_options.contains('-disable-explicit-mutability')
 
@@ -224,8 +223,8 @@ fn test_missing_explicit_ccompiler_reports_error() {
 		os.execute('${os.quoted_path(@VEXE)} -cc ${missing_cc} -o ${os.quoted_path(output)} ${os.quoted_path(target)}')
 	assert res.exit_code != 0
 	assert res.output.contains(missing_cc), res.output
-	assert res.output.to_lower().contains('not found') || res.output.to_lower().contains('missing'),
-		res.output
+	assert res.output.to_lower().contains('not found') || res.output.to_lower().contains('missing'), res.output
+
 	assert !os.exists(expected_output)
 }
 

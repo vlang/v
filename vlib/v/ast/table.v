@@ -951,8 +951,8 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
-	if idx == 65535 || typ == invalid_type {
-		// invalid_type is used as a sentinel during generic type resolution;
+	if idx == 0 || idx == 65535 || typ == invalid_type {
+		// invalid_type and idx=0 are used as sentinels during generic type resolution;
 		// return a safe placeholder instead of panicking.
 		return invalid_type_symbol
 	}
@@ -972,6 +972,9 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 			idx = cur_sym.info.parent_type.idx()
 		}
 		return t.type_symbols[idx]
+	}
+	if idx == 0 {
+		return invalid_type_symbol
 	}
 	// this should never happen
 	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
@@ -1036,8 +1039,7 @@ pub fn (t &Table) fully_unaliased_type(typ Type) Type {
 		sym := t.sym(unaliased)
 		if sym.info is Alias {
 			parent_typ := sym.info.parent_type
-			unaliased = Type(u32(parent_typ.set_nr_muls(parent_typ.nr_muls() +
-				unaliased.nr_muls())) | extra_flags)
+			unaliased = Type(u32(parent_typ.set_nr_muls(parent_typ.nr_muls() + unaliased.nr_muls())) | extra_flags)
 			extra_flags |= u32(unaliased) & 0xff00_0000
 			continue
 		}
@@ -3201,6 +3203,10 @@ fn (t &Table) find_fn_in_mod(name string, mod string) ?Fn {
 
 pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 	mut names := []string{}
+	idx := generic_type.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return names
+	}
 	mut sym := t.sym(generic_type)
 	if sym.name.len == 1 && sym.name[0].is_capital() {
 		names << sym.name
@@ -3358,10 +3364,10 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 						generic_names, concrete_types)
 				}
 			}
-			unwrapped_return_sym := t.sym(unwrapped_fn.return_type)
 			if unwrapped_fn.return_type.has_flag(.generic)
 				|| t.generic_type_names(unwrapped_fn.return_type).len > 0
-				|| (unwrapped_return_sym.kind == .generic_inst&& (unwrapped_return_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
+				|| (unwrapped_fn.return_type.idx() > 0 && unwrapped_fn.return_type.idx() < t.type_symbols.len
+				&& t.sym(unwrapped_fn.return_type).kind == .generic_inst&& (t.sym(unwrapped_fn.return_type).info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
 				unwrapped_fn.return_type = t.unwrap_generic_type_ex_with_depth(unwrapped_fn.return_type,
 					generic_names, concrete_types, recheck_concrete_types, depth_guard)
 				has_generic = true

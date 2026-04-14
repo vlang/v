@@ -192,6 +192,7 @@ mut:
 	defer_stmts                        []ast.DeferStmt
 	defer_ifdef                        string
 	defer_profile_code                 string
+	inside_defer_generation            bool
 	defer_vars                         []string
 	closure_structs                    []string
 	str_types                          []StrType       // types that need automatic str() generation

@@ -167,9 +167,9 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
 		return
 	}
-	if g.pref.is_test && g.cur_fn != unsafe { nil } && g.cur_fn.scope != unsafe { nil } {
-		g.write_defer_stmts_when_needed(g.innermost_active_defer_scope(node.pos), true,
-			node.pos)
+	if g.pref.is_test && !g.inside_defer_generation && g.cur_fn != unsafe { nil }
+		&& g.cur_fn.scope != unsafe { nil } {
+		g.write_defer_stmts_when_needed(g.innermost_active_defer_scope(node.pos), true, node.pos)
 	}
 	if g.pref.assert_failure_mode == .aborts || g.fn_decl.attrs.any(it.name == 'assert_aborts') {
 		g.writeln('\tabort();')

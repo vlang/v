@@ -12,6 +12,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
+	p.attrs = []
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
 	mut is_shared := p.tok.kind == .key_shared

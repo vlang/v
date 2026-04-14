@@ -584,6 +584,10 @@ pub fn (t Type) str() string {
 }
 
 pub fn (t &Table) type_str(typ Type) string {
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
+	}
 	return t.sym(typ).name
 }
 
@@ -1608,6 +1612,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		if cached_res := mt.cached_type_to_str[cache_key] {
 			return cached_res
 		}
+	}
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
 	}
 	sym := t.sym(typ)
 	mut res := sym.name

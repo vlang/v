@@ -44,10 +44,12 @@ fn write_issue_24649_project() {
 		'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'my_math', 'floating.v'),
 		['module my_math', '', 'pub fn addition(x f64, y f64) f64 {', '\treturn x +
-		y', '}'].join('\n') + '\n') or { panic(err) }
+		y', '}'].join('\n') +
+		'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'my_math', 'my_integer', 'integer.v'),
 		['module my_integer', '', 'pub fn addition(x f64, y f64) int {', '\treturn int(x +
-		y)', '}'].join('\n') + '\n') or { panic(err) }
+		y)', '}'].join('\n') +
+		'\n') or { panic(err) }
 }
 
 fn compile_local_module_submodules(target string, out_name string) os.Result {

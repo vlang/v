@@ -70,8 +70,12 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
 		g.write_labeled_continue_gate(node.label, '')
+		if node.label.len > 0 {
+			g.writeln('{')
+		}
 		g.stmts(node.stmts)
 		if node.label.len > 0 {
+			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
 		}
 		g.writeln('}')
@@ -127,8 +131,12 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
 		g.write_labeled_continue_gate(node.label, '')
+		if node.label.len > 0 {
+			g.writeln('{')
+		}
 		g.stmts(node.stmts)
 		if node.label.len > 0 {
+			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
 		}
 		g.write_defer_stmts(node.scope, false, node.pos)
@@ -157,8 +165,12 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	}
 	g.is_vlines_enabled = true
 	g.write_labeled_continue_gate(node.label, '\t')
+	if node.label.len > 0 {
+		g.writeln('\t{')
+	}
 	g.stmts(node.stmts)
 	if node.label.len > 0 {
+		g.writeln('\t}')
 		g.writeln('\t${node.label}__continue: {}')
 	}
 	g.write_defer_stmts(node.scope, false, node.pos)
@@ -806,8 +818,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)
 	}
 	g.write_labeled_continue_gate(node.label, '\t')
+	if node.label.len > 0 {
+		g.writeln('\t{')
+	}
 	g.stmts(node.stmts)
 	if node.label.len > 0 {
+		g.writeln('\t}')
 		g.writeln('\t${node.label}__continue: {}')
 	}
 

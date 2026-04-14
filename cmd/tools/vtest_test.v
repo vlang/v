@@ -94,7 +94,8 @@ fn test_partial_failure() {
 }
 
 fn test_wimpure_v_warnings_are_shown_for_test_files() {
-	res := os.execute_or_exit('${os.quoted_path(mytest_exe)} -Wimpure-v test ${os.quoted_path(tpath_impure)}')
+	res :=
+		os.execute_or_exit('${os.quoted_path(mytest_exe)} -Wimpure-v test ${os.quoted_path(tpath_impure)}')
 	assert res.output.contains('warning_test.v'), res.output
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }

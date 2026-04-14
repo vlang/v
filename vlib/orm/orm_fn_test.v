@@ -429,8 +429,7 @@ fn test_orm_table_gen() {
 			},
 		]
 	}
-	table_unique_query := orm.orm_table_gen(.default, table_with_unique, "'", true, 0,
-		[
+	table_unique_query := orm.orm_table_gen(.default, table_with_unique, "'", true, 0, [
 		orm.TableField{
 			name:        'id'
 			typ:         typeof[int]().idx

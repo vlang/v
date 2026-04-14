@@ -191,8 +191,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		)
 		match_exhaustive_cutoff_limit:      pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash:              v_current_commit_hash
-		checker_transformer:                transformer.new_transformer_with_table(table,
-			pref_)
+		checker_transformer:                transformer.new_transformer_with_table(table, pref_)
 		visible_param_mutation_cache:       map[string]bool{}
 		visible_param_mutation_in_progress: map[string]bool{}
 	}
@@ -1445,8 +1444,7 @@ fn (mut c Checker) return_expr_immutable_alias_source(expr ast.Expr, func ast.Fn
 				}
 			}
 			if expr.obj is ast.Var && (allow_non_ptr || expr.obj.typ.is_ptr()) {
-				return c.return_expr_immutable_alias_source(expr.obj.expr, func, call,
-					false)
+				return c.return_expr_immutable_alias_source(expr.obj.expr, func, call, false)
 			}
 			return ast.empty_expr
 		}
@@ -1544,8 +1542,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 					c.note('`${source.name}` is immutable, cannot have a mutable reference to an immutable object',
 						source.pos)
 				} else {
-					c.note('call result aliases mutable data from an immutable value',
-						right.pos)
+					c.note('call result aliases mutable data from an immutable value', right.pos)
 				}
 				return false
 			}

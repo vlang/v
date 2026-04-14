@@ -127,8 +127,8 @@ fn listen(config Config) !int {
 	net.socket_error_message(C.listen(fd, C.SOMAXCONN),
 		'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 	setup_sock(fd) or {
-		config.err_cb(config.user_data, pico_http_parser.Request{}, mut &pico_http_parser.Response{},
-			err)
+		config.err_cb(config.user_data, pico_http_parser.Request{}, mut
+			&pico_http_parser.Response{}, err)
 	}
 	return fd
 }

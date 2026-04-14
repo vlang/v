@@ -1733,7 +1733,8 @@ struct VSafeArithmeticOp {
 }
 
 fn (mut g Gen) normalized_power_result_type(result_type ast.Type, left_type ast.Type, right_type ast.Type) ast.Type {
-	mut typ := g.unwrap_generic(g.recheck_concrete_type(result_type)).clear_flag(.shared_f).clear_flag(.atomic_f)
+	mut typ :=
+		g.unwrap_generic(g.recheck_concrete_type(result_type)).clear_flag(.shared_f).clear_flag(.atomic_f)
 	if typ == 0 || typ == ast.void_type {
 		typ = g.unwrap_generic(g.type_resolver.promote_type(g.unwrap_generic(left_type),
 			g.unwrap_generic(right_type))).clear_flag(.shared_f).clear_flag(.atomic_f)

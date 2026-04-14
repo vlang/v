@@ -141,7 +141,7 @@ fn decode_struct[T](doc Any, mut typ T) {
 	}
 }
 
-fn decode_array[T](current []T, values []Any) []T {
+fn decode_array[T](current []T, values []toml.Any) []T {
 	$if T is string {
 		return values.map(it.string())
 	} $else $if T is bool {

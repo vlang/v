@@ -17,7 +17,7 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 		if pref_.backend == .c {
 			// Resolve the effective Windows C compiler before builder initialization.
 			mut probe := Builder{
-				pref: pref_
+				pref: unsafe { pref_ }
 			}
 			probe.find_win_cc() or {}
 		}

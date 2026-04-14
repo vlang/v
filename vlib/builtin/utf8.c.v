@@ -7,6 +7,7 @@ const cp_utf8 = 65001
 
 @[params]
 pub struct ToWideConfig {
+pub:
 	from_ansi bool
 }
 

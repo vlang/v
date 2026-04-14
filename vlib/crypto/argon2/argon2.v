@@ -96,20 +96,17 @@ pub fn default_params() Params {
 
 // key derives a key from `password` and `salt` using Argon2i.
 pub fn key(password []u8, salt []u8, time u32, memory u32, threads u8, key_len u32) ![]u8 {
-	return derive_key(argon2_i, password, salt, []u8{}, []u8{}, time, memory, threads,
-		key_len)
+	return derive_key(argon2_i, password, salt, []u8{}, []u8{}, time, memory, threads, key_len)
 }
 
 // d_key derives a key from `password` and `salt` using Argon2d.
 pub fn d_key(password []u8, salt []u8, time u32, memory u32, threads u8, key_len u32) ![]u8 {
-	return derive_key(argon2_d, password, salt, []u8{}, []u8{}, time, memory, threads,
-		key_len)
+	return derive_key(argon2_d, password, salt, []u8{}, []u8{}, time, memory, threads, key_len)
 }
 
 // id_key derives a key from `password` and `salt` using Argon2id.
 pub fn id_key(password []u8, salt []u8, time u32, memory u32, threads u8, key_len u32) ![]u8 {
-	return derive_key(argon2_id, password, salt, []u8{}, []u8{}, time, memory, threads,
-		key_len)
+	return derive_key(argon2_id, password, salt, []u8{}, []u8{}, time, memory, threads, key_len)
 }
 
 // generate_from_password hashes `password` with default Argon2id parameters
@@ -128,9 +125,10 @@ pub fn generate_from_password_with_params(password []u8, params Params) !string 
 		}
 	}
 	salt := rand.bytes(normalized.salt_len)!
-	hash := derive_key(argon2_id, password, salt, []u8{}, []u8{}, normalized.time, normalized.memory,
-		normalized.threads, normalized.key_len)!
-	return encode_hash(argon2_id, salt, hash, normalized.time, normalized.memory, normalized.threads)
+	hash := derive_key(argon2_id, password, salt, []u8{}, []u8{}, normalized.time,
+		normalized.memory, normalized.threads, normalized.key_len)!
+	return encode_hash(argon2_id, salt, hash, normalized.time, normalized.memory,
+		normalized.threads)
 }
 
 // compare_hash_and_password verifies a PHC-formatted Argon2 hash against `password`.
@@ -170,8 +168,8 @@ fn derive_key(mode int, password []u8, salt []u8, secret []u8, data []u8, time u
 	}
 	threads_u32 := u32(threads)
 	effective_memory := normalize_memory(memory, threads_u32)
-	h0 := init_hash(password, salt, secret, data, time, effective_memory, threads_u32,
-		key_len, mode)!
+	h0 :=
+		init_hash(password, salt, secret, data, time, effective_memory, threads_u32, key_len, mode)!
 	mut blocks := init_blocks(h0, effective_memory, threads_u32)!
 	process_blocks(mut blocks, time, effective_memory, threads_u32, mode)
 	return extract_key(mut blocks, effective_memory, threads_u32, key_len)
@@ -295,8 +293,7 @@ fn process_segment(mut blocks []u64, pass u32, slice u32, lane u32, time u32, me
 		} else {
 			random = blocks[block_offset(prev)]
 		}
-		new_offset := index_alpha(random, lanes, segments, threads, pass, slice, lane,
-			index)
+		new_offset := index_alpha(random, lanes, segments, threads, pass, slice, lane, index)
 		process_block_xor_in_place(mut blocks, offset, prev, new_offset)
 		index++
 		offset++
@@ -368,13 +365,14 @@ fn process_block_generic(mut out [block_length]u64, in1 [block_length]u64, in2 [
 		t[i] = in1[i] ^ in2[i]
 	}
 	for i := 0; i < block_length; i += 16 {
-		blamka_generic(mut t, i + 0, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7,
-			i + 8, i + 9, i + 10, i + 11, i + 12, i + 13, i + 14, i + 15)
+		blamka_generic(mut t, i + 0, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7, i + 8, i + 9,
+
+			i + 10, i + 11, i + 12, i + 13, i + 14, i + 15)
 	}
 	for i := 0; i < block_length / 8; i += 2 {
-		blamka_generic(mut t, i, i + 1, 16 + i, 16 + i + 1, 32 + i, 32 + i + 1, 48 + i,
-			48 + i + 1, 64 + i, 64 + i + 1, 80 + i, 80 + i + 1, 96 + i, 96 + i + 1, 112 + i,
-			112 + i + 1)
+		blamka_generic(mut t, i, i + 1, 16 + i, 16 + i + 1, 32 + i, 32 + i + 1, 48 + i, 48 + i + 1,
+
+			64 + i, 64 + i + 1, 80 + i, 80 + i + 1, 96 + i, 96 + i + 1, 112 + i, 112 + i + 1)
 	}
 	for i := 0; i < block_length; i++ {
 		if xor {
@@ -394,13 +392,14 @@ fn process_block_xor_in_place(mut blocks []u64, out_index u32, in1_index u32, in
 		t[i] = blocks[in1_base + i] ^ blocks[in2_base + i]
 	}
 	for i := 0; i < block_length; i += 16 {
-		blamka_generic(mut t, i + 0, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7,
-			i + 8, i + 9, i + 10, i + 11, i + 12, i + 13, i + 14, i + 15)
+		blamka_generic(mut t, i + 0, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7, i + 8, i + 9,
+
+			i + 10, i + 11, i + 12, i + 13, i + 14, i + 15)
 	}
 	for i := 0; i < block_length / 8; i += 2 {
-		blamka_generic(mut t, i, i + 1, 16 + i, 16 + i + 1, 32 + i, 32 + i + 1, 48 + i,
-			48 + i + 1, 64 + i, 64 + i + 1, 80 + i, 80 + i + 1, 96 + i, 96 + i + 1, 112 + i,
-			112 + i + 1)
+		blamka_generic(mut t, i, i + 1, 16 + i, 16 + i + 1, 32 + i, 32 + i + 1, 48 + i, 48 + i + 1,
+
+			64 + i, 64 + i + 1, 80 + i, 80 + i + 1, 96 + i, 96 + i + 1, 112 + i, 112 + i + 1)
 	}
 	for i := 0; i < block_length; i++ {
 		blocks[out_base + i] ^= blocks[in1_base + i] ^ blocks[in2_base + i] ^ t[i]

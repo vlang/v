@@ -195,8 +195,8 @@ fn accept_callback(listen_fd int, _events int, cb_arg voidptr) {
 	trace_fd('accept ${accepted_fd}')
 	setup_sock(accepted_fd) or {
 		elog('setup_sock failed, fd: ${accepted_fd}, listen_fd: ${listen_fd}, err: ${err.code()}')
-		pv.error_callback(pv.user_data, pico_http_parser.Request{}, mut &pico_http_parser.Response{},
-			err)
+		pv.error_callback(pv.user_data, pico_http_parser.Request{}, mut
+			&pico_http_parser.Response{}, err)
 		close_socket(accepted_fd) // Close fd on failure
 		return
 	}

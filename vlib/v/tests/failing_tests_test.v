@@ -1,6 +1,7 @@
 import os
 
-const assert_failed_defer_cleanup_path = os.join_path(os.vtmp_dir(), 'v_assert_failed_defer_cleanup_test.txt')
+const assert_failed_defer_cleanup_path = os.join_path(os.vtmp_dir(),
+	'v_assert_failed_defer_cleanup_test.txt')
 
 fn vroot_path(relpath string) string {
 	return os.real_path(os.join_path(@VMODROOT, relpath))

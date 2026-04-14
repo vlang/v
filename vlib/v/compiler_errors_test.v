@@ -181,8 +181,8 @@ fn test_all() {
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
-	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out',
-		disable_explicit_mutability_tests, false)
+	tasks.add('', checker_dir, '-disable-explicit-mutability run',
+		'.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)

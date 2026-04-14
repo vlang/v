@@ -4,7 +4,8 @@ const vexe = @VEXE
 
 const vroot = os.real_path(@VMODROOT)
 
-const labelled_continue_scope_testdata = os.join_path(vroot, 'vlib/v/gen/c/testdata/labelled_continue_scope.vv')
+const labelled_continue_scope_testdata = os.join_path(vroot,
+	'vlib/v/gen/c/testdata/labelled_continue_scope.vv')
 
 struct LabelledContinueCase {
 	label    string

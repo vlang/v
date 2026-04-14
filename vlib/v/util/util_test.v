@@ -21,8 +21,7 @@ fn test_fallback_tool_executable_path_uses_vtmp_for_missing_single_file_tool() {
 	os.write_file(tool_source, 'fn main() {}') or { panic(err) }
 	tool_exe := os.join_path(tmp_dir, 'vdoctor')
 
-	fallback := fallback_tool_executable_path('/opt/vlang', 'vdoctor', tool_source, tool_exe,
-		true)
+	fallback := fallback_tool_executable_path('/opt/vlang', 'vdoctor', tool_source, tool_exe, true)
 
 	assert fallback != tool_exe
 	assert fallback.starts_with(os.join_path(os.vtmp_dir(), 'tools'))
@@ -39,8 +38,7 @@ fn test_fallback_tool_executable_path_keeps_directory_tools_in_place() {
 	os.mkdir_all(tool_source) or { panic(err) }
 	tool_exe := os.join_path(tool_source, 'vdoc')
 
-	fallback := fallback_tool_executable_path('/opt/vlang', 'vdoc', tool_source, tool_exe,
-		true)
+	fallback := fallback_tool_executable_path('/opt/vlang', 'vdoc', tool_source, tool_exe, true)
 
 	assert fallback == tool_exe
 }
