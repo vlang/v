@@ -203,10 +203,24 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin, .compile_end] {
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin] {
 			// The following events, are sent before the test framework has determined,
 			// what the full completion status is. They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
+			continue
+		}
+		if rmessage.kind == .compile_end {
+			if rmessage.message.trim_space().len == 0 {
+				continue
+			}
+			if ts.progress_mode {
+				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, '')
+			}
+			if rmessage.message.ends_with('\n') {
+				eprint(rmessage.message)
+			} else {
+				eprintln(rmessage.message)
+			}
 			continue
 		}
 		if rmessage.kind == .sentinel {

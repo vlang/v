@@ -5,6 +5,7 @@ const vexe = @VEXE
 const vroot = os.dir(vexe)
 const tpath = os.join_path(os.vtmp_dir(), 'vtest_folder')
 const tpath_passing = os.join_path(tpath, 'passing')
+const tpath_impure = os.join_path(tpath, 'impure')
 const tpath_partial = os.join_path(tpath, 'partial')
 const mytest_exe = os.join_path(tpath, 'mytest.exe')
 
@@ -27,6 +28,10 @@ fn test_def() { assert 2 * 2 == 4 }
 -- passing/2_test.v --
 fn test_xyz() { assert 1 == 2 - 1 }
 fn test_abc() { assert 10 == 2 * 5 }
+-- impure/warning_test.v --
+fn test_warning() {
+	C.printf(c"")
+}
 -- partial/passing_test.v --
 fn test_xyz() { assert 3 == 10 - 7 }
 fn test_def() { assert 10 == 100 / 10 }
@@ -35,6 +40,7 @@ fn test_xyz() { assert 5 == 7, "oh no" }
 ').unpack_to(tpath)!
 	assert os.exists(os.join_path(tpath, 'passing/1_test.v'))
 	assert os.exists(os.join_path(tpath, 'passing/2_test.v'))
+	assert os.exists(os.join_path(tpath, 'impure/warning_test.v'))
 	assert os.exists(os.join_path(tpath, 'partial/passing_test.v'))
 	assert os.exists(os.join_path(tpath, 'partial/failing_test.v'))
 }
@@ -85,6 +91,12 @@ fn test_partial_failure() {
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output
+}
+
+fn test_wimpure_v_warnings_are_shown_for_test_files() {
+	res := os.execute_or_exit('${os.quoted_path(mytest_exe)} -Wimpure-v test ${os.quoted_path(tpath_impure)}')
+	assert res.output.contains('warning_test.v'), res.output
+	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
 fn test_with_stats_and_partial_failure() {
