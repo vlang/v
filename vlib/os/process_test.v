@@ -139,6 +139,37 @@ fn test_set_environment() {
 	assert output.contains('V_OS_TEST_PORT=1234567890'), output
 }
 
+fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	spaced_dir := os.join_path(tfolder, 'spawn path with spaces')
+	os.rmdir_all(spaced_dir) or {}
+	os.mkdir_all(spaced_dir)!
+	spaced_exe := os.join_path(spaced_dir, 'test os process.exe')
+	os.cp(test_os_process, spaced_exe)!
+
+	stale_source := os.join_path(tfolder, 'spawn.v')
+	stale_exe := os.join_path(tfolder, 'spawn.exe')
+	os.write_file(stale_source, 'fn main() {\n\tprintln("stale-prefix-exe")\n}\n')!
+	assert os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stale_exe)} ${os.quoted_path(stale_source)}') == 0
+
+	mut p := os.new_process(spaced_exe)
+	p.set_args(['-show_env', '-target', 'stdout'])
+	p.set_environment({
+		'V_OS_TEST_PORT': 'exact_path'
+	})
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	output := p.stdout_slurp().trim_space()
+	errors := p.stderr_slurp().trim_space()
+	p.close()
+	assert output.contains('V_OS_TEST_PORT=exact_path'), 'stdout:\n${output}\nstderr:\n${errors}'
+	assert !output.contains('stale-prefix-exe'), output
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
