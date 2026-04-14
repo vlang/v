@@ -98,6 +98,30 @@ fn test_cc_from_string_detects_cl_as_msvc() {
 	assert pref.cc_from_string('C:/Program Files/Microsoft Visual Studio/cl.exe') == .msvc
 }
 
+fn test_ccompiler_type_from_version_output_detects_openbsd_clang() {
+	detected := ccompiler_type_from_version_output('OpenBSD clang version 16.0.6') or { panic(err) }
+	assert detected == .clang
+}
+
+fn test_ccompiler_type_from_version_output_detects_tcc() {
+	detected := ccompiler_type_from_version_output('tcc version 0.9.27 (x86_64 Linux)') or {
+		panic(err)
+	}
+	assert detected == .tinyc
+}
+
+fn test_resolve_ccompiler_type_detects_cc_alias_path_as_clang() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_cc_alias_${os.getpid()}')
+	alias_cc := prepare_test_ccompiler_alias(test_root, 'cc', 'OpenBSD clang version 16.0.6')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	assert resolve_ccompiler_type(alias_cc, pref.cc_from_string(alias_cc)) == .clang
+}
+
 fn test_setup_ccompiler_options_detects_cl_path_as_msvc() {
 	mut full_args := ['']
 	full_args << hello_world_example()
@@ -144,6 +168,27 @@ fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 		hello_world_example(),
 	])
 	assert linker_args.contains('-rdynamic')
+}
+
+fn test_setup_ccompiler_options_detects_cc_alias_path_as_clang() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_cc_setup_${os.getpid()}')
+	alias_cc := prepare_test_ccompiler_alias(test_root, 'cc', 'OpenBSD clang version 16.0.6')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	mut full_args := ['']
+	full_args << hello_world_example()
+	mut prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+	prefs.ccompiler = alias_cc
+	prefs.ccompiler_type = pref.cc_from_string(prefs.ccompiler)
+	mut builder := new_builder(prefs)
+	builder.out_name_c = os.join_path(os.vtmp_dir(), 'builder_cc_test.tmp.c')
+	builder.setup_ccompiler_options(prefs.ccompiler)
+	assert builder.pref.ccompiler_type == .clang
+	assert builder.ccoptions.cc == .clang
 }
 
 fn macos_compile_args(args []string) string {
@@ -250,4 +295,21 @@ fn test_c_error_missing_library_name_with_gnu_ld_output() {
 fn test_c_error_missing_library_name_with_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert c_error_missing_library_name(c_output) == ''
+}
+
+fn prepare_test_ccompiler_alias(test_root string, compiler_name string, version_output string) string {
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root) or { panic(err) }
+	compiler_path := os.join_path(test_root, compiler_name)
+	os.write_file(compiler_path, '#!/bin/sh
+if [ "\$1" = "--version" ] || [ "\$1" = "-v" ]; then
+	echo "${version_output}"
+	exit 0
+fi
+exit 1
+') or {
+		panic(err)
+	}
+	os.chmod(compiler_path, 0o700) or { panic(err) }
+	return compiler_path
 }

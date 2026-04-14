@@ -22,6 +22,8 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 			probe.find_win_cc() or {}
 		}
 	}
+	mut pref_ref := unsafe { pref_ }
+	pref_ref.ccompiler_type = resolve_ccompiler_type(pref_ref.ccompiler, pref_ref.ccompiler_type)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
