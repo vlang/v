@@ -1427,6 +1427,30 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else {
 				''
 			}
+			if mut left is ast.IndexExpr && left.is_index_operator {
+				g.write(cur_line)
+				if node.op == .assign {
+					g.index_operator_call(left.left, left.left_type, left.index, left.index_type,
+						'[]=', val, val_type)
+				} else {
+					infix_op := token.assign_op_to_infix_op(node.op)
+					op_expr := ast.InfixExpr{
+						left:          ast.Expr(left)
+						right:         val
+						op:            infix_op
+						pos:           node.pos
+						left_type:     left.typ
+						right_type:    val_type
+						promoted_type: g.type_resolver.promote_type(left.typ, val_type)
+					}
+					g.index_operator_call(left.left, left.left_type, left.index, left.index_type,
+						'[]=', ast.Expr(op_expr), left.typ)
+				}
+				if !g.inside_for_c_stmt {
+					g.writeln(';')
+				}
+				continue
+			}
 			mut str_add := false
 			mut op_overloaded := false
 			mut op_expected_left := ast.no_type
@@ -2330,6 +2354,13 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				}
 			}
 			ast.IndexExpr {
+				if left.is_index_operator {
+					styp := g.styp(node.left_types[i])
+					g.write('${styp} _var_${left.pos.pos} = ')
+					g.expr(ast.Expr(left))
+					g.writeln(';')
+					continue
+				}
 				mut container_type := left.left_type
 				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 					resolved_container_type := g.resolved_expr_type(left.left, left.left_type)

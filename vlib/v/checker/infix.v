@@ -666,6 +666,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
+				exact_left_sym := c.table.sym(unwrapped_left_type)
+				exact_right_sym := c.table.sym(unwrapped_right_type)
+				has_operator_overload := exact_left_sym.has_method_with_generic_parent(op_str)
+					|| left_final_sym.has_method_with_generic_parent(op_str)
+					|| exact_right_sym.has_method_with_generic_parent(op_str)
+					|| right_final_sym.has_method_with_generic_parent(op_str)
+				if has_operator_overload && exact_left_sym.kind in [.alias, .struct]
+					&& exact_right_sym.kind in [.alias, .struct]
+					&& !c.check_same_type_ignoring_pointers(unwrapped_left_type, unwrapped_right_type) {
+					c.error('infix expr: cannot use `${exact_right_sym.name}` (right expression) as `${exact_left_sym.name}`',
+						left_right_pos)
+				}
 				return_sym := c.table.sym(return_type)
 				if return_sym.info !is ast.Alias {
 					return_type = promoted_type

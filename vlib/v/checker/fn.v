@@ -770,6 +770,57 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
+		if node.language == .v && node.is_method && node.name == '[]' {
+			if node.params.len != 2 {
+				c.error('index operator methods should have exactly 1 argument', node.pos)
+			} else {
+				receiver_type := node.receiver.typ
+				receiver_sym := c.table.sym(receiver_type)
+				index_sym := c.table.sym(node.params[1].typ)
+				if index_sym.kind == .placeholder {
+					c.error('unknown type `${index_sym.name}`', node.params[1].type_pos)
+				}
+				if receiver_sym.kind !in [.struct, .alias] {
+					c.error('index operator methods are only allowed for struct and type alias',
+						node.pos)
+				} else if node.rec_mut {
+					c.error('receiver cannot be `mut` for `[]`, use `[]=` for writable indexing',
+						node.receiver_pos)
+				} else if node.params[1].is_mut {
+					c.error('argument cannot be `mut` for operator overloading', node.pos)
+				} else if node.return_type == ast.void_type {
+					c.error('index operator methods should return a value', node.return_type_pos)
+				}
+			}
+		}
+		if node.language == .v && node.is_method && node.name == '[]=' {
+			if node.params.len != 3 {
+				c.error('index assignment operator methods should have exactly 2 arguments',
+					node.pos)
+			} else {
+				receiver_sym := c.table.sym(node.receiver.typ)
+				index_sym := c.table.sym(node.params[1].typ)
+				value_sym := c.table.sym(node.params[2].typ)
+				if index_sym.kind == .placeholder {
+					c.error('unknown type `${index_sym.name}`', node.params[1].type_pos)
+				}
+				if value_sym.kind == .placeholder {
+					c.error('unknown type `${value_sym.name}`', node.params[2].type_pos)
+				}
+				if receiver_sym.kind !in [.struct, .alias] {
+					c.error('index assignment operator methods are only allowed for struct and type alias',
+						node.pos)
+				} else if !node.rec_mut {
+					c.error('receiver must be `mut` for `[]=` operator overloading',
+						node.receiver_pos)
+				} else if node.params[1].is_mut || node.params[2].is_mut {
+					c.error('arguments cannot be `mut` for operator overloading', node.pos)
+				} else if node.return_type != ast.void_type {
+					c.error('index assignment operator methods cannot return a value',
+						node.return_type_pos)
+				}
+			}
+		}
 	}
 	// TODO: c.pref.is_vet
 	if c.file.is_test && (!node.is_method && (node.short_name.starts_with('test_')

@@ -589,7 +589,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			ast.SelectorExpr {
 				if mut left.expr is ast.IndexExpr {
-					if left.expr.is_map {
+					if left.expr.is_index_operator {
+						c.error('cannot assign through overloaded index expressions, use `[]=` instead',
+							left.pos)
+					} else if left.expr.is_map {
 						left.expr.is_setter = true
 					}
 				}
@@ -623,6 +626,21 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 
 				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
 					c.error('non-name literal value `${left}` on left side of `=`', left.pos())
+				}
+			}
+		}
+		if mut left is ast.IndexExpr {
+			if left.is_index_operator && node.op != .decl_assign {
+				receiver_name := c.table.sym(c.unwrap_generic(left.left_type)).name
+				if left.setter_arg_type == 0 {
+					c.error('index assignment requires a `[]=` overload on type `${receiver_name}`',
+						left.pos)
+				} else if !left.left.is_lvalue() {
+					c.error('cannot assign through overloaded index on a non-lvalue receiver',
+						left.pos)
+				}
+				if node.op == .assign {
+					left_type = left.setter_arg_type
 				}
 			}
 		}
@@ -961,6 +979,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
+				if right_sym.kind in [.alias, .struct]
+					&& !c.check_same_type_ignoring_pointers(left_type_unwrapped, right_type_unwrapped) {
+					c.error('cannot assign to `${left}`: expected `${left_name}`, not `${right_name}`',
+						right.pos())
+				}
 			} else {
 				if method := parent_sym.find_method_with_generic_parent(extracted_op) {
 					c.mark_fn_decl_as_referenced(method.fkey())
@@ -968,6 +991,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						&& (parent_sym.info as ast.Alias).parent_type != method.return_type {
 						c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 							node.pos)
+					}
+					if right_sym.kind in [.alias, .struct]
+						&& !c.check_same_type_ignoring_pointers(left_type_unwrapped, right_type_unwrapped) {
+						c.error('cannot assign to `${left}`: expected `${left_name}`, not `${right_name}`',
+							right.pos())
 					}
 				} else {
 					if !parent_sym.is_primitive() {

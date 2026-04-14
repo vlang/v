@@ -1316,18 +1316,21 @@ pub struct IndexExpr {
 pub:
 	pos token.Pos
 pub mut:
-	index     Expr // [0], RangeExpr [start..end] or map[key]
-	or_expr   OrExpr
-	left      Expr
-	left_type Type // array, map, fixed array
-	is_setter bool
-	is_map    bool
-	is_array  bool
-	is_farray bool // fixed array
-	is_option bool // IfGuard
-	is_direct bool // Set if the underlying memory can be safely accessed
-	is_gated  bool // #[] gated array
-	typ       Type
+	index             Expr // [0], RangeExpr [start..end] or map[key]
+	or_expr           OrExpr
+	left              Expr
+	left_type         Type // array, map, fixed array, or overloaded index receiver
+	index_type        Type
+	setter_arg_type   Type
+	is_setter         bool
+	is_map            bool
+	is_array          bool
+	is_farray         bool // fixed array
+	is_index_operator bool // lowered as `[]` / `[]=` method calls
+	is_option         bool // IfGuard
+	is_direct         bool // Set if the underlying memory can be safely accessed
+	is_gated          bool // #[] gated array
+	typ               Type
 }
 
 @[minify]
@@ -2577,7 +2580,7 @@ pub fn (expr Expr) is_constant() bool {
 pub fn (expr Expr) is_lvalue() bool {
 	return match expr {
 		Ident, CTempVar { true }
-		IndexExpr { expr.left.is_lvalue() }
+		IndexExpr { !expr.is_index_operator && expr.left.is_lvalue() }
 		SelectorExpr { expr.expr.is_lvalue() }
 		ParExpr { expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
 		PrefixExpr { expr.right.is_lvalue() }
