@@ -3609,8 +3609,14 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 						|| (var.expr is ast.StructInit && var.expr.typ_str.len > 0
 						&& g.current_fn_generic_names().index(var.expr.typ_str.all_after_last('.')) >= 0)
 					if should_resolve_expr_type && !(var.expr is ast.Ident && var.expr.name == name) {
-						resolved_type := g.resolved_expr_type(var.expr, var.typ)
+						mut resolved_type := g.resolved_expr_type(var.expr, var.typ)
 						if resolved_type != 0 {
+							// Mirror the checker's `:=` behavior for auto-deref vars.
+							// Generic cgen refreshes re-evaluate initializer expressions,
+							// so `mut x := param` must stay a value copy here as well.
+							if g.is_auto_deref_source_ident(var.expr) && resolved_type.is_ptr() {
+								resolved_type = resolved_type.deref()
+							}
 							var.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_type))
 						}
 					} else if var.typ != 0 {

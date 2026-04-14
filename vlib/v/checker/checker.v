@@ -334,6 +334,22 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 		refreshed_type = c.expr(mut expr)
 	}
 	if refreshed_type != 0 && refreshed_type != ast.void_type {
+		mut expr_is_auto_deref_ident := false
+		if expr is ast.Ident {
+			ident := expr as ast.Ident
+			expr_is_auto_deref_ident = ident.obj is ast.Var && ident.obj.is_auto_deref
+			if !expr_is_auto_deref_ident {
+				if source_var := ident.scope.find_var(ident.name) {
+					expr_is_auto_deref_ident = source_var.is_auto_deref
+				}
+			}
+		}
+		// Keep `mut x := param` as a value copy during generic rechecks too.
+		// `c.expr(param)` returns the wrapped pointer type for auto-deref vars,
+		// but the declaration itself already inferred the dereferenced value type.
+		if expr_is_auto_deref_ident && refreshed_type.is_ptr() {
+			refreshed_type = refreshed_type.deref()
+		}
 		$if trace_ci_fixes ? {
 			if c.file.path.contains('/datatypes/linked_list.v') {
 				eprintln('refresh_var expr fn=${c.table.cur_fn.name} var=${v.name} refreshed=${c.table.type_to_str(refreshed_type)} expr=${expr}')
