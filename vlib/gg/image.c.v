@@ -70,23 +70,15 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file)!
-		img := Image{
-			width:       stb_img.width
-			height:      stb_img.height
-			nr_channels: stb_img.nr_channels
-			ok:          false
-			data:        stb_img.data
-			ext:         stb_img.ext
-			path:        file
-			id:          ctx.image_cache.len
-		}
+		mut img := load_image(file)!
+		img.ok = false
+		img.id = ctx.image_cache.len
 		unsafe {
 			ctx.image_cache << img
 		}
 		return img
 	}
-	mut img := create_image(file)
+	mut img := create_image(file)!
 	img.id = ctx.image_cache.len
 	unsafe {
 		ctx.image_cache << img
@@ -216,21 +208,15 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or { return Image{} }
-		img := Image{
-			width:       width
-			height:      height
-			nr_channels: stb_img.nr_channels
-			ok:          false
-			data:        stb_img.data
-			ext:         stb_img.ext
-			path:        file
-			id:          ctx.image_cache.len
-		}
+		mut img := load_image(file) or { return Image{} }
+		img.width = width
+		img.height = height
+		img.ok = false
+		img.id = ctx.image_cache.len
 		ctx.image_cache << img
 		return img
 	}
-	mut img := create_image(file)
+	mut img := create_image(file) or { return Image{} }
 	img.id = ctx.image_cache.len
 	ctx.image_cache << img
 	return img
@@ -239,13 +225,18 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // create_image creates an `Image` from `file`.
 //
 // TODO: remove this
-fn create_image(file string) Image {
+fn create_image(file string) !Image {
+	mut img := load_image(file)!
+	img.init_sokol_image()
+	return img
+}
+
+fn load_image(file string) !Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: ${file}')
-		return Image{} // none
+		return error('image file "${file}" not found')
 	}
-	stb_img := stbi.load(file) or { return Image{} }
-	mut img := Image{
+	stb_img := stbi.load(file)!
+	return Image{
 		width:       stb_img.width
 		height:      stb_img.height
 		nr_channels: stb_img.nr_channels
@@ -254,8 +245,6 @@ fn create_image(file string) Image {
 		ext:         stb_img.ext
 		path:        file
 	}
-	img.init_sokol_image()
-	return img
 }
 
 // create_image_from_memory creates an `Image` from the
