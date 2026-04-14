@@ -1,0 +1,3 @@
+fn main() {
+	println('\xF0\x81\xA0\x80')
+}
