@@ -5570,7 +5570,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					if resolved_arg_type != 0 {
 						expected_types[i] = resolved_arg_type
 					}
-				} else if arg.expr.obj.smartcasts.len > 0 {
+				} else if i < expected_types.len && arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
 					if !expected_types[i].has_option_or_result() && orig_sym.kind != .interface
