@@ -291,6 +291,51 @@ fn (s &Scanner) num_lit(start int, end int) string {
 	}
 }
 
+@[direct_array_access; inline]
+fn (s &Scanner) number_prefixed_identifier_name(start_pos int, end_pos int) string {
+	if end_pos <= start_pos || !digit_table[s.text[start_pos]] {
+		return ''
+	}
+	mut ident_start := start_pos
+	for ident_start < end_pos
+		&& (digit_table[s.text[ident_start]] || s.text[ident_start] == num_sep) {
+		ident_start++
+	}
+	if ident_start >= end_pos || !letter_table[s.text[ident_start]] {
+		return ''
+	}
+	for i in ident_start .. end_pos {
+		if !util.func_char_table[s.text[i]] {
+			return ''
+		}
+	}
+	if s.next_non_space_char(end_pos) !in [`:`, `=`, `,`, `)`, `]`, `}`, `.`, `;`, `\0`] {
+		return ''
+	}
+	return s.text[start_pos..end_pos]
+}
+
+@[direct_array_access; inline]
+fn (s &Scanner) next_non_space_char(pos int) u8 {
+	for i in pos .. s.text.len {
+		if util.non_whitespace_table[s.text[i]] {
+			return s.text[i]
+		}
+	}
+	return `\0`
+}
+
+@[inline]
+fn (s &Scanner) pos_from_bounds(start_pos int, end_pos int) token.Pos {
+	return token.Pos{
+		len:      end_pos - start_pos
+		line_nr:  s.line_nr
+		pos:      start_pos
+		col:      u16_col(start_pos - s.last_nl_pos - 1)
+		file_idx: s.file_idx
+	}
+}
+
 @[direct_array_access]
 fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
@@ -443,6 +488,16 @@ fn (mut s Scanner) ident_dec_number() string {
 	if s.text[s.pos - 1] == num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
+	}
+	if has_wrong_digit {
+		invalid_ident := s.number_prefixed_identifier_name(start_pos, s.pos)
+		if invalid_ident != '' {
+			s.error_with_pos('identifier name `${invalid_ident}` cannot start with a number', s.pos_from_bounds(start_pos,
+				s.pos))
+			number := s.num_lit(start_pos, s.pos)
+			s.pos--
+			return number
+		}
 	}
 	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
 	mut is_range := false // true for, e.g., 5..10
