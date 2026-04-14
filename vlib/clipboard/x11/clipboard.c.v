@@ -142,6 +142,8 @@ pub mut:
 
 const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
 	'text/plain', 'text/html']
+const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
+	.text_plain, .text_html]
 
 // UNSUPPORTED TYPES: MULTIPLE, INCR, TIMESTAMP, image/bmp, image/jpeg, image/tiff, image/png
 // all the atom types we need
@@ -413,11 +415,13 @@ fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << Atom(4) // XA_ATOM
 	cb.atoms << Atom(31) // XA_STRING
 	for i, name in atom_names {
-		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
-		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
-		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {
-			cb.atoms[i] = cb.get_atom(.xa_string)
+		atom_type := atom_types[i]
+		only_if_exists := if atom_type == .utf8_string { 1 } else { 0 }
+		mut atom := C.XInternAtom(cb.display, &char(name.str), only_if_exists)
+		if atom_type == .utf8_string && atom == Atom(0) {
+			atom = cb.get_atom(.xa_string)
 		}
+		cb.atoms << atom
 	}
 }
 
