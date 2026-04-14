@@ -1,0 +1,27 @@
+import db.sqlite
+
+struct Parent {
+	id       int     @[primary; sql: serial]
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int @[primary; sql: serial]
+	parent_id int
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	parent := Parent{
+		children: [Child{}, Child{}]
+	}
+	sql db {
+		create table Child
+		create table Parent
+		insert parent into Parent
+	}!
+
+	assert parent.children.len == (sql db {
+		select from Parent limit 1
+	}!)[0].children.len
+}
