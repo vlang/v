@@ -569,6 +569,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for mut param in node.params {
+			param.typ = c.preferred_c_symbol_type(param.typ)
+			if mut scoped_param := node.scope.find_var(param.name) {
+				scoped_param.typ = param.typ
+			}
 			// handle vls go to definition for parameter types
 			if c.pref.is_vls && c.pref.linfo.method == .definition {
 				if c.vls_is_the_node(param.type_pos) {
@@ -703,6 +707,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.return_type != ast.no_type {
+		node.return_type = c.preferred_c_symbol_type(node.return_type)
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
 			return
 		}

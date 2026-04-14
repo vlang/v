@@ -1132,6 +1132,11 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
+	// Keep concrete C type re-declarations so later modules can resolve their own
+	// symbol instead of inheriting the first module's private metadata.
+	if existing_symbol.language == .c && typ.language == .c {
+		return -2
+	}
 	// Override the already registered builtin types with the actual
 	// v struct declarations in the vlib/builtin module sources:
 	if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
