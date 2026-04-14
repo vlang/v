@@ -2183,6 +2183,7 @@ pub mut:
 	field_expr Expr
 	typ        Type
 	is_name    bool   // true if f.$(field.name)
+	is_method  bool   // true if f.$(method)
 	typ_key    string // `f.typ` cached key for type resolver
 }
 

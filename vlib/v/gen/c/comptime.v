@@ -31,6 +31,17 @@ fn (g &Gen) veb_context_html_arg() string {
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	left_type := g.resolved_expr_type(node.left, node.left_type)
+	if node.is_method && g.comptime.comptime_for_method != unsafe { nil } {
+		g.selector_expr(ast.SelectorExpr{
+			pos:                 node.pos
+			expr:                node.left
+			expr_type:           left_type
+			typ:                 g.type_resolver.get_type(node)
+			field_name:          g.comptime.comptime_for_method.name
+			has_hidden_receiver: true
+		})
+		return
+	}
 	is_interface_field := g.table.sym(left_type).kind == .interface
 	if is_interface_field {
 		g.write('*(')
