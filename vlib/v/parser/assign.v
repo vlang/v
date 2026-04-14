@@ -132,7 +132,6 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 }
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
-	val_str := val.str()
 	match val {
 		ast.Ident {
 			for expr in exprs {
@@ -144,6 +143,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			}
 		}
 		ast.IndexExpr {
+			val_str := val.str()
 			for expr in exprs {
 				if expr.str() == val_str {
 					return true
@@ -174,6 +174,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			return p.check_cross_variables(exprs, val.expr)
 		}
 		ast.SelectorExpr {
+			val_str := val.str()
 			for expr in exprs {
 				if expr.str() == val_str {
 					return true
