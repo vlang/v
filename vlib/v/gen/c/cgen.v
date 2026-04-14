@@ -202,6 +202,8 @@ mut:
 	waiter_fns                           shared []string // functions that wait for `go xxx()` to finish
 	needed_equality_fns                  []ast.Type
 	generated_eq_fns                     []ast.Type
+	needed_map_key_fns                   []ast.Type
+	generated_map_key_fns                map[ast.Type]bool
 	generated_array_interface_cast_fns   shared map[string]bool
 	generated_array_interface_repeat_fns shared map[string]bool
 	array_sort_fn                        shared []string
@@ -339,61 +341,62 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
-		fid:                  -1
-		tid:                  v_gettid().hex()
-		file:                 unsafe { nil }
-		out:                  strings.new_builder(512000)
-		cheaders:             strings.new_builder(15000)
-		includes:             strings.new_builder(100)
-		preincludes:          strings.new_builder(100)
-		postincludes:         strings.new_builder(100)
-		typedefs:             strings.new_builder(100)
-		enum_typedefs:        strings.new_builder(100)
-		type_definitions:     strings.new_builder(100)
-		sort_fn_definitions:  strings.new_builder(100)
-		alias_definitions:    strings.new_builder(100)
-		hotcode_definitions:  strings.new_builder(100)
-		channel_definitions:  strings.new_builder(100)
-		thread_definitions:   strings.new_builder(100)
-		comptime_definitions: strings.new_builder(100)
-		definitions:          strings.new_builder(100)
-		gowrappers:           strings.new_builder(100)
-		auto_str_funcs:       strings.new_builder(100)
-		dump_funcs:           strings.new_builder(100)
-		pcs_declarations:     strings.new_builder(100)
-		cov_declarations:     strings.new_builder(100)
-		embedded_data:        strings.new_builder(1000)
-		out_options_forward:  strings.new_builder(100)
-		out_options:          strings.new_builder(100)
-		out_results_forward:  strings.new_builder(100)
-		out_results:          strings.new_builder(100)
-		shared_types:         strings.new_builder(100)
-		shared_functions:     strings.new_builder(100)
-		json_forward_decls:   strings.new_builder(100)
-		sql_buf:              strings.new_builder(100)
-		table:                table
-		pref:                 pref_
-		fn_decl:              unsafe { nil }
-		anon_fn:              unsafe { nil }
-		is_autofree:          pref_.autofree
-		indent:               -1
-		module_built:         module_built
-		timers_should_print:  timers_should_print
-		timers:               util.new_timers(
+		fid:                   -1
+		tid:                   v_gettid().hex()
+		file:                  unsafe { nil }
+		out:                   strings.new_builder(512000)
+		cheaders:              strings.new_builder(15000)
+		includes:              strings.new_builder(100)
+		preincludes:           strings.new_builder(100)
+		postincludes:          strings.new_builder(100)
+		typedefs:              strings.new_builder(100)
+		enum_typedefs:         strings.new_builder(100)
+		type_definitions:      strings.new_builder(100)
+		sort_fn_definitions:   strings.new_builder(100)
+		alias_definitions:     strings.new_builder(100)
+		hotcode_definitions:   strings.new_builder(100)
+		channel_definitions:   strings.new_builder(100)
+		thread_definitions:    strings.new_builder(100)
+		comptime_definitions:  strings.new_builder(100)
+		definitions:           strings.new_builder(100)
+		gowrappers:            strings.new_builder(100)
+		auto_str_funcs:        strings.new_builder(100)
+		dump_funcs:            strings.new_builder(100)
+		pcs_declarations:      strings.new_builder(100)
+		cov_declarations:      strings.new_builder(100)
+		embedded_data:         strings.new_builder(1000)
+		out_options_forward:   strings.new_builder(100)
+		out_options:           strings.new_builder(100)
+		out_results_forward:   strings.new_builder(100)
+		out_results:           strings.new_builder(100)
+		shared_types:          strings.new_builder(100)
+		shared_functions:      strings.new_builder(100)
+		json_forward_decls:    strings.new_builder(100)
+		sql_buf:               strings.new_builder(100)
+		table:                 table
+		pref:                  pref_
+		fn_decl:               unsafe { nil }
+		anon_fn:               unsafe { nil }
+		is_autofree:           pref_.autofree
+		indent:                -1
+		module_built:          module_built
+		timers_should_print:   timers_should_print
+		timers:                util.new_timers(
 			should_print: timers_should_print
 			label:        'global_cgen'
 		)
-		inner_loop:           unsafe { &ast.empty_stmt }
-		field_data_type:      table.find_type('FieldData')
-		enum_data_type:       table.find_type('EnumData')
-		variant_data_type:    table.find_type('VariantData')
-		is_cc_msvc:           pref_.ccompiler == 'msvc'
-		use_segfault_handler: pref_.should_use_segfault_handler()
-		static_modifier:      if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
-		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
-		has_reflection:       'v.reflection' in table.modules
-		has_debugger:         'v.debug' in table.modules
-		reflection_strings:   &reflection_strings
+		inner_loop:            unsafe { &ast.empty_stmt }
+		field_data_type:       table.find_type('FieldData')
+		enum_data_type:        table.find_type('EnumData')
+		variant_data_type:     table.find_type('VariantData')
+		is_cc_msvc:            pref_.ccompiler == 'msvc'
+		use_segfault_handler:  pref_.should_use_segfault_handler()
+		static_modifier:       if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
+		static_non_parallel:   if !pref_.parallel_cc { 'static ' } else { '' }
+		has_reflection:        'v.reflection' in table.modules
+		has_debugger:          'v.debug' in table.modules
+		reflection_strings:    &reflection_strings
+		generated_map_key_fns: map[ast.Type]bool{}
 	}
 
 	global_g.type_resolver = type_resolver.TypeResolver.new(table, global_g)
@@ -507,6 +510,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.auto_fn_definitions << g.auto_fn_definitions
 			global_g.anon_fn_definitions << g.anon_fn_definitions
 			global_g.needed_equality_fns << g.needed_equality_fns // duplicates are resolved later in gen_equality_fns
+			global_g.needed_map_key_fns << g.needed_map_key_fns
 			global_g.array_contains_types << g.array_contains_types
 			global_g.array_index_types << g.array_index_types
 			global_g.array_last_index_types << g.array_last_index_types
@@ -567,6 +571,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_array_index_methods(true) // .last_index()
 	global_g.gen_array_get_methods()
 	global_g.gen_equality_fns()
+	global_g.gen_map_key_fns()
 	global_g.gen_free_methods()
 	global_g.register_iface_return_types()
 	global_g.write_results()
@@ -1005,6 +1010,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_reflection:         'v.reflection' in global_g.table.modules
 		has_debugger:           'v.debug' in global_g.table.modules
 		reflection_strings:     global_g.reflection_strings
+		generated_map_key_fns:  map[ast.Type]bool{}
 	}
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info
@@ -5048,11 +5054,173 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 			clone_fn = '&builtin__map_clone_string'
 			free_fn = '&builtin__map_free_string'
 		}
+		.array_fixed {
+			key_type := ast.new_type(key_sym.idx)
+			return g.fixed_array_map_fn_ptrs(key_type)
+		}
 		else {
 			verror('map key type `${key_sym.name}` not supported')
 		}
 	}
 	return hash_fn, key_eq_fn, clone_fn, free_fn
+}
+
+@[inline]
+fn (mut g Gen) map_key_fn_key(typ ast.Type) ast.Type {
+	return g.table.fully_unaliased_type(g.unwrap_generic(typ).set_nr_muls(0))
+}
+
+@[inline]
+fn (mut g Gen) fixed_array_map_fn_base(typ ast.Type) string {
+	return '${g.styp(g.map_key_fn_key(typ))}_map_key'
+}
+
+fn (mut g Gen) fixed_array_map_fn_ptrs(key_type ast.Type) (string, string, string, string) {
+	key := g.map_key_fn_key(key_type)
+	g.needed_map_key_fns << key
+	base := g.fixed_array_map_fn_base(key)
+	return '&${base}_hash', '&${base}_eq', '&${base}_clone', '&${base}_free'
+}
+
+fn (mut g Gen) gen_map_key_fns() {
+	for needed_typ in g.needed_map_key_fns {
+		key := g.map_key_fn_key(needed_typ)
+		if g.generated_map_key_fns[key] {
+			continue
+		}
+		sym := g.table.sym(key)
+		match sym.kind {
+			.array_fixed {
+				g.gen_fixed_array_map_key_fns(key)
+			}
+			else {
+				verror('could not generate map key functions for type `${sym.name}`')
+			}
+		}
+	}
+}
+
+fn (mut g Gen) gen_fixed_array_map_key_fns(key_type ast.Type) {
+	key := g.map_key_fn_key(key_type)
+	if g.generated_map_key_fns[key] {
+		return
+	}
+	g.generated_map_key_fns[key] = true
+	key_sym := g.table.sym(key)
+	if key_sym.kind != .array_fixed {
+		verror('map key type `${key_sym.name}` is not a fixed array')
+	}
+	key_info := key_sym.info as ast.ArrayFixed
+	key_styp := g.styp(key)
+	base := g.fixed_array_map_fn_base(key)
+	hash_fn := '${base}_hash'
+	eq_fn := '${base}_eq'
+	clone_fn := '${base}_clone'
+	free_fn := '${base}_free'
+	array_eq_fn := g.gen_fixed_array_equality_fn(key)
+	g.definitions.writeln('${g.static_non_parallel}u64 ${hash_fn}(voidptr pkey);')
+	g.definitions.writeln('${g.static_non_parallel}bool ${eq_fn}(voidptr a, voidptr b);')
+	g.definitions.writeln('${g.static_non_parallel}void ${clone_fn}(voidptr dest, voidptr pkey);')
+	g.definitions.writeln('${g.static_non_parallel}void ${free_fn}(voidptr pkey);')
+
+	mut hash_builder := strings.new_builder(256)
+	hash_builder.writeln('${g.static_non_parallel}u64 ${hash_fn}(voidptr pkey) {')
+	hash_builder.writeln('\t${key_styp}* key = (${key_styp}*)pkey;')
+	hash_builder.writeln('\tu64 hash = 0;')
+	hash_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_info.size}; ++i) {')
+	hash_builder.writeln('\t\thash = wyhash64(hash, ${g.fixed_array_map_key_hash_expr(key_info.elem_type,
+		'(*key)[i]')});')
+	hash_builder.writeln('\t}')
+	hash_builder.writeln('\treturn hash;')
+	hash_builder.writeln('}')
+	g.auto_fn_definitions << hash_builder.str()
+
+	mut eq_builder := strings.new_builder(128)
+	eq_builder.writeln('${g.static_non_parallel}bool ${eq_fn}(voidptr a, voidptr b) {')
+	eq_builder.writeln('\treturn ${array_eq_fn}_arr_eq(*(${key_styp}*)a, *(${key_styp}*)b);')
+	eq_builder.writeln('}')
+	g.auto_fn_definitions << eq_builder.str()
+
+	mut clone_builder := strings.new_builder(256)
+	clone_builder.writeln('${g.static_non_parallel}void ${clone_fn}(voidptr dest, voidptr pkey) {')
+	clone_builder.writeln('\t${key_styp}* dest_key = (${key_styp}*)dest;')
+	clone_builder.writeln('\t${key_styp}* src_key = (${key_styp}*)pkey;')
+	clone_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_info.size}; ++i) {')
+	g.fixed_array_map_key_clone_stmt(mut clone_builder, key_info.elem_type, '(*dest_key)[i]',
+		'(*src_key)[i]')
+	clone_builder.writeln('\t}')
+	clone_builder.writeln('}')
+	g.auto_fn_definitions << clone_builder.str()
+
+	mut free_builder := strings.new_builder(256)
+	free_builder.writeln('${g.static_non_parallel}void ${free_fn}(voidptr pkey) {')
+	free_builder.writeln('\t${key_styp}* key = (${key_styp}*)pkey;')
+	free_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_info.size}; ++i) {')
+	g.fixed_array_map_key_free_stmt(mut free_builder, key_info.elem_type, '(*key)[i]')
+	free_builder.writeln('\t}')
+	free_builder.writeln('}')
+	g.auto_fn_definitions << free_builder.str()
+}
+
+fn (mut g Gen) fixed_array_map_key_hash_expr(elem_type ast.Type, expr string) string {
+	elem := g.map_key_fn_key(elem_type)
+	elem_sym := g.table.final_sym(elem)
+	match elem_sym.kind {
+		.string {
+			return 'builtin__map_hash_string(&${expr})'
+		}
+		.array_fixed {
+			g.gen_fixed_array_map_key_fns(elem)
+			return '${g.fixed_array_map_fn_base(elem)}_hash(&${expr})'
+		}
+		else {
+			return 'wyhash((const void*)(&${expr}), sizeof(${g.styp(elem)}), 0, _wyp)'
+		}
+	}
+}
+
+fn (mut g Gen) fixed_array_map_key_clone_stmt(mut sb strings.Builder, elem_type ast.Type, dest string,
+	src string) {
+	elem := g.map_key_fn_key(elem_type)
+	elem_sym := g.table.final_sym(elem)
+	match elem_sym.kind {
+		.string {
+			sb.writeln('\t\tbuiltin__map_clone_string(&${dest}, &${src});')
+		}
+		.array_fixed {
+			g.gen_fixed_array_map_key_fns(elem)
+			sb.writeln('\t\t${g.fixed_array_map_fn_base(elem)}_clone(&${dest}, &${src});')
+		}
+		else {
+			sb.writeln('\t\tmemcpy(&${dest}, &${src}, sizeof(${g.styp(elem)}));')
+		}
+	}
+}
+
+fn (mut g Gen) fixed_array_map_key_free_stmt(mut sb strings.Builder, elem_type ast.Type, expr string) {
+	elem := g.map_key_fn_key(elem_type)
+	elem_sym := g.table.final_sym(elem)
+	match elem_sym.kind {
+		.string {
+			sb.writeln('\t\tbuiltin__map_free_string(&${expr});')
+		}
+		.array_fixed {
+			g.gen_fixed_array_map_key_fns(elem)
+			sb.writeln('\t\t${g.fixed_array_map_fn_base(elem)}_free(&${expr});')
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) write_map_key_arg(expr ast.Expr, key_type ast.Type) {
+	key_styp := g.styp(key_type)
+	if g.table.final_sym(key_type).kind == .array_fixed && expr is ast.Ident {
+		g.expr(expr)
+		return
+	}
+	g.write('&(${key_styp}[]){')
+	g.expr(expr)
+	g.write('}')
 }
 
 fn (mut g Gen) expr(node_ ast.Expr) {

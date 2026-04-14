@@ -886,6 +886,9 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 
 	if key_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstring key = *(string*)builtin__DenseArray_key(&m.key_values, i);')
+	} else if key_sym.kind == .array_fixed {
+		g.auto_str_funcs.writeln('\t\t${key_styp} key;')
+		g.auto_str_funcs.writeln('\t\tmemcpy(key, builtin__DenseArray_key(&m.key_values, i), sizeof(${key_styp}));')
 	} else {
 		g.auto_str_funcs.writeln('\t\t${key_styp} key = *(${key_styp}*)builtin__DenseArray_key(&m.key_values, i);')
 	}

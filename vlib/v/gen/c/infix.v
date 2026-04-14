@@ -861,9 +861,13 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			} else {
 				node.left_type
 			})
-			g.write('ADDR(${styp}, ')
-			g.expr(node.left)
-			g.write(')')
+			if g.table.final_sym(node.left_type).kind == .array_fixed && node.left is ast.Ident {
+				g.expr(node.left)
+			} else {
+				g.write('ADDR(${styp}, ')
+				g.expr(node.left)
+				g.write(')')
+			}
 		} else {
 			g.expr(node.left)
 		}
