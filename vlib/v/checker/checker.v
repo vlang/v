@@ -2773,11 +2773,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return field.typ
 		}
 		unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
-		type_has_module_visibility := final_sym.kind in [.struct, .interface, .sum_type, .aggregate]
-		type_is_private := type_has_module_visibility && !sym.is_pub && sym.mod != 'builtin'
-			&& node.from_embed_types.len == 0 && !typ.has_flag(.generic)
-			&& !c.comptime.inside_comptime_if
-		if is_used_outside && (!field.is_pub || type_is_private) && sym.language != .c {
+		if is_used_outside && !field.is_pub && sym.language != .c {
 			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
 		}
 		field_type := c.resolve_selector_field_type(typ, field_name, field)

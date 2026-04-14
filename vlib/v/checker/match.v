@@ -641,22 +641,31 @@ fn (mut c Checker) get_match_case_int_key(mut expr ast.Expr, cond_sym ast.TypeSy
 	if !cond_sym.is_int() {
 		return none
 	}
-	if value := c.get_comptime_number_value(mut expr) {
+	// Only resolve literal values for dedup, not const idents.
+	// Different const names with the same value should be allowed.
+	if value := c.get_match_case_literal_value(mut expr) {
 		return value.str()
 	}
-	match expr {
-		ast.StringLiteral, ast.BoolLiteral, ast.FloatLiteral {
-			return none
-		}
-		else {}
+	return none
+}
+
+// Like get_comptime_number_value but does NOT resolve const idents.
+// This ensures different named consts with the same value are not flagged as duplicates.
+fn (mut c Checker) get_match_case_literal_value(mut expr ast.Expr) ?i64 {
+	if mut expr is ast.ParExpr {
+		return c.get_match_case_literal_value(mut expr.expr)
 	}
-	if value := c.eval_comptime_const_expr(expr, 0) {
-		if signed_value := value.i64() {
-			return signed_value.str()
-		}
-		if unsigned_value := value.u64() {
-			return unsigned_value.str()
-		}
+	if mut expr is ast.PrefixExpr && expr.op == .minus {
+		return -c.get_match_case_literal_value(mut expr.right)?
+	}
+	if mut expr is ast.CharLiteral {
+		return char_literal_number_value(expr.val)
+	}
+	if mut expr is ast.IntegerLiteral {
+		return expr.val.i64()
+	}
+	if mut expr is ast.CastExpr {
+		return c.get_match_case_literal_value(mut expr.expr)
 	}
 	return none
 }

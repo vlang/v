@@ -82,7 +82,10 @@ pub:
 }
 
 fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
-fn C.ioctl(fd i32, request u64, args ...voidptr) i32
+
+$if !windows {
+	fn C.ioctl(fd i32, request u64, args ...voidptr) i32
+}
 
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
@@ -97,8 +100,10 @@ pub fn fd_is_pending(fd int) bool {
 	}
 	mut bytes_avail := int(0)
 	// `select` marks EOF as readable, while `FIONREAD` reports the number of unread bytes.
-	if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
-		return bytes_avail > 0
+	$if !windows {
+		if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
+			return bytes_avail > 0
+		}
 	}
 	read_set := C.fd_set{}
 	C.FD_ZERO(&read_set)
