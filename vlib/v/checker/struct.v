@@ -160,6 +160,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					c.error('cannot copy map: call `clone` method (or use a reference)',
 						field.default_expr.pos())
 				}
+				if c.is_nocopy_struct(field.typ) && c.is_nocopy_struct(field.default_expr_typ)
+					&& field.default_expr !is ast.StructInit {
+					c.error('cannot copy @[nocopy] struct: use a reference instead',
+						field.default_expr.pos())
+				}
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.default_expr_typ = field.default_expr_typ
@@ -954,6 +959,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					&& field_info.is_mut
 					&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField) {
 					c.error('cannot assign a const map to mut struct field, call `clone` method (or use a reference)',
+						init_field.expr.pos())
+				}
+				if c.is_nocopy_struct(exp_type) && c.is_nocopy_struct(got_type)
+					&& init_field.expr !is ast.StructInit {
+					c.error('cannot copy @[nocopy] struct: use a reference instead',
 						init_field.expr.pos())
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
