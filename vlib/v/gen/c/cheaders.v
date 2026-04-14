@@ -262,10 +262,8 @@ const c_common_callconv_attr = '
 const c_common_noreturn_attr = '
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
-		#include <stdnoreturn.h>
-		#define VNORETURN noreturn
-	#endif
-	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+		#define VNORETURN __attribute__((noreturn))
+	# elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 	#  define VNORETURN _Noreturn
 	# elif !defined(VNORETURN) && defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
