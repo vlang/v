@@ -1,4 +1,4 @@
-// methods using [deprecated_after]:
+// methods using scheduled deprecations:
 struct Abc {
 	x int
 }
@@ -7,15 +7,13 @@ fn (a Abc) str() string {
 	return 'Abc { x: ${a.x} }'
 }
 
-@[deprecated: 'custom message 1']
-@[deprecated_after: '3000-11-01']
+@[deprecated(msg: 'custom message 1', after: '3000-11-01')]
 fn (a Abc) future() {
 	dump(@METHOD)
 	dump(a)
 }
 
-@[deprecated: 'custom message 2']
-@[deprecated_after: '2021-03-01']
+@[deprecated(msg: 'custom message 2', after: '2021-03-01')]
 fn (a Abc) past() {
 	dump(@METHOD)
 	dump(a)
@@ -27,21 +25,18 @@ fn (a Abc) simply_deprecated() {
 	dump(a)
 }
 
-// functions using [deprecated_after]:
-@[deprecated: 'custom message 4']
-@[deprecated_after: '3000-12-30']
+// functions using scheduled deprecations:
+@[deprecated(msg: 'custom message 4', after: '3000-12-30')]
 fn future() {
 	dump(@FN)
 }
 
-@[deprecated: 'custom message 5']
-@[deprecated_after: '2021-03-01']
+@[deprecated(msg: 'custom message 5', after: '2021-03-01')]
 fn past() {
 	dump(@FN)
 }
 
-@[deprecated: 'custom message 6']
-@[deprecated_after: '1990-03-01']
+@[deprecated(msg: 'custom message 6', after: '1990-03-01')]
 fn ancient() {
 	dump(@FN)
 }

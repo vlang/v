@@ -95,8 +95,12 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 			base_call_arg_idx = call_arg_idx
 			has_base_arg = true
 		} else {
+			mut attr_name := '${name}_${positional_arg_idx}'
+			if name == 'deprecated' && positional_arg_idx == 1 {
+				attr_name = 'deprecated_after'
+			}
 			attrs << ast.Attr{
-				name:         '${name}_${positional_arg_idx}'
+				name:         attr_name
 				has_arg:      true
 				arg:          arg
 				kind:         kind
@@ -306,23 +310,57 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) check_deprecated_attributes() {
-	mut deprecated := false
-	mut deprecated_after := false
-	mut deprecated_after_pos := token.Pos{}
+	mut deprecated_call_attr := ast.Attr{}
+	mut deprecated_after_attr := ast.Attr{}
+	mut has_deprecated_call_attr := false
+	mut has_deprecated_after_attr := false
 	for attr in p.attrs {
-		match attr.name {
-			'deprecated' {
-				deprecated = true
+		if attr.call_name == 'deprecated' {
+			match attr.name {
+				'deprecated' {
+					deprecated_call_attr = attr
+					has_deprecated_call_attr = true
+				}
+				'deprecated_after' {}
+				else {
+					if attr.call_arg_name.len > 0 {
+						p.error_with_pos('unknown `${attr.call_arg_name}` argument for `@[deprecated(...)]` attribute',
+							attr.pos)
+					} else {
+						p.error_with_pos('`@[deprecated(...)]` accepts only a deprecation message and an `after` date',
+							attr.pos)
+					}
+					return
+				}
 			}
-			'deprecated_after' {
-				deprecated_after = true
-				deprecated_after_pos = attr.pos
+		}
+		if attr.name == 'deprecated_after' {
+			if attr.call_name != 'deprecated' {
+				p.error_with_pos('`@[deprecated_after]` has been removed, use `@[deprecated(..., after: ...)]` instead',
+					attr.pos)
+				return
 			}
-			else {}
+			deprecated_after_attr = attr
+			has_deprecated_after_attr = true
 		}
 	}
-	if deprecated_after && !deprecated {
-		p.warn_with_pos('@[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute',
-			deprecated_after_pos)
+	if has_deprecated_call_attr {
+		if !deprecated_call_attr.has_arg {
+			p.error_with_pos('`@[deprecated(...)]` requires a deprecation message', deprecated_call_attr.pos)
+			return
+		}
+		if deprecated_call_attr.kind != .string {
+			p.error_with_pos('`@[deprecated(...)]` requires a string deprecation message',
+				deprecated_call_attr.pos)
+			return
+		}
+		if !has_deprecated_after_attr {
+			p.error_with_pos('`@[deprecated(...)]` requires an `after` date', deprecated_call_attr.pos)
+			return
+		}
+		if deprecated_after_attr.kind != .string {
+			p.error_with_pos('`@[deprecated(...)]` requires a string `after` date', deprecated_after_attr.pos)
+			return
+		}
 	}
 }

@@ -4,8 +4,7 @@
 module json2
 
 // encode_pretty ...
-@[deprecated: 'use `encode(..., prettify: true)` instead']
-@[deprecated_after: '2025-10-30']
+@[deprecated(msg: 'use `encode(..., prettify: true)` instead', after: '2025-10-30')]
 pub fn encode_pretty[T](typed_data T) string {
 	return encode(typed_data, prettify: true)
 }
@@ -36,8 +35,7 @@ pub fn (f Any) json_str() string {
 }
 
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
-@[deprecated: 'use `encode(Any(...), prettify: true)` instead']
-@[deprecated_after: '2025-10-30']
+@[deprecated(msg: 'use `encode(Any(...), prettify: true)` instead', after: '2025-10-30')]
 pub fn (f Any) prettify_json_str() string {
 	return encode(f, prettify: true)
 }

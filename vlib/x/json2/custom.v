@@ -8,8 +8,7 @@ pub interface JsonEncoder {
 
 // Encodable is an interface, that allows custom implementations for encoding structs to their string based JSON representations.
 
-@[deprecated: 'use `to_json` to implement `JsonEncoder` instead']
-@[deprecated_after: '2025-10-30']
+@[deprecated(msg: 'use `to_json` to implement `JsonEncoder` instead', after: '2025-10-30')]
 pub interface Encodable {
 	json_str() string
 }

@@ -1,9 +1,7 @@
-@[deprecated: 'module gx is deprecated, use `import gg` instead']
-@[deprecated_after: '2026-01-24']
+@[deprecated(msg: 'module gx is deprecated, use `import gg` instead', after: '2026-01-24')]
 module gx
 
-@[deprecated: 'use gg.Image']
-@[deprecated_after: '2026-01-24']
+@[deprecated(msg: 'use gg.Image', after: '2026-01-24')]
 pub struct Image {
 mut:
 	obj voidptr

@@ -2,4 +2,4 @@ vlib/v/checker/tests/modules/deprecated_consts/consts.v:1:1: error: project must
     1 | module deprecated_consts
       | ^
     2 | 
-    3 | @[deprecated: 'use built-in constant min_i8 instead']
+    3 | @[deprecated(msg: 'use built-in constant min_i8 instead', after: '2023-12-31')]

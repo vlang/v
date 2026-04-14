@@ -1,0 +1,5 @@
+vlib/v/parser/tests/deprecated_call_without_after.vv:1:1: error: `@[deprecated(...)]` requires an `after` date
+    1 | @[deprecated('use new_fn instead')]
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | fn old_positional() {}
+    3 | 

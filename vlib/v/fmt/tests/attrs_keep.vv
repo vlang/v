@@ -31,6 +31,5 @@ enum Example {
 	value1_again = 1
 }
 
-@[deprecated: 'use Example instead']
-@[deprecated_after: '2040-01-24']
+@[deprecated(msg: 'use Example instead', after: '2040-01-24')]
 pub type Alias = Example

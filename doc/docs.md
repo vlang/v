@@ -6194,7 +6194,7 @@ module abc
 pub struct Xyz {
 pub mut:
 	a int
-	d int @[deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
+	d int @[deprecated(msg: 'use Xyz.a instead', after: '2999-03-01')]
 	// the tags above, will produce a notice, since the deprecation date is in the far future
 }
 ```
@@ -6217,6 +6217,9 @@ Different V projects and maintainers may reasonably choose different deprecation
 Depending on the type and impact of the change, you may want to consult with them first, before
 deprecating a function.
 
+When a deprecation has a date, keep the message and `after` date together in a single
+`@[deprecated(...)]` attribute. `deprecated_after` is not a separate attribute anymore.
+
 
 ```v nofmt
 // Calling this function will result in a deprecation warning
@@ -6227,10 +6230,6 @@ fn old_function() {}
 @[deprecated: 'use new_function() instead']
 fn legacy_function() {}
 
-// Equivalent call-style syntax:
-@[deprecated('use new_function() instead')]
-fn legacy_function_call_style() {}
-
 // You can also specify a date, after which the function will be
 // considered deprecated. Before that date, calls to the function
 // will be compiler notices - you will see them, but the compilation
@@ -6240,13 +6239,12 @@ fn legacy_function_call_style() {}
 // 6 months after the deprecation date, calls will be hard
 // compiler errors.
 
-@[deprecated: 'use new_function2() instead']
-@[deprecated_after: '2021-05-27']
+@[deprecated('use new_function2() instead', '2021-05-27')]
 fn legacy_function2() {}
 
-// Equivalent call-style syntax:
-@[deprecated(msg: 'use new_function2() instead', after: '2021-05-27')]
-fn legacy_function2_call_style() {}
+// Equivalent named-argument form:
+@[deprecated(msg: 'use new_function3() instead', after: '2021-05-27')]
+fn legacy_function3() {}
 ```
 
 ```v globals
