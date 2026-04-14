@@ -25,3 +25,9 @@ fn test_main() {
 	})
 	assert result.some && result.val == 5
 }
+
+fn test_generic_method_map_infers_lambda_return_from_selector_expr() {
+	f := some('hello')
+	result := f.map(|s| s.len)
+	assert result.some && result.val == 5
+}
