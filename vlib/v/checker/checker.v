@@ -943,6 +943,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	node.parent_type = c.preferred_c_symbol_type(node.parent_type)
 	if c.pref.is_vls && c.pref.linfo.method == .definition {
 		if c.vls_is_the_node(node.type_pos) {
 			typ_str := c.table.type_to_str(node.parent_type)
@@ -1077,6 +1078,30 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		.aggregate {}
 		*/
 	}
+}
+
+fn (c &Checker) preferred_c_symbol_type(typ ast.Type) ast.Type {
+	sym := c.table.sym(typ)
+	if sym.language != .c || sym.name == '' {
+		return typ
+	}
+	mut public_typ := ast.invalid_type
+	for i := c.table.type_symbols.len - 1; i >= 1; i-- {
+		candidate := c.table.type_symbols[i]
+		if candidate.language != .c || candidate.name != sym.name || candidate.kind == .placeholder {
+			continue
+		}
+		if candidate.mod == c.mod {
+			return ast.new_type(i).derive(typ)
+		}
+		if candidate.is_pub && public_typ == ast.invalid_type {
+			public_typ = ast.new_type(i).derive(typ)
+		}
+	}
+	if public_typ != ast.invalid_type {
+		return public_typ
+	}
+	return typ
 }
 
 fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl, element_type_of_parent ast.Type,
@@ -8075,7 +8100,8 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 }
 
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
-	if typ == 0 {
+	mut checked_typ := c.preferred_c_symbol_type(typ)
+	if checked_typ == 0 {
 		c.error('unknown type', pos)
 		return c.pref.is_vls
 	}
@@ -8088,9 +8114,9 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 			pos)
 		return c.pref.is_vls
 	}
-	sym := c.table.sym(typ)
+	sym := c.table.sym(checked_typ)
 	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod && sym.mod != 'main'
-		&& typ !in c.table.cur_concrete_types {
+		&& checked_typ !in c.table.cur_concrete_types {
 		if sym.kind == .function {
 			fn_info := sym.info as ast.FnType
 			// hack: recover fn mod from func name
@@ -8199,7 +8225,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		else {}
 	}
 	if sym.kind == .map {
-		if !c.ensure_supported_map_key_types(typ, pos) {
+		if !c.ensure_supported_map_key_types(checked_typ, pos) {
 			return c.pref.is_vls
 		}
 	}
