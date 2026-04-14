@@ -59,6 +59,7 @@ pub struct Config {
 pub mut:
 	host     string = '127.0.0.1'
 	port     u32    = 3306
+	user     string
 	username string
 	password string
 	dbname   string
@@ -72,11 +73,33 @@ pub mut:
 	ssl_cipher string
 }
 
+// connection_user returns the configured username, accepting both `user` and `username`.
+pub fn (config Config) connection_user() !string {
+	if config.user != '' && config.username != '' && config.user != config.username {
+		return error('db.mysql: Config.user and Config.username must match when both are set')
+	}
+	if config.username != '' {
+		return config.username
+	}
+	return config.user
+}
+
+// val returns the value at `index`.
+pub fn (row Row) val(index int) string {
+	return row.vals[index]
+}
+
+// values returns all row values.
+pub fn (row Row) values() []string {
+	return row.vals.clone()
+}
+
 // connect attempts to establish a connection to a MySQL server.
 pub fn connect(config Config) !DB {
 	mut db := DB{
 		conn: C.mysql_init(0)
 	}
+	username := config.connection_user()!
 
 	if config.flag.has(.client_ssl) {
 		if config.ssl_key.len > 0 {
@@ -96,8 +119,8 @@ pub fn connect(config Config) !DB {
 		}
 	}
 
-	connection := C.mysql_real_connect(db.conn, config.host.str, config.username.str,
-		config.password.str, config.dbname.str, config.port, 0, config.flag)
+	connection := C.mysql_real_connect(db.conn, config.host.str, username.str, config.password.str,
+		config.dbname.str, config.port, 0, config.flag)
 
 	if isnil(connection) {
 		db.throw_mysql_error()!
@@ -491,6 +514,11 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 // It returns either the full result set, or an error on failure
 pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])!
+}
+
+// exec_param2 executes the `query` with two parameters provided as `?` placeholders.
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
+	return db.exec_param_many(query, [param, param2])!
 }
 
 // A StmtHandle is created through prepare, it will be bound

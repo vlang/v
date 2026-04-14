@@ -96,6 +96,16 @@ pub mut:
 	names []string
 }
 
+// val returns the value at `index`.
+pub fn (row Row) val(index int) string {
+	return row.vals[index]
+}
+
+// values returns all row values.
+pub fn (row Row) values() []string {
+	return row.vals.clone()
+}
+
 // get_string returns the value for the given column name, or '' if the column is not found
 // or if the corresponding value index is out of range.
 pub fn (r &Row) get_string(col_name string) string {
@@ -478,6 +488,11 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 // and returns either an error on failure, or the full result set on success
 pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
+}
+
+// exec_param2 executes a query with two parameters provided as ? placeholders.
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
+	return db.exec_param_many(query, [param, param2])
 }
 
 // create_table issues a "create table if not exists" command to the db.
