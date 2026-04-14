@@ -34,19 +34,20 @@ const ai_eval_weights = [
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	touch       TouchInfo
-	ui          Ui
-	theme       &Theme = themes[0]
-	theme_idx   int
-	board       Board
-	undo        []Undo
-	atickers    [4][4]f64
-	mtickers    [4][4]f64
-	state       GameState  = .play
-	tile_format TileFormat = .normal
-	moves       int
-	updates     u64
+	gg           &gg.Context = unsafe { nil }
+	touch        TouchInfo
+	ui           Ui
+	theme        &Theme = themes[0]
+	theme_idx    int
+	board        Board
+	undo         []Undo
+	atickers     [4][4]f64
+	mtickers     [4][4]f64
+	state        GameState  = .play
+	tile_format  TileFormat = .normal
+	moves        int
+	updates      u64
+	needs_redraw bool = true
 
 	is_ai_mode bool
 	ai_fpm     u64 = 8
@@ -846,6 +847,22 @@ fn (mut b Board) is_game_over() bool {
 	return !b.has_moves()
 }
 
+@[inline]
+fn (mut app App) request_redraw() {
+	app.needs_redraw = true
+}
+
+fn (app &App) has_pending_animation() bool {
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			if app.atickers[y][x] > 0.0 || app.mtickers[y][x] > 0.0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut app App) update_tickers() {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -871,6 +888,7 @@ fn (mut app App) new_game() {
 	app.moves = 0
 	app.new_random_tile()
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 @[inline]
@@ -952,6 +970,7 @@ fn (mut app App) apply_new_board(new Board) {
 	app.board = new
 	app.undo << Undo{old, app.state}
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 fn (mut app App) move(d Direction) {
@@ -1043,6 +1062,7 @@ fn (mut app App) set_theme(idx int) {
 	app.theme_idx = idx
 	app.theme = theme
 	app.gg.set_bg_color(theme.bg_color)
+	app.request_redraw()
 }
 
 fn (mut app App) resize() {
@@ -1071,6 +1091,7 @@ fn (mut app App) resize() {
 		app.ui.y_padding = (app.ui.window_height - app.ui.window_width - app.ui.header_size) / 2
 		app.ui.x_padding = 0
 	}
+	app.request_redraw()
 }
 
 fn (app &App) draw() {
@@ -1319,6 +1340,7 @@ fn (mut app App) next_tile_format() {
 	if app.tile_format == .end {
 		app.tile_format = .normal
 	}
+	app.request_redraw()
 }
 
 @[inline]
@@ -1328,22 +1350,45 @@ fn (mut app App) undo() {
 		app.board = undo.board
 		app.state = undo.state
 		app.moves--
+		app.request_redraw()
 	}
 }
 
 fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.v { app.is_ai_mode = !app.is_ai_mode }
-		.page_up { app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60)) }
-		.page_down { app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1)) }
+		.v {
+			app.is_ai_mode = !app.is_ai_mode
+			app.request_redraw()
+		}
+		.page_up {
+			app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60))
+			app.request_redraw()
+		}
+		.page_down {
+			app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1))
+			app.request_redraw()
+		}
 		//
-		.escape { app.gg.quit() }
-		.n, .r { app.new_game() }
-		.backspace { app.undo() }
-		.enter { app.next_tile_format() }
-		.j { app.state = .over }
-		.t { app.next_theme() }
+		.escape {
+			app.gg.quit()
+		}
+		.n, .r {
+			app.new_game()
+		}
+		.backspace {
+			app.undo()
+		}
+		.enter {
+			app.next_tile_format()
+		}
+		.j {
+			app.state = .over
+			app.request_redraw()
+		}
+		.t {
+			app.next_theme()
+		}
 		else {}
 	}
 	if app.state in [.play, .freeplay] {
@@ -1360,6 +1405,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 	if app.state == .victory {
 		if key == .space {
 			app.state = .freeplay
+			app.request_redraw()
 		}
 	}
 }
@@ -1418,26 +1464,39 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		else {}
 	}
+	if e.typ in [.key_down, .touches_began, .touches_ended, .mouse_down, .mouse_up, .resized,
+		.restored, .focused, .resumed] {
+		app.request_redraw()
+	}
 }
 
 fn frame(mut app App) {
+	is_ai_running := app.is_ai_mode && app.state in [.play, .freeplay]
+	mut has_pending_animation := app.has_pending_animation()
 	mut do_update := false
-	if app.gg.timer.elapsed().milliseconds() > 15 {
+	if (app.needs_redraw || has_pending_animation || is_ai_running)
+		&& app.gg.timer.elapsed().milliseconds() > 15 {
 		app.gg.timer.restart()
 		do_update = true
 		app.updates++
 	}
-	app.gg.begin()
 	if do_update {
 		app.update_tickers()
+		has_pending_animation = app.has_pending_animation()
 	}
-	app.draw()
-	app.gg.end()
-	if do_update && app.is_ai_mode && app.state in [.play, .freeplay]
-		&& app.updates % app.ai_fpm == 0 {
+	if app.needs_redraw || (do_update && (has_pending_animation || is_ai_running)) {
+		app.gg.begin()
+		app.draw()
+		app.gg.end()
+		app.needs_redraw = false
+	}
+	if do_update && is_ai_running && app.updates % app.ai_fpm == 0 {
 		app.ai_move()
 	}
-	if app.updates % 120 == 0 {
+	if has_pending_animation || is_ai_running {
+		app.request_redraw()
+	}
+	if do_update && app.updates % 120 == 0 {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
 		if gc_is_enabled() {
