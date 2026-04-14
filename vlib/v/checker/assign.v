@@ -4,6 +4,19 @@ module checker
 
 import v.ast
 
+@[inline]
+fn (mut c Checker) is_nocopy_struct(typ_ ast.Type) bool {
+	mut typ := c.unwrap_generic(typ_).clear_option_and_result()
+	if typ == 0 || typ.is_ptr() {
+		return false
+	}
+	mut sym := c.table.final_sym(typ)
+	if sym.kind == .generic_inst && sym.info is ast.GenericInst {
+		sym = c.table.sym(ast.new_type(sym.info.parent_idx))
+	}
+	return sym.info is ast.Struct && sym.info.attrs.contains('nocopy')
+}
+
 fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 	return expr.is_auto_deref_var()
 }
@@ -721,6 +734,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.pos())
+		}
+		if is_assign && !c.inside_unsafe && !left.is_blank_ident()
+			&& c.is_nocopy_struct(left_type_unwrapped) && c.is_nocopy_struct(right_type_unwrapped)
+			&& right !is ast.StructInit {
+			c.error('cannot copy @[nocopy] struct: use a reference instead', right.pos())
 		}
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)

@@ -1171,6 +1171,9 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		} else {
 			var.typ = ptyp
 		}
+		if c.is_nocopy_struct(var.typ) {
+			c.error('cannot capture @[nocopy] struct by value: use a reference instead', var.pos)
+		}
 		if c.type_has_unresolved_generic_parts(declared_parent_typ) {
 			has_generic = true
 		}
@@ -2350,6 +2353,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					call_arg.pos)
 			}
 			continue
+		}
+		if !c.inside_unsafe && !param.is_mut && node.language == .v
+			&& c.is_nocopy_struct(final_param_typ) {
+			c.error('cannot pass @[nocopy] struct by value: use a reference instead', call_arg.pos)
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_any_kind_of_pointer()
 			&& call_arg.expr.is_literal() && func.language == .v && !c.pref.translated {
