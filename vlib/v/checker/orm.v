@@ -422,10 +422,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	if node.kind == .update {
 		for i, mut expr in node.update_exprs {
 			column := node.updated_columns[i]
-			matched_fields := node.fields.filter(it.name == column)
 			old_expected_type := c.expected_type
-			if matched_fields.len > 0 {
-				c.expected_type = matched_fields[0].typ
+			if field := c.get_orm_field_by_column_name(node.fields, column) {
+				c.expected_type = field.typ
 			}
 			c.expr(mut expr)
 			c.expected_type = old_expected_type
@@ -1018,6 +1017,15 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 		}
 	}
 	return res
+}
+
+fn (mut c Checker) get_orm_field_by_column_name(fields []ast.StructField, column string) ?ast.StructField {
+	for field in fields {
+		if c.fetch_field_name(field) == column {
+			return field
+		}
+	}
+	return none
 }
 
 // walkingdevel: Now I don't think it's a good solution

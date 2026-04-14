@@ -377,7 +377,16 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.indent++
 		g.writeln('_MOV((orm__Primitive[${node.update_exprs.len}]){')
 		g.indent++
-		for e in node.update_exprs {
+		for i, e in node.update_exprs {
+			column := node.updated_columns[i]
+			if field := g.get_orm_field_by_column_name(node.fields, column) {
+				final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
+				sym := g.table.sym(final_field_typ)
+				if sym.kind == .struct && sym.name != 'time.Time' {
+					g.write_orm_struct_field_expr_to_primitive(field, e)
+					continue
+				}
+			}
 			g.write_orm_expr_to_primitive(e)
 		}
 		g.indent--
@@ -680,6 +689,27 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 			verror('ORM: ${expr.type_name()} is not supported')
 		}
 	}
+}
+
+fn (mut g Gen) write_orm_struct_field_expr_to_primitive(field ast.StructField, expr ast.Expr) {
+	if expr is ast.None || expr is ast.Nil {
+		g.writeln('_const_orm__null_primitive,')
+		return
+	}
+	final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
+	foreign_sym := g.table.sym(final_field_typ)
+	foreign_info := foreign_sym.info as ast.Struct
+	primary_field := g.get_orm_struct_primary_field(foreign_info.fields) or {
+		verror('ORM: struct field `${field.name}` of type `${foreign_sym.name}` has no primary field')
+	}
+	g.write_orm_primitive(primary_field.typ, ast.SelectorExpr{
+		pos:        expr.pos()
+		field_name: primary_field.name
+		expr:       expr
+		expr_type:  orm_expr_effective_type(expr, field.typ).clear_flag(.option).clear_flag(.result)
+		typ:        primary_field.typ
+		scope:      unsafe { nil }
+	})
 }
 
 fn orm_expr_effective_type(expr ast.Expr, typ ast.Type) ast.Type {
@@ -1536,6 +1566,15 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	}
 
 	return name
+}
+
+fn (g &Gen) get_orm_field_by_column_name(fields []ast.StructField, column string) ?ast.StructField {
+	for field in fields {
+		if g.get_orm_column_name_from_struct_field(field) == column {
+			return field
+		}
+	}
+	return none
 }
 
 // get_orm_select_expr_from_struct_field returns the SQL expression used in a SELECT list.
