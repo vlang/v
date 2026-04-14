@@ -106,6 +106,46 @@ fn test_tmpl_html_comments_do_not_interpolate() {
 	assert result.contains('<p>hello</p>')
 }
 
+fn html_conditional_single_line_tmpl(optional bool) string {
+	content := 'hello!'
+	return $tmpl('tmpl/conditional_single_line.html')
+}
+
+fn html_conditional_multi_line_tmpl(optional bool) string {
+	content := 'hello!'
+	return $tmpl('tmpl/conditional_multi_line.html')
+}
+
+fn test_tmpl_html_conditional_single_line() {
+	result := html_conditional_single_line_tmpl(true)
+	assert result.trim_space() == '<html>
+
+<body>
+  <main>
+    <p>hello!</p>
+    <p>optional</p>
+  </main>
+</body>
+
+</html>'
+	assert !html_conditional_single_line_tmpl(false).contains('<p>optional</p>')
+}
+
+fn test_tmpl_html_conditional_multi_line() {
+	result := html_conditional_multi_line_tmpl(true)
+	assert result.trim_space() == '<html>
+
+<body>
+  <main>
+    <p>hello!</p>
+    <p>optional</p>
+  </main>
+</body>
+
+</html>'
+	assert !html_conditional_multi_line_tmpl(false).contains('<p>optional</p>')
+}
+
 fn map_index_tmpl() string {
 	lang := {
 		'test_entry': 'Test Text'
