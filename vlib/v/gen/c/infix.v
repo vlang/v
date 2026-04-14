@@ -216,7 +216,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('${arrow}len ${node.op} 0')
 		} else if node.left is ast.Ident {
 			// vmemcmp(left, "str", sizeof("str")) optimization
-			slit := cescaped_string_literal(node.right.val)
+			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
 			var := g.expr_string(ast.Expr(node.left))
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			if node.op == .eq {
@@ -980,7 +980,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 					if left is ast.Ident && left.or_expr.kind == .absent
 						&& array_expr is ast.StringLiteral {
 						var := g.expr_string(left)
-						slit := cescaped_string_literal(array_expr.val)
+						slit :=
+							cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
 						mut needs_deref := false
 						if left.info is ast.IdentVar && left.obj is ast.Var {
 							if g.table.sym(left.obj.typ).kind in [.interface, .sum_type] {
