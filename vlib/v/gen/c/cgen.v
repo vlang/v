@@ -2639,29 +2639,19 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	if !info.has_decl && (not_anon || is_fn_sig)
 		&& !g.type_has_unresolved_generic_parts(func.return_type) && !has_generic_arg {
 		fn_name := sym.cname
-		mut call_conv := ''
-		mut msvc_call_conv := ''
+		mut call_conv_attr := ''
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					if g.is_cc_msvc {
-						msvc_call_conv = '__${attr.arg} '
-					} else {
-						call_conv = '${attr.arg}'
-					}
+					call_conv_attr = call_convention_attribute(attr.arg)
 				}
 				else {}
 			}
 		}
-		call_conv_attribute_suffix := if call_conv != '' {
-			'__attribute__((${call_conv}))'
-		} else {
-			''
-		}
 		ret_typ :=
 			if !func.return_type.has_flag(.option) && !func.return_type.has_flag(.result) && g.table.sym(func.return_type).kind == .array_fixed { '_v_' } else { '' } +
 			g.styp(func.return_type)
-		g.type_definitions.write_string('typedef ${ret_typ} (${msvc_call_conv}*${fn_name})(')
+		g.type_definitions.write_string('typedef ${ret_typ} (${call_conv_attr}*${fn_name})(')
 		for i, param in func.params {
 			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
 				&& param.name.starts_with('const_') {
@@ -2680,7 +2670,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 				g.type_definitions.write_string(',')
 			}
 		}
-		g.type_definitions.writeln(')${call_conv_attribute_suffix};')
+		g.type_definitions.writeln(');')
 	}
 }
 

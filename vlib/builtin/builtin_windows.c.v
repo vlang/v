@@ -114,13 +114,10 @@ pub:
 	context_record   &ContextRecord   = unsafe { nil }
 }
 
+@[callconv: stdcall]
 type VectoredExceptionHandler = fn (&ExceptionPointers) int
 
-fn C.AddVectoredExceptionHandler(i32, voidptr)
-
-fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(1, voidptr(handler))
-}
+fn C.AddVectoredExceptionHandler(i32, VectoredExceptionHandler) voidptr
 
 @[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
@@ -140,7 +137,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 }
 
 fn add_unhandled_exception_handler() {
-	add_vectored_exception_handler(VectoredExceptionHandler(voidptr(unhandled_exception_handler)))
+	C.AddVectoredExceptionHandler(1, unhandled_exception_handler)
 }
 
 fn C.IsDebuggerPresent() bool

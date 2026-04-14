@@ -249,6 +249,16 @@ const c_common_hidden_attr = '
 #endif
 '
 
+const c_common_callconv_attr = '
+#if !defined(VCALLCONV)
+	#ifdef _MSC_VER
+		#define VCALLCONV(name) __##name
+	#else
+		#define VCALLCONV(name) __attribute__((name))
+	#endif
+#endif
+'
+
 const c_common_noreturn_attr = '
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
@@ -335,7 +345,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
-const c_headers = c_helper_macros + c_common_macros +
+const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
@@ -625,7 +635,7 @@ typedef void (*MapCloneFn)(voidptr, voidptr);
 typedef void (*MapFreeFn)(voidptr);
 '
 
-const c_bare_headers = c_helper_macros + c_common_macros +
+const c_bare_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	'
 #define _VFREESTANDING
 // Memory allocation related headers
