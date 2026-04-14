@@ -1,0 +1,17 @@
+fn interp_number(n int) string {
+	return '${n}'
+}
+
+fn interp_chain(prefix string, n int, suffix string) string {
+	return '${prefix}${n}${suffix}'
+}
+
+fn interp_static(n int, suffix string) string {
+	return 'n=${n}:${suffix}'
+}
+
+fn main() {
+	assert interp_number(42) == '42'
+	assert interp_chain('a', 7, 'b') == 'a7b'
+	assert interp_static(9, 'z') == 'n=9:z'
+}

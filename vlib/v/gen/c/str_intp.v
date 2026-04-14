@@ -629,6 +629,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			else {}
 		}
 	}
+	if g.gen_simple_string_inter_literal(node_, fmts) {
+		return
+	}
 	g.write2('builtin__str_intp(', node.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
@@ -708,4 +711,79 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	g.write('}))')
+}
+
+const simple_string_interpolation_default_precision = 987698
+
+fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts []u8) bool {
+	if node.exprs.len == 0 || node.expr_types.len < node.exprs.len {
+		return false
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.need_fmts.len || node.need_fmts[i] || i >= fmts.len || fmts[i] == `_` {
+			return false
+		}
+		if node.expr_types[i].is_any_kind_of_pointer() || node.expr_types[i].is_int_valptr()
+			|| node.expr_types[i].is_float_valptr() {
+			return false
+		}
+		if i < node.fwidths.len && node.fwidths[i] != 0 {
+			return false
+		}
+		if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+			return false
+		}
+		if i < node.precisions.len
+			&& node.precisions[i] != simple_string_interpolation_default_precision {
+			return false
+		}
+		if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+			return false
+		}
+		if i < node.pluss.len && node.pluss[i] {
+			return false
+		}
+		if i < node.fills.len && node.fills[i] {
+			return false
+		}
+	}
+	if node.exprs.len == 1 && node.vals.len == 2 && node.vals[0].len == 0 && node.vals[1].len == 0 {
+		g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
+		return true
+	}
+	mut part_count := 0
+	for i, val in node.vals {
+		if val.len > 0 {
+			part_count++
+		}
+		if i < node.exprs.len {
+			part_count++
+		}
+	}
+	if part_count <= 0 {
+		return false
+	}
+	g.write('builtin__string_plus_many(${part_count}, _MOV((string[${part_count}]){')
+	mut written_parts := 0
+	for i, val in node.vals {
+		if val.len > 0 {
+			if written_parts > 0 {
+				g.write(', ')
+			}
+			mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+			escaped_val = escaped_val.replace('\0', '\\0')
+			g.write2('_S("', escaped_val)
+			g.write('")')
+			written_parts++
+		}
+		if i < node.exprs.len {
+			if written_parts > 0 {
+				g.write(', ')
+			}
+			g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
+			written_parts++
+		}
+	}
+	g.write('}))')
+	return true
 }
