@@ -20,6 +20,12 @@ $if !new_veb ? {
 		if params.port <= 0 || params.port > 65535 {
 			return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 		}
+		if params.nr_workers < 1 {
+			return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
+		}
+		if params.nr_workers > 1 && !picoev_parallel_workers_supported() && !ssl_enabled(params) {
+			return error('parallel picoev workers require linux or termux; use `-d new_veb` on other platforms')
+		}
 		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		if ssl_enabled(params) {
 			run_at_with_ssl[A, X](mut global_app, params)!
@@ -27,27 +33,49 @@ $if !new_veb ? {
 		}
 		routes := generate_routes[A, X](global_app)!
 		controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+		mut workers := []&picoev.Picoev{cap: params.nr_workers}
+		global_app_ptr := unsafe { voidptr(&global_app) }
+		for _ in 0 .. params.nr_workers {
+			workers << new_picoev_worker[A, X](global_app_ptr, controllers_sorted, &routes, params)!
+		}
 		if params.show_startup_message {
 			println('[veb] Running app on ${server_protocol(params)}://${startup_host(params)}:${params.port}/')
+			if params.nr_workers > 1 {
+				println('[veb] Using ${params.nr_workers} picoev workers')
+			}
 		}
 		flush_stdout()
-		routes_ptr := &routes
+		$if A is BeforeAcceptApp {
+			global_app.before_accept_loop()
+		}
+		start_picoev_workers(mut workers)
+	}
+
+	fn picoev_parallel_workers_supported() bool {
+		$if linux || termux {
+			return true
+		} $else {
+			return false
+		}
+	}
+
+	@[manualfree]
+	fn new_picoev_worker[A, X](global_app_ptr voidptr, controllers_sorted []&ControllerPath, routes &map[string]Route, params RunParams) !&picoev.Picoev {
 		mut pico_context := &RequestParams{
-			global_app:         unsafe { voidptr(&global_app) }
+			global_app:         global_app_ptr
 			controllers:        controllers_sorted
-			routes:             routes_ptr
+			routes:             unsafe { routes }
 			timeout_in_seconds: params.timeout_in_seconds
 		}
 		pico_context.idx = []int{len: picoev.max_fds}
 		// reserve space for read and write buffers
 		pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * max_read + 1) }
-		defer { unsafe { free(pico_context.buf) } }
 		pico_context.body_buffers = [][]u8{len: picoev.max_fds}
 		pico_context.chunked_body_trackers = []ChunkedBodyTracker{len: picoev.max_fds}
 		pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 		pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 		pico_context.string_responses = []StringResponse{len: picoev.max_fds}
-		mut pico := picoev.new(
+		return picoev.new(
 			port:         params.port
 			raw_cb:       ev_callback[A, X]
 			user_data:    pico_context
@@ -55,11 +83,19 @@ $if !new_veb ? {
 			family:       params.family
 			host:         params.host
 		)!
-		$if A is BeforeAcceptApp {
-			global_app.before_accept_loop()
+	}
+
+	fn start_picoev_workers(mut workers []&picoev.Picoev) {
+		for i in 1 .. workers.len {
+			mut worker := workers[i]
+			spawn serve_picoev_worker(mut worker)
 		}
-		// Forever accept every connection that comes
-		pico.serve()
+		mut worker := workers[0]
+		serve_picoev_worker(mut worker)
+	}
+
+	fn serve_picoev_worker(mut worker picoev.Picoev) {
+		worker.serve()
 	}
 
 	@[direct_array_access]
