@@ -37,106 +37,226 @@ module aes
 
 import encoding.binary
 
+// ct_mask_u8 expands the low bit of `bit` to either 0x00 or 0xff.
+@[inline]
+fn ct_mask_u8(bit u8) u8 {
+	return u8(~(int(bit & 1) - 1))
+}
+
+// xtime multiplies `x` by x in GF(2^8).
+@[inline]
+fn xtime(x u8) u8 {
+	return u8(u32(x) << 1) ^ (u8(0x1b) & ct_mask_u8(x >> 7))
+}
+
+// gf_mul multiplies `x` and `y` in GF(2^8) without data-dependent branches.
+@[direct_array_access; inline]
+fn gf_mul(x u8, y u8) u8 {
+	mut a := x
+	mut b := y
+	mut out := u8(0)
+	for _ in 0 .. 8 {
+		out ^= a & ct_mask_u8(b)
+		a = xtime(a)
+		b >>= 1
+	}
+	return out
+}
+
+// gf_square squares `x` in GF(2^8).
+@[inline]
+fn gf_square(x u8) u8 {
+	return gf_mul(x, x)
+}
+
+@[inline]
+fn rotl8(x u8, n int) u8 {
+	return u8((u32(x) << u32(n)) | (u32(x) >> u32(8 - n)))
+}
+
+@[inline]
+fn gf_inverse(x u8) u8 {
+	x2 := gf_square(x)
+	x4 := gf_square(x2)
+	x8 := gf_square(x4)
+	x16 := gf_square(x8)
+	x32 := gf_square(x16)
+	x64 := gf_square(x32)
+	x128 := gf_square(x64)
+	return gf_mul(gf_mul(gf_mul(gf_mul(gf_mul(gf_mul(x128, x64), x32), x16), x8), x4), x2)
+}
+
+// sub_byte applies the AES S-box without lookup tables.
+@[inline]
+fn sub_byte(x u8) u8 {
+	inv := gf_inverse(x)
+	return inv ^ rotl8(inv, 1) ^ rotl8(inv, 2) ^ rotl8(inv, 3) ^ rotl8(inv, 4) ^ u8(0x63)
+}
+
+// inv_sub_byte applies the inverse AES S-box without lookup tables.
+@[inline]
+fn inv_sub_byte(x u8) u8 {
+	return gf_inverse(rotl8(x, 1) ^ rotl8(x, 3) ^ rotl8(x, 6) ^ u8(0x05))
+}
+
+@[direct_array_access; inline]
+fn add_round_key(mut state [16]u8, xk []u32, round int) {
+	for col in 0 .. 4 {
+		word := xk[round * 4 + col]
+		base := col * 4
+		state[base + 0] ^= u8(word >> 24)
+		state[base + 1] ^= u8(word >> 16)
+		state[base + 2] ^= u8(word >> 8)
+		state[base + 3] ^= u8(word)
+	}
+}
+
+@[direct_array_access; inline]
+fn sub_bytes(mut state [16]u8) {
+	for i in 0 .. 16 {
+		state[i] = sub_byte(state[i])
+	}
+}
+
+@[direct_array_access; inline]
+fn inv_sub_bytes(mut state [16]u8) {
+	for i in 0 .. 16 {
+		state[i] = inv_sub_byte(state[i])
+	}
+}
+
+@[direct_array_access; inline]
+fn shift_rows(mut state [16]u8) {
+	t1 := state[1]
+	state[1] = state[5]
+	state[5] = state[9]
+	state[9] = state[13]
+	state[13] = t1
+
+	t2 := state[2]
+	t6 := state[6]
+	state[2] = state[10]
+	state[6] = state[14]
+	state[10] = t2
+	state[14] = t6
+
+	t3 := state[3]
+	state[3] = state[15]
+	state[15] = state[11]
+	state[11] = state[7]
+	state[7] = t3
+}
+
+@[direct_array_access; inline]
+fn inv_shift_rows(mut state [16]u8) {
+	t13 := state[13]
+	state[13] = state[9]
+	state[9] = state[5]
+	state[5] = state[1]
+	state[1] = t13
+
+	t2 := state[2]
+	t6 := state[6]
+	state[2] = state[10]
+	state[6] = state[14]
+	state[10] = t2
+	state[14] = t6
+
+	t3 := state[3]
+	state[3] = state[7]
+	state[7] = state[11]
+	state[11] = state[15]
+	state[15] = t3
+}
+
+@[direct_array_access; inline]
+fn mix_columns(mut state [16]u8) {
+	for col in 0 .. 4 {
+		base := col * 4
+		s0 := state[base + 0]
+		s1 := state[base + 1]
+		s2 := state[base + 2]
+		s3 := state[base + 3]
+		m2s0 := xtime(s0)
+		m2s1 := xtime(s1)
+		m2s2 := xtime(s2)
+		m2s3 := xtime(s3)
+		state[base + 0] = m2s0 ^ (m2s1 ^ s1) ^ s2 ^ s3
+		state[base + 1] = s0 ^ m2s1 ^ (m2s2 ^ s2) ^ s3
+		state[base + 2] = s0 ^ s1 ^ m2s2 ^ (m2s3 ^ s3)
+		state[base + 3] = (m2s0 ^ s0) ^ s1 ^ s2 ^ m2s3
+	}
+}
+
+@[direct_array_access; inline]
+fn inv_mix_columns(mut state [16]u8) {
+	for col in 0 .. 4 {
+		base := col * 4
+		s0 := state[base + 0]
+		s1 := state[base + 1]
+		s2 := state[base + 2]
+		s3 := state[base + 3]
+		state[base + 0] = gf_mul(s0, 14) ^ gf_mul(s1, 11) ^ gf_mul(s2, 13) ^ gf_mul(s3, 9)
+		state[base + 1] = gf_mul(s0, 9) ^ gf_mul(s1, 14) ^ gf_mul(s2, 11) ^ gf_mul(s3, 13)
+		state[base + 2] = gf_mul(s0, 13) ^ gf_mul(s1, 9) ^ gf_mul(s2, 14) ^ gf_mul(s3, 11)
+		state[base + 3] = gf_mul(s0, 11) ^ gf_mul(s1, 13) ^ gf_mul(s2, 9) ^ gf_mul(s3, 14)
+	}
+}
+
 // Encrypt one block from src into dst, using the expanded key xk.
 @[direct_array_access]
 fn encrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	_ = src[15] // early bounds check
-	mut s0 := binary.big_endian_u32(src[..4])
-	mut s1 := binary.big_endian_u32(src[4..8])
-	mut s2 := binary.big_endian_u32(src[8..12])
-	mut s3 := binary.big_endian_u32(src[12..16])
-	// First round just XORs input with key.
-	s0 ^= xk[0]
-	s1 ^= xk[1]
-	s2 ^= xk[2]
-	s3 ^= xk[3]
-	// Middle rounds shuffle using tables.
-	// Number of rounds is set by length of expanded key.
-	nr := xk.len / 4 - 2 // - 2: one above, one more below
-	mut k := 4
-	mut t0 := u32(0)
-	mut t1 := u32(0)
-	mut t2 := u32(0)
-	mut t3 := u32(0)
-	for _ in 0 .. nr {
-		t0 = xk[k + 0] ^ te0[u8(s0 >> 24)] ^ te1[u8(s1 >> 16)] ^ te2[u8(s2 >> 8)] ^ u32(te3[u8(s3)])
-		t1 = xk[k + 1] ^ te0[u8(s1 >> 24)] ^ te1[u8(s2 >> 16)] ^ te2[u8(s3 >> 8)] ^ u32(te3[u8(s0)])
-		t2 = xk[k + 2] ^ te0[u8(s2 >> 24)] ^ te1[u8(s3 >> 16)] ^ te2[u8(s0 >> 8)] ^ u32(te3[u8(s1)])
-		t3 = xk[k + 3] ^ te0[u8(s3 >> 24)] ^ te1[u8(s0 >> 16)] ^ te2[u8(s1 >> 8)] ^ u32(te3[u8(s2)])
-		k += 4
-		s0 = t0
-		s1 = t1
-		s2 = t2
-		s3 = t3
+	mut state := [16]u8{}
+	for i in 0 .. 16 {
+		state[i] = src[i]
 	}
-	// Last round uses s-box directly and XORs to produce output.
-	s0 = u32(s_box0[t0 >> 24]) << 24 | u32(s_box0[(t1 >> 16) & 0xff]) << 16 | u32(s_box0[(t2 >> 8) & 0xff]) << 8 | u32(s_box0[t3 & u32(0xff)])
-	s1 = u32(s_box0[t1 >> 24]) << 24 | u32(s_box0[(t2 >> 16) & 0xff]) << 16 | u32(s_box0[(t3 >> 8) & 0xff]) << 8 | u32(s_box0[t0 & u32(0xff)])
-	s2 = u32(s_box0[t2 >> 24]) << 24 | u32(s_box0[(t3 >> 16) & 0xff]) << 16 | u32(s_box0[(t0 >> 8) & 0xff]) << 8 | u32(s_box0[t1 & u32(0xff)])
-	s3 = u32(s_box0[t3 >> 24]) << 24 | u32(s_box0[(t0 >> 16) & 0xff]) << 16 | u32(s_box0[(t1 >> 8) & 0xff]) << 8 | u32(s_box0[t2 & u32(0xff)])
-	s0 ^= xk[k + 0]
-	s1 ^= xk[k + 1]
-	s2 ^= xk[k + 2]
-	s3 ^= xk[k + 3]
-	_ := dst[15] // early bounds check
-	binary.big_endian_put_u32(mut (*dst)[0..4], s0)
-	binary.big_endian_put_u32(mut (*dst)[4..8], s1)
-	binary.big_endian_put_u32(mut (*dst)[8..12], s2)
-	binary.big_endian_put_u32(mut (*dst)[12..16], s3)
+	nr := xk.len / 4 - 1
+	add_round_key(mut state, xk, 0)
+	for round in 1 .. nr {
+		sub_bytes(mut state)
+		shift_rows(mut state)
+		mix_columns(mut state)
+		add_round_key(mut state, xk, round)
+	}
+	sub_bytes(mut state)
+	shift_rows(mut state)
+	add_round_key(mut state, xk, nr)
+	_ = dst[15] // early bounds check
+	for i in 0 .. 16 {
+		dst[i] = state[i]
+	}
 }
 
 // Decrypt one block from src into dst, using the expanded key xk.
 @[direct_array_access]
 fn decrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	_ = src[15] // early bounds check
-	mut s0 := binary.big_endian_u32(src[0..4])
-	mut s1 := binary.big_endian_u32(src[4..8])
-	mut s2 := binary.big_endian_u32(src[8..12])
-	mut s3 := binary.big_endian_u32(src[12..16])
-	// First round just XORs input with key.
-	s0 ^= xk[0]
-	s1 ^= xk[1]
-	s2 ^= xk[2]
-	s3 ^= xk[3]
-	// Middle rounds shuffle using tables.
-	// Number of rounds is set by length of expanded key.
-	nr := xk.len / 4 - 2 // - 2: one above, one more below
-	mut k := 4
-	mut t0 := u32(0)
-	mut t1 := u32(0)
-	mut t2 := u32(0)
-	mut t3 := u32(0)
-	for _ in 0 .. nr {
-		t0 = xk[k + 0] ^ td0[u8(s0 >> 24)] ^ td1[u8(s3 >> 16)] ^ td2[u8(s2 >> 8)] ^ u32(td3[u8(s1)])
-		t1 = xk[k + 1] ^ td0[u8(s1 >> 24)] ^ td1[u8(s0 >> 16)] ^ td2[u8(s3 >> 8)] ^ u32(td3[u8(s2)])
-		t2 = xk[k + 2] ^ td0[u8(s2 >> 24)] ^ td1[u8(s1 >> 16)] ^ td2[u8(s0 >> 8)] ^ u32(td3[u8(s3)])
-		t3 = xk[k + 3] ^ td0[u8(s3 >> 24)] ^ td1[u8(s2 >> 16)] ^ td2[u8(s1 >> 8)] ^ u32(td3[u8(s0)])
-		k += 4
-		s0 = t0
-		s1 = t1
-		s2 = t2
-		s3 = t3
+	mut state := [16]u8{}
+	for i in 0 .. 16 {
+		state[i] = src[i]
 	}
-	// Last round uses s-box directly and XORs to produce output.
-	s0 = u32(s_box1[t0 >> 24]) << 24 | u32(s_box1[(t3 >> 16) & 0xff]) << 16 | u32(s_box1[(t2 >> 8) & 0xff]) << 8 | u32(s_box1[t1 & u32(0xff)])
-	s1 = u32(s_box1[t1 >> 24]) << 24 | u32(s_box1[(t0 >> 16) & 0xff]) << 16 | u32(s_box1[(t3 >> 8) & 0xff]) << 8 | u32(s_box1[t2 & u32(0xff)])
-	s2 = u32(s_box1[t2 >> 24]) << 24 | u32(s_box1[(t1 >> 16) & 0xff]) << 16 | u32(s_box1[(t0 >> 8) & 0xff]) << 8 | u32(s_box1[t3 & u32(0xff)])
-	s3 = u32(s_box1[t3 >> 24]) << 24 | u32(s_box1[(t2 >> 16) & 0xff]) << 16 | u32(s_box1[(t1 >> 8) & 0xff]) << 8 | u32(s_box1[t0 & u32(0xff)])
-	s0 ^= xk[k + 0]
-	s1 ^= xk[k + 1]
-	s2 ^= xk[k + 2]
-	s3 ^= xk[k + 3]
+	nr := xk.len / 4 - 1
+	add_round_key(mut state, xk, 0)
+	for round in 1 .. nr {
+		inv_shift_rows(mut state)
+		inv_sub_bytes(mut state)
+		add_round_key(mut state, xk, round)
+		inv_mix_columns(mut state)
+	}
+	inv_shift_rows(mut state)
+	inv_sub_bytes(mut state)
+	add_round_key(mut state, xk, nr)
 	_ = dst[15] // early bounds check
-	binary.big_endian_put_u32(mut (*dst)[..4], s0)
-	binary.big_endian_put_u32(mut (*dst)[4..8], s1)
-	binary.big_endian_put_u32(mut (*dst)[8..12], s2)
-	binary.big_endian_put_u32(mut (*dst)[12..16], s3)
+	for i in 0 .. 16 {
+		dst[i] = state[i]
+	}
 }
 
-// Apply s_box0 to each byte in w.
-@[direct_array_access; inline]
+// Apply the AES S-box to each byte in w without lookup tables.
+@[inline]
 fn subw(w u32) u32 {
-	return u32(s_box0[w >> 24]) << 24 | u32(s_box0[(w >> 16) & 0xff]) << 16 | u32(s_box0[(w >> 8) & 0xff]) << 8 | u32(s_box0[w & u32(0xff)])
+	return u32(sub_byte(u8(w >> 24))) << 24 | u32(sub_byte(u8(w >> 16))) << 16 | u32(sub_byte(u8(w >> 8))) << 8 | u32(sub_byte(u8(w)))
 }
 
 // Rotate
@@ -170,7 +290,7 @@ fn expand_key_generic(key []u8, mut enc []u32, mut dec []u32) {
 	}
 	// Derive decryption key from encryption key.
 	// Reverse the 4-word round key sets from enc to produce dec.
-	// All sets but the first and last get the MixColumn transform applied.
+	// The byte-wise block path applies InvMixColumns separately during decryption.
 	if dec.len == 0 {
 		return
 	}
@@ -178,11 +298,7 @@ fn expand_key_generic(key []u8, mut enc []u32, mut dec []u32) {
 	for i = 0; i < n; i += 4 {
 		ei := n - i - 4
 		for j in 0 .. 4 {
-			mut x := enc[ei + j]
-			if i > 0 && i + 4 < n {
-				x = td0[s_box0[x >> 24]] ^ td1[s_box0[(x >> 16) & 0xff]] ^ td2[s_box0[(x >> 8) & 0xff]] ^ td3[s_box0[x & u32(0xff)]]
-			}
-			dec[i + j] = x
+			dec[i + j] = enc[ei + j]
 		}
 	}
 }
