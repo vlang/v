@@ -14,29 +14,29 @@ import v.pref
 // TODO: turn this to a Doc method, so that the new_vdoc_preferences call here can
 // be removed.
 fn get_parent_mod(input_dir string) !string {
-	// windows root path is C: or D:
-	if input_dir.len == 2 && input_dir[1] == `:` {
-		return error('root folder reached')
-	}
-	// unix systems have / at the top:
-	if input_dir == '/' {
-		return error('root folder reached')
-	}
 	if input_dir == '' {
 		return error('no input folder')
 	}
-	base_dir := os.dir(input_dir)
-	input_dir_name := os.file_name(base_dir)
+	current_dir := if os.is_dir(input_dir) { input_dir } else { os.dir(input_dir) }
+	// windows root path is C: or D:
+	if current_dir.len == 2 && current_dir[1] == `:` {
+		return error('root folder reached')
+	}
+	// unix systems have / at the top:
+	if current_dir == '/' {
+		return error('root folder reached')
+	}
+	input_dir_name := os.file_name(current_dir)
 	prefs := new_vdoc_preferences()
-	fentries := os.ls(base_dir) or { []string{} }
-	files := fentries.filter(!os.is_dir(it))
+	fentries := os.ls(current_dir) or { []string{} }
+	files := fentries.filter(!os.is_dir(os.join_path(current_dir, it)))
 	if 'v.mod' in files {
 		// the top level is reached, no point in climbing up further
 		return ''
 	}
-	v_files := prefs.should_compile_filtered_files(base_dir, files)
+	v_files := prefs.should_compile_filtered_files(current_dir, files)
 	if v_files.len == 0 {
-		parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
+		parent_mod := get_parent_mod(os.dir(current_dir)) or { return input_dir_name }
 		if parent_mod.len > 0 {
 			return parent_mod + '.' + input_dir_name
 		}
@@ -47,7 +47,7 @@ fn get_parent_mod(input_dir string) !string {
 	if file_ast.mod.short_name == 'main' {
 		return ''
 	}
-	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
+	parent_mod := get_parent_mod(os.dir(current_dir)) or { return input_dir_name }
 	if parent_mod.len > 0 {
 		return '${parent_mod}.${file_ast.mod.short_name}'
 	}
