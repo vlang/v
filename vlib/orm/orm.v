@@ -899,6 +899,26 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
+fn parse_table_attr_fields(table Table, attr VAttribute, valid_sql_field_names []string) ![]string {
+	if attr.arg == '' || attr.kind != .string {
+		return error("${attr.name} attribute needs to be in the format [${attr.name}: 'f1, f2, f3']")
+	}
+	mut attr_fields := []string{}
+	for raw_field_name in attr.arg.split(',') {
+		field_name := raw_field_name.trim_space()
+		if field_name == '' {
+			return error("${attr.name} attribute needs to be in the format [${attr.name}: 'f1, f2, f3']")
+		}
+		if field_name !in valid_sql_field_names {
+			return error("table `${table.name}` has no field's name: `${field_name}`")
+		}
+		if field_name !in attr_fields {
+			attr_fields << field_name
+		}
+	}
+	return attr_fields
+}
+
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
@@ -915,6 +935,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut table_comment := ''
 	mut field_comments := map[string]string{}
 	mut index_fields := []string{}
+	mut unique_key_fields := [][]string{}
 
 	valid_sql_field_names := fields.map(sql_field_name(it))
 
@@ -926,19 +947,21 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				}
 			}
 			'index' {
-				if attr.arg != '' && attr.kind == .string {
-					index_strings := attr.arg.split(',')
-					for i in index_strings {
-						x := i.trim_space()
-						if x !in valid_sql_field_names {
-							return error("table `${table.name}` has no field's name: `${x}`")
-						}
-						if x.len > 0 && x !in index_fields {
-							index_fields << x
-						}
+				attr_fields := parse_table_attr_fields(table, attr, valid_sql_field_names) or {
+					return err
+				}
+				for field_name in attr_fields {
+					if field_name !in index_fields {
+						index_fields << field_name
 					}
-				} else {
-					return error("index attribute needs to be in the format [index: 'f1, f2, f3']")
+				}
+			}
+			'unique_key' {
+				attr_fields := parse_table_attr_fields(table, attr, valid_sql_field_names) or {
+					return err
+				}
+				if attr_fields.len > 0 {
+					unique_key_fields << attr_fields
 				}
 			}
 			else {}
@@ -1096,6 +1119,13 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			}
 			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
+	}
+	for key_fields in unique_key_fields {
+		mut tmp := []string{}
+		for field_name in key_fields {
+			tmp << '${q}${field_name}${q}'
+		}
+		fs << 'UNIQUE(${tmp.join(', ')})'
 	}
 
 	if primary != '' {

@@ -26,6 +26,7 @@ struct Foo {
 - `[table: 'name']` explicitly sets the name of the table for the struct
 - `[comment: 'table_comment']` explicitly sets the comment of the table for the struct
 - `[index: 'f1, f2, f3']` explicitly sets fields of the table (`f1`, `f2`, `f3`) as indexed
+- `[unique_key: 'f1, f2, f3']` adds a composite `UNIQUE` constraint for the listed fields
 
 ### Fields
 

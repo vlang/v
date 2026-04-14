@@ -111,6 +111,24 @@ mut:
 	h  ?int = 55
 }
 
+@[unique_key: 'role_id, api_id, source_type, source_id']
+@[table: 'core_role_api']
+struct CoreRoleApi {
+	role_id     string
+	api_id      string
+	source_type string
+	source_id   string
+}
+
+fn test_struct_unique_key_attribute() {
+	db := MockDB.new()
+
+	sql db {
+		create table CoreRoleApi
+	}!
+	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `core_role_api` (`role_id` string-type NOT NULL, `api_id` string-type NOT NULL, `source_type` string-type NOT NULL, `source_id` string-type NOT NULL, UNIQUE(`role_id`, `api_id`, `source_type`, `source_id`));'
+}
+
 fn test_option_struct_fields_and_none() {
 	db := MockDB.new()
 
