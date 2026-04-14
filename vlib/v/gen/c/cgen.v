@@ -8089,6 +8089,14 @@ fn (mut g Gen) gen_hash_stmts_in_top() {
 	g.postinclude_nodes.clear()
 }
 
+fn labeled_continue_flag_name(label string) string {
+	return 'v__labeled_continue_${label}'
+}
+
+fn labeled_continue_entry_label_name(label string) string {
+	return '${label}__continue_entry'
+}
+
 fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 	if node.label != '' {
 		x := g.labeled_loops[node.label] or {
@@ -8116,7 +8124,10 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 		if node.kind == .key_break {
 			g.writeln('goto ${node.label}__break;')
 		} else {
-			g.writeln('goto ${node.label}__continue;')
+			continue_flag := labeled_continue_flag_name(node.label)
+			continue_entry_label := labeled_continue_entry_label_name(node.label)
+			g.writeln('${continue_flag} = true;')
+			g.writeln('goto ${continue_entry_label};')
 		}
 	} else {
 		inner_loop := g.inner_loop
