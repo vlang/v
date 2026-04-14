@@ -4,6 +4,13 @@
 module parser
 
 import v.ast
+import v.token
+
+struct SqlPrefix {
+	pos              token.Pos
+	db_expr          ast.Expr
+	tmp_inside_match bool
+}
 
 fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
 	return match name {
@@ -19,16 +26,45 @@ fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
 // select from User
 // insert user into User returning id
 fn (mut p Parser) sql_expr() ast.Expr {
+	prefix := p.sql_prefix()
+	return p.sql_expr_after_prefix(prefix)
+}
+
+fn (mut p Parser) sql_stmt_or_expr() ast.Stmt {
+	prefix := p.sql_prefix()
+	if p.sql_stmt_can_be_value()
+		&& (p.tok.kind == .key_select || (p.tok.kind == .name && p.tok.lit == 'insert')) {
+		expr := p.sql_expr_after_prefix(prefix)
+		return ast.ExprStmt{
+			expr: expr
+			pos:  expr.pos()
+		}
+	}
+	return p.sql_stmt_after_prefix(prefix)
+}
+
+fn (p &Parser) sql_stmt_can_be_value() bool {
+	return p.inside_if_expr || p.inside_match_body || p.inside_or_expr
+}
+
+fn (mut p Parser) sql_prefix() SqlPrefix {
 	tmp_inside_match := p.inside_match
 	p.inside_orm = true
 	p.inside_match = true
-	// `sql db {`
 	pos := p.tok.pos()
 	p.check_name()
 	db_expr := p.check_expr(0) or {
 		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	p.check(.lcbr)
+	return SqlPrefix{
+		pos:              pos
+		db_expr:          db_expr
+		tmp_inside_match: tmp_inside_match
+	}
+}
+
+fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 	// p.check(.key_select)
 	is_select := p.tok.kind == .key_select
 	is_insert := p.tok.lit == 'insert'
@@ -158,7 +194,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.inside_match = false
 	p.inside_orm = false
 	or_expr := p.parse_sql_or_block()
-	p.inside_match = tmp_inside_match
+	p.inside_match = prefix.tmp_inside_match
 
 	return ast.SqlExpr{
 		aggregate_kind:  aggregate_kind
@@ -166,7 +202,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		is_insert:       is_insert
 		typ:             typ.set_flag(.result)
 		or_expr:         or_expr
-		db_expr:         db_expr
+		db_expr:         prefix.db_expr
 		where_expr:      where_expr
 		has_where:       has_where
 		has_limit:       has_limit
@@ -180,7 +216,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		is_array:        aggregate_kind == .none
 		is_generated:    false
 		inserted_var:    inserted_var
-		pos:             pos.extend(p.prev_tok.pos())
+		pos:             prefix.pos.extend(p.prev_tok.pos())
 		table_expr:      ast.TypeNode{
 			typ: table_type
 			pos: table_pos
@@ -252,20 +288,12 @@ fn (mut p Parser) parse_sql_join_clause() ast.JoinClause {
 // update User set nr_oders=nr_orders+1 where id == user_id
 // delete
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
-	mut pos := p.tok.pos()
-	p.inside_orm = true
-	p.inside_match = true
-	defer {
-		p.inside_orm = false
-		p.inside_match = false
-	}
-	// `sql db {`
-	p.check_name()
-	db_expr := p.check_expr(0) or {
-		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
-	}
-	// println(typeof(db_expr))
-	p.check(.lcbr)
+	prefix := p.sql_prefix()
+	return p.sql_stmt_after_prefix(prefix)
+}
+
+fn (mut p Parser) sql_stmt_after_prefix(prefix SqlPrefix) ast.SqlStmt {
+	mut pos := prefix.pos
 
 	mut lines := []ast.SqlStmtLine{}
 
@@ -279,12 +307,15 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 
 	p.next()
 
+	p.inside_orm = false
+	p.inside_match = false
 	mut or_expr := p.parse_sql_or_block()
+	p.inside_match = prefix.tmp_inside_match
 
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		pos:     pos.extend(p.prev_tok.pos())
-		db_expr: db_expr
+		db_expr: prefix.db_expr
 		lines:   lines
 		or_expr: or_expr
 	}

@@ -1076,7 +1076,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
-				return p.sql_stmt()
+				return p.sql_stmt_or_expr()
 			}
 			if p.peek_tok.kind == .colon {
 				// `label:`
