@@ -16,31 +16,59 @@ const addr_ip_any = [4]u8{init: u8(0)}
 // new_ip6 creates a new Addr from the IP6 address family, based on the given port and addr
 pub fn new_ip6(port u16, addr [16]u8) Addr {
 	n_port := conv.hton16(port)
-	a := Addr{
-		f:    u8(AddrFamily.ip6)
-		addr: AddrData{
-			Ip6: Ip6{
-				port: n_port
+	$if macos || freebsd || openbsd || netbsd || dragonfly {
+		a := Addr{
+			len:  u8(sizeof(C.sockaddr_in6))
+			f:    u8(AddrFamily.ip6)
+			addr: AddrData{
+				Ip6: Ip6{
+					port: n_port
+				}
 			}
 		}
+		unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
+		return a
+	} $else {
+		a := Addr{
+			f:    u16(AddrFamily.ip6)
+			addr: AddrData{
+				Ip6: Ip6{
+					port: n_port
+				}
+			}
+		}
+		unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
+		return a
 	}
-	unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
-	return a
 }
 
 // new_ip creates a new Addr from the IPv4 address family, based on the given port and addr
 pub fn new_ip(port u16, addr [4]u8) Addr {
 	n_port := conv.hton16(port)
-	a := Addr{
-		f:    u8(AddrFamily.ip)
-		addr: AddrData{
-			Ip: Ip{
-				port: n_port
+	$if macos || freebsd || openbsd || netbsd || dragonfly {
+		a := Addr{
+			len:  u8(sizeof(C.sockaddr_in))
+			f:    u8(AddrFamily.ip)
+			addr: AddrData{
+				Ip: Ip{
+					port: n_port
+				}
 			}
 		}
+		unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
+		return a
+	} $else {
+		a := Addr{
+			f:    u16(AddrFamily.ip)
+			addr: AddrData{
+				Ip: Ip{
+					port: n_port
+				}
+			}
+		}
+		unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
+		return a
 	}
-	unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
-	return a
 }
 
 fn temp_unix() !Addr {

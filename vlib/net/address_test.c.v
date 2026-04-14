@@ -5,6 +5,13 @@ fn test_ip_port() {
 	assert new_ip6(1234, addr_ip6_any).port()! == 1234
 }
 
+fn test_wildcard_constructors_set_sockaddr_len_on_bsd() {
+	$if macos || freebsd || openbsd || netbsd || dragonfly {
+		assert new_ip(1234, addr_ip_any).len == u8(sizeof(C.sockaddr_in))
+		assert new_ip6(1234, addr_ip6_any).len == u8(sizeof(C.sockaddr_in6))
+	}
+}
+
 fn test_diagnostics() {
 	dump(aoffset)
 	eprintln('--------')
