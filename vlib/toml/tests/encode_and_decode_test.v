@@ -65,6 +65,14 @@ struct AnyArr {
 	arr []toml.Any
 }
 
+struct Item {
+	name string
+}
+
+struct Doc {
+	items []Item
+}
+
 fn test_encode_and_decode() {
 	// *¹
 	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
@@ -277,6 +285,35 @@ times = [
 
 	assert toml.encode[AnyArr](any_a) == any_s
 	assert toml.decode[AnyArr](any_s)!.arr.map(it.int()) == [10, 20, 30]
+}
+
+fn test_array_of_struct_decode() {
+	doc := Doc{
+		items: [
+			Item{
+				name: 'item #1'
+			},
+			Item{
+				name: 'item #2'
+			},
+			Item{
+				name: 'item #3'
+			},
+		]
+	}
+
+	encoded := toml.encode[Doc](doc)
+	assert toml.decode[Doc](encoded)! == doc
+
+	array_of_tables := '[[items]]
+name = "item #1"
+
+[[items]]
+name = "item #2"
+
+[[items]]
+name = "item #3"'
+	assert toml.decode[Doc](array_of_tables)! == doc
 }
 
 fn test_decode_doc() {

@@ -72,21 +72,7 @@ fn decode_struct[T](doc Any, mut typ T) {
 			} $else $if field.typ is Any {
 				typ.$(field.name) = value
 			} $else $if field.is_array {
-				arr := value.array()
-				match field.typ {
-					[]string { typ.$(field.name) = arr.as_strings() }
-					[]int { typ.$(field.name) = arr.map(it.int()) }
-					[]i64 { typ.$(field.name) = arr.map(it.i64()) }
-					[]u64 { typ.$(field.name) = arr.map(it.u64()) }
-					[]f32 { typ.$(field.name) = arr.map(it.f32()) }
-					[]f64 { typ.$(field.name) = arr.map(it.f64()) }
-					[]bool { typ.$(field.name) = arr.map(it.bool()) }
-					[]DateTime { typ.$(field.name) = arr.map(it.datetime()) }
-					[]Date { typ.$(field.name) = arr.map(it.date()) }
-					[]Time { typ.$(field.name) = arr.map(it.time()) }
-					[]Any { typ.$(field.name) = arr }
-					else {}
-				}
+				typ.$(field.name) = decode_array(typ.$(field.name), value.array())
 			} $else $if field.is_map {
 				mut mmap := value.as_map()
 				match field.typ {
@@ -152,6 +138,44 @@ fn decode_struct[T](doc Any, mut typ T) {
 				typ.$(field.name) = s
 			}
 		}
+	}
+}
+
+fn decode_array[T](current []T, values []Any) []T {
+	$if T is string {
+		return values.map(it.string())
+	} $else $if T is bool {
+		return values.map(it.bool())
+	} $else $if T is int {
+		return values.map(it.int())
+	} $else $if T is i64 {
+		return values.map(it.i64())
+	} $else $if T is u64 {
+		return values.map(it.u64())
+	} $else $if T is f32 {
+		return values.map(it.f32())
+	} $else $if T is f64 {
+		return values.map(it.f64())
+	} $else $if T is DateTime {
+		return values.map(it.datetime())
+	} $else $if T is Date {
+		return values.map(it.date())
+	} $else $if T is Time {
+		return values.map(it.time())
+	} $else $if T is Any {
+		return values
+	} $else $if T is $struct {
+		mut decoded := []T{cap: values.len}
+		for value in values {
+			if value is map[string]Any {
+				mut item := T{}
+				decode_struct(value, mut item)
+				decoded << item
+			}
+		}
+		return decoded
+	} $else {
+		return current
 	}
 }
 
