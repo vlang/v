@@ -4075,9 +4075,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		'pkgconfig' {
-			if c.pref.output_cross_c {
-				// do not add any flags, since we do not know what the target platform is for the cross platform builds
-				// and it is better to be as conservative as possible
+			if c.pref.output_cross_c || c.pref.os != pref.get_host_os() {
+				// Do not add host pkg-config flags to cross-target builds.
+				// They frequently inject include/library paths for the host OS
+				// (for example Linux OpenSSL headers when targeting Windows).
 				return
 			}
 			args := if node.main.contains('--') {
