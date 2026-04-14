@@ -7284,6 +7284,35 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	}
 }
 
+fn (mut c Checker) check_map_key_type(got ast.Type, expected ast.Type) bool {
+	if c.map_key_pointer_mismatch(got, expected) {
+		return false
+	}
+	return c.check_types(got, expected)
+}
+
+fn (c &Checker) map_key_pointer_mismatch(got ast.Type, expected ast.Type) bool {
+	got_final_sym := c.table.final_sym(got)
+	expected_final_sym := c.table.final_sym(expected)
+	if got_final_sym.idx != expected_final_sym.idx {
+		return false
+	}
+	if got.is_any_kind_of_pointer() != expected.is_any_kind_of_pointer() {
+		return true
+	}
+	return got.is_ptr() && expected.is_ptr() && got.nr_muls() != expected.nr_muls()
+}
+
+fn (c &Checker) map_key_expected_msg(got ast.Type, expected ast.Type, key_expr ast.Expr,
+	container string) string {
+	mut msg := c.expected_msg(got, expected)
+	if container.len > 0 && c.map_key_pointer_mismatch(got, expected) && got.is_ptr()
+		&& !expected.is_any_kind_of_pointer() && got.nr_muls() == expected.nr_muls() + 1 {
+		msg += '; did you mean `${container}[*${key_expr}]`?'
+	}
+	return msg
+}
+
 fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(mut node.left)
 	if typ == 0 {
@@ -7420,8 +7449,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				got_typ_str, expected_typ_str := c.get_string_names_of(actual_index_type, key_type)
 				c.error('invalid key: cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first',
 					node.index.pos())
-			} else if !c.check_types(index_type, key_type) {
-				err := c.expected_msg(index_type, key_type)
+			} else if !c.check_map_key_type(index_type, key_type) {
+				err := c.map_key_expected_msg(index_type, key_type, node.index, '${node.left}')
 				c.error('invalid key: ${err}', node.pos)
 			}
 			value_sym := c.table.sym(info.value_type)

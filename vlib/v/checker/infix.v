@@ -415,9 +415,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				.map {
 					map_info := right_final_sym.map_info()
-					c.check_expected(left_type, map_info.key_type) or {
-						c.error('left operand to `${node.op}` does not match the map key type: ${err.msg()}',
-							left_right_pos)
+					if !c.check_map_key_type(left_type, map_info.key_type) {
+						c.error('left operand to `${node.op}` does not match the map key type: ${c.map_key_expected_msg(left_type,
+							map_info.key_type, node.left, '')}', left_right_pos)
 					}
 					node.left_type = map_info.key_type
 				}
