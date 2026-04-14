@@ -149,18 +149,19 @@ mut:
 	is_js_backend                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign                    bool
-	comptime_call_pos                  int                      // needed for correctly checking use before decl for templates
-	generic_call_positions             map[string]token.Pos     // map from generic function key to call position
-	goto_labels                        map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type                     ast.Type
-	field_data_type                    ast.Type
-	variant_data_type                  ast.Type
-	fn_return_type                     ast.Type
-	orm_table_fields                   map[string][]ast.StructField // known table structs
-	short_module_names                 []string                     // to check for function names colliding with module functions
-	visible_param_mutation_cache       map[string]bool
-	visible_param_mutation_in_progress map[string]bool
+	is_index_assign                      bool
+	comptime_call_pos                    int                      // needed for correctly checking use before decl for templates
+	generic_call_positions               map[string]token.Pos     // map from generic function key to call position
+	goto_labels                          map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type                       ast.Type
+	field_data_type                      ast.Type
+	variant_data_type                    ast.Type
+	fn_return_type                       ast.Type
+	orm_table_fields                     map[string][]ast.StructField // known table structs
+	short_module_names                   []string                     // to check for function names colliding with module functions
+	visible_param_mutation_cache         map[string]bool
+	visible_param_mutation_in_progress   map[string]bool
+	immutable_alias_analysis_in_progress map[string]bool
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -183,17 +184,18 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		vcurrent_hash()
 	}
 	mut checker := &Checker{
-		table:                              table
-		pref:                               pref_
-		timers:                             util.new_timers(
+		table:                                table
+		pref:                                 pref_
+		timers:                               util.new_timers(
 			should_print: timers_should_print
 			label:        'checker'
 		)
-		match_exhaustive_cutoff_limit:      pref_.checker_match_exhaustive_cutoff_limit
-		v_current_commit_hash:              v_current_commit_hash
-		checker_transformer:                transformer.new_transformer_with_table(table, pref_)
-		visible_param_mutation_cache:       map[string]bool{}
-		visible_param_mutation_in_progress: map[string]bool{}
+		match_exhaustive_cutoff_limit:        pref_.checker_match_exhaustive_cutoff_limit
+		v_current_commit_hash:                v_current_commit_hash
+		checker_transformer:                  transformer.new_transformer_with_table(table, pref_)
+		visible_param_mutation_cache:         map[string]bool{}
+		visible_param_mutation_in_progress:   map[string]bool{}
+		immutable_alias_analysis_in_progress: map[string]bool{}
 	}
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
@@ -1399,16 +1401,31 @@ fn (mut c Checker) type_contains_mutable_aliasing(typ ast.Type, mut checked_type
 	return false
 }
 
+fn (mut c Checker) type_has_mutable_aliasing(typ ast.Type) bool {
+	mut checked_types := []ast.Type{}
+	return c.type_contains_mutable_aliasing(typ, mut checked_types)
+}
+
 fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool {
 	match expr {
 		ast.Ident {
-			if expr.obj is ast.Var && expr.obj.is_mut && expr.obj.expr is ast.Ident {
-				mut checked_types := []ast.Type{}
-				if c.type_contains_mutable_aliasing(expr.obj.typ, mut checked_types) {
-					return c.expr_is_immutable_source(expr.obj.expr)
-				}
+			if expr.obj is ast.Var && expr.obj.is_mut
+				&& expr.obj.expr in [ast.Ident, ast.CallExpr, ast.CastExpr, ast.AsCast, ast.ParExpr, ast.UnsafeExpr]
+				&& c.type_has_mutable_aliasing(expr.obj.typ) {
+				return c.expr_is_immutable_source(expr.obj.expr)
+					|| c.expr_is_mutable_alias_of_immutable_source(expr.obj.expr)
 			}
 			return false
+		}
+		ast.CastExpr {
+			return c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+		}
+		ast.CallExpr {
+			return c.call_expr_immutable_alias_source(expr) !is ast.EmptyExpr
+		}
+		ast.IndexExpr {
+			return c.type_has_mutable_aliasing(expr.typ) && (c.expr_is_immutable_source(expr.left)
+				|| c.expr_is_mutable_alias_of_immutable_source(expr.left))
 		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
@@ -1446,7 +1463,13 @@ fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool
 			}
 			return false
 		}
+		ast.AsCast {
+			return c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+		}
 		ast.ParExpr {
+			return c.expr_is_mutable_alias_of_immutable_source(expr.expr)
+		}
+		ast.UnsafeExpr {
 			return c.expr_is_mutable_alias_of_immutable_source(expr.expr)
 		}
 		else {
@@ -1474,8 +1497,14 @@ fn (mut c Checker) call_arg_expr_for_param(node ast.CallExpr, func ast.Fn, param
 
 fn (mut c Checker) return_expr_immutable_alias_source(expr ast.Expr, func ast.Fn, call ast.CallExpr, allow_non_ptr bool) ast.Expr {
 	match expr {
+		ast.AsCast {
+			return c.return_expr_immutable_alias_source(expr.expr, func, call, allow_non_ptr)
+		}
 		ast.CastExpr {
 			return c.return_expr_immutable_alias_source(expr.expr, func, call, allow_non_ptr)
+		}
+		ast.CallExpr {
+			return c.call_expr_immutable_alias_source(expr)
 		}
 		ast.Ident {
 			if expr.obj is ast.Var && expr.obj.is_arg {
@@ -1486,7 +1515,20 @@ fn (mut c Checker) return_expr_immutable_alias_source(expr ast.Expr, func ast.Fn
 				}
 			}
 			if expr.obj is ast.Var && (allow_non_ptr || expr.obj.typ.is_ptr()) {
-				return c.return_expr_immutable_alias_source(expr.obj.expr, func, call, false)
+				return c.return_expr_immutable_alias_source(expr.obj.expr, func, call,
+					allow_non_ptr)
+			}
+			return ast.empty_expr
+		}
+		ast.IndexExpr {
+			if c.type_has_mutable_aliasing(expr.typ) {
+				return c.return_expr_immutable_alias_source(expr.left, func, call, true)
+			}
+			return ast.empty_expr
+		}
+		ast.SelectorExpr {
+			if c.type_has_mutable_aliasing(expr.typ) {
+				return c.return_expr_immutable_alias_source(expr.expr, func, call, true)
 			}
 			return ast.empty_expr
 		}
@@ -1520,8 +1562,10 @@ fn (mut c Checker) node_immutable_alias_source(node ast.Node, func ast.Fn, call 
 				return ast.empty_expr
 			}
 			if node is ast.Return {
+				allow_non_ptr := !call.return_type.is_ptr()
+					&& c.type_has_mutable_aliasing(call.return_type)
 				for expr in node.exprs {
-					source := c.return_expr_immutable_alias_source(expr, func, call, false)
+					source := c.return_expr_immutable_alias_source(expr, func, call, allow_non_ptr)
 					if source !is ast.EmptyExpr {
 						return source
 					}
@@ -1540,11 +1584,26 @@ fn (mut c Checker) node_immutable_alias_source(node ast.Node, func ast.Fn, call 
 	return ast.empty_expr
 }
 
+fn (c &Checker) immutable_alias_call_key(node ast.CallExpr) string {
+	if node.concrete_types.len > 0 {
+		return c.build_generic_call_key(node.fkey(), node.concrete_types)
+	}
+	return node.fkey()
+}
+
 fn (mut c Checker) call_expr_immutable_alias_source(node ast.CallExpr) ast.Expr {
-	if !node.return_type.is_ptr() {
+	if !c.type_has_mutable_aliasing(node.return_type) {
 		return ast.empty_expr
 	}
 	func := c.get_fn_from_call_expr(node) or { return ast.empty_expr }
+	call_key := c.immutable_alias_call_key(node)
+	if call_key in c.immutable_alias_analysis_in_progress {
+		return ast.empty_expr
+	}
+	c.immutable_alias_analysis_in_progress[call_key] = true
+	defer {
+		c.immutable_alias_analysis_in_progress.delete(call_key)
+	}
 	if func.source_fn == unsafe { nil } {
 		return ast.empty_expr
 	}
@@ -1578,15 +1637,18 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			}
 		}
 		ast.CallExpr {
-			source := c.call_expr_immutable_alias_source(right)
-			if source !is ast.EmptyExpr {
-				if source is ast.Ident && c.expr_is_immutable_source(source) {
-					c.note('`${source.name}` is immutable, cannot have a mutable reference to an immutable object',
-						source.pos)
-				} else {
-					c.note('call result aliases mutable data from an immutable value', right.pos)
+			if right_type.is_ptr() {
+				source := c.call_expr_immutable_alias_source(right)
+				if source !is ast.EmptyExpr {
+					if source is ast.Ident && c.expr_is_immutable_source(source) {
+						c.note('`${source.name}` is immutable, cannot have a mutable reference to an immutable object',
+							source.pos)
+					} else {
+						c.note('call result aliases mutable data from an immutable value',
+							right.pos)
+					}
+					return false
 				}
-				return false
 			}
 		}
 		ast.Ident {
@@ -1881,6 +1943,18 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				if to_lock != '' {
 					// No automatic lock for array slicing (yet(?))
 					explicit_lock_needed = true
+				}
+			}
+			if !c.inside_unsafe {
+				source := c.call_expr_immutable_alias_source(expr)
+				if source !is ast.EmptyExpr {
+					if source is ast.Ident && c.expr_is_immutable_source(source) {
+						c.error('`${source.name}` is immutable, cannot have a mutable reference to an immutable object',
+							source.pos)
+					} else {
+						c.error('`${expr}` aliases mutable data from an immutable value', expr.pos)
+					}
+					return '', expr.pos
 				}
 			}
 		}
