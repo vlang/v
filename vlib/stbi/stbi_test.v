@@ -89,3 +89,15 @@ fn test_load_image_with_channels_different_than_4() {
 	assert img3_resized.nr_channels == 3
 	assert img3_resized.original_nr_channels == 3
 }
+
+fn test_load_image_from_memory_with_channels_different_than_4() {
+	background_bytes := os.read_bytes(background_path)!
+
+	img := stbi.load_from_memory(background_bytes.data, background_bytes.len)!
+	assert img.nr_channels == 4, 'by default, stbi.load_from_memory should convert images to 4 channels'
+	assert img.original_nr_channels == 3, 'the default should preserve the original channel count as metadata'
+
+	img3 := stbi.load_from_memory(background_bytes.data, background_bytes.len, desired_channels: 0)!
+	assert img3.nr_channels == 3, 'load_from_memory should preserve the source channel count when desired_channels is 0'
+	assert img3.original_nr_channels == 3
+}
