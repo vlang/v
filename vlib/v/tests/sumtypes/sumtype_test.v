@@ -124,6 +124,10 @@ fn test_assignment_and_push() {
 
 type MatchIndexAssertType = int | string
 
+fn accept_match_index_int(value int) int {
+	return value
+}
+
 fn test_match_index_expr_smartcast_in_assert() {
 	mt := [MatchIndexAssertType('')]
 	match mt[0] {
@@ -133,6 +137,17 @@ fn test_match_index_expr_smartcast_in_assert() {
 		else {
 			assert false
 		}
+	}
+}
+
+type IfIndexCallType = int | string
+
+fn test_if_index_expr_smartcast_in_call_arg() {
+	mt := [IfIndexCallType(123)]
+	if mt[0] is int {
+		assert accept_match_index_int(mt[0]) == 123
+	} else {
+		assert false
 	}
 }
 

@@ -732,7 +732,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
-				if node.left in [ast.Ident, ast.SelectorExpr]
+				if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
 					&& node.right in [ast.ComptimeType, ast.TypeNode, ast.Ident] {
 					is_variable := if mut node.left is ast.Ident {
 						node.left.kind == .variable
@@ -776,7 +776,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 		first_cond := control_expr.branches[0].cond
 		// `if x !is Type { ... } else { /* smartcast x to Type here */ }`
 		if first_cond is ast.InfixExpr && first_cond.op == .not_is
-			&& first_cond.left in [ast.Ident, ast.SelectorExpr] {
+			&& first_cond.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 			right_type := first_cond.right_type
 			left_type := first_cond.left_type
 			left_sym := c.table.final_sym(left_type)

@@ -2184,11 +2184,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			c.expr(mut call_arg.expr)
 		})
+		arg_typ = c.maybe_wrap_index_expr_smartcast(mut call_arg.expr, arg_typ)
 		is_struct_init_arg := call_arg.expr is ast.StructInit
 		if is_struct_init_arg {
 			mut arg_expr := call_arg.expr
 			arg_typ = c.expr(mut arg_expr)
 		}
+		node.args[i].expr = call_arg.expr
 		node.args[i].typ = arg_typ
 		if c.comptime.comptime_for_field_var != '' {
 			if mut call_arg.expr is ast.Ident && call_arg.expr.obj is ast.Var {
