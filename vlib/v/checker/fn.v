@@ -4342,6 +4342,19 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				arg_type
 			}
 		}
+		normalized_ret_type := if c.table.sym(ret_type).kind == .alias {
+			unaliased_ret_type := c.table.unaliased_type(ret_type)
+			if unaliased_ret_type.has_option_or_result() {
+				unaliased_ret_type
+			} else {
+				ret_type
+			}
+		} else {
+			ret_type
+		}
+		if normalized_ret_type.has_flag(.result) {
+			c.error('cannot use Result type in `${node.name}`', arg0.expr.pos())
+		}
 		if c.pref.new_generic_solver {
 			node.return_type = c.table.find_or_register_array(ret_type)
 		} else {
