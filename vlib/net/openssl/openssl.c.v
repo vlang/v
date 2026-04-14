@@ -31,21 +31,14 @@ $if $pkgconfig('openssl') {
 		#flag -lssl -lcrypto
 	}
 	#flag linux -ldl -lpthread
-	// MacPorts
-	#flag darwin -I/opt/local/include
-	#flag darwin -L/opt/local/lib
-	// Brew
-	#flag darwin -I/usr/local/opt/openssl/include
-	#flag darwin -L/usr/local/opt/openssl/lib
-	// brew on macos-12 (ci runner)
-	#flag darwin -I/usr/local/opt/openssl@3/include
-	#flag darwin -L/usr/local/opt/openssl@3/lib
-	// Brew arm64
-	#flag darwin -I /opt/homebrew/opt/openssl/include
-	#flag darwin -L /opt/homebrew/opt/openssl/lib
-	// Procursus
-	#flag darwin -I/opt/procursus/include
-	#flag darwin -L/opt/procursus/lib
+	// Prefer a single matching macOS OpenSSL prefix to avoid mixing Intel and arm64 installs.
+	$if arm64 {
+		#flag darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include','/opt/procursus/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib','/opt/procursus/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib')
+	} $else {
+		#flag darwin -I$when_first_existing('/opt/local/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include','/opt/procursus/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib','/opt/procursus/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib')
+	}
 }
 
 #include <openssl/rand.h> # Please install OpenSSL development headers
