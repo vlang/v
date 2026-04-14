@@ -2438,6 +2438,21 @@ fn (mut g Gen) write_late_array_typedefs() {
 	}
 }
 
+fn (g &Gen) fixed_array_base_elem_sym(typ ast.Type) &ast.TypeSymbol {
+	mut sym := g.table.final_sym(typ)
+	for {
+		match sym.info {
+			ast.ArrayFixed {
+				sym = g.table.final_sym(sym.info.elem_type)
+			}
+			else {
+				return sym
+			}
+		}
+	}
+	return sym
+}
+
 pub fn (mut g Gen) write_typedef_types() {
 	type_symbols := g.table.type_symbols.filter(!it.is_builtin
 		&& it.kind in [.array, .array_fixed, .chan, .map])
@@ -2457,21 +2472,18 @@ pub fn (mut g Gen) write_typedef_types() {
 			}
 			.array_fixed {
 				info := sym.info as ast.ArrayFixed
-				elem_sym := g.table.sym(info.elem_type)
-				if elem_sym.kind != .struct && elem_sym.is_builtin() {
+				base_elem_sym := g.fixed_array_base_elem_sym(info.elem_type)
+				if base_elem_sym.kind != .struct && base_elem_sym.is_builtin() {
 					styp := sym.cname
 					len := info.size
 					if len > 0 {
-						fixed_elem_type := if elem_sym.info is ast.Alias {
-							elem_sym.info.parent_type
-						} else {
-							info.elem_type
-						}
+						fixed_elem_type := g.unalias_type_keep_muls(info.elem_type)
+						resolved_elem_sym := g.table.sym(fixed_elem_type)
 						mut fixed := g.styp(fixed_elem_type)
-						if elem_sym.info is ast.FnType {
+						if resolved_elem_sym.info is ast.FnType {
 							pos := g.out.len
 							// pos2:=g.out_parallel[g.out_idx].len
-							g.write_fn_ptr_decl(&elem_sym.info, '')
+							g.write_fn_ptr_decl(&resolved_elem_sym.info, '')
 							fixed = g.out.cut_to(pos)
 							// g.out_parallel[g.out_idx].cut_to(pos2)
 							mut def_str := 'typedef ${fixed};'
@@ -2562,6 +2574,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 			parent_sym := g.table.sym(sym.info.parent_type)
 			if parent_sym.info is ast.ArrayFixed {
 				mut elem_sym := g.table.sym(parent_sym.info.elem_type)
+				base_elem_sym := g.fixed_array_base_elem_sym(parent_sym.info.elem_type)
 
 				mut parent_elem_info := parent_sym.info as ast.ArrayFixed
 				mut parent_elem_styp := g.styp(sym.info.parent_type)
@@ -2585,7 +2598,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 				// contains non-builtin types. For non-builtins (structs,
 				// enums), write_sorted_types handles the typedefs after
 				// struct definitions, so skip emitting them here.
-				if !elem_sym.is_builtin() {
+				if !base_elem_sym.is_builtin() {
 					is_fixed_array_of_non_builtin = true
 					out.clear()
 				}
@@ -9574,7 +9587,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
-				if (elem_sym.kind == .struct || !elem_sym.is_builtin())
+				base_elem_sym := g.fixed_array_base_elem_sym(sym.info.elem_type)
+				if (base_elem_sym.kind == .struct || !base_elem_sym.is_builtin())
 					&& !sym.info.elem_type.has_flag(.generic) && !sym.info.is_fn_ret
 					&& (!g.pref.skip_unused || (!sym.info.is_fn_ret
 					&& sym.idx in g.table.used_features.used_syms)) {
