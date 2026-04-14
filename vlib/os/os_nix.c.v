@@ -1,14 +1,14 @@
 module os
 
-import strings
-
 #include <dirent.h>
+#include <spawn.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/statvfs.h>
 #include <utime.h>
+#include "@VEXEROOT/vlib/os/execute_capture_nix.h"
 
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
@@ -65,6 +65,8 @@ fn C.getppid() i32
 fn C.getgid() i32
 
 fn C.getegid() i32
+
+fn C.v_os_execute_capture_start(cmd &char, child_pid &int, read_fd &int) int
 
 enum GlobMatch {
 	exact
@@ -319,37 +321,25 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-@[manualfree]
 pub fn execute(cmd string) Result {
-	pcmd := 'exec 2>&1;${cmd}'
-	defer {
-		unsafe { pcmd.free() }
-	}
-	f := vpopen(pcmd)
-	if isnil(f) {
+	mut pid := 0
+	mut read_fd := -1
+	if C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd) != 0 {
 		return Result{
 			exit_code: -1
 			output:    'exec("${cmd}") failed'
 		}
 	}
-	fd := fileno(f)
-	mut res := strings.new_builder(1024)
-	defer {
-		unsafe { res.free() }
-	}
-	buf := [4096]u8{}
-	unsafe {
-		pbuf := &buf[0]
-		for {
-			len := int(C.read(fd, pbuf, 4096))
-			if len == 0 {
-				break
-			}
-			res.write_ptr(pbuf, len)
+	soutput := fd_slurp(read_fd).join('')
+	fd_close(read_fd)
+	mut status := 0
+	if C.waitpid(pid, &status, 0) == -1 {
+		return Result{
+			exit_code: -1
+			output:    soutput
 		}
 	}
-	soutput := res.str()
-	exit_code := vpclose(f)
+	exit_code, _ := posix_wait4_to_exit_status(status)
 	return Result{
 		exit_code: exit_code
 		output:    soutput
