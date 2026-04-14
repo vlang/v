@@ -2004,13 +2004,41 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							if exp_type.is_any_kind_of_pointer() && val is ast.PrefixExpr
-								&& val.op == .amp && val.right is ast.Ident
-								&& ((val.right as ast.Ident).is_auto_heap()
-								|| g.resolved_ident_is_auto_heap(val.right as ast.Ident)) {
+							mut use_heap_pointed_ident := false
+							mut use_raw_auto_heap_ident := false
+							if val is ast.PrefixExpr && val.op == .amp && val.right is ast.Ident {
+								right_ident := val.right as ast.Ident
+								mut resolved_right_type := g.resolved_expr_type(ast.Expr(right_ident),
+									val.right_type)
+								if resolved_right_type == 0 {
+									resolved_right_type = val.right_type
+								}
+								resolved_right_type =
+									g.unwrap_generic(g.recheck_concrete_type(resolved_right_type))
+								rhs_sym_ := g.table.final_sym(resolved_right_type)
+								if rhs_sym_.kind != .function {
+									right_type_for_compare :=
+										resolved_right_type.clear_flag(.shared_f).clear_flag(.atomic_f)
+									exp_type_for_compare :=
+										exp_type.clear_flag(.shared_f).clear_flag(.atomic_f)
+									right_points_to_heap := resolved_right_type.is_ptr()
+										&& g.table.final_sym(resolved_right_type.deref()).is_heap()
+									use_heap_pointed_ident = resolved_right_type != 0
+										&& right_points_to_heap
+										&& right_type_for_compare == exp_type_for_compare
+									right_is_auto_heap := right_ident.is_auto_heap()
+										|| g.resolved_ident_is_auto_heap(right_ident)
+									use_raw_auto_heap_ident = right_is_auto_heap
+										&& !use_heap_pointed_ident && resolved_right_type != 0
+										&& !resolved_right_type.is_ptr()
+								}
+							}
+							if use_heap_pointed_ident {
+								g.expr(ast.Expr((val as ast.PrefixExpr).right))
+							} else if use_raw_auto_heap_ident {
 								old_inside_assign_fn_var := g.inside_assign_fn_var
 								g.inside_assign_fn_var = true
-								g.expr(ast.Expr(val.right))
+								g.expr(ast.Expr((val as ast.PrefixExpr).right))
 								g.inside_assign_fn_var = old_inside_assign_fn_var
 							} else {
 								g.expr_with_cast(val, val_type, exp_type)

@@ -54,6 +54,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 	resolved_node_type := g.recheck_concrete_type(base_node_typ)
 	unwrapped_typ := g.unwrap_generic(resolved_node_type)
+	struct_init_typ := if node.typ.has_flag(.generic) && resolved_node_type != 0 {
+		resolved_node_type
+	} else {
+		node.typ
+	}
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
 		if unwrapped_typ.is_ptr() {
@@ -81,6 +86,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut aligned := 0
 	mut is_anon := false
 	mut is_array_fixed_struct_init := false // return T{} where T is fixed array
+	mut is_ptr_heap_init := false
 	if mut sym.info is ast.Struct {
 		if attr := sym.info.attrs.find_first('aligned') {
 			aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
@@ -143,9 +149,27 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				}
 			}
 		}
-	} else if node.typ.is_ptr() {
-		basetyp := g.styp(node.typ.set_nr_muls(0))
-		if is_multiline {
+	} else if struct_init_typ.is_ptr() {
+		mut resolved_ptr_type := g.unwrap_generic(g.recheck_concrete_type(struct_init_typ))
+		if resolved_ptr_type == 0 {
+			resolved_ptr_type = struct_init_typ
+		}
+		pointee_type := resolved_ptr_type.set_nr_muls(0)
+		basetyp := g.styp(pointee_type)
+		pointee_sym := g.table.final_sym(pointee_type)
+		if pointee_sym.is_heap() {
+			is_ptr_heap_init = true
+			if aligned != 0 {
+				g.write('(${basetyp}*)builtin__memdup_align(&(${basetyp}){')
+			} else {
+				g.write_heap_alloc(basetyp, pointee_type)
+				if is_multiline {
+					g.writeln('(${basetyp}){')
+				} else {
+					g.write('(${basetyp}){')
+				}
+			}
+		} else if is_multiline {
 			g.writeln('&(${basetyp}){')
 		} else {
 			g.write('&(${basetyp}){')
@@ -435,7 +459,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	if !is_array_fixed_struct_init && !is_generic_default {
+	if !is_array_fixed_struct_init && (!is_generic_default || is_ptr_heap_init) {
 		g.write('}')
 	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
@@ -458,6 +482,18 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			} else {
 				g.write_heap_alloc_close(unwrapped_typ)
 			}
+		}
+	} else if is_ptr_heap_init {
+		mut resolved_ptr_type := g.unwrap_generic(g.recheck_concrete_type(struct_init_typ))
+		if resolved_ptr_type == 0 {
+			resolved_ptr_type = struct_init_typ
+		}
+		pointee_type := resolved_ptr_type.set_nr_muls(0)
+		basetyp := g.styp(pointee_type)
+		if aligned != 0 {
+			g.write(', sizeof(${basetyp}), ${aligned})')
+		} else {
+			g.write_heap_alloc_close(pointee_type)
 		}
 	}
 }
