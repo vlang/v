@@ -1409,6 +1409,110 @@ fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool
 	}
 }
 
+fn (mut c Checker) call_arg_expr_for_param(node ast.CallExpr, func ast.Fn, param_name string) ast.Expr {
+	mut arg_idx := 0
+	for i, param in func.params {
+		if func.is_method && i == 0 {
+			continue
+		}
+		if arg_idx >= node.args.len {
+			break
+		}
+		if param.name == param_name {
+			return node.args[arg_idx].expr
+		}
+		arg_idx++
+	}
+	return ast.empty_expr
+}
+
+fn (mut c Checker) return_expr_immutable_alias_source(expr ast.Expr, func ast.Fn, call ast.CallExpr, allow_non_ptr bool) ast.Expr {
+	match expr {
+		ast.CastExpr {
+			return c.return_expr_immutable_alias_source(expr.expr, func, call, allow_non_ptr)
+		}
+		ast.Ident {
+			if expr.obj is ast.Var && expr.obj.is_arg {
+				arg_expr := c.call_arg_expr_for_param(call, func, expr.name)
+				if arg_expr !is ast.EmptyExpr && (allow_non_ptr || expr.obj.typ.is_ptr())
+					&& c.expr_is_immutable_source(arg_expr) {
+					return arg_expr
+				}
+			}
+			if expr.obj is ast.Var && (allow_non_ptr || expr.obj.typ.is_ptr()) {
+				return c.return_expr_immutable_alias_source(expr.obj.expr, func, call,
+					false)
+			}
+			return ast.empty_expr
+		}
+		ast.ParExpr {
+			return c.return_expr_immutable_alias_source(expr.expr, func, call, allow_non_ptr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return c.return_expr_immutable_alias_source(expr.right, func, call, true)
+			}
+			return ast.empty_expr
+		}
+		ast.UnsafeExpr {
+			return c.return_expr_immutable_alias_source(expr.expr, func, call, allow_non_ptr)
+		}
+		else {
+			return ast.empty_expr
+		}
+	}
+}
+
+fn (mut c Checker) node_immutable_alias_source(node ast.Node, func ast.Fn, call ast.CallExpr) ast.Expr {
+	match node {
+		ast.Expr {
+			if node is ast.AnonFn {
+				return ast.empty_expr
+			}
+		}
+		ast.Stmt {
+			if node is ast.FnDecl {
+				return ast.empty_expr
+			}
+			if node is ast.Return {
+				for expr in node.exprs {
+					source := c.return_expr_immutable_alias_source(expr, func, call, false)
+					if source !is ast.EmptyExpr {
+						return source
+					}
+				}
+				return ast.empty_expr
+			}
+		}
+		else {}
+	}
+	for child in node.children() {
+		source := c.node_immutable_alias_source(child, func, call)
+		if source !is ast.EmptyExpr {
+			return source
+		}
+	}
+	return ast.empty_expr
+}
+
+fn (mut c Checker) call_expr_immutable_alias_source(node ast.CallExpr) ast.Expr {
+	if !node.return_type.is_ptr() {
+		return ast.empty_expr
+	}
+	func := c.get_fn_from_call_expr(node) or { return ast.empty_expr }
+	if func.source_fn == unsafe { nil } {
+		return ast.empty_expr
+	}
+	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
+	for stmt in fn_decl.stmts {
+		source := c.node_immutable_alias_source(stmt, func, node)
+		if source !is ast.EmptyExpr {
+			return source
+		}
+	}
+	return ast.empty_expr
+}
+
 // fail_if_immutable_to_mutable checks if there is a immutable reference on right-side of assignment for mutable var
 fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
 	if c.inside_unsafe || c.pref.translated || c.file.is_translated {
@@ -1426,6 +1530,19 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 					mut expr := right.expr
 					c.fail_if_immutable(mut expr)
 				}
+			}
+		}
+		ast.CallExpr {
+			source := c.call_expr_immutable_alias_source(right)
+			if source !is ast.EmptyExpr {
+				if source is ast.Ident && c.expr_is_immutable_source(source) {
+					c.note('`${source.name}` is immutable, cannot have a mutable reference to an immutable object',
+						source.pos)
+				} else {
+					c.note('call result aliases mutable data from an immutable value',
+						right.pos)
+				}
+				return false
 			}
 		}
 		ast.Ident {
