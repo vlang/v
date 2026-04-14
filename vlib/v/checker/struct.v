@@ -498,7 +498,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.expected_type = old_expected_type
 		util.timing_measure_cumulative(@METHOD)
 	}
-	source_typ := if node.is_short_syntax && c.expected_type != ast.void_type {
+	short_syntax_expected_type_sym := c.table.sym(c.unwrap_generic(c.expected_type))
+	short_syntax_infers_anon_from_generic_param := node.is_short_syntax && node.typ == ast.void_type
+		&& c.expected_type != ast.void_type && c.expected_type.has_flag(.generic)
+		&& short_syntax_expected_type_sym.kind == .any
+		&& !short_syntax_expected_type_sym.is_builtin()
+	source_typ := if node.is_short_syntax && c.expected_type != ast.void_type
+		&& !short_syntax_infers_anon_from_generic_param {
 		c.expected_type
 	} else if node.typ != ast.void_type {
 		node.typ
@@ -515,7 +521,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		source_generic_typ = source_sym.info.parent_type.derive(source_typ).set_flag(.generic)
 	}
 	if node.generic_typ == 0 && source_generic_typ != ast.void_type
-		&& (source_generic_typ.has_flag(.generic)
+		&& !short_syntax_infers_anon_from_generic_param && (source_generic_typ.has_flag(.generic)
 		|| c.type_has_unresolved_generic_parts(source_generic_typ)) {
 		node.generic_typ = source_generic_typ
 	}
@@ -551,11 +557,15 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			c.error('unexpected short struct syntax', node.pos)
 			return ast.void_type
 		}
-		sym := c.table.sym(c.expected_type)
-		if sym.kind == .array {
-			node.typ = c.table.value_type(c.expected_type)
+		if short_syntax_infers_anon_from_generic_param {
+			node.typ = ast.none_type
 		} else {
-			node.typ = c.expected_type
+			sym := c.table.sym(c.expected_type)
+			if sym.kind == .array {
+				node.typ = c.table.value_type(c.expected_type)
+			} else {
+				node.typ = c.expected_type
+			}
 		}
 	}
 	original_node_typ := node.typ
@@ -1124,7 +1134,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			mut init_fields := []ast.StructField{}
 			for mut init_field in node.init_fields {
 				mut expr := unsafe { init_field }
-				init_field.typ = c.expr(mut expr.expr)
+				init_field.typ = ast.mktyp(c.expr(mut expr.expr))
 				init_field.expected_type = init_field.typ
 				init_fields << ast.StructField{
 					name:   init_field.name
@@ -1148,7 +1158,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			ret := c.table.register_sym(sym_struct)
 			c.table.register_anon_struct(name, ret)
-			node.typ = c.table.find_type_idx(name)
+			node = ast.StructInit{
+				...node
+				typ:             c.table.find_type_idx(name)
+				typ_str:         name
+				is_anon:         true
+				is_short_syntax: false
+			}
 		}
 		else {}
 	}
