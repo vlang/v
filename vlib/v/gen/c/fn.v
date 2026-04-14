@@ -1176,7 +1176,19 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 						if info.is_volatile {
 							g.write('volatile ')
 						}
-						g.writeln('${g.styp(info.typ)}${deref} ${c_name(var.name)};')
+						decl_typ := if deref == '*' {
+							info.typ.ref()
+						} else {
+							info.typ
+						}
+						default_expr := g.type_default(decl_typ)
+						if g.type_default_vars.len > 0 {
+							for decl in g.type_default_vars.str().trim_right('\n').split_into_lines() {
+								g.writeln(decl)
+							}
+							g.type_default_vars.clear()
+						}
+						g.writeln('${g.styp(info.typ)}${deref} ${c_name(var.name)} = ${default_expr};')
 					}
 				}
 			}
