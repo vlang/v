@@ -131,6 +131,13 @@ pub fn (mut pv Picoev) delete(fd int) int {
 fn (mut pv Picoev) loop_once(max_wait_in_sec int) int {
 	pv.loop.now = get_time()
 	if pv.poll_once(max_wait_in_sec) != 0 {
+		$if !windows {
+			if C.errno == net.error_eintr {
+				// Signal-driven wakeups are transient. The caller should keep serving,
+				// instead of spinning on a logged "error" until the signal source stops.
+				return 0
+			}
+		}
 		elog('Error during poll_once')
 		return -1
 	}
