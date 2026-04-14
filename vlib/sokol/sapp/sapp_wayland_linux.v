@@ -130,6 +130,10 @@ $if sokol_wayland ? {
 	// === Key translation ===
 
 	fn wl_translate_key(keysym Xkb_keysym_t) KeyCode {
+		key := linux_translate_navigation_or_keypad_keysym(u32(keysym))
+		if key != .invalid {
+			return key
+		}
 		return match keysym {
 			xkb_key_space { .space }
 			xkb_key_apostrophe { .apostrophe }
@@ -183,16 +187,6 @@ $if sokol_wayland ? {
 			xkb_key_return { .enter }
 			xkb_key_tab { .tab }
 			xkb_key_backspace { .backspace }
-			xkb_key_insert { .insert }
-			xkb_key_delete { .delete }
-			xkb_key_right { .right }
-			xkb_key_left { .left }
-			xkb_key_down { .down }
-			xkb_key_up { .up }
-			xkb_key_page_up { .page_up }
-			xkb_key_page_down { .page_down }
-			xkb_key_home { .home }
-			xkb_key_end { .end }
 			xkb_key_caps_lock { .caps_lock }
 			xkb_key_scroll_lock { .scroll_lock }
 			xkb_key_num_lock { .num_lock }
@@ -223,23 +217,6 @@ $if sokol_wayland ? {
 			xkb_key_f23 { .f23 }
 			xkb_key_f24 { .f24 }
 			xkb_key_f25 { .f25 }
-			xkb_key_kp_0 { .kp_0 }
-			xkb_key_kp_1 { .kp_1 }
-			xkb_key_kp_2 { .kp_2 }
-			xkb_key_kp_3 { .kp_3 }
-			xkb_key_kp_4 { .kp_4 }
-			xkb_key_kp_5 { .kp_5 }
-			xkb_key_kp_6 { .kp_6 }
-			xkb_key_kp_7 { .kp_7 }
-			xkb_key_kp_8 { .kp_8 }
-			xkb_key_kp_9 { .kp_9 }
-			xkb_key_kp_decimal { .kp_decimal }
-			xkb_key_kp_divide { .kp_divide }
-			xkb_key_kp_multiply { .kp_multiply }
-			xkb_key_kp_subtract { .kp_subtract }
-			xkb_key_kp_add { .kp_add }
-			xkb_key_kp_enter { .kp_enter }
-			xkb_key_kp_equal { .kp_equal }
 			xkb_key_shift_l { .left_shift }
 			xkb_key_control_l { .left_control }
 			xkb_key_alt_l { .left_alt }

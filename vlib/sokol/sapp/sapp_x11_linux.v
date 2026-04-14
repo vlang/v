@@ -713,6 +713,22 @@ fn x11_translate_keysyms(keysyms &KeySym, width int) KeyCode {
 	}
 }
 
+fn x11_lookup_keysym(event &C.XEvent) KeySym {
+	mut keysym := KeySym(0)
+	unsafe {
+		C.XLookupString(&event.xkey, nil, 0, &keysym, nil)
+	}
+	return keysym
+}
+
+fn x11_translate_event_key(scancode int, keysym KeySym) KeyCode {
+	key := linux_translate_navigation_or_keypad_keysym(u32(keysym))
+	if key != .invalid {
+		return key
+	}
+	return x11_translate_key(scancode)
+}
+
 // XKB key name to keycode mapping entry
 struct X11KeymapEntry {
 mut:
@@ -1637,7 +1653,8 @@ fn x11_on_focusout(event &C.XEvent) {
 fn x11_on_keypress(event &C.XEvent) {
 	unsafe {
 		keycode := int(event.xkey.keycode)
-		key := x11_translate_key(keycode)
+		keysym := x11_lookup_keysym(event)
+		key := x11_translate_event_key(keycode, keysym)
 		repeat := x11_keypress_repeat(keycode)
 		mut mods := x11_mods(event.xkey.state)
 		// X11 doesn't set modifier bit on key down, so emulate that
@@ -1645,8 +1662,6 @@ fn x11_on_keypress(event &C.XEvent) {
 		if key != .invalid {
 			x11_key_event(.key_down, key, repeat, mods)
 		}
-		mut keysym := KeySym(0)
-		C.XLookupString(&event.xkey, nil, 0, &keysym, nil)
 		chr := x11_keysym_to_unicode(keysym)
 		if chr > 0 {
 			x11_char_event(u32(chr), repeat, mods)
@@ -1657,7 +1672,8 @@ fn x11_on_keypress(event &C.XEvent) {
 fn x11_on_keyrelease(event &C.XEvent) {
 	unsafe {
 		keycode := int(event.xkey.keycode)
-		key := x11_translate_key(keycode)
+		keysym := x11_lookup_keysym(event)
+		key := x11_translate_event_key(keycode, keysym)
 		x11_keyrelease_repeat(keycode)
 		if key != .invalid {
 			mut mods := x11_mods(event.xkey.state)
