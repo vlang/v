@@ -1,0 +1,14 @@
+// vtest vflags: -gc none -os termux -prod
+const linux_default_paths = ['linux']
+const termux_default_paths = ['termux-1', 'termux-2']
+
+fn main() {
+	default_paths := $if linux {
+		linux_default_paths
+	} $else $if termux {
+		termux_default_paths
+	} $else {
+		['fallback']
+	}
+	println(default_paths)
+}
