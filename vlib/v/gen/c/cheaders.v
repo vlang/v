@@ -628,7 +628,6 @@ typedef void (*MapFreeFn)(voidptr);
 const c_bare_headers = c_helper_macros + c_common_macros +
 	'
 #define _VFREESTANDING
-typedef long unsigned int size_t;
 // Memory allocation related headers
 void *malloc(size_t size);
 void *calloc(size_t nitems, size_t size);
