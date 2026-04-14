@@ -2,9 +2,9 @@ module ast
 
 import v.pref
 
-pub const valid_comptime_if_os = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu', 'qnx',
-	'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux', 'solaris',
-	'haiku', 'serenity', 'vinix', 'plan9', 'wasm32_emscripten']
+pub const valid_comptime_if_os = ['windows', 'ios', 'macos', 'mac', 'mach', 'darwin', 'hpux', 'gnu',
+	'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
+	'solaris', 'haiku', 'serenity', 'vinix', 'plan9', 'wasm32_emscripten']
 pub const valid_comptime_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 pub const valid_comptime_if_platforms = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64',
 	'rv32', 's390x', 'ppc64le', 'loongarch64', 'sparc64', 'ppc64', 'ppc']
@@ -181,6 +181,7 @@ pub const system_ident_map = {
 	'windows':            '_WIN32'
 	'ios':                '__TARGET_IOS__'
 	'macos':              '__APPLE__'
+	'mac':                '__APPLE__'
 	'mach':               '__MACH__'
 	'darwin':             '__DARWIN__'
 	'hpux':               '__HPUX__'
