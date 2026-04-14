@@ -902,6 +902,12 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 									pos: pos
 								}
 							}
+							.power {
+								return ast.IntegerLiteral{
+									val: math.powi(left_val, right_val).str()
+									pos: pos
+								}
+							}
 							.minus {
 								// HACK: prevent folding of `min_i64` values in `math` module
 								if left_val == -9223372036854775807 && right_val == 1 {
@@ -1008,6 +1014,12 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.mul {
 								return folded_float_literal(left_val * right_val, pos)
+							}
+							.power {
+								return ast.FloatLiteral{
+									val: math.pow(left_val, right_val).str()
+									pos: pos
+								}
 							}
 							.minus {
 								return folded_float_literal(left_val - right_val, pos)

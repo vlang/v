@@ -788,6 +788,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.minus, '', 1)
 			}
 			`*` {
+				if nextc == `*` {
+					if s.look_ahead(2) == `=` {
+						s.pos += 2
+						return s.new_token(.power_assign, '', 3)
+					}
+					s.pos++
+					return s.new_token(.power, '', 2)
+				}
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.mult_assign, '', 2)

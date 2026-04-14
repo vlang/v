@@ -7418,7 +7418,8 @@ fn main() {
 >
 > `a.add(b).add(c.mul(d))` is a lot less readable than `a + b + c * d`.
 
-Operator overloading is possible for the following binary operators: `+, -, *, /, %, <, ==`.
+Operator overloading is possible for the following binary operators:
+`+, -, *, **, /, %, <, ==`.
 
 ### Implicitly generated overloads
 
@@ -7426,8 +7427,8 @@ Operator overloading is possible for the following binary operators: `+, -, *, /
 
 - `!=`, `>`, `<=` and `>=` are automatically generated when `==` and `<` are defined.
   They cannot be explicitly overridden.
-- Assignment operators (`*=`, `+=`, `/=`, etc) are automatically generated when the corresponding
-  operators are defined and the operands are of the same type.
+- Assignment operators (`*=`, `**=`, `+=`, `/=`, etc) are automatically generated when the
+  corresponding operators are defined and the operands are of the same type.
   They cannot be explicitly overridden.
 
 ### Restriction
@@ -8731,6 +8732,7 @@ This lists operators for [primitive types](#primitive-types) only.
 +    sum                    integers, floats, strings
 -    difference             integers, floats
 *    product                integers, floats
+**   power                  integers, floats
 /    quotient               integers, floats
 %    remainder              integers
 
@@ -8750,6 +8752,7 @@ This lists operators for [primitive types](#primitive-types) only.
 
 
 Precedence    Operator
+    6            **
     5            *  /  %  <<  >> >>> &
     4            +  -  |  ^
     3            ==  !=  <  <=  >  >=

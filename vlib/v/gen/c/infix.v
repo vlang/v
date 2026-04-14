@@ -54,7 +54,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		.key_is, .not_is {
 			g.infix_expr_is_op(node)
 		}
-		.plus, .minus, .mul, .div, .mod {
+		.plus, .minus, .mul, .power, .div, .mod {
 			g.infix_expr_arithmetic_op(node)
 		}
 		.left_shift {
@@ -1732,6 +1732,69 @@ struct VSafeArithmeticOp {
 	op  token.Kind
 }
 
+fn (mut g Gen) normalized_power_result_type(result_type ast.Type, left_type ast.Type, right_type ast.Type) ast.Type {
+	mut typ := g.unwrap_generic(g.recheck_concrete_type(result_type)).clear_flag(.shared_f).clear_flag(.atomic_f)
+	if typ == 0 || typ == ast.void_type {
+		typ = g.unwrap_generic(g.type_resolver.promote_type(g.unwrap_generic(left_type),
+			g.unwrap_generic(right_type))).clear_flag(.shared_f).clear_flag(.atomic_f)
+	}
+	if typ == ast.int_literal_type {
+		if left_type !in [ast.int_literal_type, ast.float_literal_type] {
+			typ = g.unwrap_generic(left_type)
+		} else if right_type !in [ast.int_literal_type, ast.float_literal_type] {
+			typ = g.unwrap_generic(right_type)
+		} else {
+			typ = ast.int_type
+		}
+	} else if typ == ast.float_literal_type {
+		if left_type !in [ast.int_literal_type, ast.float_literal_type] {
+			typ = g.unwrap_generic(left_type)
+		} else if right_type !in [ast.int_literal_type, ast.float_literal_type] {
+			typ = g.unwrap_generic(right_type)
+		} else {
+			typ = ast.f64_type
+		}
+	}
+	return typ.clear_flag(.shared_f).clear_flag(.atomic_f)
+}
+
+fn (mut g Gen) gen_power_expr_from_types(left ast.Expr, left_type ast.Type, right ast.Expr, right_type ast.Type, result_type ast.Type) {
+	power_result_type := g.normalized_power_result_type(result_type, left_type, right_type)
+	builtin_power_type := g.table.unalias_num_type(power_result_type)
+	result_styp := g.styp(power_result_type)
+	g.uses_power = true
+	if builtin_power_type == ast.f32_type {
+		g.write('(${result_styp})powf(')
+		g.expr_with_cast(left, left_type, ast.f32_type)
+		g.write(', ')
+		g.expr_with_cast(right, right_type, ast.f32_type)
+		g.write(')')
+		return
+	}
+	if builtin_power_type.is_float() {
+		g.write('(${result_styp})pow(')
+		g.expr_with_cast(left, left_type, ast.f64_type)
+		g.write(', ')
+		g.expr_with_cast(right, right_type, ast.f64_type)
+		g.write(')')
+		return
+	}
+	if builtin_power_type.is_unsigned() {
+		g.uses_power_u64 = true
+		g.write('(${result_styp})__v_pow_u64(')
+		g.expr_with_cast(left, left_type, ast.u64_type)
+		g.write(', ')
+		g.expr_with_cast(right, right_type, ast.i64_type)
+		g.write(')')
+		return
+	}
+	g.write('(${result_styp})__v_pow_i64(')
+	g.expr_with_cast(left, left_type, ast.i64_type)
+	g.write(', ')
+	g.expr_with_cast(right, right_type, ast.i64_type)
+	g.write(')')
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
@@ -1763,6 +1826,17 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		if is_sumtype_override || is_option_introduction {
 			resolved_right_type = node.right_type
 		}
+	}
+	if node.op == .power {
+		power_left_type := if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+		power_right_type := if resolved_right_type != 0 {
+			resolved_right_type
+		} else {
+			node.right_type
+		}
+		g.gen_power_expr_from_types(node.left, power_left_type, node.right, power_right_type,
+			node.promoted_type)
+		return
 	}
 	$if trace_ci_fixes ? {
 		if g.file.path.contains('binary_search_tree.v') && node.right is ast.SelectorExpr {

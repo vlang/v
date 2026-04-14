@@ -29,6 +29,7 @@ pub enum Kind {
 	plus       // +
 	minus      // -
 	mul        // *
+	power      // **
 	div        // /
 	mod        // %
 	xor        // ^
@@ -60,6 +61,7 @@ pub enum Kind {
 	minus_assign                // -=
 	div_assign                  // /=
 	mult_assign                 // *=
+	power_assign                // **=
 	xor_assign                  // ^=
 	mod_assign                  // %=
 	or_assign                   // |=
@@ -196,8 +198,9 @@ pub enum AtKind {
 }
 
 pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assign, .mult_assign,
-	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign,
-	.left_shift_assign, .unsigned_right_shift_assign, .boolean_and_assign, .boolean_or_assign]
+	.power_assign, .div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
+	.right_shift_assign, .left_shift_assign, .unsigned_right_shift_assign, .boolean_and_assign,
+	.boolean_or_assign]
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@DIR', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE',
@@ -241,6 +244,7 @@ fn build_token_str() []string {
 	s[Kind.plus] = '+'
 	s[Kind.minus] = '-'
 	s[Kind.mul] = '*'
+	s[Kind.power] = '**'
 	s[Kind.div] = '/'
 	s[Kind.mod] = '%'
 	s[Kind.xor] = '^'
@@ -267,6 +271,7 @@ fn build_token_str() []string {
 	s[Kind.plus_assign] = '+='
 	s[Kind.minus_assign] = '-='
 	s[Kind.mult_assign] = '*='
+	s[Kind.power_assign] = '**='
 	s[Kind.div_assign] = '/='
 	s[Kind.xor_assign] = '^='
 	s[Kind.mod_assign] = '%='
@@ -439,6 +444,7 @@ pub enum Precedence {
 	product // * / << >> >>> &
 	// mod // %
 	prefix  // -X or !X; TODO: seems unused
+	power   // **
 	postfix // ++ or --
 	call    // func(X) or foo.method(X)
 	index   // array[index], map[key]
@@ -464,6 +470,7 @@ pub fn build_precedences() []Precedence {
 	p[Kind.unsigned_right_shift] = .product
 	p[Kind.amp] = .product
 	p[Kind.arrow] = .product
+	p[Kind.power] = .power
 	// `+` |  `-` |  `|` | `^`
 	p[Kind.plus] = .sum
 	p[Kind.minus] = .sum
@@ -482,6 +489,7 @@ pub fn build_precedences() []Precedence {
 	p[Kind.assign] = .assign
 	p[Kind.plus_assign] = .assign
 	p[Kind.minus_assign] = .assign
+	p[Kind.power_assign] = .assign
 	p[Kind.div_assign] = .assign
 	p[Kind.mod_assign] = .assign
 	p[Kind.or_assign] = .assign
@@ -549,8 +557,8 @@ pub fn (kind Kind) is_prefix() bool {
 
 @[inline]
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
-		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
+	return kind in [.plus, .minus, .mod, .mul, .power, .div, .eq, .ne, .gt, .lt, .key_in, .key_as,
+		.ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
 		.right_shift, .unsigned_right_shift, .arrow, .key_like, .key_ilike]
 }
 
@@ -571,6 +579,7 @@ pub fn kind_to_string(k Kind) string {
 		.plus { 'plus' }
 		.minus { 'minus' }
 		.mul { 'mul' }
+		.power { 'power' }
 		.div { 'div' }
 		.mod { 'mod' }
 		.xor { 'xor' }
@@ -602,6 +611,7 @@ pub fn kind_to_string(k Kind) string {
 		.minus_assign { 'minus_assign' }
 		.div_assign { 'div_assign' }
 		.mult_assign { 'mult_assign' }
+		.power_assign { 'power_assign' }
 		.xor_assign { 'xor_assign' }
 		.mod_assign { 'mod_assign' }
 		.or_assign { 'or_assign' }
@@ -691,6 +701,7 @@ pub fn assign_op_to_infix_op(op Kind) Kind {
 		.plus_assign { .plus }
 		.minus_assign { .minus }
 		.mult_assign { .mul }
+		.power_assign { .power }
 		.div_assign { .div }
 		.xor_assign { .xor }
 		.mod_assign { .mod }

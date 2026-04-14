@@ -255,7 +255,9 @@ mut:
 	curr_var_name       []string        // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
-	force_main_console  bool              // true when @[console] used on fn main()
+	force_main_console  bool // true when @[console] used on fn main()
+	uses_power          bool
+	uses_power_u64      bool
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
 	referenced_fns      shared map[string]bool // functions that have been referenced
@@ -442,6 +444,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.export_funcs << g.export_funcs
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
+			global_g.uses_power = global_g.uses_power || g.uses_power
+			global_g.uses_power_u64 = global_g.uses_power_u64 || g.uses_power_u64
 
 			// merge maps
 			for k, v in g.vsafe_arithmetic_ops {
@@ -747,6 +751,48 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
 			}
 		}
+	}
+	if g.uses_power {
+		b.writeln('#include <math.h>')
+		b.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) {')
+		b.writeln('\tif (exponent < 0) {')
+		b.writeln('\t\tif (base == 0) {')
+		b.writeln('\t\t\treturn -1;')
+		b.writeln('\t\t}')
+		b.writeln('\t\tif (base != 1 && base != -1) {')
+		b.writeln('\t\t\treturn 0;')
+		b.writeln('\t\t}')
+		b.writeln('\t\treturn (exponent & 1) != 0 ? base : 1;')
+		b.writeln('\t}')
+		b.writeln('\ti64 value = 1;')
+		b.writeln('\ti64 power = base;')
+		b.writeln('\tfor (; exponent > 0; exponent >>= 1) {')
+		b.writeln('\t\tif ((exponent & 1) != 0) {')
+		b.writeln('\t\t\tvalue *= power;')
+		b.writeln('\t\t}')
+		b.writeln('\t\tpower *= power;')
+		b.writeln('\t}')
+		b.writeln('\treturn value;')
+		b.writeln('}')
+	}
+	if g.uses_power_u64 {
+		b.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) {')
+		b.writeln('\tif (exponent < 0) {')
+		b.writeln('\t\tif (base == 0) {')
+		b.writeln('\t\t\treturn ((u64)-1);')
+		b.writeln('\t\t}')
+		b.writeln('\t\treturn base == 1 ? 1 : 0;')
+		b.writeln('\t}')
+		b.writeln('\tu64 value = 1;')
+		b.writeln('\tu64 power = base;')
+		b.writeln('\tfor (; exponent > 0; exponent >>= 1) {')
+		b.writeln('\t\tif ((exponent & 1) != 0) {')
+		b.writeln('\t\t\tvalue *= power;')
+		b.writeln('\t\t}')
+		b.writeln('\t\tpower *= power;')
+		b.writeln('\t}')
+		b.writeln('\treturn value;')
+		b.writeln('}')
 	}
 	if g.pref.is_coverage {
 		b.write_string2('\n// V coverage:\n', g.cov_declarations.str())

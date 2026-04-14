@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import math
 import os
 import v.ast
 import v.pref
@@ -11,6 +12,28 @@ import v.pkgconfig
 import v.type_resolver
 import v.errors
 import strings
+
+fn comptime_power_i64(base i64, exponent i64) i64 {
+	return math.powi(base, exponent)
+}
+
+fn comptime_power_f64(base f64, exponent f64) f64 {
+	return math.pow(base, exponent)
+}
+
+fn comptime_power_value(left ast.ComptTimeConstValue, right ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
+	if left_i := left.i64() {
+		if right_i := right.i64() {
+			return comptime_power_i64(left_i, right_i)
+		}
+	}
+	if left_f := left.f64() {
+		if right_f := right.f64() {
+			return comptime_power_f64(left_f, right_f)
+		}
+	}
+	return none
+}
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
@@ -817,6 +840,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			}
 			right := c.eval_comptime_const_expr_with_locals(expr.right, nlevel + 1, local_values)?
 			c.expected_type = saved_expected_type
+			if expr.op == .power {
+				return comptime_power_value(left, right)
+			}
 			if left is string && right is string {
 				match expr.op {
 					.plus {

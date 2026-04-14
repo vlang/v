@@ -783,7 +783,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						right.pos())
 				}
 			}
-			.mult_assign, .div_assign {
+			.mult_assign, .power_assign, .div_assign {
 				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
@@ -878,7 +878,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			else {}
 		}
-		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
+		if node.op == .power_assign {
+			c.markused_power_runtime_support()
+		}
+		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .power_assign, .div_assign]
 			&& (left_sym.kind == .alias || (left_sym.kind == .struct && right_sym.kind == .struct)) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
@@ -894,6 +897,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				.div_assign { '/' }
 				.mod_assign { '%' }
 				.mult_assign { '*' }
+				.power_assign { '**' }
 				else { 'unknown op' }
 			}
 			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {

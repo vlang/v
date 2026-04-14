@@ -382,6 +382,7 @@ pub fn replace_op(s string) string {
 		'+' { '_plus' }
 		'-' { '_minus' }
 		'*' { '_mult' }
+		'**' { '_pow' }
 		'/' { '_div' }
 		'%' { '_mod' }
 		'<' { '_lt' }

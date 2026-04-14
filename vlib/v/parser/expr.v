@@ -173,9 +173,13 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			// &x, *x, !x, ~x, <-x
 			node = p.prefix_expr()
 		}
+		.power {
+			node = p.power_prefix_expr()
+		}
 		.minus {
 			// -1, -a
-			if p.peek_tok.kind == .number {
+			if p.peek_tok.kind == .number && !(p.peek_token(2).kind == .power
+				&& p.peek_token(2).line_nr == p.tok.line_nr) {
 				node = p.parse_number_literal()
 			} else {
 				node = p.prefix_expr()
@@ -856,6 +860,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if op == .arrow {
 		p.or_is_handled = true
 		p.register_auto_import('sync')
+	} else if op == .power {
+		p.register_auto_import('math')
 	}
 	precedence := p.tok.kind.precedence()
 	mut pos := p.tok.pos()
@@ -885,12 +891,13 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if op in [.decl_assign, .assign] {
 		p.inside_assign_rhs = true
 	}
-	right = p.expr(precedence)
+	right = p.expr(if op == .power { precedence - 1 } else { precedence })
 	p.inside_assign_rhs = old_assign_rhs
-	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
+	if op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
 		right_expr = right_expr.remove_par()
-		if right.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && right_expr.is_pure_literal() {
+		if right.op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq]
+			&& right_expr.is_pure_literal() {
 			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
 		}
 	}
@@ -1047,6 +1054,20 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			scope: or_scope
 		}
 	}
+}
+
+fn (mut p Parser) power_prefix_expr() ast.Expr {
+	pos := p.tok.pos()
+	p.next()
+	mut right := p.expr(int(token.Precedence.prefix))
+	for _ in 0 .. 2 {
+		right = ast.PrefixExpr{
+			op:    .mul
+			right: right
+			pos:   pos
+		}
+	}
+	return right
 }
 
 fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Pos) {

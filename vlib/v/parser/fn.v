@@ -728,7 +728,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 		}
-	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
+	} else if p.tok.kind in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq]
+		&& p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec.typ == ast.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
@@ -740,13 +741,15 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
-	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .power_assign,
+		.mod_assign] {
 		extracted_op := match p.tok.kind {
 			.plus_assign { '+' }
 			.minus_assign { '-' }
 			.div_assign { '/' }
 			.mod_assign { '%' }
 			.mult_assign { '*' }
+			.power_assign { '**' }
 			else { 'unknown op' }
 		}
 		if type_sym.has_method(extracted_op) {

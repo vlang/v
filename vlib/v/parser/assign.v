@@ -188,6 +188,9 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
+	if op == .power_assign {
+		p.register_auto_import('math')
+	}
 	mut pos := p.tok.pos()
 	p.next()
 	mut right := []ast.Expr{cap: left.len}

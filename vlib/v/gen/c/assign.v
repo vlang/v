@@ -40,6 +40,69 @@ fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expecte
 	g.expr(expr_copy)
 }
 
+fn (mut g Gen) write_assign_target_expr(left ast.Expr, var_type ast.Type) {
+	if left.is_auto_deref_var() && !var_type.has_flag(.shared_f) {
+		g.write('*')
+	}
+	g.expr(left)
+	if var_type.has_flag(.shared_f) {
+		g.write('->val')
+	}
+}
+
+fn (mut g Gen) write_assign_value_expr(left ast.Expr, var_type ast.Type) {
+	old_is_assign_lhs := g.is_assign_lhs
+	g.is_assign_lhs = false
+	defer {
+		g.is_assign_lhs = old_is_assign_lhs
+	}
+	if left.is_auto_deref_var() && !var_type.has_flag(.shared_f) {
+		g.write('*')
+	}
+	g.expr(left)
+	if var_type.has_flag(.shared_f) {
+		g.write('->val')
+	}
+}
+
+fn (mut g Gen) gen_power_assign_expr(left ast.Expr, left_type ast.Type, right ast.Expr, right_type ast.Type) {
+	power_result_type := g.normalized_power_result_type(left_type.clear_flag(.shared_f).clear_flag(.atomic_f),
+		left_type.clear_flag(.shared_f).clear_flag(.atomic_f), right_type)
+	builtin_power_type := g.table.unalias_num_type(power_result_type)
+	result_styp := g.styp(power_result_type)
+	g.uses_power = true
+	if builtin_power_type == ast.f32_type {
+		g.write('(${result_styp})powf((${g.styp(ast.f32_type)})(')
+		g.write_assign_value_expr(left, left_type)
+		g.write('), ')
+		g.expr_with_cast(right, right_type, ast.f32_type)
+		g.write(')')
+		return
+	}
+	if builtin_power_type.is_float() {
+		g.write('(${result_styp})pow((${g.styp(ast.f64_type)})(')
+		g.write_assign_value_expr(left, left_type)
+		g.write('), ')
+		g.expr_with_cast(right, right_type, ast.f64_type)
+		g.write(')')
+		return
+	}
+	if builtin_power_type.is_unsigned() {
+		g.uses_power_u64 = true
+		g.write('(${result_styp})__v_pow_u64((${g.styp(ast.u64_type)})(')
+		g.write_assign_value_expr(left, left_type)
+		g.write('), ')
+		g.expr_with_cast(right, right_type, ast.i64_type)
+		g.write(')')
+		return
+	}
+	g.write('(${result_styp})__v_pow_i64((${g.styp(ast.i64_type)})(')
+	g.write_assign_value_expr(left, left_type)
+	g.write('), ')
+	g.expr_with_cast(right, right_type, ast.i64_type)
+	g.write(')')
+}
+
 fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
 	return match expr {
 		ast.CallExpr { expr.or_block.kind != .absent }
@@ -736,8 +799,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							left.obj.typ = var_type
 							g.assign_ct_type[val.pos.pos] = var_type
 						}
-					} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
-						&& val.left_ct_expr {
+					} else if val is ast.InfixExpr
+						&& val.op in [.plus, .minus, .mul, .power, .div, .mod] && val.left_ct_expr {
 						left_ctyp := g.type_resolver.get_type_or_default(val.left, val.left_type)
 						right_ctyp := g.type_resolver.get_type_or_default(val.right, val.right_type)
 						ctyp := g.type_resolver.promote_type(g.unwrap_generic(left_ctyp),
@@ -1343,15 +1406,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				str_add = true
 			}
 			// Assignment Operator Overloading
-			if ((left_sym.kind == .struct && right_sym.kind == .struct)
+			has_power_assign_overload := node.op == .power_assign
+				&& left_sym.find_method_with_generic_parent('**') != none
+			if (((left_sym.kind == .struct && right_sym.kind == .struct)
 				|| (left_sym.kind == .alias && right_sym.kind == .alias))
-				&& node.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+				&& node.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .power_assign, .mod_assign])
+				|| has_power_assign_overload {
 				extracted_op := match node.op {
 					.plus_assign { '+' }
 					.minus_assign { '-' }
 					.div_assign { '/' }
 					.mod_assign { '%' }
 					.mult_assign { '*' }
+					.power_assign { '**' }
 					else { 'unknown op' }
 				}
 				pos := g.out.len
@@ -1374,9 +1441,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& g.table.final_sym(g.unwrap_generic(var_type)).is_number()
 					&& !left_sym.has_method(extracted_op) {
 					g.write(' = ')
-					g.expr(left)
-					g.write(' ${extracted_op} ')
-					g.expr(val)
+					if node.op == .power_assign {
+						g.gen_power_assign_expr(left, var_type, val, val_type)
+					} else {
+						g.expr(left)
+						g.write(' ${extracted_op} ')
+						g.expr(val)
+					}
 					if !g.inside_for_c_stmt {
 						g.write(';')
 					}
@@ -1450,6 +1521,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(' ${extracted_op} ')
 				g.expr(val)
+				g.writeln(';')
+				return
+			}
+			if node.op == .power_assign && !op_overloaded {
+				g.write_assign_target_expr(left, var_type)
+				g.write(' = ')
+				g.gen_power_assign_expr(left, var_type, val, val_type)
 				g.writeln(';')
 				return
 			}

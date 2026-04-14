@@ -1377,6 +1377,73 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			} else {
 				g.expr(left)
 			}
+			if stmt.op == .power_assign {
+				left_info := g.unwrap(stmt.left_types[i])
+				right_info := g.unwrap(stmt.right_types[i])
+				if method := g.table.find_method(left_info.sym, '**') {
+					if !array_set {
+						g.write(' = ')
+					}
+					left_styp := g.styp(left_info.typ.set_nr_muls(0))
+					g.write('${left_styp}_${util.replace_op('**')}(')
+					g.op_arg(left, method.params[0].typ, left_info.typ)
+					g.write(', ')
+					g.op_arg(val, method.params[1].typ, right_info.typ)
+					g.write(')')
+					if array_set && !map_set {
+						g.write(')')
+					}
+					if map_set {
+						g.write('}')
+					}
+					if semicolon {
+						g.writeln(';')
+					}
+					continue
+				}
+			}
+			if stmt.op == .power_assign {
+				left_sym := g.table.final_sym(stmt.left_types[i])
+				if !array_set {
+					g.write('.val = ')
+				}
+				g.write('new ${styp}(')
+				needs_floor := left_sym.name !in ['f32', 'f64', 'i64', 'u64']
+				if needs_floor {
+					g.write('Math.floor(')
+				}
+				if !g.pref.output_es5 && (left_sym.kind == .i64 || left_sym.kind == .u64) {
+					g.write('BigInt(')
+					g.expr(left)
+					g.gen_deref_ptr(stmt.left_types[i])
+					g.write('.valueOf()) ** BigInt(')
+					g.expr(val)
+					g.gen_deref_ptr(stmt.right_types[i])
+					g.write('.valueOf())')
+				} else {
+					g.write('Math.pow(')
+					g.expr(left)
+					g.gen_deref_ptr(stmt.left_types[i])
+					g.write('.valueOf(), ')
+					g.expr(val)
+					g.gen_deref_ptr(stmt.right_types[i])
+					g.write('.valueOf())')
+				}
+				if needs_floor {
+					g.write(')')
+				}
+				g.write(')')
+				if array_set && !map_set {
+					g.write(')')
+				}
+				if map_set {
+					g.write('}')
+				}
+				if semicolon {
+					g.writeln(';')
+				}
+				continue
+			}
 
 			is_ptr := stmt.op == .assign && stmt.right_types[i].is_ptr() && !array_set
 			if is_ptr {
@@ -3080,8 +3147,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	if is_not {
 		g.write('!(')
 	}
-	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod, .right_shift, .left_shift,
-		.amp, .pipe, .xor]
+	is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .power, .div, .mod, .right_shift,
+		.left_shift, .amp, .pipe, .xor]
 
 	if !g.pref.output_es5 && is_arithmetic && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
@@ -3823,6 +3890,7 @@ fn replace_op(s string) string {
 		'+' { '_plus' }
 		'-' { '_minus' }
 		'*' { '_mult' }
+		'**' { '_pow' }
 		'/' { '_div' }
 		'%' { '_mod' }
 		'<' { '_lt' }

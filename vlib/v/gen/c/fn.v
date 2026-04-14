@@ -1245,7 +1245,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	mut name := node.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
 	}
 	if node.is_method {

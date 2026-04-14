@@ -11,6 +11,29 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 	cast_ty := if greater_typ == it.left_type { l_sym.cname } else { r_sym.cname }
 	g.write('new ${g.js_name(cast_ty)}( ')
 	g.cast_stack << greater_typ
+	if node.op == .power {
+		if !g.pref.output_es5 && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+			|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
+			g.write('BigInt(')
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf()) ** BigInt(')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf())')
+		} else {
+			g.write('Math.pow(')
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf(), ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf())')
+		}
+		g.cast_stack.delete_last()
+		g.write(')')
+		return
+	}
 	if !g.pref.output_es5 && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		g.write('BigInt(')
@@ -362,7 +385,7 @@ fn (mut g JsGen) infix_is_not_is_op(node ast.InfixExpr) {
 
 fn (mut g JsGen) infix_expr(node ast.InfixExpr) {
 	match node.op {
-		.plus, .minus, .mul, .div, .mod {
+		.plus, .minus, .mul, .power, .div, .mod {
 			g.infix_expr_arithmetic_op(node)
 		}
 		.eq, .ne {

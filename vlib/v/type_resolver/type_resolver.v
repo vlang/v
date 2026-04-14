@@ -214,10 +214,10 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 			return t.get_type_or_default(node.expr, default_typ)
 		}
 		ast.InfixExpr {
-			if !node.left.is_literal() && node.op in [.plus, .minus, .mul, .div, .mod] {
+			if !node.left.is_literal() && node.op in [.plus, .minus, .mul, .power, .div, .mod] {
 				return t.get_type_or_default(node.left, default_typ)
 			}
-			if !node.right.is_literal() && node.op in [.plus, .minus, .mul, .div, .mod] {
+			if !node.right.is_literal() && node.op in [.plus, .minus, .mul, .power, .div, .mod] {
 				return t.get_type_or_default(node.right, default_typ)
 			}
 		}
