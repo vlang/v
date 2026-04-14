@@ -12,6 +12,13 @@ const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
 
+fn parallel_cc_compiler_path(b &builder.Builder) string {
+	if b.pref.ccompiler != '' {
+		return b.pref.ccompiler
+	}
+	return cc_compiler
+}
+
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
@@ -69,19 +76,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i].close()
 	}
 
-	mut cc_path := cc_compiler
-	explicit_cc_flag_passed := b.pref.build_options.any(it.starts_with('-cc '))
-	if explicit_cc_flag_passed {
-		// do not guess, just use the user's preference
-		cc_path = b.pref.ccompiler
-	}
-	cc := os.quoted_path(cc_path)
+	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
-	if !explicit_cc_flag_passed {
-		compile_args = compile_args.filter(it != '-bt25')
-		linker_args = linker_args.filter(it != '-bt25')
-	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
@@ -92,7 +89,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		o_postfixes << (i + 1).str()
 	}
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${tmp_dir}/out_${postfix}.o -c ${tmp_dir}/out_${postfix}.c'
+		out_o := os.quoted_path('${tmp_dir}/out_${postfix}.o')
+		out_c := os.quoted_path('${tmp_dir}/out_${postfix}.c')
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${out_o} -c ${out_c}'
 	}
 	mut failed := 0
 	sw := time.new_stopwatch()
