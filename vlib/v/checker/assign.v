@@ -59,6 +59,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
+	original_op := node.op
 	mut right_first := node.right[0]
 	node.left_types = []
 	mut right_len := node.right.len
@@ -992,7 +993,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					right.pos())
 			}
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+			assign_right_type := if original_op in [.left_shift_assign, .right_shift_assign,
+				.unsigned_right_shift_assign] {
+				left_type_unwrapped
+			} else {
+				right_type_unwrapped
+			}
+			c.check_expected(assign_right_type, left_type_unwrapped) or {
 				if left.is_auto_deref_arg() && left_type.is_ptr() {
 					left_deref := left_type.deref()
 					right_deref := if right.is_pure_literal() {
