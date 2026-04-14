@@ -366,6 +366,75 @@ pub mut:
 	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
 }
 
+fn ccompiler_type_from_name(ccompiler string) ?pref.CompilerType {
+	cc_file_name := os.file_name(ccompiler).to_lower_ascii()
+	return match true {
+		cc_file_name.contains('tcc') || cc_file_name.contains('tinyc') { .tinyc }
+		cc_file_name.contains('gcc') { .gcc }
+		cc_file_name.contains('clang') { .clang }
+		cc_file_name.contains('emcc') { .emcc }
+		cc_file_name == 'cl' || cc_file_name == 'cl.exe' || cc_file_name.contains('msvc') { .msvc }
+		cc_file_name.contains('mingw') { .mingw }
+		cc_file_name.contains('++') { .cplusplus }
+		else { none }
+	}
+}
+
+fn ccompiler_type_from_version_output(output string) ?pref.CompilerType {
+	if output == '' {
+		return none
+	}
+	lower_output := output.to_lower_ascii()
+	return match true {
+		lower_output.contains('tiny c compiler') || lower_output.contains('tinycc')
+			|| lower_output.contains('\ntcc') || lower_output.starts_with('tcc') {
+			.tinyc
+		}
+		lower_output.contains('clang') {
+			.clang
+		}
+		lower_output.contains('gcc version') || lower_output.contains('(gcc)')
+			|| lower_output.contains('free software foundation') || lower_output.contains('gcc ') {
+			.gcc
+		}
+		lower_output.contains('emscripten') || lower_output.contains('emcc') {
+			.emcc
+		}
+		(lower_output.contains('microsoft') && lower_output.contains('c/c++'))
+			|| lower_output.contains('msvc') {
+			.msvc
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.CompilerType {
+	if resolved := ccompiler_type_from_name(ccompiler) {
+		return resolved
+	}
+	quoted_ccompiler := os.quoted_path(ccompiler)
+	for version_flag in ['--version', '-v'] {
+		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		if resolved := ccompiler_type_from_version_output(res.output) {
+			return resolved
+		}
+	}
+	return fallback
+}
+
+fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
+	return match cc_type {
+		.tinyc { .tcc }
+		.gcc, .mingw { .gcc }
+		.clang { .clang }
+		.emcc { .emcc }
+		.msvc { .msvc }
+		.cplusplus { .unknown }
+	}
+}
+
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut ccoptions := CcompilerOptions{}
 
@@ -416,36 +485,15 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
-	if ccoptions.guessed_compiler == 'cc' {
-		cc_ver := os.execute('cc --version').output
-		if cc_ver.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
-			// Also covers `g++`, `g++-9`, `g++-11` etc.
-			ccoptions.cc = .gcc
-		} else if cc_ver.contains('clang version ') {
-			ccoptions.cc = .clang
-		} else {
-			if v.pref.is_verbose {
-				eprintln('failed to detect C compiler from version info `${cc_ver}`')
-			}
-			eprintln('Compilation with unknown C compiler')
-			ccoptions.cc = .unknown
-		}
+	v.pref.ccompiler_type = resolve_ccompiler_type(ccompiler, v.pref.ccompiler_type)
+	cc_file_name := os.file_name(ccompiler).to_lower_ascii()
+	ccoptions.cc = if cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' {
+		.icc
 	} else {
-		cc_file_name := os.file_name(ccompiler)
-		ccoptions.cc = match true {
-			// vfmt off
-			cc_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc' { .tcc }
-			cc_file_name.contains('gcc') || cc_file_name.contains('g++') || ccoptions.guessed_compiler == 'gcc' { .gcc }
-			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
-			cc_file_name == 'cl' || cc_file_name == 'cl.exe' || cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' || v.pref.ccompiler_type == .msvc { .msvc }
-			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
-			cc_file_name.contains('emcc') || ccoptions.guessed_compiler == 'emcc' { .emcc }
-			else { .unknown }
-			// vfmt on
-		}
-		if ccoptions.cc == .unknown {
-			eprintln('Compilation with unknown C compiler `${cc_file_name}`')
-		}
+		cc_from_pref_ccompiler_type(v.pref.ccompiler_type)
+	}
+	if ccoptions.cc == .unknown {
+		eprintln('Compilation with unknown C compiler `${cc_file_name}`')
 	}
 
 	// Add -fwrapv to handle UB overflows
