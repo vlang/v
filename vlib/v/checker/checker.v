@@ -2087,8 +2087,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 
 		// Verify methods
 		for imethod in imethods {
-			mut method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
-				typ_sym.find_method_with_generic_parent(imethod.name) or {
+			mut method := typ_sym.find_method_with_generic_parent(imethod.name) or {
+				c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 					// `str() string` is auto-generated for all types during cgen
 					if imethod.name == 'str' && imethod.params.len == 1
 						&& imethod.return_type == ast.string_type {
@@ -7844,7 +7844,8 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 		}
 		.interface {
 			info := sym.info as ast.Interface
-			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0
+				&& !is_container_typ {
 				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
 				return false

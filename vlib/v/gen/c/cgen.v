@@ -1465,6 +1465,17 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	return styp
 }
 
+fn (g &Gen) can_write_interface_typesymbol_declaration(sym ast.TypeSymbol) bool {
+	if sym.info !is ast.Interface {
+		return false
+	}
+	info := sym.info as ast.Interface
+	if !info.is_generic {
+		return true
+	}
+	return !info.fields.any(it.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(it.typ))
+}
+
 fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 	if types.len == 0 {
 		return before
@@ -2315,7 +2326,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
-			if sym.info.is_generic && sym.generic_types.len == 0 {
+			if sym.info.is_generic && sym.generic_types.len == 0 && sym.kind != .interface {
 				mut sgtyps := ''
 				for gt in sym.info.generic_types {
 					gts := g.table.sym(g.unwrap_generic(gt))
@@ -2495,15 +2506,15 @@ pub fn (mut g Gen) write_typedef_types() {
 	// to prevent generating interface struct before definition of field types
 
 	interfaces := g.table.type_symbols.filter(it.info is ast.Interface && !it.is_builtin)
-	mut interface_non_generic_syms := []&ast.TypeSymbol{cap: interfaces.len}
+	mut interface_declaration_syms := []&ast.TypeSymbol{cap: interfaces.len}
 	for sym in interfaces {
 		g.write_interface_typedef(sym)
-		if sym.info is ast.Interface && !sym.info.is_generic {
-			interface_non_generic_syms << sym
+		if g.can_write_interface_typesymbol_declaration(sym) {
+			interface_declaration_syms << sym
 		}
 	}
 	mut already_generated_ifaces := map[string]bool{}
-	for sym in interface_non_generic_syms {
+	for sym in interface_declaration_syms {
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
@@ -9151,7 +9162,7 @@ fn (mut g Gen) write_builtin_types() {
 		}
 		if sym.info is ast.Interface {
 			g.write_interface_typedef(sym)
-			if !sym.info.is_generic {
+			if g.can_write_interface_typesymbol_declaration(sym) {
 				g.write_interface_typesymbol_declaration(sym)
 			}
 		} else {
