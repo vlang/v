@@ -2648,7 +2648,12 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 			continue
 		}
 		vcname := vsym.cname
-		g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
+		if vsym.info is ast.FnType {
+			g.type_definitions.writeln('\t\t${g.fn_ptr_decl_str(vsym.info as ast.FnType,
+				'_${vcname}')};')
+		} else {
+			g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
+		}
 	}
 	g.type_definitions.writeln('\t};')
 	g.type_definitions.writeln('\tu32 _typ;')
@@ -4315,6 +4320,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
+			got_is_fn := got_sym.info is ast.FnType
 			got_is_shared := got_type.has_flag(.shared_f)
 			exp_styp := if got_is_shared { '__shared__${exp_sym.cname}' } else { exp_sym.cname }
 			// If it's shared, we need to use the other caster:
@@ -4357,11 +4363,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				old_inside_assign_fn_var := g.inside_assign_fn_var
 				g.inside_assign_fn_var = true
 				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-					effective_got_is_ptr, false, got_styp)
+					effective_got_is_ptr, got_is_fn, got_styp)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
 			} else {
 				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-					effective_got_is_ptr, false, got_styp)
+					effective_got_is_ptr, got_is_fn, got_styp)
 			}
 		}
 		return
@@ -4870,6 +4876,12 @@ fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string) {
 		}
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) fn_ptr_decl_str(func ast.FnType, ptr_name string) string {
+	pos := g.out.len
+	g.write_fn_ptr_decl(&func, ptr_name)
+	return g.out.cut_to(pos)
 }
 
 fn (mut g Gen) register_ternary_name(name string) {
@@ -10947,12 +10959,21 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(ast.mktyp(st), true)
+			is_fn_variant := st_sym_info.info is ast.FnType
 			cctype2 := if g.pref.skip_unused && st_sym_info.idx !in g.table.used_features.used_syms {
 				'voidptr'
 			} else {
 				cctype
 			}
-			cctype_param := if cctype == cctype2 { cctype } else { 'void' }
+			param_decl := if cctype == cctype2 {
+				if is_fn_variant {
+					g.fn_ptr_decl_str(st_sym_info.info as ast.FnType, 'x')
+				} else {
+					'${cctype}* x'
+				}
+			} else {
+				'void* x'
+			}
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
@@ -10963,7 +10984,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x);')
+			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${param_decl});')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
 			cast_struct.writeln('\t\t._${cctype2} = x,')
@@ -10990,7 +11011,7 @@ fn (mut g Gen) interface_table() string {
 			}
 
 			cast_functions.writeln('
-static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x) {
+static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${param_decl}) {
 return ${cast_struct_str};
 }')
 			if cctype == cctype2 {
