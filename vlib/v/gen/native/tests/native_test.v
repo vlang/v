@@ -173,3 +173,25 @@ fn test_prevent_could_not_find_symbols_regression() {
 	assert !res.output.contains('CaptureStackBackTrace'), 'Test failed system unable to find symbol: CaptureStackBackTrace'
 	assert !res.output.contains('__debugbreak'), 'Test failed system unable to find symbol: __debugbreak'
 }
+
+fn test_dump_expr_prints_to_stderr_without_crashing() {
+	source_name := 'dump_expr_prog.v'
+	source := "module main\n\nfn main() {\n\tprintln(dump('Hello'))\n}\n"
+	os.write_file(source_name, source) or { panic(err) }
+	vexe := os.getenv('VEXE')
+	exe_path := os.join_path(wrkdir, 'dump_expr_test.exe')
+	compile_err := os.join_path(wrkdir, 'dump_expr_test.compile.err')
+	run_err := os.join_path(wrkdir, 'dump_expr_test.run.err')
+	arch_flag := $if arm64 { '-arch amd64' } $else { '' }
+	compile_res :=
+		os.execute('${os.quoted_path(vexe)} -enable-globals -o ${os.quoted_path(exe_path)} -b native ${arch_flag} -d no_backtrace ${os.quoted_path(source_name)} 2> ${os.quoted_path(compile_err)}')
+	assert compile_res.exit_code == 0, os.read_file(compile_err) or { compile_res.output }
+	$if arm64 {
+		return
+	}
+	run_res := os.execute('${os.quoted_path(exe_path)} 2> ${os.quoted_path(run_err)}')
+	assert run_res.exit_code == 0, os.read_file(run_err) or { run_res.output }
+	assert run_res.output.trim_right('\r\n') == 'Hello'
+	stderr := os.read_file(run_err) or { panic(err) }
+	assert stderr.trim_right('\r\n') == "[dump_expr_prog.v:4] 'Hello': Hello"
+}

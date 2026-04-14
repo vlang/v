@@ -116,6 +116,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
+		ast.DumpExpr {
+			g.dump_expr(node)
+		}
 		ast.MatchExpr {
 			g.cg.cg_gen_match_expr(node)
 		}
@@ -170,6 +173,29 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
+fn (mut g Gen) dump_expr(node ast.DumpExpr) {
+	if 'nop_dump' in g.pref.compile_defines {
+		g.expr(node.expr)
+		return
+	}
+	expr_type := node.expr_type
+	line := node.pos.line_nr + 1
+	tmp_name := '_v_dump_expr_${line}_${g.stack_var_pos}'
+	tmp_var := LocalVar{
+		offset: g.allocate_by_type(tmp_name, expr_type)
+		typ:    expr_type
+		name:   tmp_name
+	}
+	// Evaluate the dumped expression once so the printed value and the returned value stay in sync.
+	g.expr(node.expr)
+	g.cg.cg_assign_var(tmp_var, expr_type)
+	g.cg.cg_gen_print('[${g.current_file.path}:${line}] ${node.expr.str()}: ', 2)
+	g.gen_var_to_string(.reg0, ast.Expr(node.expr), tmp_var)
+	g.cg.cg_gen_print_reg(.reg0, -1, 2)
+	g.cg.cg_gen_print('\n', 2)
+	g.load_local_var(tmp_var)
+}
+
 fn (mut g Gen) init_array(var LocalVar, node ast.ArrayInit) {
 	mut pos := var.offset
 	size := g.get_type_size(node.elem_type)
@@ -183,25 +209,29 @@ fn (mut g Gen) init_array(var LocalVar, node ast.ArrayInit) {
 }
 
 fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
+	g.load_local_var(var)
+}
+
+fn (mut g Gen) load_local_var(var LocalVar) {
 	if g.is_register_type(var.typ) {
-		g.cg.cg_mov_var_to_reg(.reg0, ident)
+		g.cg.cg_mov_var_to_reg(.reg0, var)
 	} else if g.is_fp_type(var.typ) {
-		g.cg.cg_load_fp_var(ident)
+		g.cg.cg_load_fp_var(var)
 	} else {
 		ts := g.table.sym(g.unwrap(var.typ))
 		match ts.info {
 			ast.Struct {
-				g.cg.cg_lea_var_to_reg(.reg0, g.get_var_offset(ident.name))
+				g.cg.cg_lea_var_to_reg(.reg0, var.offset)
 			}
 			ast.Enum {
-				g.cg.cg_mov_var_to_reg(.reg0, ident)
+				g.cg.cg_mov_var_to_reg(.reg0, var)
 			}
 			ast.Array {
-				g.cg.cg_lea_var_to_reg(.reg0, g.get_var_offset(ident.name))
+				g.cg.cg_lea_var_to_reg(.reg0, var.offset)
 			}
 			ast.ArrayFixed {
 				g.cg.cg_mov_var_to_reg(.reg0, LocalVar{
-					offset: g.get_var_offset(ident.name)
+					offset: var.offset
 					typ:    ast.voidptr_type_idx
 				})
 			}
