@@ -2213,11 +2213,16 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 
 		// Verify methods
 		for imethod in imethods {
+			if c.table.is_compatible_auto_str_method(imethod) && utyp.nr_muls() == 0
+				&& typ_sym.kind == .char {
+				c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
+					pos)
+				are_methods_implemented = false
+				continue
+			}
 			mut method := typ_sym.find_method_with_generic_parent(imethod.name) or {
 				c.table.find_method_with_embeds(typ_sym, imethod.name) or {
-					// `str() string` is auto-generated for all types during cgen
-					if imethod.name == 'str' && imethod.params.len == 1
-						&& imethod.return_type == ast.string_type {
+					if c.table.type_has_implicit_str_method(utyp, imethod) {
 						are_methods_implemented = true
 						continue
 					}

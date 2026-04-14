@@ -12,6 +12,10 @@ fn join(values ...Stringy) string {
 	return values.map(it.str()).join(' ')
 }
 
+fn collect(values []Stringy) string {
+	return values.map(it.str()).join(' ')
+}
+
 fn test_interface_implicit_str_method() {
 	some_struct := SomeStruct{}
 	assert stringify('hi there') == 'hi there'
@@ -19,4 +23,9 @@ fn test_interface_implicit_str_method() {
 	assert stringify(true) == 'true'
 	assert stringify(some_struct) == 'SomeStruct{}'
 	assert join('hi', 42, false, some_struct) == 'hi 42 false SomeStruct{}'
+}
+
+fn test_interface_implicit_str_method_for_pointer_arrays() {
+	values := [&SomeStruct{}]
+	assert collect(values) == 'SomeStruct{}'
 }
