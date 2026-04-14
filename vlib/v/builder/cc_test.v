@@ -18,6 +18,27 @@ fn test_c_error_looks_like_cpp_header_with_regular_c_error() {
 	assert !c_error_looks_like_cpp_header(c_output)
 }
 
+fn test_c_output_suggests_missing_sokol_shader_symbol_with_clang_style_output() {
+	c_output := [
+		"/tmp/v_501/simple_shader.tmp.c:21250:43: error: use of undeclared identifier 'ATTR_vs_aposition'",
+		'        pipeline_desc.layout.attrs[v_fixed_index(ATTR_vs_aposition, 16)].format = 1;',
+	].join('\n')
+	assert c_output_suggests_missing_sokol_shader_symbol(c_output) == 'ATTR_vs_aposition'
+}
+
+fn test_c_output_suggests_missing_sokol_shader_symbol_with_gcc_style_output() {
+	c_output := [
+		"/tmp/v_501/simple_shader.tmp.c:21250:43: error: 'SLOT_fs_params' undeclared (first use in this function)",
+		'        gfx_apply_uniforms(SLOT_fs_params);',
+	].join('\n')
+	assert c_output_suggests_missing_sokol_shader_symbol(c_output) == 'SLOT_fs_params'
+}
+
+fn test_c_output_suggests_missing_sokol_shader_symbol_ignores_regular_c_errors() {
+	c_output := "error: use of undeclared identifier 'my_missing_type'"
+	assert c_output_suggests_missing_sokol_shader_symbol(c_output) == ''
+}
+
 fn test_macos_compile_args_do_not_force_version_min_by_default() {
 	compile_args := macos_compile_args(['-os', 'macos', '-cc', 'clang', hello_world_example()])
 	assert macos_version_min_flags(compile_args) == []string{}
