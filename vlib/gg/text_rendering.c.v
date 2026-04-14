@@ -258,6 +258,13 @@ pub fn (ft &FT) flush() {
 	sfons.flush(ft.fons)
 }
 
+@[inline]
+fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
+	mut bounds := [4]f32{}
+	advance := ctx.ft.fons.text_bounds(0, 0, s, &bounds[0])
+	return advance, bounds
+}
+
 // text_width returns the width of the `string` `s` in pixels.
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
@@ -269,20 +276,8 @@ pub fn (ctx &Context) text_width(s string) int {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO: fix this in fontstash?
-	}
-	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "${s}" = ${res}')
-	$if macos {
-		if ctx.native_rendering {
-			return res * 2
-		}
-	}
-	return int((buf[2] - buf[0]) / ctx.scale)
+	advance, _ := ctx.text_metrics(s)
+	return int(advance / ctx.scale)
 }
 
 // text_height returns the height of the `string` `s` in pixels.
@@ -291,9 +286,8 @@ pub fn (ctx &Context) text_height(s string) int {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	return int((buf[3] - buf[1]) / ctx.scale)
+	_, bounds := ctx.text_metrics(s)
+	return int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_size returns the width and height of the `string` `s` in pixels.
@@ -302,9 +296,8 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 	if !ctx.font_inited {
 		return 0, 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
+	advance, bounds := ctx.text_metrics(s)
+	return int(advance / ctx.scale), int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_width returns the width of the `string` `s` in pixels.
@@ -318,18 +311,6 @@ pub fn (ctx &Context) text_width_f(s string) f32 {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO: fix this in fontstash?
-	}
-	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "${s}" = ${res}')
-	$if macos {
-		if ctx.native_rendering {
-			return res * 2
-		}
-	}
-	return (buf[2] - buf[0]) / ctx.scale
+	advance, _ := ctx.text_metrics(s)
+	return advance / ctx.scale
 }
