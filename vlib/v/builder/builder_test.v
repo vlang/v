@@ -119,6 +119,31 @@ pub fn name() string {
 	assert run_v_ok('${os.quoted_path(vexe)} run ./src').trim_space() == 'somemoduletwo'
 }
 
+fn test_run_explicit_main_file_inside_src_resolves_nested_module_imports() {
+	os.chdir(test_path)!
+	project_dir := os.join_path(test_path, 'run_src_main_file_project')
+	os.mkdir_all(os.join_path(project_dir, 'src', 'infrastructure', 'database'))!
+	os.write_file(os.join_path(project_dir, 'src', 'infrastructure', 'database', 'database.v'), 'module database
+
+pub fn name() string {
+	return "database"
+}
+')!
+	os.write_file(os.join_path(project_dir, 'src', 'infrastructure', 'infrastructure.v'), 'module infrastructure
+')!
+	os.write_file(os.join_path(project_dir, 'src', 'main.v'), 'module main
+
+import infrastructure.database
+
+fn main() {
+	println(database.name())
+}
+')!
+
+	main_file := os.join_path('run_src_main_file_project', 'src', 'main.v')
+	assert run_v_ok('${os.quoted_path(vexe)} run ${os.quoted_path(main_file)}').trim_space() == 'database'
+}
+
 fn test_thirdparty_object_build_with_multiline_cflags() {
 	mut env := os.environ()
 	existing_cflags := if 'CFLAGS' in env { env['CFLAGS'] } else { '' }
