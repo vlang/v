@@ -3191,10 +3191,11 @@ pub fn (expr Expr) is_reference() bool {
 
 // remove_par removes all parenthesis and gets the innermost Expr
 pub fn (mut expr Expr) remove_par() Expr {
-	for mut expr is ParExpr {
-		expr = expr.expr
+	mut e := expr
+	for mut e is ParExpr {
+		e = e.expr
 	}
-	return expr
+	return e
 }
 
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
