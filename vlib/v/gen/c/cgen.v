@@ -2678,6 +2678,12 @@ fn (mut g Gen) interface_methods_struct_name(typ ast.Type) string {
 	return 'struct _${interface_sym.cname}_interface_methods'
 }
 
+fn (mut g Gen) shared_interface_mtx_helper_name(typ ast.Type) string {
+	interface_typ := g.table.unaliased_type(g.unwrap_generic(typ.clear_flags(.shared_f, .atomic_f)))
+	interface_sym := g.table.final_sym(interface_typ)
+	return '__shared__${interface_sym.cname}_mtx'
+}
+
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.FnType
 	func := info.func
@@ -7249,9 +7255,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		// this should not happen
 	} else if node.lockeds.len == 1 {
 		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
-		g.write('sync__RwMutex_${lock_prefix}lock(&')
-		g.expr(node.lockeds[0])
-		g.writeln('->mtx);')
+		g.write('sync__RwMutex_${lock_prefix}lock(')
+		g.lock_expr_mtx(node.lockeds[0])
+		g.writeln(');')
 	} else {
 		mtxs = g.new_tmp_var()
 		g.writeln2('uintptr_t _arr_${mtxs}[${node.lockeds.len}];',
@@ -7259,17 +7265,17 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		mut j := 0
 		for i, is_rlock in node.is_rlock {
 			if !is_rlock {
-				g.write('_arr_${mtxs}[${j}] = (uintptr_t)&')
-				g.expr(node.lockeds[i])
-				g.writeln2('->mtx;', '_isrlck_${mtxs}[${j}] = false;')
+				g.write('_arr_${mtxs}[${j}] = (uintptr_t)')
+				g.lock_expr_mtx(node.lockeds[i])
+				g.writeln2(';', '_isrlck_${mtxs}[${j}] = false;')
 				j++
 			}
 		}
 		for i, is_rlock in node.is_rlock {
 			if is_rlock {
-				g.write('_arr_${mtxs}[${j}] = (uintptr_t)&')
-				g.expr(node.lockeds[i])
-				g.writeln2('->mtx;', '_isrlck_${mtxs}[${j}] = true;')
+				g.write('_arr_${mtxs}[${j}] = (uintptr_t)')
+				g.lock_expr_mtx(node.lockeds[i])
+				g.writeln2(';', '_isrlck_${mtxs}[${j}] = true;')
 				j++
 			}
 		}
@@ -7314,9 +7320,9 @@ fn (mut g Gen) unlock_locks() {
 	if g.cur_lock.lockeds.len == 0 {
 	} else if g.cur_lock.lockeds.len == 1 {
 		lock_prefix := if g.cur_lock.is_rlock[0] { 'r' } else { '' }
-		g.write('sync__RwMutex_${lock_prefix}unlock(&')
-		g.expr(g.cur_lock.lockeds[0])
-		g.write('->mtx);')
+		g.write('sync__RwMutex_${lock_prefix}unlock(')
+		g.lock_expr_mtx(g.cur_lock.lockeds[0])
+		g.write(');')
 	} else {
 		g.writeln('for (${ast.int_type_name} ${g.mtxs}=${g.cur_lock.lockeds.len - 1}; ${g.mtxs}>=0; ${g.mtxs}--) {')
 		g.writeln('\tif (${g.mtxs} && _arr_${g.mtxs}[${g.mtxs}] == _arr_${g.mtxs}[${g.mtxs}-1]) continue;')
@@ -7326,6 +7332,27 @@ fn (mut g Gen) unlock_locks() {
 		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
 		g.write('}')
 	}
+}
+
+fn (mut g Gen) lock_expr_mtx(expr ast.Expr) {
+	mut expr_typ := g.resolved_expr_type(expr, g.type_resolver.get_type_or_default(expr,
+		ast.void_type))
+	expr_typ = g.unwrap_generic(g.recheck_concrete_type(expr_typ))
+	expr_sym :=
+		g.table.final_sym(g.table.unaliased_type(expr_typ.clear_flags(.shared_f, .atomic_f)))
+	if expr_typ.has_flag(.shared_f) && expr_sym.kind == .interface {
+		helper_name := g.shared_interface_mtx_helper_name(expr_typ)
+		lock g.referenced_fns {
+			g.referenced_fns[helper_name] = true
+		}
+		g.write('${helper_name}(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
+	g.write('&')
+	g.expr(expr)
+	g.write('->mtx')
 }
 
 fn (mut g Gen) map_init(node ast.MapInit) {
@@ -11116,6 +11143,9 @@ fn (mut g Gen) interface_table() string {
 		impl_types := inter_info.implementor_types(true)
 		// interface_name is for example Speaker
 		interface_name := isym.cname
+		shared_interface_mtx_helper_name := '__shared__${interface_name}_mtx'
+		shared_interface_mtx_helper_needed :=
+			g.has_been_referenced(shared_interface_mtx_helper_name)
 		// generate a struct that references interface methods
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
@@ -11162,6 +11192,7 @@ fn (mut g Gen) interface_table() string {
 		mut cast_functions := strings.new_builder(100)
 		mut clone_functions := strings.new_builder(100)
 		mut clone_cases := strings.new_builder(100)
+		mut shared_interface_mtx_cases := strings.new_builder(100)
 		mut methods_wrapper := strings.new_builder(100)
 		if !g.pref.is_prod {
 			methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
@@ -11288,6 +11319,10 @@ return ${clone_expr};
 static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}* x) {
 return ${cast_shared_struct_str};
 }')
+				if shared_interface_mtx_helper_needed {
+					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_name}:')
+					shared_interface_mtx_cases.writeln('\t\t\treturn &(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx);')
+				}
 			}
 
 			if g.pref.build_mode != .build_module {
@@ -11551,6 +11586,20 @@ return ${cast_shared_struct_str};
 		if inter_methods.len > 0 {
 			sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
 			sb.writeln(methods_struct.str())
+		}
+		if shared_interface_mtx_helper_needed {
+			cast_functions.writeln('
+static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${interface_name}* x) {')
+			if shared_interface_mtx_cases.len > 0 {
+				cast_functions.writeln('\tswitch (x->val._typ) {')
+				cast_functions.write_string(shared_interface_mtx_cases.str())
+				cast_functions.writeln('\t\tdefault:')
+				cast_functions.writeln('\t\t\treturn &x->mtx;')
+				cast_functions.writeln('\t}')
+			} else {
+				cast_functions.writeln('\treturn &x->mtx;')
+			}
+			cast_functions.writeln('}')
 		}
 		if cast_functions.len > 0 {
 			sb.writeln(cast_functions.str())
