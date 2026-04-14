@@ -4,7 +4,6 @@
 module c
 
 import v.ast
-import v.util
 
 fn (g &Gen) match_cond_can_use_directly(cond ast.Expr) bool {
 	return (cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
@@ -519,7 +518,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 					.string {
 						if expr is ast.StringLiteral {
-							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
+							slit := cescaped_string_literal(expr.val)
 							if node.cond_type.is_ptr() {
 								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
 							} else {
