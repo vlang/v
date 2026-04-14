@@ -935,23 +935,56 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 						} else {
 							mut func := sym.info.func
 							func.name = sym_name
-							func.generic_names = generic_names.clone()
-							if func.return_type.has_flag(.generic) {
+							func.params = func.params.clone()
+							mut remaining_generic_names := []string{}
+							return_type_sym := p.table.sym(func.return_type)
+							if func.return_type.has_flag(.generic)
+								|| p.table.generic_type_names(func.return_type).len > 0
+								|| (return_type_sym.kind == .generic_inst&& (return_type_sym.info as ast.GenericInst).concrete_types.any(it.has_flag(.generic))) {
 								if to_generic_typ := p.table.convert_generic_type(func.return_type,
 									sym.info.func.generic_names, p.init_generic_types)
 								{
 									func.return_type = to_generic_typ
+								} else {
+									func.return_type = p.table.unwrap_generic_type_ex(func.return_type,
+										sym.info.func.generic_names, p.init_generic_types, true)
+								}
+							}
+							for generic_name in p.table.generic_type_names(func.return_type) {
+								if generic_name !in remaining_generic_names {
+									remaining_generic_names << generic_name
 								}
 							}
 							for i in 0 .. func.params.len {
-								if func.params[i].typ.has_flag(.generic) {
+								if func.params[i].typ.has_flag(.generic)
+									|| p.table.generic_type_names(func.params[i].typ).len > 0 {
 									if to_generic_typ := p.table.convert_generic_type(func.params[i].typ,
 										sym.info.func.generic_names, p.init_generic_types)
 									{
 										func.params[i].typ = to_generic_typ
+									} else {
+										func.params[i].typ = p.table.unwrap_generic_type_ex(func.params[i].typ,
+											sym.info.func.generic_names, p.init_generic_types, true)
+									}
+								}
+								if func.params[i].orig_typ.has_flag(.generic)
+									|| p.table.generic_type_names(func.params[i].orig_typ).len > 0 {
+									if to_generic_typ := p.table.convert_generic_type(func.params[i].orig_typ,
+										sym.info.func.generic_names, p.init_generic_types)
+									{
+										func.params[i].orig_typ = to_generic_typ
+									} else {
+										func.params[i].orig_typ = p.table.unwrap_generic_type_ex(func.params[i].orig_typ,
+											sym.info.func.generic_names, p.init_generic_types, true)
+									}
+								}
+								for generic_name in p.table.generic_type_names(func.params[i].typ) {
+									if generic_name !in remaining_generic_names {
+										remaining_generic_names << generic_name
 									}
 								}
 							}
+							func.generic_names = remaining_generic_names
 							idx = p.table.find_or_register_fn_type(func, false, false)
 						}
 						typ = ast.new_type(idx)

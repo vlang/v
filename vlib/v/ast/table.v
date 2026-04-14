@@ -2364,15 +2364,18 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 			mut has_generic := false
 			return_type_sym := t.sym(func.return_type)
 			if func.return_type.has_flag(.generic)
+				|| t.generic_type_names(func.return_type).len > 0
 				|| (return_type_sym.kind == .generic_inst
 				&& (return_type_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
 				if typ := t.convert_generic_type(func.return_type, generic_names, to_types) {
 					func.return_type = typ
-					typ_sym := t.sym(typ)
-					if typ.has_flag(.generic) || (typ_sym.kind == .generic_inst
-						&& (typ_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
-						has_generic = true
-					}
+				} else {
+					func.return_type = t.unwrap_generic_type_ex(func.return_type, generic_names,
+						to_types, true)
+				}
+				if func.return_type.has_flag(.generic)
+					|| t.generic_type_names(func.return_type).len > 0 {
+					has_generic = true
 				}
 			}
 			func.params = func.params.clone()
@@ -2388,9 +2391,12 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
 					has_generic = true
 				}
-				if param.orig_typ.has_flag(.generic) {
+				if param.orig_typ.has_flag(.generic) || t.generic_type_names(param.orig_typ).len > 0 {
 					if otyp := t.convert_generic_type(param.orig_typ, generic_names, to_types) {
 						param.orig_typ = otyp
+					} else {
+						param.orig_typ = t.unwrap_generic_type_ex(param.orig_typ, generic_names,
+							to_types, true)
 					}
 				}
 			}
@@ -3193,7 +3199,17 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 			names << t.generic_type_names(sym.info.elem_type)
 		}
 		FnType {
-			names << sym.info.func.generic_names
+			for param in sym.info.func.params {
+				generic_names_push_with_filter(mut names, t.generic_type_names(param.typ))
+				if param.orig_typ != 0 {
+					generic_names_push_with_filter(mut names, t.generic_type_names(param.orig_typ))
+				}
+			}
+			generic_names_push_with_filter(mut names,
+				t.generic_type_names(sym.info.func.return_type))
+			if names.len == 0 {
+				generic_names_push_with_filter(mut names, sym.info.func.generic_names)
+			}
 		}
 		MultiReturn {
 			for ret_type in sym.info.types {
@@ -3313,17 +3329,20 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 			unwrapped_fn.params = unwrapped_fn.params.clone()
 			mut has_generic := false
 			for i, param in unwrapped_fn.params {
-				if param.typ.has_flag(.generic) {
+				if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
 					unwrapped_fn.params[i].typ = t.unwrap_generic_param_type(param, generic_names,
 						concrete_types)
 					has_generic = true
 				}
-				if param.orig_typ.has_flag(.generic) {
+				if param.orig_typ.has_flag(.generic) || t.generic_type_names(param.orig_typ).len > 0 {
 					unwrapped_fn.params[i].orig_typ = t.unwrap_generic_type(param.orig_typ,
 						generic_names, concrete_types)
 				}
 			}
-			if unwrapped_fn.return_type.has_flag(.generic) {
+			unwrapped_return_sym := t.sym(unwrapped_fn.return_type)
+			if unwrapped_fn.return_type.has_flag(.generic)
+				|| t.generic_type_names(unwrapped_fn.return_type).len > 0
+				|| (unwrapped_return_sym.kind == .generic_inst&& (unwrapped_return_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
 				unwrapped_fn.return_type = t.unwrap_generic_type_ex_with_depth(unwrapped_fn.return_type,
 					generic_names, concrete_types, recheck_concrete_types, depth_guard)
 				has_generic = true
@@ -4018,26 +4037,39 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					mut function := parent_info.func
 					function.params = function.params.clone()
 					for mut param in function.params {
-						if param.typ.has_flag(.generic) {
+						if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
 							if t_typ := t.convert_generic_param_type(param, function.generic_names,
 								info.concrete_types)
 							{
 								param.typ = t_typ
+							} else {
+								param.typ = t.unwrap_generic_type_ex(param.typ,
+									function.generic_names, info.concrete_types, true)
 							}
 						}
-						if param.orig_typ.has_flag(.generic) {
+						if param.orig_typ.has_flag(.generic)
+							|| t.generic_type_names(param.orig_typ).len > 0 {
 							if t_typ := t.convert_generic_type(param.orig_typ,
 								function.generic_names, info.concrete_types)
 							{
 								param.orig_typ = t_typ
+							} else {
+								param.orig_typ = t.unwrap_generic_type_ex(param.orig_typ,
+									function.generic_names, info.concrete_types, true)
 							}
 						}
 					}
-					if function.return_type.has_flag(.generic) {
+					return_type_sym := t.sym(function.return_type)
+					if function.return_type.has_flag(.generic)
+						|| t.generic_type_names(function.return_type).len > 0
+						|| (return_type_sym.kind == .generic_inst&& (return_type_sym.info as GenericInst).concrete_types.any(it.has_flag(.generic))) {
 						if t_typ := t.convert_generic_type(function.return_type,
 							function.generic_names, info.concrete_types)
 						{
 							function.return_type = t_typ
+						} else {
+							function.return_type = t.unwrap_generic_type_ex(function.return_type,
+								function.generic_names, info.concrete_types, true)
 						}
 					}
 					function.generic_names = []
