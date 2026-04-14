@@ -1533,6 +1533,24 @@ if v := m['abc'] {
 }
 ```
 
+Note: map indexing returns a copy of the stored value, including with `or {}`
+and `if v := m[key] {}`. Mutating that local value does not update the value
+stored in the map.
+
+To update a stored value, mutate `m[key]` directly or assign the modified value
+back to the map:
+
+```v
+mut data := map[string][]int{}
+key := 'odd'
+value := 1
+if _ := data[key] {
+	data[key] << value
+} else {
+	data[key] = [value]
+}
+```
+
 The same option check applies to arrays:
 
 ```v
