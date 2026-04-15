@@ -1870,6 +1870,74 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
+fn (mut c Checker) resolve_method_for_concrete_type(method ast.Fn, typ_sym &ast.TypeSymbol) ast.Fn {
+	mut resolved_method := method
+	concrete_types := c.concrete_types_for_type_symbol(typ_sym)
+	generic_names := c.generic_names_for_type_parent(typ_sym)
+	if generic_names.len == 0 || generic_names.len != concrete_types.len {
+		return resolved_method
+	}
+	if rt := c.table.convert_generic_type(resolved_method.return_type, generic_names,
+		concrete_types)
+	{
+		resolved_method.return_type = rt
+	}
+	resolved_method.params = resolved_method.params.clone()
+	for mut param in resolved_method.params {
+		if pt := c.table.convert_generic_type(param.typ, generic_names, concrete_types) {
+			param.typ = pt
+		}
+	}
+	return resolved_method
+}
+
+fn (c &Checker) concrete_types_for_type_symbol(typ_sym &ast.TypeSymbol) []ast.Type {
+	match typ_sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			mut concrete_types := typ_sym.info.concrete_types.clone()
+			if concrete_types.len == 0
+				&& typ_sym.generic_types.len == typ_sym.info.generic_types.len
+				&& typ_sym.generic_types != typ_sym.info.generic_types {
+				concrete_types = typ_sym.generic_types.clone()
+			}
+			return concrete_types
+		}
+		ast.GenericInst {
+			return typ_sym.info.concrete_types.clone()
+		}
+		else {}
+	}
+	return []ast.Type{}
+}
+
+fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string {
+	match typ_sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if !typ_sym.info.parent_type.has_flag(.generic) {
+				return []string{}
+			}
+			parent_sym := c.table.sym(typ_sym.info.parent_type)
+			match parent_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					return parent_sym.info.generic_types.map(c.table.sym(it).name)
+				}
+				else {}
+			}
+		}
+		ast.GenericInst {
+			parent_sym := c.table.sym(ast.new_type(typ_sym.info.parent_idx))
+			match parent_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					return parent_sym.info.generic_types.map(c.table.sym(it).name)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+	return []string{}
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	mut resolved_interface_type := c.unwrap_generic(interface_type)
 	if typ == resolved_interface_type {
@@ -2098,58 +2166,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					continue
 				}
 			}
-			// Resolve generic parameters for concrete generic types
-			match typ_sym.info {
-				ast.Struct, ast.Interface, ast.SumType {
-					if typ_sym.info.concrete_types.len > 0
-						&& typ_sym.info.parent_type.has_flag(.generic) {
-						parent_sym := c.table.sym(typ_sym.info.parent_type)
-						match parent_sym.info {
-							ast.Struct, ast.Interface, ast.SumType {
-								generic_names :=
-									parent_sym.info.generic_types.map(c.table.sym(it).name)
-								if rt := c.table.convert_generic_type(method.return_type,
-									generic_names, typ_sym.info.concrete_types)
-								{
-									method.return_type = rt
-								}
-								method.params = method.params.clone()
-								for mut param in method.params {
-									if pt := c.table.convert_generic_type(param.typ, generic_names,
-										typ_sym.info.concrete_types)
-									{
-										param.typ = pt
-									}
-								}
-							}
-							else {}
-						}
-					}
-				}
-				ast.GenericInst {
-					parent_sym := c.table.sym(ast.new_type(typ_sym.info.parent_idx))
-					match parent_sym.info {
-						ast.Struct, ast.Interface, ast.SumType {
-							generic_names := parent_sym.info.generic_types.map(c.table.sym(it).name)
-							if rt := c.table.convert_generic_type(method.return_type,
-								generic_names, typ_sym.info.concrete_types)
-							{
-								method.return_type = rt
-							}
-							method.params = method.params.clone()
-							for mut param in method.params {
-								if pt := c.table.convert_generic_type(param.typ, generic_names,
-									typ_sym.info.concrete_types)
-								{
-									param.typ = pt
-								}
-							}
-						}
-						else {}
-					}
-				}
-				else {}
-			}
+			method = c.resolve_method_for_concrete_type(method, typ_sym)
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
 				sig := c.table.fn_signature(imethod, skip_receiver: false)
