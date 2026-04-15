@@ -2520,12 +2520,6 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 					for t_typ in sym.generic_types {
 						if !t_typ.has_flag(.generic) {
 							t_to_types << t_typ
-						} else if t.sym(t_typ).kind == .any {
-							tname := t.sym(t_typ).name
-							index := generic_names.index(tname)
-							if index >= 0 && index < to_types.len {
-								t_to_types << to_types[index]
-							}
 						} else {
 							if tt := t.convert_generic_type(t_typ, generic_names, to_types) {
 								t_to_types << tt
@@ -3412,12 +3406,6 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				for t_typ in ts.generic_types {
 					if !t_typ.has_flag(.generic) {
 						t_concrete_types << t_typ
-					} else if t.sym(t_typ).kind == .any {
-						tname := t.sym(t_typ).name
-						index := generic_names.index(tname)
-						if index >= 0 && index < concrete_types.len {
-							t_concrete_types << concrete_types[index]
-						}
 					} else {
 						t_concrete_types << t.unwrap_generic_type(t_typ, generic_names,
 							concrete_types)
@@ -3434,6 +3422,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					gts := t.sym(ct)
 					if ct.is_ptr() {
 						nrt += '&'.repeat(ct.nr_muls())
+						c_nrt += '__ptr__'.repeat(ct.nr_muls())
 					}
 					nrt += gts.name
 					c_nrt += gts.scoped_cname()
@@ -3478,8 +3467,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 						}
 					}
 					if final_concrete_types.len > 0 {
-						t.unwrap_method_types(ts, generic_names, concrete_types,
-							final_concrete_types)
+						t.unwrap_method_types(ts, generic_names, concrete_types)
 					}
 				}
 				if idx <= 0 {
@@ -3590,7 +3578,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				is_pub:     ts.is_pub
 			)
 			if final_concrete_types.len > 0 {
-				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+				t.unwrap_method_types(ts, generic_names, concrete_types)
 			}
 			if new_idx <= 0 {
 				existing := t.type_idxs[nrt]
@@ -3636,7 +3624,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				is_pub:     ts.is_pub
 			)
 			if final_concrete_types.len > 0 {
-				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+				t.unwrap_method_types(ts, generic_names, concrete_types)
 			}
 			if new_idx <= 0 {
 				existing := t.type_idxs[nrt]
@@ -3702,7 +3690,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				}
 			}
 			if final_concrete_types.len > 0 {
-				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+				t.unwrap_method_types(ts, generic_names, concrete_types)
 			}
 			if new_idx <= 0 {
 				// register_sym can fail when convert_generic_type (used above to
@@ -3729,7 +3717,147 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 	return typ
 }
 
-fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, concrete_types []Type, final_concrete_types []Type) {
+fn concrete_type_lists_match(a []Type, b []Type) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, typ in a {
+		if typ != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Table) type_contains_transformed_parent_inst(typ Type, parent_idx int, concrete_types []Type) bool {
+	if typ == 0 {
+		return false
+	}
+	sym := t.sym(typ)
+	match sym.info {
+		Array {
+			return t.type_contains_transformed_parent_inst(sym.info.elem_type, parent_idx,
+				concrete_types)
+		}
+		ArrayFixed {
+			return t.type_contains_transformed_parent_inst(sym.info.elem_type, parent_idx,
+				concrete_types)
+		}
+		Chan {
+			return t.type_contains_transformed_parent_inst(sym.info.elem_type, parent_idx,
+				concrete_types)
+		}
+		Thread {
+			return t.type_contains_transformed_parent_inst(sym.info.return_type, parent_idx,
+				concrete_types)
+		}
+		Map {
+			return
+				t.type_contains_transformed_parent_inst(sym.info.key_type, parent_idx, concrete_types)
+				|| t.type_contains_transformed_parent_inst(sym.info.value_type, parent_idx, concrete_types)
+		}
+		FnType {
+			if t.type_contains_transformed_parent_inst(sym.info.func.return_type, parent_idx,
+				concrete_types)
+			{
+				return true
+			}
+			for param in sym.info.func.params {
+				if t.type_contains_transformed_parent_inst(param.typ, parent_idx, concrete_types)
+					|| t.type_contains_transformed_parent_inst(param.orig_typ, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		GenericInst {
+			if sym.info.parent_idx == parent_idx
+				&& !concrete_type_lists_match(sym.info.concrete_types, concrete_types) {
+				return true
+			}
+			for ct in sym.info.concrete_types {
+				if t.type_contains_transformed_parent_inst(ct, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		Struct {
+			if sym.parent_idx == parent_idx
+				&& !concrete_type_lists_match(sym.info.concrete_types, concrete_types) {
+				return true
+			}
+			for ct in sym.info.concrete_types {
+				if t.type_contains_transformed_parent_inst(ct, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		Interface {
+			if sym.parent_idx == parent_idx
+				&& !concrete_type_lists_match(sym.info.concrete_types, concrete_types) {
+				return true
+			}
+			for ct in sym.info.concrete_types {
+				if t.type_contains_transformed_parent_inst(ct, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		SumType {
+			if sym.parent_idx == parent_idx
+				&& !concrete_type_lists_match(sym.info.concrete_types, concrete_types) {
+				return true
+			}
+			for ct in sym.info.concrete_types {
+				if t.type_contains_transformed_parent_inst(ct, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		MultiReturn {
+			for mr_typ in sym.info.types {
+				if t.type_contains_transformed_parent_inst(mr_typ, parent_idx, concrete_types) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (mut t Table) should_auto_register_concrete_method(method Fn, parent_type Type, concrete_types []Type) bool {
+	parent_idx := parent_type.clear_flag(.generic).idx()
+	if parent_idx == 0 || method.generic_names.len != concrete_types.len {
+		return false
+	}
+	for i in 1 .. method.params.len {
+		param := method.params[i]
+		mut param_typ := param.typ
+		if param.typ.has_flag(.generic) || t.generic_type_names(param.typ).len > 0 {
+			if pt := t.convert_generic_param_type(param, method.generic_names, concrete_types) {
+				param_typ = pt
+			} else {
+				param_typ = t.unwrap_generic_type_ex(param.typ, method.generic_names,
+					concrete_types, true)
+			}
+		}
+		if t.type_contains_transformed_parent_inst(param_typ, parent_idx, concrete_types) {
+			return false
+		}
+	}
+	mut return_type := method.return_type
+	if method.return_type.has_flag(.generic) || t.generic_type_names(method.return_type).len > 0 {
+		if rt := t.convert_generic_type(method.return_type, method.generic_names, concrete_types) {
+			return_type = rt
+		} else {
+			return_type = t.unwrap_generic_type_ex(method.return_type, method.generic_names,
+				concrete_types, true)
+		}
+	}
+	return !t.type_contains_transformed_parent_inst(return_type, parent_idx, concrete_types)
+}
+
+fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, concrete_types []Type) {
 	mut needs_unwrap_types := []Type{}
 	for method in ts.get_methods() {
 		for i in 1 .. method.params.len {
@@ -3744,9 +3872,6 @@ fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, con
 					needs_unwrap_types << method.return_type
 				}
 			}
-		}
-		if final_concrete_types.len == method.generic_names.len {
-			t.register_fn_concrete_types(method.fkey(), final_concrete_types)
 		}
 	}
 	for typ_ in needs_unwrap_types {
@@ -3944,7 +4069,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 
 						parent_sym := t.sym(parent_info.parent_type)
 						for method in parent_sym.methods {
-							if method.generic_names.len == info.concrete_types.len {
+							if method.generic_names.len == info.concrete_types.len
+								&& t.should_auto_register_concrete_method(method, parent_info.parent_type, info.concrete_types) {
 								t.register_fn_concrete_types(method.fkey(), info.concrete_types)
 							}
 						}
@@ -4113,7 +4239,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					sym.kind = parent.kind
 					sym.generic_types = info.concrete_types.clone()
 					for method in parent.methods {
-						if method.generic_names.len == info.concrete_types.len {
+						if method.generic_names.len == info.concrete_types.len
+							&& t.should_auto_register_concrete_method(method, new_type(info.parent_idx).set_flag(.generic), info.concrete_types) {
 							t.register_fn_concrete_types(method.fkey(), info.concrete_types)
 						}
 					}

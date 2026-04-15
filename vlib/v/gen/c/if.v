@@ -210,6 +210,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if use_outer_tmp {
 		g.outer_tmp_var = ''
 	}
+	resolved_node_typ := g.infer_if_expr_type(node)
 
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
@@ -222,7 +223,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	tmp := if use_outer_tmp {
 		// Use the tmp var from outer context (e.g. from stmts_with_tmp_var)
 		saved_outer_tmp_var
-	} else if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
+	} else if g.inside_if_option || (resolved_node_typ != ast.void_type && needs_tmp_var) {
 		g.new_tmp_var()
 	} else {
 		''
@@ -234,9 +235,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if needs_tmp_var {
 		exit_label = g.new_tmp_var()
 		node_typ := if g.inside_or_block {
-			node.typ.clear_option_and_result()
+			resolved_node_typ.clear_option_and_result()
 		} else {
-			node.typ
+			resolved_node_typ
 		}
 		// For generic functions, if the if-expression's type was set to a concrete type
 		// by the checker but we're generating a different generic instance, we need to
@@ -275,8 +276,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		mut styp := g.styp(resolved_typ)
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
-			if node.typ != ast.void_type {
-				g.last_if_option_type = node.typ
+			if resolved_node_typ != ast.void_type {
+				g.last_if_option_type = resolved_node_typ
 				defer(fn) {
 					g.last_if_option_type = tmp_if_option_type
 				}
@@ -304,7 +305,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if tmp != '' && !use_outer_tmp {
 			// Only declare the tmp var if it's not from outer context
 			mut declared_tmp := false
-			if node.typ == ast.void_type && g.last_if_option_type != 0 {
+			if resolved_node_typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else if resolved_sym.kind == .function && resolved_sym.info is ast.FnType {
@@ -337,9 +338,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
 			g.stmts(branch.stmts)
 			g.expected_cast_type = prev_expected_cast_type
@@ -634,9 +635,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.write_defer_stmts(branch.scope, false, node.pos)

@@ -14,12 +14,13 @@ fn (g &Gen) match_cond_can_use_directly(cond ast.Expr) bool {
 }
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
-	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+	resolved_return_type := g.infer_match_expr_type(node)
+	if node.is_expr && resolved_return_type != ast.void_type && resolved_return_type != 0 {
 		if g.inside_struct_init {
 			return true
 		}
-		if g.table.sym(node.return_type).kind in [.sum_type, .interface, .multi_return]
-			|| node.return_type.has_option_or_result() {
+		if g.table.sym(resolved_return_type).kind in [.sum_type, .interface, .multi_return]
+			|| resolved_return_type.has_option_or_result() {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum && node.branches.len > 5 {
@@ -60,8 +61,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
+	resolved_return_type := g.infer_match_expr_type(node)
 	need_tmp_var := g.need_tmp_var_in_match(node)
-	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
+	is_expr := (node.is_expr && resolved_return_type != ast.void_type) || g.inside_ternary > 0
 
 	mut cond_var := ''
 	mut tmp_var := ''
@@ -70,13 +72,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr {
-		if node.return_type.has_flag(.option) {
+		if resolved_return_type.has_flag(.option) {
 			old := g.inside_match_option
 			defer(fn) {
 				g.inside_match_option = old
 			}
 			g.inside_match_option = true
-		} else if node.return_type.has_flag(.result) {
+		} else if resolved_return_type.has_flag(.result) {
 			old := g.inside_match_result
 			defer(fn) {
 				g.inside_match_result = old
@@ -105,18 +107,18 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
-		ret_final_sym := g.table.final_sym(node.return_type)
-		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
+		ret_final_sym := g.table.final_sym(resolved_return_type)
+		if !resolved_return_type.has_option_or_result() && ret_final_sym.kind == .function {
 			if ret_final_sym.info is ast.FnType {
 				def := g.fn_var_signature(ast.void_type, ret_final_sym.info.func.return_type,
 					ret_final_sym.info.func.params.map(it.typ), tmp_var)
-				func_decl = '${def} = &${g.styp(node.return_type)};'
+				func_decl = '${def} = &${g.styp(resolved_return_type)};'
 			}
 		}
 		if func_decl != '' {
 			g.writeln(func_decl) // func, anon func declaration
 		} else {
-			g.writeln('${g.styp(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+			g.writeln('${g.styp(resolved_return_type)} ${tmp_var} = ${g.type_default(resolved_return_type)};')
 		}
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
@@ -130,7 +132,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('(')
 	}
 	if node.is_sum_type {
-		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var, resolved_return_type)
 	} else {
 		cond_fsym := g.table.final_sym(node.cond_type)
 		enum_is_multi_allowed := cond_fsym.info is ast.Enum && cond_fsym.info.is_multi_allowed
@@ -153,13 +155,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// eprintln('> can_be_a_switch: ${can_be_a_switch}')
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
 			&& cond_fsym.is_int() && !enum_is_multi_allowed {
-			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym, resolved_return_type)
 		} else if cond_fsym.kind == .enum && g.loop_depth == 0 && node.branches.len > 5
 			&& g.fn_decl != unsafe { nil } && !enum_is_multi_allowed {
 			// do not optimize while in top-level
-			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym, resolved_return_type)
 		} else {
-			g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+			g.match_expr_classic(node, is_expr, cond_var, tmp_var, resolved_return_type)
 		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
@@ -181,7 +183,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 }
 
-fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, resolved_return_type ast.Type) {
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
 	cond_sym := g.table.final_sym(node.cond_type)
@@ -252,8 +254,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 			}
 			if is_expr && tmp_var.len > 0
-				&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
-				g.expected_cast_type = node.return_type
+				&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+				g.expected_cast_type = resolved_return_type
 			}
 			inside_interface_deref_old := g.inside_interface_deref
 			if is_expr && branch.stmts.len > 0 {
@@ -288,7 +290,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	}
 }
 
-fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol, resolved_return_type ast.Type) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 
 	covered_enum_cap := if cond_fsym.info is ast.Enum { cond_fsym.info.vals.len } else { 0 }
@@ -362,8 +364,8 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		}
 		g.writeln('{')
 		if is_expr && tmp_var.len > 0
-			&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
-			g.expected_cast_type = node.return_type
+			&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+			g.expected_cast_type = resolved_return_type
 		}
 		ends_with_return := g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
@@ -439,7 +441,7 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 	return should_check_low_bound
 }
 
-fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, resolved_return_type ast.Type) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
@@ -572,8 +574,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 			}
 		}
 		if is_expr && tmp_var.len > 0
-			&& g.table.sym(node.return_type).kind in [.sum_type, .interface] {
-			g.expected_cast_type = node.return_type
+			&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+			g.expected_cast_type = resolved_return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.write_defer_stmts(branch.scope, false, node.pos)

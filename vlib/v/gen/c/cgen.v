@@ -213,7 +213,7 @@ mut:
 	sumtype_casting_fns                  []SumtypeCastingFn
 	anon_fn_definitions                  []string        // anon generated functions definition list
 	anon_fns                             shared []string // remove duplicate anon generated functions
-	sumtype_definitions                  map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	sumtype_definitions                  map[string]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions                 []string
 	json_types                           []ast.Type // to avoid json gen duplicates
 	json_types_pos                       map[ast.Type]token.Pos
@@ -1271,6 +1271,17 @@ pub fn (mut g Gen) get_sumtype_variant_type_name(typ ast.Type, sym ast.TypeSymbo
 @[inline]
 pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, sym ast.TypeSymbol) string {
 	return if typ.has_flag(.option) { '_option_${sym.cname}' } else { sym.cname }
+}
+
+// get_sumtype_casting_variant_name returns a helper-safe variant name that
+// keeps pointer-depth distinctions for sumtype cast wrappers.
+@[inline]
+pub fn (mut g Gen) get_sumtype_casting_variant_name(typ ast.Type, sym ast.TypeSymbol) string {
+	mut variant_name := g.get_sumtype_variant_name(typ, sym)
+	if typ.nr_muls() > 0 {
+		variant_name += '__ptr__'.repeat(typ.nr_muls())
+	}
+	return variant_name
 }
 
 pub fn (mut g Gen) write_typeof_functions() {
@@ -3692,8 +3703,8 @@ struct SumtypeCastingFn {
 }
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
-	mut got, exp := got_.idx_type(), exp_.idx_type()
-	i := u32(got) | u32(u32(exp) << 18) | u32(u32(exp_.has_flag(.option)) << 17) | u32(u32(got_.has_flag(.option)) << 16)
+	mut got, exp := got_, exp_.idx_type()
+	i := '${u32(got_)}:${u32(exp_)}'
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
 	same_parent_sumtype_alias := got_sym.kind == .alias && g.table.unaliased_type(got_) == exp
@@ -3703,7 +3714,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 		g.get_sumtype_variant_name(exp_, exp_sym)
 	}
 	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
-	sumtype_variant_name := g.get_sumtype_variant_name(got_, got_sym)
+	sumtype_variant_name := g.get_sumtype_casting_variant_name(got_, got_sym)
 	fn_name := '${sumtype_variant_name}_to_sumtype_${cname}'
 	if g.pref.experimental && fn_name.contains('v__ast__Struct_to_sumtype_v__ast__TypeInfo') {
 		print_backtrace()
@@ -3721,13 +3732,10 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got:     if got_.has_flag(.option) {
-			new_got := ast.idx_to_type(got_sym.idx).set_flag(.option)
-			new_got
-		} else if same_parent_sumtype_alias {
-			got_.idx_type()
+		got:     if same_parent_sumtype_alias {
+			got_
 		} else {
-			got_sym.idx
+			ast.idx_to_type(got_sym.idx).derive(got_)
 		}
 		exp:     if exp_.has_flag(.option) {
 			new_exp := exp.set_flag(.option)
@@ -3774,6 +3782,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
 		sb.writeln('\t${got_cname} ptr = x;')
 	} else {
+		got_cname = g.styp(got)
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
 		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
@@ -3995,6 +4004,42 @@ fn (g &Gen) single_pointer_sumtype_nil_variant(expected_type ast.Type, expr ast.
 		}
 	}
 	return variant
+}
+
+@[inline]
+fn (g &Gen) is_exact_sumtype_variant_match(variant ast.Type, got ast.Type) bool {
+	if variant.idx() != got.idx() || variant.has_flag(.option) != got.has_flag(.option)
+		|| variant.nr_muls() != got.nr_muls() {
+		return false
+	}
+	variant_sym := g.table.sym(variant)
+	got_sym := g.table.sym(got)
+	if variant_sym.info is ast.FnType && got_sym.info is ast.FnType {
+		return g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func)
+	}
+	return true
+}
+
+fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.Type) ast.Type {
+	expected_sym := g.table.final_sym(expected_type)
+	if expected_sym.kind != .sum_type {
+		return got_type
+	}
+	variants := (expected_sym.info as ast.SumType).variants
+	for variant in variants {
+		if g.is_exact_sumtype_variant_match(variant, got_type) {
+			return variant
+		}
+	}
+	if got_type.is_any_kind_of_pointer() {
+		deref_got_type := got_type.deref()
+		for variant in variants {
+			if g.is_exact_sumtype_variant_match(variant, deref_got_type) {
+				return variant
+			}
+		}
+	}
+	return got_type
 }
 
 // use instead of expr() when you need a var to use as reference
@@ -4374,8 +4419,21 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					sumtype_got_is_fn = sumtype_got_sym.kind == .function
 					sumtype_got_is_ptr = sumtype_got_type.is_ptr()
 				}
+				actual_sumtype_got_type := sumtype_got_type
+				sumtype_got_type = g.find_matching_sumtype_variant(unwrapped_expected_type,
+					sumtype_got_type)
+				sumtype_got_sym = g.table.sym(sumtype_got_type)
+				sumtype_got_styp = g.styp(sumtype_got_type)
+				sumtype_got_is_fn = sumtype_got_sym.kind == .function
+				sumtype_got_is_ptr = sumtype_got_type.is_ptr()
 
 				fname := g.get_sumtype_casting_fn(sumtype_got_type, unwrapped_expected_type)
+				sumtype_cast_got_is_ptr := if sumtype_got_type.is_any_kind_of_pointer()
+					&& g.is_exact_sumtype_variant_match(sumtype_got_type, actual_sumtype_got_type) {
+					false
+				} else {
+					got_is_ptr
+				}
 				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
 					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
@@ -4385,11 +4443,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.writeln(';')
 					g.write2(stmt_str, ' ')
 					g.write('${fname}(&${tmp_var}, ${g.can_reuse_sumtype_variant_storage(unwrapped_expected_type,
-						got_is_ptr)})')
+						sumtype_cast_got_is_ptr)})')
 					return
 				} else {
 					g.call_cfn_for_casting_expr(fname, expr, expected_type, sumtype_got_type,
-						unwrapped_exp_sym.cname, sumtype_got_is_ptr, sumtype_got_is_fn,
+						unwrapped_exp_sym.cname, sumtype_cast_got_is_ptr, sumtype_got_is_fn,
 						sumtype_got_styp)
 				}
 			}
@@ -8474,6 +8532,22 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.resolved_expr_type(expr0, type0_default)
 	} else {
 		ast.void_type
+	}
+	if exprs_len > 0 && type0 == ast.void_type {
+		fallback_type := match expr0 {
+			ast.IfExpr { expr0.typ }
+			ast.MatchExpr { expr0.return_type }
+			else { ast.void_type }
+		}
+		if fallback_type != ast.void_type && fallback_type != 0 {
+			type0 = g.unwrap_generic(g.recheck_concrete_type(fallback_type))
+		}
+	}
+	if exprs_len > 0 && type0 == ast.void_type {
+		inferred_type := g.type_resolver.get_type_or_default(expr0, ast.void_type)
+		if inferred_type != ast.void_type && inferred_type != 0 {
+			type0 = g.unwrap_generic(g.recheck_concrete_type(inferred_type))
+		}
 	}
 	// When the expression uses `?` or `!` propagation, the evaluated type is
 	// unwrapped (the option/result flag should be stripped).

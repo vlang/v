@@ -128,7 +128,10 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	mut left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
 	mut right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
-	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+	if (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+		|| left_type.has_flag(.generic) || right_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(left_type)
+		|| g.type_has_unresolved_generic_parts(right_type) {
 		resolved_left := g.resolved_expr_type(node.left, node.left_type)
 		if resolved_left != 0 {
 			// Don't override a smartcasted concrete type (from the checker)
