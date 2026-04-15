@@ -789,41 +789,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	return_type := if g.type_resolver.is_generic_expr(node.args[0].expr) {
-		mut ctyp := ast.void_type
-		if node.args[0].expr is ast.CallExpr && node.args[0].expr.return_type_generic != 0
-			&& node.args[0].expr.return_type_generic.has_flag(.generic) {
-			ctyp = g.resolve_return_type(node.args[0].expr)
-			if g.table.type_kind(node.args[0].expr.return_type_generic) in [.array, .array_fixed] {
-				ctyp = ast.new_type(g.table.find_or_register_array(ctyp))
-			}
-		}
-		if ctyp == ast.void_type {
-			ctyp = g.type_resolver.unwrap_generic_expr(node.args[0].expr, node.return_type)
-		}
-		if g.table.type_kind(g.unwrap_generic(ctyp)) !in [.array, .array_fixed] {
-			ast.new_type(g.table.find_or_register_array(ctyp))
-		} else {
-			ctyp
-		}
-	} else {
-		node.return_type
-	}
-	ret_styp := g.styp(return_type)
-	ret_sym := g.table.final_sym(return_type)
-
 	left_type := g.resolved_array_receiver_type(node)
 	left_sym := g.table.final_sym(left_type)
 	left_is_array := left_sym.kind == .array
 	inp_sym := left_sym
-
-	ret_elem_type := if left_is_array {
-		(ret_sym.info as ast.Array).elem_type
-	} else {
-		(ret_sym.info as ast.ArrayFixed).elem_type
-	}
-	ret_elem_sym := g.table.final_sym(ret_elem_type)
-	mut ret_elem_styp := g.styp(ret_elem_type)
 	inp_elem_type := if left_is_array {
 		(inp_sym.info as ast.Array).elem_type
 	} else {
@@ -835,6 +804,45 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	mut expr := node.args[0].expr
+	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
+
+	mut return_type := g.resolve_return_type(node)
+	if g.table.final_sym(g.unwrap_generic(return_type)).kind !in [.array, .array_fixed] {
+		return_type = if g.type_resolver.is_generic_expr(node.args[0].expr) {
+			mut ctyp := ast.void_type
+			if node.args[0].expr is ast.CallExpr && node.args[0].expr.return_type_generic != 0
+				&& node.args[0].expr.return_type_generic.has_flag(.generic) {
+				ctyp = g.resolve_return_type(node.args[0].expr)
+				if g.table.type_kind(node.args[0].expr.return_type_generic) in [
+					.array,
+					.array_fixed,
+				] {
+					ctyp = ast.new_type(g.table.find_or_register_array(ctyp))
+				}
+			}
+			if ctyp == ast.void_type {
+				ctyp = g.type_resolver.unwrap_generic_expr(node.args[0].expr, node.return_type)
+			}
+			if g.table.type_kind(g.unwrap_generic(ctyp)) !in [.array, .array_fixed] {
+				ast.new_type(g.table.find_or_register_array(ctyp))
+			} else {
+				ctyp
+			}
+		} else {
+			node.return_type
+		}
+	}
+	ret_styp := g.styp(return_type)
+	ret_sym := g.table.final_sym(return_type)
+
+	ret_elem_type := if left_is_array {
+		(ret_sym.info as ast.Array).elem_type
+	} else {
+		(ret_sym.info as ast.ArrayFixed).elem_type
+	}
+	ret_elem_sym := g.table.final_sym(ret_elem_type)
+	mut ret_elem_styp := g.styp(ret_elem_type)
 	mut closure_var_decl := ''
 	tmp_map_expr_result_name := g.new_tmp_var()
 	if mut expr is ast.SelectorExpr {
@@ -864,8 +872,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	var_name := g.get_array_expr_param_name(mut expr)
-	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
 	is_auto_heap := expr is ast.CastExpr && (expr.expr is ast.Ident && expr.expr.is_auto_heap())
 	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array,
 		is_auto_heap)
