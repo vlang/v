@@ -3286,7 +3286,12 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 						cmp_type = cmp_sym.info.elem_type
 					}
 				}
-				if cmp_type != g.unwrap_generic(arg_type) {
+				resolved_arg_type := g.unwrap_generic(arg_type)
+				if cmp_type != resolved_arg_type {
+					if g.table.final_sym(cmp_type).kind == .interface
+						&& g.table.does_type_implement_interface(resolved_arg_type, cmp_type) {
+						continue
+					}
 					trust_node_concrete_types = false
 					break
 				}

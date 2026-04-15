@@ -262,17 +262,30 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 			for gt_name in generic_names {
 				mut inferred_type := ast.void_type
 				for ifield in inter_sym.info.fields {
-					if ifield.typ.has_flag(.generic) && c.table.get_type_name(ifield.typ) == gt_name {
-						if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
-							inferred_type = field.typ
+					if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
+						mut ifield_typ := ifield.typ
+						if interface_concrete_types.len == generic_names.len {
+							if resolved_field_type := c.table.convert_generic_type(ifield.typ,
+								generic_names, interface_concrete_types)
+							{
+								ifield_typ = resolved_field_type
+							}
+						}
+						inferred_field_type := c.infer_composite_generic_type(gt_name, ifield_typ,
+							field.typ)
+						if inferred_field_type != ast.void_type {
+							inferred_type = inferred_field_type
 						}
 					}
 				}
 				for imethod in inter_sym.info.methods {
-					method := typ_sym.find_method_with_generic_parent(imethod.name) or {
-						c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`', pos)
+					mut method := typ_sym.find_method_with_generic_parent(imethod.name) or {
+						if pos.file_idx != -1 {
+							c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`', pos)
+						}
 						return 0
 					}
+					method = c.resolve_method_for_concrete_type(method, typ_sym)
 					mut imethod_return_type := imethod.return_type
 					if interface_concrete_types.len == generic_names.len {
 						if resolved_return_type := c.table.convert_generic_type(imethod.return_type,
@@ -281,60 +294,30 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							imethod_return_type = resolved_return_type
 						}
 					}
-					if imethod_return_type.has_flag(.generic) {
+					if imethod_return_type.has_flag(.generic)
+						|| c.type_has_unresolved_generic_parts(imethod_return_type) {
 						imret_sym := c.table.sym(imethod_return_type)
 						mret_sym := c.table.sym(method.return_type)
 						if method.return_type == ast.void_type
 							&& imethod_return_type != method.return_type {
-							c.error('interface method `${imethod.name}` returns `${imret_sym.name}`, but implementation method `${method.name}` returns no value',
-								pos)
+							if pos.file_idx != -1 {
+								c.error('interface method `${imethod.name}` returns `${imret_sym.name}`, but implementation method `${method.name}` returns no value',
+									pos)
+							}
 							return 0
 						}
 						if imethod_return_type == ast.void_type
 							&& imethod_return_type != method.return_type {
-							c.error('interface method `${imethod.name}` returns no value, but implementation method `${method.name}` returns `${mret_sym.name}`',
-								pos)
+							if pos.file_idx != -1 {
+								c.error('interface method `${imethod.name}` returns no value, but implementation method `${method.name}` returns `${mret_sym.name}`',
+									pos)
+							}
 							return 0
 						}
-						if imret_sym.info is ast.MultiReturn && mret_sym.info is ast.MultiReturn {
-							for i, mr_typ in imret_sym.info.types {
-								if mr_typ.has_flag(.generic)
-									&& c.table.get_type_name(mr_typ) == gt_name {
-									inferred_type = mret_sym.info.types[i]
-								}
-							}
-						} else if c.table.get_type_name(imethod_return_type) == gt_name {
-							mut ret_typ := method.return_type
-							if imethod_return_type.has_flag(.option) {
-								ret_typ = ret_typ.clear_flag(.option)
-							} else if imethod_return_type.has_flag(.result) {
-								ret_typ = ret_typ.clear_flag(.result)
-							}
-							inferred_type = ret_typ
-						} else if imret_sym.info is ast.SumType && mret_sym.info is ast.SumType {
-							im_generic_names :=
-								imret_sym.info.generic_types.map(c.table.sym(it).name)
-							if gt_name in im_generic_names
-								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
-								idx := im_generic_names.index(gt_name)
-								inferred_type = mret_sym.info.concrete_types[idx]
-							}
-						} else if imret_sym.info is ast.Interface && mret_sym.info is ast.Interface {
-							im_generic_names :=
-								imret_sym.info.generic_types.map(c.table.sym(it).name)
-							if gt_name in im_generic_names
-								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
-								idx := im_generic_names.index(gt_name)
-								inferred_type = mret_sym.info.concrete_types[idx]
-							}
-						} else if imret_sym.info is ast.Struct && mret_sym.info is ast.Struct {
-							im_generic_names :=
-								imret_sym.info.generic_types.map(c.table.sym(it).name)
-							if gt_name in im_generic_names
-								&& imret_sym.info.generic_types.len == mret_sym.info.concrete_types.len {
-								idx := im_generic_names.index(gt_name)
-								inferred_type = mret_sym.info.concrete_types[idx]
-							}
+						inferred_return_type := c.infer_composite_generic_type(gt_name,
+							imethod_return_type, method.return_type)
+						if inferred_return_type != ast.void_type {
+							inferred_type = inferred_return_type
 						}
 					}
 					for i, iparam in imethod.params {
@@ -356,59 +339,26 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							&& imethod.name == method.name {
 							need_inferred_type = true
 						}
-						if iparam.typ.has_flag(.generic) || need_inferred_type {
-							param_sym := c.table.sym(iparam_typ)
-							arg_sym := c.table.sym(param.typ)
-							if c.table.get_type_name(iparam_typ) == gt_name
-								|| (need_inferred_type && inferred_type == ast.void_type) {
+						if iparam_typ.has_flag(.generic)
+							|| c.type_has_unresolved_generic_parts(iparam_typ) || need_inferred_type {
+							inferred_param_type := c.infer_composite_generic_type(gt_name,
+								iparam_typ, param.typ)
+							if inferred_param_type != ast.void_type {
+								inferred_type = inferred_param_type
+							} else if need_inferred_type && inferred_type == ast.void_type {
 								inferred_type = param.typ
-							} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
-								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
-								for {
-									if mut arg_elem_sym.info is ast.Array
-										&& mut param_elem_sym.info is ast.Array {
-										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
-									} else {
-										if param_elem_sym.name == gt_name {
-											inferred_type = arg_elem_typ
-										}
-										break
-									}
-								}
-							} else if arg_sym.info is ast.ArrayFixed
-								&& param_sym.info is ast.ArrayFixed {
-								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
-								for {
-									if mut arg_elem_sym.info is ast.ArrayFixed
-										&& mut param_elem_sym.info is ast.ArrayFixed {
-										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
-									} else {
-										if param_elem_sym.name == gt_name {
-											inferred_type = arg_elem_typ
-										}
-										break
-									}
-								}
-							} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
-								if param_sym.info.key_type.has_flag(.generic)
-									&& c.table.sym(param_sym.info.key_type).name == gt_name {
-									inferred_type = arg_sym.info.key_type
-								}
-								if param_sym.info.value_type.has_flag(.generic)
-									&& c.table.sym(param_sym.info.value_type).name == gt_name {
-									inferred_type = arg_sym.info.value_type
-								}
 							}
 						}
 					}
 				}
 				if inferred_type == ast.void_type {
-					c.error('could not infer generic type `${gt_name}` in interface `${inter_sym.name}`',
-						pos)
+					if interface_concrete_types.any(c.type_has_unresolved_generic_parts(it)) {
+						return interface_type
+					}
+					if pos.file_idx != -1 {
+						c.error('could not infer generic type `${gt_name}` in interface `${inter_sym.name}`',
+							pos)
+					}
 					return interface_type
 				}
 				inferred_types << inferred_type
@@ -425,7 +375,9 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 						c.need_recheck_generic_fns = true
 					}
 					if method := typ_sym.find_method_with_generic_parent(imethod.name) {
-						if c.table.register_fn_concrete_types(method.fkey(), inferred_types) {
+						method_concrete_types := c.concrete_types_for_type_symbol(typ_sym)
+						if method_concrete_types.len > 0
+							&& c.table.register_fn_concrete_types(method.fkey(), method_concrete_types) {
 							c.need_recheck_generic_fns = true
 						}
 					}
