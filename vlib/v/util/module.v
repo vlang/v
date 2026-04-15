@@ -69,6 +69,12 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 		return mod
 	}
 	clean_file_path := file_path.all_before_last(os.path_separator)
+	// Use absolute path so mod_path_to_full_name can walk up to find v.mod
+	abs_clean_file_path := if os.is_abs_path(clean_file_path) {
+		clean_file_path
+	} else {
+		os.join_path_single(os.getwd(), clean_file_path)
+	}
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
@@ -77,15 +83,16 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
+		if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
+			if m1 != mod {
+				trace_qualify(@FN, mod, file_path, 'module_res 2', m1,
+					'clean_file_path - getwd == mod, m1 == f(${abs_clean_file_path})')
+				return m1
+			}
+		}
 		trace_qualify(@FN, mod, file_path, 'module_res 2', mod,
 			'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
-	}
-	// Use absolute path so mod_path_to_full_name can walk up to find v.mod
-	abs_clean_file_path := if os.is_abs_path(clean_file_path) {
-		clean_file_path
-	} else {
-		os.join_path_single(os.getwd(), clean_file_path)
 	}
 	if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
 		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${abs_clean_file_path})')

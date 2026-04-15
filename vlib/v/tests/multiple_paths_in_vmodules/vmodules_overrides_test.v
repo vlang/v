@@ -19,6 +19,8 @@ const submodule_mainvv = os.join_path(basepath, 'submodule_of_third_party_main.v
 
 const submodule_cmd = '${os.quoted_path(vexe)} ${os.quoted_path(submodule_mainvv)}'
 
+const installed_module_root = os.join_path(basepath, 'path5', 'vab')
+
 fn test_vexe_is_set() {
 	assert vexe != ''
 	println('vexe: ${vexe}')
@@ -51,4 +53,19 @@ fn test_importing_third_party_submodule_works() {
 	dump(submodule_cmd)
 	res := os.execute(submodule_cmd)
 	assert res.exit_code == 0, res.output
+}
+
+fn test_running_installed_module_with_short_submodule_imports_works() {
+	old_dir := os.getwd()
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	os.chdir(installed_module_root) or {}
+	os.setenv('VMODULES', os.join_path(basepath, 'path5'), true)
+	run_cmd := '${os.quoted_path(vexe)} run vab.v'
+	dump(os.getenv('VMODULES'))
+	dump(run_cmd)
+	res := os.execute(run_cmd)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'android sdk'
 }
