@@ -872,7 +872,13 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	is_auto_heap := expr is ast.CastExpr && (expr.expr is ast.Ident && expr.expr.is_auto_heap())
+	var_name := g.get_array_expr_param_name(mut expr)
+	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
+	is_auto_heap := g.array_expr_param_needs_indirect_access(expr, var_name)
+	old_param_auto_heap := g.set_array_expr_param_auto_heap(expr, var_name, is_auto_heap)
+	defer {
+		g.set_array_expr_param_auto_heap(expr, var_name, old_param_auto_heap)
+	}
 	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array,
 		is_auto_heap)
 	g.set_current_pos_as_last_stmt_pos()
@@ -2418,6 +2424,132 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 
 fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 	return if mut expr is ast.LambdaExpr { expr.params[0].name } else { 'it' }
+}
+
+fn (mut g Gen) array_expr_param_needs_indirect_access(expr ast.Expr, var_name string) bool {
+	return g.array_expr_param_is_auto_heap(expr, var_name)
+		|| g.array_expr_takes_param_address(expr, var_name)
+}
+
+fn (mut g Gen) array_expr_param_is_auto_heap(expr ast.Expr, var_name string) bool {
+	if var_name == '' || g.file.scope == unsafe { nil } {
+		return false
+	}
+	mut scope := g.file.scope.innermost(expr.pos().pos)
+	if scope == unsafe { nil } {
+		scope = g.file.scope
+	}
+	if scope == unsafe { nil } {
+		return false
+	}
+	if v := scope.find_var(var_name) {
+		return v.is_auto_heap
+	}
+	return false
+}
+
+fn (mut g Gen) set_array_expr_param_auto_heap(expr ast.Expr, var_name string, is_auto_heap bool) bool {
+	if var_name == '' || g.file.scope == unsafe { nil } {
+		return false
+	}
+	mut scope := g.file.scope.innermost(expr.pos().pos)
+	if scope == unsafe { nil } {
+		scope = g.file.scope
+	}
+	if scope == unsafe { nil } {
+		return false
+	}
+	if mut v := scope.find_var(var_name) {
+		old_is_auto_heap := v.is_auto_heap
+		v.is_auto_heap = is_auto_heap
+		return old_is_auto_heap
+	}
+	return false
+}
+
+fn (mut g Gen) array_expr_takes_param_address(expr ast.Expr, var_name string) bool {
+	match expr {
+		ast.AsCast {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		ast.CallExpr {
+			if g.array_expr_takes_param_address(expr.left, var_name) {
+				return true
+			}
+			for arg in expr.args {
+				if g.array_expr_takes_param_address(arg.expr, var_name) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.CastExpr {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		ast.IndexExpr {
+			return g.array_expr_takes_param_address(expr.left, var_name)
+				|| g.array_expr_takes_param_address(expr.index, var_name)
+		}
+		ast.InfixExpr {
+			return g.array_expr_takes_param_address(expr.left, var_name)
+				|| g.array_expr_takes_param_address(expr.right, var_name)
+		}
+		ast.LambdaExpr {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		ast.ParExpr {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		ast.PostfixExpr {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp && g.array_expr_roots_at_param(expr.right, var_name) {
+				return true
+			}
+			return g.array_expr_takes_param_address(expr.right, var_name)
+		}
+		ast.SelectorExpr {
+			return g.array_expr_takes_param_address(expr.expr, var_name)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) array_expr_roots_at_param(expr ast.Expr, var_name string) bool {
+	mut root := expr
+	for {
+		if mut root is ast.ParExpr {
+			root = root.expr
+			continue
+		}
+		break
+	}
+	match mut root {
+		ast.AsCast {
+			return g.array_expr_roots_at_param(root.expr, var_name)
+		}
+		ast.CastExpr {
+			return g.array_expr_roots_at_param(root.expr, var_name)
+		}
+		ast.Ident {
+			return root.name == var_name
+		}
+		ast.IndexExpr {
+			return g.array_expr_roots_at_param(root.left, var_name)
+		}
+		ast.PostfixExpr {
+			return g.array_expr_roots_at_param(root.expr, var_name)
+		}
+		ast.SelectorExpr {
+			return g.array_expr_roots_at_param(root.expr, var_name)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut g Gen) refresh_array_expr_param_type(expr ast.Expr, var_name string, elem_type ast.Type) {
