@@ -1834,6 +1834,18 @@ fn cmp_2d_int_arrays_by_first_item(a &[]int, b &[]int) int {
 	return 0
 }
 
+struct SortPageObject {
+	key []u8
+}
+
+fn compare_page_object_keys_asc(a &SortPageObject, b &SortPageObject) int {
+	return a.key[0] - b.key[0]
+}
+
+fn compare_page_object_keys_desc(a &SortPageObject, b &SortPageObject) int {
+	return b.key[0] - a.key[0]
+}
+
 fn test_sorted_with_compare_2d_array() {
 	aa := [[2], [1]]
 	bb := aa.sorted_with_compare(cmp_2d_int_arrays_by_first_item)
@@ -1842,4 +1854,32 @@ fn test_sorted_with_compare_2d_array() {
 	mut cc := aa.clone()
 	cc.sort_with_compare(cmp_2d_int_arrays_by_first_item)
 	assert cc == [[1], [2]]
+}
+
+fn test_sort_with_compare_small_unsigned_difference() {
+	a := SortPageObject{
+		key: 'A'.bytes()
+	}
+	b := SortPageObject{
+		key: 'B'.bytes()
+	}
+	c := SortPageObject{
+		key: 'C'.bytes()
+	}
+
+	mut objects1 := [b, a]
+	objects1.sort_with_compare(compare_page_object_keys_asc)
+	assert objects1.map(it.key.bytestr()) == ['A', 'B']
+
+	mut objects2 := [a, b]
+	objects2.sort_with_compare(compare_page_object_keys_asc)
+	assert objects2.map(it.key.bytestr()) == ['A', 'B']
+
+	mut objects3 := [a, b, c]
+	objects3.sort_with_compare(compare_page_object_keys_asc)
+	assert objects3.map(it.key.bytestr()) == ['A', 'B', 'C']
+
+	mut objects4 := [a, b, c]
+	objects4.sort_with_compare(compare_page_object_keys_desc)
+	assert objects4.map(it.key.bytestr()) == ['C', 'B', 'A']
 }

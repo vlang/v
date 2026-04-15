@@ -4147,6 +4147,51 @@ fn (mut g Gen) expr_with_array_element_upcast(expr ast.Expr, got_type ast.Type, 
 	g.write(result_tmp)
 }
 
+fn (mut g Gen) can_widen_small_int_infix_for_cast(expr ast.InfixExpr, got_type ast.Type, expected_type ast.Type) bool {
+	if expr.op !in [.plus, .minus] {
+		return false
+	}
+	got_base := g.table.unalias_num_type(g.unwrap_generic(got_type))
+	expected_base := g.table.unalias_num_type(g.unwrap_generic(expected_type))
+	if !expected_base.is_number() || got_base == expected_base
+		|| got_base !in ast.int_promoted_type_idxs {
+		return false
+	}
+	left_default := if expr.left_type != 0 { expr.left_type } else { got_type }
+	right_default := if expr.right_type != 0 { expr.right_type } else { got_type }
+	mut left_type := g.resolved_expr_type(expr.left, left_default)
+	mut right_type := g.resolved_expr_type(expr.right, right_default)
+	if left_type == 0 {
+		left_type = left_default
+	}
+	if right_type == 0 {
+		right_type = right_default
+	}
+	left_base := g.table.unalias_num_type(g.unwrap_generic(left_type))
+	right_base := g.table.unalias_num_type(g.unwrap_generic(right_type))
+	return left_base == got_base && right_base == got_base
+}
+
+fn (mut g Gen) widen_small_int_infix_for_cast(expr ast.InfixExpr, got_type ast.Type, expected_type ast.Type) {
+	left_default := if expr.left_type != 0 { expr.left_type } else { got_type }
+	right_default := if expr.right_type != 0 { expr.right_type } else { got_type }
+	mut left_type := g.resolved_expr_type(expr.left, left_default)
+	mut right_type := g.resolved_expr_type(expr.right, right_default)
+	if left_type == 0 {
+		left_type = left_default
+	}
+	if right_type == 0 {
+		right_type = right_default
+	}
+	// Keep small integer arithmetic widened when the result is immediately
+	// converted to a larger numeric type, e.g. sort comparator callbacks.
+	g.write('(')
+	g.expr_with_cast(expr.left, left_type, expected_type)
+	g.write(' ${expr.op.str()} ')
+	g.expr_with_cast(expr.right, right_type, expected_type)
+	g.write(')')
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := ast.mktyp(got_type_raw)
@@ -4405,6 +4450,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& expr !is ast.StructInit) || (g.inside_call && expected_type == ast.voidptr_type
 		&& expr is ast.ArrayInit && (expr as ast.ArrayInit).is_fixed) {
 		g.write('(voidptr)')
+	}
+	if expr is ast.InfixExpr && g.can_widen_small_int_infix_for_cast(expr, got_type, expected_type) {
+		g.widen_small_int_infix_for_cast(expr, got_type, expected_type)
+		return
 	}
 	// no cast
 	g.expr(expr)
