@@ -52,8 +52,8 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 			}
 
 			$if A is MiddlewareApp {
-				route.middlewares = app.Middleware.get_handlers_for_route[X](route_path)
-				route.after_middlewares = app.Middleware.get_handlers_for_route_after[X](route_path)
+				route.middlewares = app_route_handlers(app, route_path)
+				route.after_middlewares = app_route_handlers_after(app, route_path)
 			}
 
 			routes[method.name] = route
@@ -465,8 +465,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 				// no need to check the result of `validate_middleware`, since a response has to be sent
 				// anyhow. This function makes sure no further middleware is executed.
-				validate_middleware[X](mut user_context,
-					app.Middleware.get_global_handlers_after[X]())
+				validate_middleware[X](mut user_context, app_global_handlers_after(app))
 				// skip route-specific after-middleware if global already sent a response
 				if !user_context.Context.done {
 					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
@@ -513,17 +512,15 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	// then execute global middleware functions
 	$if A is MiddlewareApp {
-		if validate_middleware[X](mut user_context, app.Middleware.get_global_handlers[X]()) == false {
+		if validate_middleware[X](mut user_context, app_global_handlers(app)) == false {
 			middleware_has_sent_response = true
 			return
 		}
 	}
 
-	$if A is StaticApp {
-		if serve_if_static[A, X](app, mut user_context, url, host) {
-			// successfully served a static file
-			return
-		}
+	if serve_if_static[A, X](&app, mut user_context, url, host) {
+		// successfully served a static file
+		return
 	}
 
 	// Route matching and match route specific middleware as last step
@@ -672,9 +669,10 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
+	static_handler := app_static_handler(app)
 
 	// Content negotiation for markdown files (if enabled)
-	if app.enable_markdown_negotiation {
+	if static_handler.enable_markdown_negotiation {
 		accept_header := user_context.req.header.get(.accept) or { '' }
 		if accept_header.contains('text/markdown') {
 			// Try markdown variants in order of priority
@@ -685,7 +683,7 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 			]
 
 			for variant in markdown_variants {
-				if app.static_files[variant] != '' {
+				if static_handler.static_files[variant] != '' {
 					asked_path = variant
 					break
 				}
@@ -700,29 +698,29 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 
 	if asked_path.ends_with('/') {
 		// Check for markdown index first if Accept header requests it and feature is enabled
-		if app.enable_markdown_negotiation {
+		if static_handler.enable_markdown_negotiation {
 			accept_header := user_context.req.header.get(.accept) or { '' }
 			if accept_header.contains('text/markdown')
-				&& app.static_files[asked_path + 'index.html.md'] != '' {
+				&& static_handler.static_files[asked_path + 'index.html.md'] != '' {
 				asked_path += 'index.html.md'
-			} else if app.static_files[asked_path + 'index.html'] != '' {
+			} else if static_handler.static_files[asked_path + 'index.html'] != '' {
 				asked_path += 'index.html'
-			} else if app.static_files[asked_path + 'index.htm'] != '' {
+			} else if static_handler.static_files[asked_path + 'index.htm'] != '' {
 				asked_path += 'index.htm'
 			}
-		} else if app.static_files[asked_path + 'index.html'] != '' {
+		} else if static_handler.static_files[asked_path + 'index.html'] != '' {
 			asked_path += 'index.html'
-		} else if app.static_files[asked_path + 'index.htm'] != '' {
+		} else if static_handler.static_files[asked_path + 'index.htm'] != '' {
 			asked_path += 'index.htm'
 		}
 	}
-	static_file := app.static_files[asked_path] or { return false }
+	static_file := static_handler.static_files[asked_path] or { return false }
 
 	// StaticHandler ensures that the mime type exists on either the App or in veb
 	ext := os.file_ext(static_file).to_lower()
-	mut mime_type := app.static_mime_types[ext] or { mime_types[ext] }
+	mut mime_type := static_handler.static_mime_types[ext] or { mime_types[ext] }
 
-	static_host := app.static_hosts[asked_path] or { '' }
+	static_host := static_handler.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {
 		return false
 	}
@@ -731,12 +729,12 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	}
 
 	// Configure static file compression settings
-	user_context.set_static_compression_config(app.enable_static_gzip, app.enable_static_zstd,
-		app.enable_static_compression, if app.static_compression_max_size >= 0 {
-		app.static_compression_max_size
+	user_context.set_static_compression_config(static_handler.enable_static_gzip,
+		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
+		static_handler.static_compression_max_size
 	} else {
 		1048576 // Default: 1MB
-	}, app.static_compression_mime_types.clone())
+	}, static_handler.static_compression_mime_types.clone())
 
 	user_context.send_file(mime_type, static_file)
 	return true
