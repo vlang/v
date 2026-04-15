@@ -8259,10 +8259,33 @@ fn matching_generated_shader_source(node ast.HashStmt) ?string {
 	return shader_source
 }
 
+fn resolved_existing_local_include_path(node ast.HashStmt) ?string {
+	if !node.main.starts_with('"') || !node.main.ends_with('"') {
+		return none
+	}
+	header_path := node.main.trim('"')
+	if os.is_abs_path(header_path) {
+		return none
+	}
+	resolved_header_path := os.join_path(os.dir(node.source_file), header_path)
+	if !os.is_file(resolved_header_path) {
+		return none
+	}
+	return os.real_path(resolved_header_path).replace('\\', '/')
+}
+
+fn include_path_for_generated_c(node ast.HashStmt) string {
+	if resolved_header_path := resolved_existing_local_include_path(node) {
+		return '"${resolved_header_path}"'
+	}
+	return node.main
+}
+
 fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 	mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
 	missing_message += ' ${missing_shader_header_message(node)}'
-	mut guarded_include := get_guarded_include_text(node.main, missing_message)
+	mut guarded_include := get_guarded_include_text(include_path_for_generated_c(node),
+		missing_message)
 	if node.main == '<errno.h>' {
 		// fails with musl-gcc and msvc; but an unguarded include works:
 		guarded_include = '#include ${node.main}'
