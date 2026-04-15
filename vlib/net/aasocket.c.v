@@ -67,6 +67,10 @@ fn C.getaddrinfo(node &char, service &char, hints &C.addrinfo, res &&C.addrinfo)
 
 fn C.freeaddrinfo(info &C.addrinfo)
 
+$if !windows {
+	fn C.gai_strerror(code i32) &char
+}
+
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 fn C.connect(sockfd i32, addr &Addr, addrlen u32) i32
 
