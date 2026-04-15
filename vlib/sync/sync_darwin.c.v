@@ -54,7 +54,8 @@ pub struct Mutex {
 
 @[heap]
 pub struct RwMutex {
-	mutex C.pthread_rwlock_t
+	mutex  C.pthread_rwlock_t
+	inited u32
 }
 
 struct RwMutexAttr {
@@ -108,6 +109,19 @@ pub fn (mut m RwMutex) init() {
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	should_be_zero(C.pthread_rwlock_init(&m.mutex, &a.attr))
+	C.atomic_store_u32(&m.inited, 1)
+}
+
+fn (mut m RwMutex) lazy_init() {
+	if C.atomic_load_u32(&m.inited) == 0 {
+		mut expected := u32(0)
+		if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
+			a := RwMutexAttr{}
+			C.pthread_rwlockattr_init(&a.attr)
+			C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+			C.pthread_rwlock_init(&m.mutex, &a.attr)
+		}
+	}
 }
 
 // lock locks the mutex instance (`lock` is a keyword).
@@ -145,6 +159,7 @@ pub fn (mut m Mutex) destroy() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) rlock() {
+	m.lazy_init()
 	should_be_zero(C.pthread_rwlock_rdlock(&m.mutex))
 }
 
@@ -156,6 +171,7 @@ pub fn (mut m RwMutex) rlock() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) lock() {
+	m.lazy_init()
 	should_be_zero(C.pthread_rwlock_wrlock(&m.mutex))
 }
 

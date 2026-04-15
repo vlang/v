@@ -300,7 +300,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_type = right_type.clear_flag(.option)
 			}
 		} else if right is ast.ComptimeSelector {
-			right_type = c.comptime.comptime_for_field_type
+			if !(right as ast.ComptimeSelector).is_method {
+				right_type = c.comptime.comptime_for_field_type
+			}
 		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type

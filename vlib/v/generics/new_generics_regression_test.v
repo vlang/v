@@ -117,16 +117,16 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 106 failed, 174 passed, 280 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 110 failed, 177 passed, 287 total.'
 // The exact failure count varies slightly across compilers:
-// gcc/tcc: 104, clang: 105, msvc/windows-gcc: 106.
-const expected_summary_generics = 'Summary for all V _test.v files: 104 failed, 176 passed, 280 total.'
+// gcc/tcc: 108, clang: 109, msvc/windows-gcc: 110.
+const expected_summary_generics = 'Summary for all V _test.v files: 108 failed, 179 passed, 287 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
-const expected_summsvc_flag = 'Summary for all V _test.v files: 20 passed, 20 total.'
-const expected_summary_flag = 'Summary for all V _test.v files: 20 passed, 20 total.'
-const expected_summsvc_flag_clean = 'Summary for all V _test.v files: 20 passed, 20 total.'
-const expected_summary_flag_clean = 'Summary for all V _test.v files: 20 passed, 20 total.'
+const expected_summsvc_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
+const expected_summary_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
+const expected_summsvc_flag_clean = 'Summary for all V _test.v files: 21 passed, 21 total.'
+const expected_summary_flag_clean = 'Summary for all V _test.v files: 21 passed, 21 total.'
 const failing_tests = [
 	'vlib/v/tests/generics/checks_for_operator_overrides_should_happen_on_the_concrete_types_when_using_generics_test.v',
 	'vlib/v/tests/generics/default_type_with_ref_test.v',
@@ -148,16 +148,17 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_function_error_propagation_test.v',
 	'vlib/v/tests/generics/generic_interface_field_test.v',
 	'vlib/v/tests/generics/generic_interface_infer_test.v',
+	'vlib/v/tests/generics/generic_interface_map_value_test.v',
 	'vlib/v/tests/generics/generic_interface_nested_generic_type_infer_test.v',
 	'vlib/v/tests/generics/generic_interface_test.v',
 	'vlib/v/tests/generics/generic_map_alias_test.v',
 	'vlib/v/tests/generics/generic_match_generic_interface_type_test.v',
 	'vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v',
-	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',
 	'vlib/v/tests/generics/generic_receiver_embed_test.v',
 	'vlib/v/tests/generics/generic_recursive_fn_test.v',
 	'vlib/v/tests/generics/generic_resolve_test.v',
+	'vlib/v/tests/generics/generic_return_array_generic_test.v',
 	'vlib/v/tests/generics/generic_return_test.v',
 	'vlib/v/tests/generics/generic_selector_field_test.v',
 	'vlib/v/tests/generics/generic_selector_indexexpr_test.v',
@@ -219,6 +220,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_struct_with_inconsistent_generic_types_1_test.v',
 	'vlib/v/tests/generics/generics_struct_with_non_generic_interface_test.v',
 	'vlib/v/tests/generics/generics_struct_with_option_fn_test.v',
+	'vlib/v/tests/generics/generics_unused_specialized_fn_array_param_test.v',
 	'vlib/v/tests/generics/generics_with_anon_generics_fn_test.v',
 	'vlib/v/tests/generics/generics_with_assign_nested_generics_call_test.v',
 	'vlib/v/tests/generics/generics_with_embed_generics_method_call_test.v',

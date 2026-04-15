@@ -1813,3 +1813,44 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 	}
 	return false
 }
+
+// parsed_flags returns all parsed flags in order of position.
+pub fn (fm FlagMapper) parsed_flags() []FlagData {
+	mut flags := []FlagData{}
+	for _, f in fm.field_map_flag {
+		flags << f
+	}
+	for _, arr in fm.array_field_map_flag {
+		for f in arr {
+			flags << f
+		}
+	}
+	flags.sort_with_compare(fn (a &FlagData, b &FlagData) int {
+		if a.pos != b.pos {
+			return if a.pos < b.pos { -1 } else { 1 }
+		}
+		return if a.name < b.name {
+			-1
+		} else if a.name > b.name {
+			1
+		} else {
+			0
+		}
+	})
+	return flags
+}
+
+// handled_positions returns unique, sorted position indices from the input args
+// that were consumed during parsing.
+pub fn (fm FlagMapper) handled_positions() []int {
+	mut seen := map[int]bool{}
+	mut result := []int{}
+	for p in fm.handled_pos {
+		if p !in seen {
+			seen[p] = true
+			result << p
+		}
+	}
+	result.sort(a < b)
+	return result
+}

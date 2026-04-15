@@ -326,8 +326,8 @@ fn (mut c Checker) comptime_selector_method_value(mut node ast.ComptimeSelector)
 	node.is_method = true
 	fn_type := c.type_resolver.get_comptime_selector_type(node, ast.void_type)
 	node.typ = c.unwrap_generic(fn_type)
-	c.markused_comptime_call(node.left_type.has_flag(.generic),
-		'${int(method.params[0].typ)}.${method.name}')
+	c.mark_fn_decl_as_referenced(method.fkey())
+	c.markused_comptime_call(true, '${int(method.params[0].typ)}.${method.name}')
 	receiver := c.unwrap_generic(method.params[0].typ)
 	if receiver.nr_muls() > 0 && !c.inside_unsafe {
 		rec_sym := c.table.sym(receiver.set_nr_muls(0))

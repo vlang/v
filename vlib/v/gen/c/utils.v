@@ -946,7 +946,15 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			}
 		}
 		ast.ComptimeSelector {
-			if expr.typ_key != '' {
+			if expr.is_method {
+				ctyp := g.type_resolver.get_comptime_selector_type(expr, ast.void_type)
+				if ctyp != ast.void_type {
+					return g.unwrap_generic(ctyp)
+				}
+				if expr.typ != ast.void_type && expr.typ != 0 {
+					return g.unwrap_generic(expr.typ)
+				}
+			} else if expr.typ_key != '' {
 				ctyp := g.type_resolver.get_ct_type_or_default(expr.typ_key, default_typ)
 				if ctyp != ast.void_type {
 					return g.unwrap_generic(ctyp)

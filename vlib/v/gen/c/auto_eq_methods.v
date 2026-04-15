@@ -469,8 +469,9 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	g.definitions.writeln('${g.static_non_parallel}bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b);')
 
 	is_option := left_type.has_flag(.option)
-	left := if is_option { 'a.data' } else { 'a' }
-	right := if is_option { 'b.data' } else { 'b' }
+	inner_type := g.base_type(left_typ.typ.set_nr_muls(0))
+	left := if is_option { '(*(${inner_type}*)a.data)' } else { 'a' }
+	right := if is_option { '(*(${inner_type}*)b.data)' } else { 'b' }
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
