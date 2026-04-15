@@ -1962,7 +1962,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
-							if val is ast.PrefixExpr && val.op == .amp && val.right is ast.Ident
+							if exp_type.is_any_kind_of_pointer() && val is ast.PrefixExpr
+								&& val.op == .amp && val.right is ast.Ident
 								&& ((val.right as ast.Ident).is_auto_heap()
 								|| g.resolved_ident_is_auto_heap(val.right as ast.Ident)) {
 								old_inside_assign_fn_var := g.inside_assign_fn_var
