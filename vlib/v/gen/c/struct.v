@@ -462,7 +462,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 }
 
-fn (g &Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.TypeSymbol, aligned int, const_msvc_init bool) bool {
+fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.TypeSymbol, aligned int, const_msvc_init bool) bool {
 	if g.is_shared || g.inside_cast_in_heap > 0 || g.inside_cinit || g.inside_const
 		|| g.inside_global_decl || aligned != 0 || const_msvc_init || node.typ.has_flag(.option)
 		|| node.has_update_expr || sym.kind != .struct {
@@ -475,6 +475,11 @@ fn (g &Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.TypeSym
 	if info.is_anon || info.is_union || info.embeds.len > 0
 		|| node.init_fields.len != info.fields.len {
 		return false
+	}
+	for init_field in node.init_fields {
+		if g.need_tmp_var_in_expr(init_field.expr) {
+			return false
+		}
 	}
 	if node.no_keys {
 		return true
