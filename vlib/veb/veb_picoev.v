@@ -629,6 +629,17 @@ $if !new_veb ? {
 		}
 		$if A is StaticApp {
 			ctx.custom_mime_types = global_app.static_mime_types.clone()
+			mut user_context := X{}
+			user_context.Context = ctx
+			if serve_if_static[X](static_handler_config(global_app.static_files,
+				global_app.static_mime_types, global_app.static_hosts,
+				global_app.enable_static_gzip, global_app.enable_static_zstd,
+				global_app.enable_static_compression, global_app.static_compression_max_size,
+				global_app.static_compression_mime_types, global_app.enable_markdown_negotiation), mut
+				user_context, url, host)
+			{
+				return &user_context.Context
+			}
 		}
 		// match controller paths
 		$if A is ControllerInterface {

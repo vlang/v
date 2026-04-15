@@ -138,6 +138,16 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	}
 	$if A is StaticApp {
 		ctx.custom_mime_types = app.static_mime_types.clone()
+		mut user_context := X{}
+		user_context.Context = ctx
+		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
+			app.static_hosts, app.enable_static_gzip, app.enable_static_zstd,
+			app.enable_static_compression, app.static_compression_max_size,
+			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
+			url, host)
+		{
+			return &user_context.Context
+		}
 	}
 	// Match controller paths first
 	$if A is ControllerInterface {
