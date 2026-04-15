@@ -6288,13 +6288,17 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				|| (arg.expr is ast.UnsafeExpr && arg.expr.expr is ast.Nil) {
 				g.write('((void*)0)')
 			} else {
-				// sumtype conversions call memdup internally, so ADDR is sufficient.
-				// interface conversions don't, so HEAP is needed to ensure the pointer
-				// remains valid after the current scope ends.
-				wrap := if expected_ref_inner_sym.kind == .interface { 'HEAP' } else { 'ADDR' }
-				g.write('${wrap}(${expected_ref_inner_sym.cname}, ')
-				g.expr_with_cast(arg.expr, arg_typ, expected_ref_inner_type)
-				g.write(')')
+				if expected_ref_inner_sym.kind == .sum_type {
+					// `&Variant` -> `&SumType` needs a stable heap-allocated wrapper and
+					// must preserve aliasing with the original variant payload.
+					g.expr_with_cast(arg.expr, arg_typ, expected_type)
+				} else {
+					// interface conversions don't box by reference, so HEAP is needed to
+					// ensure the pointer remains valid after the current scope ends.
+					g.write('HEAP(${expected_ref_inner_sym.cname}, ')
+					g.expr_with_cast(arg.expr, arg_typ, expected_ref_inner_type)
+					g.write(')')
+				}
 			}
 			return
 		}
