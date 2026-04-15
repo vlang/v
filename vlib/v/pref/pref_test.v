@@ -64,6 +64,35 @@ fn test_disable_explicit_mutability_flag() {
 	assert prefs2.build_options.contains('--disable-explicit-mutability')
 }
 
+fn test_profile_flag_does_not_consume_direct_compile_target() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', target], false)
+	assert command == target
+	assert prefs.path == target
+	assert prefs.is_prof
+	assert prefs.profile_file == '-'
+}
+
+fn test_profile_flag_does_not_consume_run_command() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'run', target], false)
+	assert command == 'run'
+	assert prefs.path == target
+	assert prefs.is_run
+	assert prefs.is_prof
+	assert prefs.profile_file == '-'
+}
+
+fn test_profile_flag_still_accepts_explicit_output_file() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'profile.txt', target],
+		false)
+	assert command == target
+	assert prefs.path == target
+	assert prefs.is_prof
+	assert prefs.profile_file == 'profile.txt'
+}
+
 fn new_wasm_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .wasm
