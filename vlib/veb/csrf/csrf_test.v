@@ -182,6 +182,7 @@ pub fn (mut app App) before_accept_loop() {
 }
 
 fn (app &App) index(mut ctx Context) veb.Result {
+	ctx.config = *csrf_config
 	ctx.set_csrf_token(mut ctx)
 
 	return ctx.html('<form action="/auth" method="post">
@@ -238,6 +239,36 @@ fn test_token_input() {
 	inputs := doc.get_tags_by_attribute_value('type', 'hidden')
 	assert inputs.len == 1
 	assert csrf_config.token_name == inputs[0].attributes['name']
+}
+
+fn test_token_roundtrip_from_index_form() {
+	res := http.get('http://${localserver}/') or { panic(err) }
+	assert res.status() == .ok
+
+	cookies := res.cookies()
+	assert cookies.len == 1
+
+	mut doc := html.parse(res.body)
+	inputs := doc.get_tags_by_attribute_value('type', 'hidden')
+	assert inputs.len == 1
+
+	token := inputs[0].attributes['value']
+	assert token.len != 0
+
+	mut req := http.Request{
+		method: .post
+		url:    'http://${localserver}/auth'
+		data:   http.url_encode_form_data({
+			csrf_config.token_name: token
+		})
+	}
+	for cookie in cookies {
+		req.add_cookie(cookie)
+	}
+
+	post_res := req.do() or { panic(err) }
+	assert post_res.status() == .ok
+	assert post_res.body == 'authenticated'
 }
 
 // utility function to check whether the route at `path` is protected against csrf
