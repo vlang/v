@@ -358,11 +358,13 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 
 		if g.pref.is_stats {
 			g.writeln('main__BenchedTests_testing_step_start(bt,new string("${tcname}"))')
+			g.writeln('try {')
 		}
-
-		g.writeln('try { let res = ${tcname}(); if (res instanceof Promise) { await res; } } catch (_e) {} ')
+		g.writeln('let res = ${tcname}(); if (res instanceof Promise) { await res; }')
 		if g.pref.is_stats {
+			g.writeln('} finally {')
 			g.writeln('main__BenchedTests_testing_step_end(bt);')
+			g.writeln('}')
 		}
 	}
 
