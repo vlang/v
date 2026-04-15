@@ -50,6 +50,9 @@ pub fn read_all(config ReadAllConfig) ![]u8 {
 	mut read := 0
 	for {
 		new_read := r.read(mut b[read..]) or { break }
+		if new_read < 0 {
+			return error('io.read_all: reader returned a negative read count (${new_read})')
+		}
 		read += new_read
 		if !read_till_eof && new_read == 0 {
 			break
@@ -68,6 +71,9 @@ pub fn read_any(mut r Reader) ![]u8 {
 	mut read := 0
 	for {
 		new_read := r.read(mut b[read..]) or { return error('none') }
+		if new_read < 0 {
+			return error('io.read_any: reader returned a negative read count (${new_read})')
+		}
 		read += new_read
 		if new_read == 0 {
 			break
