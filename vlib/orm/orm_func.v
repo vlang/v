@@ -378,6 +378,13 @@ pub fn (qb_ &QueryBuilder[T]) select(fields ...string) !&QueryBuilder[T] {
 	return qb
 }
 
+// distinct marks the query as `SELECT DISTINCT`.
+pub fn (qb_ &QueryBuilder[T]) distinct() !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	qb.config.has_distinct = true
+	return qb
+}
+
 // set create a `set` clause for `update`
 pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
