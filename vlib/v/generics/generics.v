@@ -646,6 +646,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			if g.cur_concrete_types.len > 0 {
 				mut args := node.args.clone()
 				mut all_concrete_types := node.concrete_types.clone()
+				mut has_ct_args := false
 				for mut ct in all_concrete_types {
 					idx := g.cur_fn.generic_names.index(g.table.type_str(ct))
 					if idx != -1 {
@@ -658,6 +659,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						arg.ct_expr = false
 					}
 					arg.expr = g.expr(mut arg.expr)
+					has_ct_args = has_ct_args || arg.ct_expr
 					if mut arg.expr is ast.Ident {
 						// Solve concrete_types when the type of one argument was elem in `for elem in my_array` when my_array is T
 						forin_type := g.forin_types[arg.expr.name]
@@ -677,6 +679,8 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					receiver_type = receiver_type.clear_flag(.generic)
 				}
 				call_name := if node.is_fn_var {
+					node.name
+				} else if has_ct_args {
 					node.name
 				} else if node.is_method {
 					g.method_concrete_name(node.name, all_concrete_types, node.receiver_type)
@@ -701,8 +705,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				})
 			}
 			node.left = g.expr(mut node.left)
+			mut has_ct_args := false
 			for mut arg in node.args {
 				arg.expr = g.expr(mut arg.expr)
+				has_ct_args = has_ct_args || arg.ct_expr
 			}
 			node.or_block = g.expr(mut node.or_block) as ast.OrExpr
 			if node.is_method && g.table.sym(node.receiver_type).info is ast.Alias {
@@ -725,9 +731,17 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			}
 			if !node.is_fn_var {
 				node.name = if node.is_method {
-					g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
+					if has_ct_args {
+						node.name
+					} else {
+						g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
+					}
 				} else {
-					g.concrete_name(node.name, node.concrete_types)
+					if has_ct_args {
+						node.name
+					} else {
+						g.concrete_name(node.name, node.concrete_types)
+					}
 				}
 			}
 			return ast.Expr(ast.CallExpr{

@@ -3275,6 +3275,18 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 	}
 }
 
+fn (g &Gen) call_expr_depends_on_comptime_context(node ast.CallExpr) bool {
+	if g.type_resolver.info.is_comptime(node.left) {
+		return true
+	}
+	for arg in node.args {
+		if arg.ct_expr || g.type_resolver.info.is_comptime(arg.expr) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	if node.raw_concrete_types.len > 0 {
@@ -3288,6 +3300,10 @@ fn (mut g Gen) generic_fn_call_concrete_types(func ast.Fn, node ast.CallExpr) []
 		&& !it.has_flag(.generic) && !g.type_has_unresolved_generic_parts(it))
 	mut trust_node_concrete_types := concrete_types.len == func.generic_names.len
 		&& concrete_types.len > 0
+	if trust_node_concrete_types && !explicit_raw_concrete_types
+		&& g.call_expr_depends_on_comptime_context(node) {
+		trust_node_concrete_types = false
+	}
 	if trust_node_concrete_types && !explicit_raw_concrete_types {
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 			trust_node_concrete_types = false
