@@ -1,0 +1,12 @@
+vlib/v/checker/tests/callback_bound_mut_ref_err.vv:14:33: error: cannot use `&State` as `&&State` in argument 1 to `show_entered_text`
+   12 | fn main() {
+   13 |     mut state := &State{}
+   14 |     register(show_entered_text(mut state))
+      |                                    ~~~~~
+   15 | }
+vlib/v/checker/tests/callback_bound_mut_ref_err.vv:14:11: error: `show_entered_text(mut state)` (no value) used as value in argument 1 to `register`
+   12 | fn main() {
+   13 |     mut state := &State{}
+   14 |     register(show_entered_text(mut state))
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 | }
