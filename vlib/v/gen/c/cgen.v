@@ -9348,11 +9348,11 @@ fn (mut g Gen) ensure_fixed_array_option_definition(elem_type ast.Type) bool {
 		return false
 	}
 	elem_sym := g.table.final_sym(elem_type.clear_option_and_result())
-	if elem_sym.info !is ast.Struct && elem_sym.info !is ast.Interface
-		&& elem_sym.info !is ast.SumType {
+	if elem_sym.is_builtin() {
 		return false
 	}
 	styp, base := g.option_type_name(elem_type)
+	g.ensure_array_typedef(base)
 	lock g.done_options {
 		if base !in g.done_options {
 			g.done_options << base
@@ -9411,7 +9411,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.Struct {
 				if !struct_names[name]
 					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
-					// generate field option types for fixed array of option struct/interface/sumtype
+					// generate field option types for fixed array of option non-builtin types
 					// before the struct declaration
 					opt_fields :=
 						sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
@@ -9542,7 +9542,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							g.type_definitions.writeln(def_str)
 						} else if elem_sym.info !is ast.ArrayFixed
 							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
-							// fixed array of option struct/interface/sumtype must be defined backwards
+							// fixed array of option non-builtin types must be defined backwards
 							if g.ensure_fixed_array_option_definition(sym.info.elem_type) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(resolved_elem_sym.info is ast.ArrayFixed
