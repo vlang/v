@@ -1,0 +1,6 @@
+int _v_dump_expr_int(string fpath, int line, string sexpr, int dump_arg) {
+builtin___write_buf_to_fd(2, _S("[").str, _S("[").len);
+builtin___write_buf_to_fd(2, sline.str, sline.len);
+builtin___writeln_to_fd(2, value);
+_v_Array_fixed_u8_2* _v_dump_expr_Array_fixed_u8_2__ptr(string fpath, int line, string sexpr, Array_fixed_u8_2* dump_arg) {
+builtin___write_buf_to_fd(2, _S("&").str, _S("&").len);
