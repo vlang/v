@@ -69,6 +69,13 @@ fn test_escape_dollar_in_string() {
 	assert i == 42
 }
 
+fn test_dollar_sign_is_literal_without_braces() {
+	b := 10
+	text := 'a$b'
+	assert text == 'a$b'
+	assert b == 10
+}
+
 fn test_implicit_str() {
 	i := 42
 	assert 'int ${i}' == 'int 42'
