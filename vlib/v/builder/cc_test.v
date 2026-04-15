@@ -110,6 +110,30 @@ fn test_setup_ccompiler_options_detects_cl_path_as_msvc() {
 	assert builder.ccoptions.cc == .msvc
 }
 
+fn test_msvc_thirdparty_obj_path_uses_cached_location_for_target_arch() {
+	obj_file := os.join_path(@VEXEROOT, 'thirdparty', 'mbedtls', 'library', 'bignum.o')
+	mut builder64 := new_builder_for_args(['-cc', 'msvc', '-m64', hello_world_example()])
+	mut builder32 := new_builder_for_args(['-cc', 'msvc', '-m32', hello_world_example()])
+	obj64 := builder64.msvc_thirdparty_obj_path('mbedtls', obj_file, '')
+	obj32 := builder32.msvc_thirdparty_obj_path('mbedtls', obj_file, '')
+	source_obj := os.real_path(obj_file.all_before_last('.o') + '.obj')
+	assert obj64 != obj32
+	assert obj64 != source_obj
+	assert obj32 != source_obj
+	assert obj64.ends_with('.obj')
+	assert obj32.ends_with('.obj')
+}
+
+fn test_msvc_thirdparty_obj_path_keeps_debug_objects_separate() {
+	obj_file := os.join_path(@VEXEROOT, 'thirdparty', 'mbedtls', 'library', 'bignum.o')
+	mut release_builder := new_builder_for_args(['-cc', 'msvc', '-m64', hello_world_example()])
+	mut debug_builder := new_builder_for_args(['-cc', 'msvc', '-m64', '-g', hello_world_example()])
+	release_obj := release_builder.msvc_thirdparty_obj_path('mbedtls', obj_file, '')
+	debug_obj := debug_builder.msvc_thirdparty_obj_path('mbedtls', obj_file, '')
+	assert debug_obj.ends_with('.debug.obj')
+	assert release_obj != debug_obj
+}
+
 fn macos_compile_args(args []string) string {
 	mut full_args := ['']
 	full_args << args
@@ -119,6 +143,13 @@ fn macos_compile_args(args []string) string {
 	builder.setup_ccompiler_options(prefs.ccompiler)
 	builder.setup_output_name()
 	return builder.get_compile_args().join(' ')
+}
+
+fn new_builder_for_args(args []string) Builder {
+	mut full_args := ['']
+	full_args << args
+	prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+	return new_builder(prefs)
 }
 
 fn macos_version_min_flags(compile_args string) []string {

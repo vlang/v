@@ -102,6 +102,32 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 }
 
+fn (v &Builder) msvc_object_path(path string) string {
+	path_without_obj_postfix := if path.ends_with('.obj') {
+		path[..path.len - 4]
+	} else if path.ends_with('.o') {
+		path[..path.len - 2]
+	} else {
+		path
+	}
+	return os.real_path(if v.pref.is_debug {
+		// MSVC debug builds use /MDd, so they need their own thirdparty object files.
+		'${path_without_obj_postfix}.debug.obj'
+	} else {
+		'${path_without_obj_postfix}.obj'
+	})
+}
+
+fn (mut v Builder) msvc_thirdparty_obj_path(mod string, path string, cached_path string) string {
+	base_path := if cached_path != '' {
+		cached_path
+	} else {
+		// Reuse the cache-derived .o path so different targets/options do not share one .obj.
+		v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', os.real_path(path))
+	}
+	return v.msvc_object_path(base_path)
+}
+
 pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	b.parsed_files << parser.parse_text(code, '', mut b.table, .skip_comments, b.pref)
