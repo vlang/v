@@ -1167,12 +1167,16 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp && !allow_circular {
 			if is_field_array {
+				tmpvar := g.new_tmp_var()
 				if is_opt_field {
 					arr_styp := g.base_type(field.typ)
-					fn_body.write_string('${it_field_name}.state != 2 && (*(${arr_styp}*)${it_field_name}.data).len > 0 ? ${funcprefix}_S("[<circular>]") : ${funcprefix}_S("[]")')
+					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.state != 2 ? (*(${arr_styp}*)${it_field_name}.data).len : 0);',
+						'\tbuiltin__string_free(&${tmpvar});')
 				} else {
-					fn_body.write_string('${it_field_name}.len > 0 ? ${funcprefix}_S("[<circular>]") : ${funcprefix}_S("[]")')
+					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.len);',
+						'\tbuiltin__string_free(&${tmpvar});')
 				}
+				fn_body.write_string(tmpvar)
 			} else {
 				fn_body.write_string('${funcprefix}_S("<circular>")')
 			}

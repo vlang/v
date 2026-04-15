@@ -1,5 +1,7 @@
 module builtin
 
+import strings
+
 const autostr_type_stack_max_depth = 64
 
 __global g_autostr_type_stack = [autostr_type_stack_max_depth]int{}
@@ -63,4 +65,23 @@ fn autostr_addr_pop() {
 	if g_autostr_addr_stack_len > 0 {
 		g_autostr_addr_stack_len--
 	}
+}
+
+@[markused]
+fn autostr_array_circular(len int) string {
+	if len <= 0 {
+		return '[]'
+	}
+	mut sb := strings.new_builder(2 + len * 12)
+	sb.write_string('[')
+	for i in 0 .. len {
+		if i > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string('<circular>')
+	}
+	sb.write_string(']')
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }

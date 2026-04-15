@@ -91,3 +91,16 @@ fn test_cross_reference_field_auto_str() {
 	s := '${window}'.replace('\n', '|')
 	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
 }
+
+struct CircularArray {
+mut:
+	children []CircularArray
+}
+
+fn test_circular_array_field_auto_str_keeps_item_count() {
+	mut value := CircularArray{}
+	value.children << CircularArray{}
+	value.children << CircularArray{}
+	s := '${value}'.replace('\n', '|')
+	assert s == 'CircularArray{|    children: [<circular>, <circular>]|}'
+}
