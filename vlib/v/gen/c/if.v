@@ -18,9 +18,36 @@ fn (mut g Gen) if_guard_var_needs_gc_pin(scope &ast.Scope, name string) bool {
 	return false
 }
 
+fn (g &Gen) if_guard_else_uses_err(node ast.IfExpr, branch_idx int) bool {
+	if !node.has_else || branch_idx != node.branches.len - 2 {
+		return false
+	}
+	else_branch := node.branches[branch_idx + 1]
+	if err_var := else_branch.scope.find_var('err') {
+		return err_var.is_used
+	}
+	return false
+}
+
 fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name string) {
 	if g.if_guard_var_needs_gc_pin(scope, name) {
 		g.writeln('\tGC_reachable_here(&${cvar_name});')
+	}
+}
+
+fn (mut g Gen) if_guard_error_cleanup(var_name string, typ ast.Type) {
+	cvar_name := c_name(var_name)
+	if typ.has_flag(.result) {
+		g.writeln('\tif (${cvar_name}.is_error) { builtin___v_free(${cvar_name}.err._object); }')
+		return
+	}
+	if typ.has_flag(.option) {
+		tmp_op := if var_name in g.tmp_var_ptr || typ.has_flag(.option_mut_param_t) {
+			'->'
+		} else {
+			'.'
+		}
+		g.writeln('\tif (${cvar_name}${tmp_op}state != 0) { builtin___v_free(${cvar_name}${tmp_op}err._object); }')
 	}
 }
 
@@ -374,6 +401,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut is_guard := false
 	mut guard_idx := 0
 	mut guard_vars := []string{}
+	mut guard_expr_types := []ast.Type{len: node.branches.len}
+	mut guard_else_uses_err := []bool{len: node.branches.len}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
@@ -382,6 +411,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				guard_vars = []string{len: node.branches.len}
 			}
 			guard_idx = i // saves the last if guard index
+			guard_else_uses_err[i] = g.if_guard_else_uses_err(node, i)
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
@@ -442,11 +472,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('{')
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
-				if err_var := branch.scope.find_var('err') {
-					if err_var.is_used {
-						cvar_name := guard_vars[guard_idx]
-						g.writeln('\tIError err = ${cvar_name}.err;')
+				cvar_name := guard_vars[guard_idx]
+				if guard_else_uses_err[guard_idx] {
+					if err_var := branch.scope.find_var('err') {
+						if err_var.is_used {
+							g.writeln('\tIError err = ${cvar_name}.err;')
+						}
 					}
+				} else if guard_expr_types[guard_idx] != 0 {
+					g.if_guard_error_cleanup(cvar_name, guard_expr_types[guard_idx])
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
@@ -476,6 +510,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			guard_expr_types[i] = guard_expr_type
 			if var_name == '' {
 				short_opt = true // we don't need a further tmp, so use the one we'll get later
 				var_name = g.new_tmp_var()
@@ -698,6 +733,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if !needs_tmp_var {
 			g.set_current_pos_as_last_stmt_pos()
 		}
+	}
+	for i, var_name in guard_vars {
+		if var_name == '' || guard_expr_types[i] == 0 || guard_else_uses_err[i] {
+			continue
+		}
+		if node.has_else && i == node.branches.len - 2 {
+			continue
+		}
+		g.if_guard_error_cleanup(var_name, guard_expr_types[i])
 	}
 	if needs_tmp_var {
 		// Close the extra scopes opened between branches to isolate
