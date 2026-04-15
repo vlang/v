@@ -3148,16 +3148,16 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 		}))
 	})
 
-	// Common: (array*)map__get(&m, &key, &empty_array)
-	// Use map__get (not map__get_and_set) so that pushing to a missing key is a no-op:
-	// map__get returns a pointer to the existing value or to the zero value without inserting.
+	// Common: (array*)map__get_and_set(&m, &key, &empty_array)
+	// Appending through a map index must operate on the actual map entry, creating a
+	// typed empty array when the key is missing.
 	arr_ptr_expr := ast.Expr(ast.CastExpr{
 		typ:  ast.Ident{
 			name: 'array*'
 		}
 		expr: ast.CallExpr{
 			lhs:  ast.Ident{
-				name: 'map__get'
+				name: 'map__get_and_set'
 			}
 			args: [
 				map_arg,
