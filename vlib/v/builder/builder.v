@@ -560,15 +560,15 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	}
 	mut res := b.pref.should_compile_filtered_files(dir, files)
 	if res.len == 0 {
-		// Perhaps the .v files are stored in /src/ ?
-		src_path := os.join_path(dir, 'src')
-		if os.is_dir(src_path) {
+		// Perhaps the .v files are stored in a custom source root?
+		source_root := source_root_from_vmod_root(dir) or { os.join_path(dir, 'src') }
+		if source_root != dir && os.is_dir(source_root) {
 			if b.pref.is_verbose {
-				println('v_files_from_dir ("${src_path}") (/src/)')
+				println('v_files_from_dir ("${source_root}") (v.mod source root)')
 			}
-			files = os.ls(src_path) or { panic(err) }
-			source_dir = os.real_path(src_path)
-			res = b.pref.should_compile_filtered_files(src_path, files)
+			files = os.ls(source_root) or { panic(err) }
+			source_dir = os.real_path(source_root)
+			res = b.pref.should_compile_filtered_files(source_root, files)
 		}
 	}
 	return b.with_same_module_subdir_files(source_dir, res)
@@ -686,19 +686,32 @@ pub fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-fn find_module_path_from_vmod_root(vmod_root string, mod string) !string {
+fn manifest_from_vmod_root(vmod_root string) !vmod.Manifest {
 	vmod_path := os.join_path(vmod_root, 'v.mod')
 	if !os.is_file(vmod_path) {
 		return error('module not found')
 	}
-	manifest := vmod.from_file(vmod_path) or { return error('module not found') }
+	return vmod.from_file(vmod_path) or { return error('module not found') }
+}
+
+fn source_root_from_vmod_root(vmod_root string) !string {
+	manifest := manifest_from_vmod_root(vmod_root)!
+	return manifest.source_root(vmod_root)
+}
+
+fn lookup_source_root_from_vmod_root(vmod_root string) string {
+	return source_root_from_vmod_root(vmod_root) or { os.join_path(vmod_root, 'src') }
+}
+
+fn find_module_path_from_vmod_root(vmod_root string, mod string) !string {
+	manifest := manifest_from_vmod_root(vmod_root)!
 	tail_path := mod_tail_after_vmod_name(mod, manifest.name) or {
 		return error('module not found')
 	}
 	if tail_path == '' {
 		return error('module not found')
 	}
-	try_path := os.join_path(vmod_root, 'src', tail_path)
+	try_path := os.join_path(manifest.source_root(vmod_root), tail_path)
 	if os.is_dir(try_path) {
 		return try_path
 	}
@@ -721,7 +734,8 @@ fn find_module_path_from_search_root(search_path string, mod string) !string {
 			continue
 		}
 		submodule_path := mod_parts[i..].join(os.path_separator)
-		src_try_path := os.join_path(candidate_root, 'src', submodule_path)
+		source_root := lookup_source_root_from_vmod_root(candidate_root)
+		src_try_path := os.join_path(source_root, submodule_path)
 		if os.is_dir(src_try_path) {
 			return src_try_path
 		}

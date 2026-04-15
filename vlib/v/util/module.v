@@ -201,12 +201,30 @@ fn pref_path_to_source_root(pref_ &pref.Preferences) string {
 	real_pref_path_dir := os.real_path(pref_path_dir)
 	files := os.ls(real_pref_path_dir) or { return real_pref_path_dir }
 	if pref_.should_compile_filtered_files(real_pref_path_dir, files).len == 0 {
-		src_path := os.join_path(real_pref_path_dir, 'src')
-		if os.is_dir(src_path) {
-			return src_path
+		source_root := source_root_from_vmod_root(real_pref_path_dir) or {
+			os.join_path(real_pref_path_dir, 'src')
+		}
+		if source_root != real_pref_path_dir && os.is_dir(source_root) {
+			return source_root
 		}
 	}
 	return real_pref_path_dir
+}
+
+fn source_root_from_vmod_root(vmod_root string) !string {
+	vmod_path := os.join_path(vmod_root, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return error('module not found')
+	}
+	manifest := vmod.from_file(vmod_path) or { return error('module not found') }
+	return manifest.source_root(vmod_root)
+}
+
+fn configured_base_parts(manifest vmod.Manifest) []string {
+	if manifest.base_url == '' {
+		return []string{}
+	}
+	return os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0 && it != '.')
 }
 
 fn normalize_src_based_mod_name(mod_full_name string, path string) string {
@@ -222,7 +240,16 @@ fn normalize_src_based_mod_name(mod_full_name string, path string) string {
 	}
 	rel_path := real_path.all_after(vmod_prefix)
 	rel_parts := rel_path.split(os.path_separator)
-	if rel_parts.len == 0 || rel_parts[0] != 'src' {
+	mut base_parts := []string{}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { vmod.Manifest{} }
+	base_parts = configured_base_parts(manifest)
+	if base_parts.len == 0 {
+		if rel_parts.len == 0 || rel_parts[0] != 'src' {
+			return mod_full_name
+		}
+		base_parts = ['src']
+	}
+	if rel_parts.len < base_parts.len || rel_parts[..base_parts.len] != base_parts {
 		return mod_full_name
 	}
 	full_parts := mod_full_name.split('.')
@@ -230,6 +257,6 @@ fn normalize_src_based_mod_name(mod_full_name string, path string) string {
 		return mod_full_name
 	}
 	mut normalized_parts := full_parts[..full_parts.len - rel_parts.len].clone()
-	normalized_parts << rel_parts[1..]
+	normalized_parts << rel_parts[base_parts.len..]
 	return normalized_parts.join('.')
 }
