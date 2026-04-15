@@ -9,9 +9,7 @@ $if tinyc && (freebsd || openbsd) {
 $if tinyc && (freebsd || openbsd) {
 	// TinyCC hangs in the bundled mbedtls path on FreeBSD/OpenBSD.
 	// Prefer the OpenSSL backend there, which does not exhibit the issue.
-	pub struct SSLConn {
-		openssl.SSLConn
-	}
+	pub type SSLConn = openssl.SSLConn
 
 	@[params]
 	pub struct SSLConnectConfig {
@@ -20,13 +18,10 @@ $if tinyc && (freebsd || openbsd) {
 
 	// new_ssl_conn returns a new SSLConn with the given config.
 	pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
-		c := openssl.new_ssl_conn(config.SSLConnectConfig) or { return err }
-		return &SSLConn{c}
+		return openssl.new_ssl_conn(config.SSLConnectConfig) or { return err }
 	}
 } $else {
-	pub struct SSLConn {
-		mbedtls.SSLConn
-	}
+	pub type SSLConn = mbedtls.SSLConn
 
 	@[params]
 	pub struct SSLConnectConfig {
@@ -35,7 +30,6 @@ $if tinyc && (freebsd || openbsd) {
 
 	// new_ssl_conn returns a new SSLConn with the given config.
 	pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
-		c := mbedtls.new_ssl_conn(config.SSLConnectConfig) or { return err }
-		return &SSLConn{c}
+		return mbedtls.new_ssl_conn(config.SSLConnectConfig) or { return err }
 	}
 }
