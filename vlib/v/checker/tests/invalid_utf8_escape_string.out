@@ -1,5 +1,0 @@
-vlib/v/checker/tests/invalid_utf8_escape_string.vv:2:22: notice: invalid utf8 byte sequence in string literal
-    1 | fn main() {
-    2 |     println('\xF0\x81\xA0\x80')
-      |                         ~~~~~~
-    3 | }
