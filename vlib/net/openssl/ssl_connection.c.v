@@ -204,9 +204,26 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
-	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
+	mut connected := false
+	defer {
+		if !connected {
+			tcp_conn.close() or {}
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+			s.owns_socket = false
+		}
+	}
+	s.owns_socket = true
 	s.connect(mut tcp_conn, hostname) or { return err }
+	connected = true
 }
 
 fn (mut s SSLConn) complete_connect() ! {

@@ -156,10 +156,8 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 			// client.shutdown()!
 			// return response_text
 		} $else {
-			response_text := req.do_request(req.build_request_headers(req.method, host_name, port, path), mut
+			return req.do_request(req.build_request_headers(req.method, host_name, port, path), mut
 				client)!
-			client.shutdown()!
-			return response_text
 		}
 	} else if host.scheme == 'http' {
 		mut client := pr.dial('${host.host}:80')!
