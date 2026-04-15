@@ -8085,6 +8085,11 @@ f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
 ```
 
+C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
+when you want to redeclare an external symbol explicitly. When the type already comes
+from the V context, direct references like `buffer = C.buffer` and `[4]u8(C.buffer)`
+can be used as well.
+
 **Example of using a C function from stdio, by redeclaring it on the V side**
 ```v
 #include <stdio.h>

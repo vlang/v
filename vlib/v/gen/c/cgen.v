@@ -6654,11 +6654,31 @@ fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
 }
 
 @[inline]
+fn (g &Gen) var_cname(obj ast.Var) string {
+	base_name := c_name(obj.name)
+	if c_global := g.table.global_scope.find_global('C.${obj.name}') {
+		if c_global.pos.file_idx >= 0 && int(c_global.pos.file_idx) < g.table.filelist.len
+			&& g.table.filelist[c_global.pos.file_idx] == g.file.path {
+			return '${base_name}__local_${obj.pos.pos}'
+		}
+	}
+	return base_name
+}
+
+@[inline]
+fn (g &Gen) ident_cname(node ast.Ident) string {
+	if node.obj is ast.Var {
+		return g.var_cname(node.obj)
+	}
+	return c_name(node.name)
+}
+
+@[inline]
 fn (g &Gen) debugger_var_cname(obj ast.Var) string {
 	if obj.is_inherited {
-		return '${closure_ctx}->${c_name(obj.name)}'
+		return '${closure_ctx}->${g.var_cname(obj)}'
 	}
-	return c_name(obj.name)
+	return g.var_cname(obj)
 }
 
 // debugger_stmt writes the call to V debugger REPL
@@ -7318,7 +7338,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write(util.no_dots(node.name[2..]))
 		return
 	}
-	mut name := if node.kind == .function { c_fn_name(node.name) } else { c_name(node.name) }
+	mut name := if node.kind == .function {
+		c_fn_name(node.name)
+	} else {
+		g.ident_cname(node)
+	}
 	if node.kind == .function {
 		if func := g.table.find_fn(node.name) {
 			if func.mod == 'builtin' && !name.starts_with('builtin__') && func.language != .c {
