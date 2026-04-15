@@ -3359,8 +3359,25 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							if field.expr.expr.val !in seen_enum_field_names {
 								c.error('`${field.expr.expr.enum_name}.${field.expr.expr.val}` should be declared before using it',
 									field.expr.pos)
+								continue
 							}
 						}
+					}
+					cast_expr := ast.Expr(field.expr)
+					if comptime_value := c.eval_comptime_const_expr(cast_expr, 0) {
+						comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
+							field.expr.pos) or {
+							c.error('the default value for an enum has to be an integer',
+								field.expr.pos)
+							continue
+						}
+						c.check_enum_field_integer_literal(comptime_lit, signed,
+							node.is_multi_allowed, senum_type, field.expr.pos, mut useen,
+							enum_umin, enum_umax, mut iseen, enum_imin, enum_imax)
+						field.expr = comptime_lit
+					} else {
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
 					}
 				}
 				ast.CallExpr, ast.IfExpr {
