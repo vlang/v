@@ -128,6 +128,13 @@ fn test_http_client_settings_page() {
 	assert y.body == 'username: kent'
 }
 
+fn test_http_client_float_route_params() {
+	x := http.get('http://${localserver}/sum/1.25/2.5') or { panic(err) }
+	assert_common_http_headers(x)!
+	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.body == 'The sum is: 3.75'
+}
+
 fn test_http_client_user_repo_settings_page() {
 	x := http.get('http://${localserver}/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)!
