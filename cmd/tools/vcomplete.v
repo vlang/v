@@ -293,6 +293,7 @@ const auto_complete_flags_cover = [
 	'-H',
 	'--percentages',
 	'-P',
+	'--lcov',
 	'--show_test_files',
 	'-S',
 	'--absolute',
