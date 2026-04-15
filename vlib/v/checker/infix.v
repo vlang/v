@@ -181,7 +181,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 		} else if mut node.right is ast.ArrayInit {
-			if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
+			left_value_type := c.table.value_type(c.unwrap_generic(left_type))
+			if node.right.is_fixed
+				&& c.table.final_sym(c.unwrap_generic(left_value_type)).kind == .interface {
+				c.expected_type = ast.void_type
+			} else if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
 				// handle arr << [] where [] is empty
 				info := c.table.sym(left_type).array_info()
 				node.right.elem_type = info.elem_type

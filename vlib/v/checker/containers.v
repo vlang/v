@@ -948,6 +948,10 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		}
 	}
 	if left_value_sym.kind == .interface {
+		if right is ast.ArrayInit && right.is_fixed {
+			c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+			return ast.void_type
+		}
 		right_is_interface_value := c.table.does_type_implement_interface(c.unwrap_generic(right_type),
 			left_value_type)
 		if right_is_interface_value {
