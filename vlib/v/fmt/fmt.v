@@ -1676,6 +1676,9 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 		.insert {
 			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
+		.upsert {
+			f.writeln('upsert ${node.object_var} into ${table_name}')
+		}
 		.update {
 			if node.is_dynamic {
 				f.write('dynamic update ${table_name} set ')

@@ -2287,6 +2287,7 @@ pub:
 
 pub enum SqlStmtKind {
 	insert
+	upsert
 	update
 	delete
 	create
