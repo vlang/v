@@ -4363,6 +4363,22 @@ fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, co
 				pos: three_byte_jmp
 			}
 
+			valid_four_byte_label := c.g.labels.new_label()
+			c.cmp(.rbx, ._32, 0x110000)
+			valid_four_byte_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  valid_four_byte_label
+				pos: valid_four_byte_jmp
+			}
+
+			invalid_to_end_jmp := c.jmp(0)
+			c.g.labels.patches << LabelPatch{
+				id:  end_label
+				pos: invalid_to_end_jmp
+			}
+
+			c.g.labels.addrs[valid_four_byte_label] = c.g.pos()
+
 			// 4-byte utf8: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 			c.mov_reg(.rdx, .rbx)
 			c.mov(.rcx, 18)
@@ -4442,6 +4458,20 @@ fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, co
 
 			// 3-byte utf8: 1110xxxx 10xxxxxx 10xxxxxx
 			c.g.labels.addrs[three_byte_label] = c.g.pos()
+			valid_three_byte_label := c.g.labels.new_label()
+			c.cmp(.rbx, ._32, 0xd800)
+			valid_three_byte_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  valid_three_byte_label
+				pos: valid_three_byte_jmp
+			}
+			c.cmp(.rbx, ._32, 0xe000)
+			invalid_surrogate_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  end_label
+				pos: invalid_surrogate_jmp
+			}
+			c.g.labels.addrs[valid_three_byte_label] = c.g.pos()
 			c.mov_reg(.rdx, .rbx)
 			c.mov(.rcx, 12)
 			c.shr_reg(.rdx, .rcx)
