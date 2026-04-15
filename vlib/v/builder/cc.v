@@ -878,7 +878,9 @@ fn (mut v Builder) setup_output_name() {
 pub fn (mut v Builder) tcc_quoted_path(p string) string {
 	if v.ccoptions.cc == .tcc && !v.pref.no_rsp {
 		// tcc has a bug, that prevents it from being able to parse names quoted with ' in .rsp files :-|
-		return '"${p}"'
+		mut escaped := p.replace('\\', '\\\\')
+		escaped = escaped.replace('"', '\\"')
+		return '"${escaped}"'
 	}
 	return os.quoted_path(p)
 }
@@ -1131,10 +1133,21 @@ pub fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		rsp_args := all_args.map(v.rsp_safe_arg(it))
-		str_args := if v.pref.no_rsp {
-			rsp_args.join(' ').replace('\n', ' ')
+		shell_args := rsp_args.join(' ')
+		mut str_args := if v.pref.no_rsp {
+			shell_args.replace('\n', ' ')
 		} else {
-			rsp_args.join(' ')
+			shell_args
+		}
+		mut should_use_rsp := !v.pref.no_rsp
+		if should_use_rsp {
+			for arg in rsp_args {
+				if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
+					should_use_rsp = false
+					str_args = shell_args
+					break
+				}
+			}
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {
@@ -1145,7 +1158,7 @@ pub fn (mut v Builder) cc() {
 		}
 		mut response_file := ''
 		mut response_file_content := str_args
-		if !v.pref.no_rsp {
+		if should_use_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = str_args.replace('\\', '\\\\')
 			rspexpr := '@${response_file}'

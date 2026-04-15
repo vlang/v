@@ -1136,7 +1136,7 @@ pub fn quoted_path(path string) string {
 			'"${path}"'
 		}
 	} $else {
-		return "'${path}'"
+		return "'" + path.replace("'", "'\\''") + "'"
 	}
 }
 

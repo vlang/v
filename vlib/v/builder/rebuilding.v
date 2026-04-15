@@ -390,6 +390,24 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	if !b.pref.reuse_tmpc {
 		uniq = '.${rand.ulid()}'
 	}
-	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
+	fname := sanitized_vtmp_basename(base_file_name) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))
+}
+
+fn sanitized_vtmp_basename(base_file_name string) string {
+	name := os.file_name(os.real_path(base_file_name))
+	mut sanitized := strings.new_builder(name.len)
+	for ch in name {
+		if ch >= 128 || (ch >= `0` && ch <= `9`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`) || ch in [`-`, `.`, `_`] {
+			sanitized.write_u8(ch)
+		} else {
+			sanitized.write_u8(`_`)
+		}
+	}
+	result := sanitized.str()
+	if result in ['', '.', '..'] {
+		return 'vtmp'
+	}
+	return result
 }

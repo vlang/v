@@ -4,6 +4,7 @@
 module pref
 
 import os
+import strings
 import v.vcache
 
 pub const default_module_path = os.vmodules_dir()
@@ -309,10 +310,44 @@ fn (p &Preferences) default_output_name(rpath string) string {
 		// The file name is just `.v` or `.vsh` or `.*`
 		base = filename
 	}
+	if needs_safe_default_output_name(base, filename, rpath) {
+		base = safe_default_output_name(filename)
+	}
 	if p.raw_vsh_tmp_prefix != '' {
 		return p.raw_vsh_tmp_prefix + '.' + base
 	}
 	return base
+}
+
+fn needs_safe_default_output_name(base string, filename string, rpath string) bool {
+	if base == '' || base in ['.', '..', '-'] {
+		return true
+	}
+	if base == filename && filename.starts_with('.') && !os.is_dir(rpath) {
+		return true
+	}
+	if base.ends_with('.c') || base.ends_with('.js') || base.ends_with('.wasm') {
+		return true
+	}
+	for ch in base {
+		if ch < ` ` || ch == 127 {
+			return true
+		}
+	}
+	return false
+}
+
+fn safe_default_output_name(filename string) string {
+	mut sanitized := strings.new_builder(filename.len + 4)
+	for ch in filename {
+		if ch < ` ` || ch == 127 {
+			sanitized.write_u8(`_`)
+		} else {
+			sanitized.write_u8(ch)
+		}
+	}
+	sanitized.write_string('.out')
+	return sanitized.str()
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {

@@ -180,3 +180,33 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	assert normalized_output.contains('Please install the corresponding development package/libraries')
 	assert !normalized_output.contains('This is a V compiler bug')
 }
+
+fn test_run_with_obscure_source_filenames() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	obscure_dir := os.join_path(test_path, 'obscure_filenames')
+	os.rmdir_all(obscure_dir) or {}
+	os.mkdir_all(obscure_dir)!
+	source := "println('hi')\n"
+	for file_name in [
+		"quote's.v",
+		'"hi".v',
+		"'.v",
+		'".v',
+		'.v',
+		'..v',
+		'...v',
+		'-.v',
+		'.c.v',
+		'line\nfeed.v',
+	] {
+		src_file := os.join_path(obscure_dir, file_name)
+		os.write_file(src_file, source)!
+		display_name := file_name.replace('\n', '\\n')
+		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(src_file)}')
+		assert res.exit_code == 0, '${display_name}: ${res.output}'
+		assert res.output.trim_space() == 'hi', '${display_name}: ${res.output}'
+		assert os.read_file(src_file)! == source
+	}
+}
