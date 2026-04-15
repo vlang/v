@@ -340,9 +340,9 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 		eprint(s)
 		eprintln('')
 	}
-	mut bytes := req.read_all_from_client_connection(client)!
+	response_data := req.read_all_from_client_connection(client)!
 	client.close()!
-	response_text := bytes.bytestr()
+	response_text := response_data.data.bytestr()
 	$if trace_http_response ? {
 		eprint('< ')
 		eprint(response_text)
@@ -351,7 +351,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return parse_response(response_text)
+	return parse_received_response(response_text, response_data.info)
 }
 
 // abstract over reading the whole content from TCP or SSL connections:
@@ -367,14 +367,15 @@ enum ChunkedBodyTrackerState {
 
 struct ChunkedBodyTracker {
 mut:
-	state      ChunkedBodyTrackerState = .chunk_size
-	line_buf   []u8
-	chunk_left u64
-	complete   bool
-	invalid    bool
+	state       ChunkedBodyTrackerState = .chunk_size
+	line_buf    []u8
+	chunk_left  u64
+	decoded_len u64
+	complete    bool
+	invalid     bool
 }
 
-fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
+fn (mut tracker ChunkedBodyTracker) advance(data []u8, mut decoded []u8) bool {
 	if tracker.complete || tracker.invalid || data.len == 0 {
 		return tracker.complete
 	}
@@ -406,9 +407,13 @@ fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
 			.chunk_data {
 				available := data.len - i
 				if tracker.chunk_left < u64(available) {
+					decoded << data[i..i + int(tracker.chunk_left)]
+					tracker.decoded_len += tracker.chunk_left
 					i += int(tracker.chunk_left)
 					tracker.chunk_left = 0
 				} else {
+					decoded << data[i..]
+					tracker.decoded_len += u64(available)
 					tracker.chunk_left -= u64(available)
 					i = data.len
 				}
@@ -485,7 +490,21 @@ fn chunked_hex_value(ch u8) u8 {
 	return 0
 }
 
-fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+struct ReceivedResponseInfo {
+	headers_end         int = -1
+	is_chunked_transfer bool
+	has_truncated_body  bool
+}
+
+fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
+	if info.is_chunked_transfer && info.has_truncated_body && info.headers_end > 0
+		&& info.headers_end <= response_text.len {
+		return parse_response(response_text[..info.headers_end])
+	}
+	return parse_response(response_text)
+}
+
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) !ReceivedResponseInfo {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
@@ -499,6 +518,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut old_len := u64(0)
 	mut new_len := u64(0)
 	mut status_code := -1
+	mut has_truncated_body := false
 	for {
 		readcounter++
 		len := receive_chunk_cb(con, bp, bufsize) or {
@@ -576,13 +596,25 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if headers_end >= 0 && new_len > body_pos {
 			body_so_far = u64(new_len) - body_pos
 		}
-		if req.on_progress_body != unsafe { nil } {
-			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+		mut progress_body_so_far := body_so_far
+		mut chunked_complete := false
+		if is_chunked_transfer {
+			mut dechunked := []u8{}
+			chunked_complete = chunked_body_tracker.advance(bchunk, mut dechunked)
+			progress_body_so_far = chunked_body_tracker.decoded_len
+			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
+				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
+					status_code)!
+			}
+		} else if req.on_progress_body != unsafe { nil } {
+			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		} else if headers_end >= 0 && new_len > body_pos {
+			has_truncated_body = true
 		}
-		if is_chunked_transfer && chunked_body_tracker.advance(bchunk) {
+		if is_chunked_transfer && chunked_complete {
 			break
 		}
 		if has_content_length {
@@ -601,6 +633,11 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		}
 		old_len = new_len
 	}
+	return ReceivedResponseInfo{
+		headers_end:         headers_end
+		is_chunked_transfer: is_chunked_transfer
+		has_truncated_body:  has_truncated_body
+	}
 }
 
 fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
@@ -608,10 +645,19 @@ fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 	return r.read_ptr(buf, bufsize)
 }
 
-fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+struct ReceivedResponseBuffer {
+	data []u8
+	info ReceivedResponseInfo
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) !ReceivedResponseBuffer {
 	mut content := strings.new_builder(4096)
-	req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
-	return content
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(r),
+		read_from_tcp_connection_cb)!
+	return ReceivedResponseBuffer{
+		data: content
+		info: info
+	}
 }
 
 // referer returns 'Referer' header value of the given request

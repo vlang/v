@@ -167,16 +167,16 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 		$if trace_http_request ? {
 			eprintln('> ${s}')
 		}
-		mut bytes := req.read_all_from_client_connection(client)!
+		response_data := req.read_all_from_client_connection(client)!
 		client.close()!
-		response_text := bytes.bytestr()
+		response_text := response_data.data.bytestr()
 		$if trace_http_response ? {
 			eprintln('< ${response_text}')
 		}
 		if req.on_finish != unsafe { nil } {
 			req.on_finish(req, u64(response_text.len))!
 		}
-		return parse_response(response_text)
+		return parse_received_response(response_text, response_data.info)
 	}
 	return error('Invalid Scheme')
 }
