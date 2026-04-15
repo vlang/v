@@ -143,6 +143,17 @@ fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
 	return c.table.generic_type_names(node.receiver.typ)
 }
 
+fn (mut c Checker) generic_anon_fn_can_use_current_context(generic_names []string) bool {
+	if generic_names.len == 0 || c.table.cur_fn == unsafe { nil } {
+		return false
+	}
+	current_generic_names := c.effective_fn_generic_names(c.table.cur_fn)
+	if current_generic_names.len == 0 {
+		return false
+	}
+	return generic_names.all(it in current_generic_names)
+}
+
 fn (mut c Checker) receiver_requires_generic_names(node &ast.FnDecl) bool {
 	if !node.is_method {
 		return false
