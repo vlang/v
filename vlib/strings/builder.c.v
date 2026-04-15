@@ -251,8 +251,10 @@ pub fn (mut b Builder) str() string {
 
 // ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary.
 pub fn (mut b Builder) ensure_cap(n int) {
-	// Delegate to the array's ensure_cap which handles managed allocation properly
-	mut arr := unsafe { &array(&b) }
+	// Work through the underlying array pointer, instead of taking a pointer
+	// cast to the alias receiver. This keeps self-hosted builds from generating
+	// an invalid `&b` cast in C.
+	mut arr := unsafe { &[]u8(b) }
 	arr.ensure_cap(n)
 }
 
@@ -275,10 +277,8 @@ pub fn (mut b Builder) grow_len(n int) {
 @[unsafe]
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
-		unsafe {
-			mut arr := &array(&b)
-			arr.free()
-		}
+		mut arr := unsafe { &[]u8(b) }
+		unsafe { arr.free() }
 	}
 }
 

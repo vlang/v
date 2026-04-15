@@ -2519,11 +2519,13 @@ fn (mut g Gen) array_expr_takes_param_address(expr ast.Expr, var_name string) bo
 fn (mut g Gen) array_expr_roots_at_param(expr ast.Expr, var_name string) bool {
 	mut root := expr
 	for {
+		mut next_root := root
 		if mut root is ast.ParExpr {
-			root = ast.Expr(root.expr)
-			continue
+			next_root = root.expr
+		} else {
+			break
 		}
-		break
+		root = next_root
 	}
 	match mut root {
 		ast.AsCast {

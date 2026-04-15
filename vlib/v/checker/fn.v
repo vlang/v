@@ -8,6 +8,24 @@ import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
+fn first_attr_by_name(attrs []ast.Attr, name string) (ast.Attr, bool) {
+	for attr in attrs {
+		if attr.name == name {
+			return attr, true
+		}
+	}
+	return ast.Attr{}, false
+}
+
+fn comptime_define_attr_idx(attrs []ast.Attr) int {
+	for idx in 0 .. attrs.len {
+		if attrs[idx].kind == .comptime_define {
+			return idx
+		}
+	}
+	return ast.invalid_type_idx
+}
+
 @[inline]
 fn (c &Checker) implicit_mutability_enabled() bool {
 	return c.pref.disable_explicit_mutability
@@ -380,7 +398,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && node.attrs.len > 0 {
 		required_args_attr := ['export', '_linker_section']
 		for attr_name in required_args_attr {
-			if attr := node.attrs.find_first(attr_name) {
+			attr, has_attr := first_attr_by_name(node.attrs, attr_name)
+			if has_attr {
 				if attr.arg == '' {
 					c.error('missing argument for @[${attr_name}] attribute', attr.pos)
 				} else if attr_name == 'export' {
@@ -420,7 +439,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.language == .v && node.return_type.clear_option_and_result() == ast.any_type {
 			c.error('cannot use type `any` here', node.return_type_pos)
 		}
-		if ct_attr_idx := node.attrs.find_comptime_define() {
+		ct_attr_idx := comptime_define_attr_idx(node.attrs)
+		if ct_attr_idx != ast.invalid_type_idx {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
 			c.error('only functions that do NOT return values can have `@[if ${sexpr}]` tags',
 				node.pos)

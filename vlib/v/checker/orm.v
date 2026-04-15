@@ -93,6 +93,8 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 	mut current := expr
 	for {
 		current = current.remove_par()
+		mut next_expr := current
+		mut has_next_expr := false
 		match current {
 			ast.SqlQueryDataExpr {
 				return current as ast.SqlQueryDataExpr
@@ -104,21 +106,25 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 						if obj.is_mut {
 							return error('dynamic ORM expressions must use an immutable query-data block alias')
 						}
-						current = ast.Expr(obj.expr)
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					ast.ConstField {
-						current = ast.Expr(obj.expr)
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					else {}
 				}
-				return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 			}
 			else {
 				return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 			}
 		}
+		if has_next_expr {
+			current = next_expr
+			continue
+		}
+		return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 	}
 	return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 }

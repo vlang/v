@@ -5,7 +5,7 @@ pub fn vhash() string {
 	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
-		bp := &buf[0]
+		bp := &u8(&buf[0])
 		C.snprintf(&char(bp), 50, c'%s', C.V_COMMIT_HASH)
 		return tos_clone(bp)
 	}

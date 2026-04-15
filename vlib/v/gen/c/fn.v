@@ -4715,15 +4715,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	mut free_receiver_heap_copy := ''
 	if is_free_method && has_method && node.left is ast.Ident && !left_type.is_ptr()
-		&& !g.resolved_ident_is_auto_heap(node.left)
 		&& free_method_calls_free_on_receiver(full_method) {
-		stmt_line := g.go_before_last_stmt()
-		alloc_size := '(sizeof(${rec_cc_type}) == 0) ? 1 : sizeof(${rec_cc_type})'
-		g.empty_line = true
-		free_receiver_heap_copy = g.new_tmp_var()
-		g.writeln('${rec_cc_type}* ${free_receiver_heap_copy} = (${rec_cc_type}*)builtin__vcalloc(${alloc_size});')
-		g.writeln('*${free_receiver_heap_copy} = ${c_name(node.left.name)};')
-		g.write(stmt_line)
+		left_ident := node.left as ast.Ident
+		if !g.resolved_ident_is_auto_heap(left_ident) {
+			stmt_line := g.go_before_last_stmt()
+			alloc_size := '(sizeof(${rec_cc_type}) == 0) ? 1 : sizeof(${rec_cc_type})'
+			g.empty_line = true
+			free_receiver_heap_copy = g.new_tmp_var()
+			g.writeln('${rec_cc_type}* ${free_receiver_heap_copy} = (${rec_cc_type}*)builtin__vcalloc(${alloc_size});')
+			g.writeln('*${free_receiver_heap_copy} = ${c_name(left_ident.name)};')
+			g.write(stmt_line)
+		}
 	}
 	receiver_needs_ref := receiver_type.is_ptr() || receiver_is_mut
 	// g.generate_tmp_autofree_arg_vars(node, name)

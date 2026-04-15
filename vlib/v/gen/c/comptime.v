@@ -1257,13 +1257,14 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	}
 	mut has_field := false
 	mut field := ast.StructField{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
-		&& sym.language == .v {
-		// x.Foo.y => access the embedded struct
-		for embed in sym.info.embeds {
-			embed_sym := g.table.sym(embed)
-			if embed_sym.embed_name() == field_name {
-				return embed
+	if field_name.len > 0 && field_name[0].is_capital() && sym.language == .v {
+		if sym.info is ast.Struct {
+			// x.Foo.y => access the embedded struct
+			for embed in sym.info.embeds {
+				embed_sym := g.table.sym(embed)
+				if embed_sym.embed_name() == field_name {
+					return embed
+				}
 			}
 		}
 	} else {

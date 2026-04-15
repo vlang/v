@@ -1233,7 +1233,8 @@ pub fn (mut a []string) free() {
 	for mut s in a {
 		unsafe { s.free() }
 	}
-	unsafe { (&array(&a)).free() }
+	mut arr := unsafe { &array(a) }
+	unsafe { arr.free() }
 }
 
 // The following functions are type-specific functions that apply

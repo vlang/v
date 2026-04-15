@@ -3,7 +3,6 @@ module generics
 // TODO do scopes need to be cloned?
 import v.pref
 import v.ast
-import arrays
 import strings
 
 // Stage for solving generics
@@ -69,8 +68,8 @@ pub fn (mut g Generics) stmts(mut nodes []ast.Stmt) []ast.Stmt {
 			}
 		}
 	}
-	for i in arrays.reverse_iterator(solved_indexes) {
-		nodes.delete(*i)
+	for idx := solved_indexes.len; idx > 0; idx-- {
+		nodes.delete(solved_indexes[idx - 1])
 	}
 	nodes << solved_generic_fns
 	return nodes

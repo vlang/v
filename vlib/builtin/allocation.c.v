@@ -399,6 +399,13 @@ pub fn free(ptr voidptr) {
 		}
 		return
 	}
+	// `none__` is a process-wide singleton IError used by option/results to
+	// represent "no error object". Self-hosted builds can still route that
+	// sentinel through explicit cleanup paths under `-gc none`, so ignore it.
+	none_err := &C.IError(&none__)
+	if ptr == none_err._object {
+		return
+	}
 	$if prealloc {
 		return
 	} $else $if vgc ? {

@@ -117,6 +117,8 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 	mut current := expr
 	for {
 		current = current.remove_par()
+		mut next_expr := current
+		mut has_next_expr := false
 		match current {
 			ast.SqlQueryDataExpr {
 				return current as ast.SqlQueryDataExpr
@@ -128,21 +130,25 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 						if obj.is_mut {
 							return none
 						}
-						current = ast.Expr(obj.expr)
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					ast.ConstField {
-						current = ast.Expr(obj.expr)
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					else {}
 				}
-				return none
 			}
 			else {
 				return none
 			}
 		}
+		if has_next_expr {
+			current = next_expr
+			continue
+		}
+		return none
 	}
 	return none
 }
