@@ -9238,6 +9238,12 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tv__trace_calls__on_call(_S("_vinit"));')
 	}
 
+	if g.pref.is_shared
+		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		// Shared libraries can be unloaded while Boehm marker threads are still alive.
+		g.writeln('\tGC_set_markers_count(1);')
+	}
+
 	if g.use_segfault_handler && !g.pref.is_shared {
 		if _ := g.table.fns['v_segmentation_fault_handler'] {
 			// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
