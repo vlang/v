@@ -104,9 +104,9 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
-	mut sub_structs := map[int]ast.SqlStmtLine{}
-	for typ, sub in node.sub_structs {
-		sub_structs[typ] = g.build_sql_stmt_line_from_sql_expr(sub)
+	mut sub_structs := map[string]ast.SqlStmtLine{}
+	for key, sub in node.sub_structs {
+		sub_structs[key] = g.build_sql_stmt_line_from_sql_expr(sub)
 	}
 	return ast.SqlStmtLine{
 		object_var:  node.inserted_var
@@ -422,8 +422,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			if final_field_typ in node.sub_structs {
-				subs << unsafe { node.sub_structs[int(final_field_typ)] }
+			if field.name in node.sub_structs {
+				subs << unsafe { node.sub_structs[field.name] }
 
 				unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
 				subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
@@ -442,8 +442,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			if final_field_typ in node.sub_structs {
-				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
+			if field.name in node.sub_structs {
+				arrs << unsafe { node.sub_structs[field.name] }
 			}
 			field_names << field.name
 		}
@@ -1291,7 +1291,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			field_var := '${tmp}.${orm_field_access_name(field.name)}'
 			field_c_typ := g.styp(final_field_typ)
 			if sym.kind == .struct && sym.name != 'time.Time' {
-				mut sub := node.sub_structs[int(final_field_typ)] or { continue }
+				mut sub := node.sub_structs[field.name] or { continue }
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
 				primitive_type_index := g.table.find_type('orm.Primitive')
@@ -1328,7 +1328,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				} else {
 					verror('missing fkey attribute')
 				}
-				sub := node.sub_structs[final_field_typ] or { continue }
+				sub := node.sub_structs[field.name] or { continue }
 				if sub.has_where {
 					mut where_expr := sub.where_expr as ast.InfixExpr
 					mut left_where_expr := where_expr.left as ast.Ident
