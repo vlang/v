@@ -1,0 +1,14 @@
+vlib/v/checker/tests/option_selector_ierror_in_or_block_err.vv:11:15: error: to propagate the call, `check` must return an Option type
+    9 | fn (c SomeStruct) check() int {
+   10 |     some_fn_that_produce_err() or {
+   11 |         assert c.err? == err
+      |                     ^
+   12 |         return 0
+   13 |     }
+Details: vlib/v/checker/tests/option_selector_ierror_in_or_block_err.vv:9:27: details: prepend ? before the declaration of the return type of `check`
+    7 | }
+    8 | 
+    9 | fn (c SomeStruct) check() int {
+      |                           ~~~
+   10 |     some_fn_that_produce_err() or {
+   11 |         assert c.err? == err
