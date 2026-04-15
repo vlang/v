@@ -5467,6 +5467,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						}
 					}
 				}
+				if node.right.is_auto_deref_var() && node.op !in [.amp, .mul, .arrow] {
+					g.write('*')
+				}
 				if tmp_var == '' {
 					g.expr(node.right)
 				} else {
