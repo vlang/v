@@ -182,6 +182,20 @@ fn test_leftover() {
 	assert r.end_of_stream()
 }
 
+fn test_read_line_strips_crlf_across_buffer_fills() {
+	text := '12345\r\n67890\r\n'
+	mut s := StringReaderTest{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s, cap: 2)
+	assert r.read_line()! == '12345'
+	assert r.read_line()! == '67890'
+	if _ := r.read_line() {
+		assert false
+	}
+	assert r.end_of_stream()
+}
+
 fn test_totalread_read() {
 	text := 'Some testing text'
 	mut s := StringReaderTest{
