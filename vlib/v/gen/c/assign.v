@@ -747,9 +747,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		mut cur_indexexpr := -1
 		consider_int_overflow := g.do_int_overflow_checks && g.unwrap_generic(var_type).is_int()
+		consider_int_div_mod := g.table.final_sym(g.unwrap_generic(var_type)).is_int()
 		is_safe_add_assign := node.op == .plus_assign && consider_int_overflow
 		is_safe_sub_assign := node.op == .minus_assign && consider_int_overflow
 		is_safe_mul_assign := node.op == .mult_assign && consider_int_overflow
+		is_safe_div_assign := node.op == .div_assign && consider_int_div_mod
+		is_safe_mod_assign := node.op == .mod_assign && consider_int_div_mod
 		initial_left_sym := g.table.sym(g.unwrap_generic(var_type))
 		is_va_list = initial_left_sym.language == .c && initial_left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
@@ -1702,22 +1705,34 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			} else if !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add
 				&& !op_overloaded && !is_safe_add_assign && !is_safe_sub_assign
-				&& !is_safe_mul_assign && !is_safe_shift_assign {
+				&& !is_safe_mul_assign && !is_safe_div_assign && !is_safe_mod_assign
+				&& !is_safe_shift_assign {
 				g.write(' ${op} ')
 			} else if (str_add || op_overloaded) && !is_safe_add_assign && !is_safe_sub_assign
-				&& !is_safe_mul_assign {
+				&& !is_safe_mul_assign && !is_safe_div_assign && !is_safe_mod_assign {
 				g.write(', ')
 			} else if is_safe_shift_assign {
 				g.write(' = ${safe_shift_fn_name}(')
 				g.expr(left)
 				g.write(', (u64)')
-			} else if is_safe_add_assign || is_safe_sub_assign || is_safe_mul_assign {
+			} else if is_safe_add_assign || is_safe_sub_assign || is_safe_mul_assign
+				|| is_safe_div_assign || is_safe_mod_assign {
 				overflow_styp := g.styp(get_overflow_fn_type(var_type))
+				div_mod_styp :=
+					g.styp(g.unwrap_generic(var_type).clear_flag(.shared_f).clear_flag(.atomic_f))
 				vsafe_fn_name := match true {
 					is_safe_add_assign { 'builtin__overflow__add_${overflow_styp}' }
 					is_safe_sub_assign { 'builtin__overflow__sub_${overflow_styp}' }
 					is_safe_mul_assign { 'builtin__overflow__mul_${overflow_styp}' }
+					is_safe_div_assign { 'VSAFE_DIV_${div_mod_styp}' }
+					is_safe_mod_assign { 'VSAFE_MOD_${div_mod_styp}' }
 					else { '' }
+				}
+				if is_safe_div_assign || is_safe_mod_assign {
+					g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+						typ: g.unwrap_generic(var_type).clear_flag(.shared_f).clear_flag(.atomic_f)
+						op:  token.assign_op_to_infix_op(node.op)
+					}
 				}
 				g.write(' = ${vsafe_fn_name}(')
 				g.expr(left)
@@ -2005,7 +2020,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if str_add || op_overloaded || is_safe_add_assign || is_safe_sub_assign
-				|| is_safe_mul_assign {
+				|| is_safe_mul_assign || is_safe_div_assign || is_safe_mod_assign {
 				g.write(')')
 			} else if is_safe_shift_assign {
 				g.write(')')

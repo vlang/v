@@ -1903,8 +1903,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	is_safe_add := checkoverflow_op && node.op == .plus
 	is_safe_sub := checkoverflow_op && node.op == .minus
 	is_safe_mul := checkoverflow_op && node.op == .mul
-	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
-	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
+	is_integer_div_mod := g.table.final_sym(g.unwrap_generic(typ)).is_int()
+	is_safe_div := node.op == .div && is_integer_div_mod
+	is_safe_mod := node.op == .mod && is_integer_div_mod
 	if resolved_left_type.is_ptr() && node.left.is_auto_deref_var()
 		&& !resolved_right_type.is_pointer() {
 		g.write('*')
