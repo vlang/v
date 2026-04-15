@@ -6255,10 +6255,32 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut expr_is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
 	mut expr_is_unwrapped_autoheap_option := false
+	mut expr_autoheap_option_type := ast.Type(0)
 	if expr_is_auto_heap {
 		expr_ident := node.expr as ast.Ident
-		if expr_ident.obj is ast.Var && expr_ident.obj.typ.has_flag(.option)
-			&& !lhs_expr_type.has_flag(.option) {
+		if node.expr_type.has_flag(.option) {
+			expr_autoheap_option_type = node.expr_type
+		}
+		if expr_ident.obj is ast.Var {
+			if expr_ident.obj.orig_type.has_flag(.option) {
+				expr_autoheap_option_type = expr_ident.obj.orig_type
+			} else if expr_ident.obj.typ.has_flag(.option) {
+				expr_autoheap_option_type = expr_ident.obj.typ
+			}
+		}
+		if expr_autoheap_option_type == 0 && selector_scope != unsafe { nil } {
+			if scope_var := selector_scope.find_var(expr_ident.name) {
+				if scope_var.orig_type.has_flag(.option) {
+					expr_autoheap_option_type = scope_var.orig_type
+				} else if scope_var.typ.has_flag(.option) {
+					expr_autoheap_option_type = scope_var.typ
+				}
+			}
+		}
+		// Autoheap option locals can have their runtime type smartcast down to the
+		// unwrapped struct before selector codegen runs. Preserve the original
+		// option source type so selector receivers still unwrap through `->data`.
+		if expr_autoheap_option_type.has_flag(.option) && !lhs_expr_type.has_flag(.option) {
 			expr_is_unwrapped_autoheap_option = true
 			expr_is_auto_heap = false
 		}
@@ -6301,7 +6323,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		} else {
 			g.get_ternary_name(c_name(expr_ident.name))
 		}
-		g.unwrap_option_type(expr_ident.obj.typ, expr_name, true)
+		g.unwrap_option_type(expr_autoheap_option_type, expr_name, true)
 	} else if expr_is_auto_heap {
 		expr_ident := node.expr as ast.Ident
 		if expr_ident.obj is ast.Var && expr_ident.obj.is_inherited {
