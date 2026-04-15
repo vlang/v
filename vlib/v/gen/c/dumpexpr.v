@@ -361,7 +361,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		{
 			continue
 		}
-		mut surrounder := util.new_surrounder(3)
+		mut surrounder := util.new_surrounder(2)
 		int_str := g.get_str_fn(ast.int_type)
 		surrounder.add('\tstring sline = ${int_str}(line);', '\tbuiltin__string_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
@@ -391,32 +391,22 @@ fn (mut g Gen) dump_expr_definitions() {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${prefix}dump_arg);',
 				'\tbuiltin__string_free(&value);')
 		}
-		surrounder.add('
-	strings__Builder sb = strings__new_builder(64);
-', '
-	string res;
-	res = strings__Builder_str(&sb);
-	builtin__eprint(res);
-	builtin__string_free(&res);
-	strings__Builder_free(&sb);
-')
 		surrounder.builder_write_befores(mut dump_fns)
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '[');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, fpath);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sline);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ']');")
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sexpr);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
+		dump_fns.writeln('\tbuiltin__flush_stdout();')
+		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("[").str, _S("[").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, fpath.str, fpath.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S(":").str, _S(":").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, sline.str, sline.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("] ").str, _S("] ").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, sexpr.str, sexpr.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S(": ").str, _S(": ").len);')
 		if is_ptr {
-			for i := 0; i < typ.nr_muls(); i++ {
-				dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
-			}
+			ptr_prefix := '&'.repeat(typ.nr_muls())
+			dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("${ptr_prefix}").str, _S("${ptr_prefix}").len);')
 		}
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
+		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
+		dump_fns.writeln('\tbuiltin__flush_stderr();')
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret && !is_ptr {
 			tmp_var := g.new_tmp_var()
