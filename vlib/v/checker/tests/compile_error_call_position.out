@@ -5,14 +5,7 @@ vlib/v/checker/tests/compile_error_call_position.vv:3:11: notice: unused paramet
       |           ~~~
     4 |     $if T !is int {
     5 |         $compile_error('son only taken int as input')
-vlib/v/checker/tests/compile_error_call_position.vv:5:3: error: son only taken int as input
-    3 | fn son[T](val T) {
-    4 |     $if T !is int {
-    5 |         $compile_error('son only taken int as input')
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    6 |     }
-    7 | }
-called from vlib/v/checker/tests/compile_error_call_position.vv:10:2
+vlib/v/checker/tests/compile_error_call_position.vv:10:2: error: son only taken int as input
     8 | 
     9 | fn main() {
    10 |     son(false)

@@ -40,20 +40,16 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.kind == .compile_error {
-		// Add call stack information for `$compile_error()`
-		mut call_stack := []errors.CallStackItem{}
-		// Only add call stack if we're inside a function (not at module level)
+		mut err_pos := node.pos
+		// During generic rechecks, report the instantiation site instead of the
+		// `$compile_error()` directive inside the generic body.
 		if c.fn_level > 0 && c.table.cur_fn != unsafe { nil } {
 			call_key := c.build_generic_call_key(c.table.cur_fn.fkey(), c.table.cur_concrete_types)
-			pos := c.generic_call_positions[call_key] or { c.table.cur_fn.name_pos }
-			// Use the file path from the position, not the current file
-			file_path := if pos.file_idx >= 0 { c.table.filelist[pos.file_idx] } else { c.file.path }
-			call_stack << errors.CallStackItem{
-				file_path: file_path
-				pos:       pos
+			if pos := c.generic_call_positions[call_key] {
+				err_pos = pos
 			}
 		}
-		c.error(c.comptime_call_msg(node), node.pos, call_stack: call_stack)
+		c.error(c.comptime_call_msg(node), err_pos)
 		return ast.void_type
 	} else if node.kind == .compile_warn {
 		c.warn(c.comptime_call_msg(node), node.pos)
