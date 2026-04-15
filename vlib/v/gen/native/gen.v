@@ -430,11 +430,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 
 // used in macho_test.v
 pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
+	mut backend := get_backend(p.arch, p.os) or { panic(err) }
 	mut g := Gen{
 		pref:     p
 		out_name: out_name
 		table:    ast.new_table()
-		cg:       Amd64{}
+		cg:       backend
 	}
 	g.cg.g = &mut g
 	return &mut g
@@ -1296,6 +1297,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
 
+	if g.pref.arch == .arm64 {
+		g.align_to(4)
+	}
 	g.stack_var_pos = 0
 	g.stack_depth = 0
 	g.register_function_address(name)
