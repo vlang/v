@@ -30,6 +30,7 @@ fn test_help() {
 	assert res.output.contains('-v, --verbose             Be more verbose while processing the coverages.')
 	assert res.output.contains('-H, --hotspots            Show most frequently executed covered lines.')
 	assert res.output.contains('-P, --percentages         Show coverage percentage per file.')
+	assert res.output.contains('--lcov <string>           Write an LCOV line coverage report')
 	assert res.output.contains('-S, --show_test_files     Show `_test.v` files as well (normally filtered).')
 	assert res.output.contains('-A, --absolute            Use absolute paths for all files')
 }
@@ -53,6 +54,20 @@ fn test_simple() {
 	assert filter1.exit_code == 0, filter1.output
 	assert filter1.output.contains('cmd/tools/vcover/testdata/simple/simple.v'), filter1.output
 	assert filter1.output.trim_space().ends_with('|      4 |      9 |  44.44%'), filter1.output
+	lcov_file := np(os.join_path(tfolder, 'coverage', 'simple.lcov'))
+	os.rm(lcov_file) or {}
+	lcov :=
+		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ --lcov ${os.quoted_path(lcov_file)} -P false')
+	assert lcov.exit_code == 0, lcov.str()
+	assert os.exists(lcov_file), lcov_file
+	lcov_content := os.read_file(lcov_file) or { panic(err) }
+	assert lcov_content.contains('SF:${np(os.join_path(vroot,
+		'cmd/tools/vcover/testdata/simple/simple.v'))}')
+	assert lcov_content.contains('DA:4,1')
+	assert lcov_content.contains('DA:12,0')
+	assert lcov_content.contains('LF:9')
+	assert lcov_content.contains('LH:4')
+	assert lcov_content.contains('end_of_record')
 	hfilter1 :=
 		execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ -H -P false')
 	assert hfilter1.exit_code == 0, hfilter1.output
