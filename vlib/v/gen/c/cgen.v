@@ -10785,6 +10785,44 @@ fn (mut g Gen) register_auto_str_for_interfaces() {
 	}
 }
 
+fn (mut g Gen) interface_field_ptr_expr(st ast.Type, cctype string, field ast.StructField) string {
+	cname := c_name(field.name)
+	field_styp := g.styp(field.typ)
+	resolved_st_sym := g.table.final_sym(st)
+	if _ := resolved_st_sym.find_field(field.name) {
+		return '(${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname}))'
+	}
+	if resolved_st_sym.kind == .array
+		&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
+		// Array interfaces expose these common fields directly in C.
+		return '(${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname}))'
+	}
+	if st in [ast.voidptr_type, ast.nil_type] {
+		return '0'
+	}
+	if resolved_st_sym.info is ast.Struct {
+		if _, embeds := g.table.find_field_from_embeds(resolved_st_sym, field.name) {
+			mut ptr_expr := strings.new_builder(100)
+			ptr_expr.write_string('(${field_styp}*)((char*)x')
+			mut typ_name := ''
+			for i, embed in embeds {
+				esym := g.table.sym(embed)
+				if i == 0 {
+					ptr_expr.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
+				} else {
+					ptr_expr.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+				}
+				typ_name = esym.cname
+			}
+			ptr_expr.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname}))')
+			return ptr_expr.str()
+		}
+	}
+	g.checker_bug('interface field `${field.name}` is not reachable in `${resolved_st_sym.name}` during cast generation',
+		field.pos)
+	return '0'
+}
+
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
 	util.timing_start(@METHOD)
@@ -10908,37 +10946,8 @@ fn (mut g Gen) interface_table() string {
 			if cctype == cctype2 {
 				for field in inter_info.fields {
 					cname := c_name(field.name)
-					field_styp := g.styp(field.typ)
-					if _ := st_sym.find_field(field.name) {
-						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
-					} else if st_sym.kind == .array
-						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
-						// Manually checking, we already knows array contains above fields
-						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
-					} else {
-						// the field is embedded in another struct
-						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
-						if st != ast.voidptr_type && st != ast.nil_type {
-							if st_sym.kind == .struct {
-								if _, embeds := g.table.find_field_from_embeds(st_sym, field.name) {
-									mut typ_name := ''
-									for i, embed in embeds {
-										esym := g.table.sym(embed)
-										if i == 0 {
-											cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
-										} else {
-											cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
-										}
-										typ_name = esym.cname
-									}
-									if embeds.len > 0 {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
-									}
-								}
-							}
-						}
-						cast_struct.writeln('),')
-					}
+					cast_struct.writeln('\t\t.${cname} = ${g.interface_field_ptr_expr(st, cctype,
+						field)},')
 				}
 			}
 			cast_struct.write_string('\t}')
