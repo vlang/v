@@ -9,6 +9,12 @@ const ppc64_architecture = int(11)
 
 type ClosureGetDataFn = fn () voidptr
 
+struct ClosurePage {
+mut:
+	next            &ClosurePage = unsafe { nil }
+	exec_page_start voidptr
+}
+
 @[heap]
 struct Closure {
 	ClosureMutex
@@ -16,7 +22,9 @@ mut:
 	closure_ptr      voidptr
 	closure_get_data ClosureGetDataFn = unsafe { nil }
 	closure_cap      int
-	v_page_size      int = int(0x4000)
+	free_closure_ptr voidptr
+	pages            &ClosurePage = unsafe { nil }
+	v_page_size      int          = int(0x4000)
 }
 
 __global g_closure = Closure{}
@@ -238,6 +246,55 @@ const closure_size_1 = if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
 }
 const closure_size = int(closure_size_1 & ~(u32(sizeof(voidptr)) - 1))
 
+@[inline]
+fn closure_exec_ptr(closure voidptr) voidptr {
+	if is_ppc64() {
+		return unsafe { &u8(closure) + assumed_page_size }
+	}
+	return closure
+}
+
+@[inline]
+fn closure_return_ptr(exec_ptr voidptr) voidptr {
+	if is_ppc64() {
+		return unsafe { &u8(exec_ptr) - assumed_page_size }
+	}
+	return exec_ptr
+}
+
+@[inline]
+fn closure_slot_meta(exec_ptr voidptr) &voidptr {
+	return unsafe { &voidptr(&u8(exec_ptr) - assumed_page_size) }
+}
+
+fn closure_register_page(exec_page_start voidptr) {
+	unsafe {
+		node := &ClosurePage(malloc(sizeof(ClosurePage)))
+		*node = ClosurePage{
+			next:            g_closure.pages
+			exec_page_start: exec_page_start
+		}
+		g_closure.pages = node
+	}
+}
+
+fn closure_is_managed(exec_ptr voidptr) bool {
+	if isnil(exec_ptr) {
+		return false
+	}
+	exec_addr := unsafe { usize(exec_ptr) }
+	mut page := g_closure.pages
+	for page != unsafe { nil } {
+		page_addr := unsafe { usize(page.exec_page_start) }
+		if exec_addr >= page_addr && exec_addr < page_addr + usize(g_closure.v_page_size) {
+			slot_offset := exec_addr - page_addr
+			return slot_offset >= usize(closure_size) && slot_offset % usize(closure_size) == 0
+		}
+		page = page.next
+	}
+	return false
+}
+
 // closure_alloc allocates executable memory pages for closures(INTERNAL COMPILER USE ONLY).
 fn closure_alloc() {
 	p := closure_alloc_platform()
@@ -247,6 +304,7 @@ fn closure_alloc() {
 	// Setup executable and guard pages
 	x := unsafe { p + g_closure.v_page_size } // End of guard page
 	mut remaining := g_closure.v_page_size / closure_size // Calculate slot count
+	closure_register_page(x)
 	g_closure.closure_ptr = x // Current allocation pointer
 	g_closure.closure_cap = remaining // Remaining slot count
 
@@ -306,20 +364,29 @@ fn closure_init() {
 fn closure_create(func voidptr, data voidptr) voidptr {
 	closure_mtx_lock_platform()
 
-	// Handle memory exhaustion
-	if g_closure.closure_cap == 0 {
-		closure_alloc() // Allocate new memory page
+	mut curr_closure := g_closure.free_closure_ptr
+	if !isnil(curr_closure) {
+		unsafe {
+			mut p := closure_slot_meta(curr_closure)
+			g_closure.free_closure_ptr = p[0]
+		}
+	} else {
+		// Handle memory exhaustion
+		if g_closure.closure_cap == 0 {
+			closure_alloc() // Allocate new memory page
+		}
+		g_closure.closure_cap-- // Decrement slot counter
+
+		// Claim current closure slot
+		curr_closure = g_closure.closure_ptr
+		unsafe {
+			// Move to next available slot
+			g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
+		}
 	}
-	g_closure.closure_cap-- // Decrement slot counter
-
-	// Claim current closure slot
-	curr_closure := g_closure.closure_ptr
 	unsafe {
-		// Move to next available slot
-		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
-
 		// Write closure metadata (data + function pointer)
-		mut p := &voidptr(&u8(curr_closure) - assumed_page_size)
+		mut p := closure_slot_meta(curr_closure)
 		if is_ppc64() {
 			// ELFv1: guard page layout per slot:
 			//   [0] desc[0] = thunk code address  <- returned as ELFv1 function pointer
@@ -338,22 +405,54 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
-	if is_ppc64() {
-		// ELFv1: return descriptor address (guard page), not raw code address
-		return unsafe { &u8(curr_closure) - assumed_page_size }
-	}
-	return curr_closure
+	return closure_return_ptr(curr_closure)
 }
 
 // closure_data returns the userdata pointer associated with a closure object.
 @[direct_array_access]
 fn closure_data(closure voidptr) voidptr {
 	unsafe {
-		mut p := &voidptr(&u8(closure) - assumed_page_size)
+		mut p := closure_slot_meta(closure_exec_ptr(closure))
 		$if ppc64 {
 			return p[2]
 		} $else {
 			return p[0]
 		}
 	}
+}
+
+// closure_try_destroy frees a managed closure slot and its context when the closure is known to be temporary.
+@[direct_array_access]
+fn closure_try_destroy(closure voidptr) {
+	if isnil(closure) {
+		return
+	}
+	exec_ptr := closure_exec_ptr(closure)
+	closure_mtx_lock_platform()
+	if !closure_is_managed(exec_ptr) {
+		closure_mtx_unlock_platform()
+		return
+	}
+	unsafe {
+		mut p := closure_slot_meta(exec_ptr)
+		mut data := nil
+		if is_ppc64() {
+			data = p[2]
+		} else {
+			data = p[0]
+		}
+		if !isnil(data) {
+			free(data)
+		}
+		p[0] = g_closure.free_closure_ptr
+		if is_ppc64() {
+			p[1] = nil
+			p[2] = nil
+			p[3] = nil
+		} else {
+			p[1] = nil
+		}
+		g_closure.free_closure_ptr = exec_ptr
+	}
+	closure_mtx_unlock_platform()
 }
