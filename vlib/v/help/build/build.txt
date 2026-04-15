@@ -15,6 +15,9 @@ then run `./myfile -param1 abcde` and exit with its exit code".
 
 When compiling packages, V ignores files that end in '_test.v'.
 
+Use `v build script.vsh` to compile a `.vsh` script without running it.
+`v -skip-running script.vsh` works too.
+
 When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
 The '.exe' suffix is added automatically, when writing a Windows executable.

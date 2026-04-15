@@ -387,6 +387,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 
 	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
+	mut build_vsh_source := false
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		if inline_icon_path := inline_icon_option_value(arg) {
@@ -1096,6 +1097,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {
+					if arg.ends_with('.vsh') {
+						command, command_idx = arg, i
+						build_vsh_source = true
+						res.skip_running = true
+						continue
+					}
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
 				if is_source_file(arg) && arg.ends_with('.vsh') {
@@ -1223,7 +1230,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln_cond(show_output && !res.is_quiet,
 			'`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	if command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run) {
+	if !build_vsh_source
+		&& (command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run)) {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
