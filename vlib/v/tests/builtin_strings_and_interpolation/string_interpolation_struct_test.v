@@ -104,3 +104,31 @@ fn test_circular_array_field_auto_str_keeps_item_count() {
 	s := '${value}'.replace('\n', '|')
 	assert s == 'CircularArray{|    children: [<circular>, <circular>]|}'
 }
+
+struct ReturnedTree {
+mut:
+	root ReturnedNode
+	refs map[string]&ReturnedNode
+}
+
+@[heap]
+struct ReturnedNode {
+mut:
+	children []ReturnedNode
+}
+
+fn make_returned_tree() ReturnedTree {
+	mut tree := ReturnedTree{}
+	tree.root.children << ReturnedNode{}
+	tree.refs['root'] = &tree.root
+	tree.refs['child'] = &tree.root.children[0]
+	return tree
+}
+
+fn test_returned_struct_with_internal_pointer_map_field_auto_str() {
+	tree := make_returned_tree()
+	s := '${tree}'.replace('\n', '|')
+	assert s.contains('ReturnedTree{|')
+	assert s.contains('root: ReturnedNode{|        children: [<circular>]|    }')
+	assert s.contains("refs: {'root': &ReturnedNode{|        children: [<circular>]|    }, 'child': &ReturnedNode{|        children: []|    }}")
+}
