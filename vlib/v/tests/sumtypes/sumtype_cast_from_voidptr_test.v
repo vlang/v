@@ -14,9 +14,9 @@ fn test_main() {
 	})
 	event := unsafe { &Event(some_ptr) }
 
-	d1 := &EventA(event)
+	d1 := unsafe { &EventA(event) }
 	assert d1.a == 1234
 
-	d2 := &EventB(event)
+	d2 := unsafe { &EventB(event) }
 	assert d2.b == 1234
 }

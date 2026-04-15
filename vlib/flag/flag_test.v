@@ -10,18 +10,18 @@ fn test_if_flag_not_given_return_default_values() {
 
 fn test_if_flag_not_given_can_return_option_defaults() {
 	mut fp := flag.new_flag_parser([])
-	assert fp.bool('a_bool', 0, ?bool(none), '') == none
-	assert fp.int('an_int', 0, ?int(none), '') == none
-	assert fp.float('a_float', 0, ?f64(none), '') == none
-	assert fp.string('a_string', 0, ?string(none), '') == none
+	assert fp.bool_val('a_bool', 0, ?bool(none), '') == none
+	assert fp.int_val('an_int', 0, ?int(none), '') == none
+	assert fp.float_val('a_float', 0, ?f64(none), '') == none
+	assert fp.string_val('a_string', 0, ?string(none), '') == none
 }
 
 fn test_if_flag_not_given_preserves_typed_option_defaults() {
 	mut fp := flag.new_flag_parser([])
-	a_bool := fp.bool('a_bool', 0, ?bool(true), '')
-	an_int := fp.int('an_int', 0, ?int(42), '')
-	a_float := fp.float('a_float', 0, ?f64(1.5), '')
-	a_string := fp.string('a_string', 0, ?string('stuff'), '')
+	a_bool := fp.bool_val('a_bool', 0, ?bool(true), '')
+	an_int := fp.int_val('an_int', 0, ?int(42), '')
+	a_float := fp.float_val('a_float', 0, ?f64(1.5), '')
+	a_string := fp.string_val('a_string', 0, ?string('stuff'), '')
 	if value := a_bool {
 		assert value
 	} else {
@@ -68,10 +68,10 @@ fn test_flag_values_can_be_returned_as_options() {
 		'stuff',
 		'--a_bool=false',
 	])
-	a_bool := fp.bool('a_bool', 0, ?bool(none), '')
-	an_int := fp.int('an_int', 0, ?int(none), '')
-	a_float := fp.float('a_float', 0, ?f64(none), '')
-	a_string := fp.string('a_string', 0, ?string(none), '')
+	a_bool := fp.bool_val('a_bool', 0, ?bool(none), '')
+	an_int := fp.int_val('an_int', 0, ?int(none), '')
+	a_float := fp.float_val('a_float', 0, ?f64(none), '')
+	a_string := fp.string_val('a_string', 0, ?string(none), '')
 	if value := a_bool {
 		assert !value
 	} else {

@@ -1927,6 +1927,17 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		node.should_be_skipped =
 			c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
+	if node.kind == .free && func.mod == 'builtin' && args_len == 1
+		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method && !c.is_builtin_mod
+		&& !c.inside_recheck {
+		if node.args[0].expr is ast.Ident {
+			if node.args[0].expr.name == c.table.cur_fn.receiver.name {
+				c.warn('calling builtin `free()` on a method receiver will cause a' +
+					' runtime crash when the receiver is stack-allocated; free individual fields instead',
+					node.pos)
+			}
+		}
+	}
 
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {

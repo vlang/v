@@ -1,3 +1,4 @@
+// vtest build: windows
 type C.WCHAR = u16
 type C.PWSTR = &C.WCHAR
 type C.FILE_SHARE_MODE = u32

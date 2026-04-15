@@ -491,8 +491,8 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 // send multiple responses. Like with the SSE.
 pub fn (mut ctx Context) takeover_conn() {
 	ctx.takeover = true
-	// For the fasthttp backend: create a TcpConn from the raw fd on demand
 	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
+		// For the fasthttp backend: create a TcpConn from the raw fd on demand.
 		// Set the fd to blocking mode — fasthttp uses non-blocking sockets,
 		// but TcpConn.write() expects blocking behavior for reliable writes.
 		$if !windows {
@@ -512,6 +512,19 @@ pub fn (mut ctx Context) takeover_conn() {
 			read_timeout:  30 * time.second
 			write_timeout: 30 * time.second
 		}
+	} else if ctx.conn != unsafe { nil } {
+		// For the picoev backend: the connection exists but uses non-blocking I/O.
+		// Switch to blocking mode for reliable SSE writes.
+		fd := ctx.conn.handle
+		$if !windows {
+			flags := C.fcntl(fd, C.F_GETFL, 0)
+			if flags != -1 {
+				C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+			}
+		}
+		ctx.conn.is_blocking = true
+		ctx.conn.set_read_timeout(30 * time.second)
+		ctx.conn.set_write_timeout(30 * time.second)
 	}
 }
 
