@@ -1266,10 +1266,19 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 	} else if expr is ast.TypeNode {
 		typ := c.get_expr_type(expr)
 		right_type := c.unwrap_generic(typ)
+		mut right_sym := c.table.sym(right_type)
+		if right_sym.kind == .generic_inst {
+			gi := right_sym.info as ast.GenericInst
+			if gi.parent_idx > 0 && gi.parent_idx < c.table.type_symbols.len
+				&& c.table.type_symbols[gi.parent_idx].kind == .interface
+				&& !gi.concrete_types.any(c.type_has_unresolved_generic_parts(it)) {
+				c.table.generic_insts_to_concrete()
+				right_sym = c.table.sym(right_type)
+			}
+		}
 		if c.type_resolver.bind_matching_generic_type(resolved_left_type, right_type) {
 			return true
 		}
-		right_sym := c.table.sym(right_type)
 		if right_sym.kind == .placeholder || right_type.has_flag(.generic) {
 			c.error('unknown type `${right_sym.name}`', expr.pos)
 		}
@@ -1278,7 +1287,8 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 				&& c.table.does_type_implement_interface(resolved_left_type, right_type)
 		}
 		if right_sym.info is ast.FnType && c.comptime.comptime_for_method_var == left_name {
-			return c.table.fn_signature(right_sym.info.func,
+			right_fn_type := right_sym.info as ast.FnType
+			return c.table.fn_signature(right_fn_type.func,
 				skip_receiver: true
 				type_only:     true
 			) == c.table.fn_signature(c.comptime.comptime_for_method,
