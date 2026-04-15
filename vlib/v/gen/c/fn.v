@@ -2266,6 +2266,20 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 		}
 		.clone, .repeat {
 			array_info := left_sym.info as ast.Array
+			elem_sym :=
+				g.table.final_sym(g.table.unaliased_type(g.unwrap_generic(array_info.elem_type)))
+			if node.kind == .repeat && elem_sym.kind == .interface {
+				fn_name := g.register_array_interface_repeat_fn(g.resolve_return_type(node))
+				g.write('${fn_name}(')
+				if node.left_type.is_ptr() {
+					g.write('*'.repeat(node.left_type.nr_muls()))
+				}
+				g.expr(ast.Expr(node.left))
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(')')
+				return true
+			}
 			array_depth := g.get_array_depth(array_info.elem_type)
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
 			mut is_range_slice := false

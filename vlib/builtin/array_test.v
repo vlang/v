@@ -325,6 +325,43 @@ fn test_deep_repeat() {
 	assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5], [6, 6]]]
 }
 
+interface RepeatClonedInterfaceValue {
+	get_value() int
+mut:
+	change()
+}
+
+struct RepeatClonedStructValue {
+mut:
+	value int
+}
+
+fn (sample RepeatClonedStructValue) get_value() int {
+	return sample.value
+}
+
+fn (mut sample RepeatClonedStructValue) change() {
+	sample.value += 2
+}
+
+fn test_repeat_clones_interface_elements() {
+	mut samples := [
+		RepeatClonedInterfaceValue(RepeatClonedStructValue{
+			value: 1
+		}),
+		RepeatClonedInterfaceValue(RepeatClonedStructValue{
+			value: 2
+		}),
+	].repeat(2)
+	samples[0].change()
+	samples[1].change()
+	samples[1].change()
+	assert samples[0].get_value() == 3
+	assert samples[1].get_value() == 6
+	assert samples[2].get_value() == 1
+	assert samples[3].get_value() == 2
+}
+
 fn test_right() {
 	a := [1, 2, 3, 4]
 	c := a[1..a.len]
