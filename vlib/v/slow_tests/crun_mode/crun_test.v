@@ -28,7 +28,7 @@ fn test_crun_simple_v_program_several_times() {
 	mut sw := time.new_stopwatch()
 	mut times := []i64{}
 	for i in 0 .. 10 {
-		vcrun()
+		vcrun(vprogram_file)
 		times << sw.elapsed().microseconds()
 		time.sleep(50 * time.millisecond)
 		sw.restart()
@@ -41,10 +41,55 @@ fn test_crun_simple_v_program_several_times() {
 	}
 }
 
-fn vcrun() {
-	cmd := '${os.quoted_path(vexe)} crun ${os.quoted_path(vprogram_file)}'
+fn test_crun_rebuilds_when_local_c_source_changes() {
+	module_dir := os.join_path(crun_folder, 'c_source_module')
+	main_file := os.join_path(module_dir, 'code_tests.v')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'v.mod'), "Module {\n\tname: 'c_source_module'\n}\n")!
+	os.write_file(main_file, [
+		'module main',
+		'',
+		'#include "@VMODROOT/code.c"',
+		'',
+		'@[keep_args_alive]',
+		'fn C.foo(arg [4]int)',
+		'',
+		'fn main() {',
+		'\tC.foo([1, 2, 3, 4]!)',
+		'}',
+	].join('\n'))!
+	write_c_source_module(module_dir, 'OLD', 2)!
+	// `crun` cache invalidation uses second-resolution mtimes.
+	time.sleep(1100 * time.millisecond)
+	first := vcrun(module_dir)
+	assert first.output == 'OLD:0:1\nOLD:1:2\n'
+	time.sleep(1100 * time.millisecond)
+	write_c_source_module(module_dir, 'NEW', 4)!
+	second := vcrun(module_dir)
+	assert second.output == 'NEW:0:1\nNEW:1:2\nNEW:2:3\nNEW:3:4\n'
+}
+
+fn write_c_source_module(module_dir string, prefix string, count int) ! {
+	os.write_file(os.join_path(module_dir, 'code.c'), [
+		'#include <stdio.h>',
+		'',
+		'void foo(int arg[4]) {',
+		'\tfor (int i = 0; i < ${count}; ++i) {',
+		'\t\tprintf("${prefix}:%d:%d\\n", i, arg[i]);',
+		'\t}',
+		'}',
+	].join('\n'))!
+}
+
+fn vcrun(target string) os.Result {
+	cmd := '${os.quoted_path(vexe)} crun ${os.quoted_path(target)}'
 	eprintln('now: ${time.now().format_ss_milli()} | cmd: ${cmd}')
 	res := os.execute(cmd)
 	assert res.exit_code == 0
+	return res
+}
+
+fn test_crun_simple_v_program_output() {
+	res := vcrun(vprogram_file)
 	assert res.output == 'hello'
 }
