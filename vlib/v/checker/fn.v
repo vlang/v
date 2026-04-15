@@ -968,6 +968,91 @@ fn (c &Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Ty
 	return true
 }
 
+fn (mut c Checker) expected_callback_fn() ?ast.Fn {
+	if c.expected_type in [0, ast.void_type] {
+		return none
+	}
+	expected_type := c.unwrap_generic(c.recheck_concrete_type(c.expected_type))
+	expected_sym := c.table.final_sym(expected_type)
+	if expected_sym.kind != .function || expected_sym.info !is ast.FnType {
+		return none
+	}
+	return (expected_sym.info as ast.FnType).func
+}
+
+fn (mut c Checker) omitted_callback_param(expected_param ast.Param, idx int, pos token.Pos, prefix string) ast.Param {
+	param_type := c.recheck_concrete_type(expected_param.typ)
+	return ast.Param{
+		pos:        pos
+		name:       '${prefix}${idx}'
+		is_mut:     expected_param.is_mut
+		is_shared:  expected_param.is_shared
+		is_atomic:  expected_param.is_atomic
+		typ:        param_type
+		orig_typ:   if expected_param.orig_typ == 0 { param_type } else { expected_param.orig_typ }
+		type_pos:   pos
+		on_newline: expected_param.on_newline
+	}
+}
+
+fn (mut c Checker) append_omitted_callback_params(mut params []ast.Param, expected_params []ast.Param, pos token.Pos, prefix string, scope &ast.Scope) {
+	if params.len >= expected_params.len {
+		return
+	}
+	for idx in params.len .. expected_params.len {
+		param := c.omitted_callback_param(expected_params[idx], idx, pos, prefix)
+		params << param
+		if scope != unsafe { nil } {
+			unsafe {
+				mut scope_ := &ast.Scope(scope)
+				scope_.register(ast.Var{
+					name:          param.name
+					typ:           param.typ
+					generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
+					is_mut:        c.implicit_mutability_enabled() || param.is_mut
+					is_auto_deref: param.is_mut
+					pos:           param.pos
+					is_used:       true
+					is_arg:        true
+					is_stack_obj:  !param.typ.has_flag(.shared_f)
+						&& (param.is_mut || param.typ.is_ptr())
+				})
+			}
+		}
+	}
+}
+
+fn (mut c Checker) expand_anon_fn_callback_signature(mut node ast.AnonFn) {
+	expected_fn := c.expected_callback_fn() or { return }
+	if node.decl.params.len >= expected_fn.params.len || node.decl.is_variadic
+		|| expected_fn.is_variadic {
+		return
+	}
+	mut params := node.decl.params.clone()
+	c.append_omitted_callback_params(mut params, expected_fn.params, node.decl.pos,
+		'__v_anon_unused_param_', node.decl.scope)
+	node.decl.params = params
+	mut func := ast.Fn{
+		params:      params
+		is_variadic: node.decl.is_variadic
+		return_type: node.decl.return_type
+		is_method:   false
+	}
+	name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.decl.pos)
+	func.name = name
+	node.decl = ast.FnDecl{
+		...node.decl
+		name:   name
+		params: params
+	}
+	idx := c.table.find_or_register_fn_type(func, true, false)
+	node.typ = if node.decl.generic_names.len > 0 {
+		ast.new_type(idx).set_flag(.generic)
+	} else {
+		ast.new_type(idx)
+	}
+}
+
 fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
@@ -985,6 +1070,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	if node.decl.no_body {
 		c.error('anonymous function must declare a body', node.decl.pos)
 	}
+	c.expand_anon_fn_callback_signature(mut node)
 	for param in node.decl.params {
 		if param.name == '' {
 			c.error('use `_` to name an unused parameter', param.pos)
