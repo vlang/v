@@ -1,0 +1,15 @@
+const rows = 2
+const cols = 2
+
+fn main() {
+	row1 := [..]int[1, 2]
+	row2 := [..]int[3, 4]
+	_ := [..][..]int[
+		row1,
+		row2,
+	]
+	_ = [rows][cols]int[
+		row1,
+		row2,
+	]
+}

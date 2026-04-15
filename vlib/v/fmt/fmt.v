@@ -1849,6 +1849,8 @@ pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 }
 
 pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
+	typed_fixed_literal := node.is_fixed && node.has_val && node.typ != 0
+		&& node.typ != ast.void_type
 	if node.is_fixed && node.is_option {
 		f.write('?')
 	}
@@ -1883,6 +1885,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		f.write('}')
 		return
+	}
+	if typed_fixed_literal && f.array_init_depth == 0 {
+		fixed_literal_type := if node.literal_typ != ast.void_type {
+			node.literal_typ
+		} else {
+			node.typ.clear_option_and_result()
+		}
+		f.write(f.type_to_str_using_aliases(fixed_literal_type, f.mod2alias))
 	}
 	// `[1,2,3]`
 	f.write('[')
@@ -2044,6 +2054,9 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	// `[100]u8`
 	if node.is_fixed {
 		if node.has_val {
+			if typed_fixed_literal {
+				return
+			}
 			if node.from_to_fixed_size {
 				f.write('.to_fixed_size()')
 			} else {
