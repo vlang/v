@@ -230,6 +230,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
+	if voidptr(ctx.conn) == unsafe { nil } {
+		return false
+	}
 
 	mut resp := http.Response{
 		body: res
