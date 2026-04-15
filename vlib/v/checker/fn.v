@@ -839,8 +839,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// Register implicit context var
 	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
 	if node.is_method && node.return_type == typ_veb_result {
+		is_veb_app_method := !c.has_veb_context(node.receiver.typ)
 		for param in node.params[1..] {
-			if c.has_veb_context(param.typ) && !param.is_mut {
+			if is_veb_app_method && c.has_veb_context(param.typ) && !param.is_mut {
 				c.error('veb app method `${node.name}` must declare context parameter `${param.name}` as mutable, e.g. `mut ${param.name} ${c.table.type_to_str(param.typ)}`',
 					param.pos)
 				break
@@ -888,6 +889,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			is_mut:       true
 			is_stack_obj: false // true
 		})
+		if is_veb_app_method {
+			for param in node.params[1..] {
+				if c.has_veb_context(param.typ) || c.supports_veb_string_bound_param(param.typ) {
+					continue
+				}
+				c.error('veb app method `${node.name}` parameter `${param.name}` has unsupported type `${c.table.type_to_str(param.typ)}`; parameters after the context are populated from strings and must be `string`, integer, or `bool`',
+					param.pos)
+			}
+		}
 	}
 	c.stmts(mut node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
@@ -5115,6 +5125,12 @@ fn (mut c Checker) has_veb_context(typ ast.Type) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) supports_veb_string_bound_param(typ ast.Type) bool {
+	unaliased_typ := c.table.unalias_num_type(c.unwrap_generic(typ))
+	return unaliased_typ == ast.string_type || unaliased_typ.is_int()
+		|| unaliased_typ.idx() == ast.bool_type_idx
 }
 
 fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_type ast.Type, param_typ ast.Type,

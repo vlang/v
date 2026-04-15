@@ -231,6 +231,8 @@ parameters are passed as arguments. V will cast the parameter to any of V's prim
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `@['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
+Parameters after `ctx` are populated from strings, so they currently must be `string`,
+integer, or `bool`.
 
 **Example:**
 
