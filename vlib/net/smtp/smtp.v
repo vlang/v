@@ -28,6 +28,13 @@ pub enum BodyType {
 	html
 }
 
+// Message stores one body variant and optional attachments for a Mail.
+pub struct Message {
+pub:
+	body        string
+	attachments []Attachment
+}
+
 // Config stores the settings used to connect a new SMTP client.
 pub struct Config {
 pub:
@@ -52,6 +59,7 @@ pub mut:
 	encrypted bool
 }
 
+// Mail stores the message headers and MIME payload sent by Client.send.
 pub struct Mail {
 pub:
 	from        string
@@ -63,6 +71,8 @@ pub:
 	body_type   BodyType
 	body        string
 	attachments []Attachment
+	html        Message
+	text        Message
 	boundary    string
 }
 
@@ -255,10 +265,11 @@ fn (mut c Client) send_body(cfg Mail) ! {
 }
 
 fn (cfg &Mail) message_data() string {
-	is_html := cfg.body_type == .html
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
-	mut sb := strings.new_builder(200 + cfg.body.len + cfg.attachments.len * 200)
+	parts, attachments := cfg.mime_parts()
+	mut sb := strings.new_builder(200 + cfg.body.len + cfg.text.body.len + cfg.html.body.len +
+		(cfg.attachments.len + cfg.text.attachments.len + cfg.html.attachments.len) * 200)
 	sb.write_string('From: ${cfg.from}\r\n')
 	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
 	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
@@ -270,29 +281,109 @@ fn (cfg &Mail) message_data() string {
 	} else {
 		sb.write_string('Subject: ${cfg.subject}\r\n')
 	}
-	if cfg.attachments.len > 0 {
+	if parts.len > 1 || attachments.len > 0 {
 		sb.write_string('MIME-Version: 1.0\r\n')
-		sb.write_string('Content-Type: multipart/mixed; boundary="${cfg.boundary}"\r\n\r\n')
-		sb.write_string('--${cfg.boundary}\r\n')
 	}
-	if is_html {
+
+	boundary := cfg.mime_boundary()
+	if parts.len > 1 && attachments.len > 0 {
+		alternative_boundary := '${boundary}-alternative'
+		write_multipart_header(mut sb, 'multipart/mixed', boundary)
+		write_multipart_boundary(mut sb, boundary)
+		write_multipart_header(mut sb, 'multipart/alternative', alternative_boundary)
+		for part in parts {
+			write_multipart_boundary(mut sb, alternative_boundary)
+			write_message_part(mut sb, part)
+		}
+		write_multipart_end(mut sb, alternative_boundary)
+		write_attachments(mut sb, attachments, boundary)
+	} else if parts.len > 1 {
+		write_multipart_header(mut sb, 'multipart/alternative', boundary)
+		for part in parts {
+			write_multipart_boundary(mut sb, boundary)
+			write_message_part(mut sb, part)
+		}
+		write_multipart_end(mut sb, boundary)
+	} else if attachments.len > 0 {
+		write_multipart_header(mut sb, 'multipart/mixed', boundary)
+		write_multipart_boundary(mut sb, boundary)
+		write_message_part(mut sb, parts[0])
+		write_attachments(mut sb, attachments, boundary)
+	} else {
+		write_message_part(mut sb, parts[0])
+	}
+	sb.write_string('.\r\n')
+	return sb.str()
+}
+
+struct MimePart {
+	body_type BodyType
+	body      string
+}
+
+fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
+	if cfg.text.body != '' || cfg.html.body != '' {
+		mut parts := []MimePart{cap: 2}
+		mut attachments := []Attachment{cap: cfg.text.attachments.len + cfg.html.attachments.len}
+		if cfg.text.body != '' {
+			parts << MimePart{
+				body_type: .text
+				body:      cfg.text.body
+			}
+		}
+		attachments << cfg.text.attachments
+		if cfg.html.body != '' {
+			parts << MimePart{
+				body_type: .html
+				body:      cfg.html.body
+			}
+		}
+		attachments << cfg.html.attachments
+		return parts, attachments
+	}
+	return [MimePart{
+		body_type: cfg.body_type
+		body:      cfg.body
+	}], cfg.attachments
+}
+
+fn (cfg &Mail) mime_boundary() string {
+	if cfg.boundary != '' {
+		return cfg.boundary
+	}
+	return 'v-smtp-boundary'
+}
+
+fn write_multipart_header(mut sb strings.Builder, multipart_type string, boundary string) {
+	sb.write_string('Content-Type: ${multipart_type}; boundary="${boundary}"\r\n\r\n')
+}
+
+fn write_multipart_boundary(mut sb strings.Builder, boundary string) {
+	sb.write_string('--${boundary}\r\n')
+}
+
+fn write_multipart_end(mut sb strings.Builder, boundary string) {
+	sb.write_string('--${boundary}--\r\n')
+}
+
+fn write_message_part(mut sb strings.Builder, part MimePart) {
+	if part.body_type == .html {
 		sb.write_string('Content-Type: text/html; charset=UTF-8\r\n')
 	} else {
 		sb.write_string('Content-Type: text/plain; charset=UTF-8\r\n')
 	}
 	sb.write_string('Content-Transfer-Encoding: base64\r\n\r\n')
-	sb.write_string(fold_base64(base64.encode_str(cfg.body)))
+	sb.write_string(fold_base64(base64.encode_str(part.body)))
 	sb.write_string('\r\n')
-	if cfg.attachments.len > 0 {
-		for attachment in cfg.attachments {
-			sb.write_string('--${cfg.boundary}\r\n')
-			sb.write_string(attachment.to_string())
-			sb.write_string('\r\n')
-		}
-		sb.write_string('--${cfg.boundary}--\r\n')
+}
+
+fn write_attachments(mut sb strings.Builder, attachments []Attachment, boundary string) {
+	for attachment in attachments {
+		write_multipart_boundary(mut sb, boundary)
+		sb.write_string(attachment.to_string())
+		sb.write_string('\r\n')
 	}
-	sb.write_string('.\r\n')
-	return sb.str()
+	write_multipart_end(mut sb, boundary)
 }
 
 fn (a &Attachment) to_string() string {
