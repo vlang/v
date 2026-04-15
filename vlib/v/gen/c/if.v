@@ -36,6 +36,9 @@ fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name st
 }
 
 fn (mut g Gen) if_guard_error_cleanup(var_name string, typ ast.Type) {
+	if g.pref.building_v {
+		return
+	}
 	cvar_name := c_name(var_name)
 	if typ.has_flag(.result) {
 		g.writeln('\tif (${cvar_name}.is_error) { builtin___v_free(${cvar_name}.err._object); }')
