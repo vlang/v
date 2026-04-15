@@ -33,7 +33,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		return ast.void_type
 	}
 	if exp_sym.info is ast.FnType {
-		if node.params.len != exp_sym.info.func.params.len {
+		if node.params.len > exp_sym.info.func.params.len {
 			c.error('lambda expression has ${node.params.len} params, but the expected fn callback needs ${exp_sym.info.func.params.len} params',
 				node.pos)
 			return ast.void_type
@@ -54,6 +54,14 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				type_pos: x.pos
 			}
 		}
+		for idx in node.params.len .. exp_sym.info.func.params.len {
+			eparam_type := exp_sym.info.func.params[idx].typ
+			if eparam_type.has_flag(.generic) {
+				generic_types[eparam_type] = true
+			}
+		}
+		c.append_omitted_callback_params(mut params, exp_sym.info.func.params, node.pos,
+			'__v_lambda_unused_param_', unsafe { nil })
 
 		is_variadic := false
 		return_type := exp_sym.info.func.return_type
