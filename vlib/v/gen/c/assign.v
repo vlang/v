@@ -1391,8 +1391,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(right)
 					g.writeln(';')
 				} else {
-					right := val as ast.Ident
-					v_var = right.name
+					v_var = g.expr_string(val)
 				}
 				pos := g.out.len
 				g.expr(left)
@@ -1795,7 +1794,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.is_shared = var_type.has_flag(.shared_f)
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							g.array_init(val, c_name(ident.name))
+							g.array_init(val, g.ident_cname(ident))
 						} else {
 							g.write('{0}')
 						}
@@ -1829,7 +1828,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr_with_opt_or_block(val, val_type, left, var_type,
 								is_option_auto_heap)
 						} else if val is ast.ArrayInit {
-							cvar_name := c_name(ident.name)
+							cvar_name := g.ident_cname(ident)
 							if val.is_fixed && ident.name in g.defer_vars {
 								g.go_before_last_stmt()
 								g.empty_line = true
@@ -1842,7 +1841,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						} else if val is ast.ParExpr && val.expr is ast.ArrayInit {
 							array_init := val.expr as ast.ArrayInit
-							cvar_name := c_name(ident.name)
+							cvar_name := g.ident_cname(ident)
 							if array_init.is_fixed && ident.name in g.defer_vars {
 								g.go_before_last_stmt()
 								g.empty_line = true
@@ -2269,20 +2268,20 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				}
 				if left_sym.info is ast.FnType {
 					g.write_fn_ptr_decl(&left_sym.info, '_var_${left.pos.pos}')
-					g.writeln(' = ${anon_ctx}${c_name(left.name)};')
+					g.writeln(' = ${anon_ctx}${g.ident_cname(left)};')
 				} else if left_is_auto_deref_var {
 					styp := g.styp(left_typ).trim('*')
 					if left_sym.kind == .array {
-						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(${anon_ctx}${c_name(left.name)});')
+						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(${anon_ctx}${g.ident_cname(left)});')
 					} else {
-						g.writeln('${styp} _var_${left.pos.pos} = *${anon_ctx}${c_name(left.name)};')
+						g.writeln('${styp} _var_${left.pos.pos} = *${anon_ctx}${g.ident_cname(left)};')
 					}
 				} else {
 					styp := g.styp(left_typ)
 					if left_sym.kind == .array {
-						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(&${anon_ctx}${c_name(left.name)});')
+						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(&${anon_ctx}${g.ident_cname(left)});')
 					} else {
-						g.writeln('${styp} _var_${left.pos.pos} = ${anon_ctx}${c_name(left.name)};')
+						g.writeln('${styp} _var_${left.pos.pos} = ${anon_ctx}${g.ident_cname(left)};')
 					}
 				}
 			}

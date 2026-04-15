@@ -5037,6 +5037,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	old_expected_type := c.expected_type
 	if c.table.sym(base_to_type).kind == .sum_type && node.expr is ast.ArrayInit {
 		c.expected_type = ast.void_type
+	} else if node.expr is ast.Ident && node.expr.language == .c {
+		c.expected_type = base_to_type
 	}
 	expr_is_ident_or_cast := node.expr is ast.Ident || node.expr is ast.CastExpr
 	node.expr_type = c.expr(mut node.expr) // type to be casted
@@ -6332,6 +6334,33 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		if x := c.table.global_scope.find_const(node.name) {
 			return x.typ
+		}
+		expected_c_type := c.expected_type.clear_option_and_result()
+		if c.inside_assign && expected_c_type != ast.void_type
+			&& expected_c_type != ast.none_type {
+			if obj := c.file.global_scope.find_global(node.name) {
+				node.kind = .global
+				node.info = ast.IdentVar{
+					typ: obj.typ
+				}
+				node.obj = *obj
+				return obj.typ
+			}
+			c_global := ast.GlobalField{
+				name:      node.name
+				pos:       node.pos
+				typ_pos:   node.pos
+				typ:       expected_c_type
+				language:  .c
+				is_extern: true
+			}
+			c.table.global_scope.register(c_global)
+			node.kind = .global
+			node.info = ast.IdentVar{
+				typ: expected_c_type
+			}
+			node.obj = c_global
+			return expected_c_type
 		}
 		c_name := node.name.all_after('C.')
 		if !c.pref.translated && !c.file.is_translated && c_name.len > 0 && c_name[0] >= `a`
