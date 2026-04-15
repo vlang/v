@@ -321,6 +321,11 @@ functions. They may be organized by topic, but still *not yet* structured
 enough to be their own separate reusable modules, and you want to compile
 them all into one program.
 
+As long as those files are in the same folder and declare the same module
+(usually `module main` for an application), you can call the helper
+functions directly from the other files. You do not need to `import`
+sibling `.v` files.
+
 In other languages, you would have to use includes or a build system
 to enumerate all files, compile them separately to object files,
 then link them into one final executable.
