@@ -77,6 +77,12 @@ pub fn (mut app App) html_page() vweb.Result {
 	return app.html('<h1>ok</h1>')
 }
 
+@['/sum/:num_a/:num_b']
+pub fn (mut app App) sum(num_a f32, num_b f32) vweb.Result {
+	linfo('>>>>> ${@LOCATION}, num_a: ${num_a}, num_b: ${num_b}')
+	return app.text('The sum is: ${num_a + num_b}')
+}
+
 // the following serve custom routes
 @['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
