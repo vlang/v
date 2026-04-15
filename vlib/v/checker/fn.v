@@ -3707,6 +3707,7 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 		c.error('option handling cannot be done in `spawn` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
+	c.mark_spawn_expr_ref_args(node.call_expr)
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
@@ -3732,6 +3733,26 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
 		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))
+	}
+}
+
+fn (mut c Checker) mark_spawn_expr_ref_args(call ast.CallExpr) {
+	if call.is_method && call.receiver_type.is_ptr() {
+		c.mark_spawn_expr_ref_arg(call.left)
+	}
+	for arg in call.args {
+		c.mark_spawn_expr_ref_arg(arg.expr)
+	}
+}
+
+fn (mut c Checker) mark_spawn_expr_ref_arg(expr ast.Expr) {
+	mut clean_expr := expr
+	clean_expr = clean_expr.remove_par()
+	if mut clean_expr is ast.PrefixExpr {
+		if clean_expr.op == .amp {
+			mut referenced_expr := clean_expr.right
+			c.mark_as_referenced(mut &referenced_expr, false)
+		}
 	}
 }
 
