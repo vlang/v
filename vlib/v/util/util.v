@@ -89,9 +89,22 @@ fn temporary_tool_executable_path(vroot string, tool_name string) string {
 	return path_of_executable(os.join_path(os.vtmp_dir(), 'tools', sanitized_vroot, tool_name))
 }
 
-fn fallback_tool_executable_path(vroot string, tool_name string, tool_source string, tool_exe string, is_recompilation_disabled bool) string {
-	if is_recompilation_disabled && !os.exists(tool_exe) && os.is_file(tool_source) {
-		return temporary_tool_executable_path(vroot, tool_name)
+fn fallback_tool_executable_path(vexe string, vroot string, tool_name string, tool_source string, tool_exe string, is_recompilation_disabled bool) string {
+	if !os.is_file(tool_source) {
+		return tool_exe
+	}
+	temporary_tool_exe := temporary_tool_executable_path(vroot, tool_name)
+	if is_recompilation_disabled && !os.exists(tool_exe) {
+		return temporary_tool_exe
+	}
+	tool_exe_dir := os.dir(tool_exe)
+	if os.is_writable(tool_exe_dir) {
+		return tool_exe
+	}
+	// Reuse a writable temp location when the packaged tool can not be updated in place.
+	if !os.exists(tool_exe) || os.exists(temporary_tool_exe)
+		|| should_recompile_tool(vexe, tool_source, tool_name, tool_exe) {
+		return temporary_tool_exe
 	}
 	return tool_exe
 }
@@ -141,7 +154,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
-	tool_exe = fallback_tool_executable_path(vroot, tool_name, tool_source, tool_exe,
+	tool_exe = fallback_tool_executable_path(vexe, vroot, tool_name, tool_source, tool_exe,
 		is_recompilation_disabled)
 	is_using_temporary_tool_exe := tool_exe != original_tool_exe
 	if !os.exists(tool_exe) && !os.exists(tool_source) {
