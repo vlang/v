@@ -7757,7 +7757,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									styp := g.base_type(resolved_var.typ)
 									g.write('*(${styp}*)')
 								}
-							} else if !g.arg_no_auto_deref {
+							} else if !g.arg_no_auto_deref && !typ.is_ptr() {
 								g.write('*')
 							}
 						} else if interface_var_needs_deref

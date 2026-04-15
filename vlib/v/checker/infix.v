@@ -883,8 +883,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					&& !c.comptime.is_comptime(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
-					if typ !in left_sym.info.variants
-						&& c.unwrap_generic(typ) !in left_sym.info.variants {
+					variant_typ := if left_type.nr_muls() > 0
+						&& typ.nr_muls() <= left_type.nr_muls() {
+						typ.set_nr_muls(0)
+					} else {
+						typ
+					}
+					if variant_typ !in left_sym.info.variants
+						&& c.unwrap_generic(variant_typ) !in left_sym.info.variants {
 						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`', right_pos)
 					}
 				} else if left_sym.info is ast.Interface {

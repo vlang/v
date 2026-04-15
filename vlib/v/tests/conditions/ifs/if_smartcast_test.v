@@ -325,3 +325,20 @@ fn test_nested_pointer_smartcast() {
 		}
 	}
 }
+
+struct RefVariantType {
+	value int
+}
+
+type RefSmartcastSum = RefVariantType | int
+
+fn test_reference_sumtype_variant_smartcast() {
+	sum_ref := &RefSmartcastSum(RefVariantType{
+		value: 7
+	})
+	if sum_ref is &RefVariantType {
+		assert sum_ref.value == 7
+	} else {
+		assert false
+	}
+}
