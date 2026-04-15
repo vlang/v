@@ -183,10 +183,12 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 						return c.check_type_equality(expr.left.typ, expr.right)!
 					} else if expr.left is ast.SelectorExpr {
 						if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
-							if expr.left.expr.info is ast.IdentFn {
-								if expr.right is ast.TypeNode {
-									return expr.left.expr.info.typ == expr.right.typ
-								}
+							ident_typ := match expr.left.expr.info {
+								ast.IdentFn { expr.left.expr.info.typ }
+								ast.IdentVar { expr.left.expr.info.typ }
+							}
+							if ident_typ != ast.no_type {
+								return c.check_type_equality(ident_typ, expr.right)!
 							}
 						} else if expr.left.field_name == 'unaliased_typ' {
 							if expr.left.expr is ast.Ident {
