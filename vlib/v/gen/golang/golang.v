@@ -1198,6 +1198,9 @@ pub fn (mut f Gen) sql_stmt_line(node ast.SqlStmtLine) {
 		.insert {
 			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
+		.upsert {
+			f.writeln('upsert ${node.object_var} into ${table_name}')
+		}
 		.update {
 			f.write('update ${table_name} set ')
 			for i, col in node.updated_columns {

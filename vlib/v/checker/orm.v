@@ -527,7 +527,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	inserting_object_name := node.object_var
 
-	if node.kind == .insert && !node.is_generated {
+	if node.kind in [.insert, .upsert] && !node.is_generated {
 		inserting_object := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
@@ -617,6 +617,17 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+
+	if node.kind == .upsert {
+		for field in non_primitive_fields {
+			field_typ, field_sym := c.get_non_array_type(field.typ)
+			if field_sym.kind == .struct && c.table.sym(field_typ).name == 'time.Time' {
+				continue
+			}
+			c.orm_error('upsert currently supports only primitive, enum, and time.Time fields',
+				field.pos)
+		}
+	}
 
 	for i, column in node.updated_columns {
 		updated_fields := node.fields.filter(it.name == column)

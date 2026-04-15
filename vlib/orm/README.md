@@ -169,6 +169,24 @@ for the V struct field (e.g., 0 int, or an empty string).  This allows the
 database to insert default values for auto-increment fields and where you have
 specified a default.
 
+### Upsert
+
+`upsert` inserts a row or updates the matching row when one of the table's
+primary or unique keys already exists.
+
+```v ignore
+foo := Foo{
+    name: 'abc'
+}
+
+sql db {
+    upsert foo into Foo
+}!
+```
+
+`upsert` currently supports flat ORM rows with primitive, enum, and `time.Time`
+fields.
+
 ### Select
 
 You can select rows from the database by passing the struct as the table, and

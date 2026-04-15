@@ -368,6 +368,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
 		kind = .delete
+	} else if n == 'upsert' {
+		kind = .upsert
 	} else if n == 'update' {
 		kind = .update
 	} else if n == 'create' {
@@ -426,7 +428,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	if kind != .delete {
 		if kind == .update {
 			table_type = p.parse_type()
-		} else if kind == .insert {
+		} else if kind in [.insert, .upsert] {
 			expr := p.expr(0)
 			if expr is ast.Ident {
 				inserted_var = expr.name
@@ -440,7 +442,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	mut updated_columns := []string{}
 	mut update_exprs := []ast.Expr{cap: 5}
 	mut update_data_expr := ast.empty_expr
-	if kind == .insert && n != 'into' {
+	if kind in [.insert, .upsert] && n != 'into' {
 		p.error('expecting `into`')
 		return ast.SqlStmtLine{}
 	} else if kind == .update {
@@ -470,7 +472,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 	mut table_pos := p.tok.pos()
 	mut where_expr := ast.empty_expr
-	if kind == .insert {
+	if kind in [.insert, .upsert] {
 		table_pos = p.tok.pos()
 		table_type = p.parse_type()
 	} else if kind == .update {

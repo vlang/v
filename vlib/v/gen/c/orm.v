@@ -347,6 +347,8 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	} else if node.kind == .insert {
 		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr,
 			table_attrs)
+	} else if node.kind == .upsert {
+		g.write_orm_upsert(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .update {
 		g.write_orm_update(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .delete {
@@ -522,6 +524,192 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 	g.write_orm_insert_with_last_ids(node, connection_var_name, table_name, last_ids_variable_name,
 		result_var_name, '', '', or_expr)
+}
+
+fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string,
+	table_attrs []ast.Attr) {
+	g.writeln('// sql { upsert into `${table_name}` }')
+	fields := node.fields
+	auto_fields := get_auto_field_idxs(fields)
+	mut inserting_object_type := ast.void_type
+	mut member_access_type := '.'
+	if node.scope != unsafe { nil } {
+		inserting_object := node.scope.find(node.object_var) or {
+			verror('`${node.object_var}` is not found in scope')
+		}
+		if inserting_object.typ.is_ptr() {
+			member_access_type = '->'
+		}
+		inserting_object_type = inserting_object.typ
+	}
+	inserting_object_sym := g.table.sym(inserting_object_type)
+	data_var_name := g.new_tmp_var()
+	g.writeln('orm__QueryData ${data_var_name} = (orm__QueryData){')
+	g.indent++
+	if fields.len > 0 {
+		g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+		g.indent++
+		g.writeln('_MOV((string[${fields.len}]){')
+		g.indent++
+		for field in fields {
+			g.writeln('_S("${g.get_orm_column_name_from_struct_field(field)}"),')
+		}
+		g.indent--
+		g.writeln('})')
+		g.indent--
+		g.writeln('),')
+		g.writeln('.data = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
+		g.indent++
+		g.writeln('_MOV((orm__Primitive[${fields.len}]){')
+		g.indent++
+		for field in fields {
+			final_field_typ := g.table.final_type(field.typ)
+			sym := g.table.sym(final_field_typ)
+			mut typ := g.orm_primitive_field_name(field.typ)
+			mut ctyp := sym.cname
+			typ = vint2int(typ)
+			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
+			if final_field_typ.has_flag(.option) {
+				g.writeln('${var}.state == 2 ? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
+			} else if inserting_object_sym.kind == .sum_type {
+				table_sym := g.table.sym(node.table_expr.typ)
+				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
+				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
+			} else {
+				g.writeln('orm__${typ}_to_primitive(${var}),')
+			}
+		}
+		g.indent--
+		g.writeln('})')
+		g.indent--
+		g.writeln('),')
+	} else {
+		g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+		g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0),')
+	}
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	if auto_fields.len > 0 {
+		g.writeln('.auto_fields = builtin__new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
+		g.indent++
+		g.write('_MOV((${ast.int_type_name}[${auto_fields.len}]){')
+		for i in auto_fields {
+			g.write(' ${i},')
+		}
+		g.writeln(' })),')
+		g.indent--
+	} else {
+		g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	}
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.indent--
+	g.writeln('};')
+	conflict_groups := g.get_orm_upsert_conflict_groups(fields, table_attrs)
+	conflict_groups_var_name := g.new_tmp_var()
+	g.write('Array_Array_string ${conflict_groups_var_name} = ')
+	g.write_orm_upsert_conflict_groups(conflict_groups)
+	g.writeln(';')
+	prepared_var_name := g.new_tmp_var()
+	g.writeln('orm__UpsertData ${prepared_var_name} = orm__prepare_upsert(${data_var_name}, ${conflict_groups_var_name});')
+	g.writeln('${result_name}_void ${result_var_name};')
+	g.writeln('if (!${prepared_var_name}.valid) {')
+	g.indent++
+	g.write('${result_var_name} = orm__upsert_missing_conflict_error(')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(');')
+	g.indent--
+	g.writeln('} else {')
+	g.indent++
+	select_result_var_name := g.new_tmp_var()
+	g.writeln('${result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
+	g.indent++
+	g.writeln('${connection_var_name}._object, // Connection object')
+	g.writeln('(orm__SelectConfig){')
+	g.indent++
+	g.write('.table = ')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
+	g.writeln('.aggregate_kind = orm__AggregateKind__count,')
+	g.writeln('.aggregate_field = _S(""),')
+	g.writeln('.has_where = true,')
+	g.writeln('.has_order = false,')
+	g.writeln('.order = _S(""),')
+	g.writeln('.order_type = orm__OrderType__asc,')
+	g.writeln('.has_limit = false,')
+	g.writeln('.primary = _S("id"),')
+	g.writeln('.has_offset = false,')
+	g.writeln('.has_distinct = false,')
+	g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+	g.writeln('.select_exprs = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+	g.writeln('.types = builtin__new_array_from_c_array(1, 1, sizeof(${ast.int_type_name}), _MOV((${ast.int_type_name}[1]){ ${ast.int_type.idx()}, })),')
+	g.writeln('.joins = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__JoinConfig), 0),')
+	g.indent--
+	g.writeln('},')
+	g.writeln('(orm__QueryData){')
+	g.indent++
+	g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+	g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.indent--
+	g.writeln('},')
+	g.writeln('${prepared_var_name}.where')
+	g.indent--
+	g.writeln(');')
+	g.writeln('${result_var_name}.is_error = ${select_result_var_name}.is_error;')
+	g.writeln('${result_var_name}.err = ${select_result_var_name}.err;')
+	g.writeln('if (!${result_var_name}.is_error) {')
+	g.indent++
+	count_rows_var_name := g.new_tmp_var()
+	count_var_name := g.new_tmp_var()
+	g.writeln('Array_Array_orm__Primitive ${count_rows_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
+	g.writeln('${ast.int_type_name} ${count_var_name} = orm__upsert_count(${count_rows_var_name});')
+	g.writeln('if (${count_var_name} == 0) {')
+	g.indent++
+	g.writeln('${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
+	g.indent++
+	g.writeln('${connection_var_name}._object, // Connection object')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
+	g.writeln('${data_var_name}')
+	g.indent--
+	g.writeln(');')
+	g.indent--
+	g.writeln('} else if (${count_var_name} == 1) {')
+	g.indent++
+	g.writeln('if (${prepared_var_name}.insert_data.fields.len == 0) {')
+	g.indent++
+	g.writeln('${result_var_name} = (${result_name}_void){0};')
+	g.indent--
+	g.writeln('} else {')
+	g.indent++
+	g.writeln('${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
+	g.indent++
+	g.writeln('${connection_var_name}._object, // Connection object')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
+	g.writeln('${prepared_var_name}.insert_data,')
+	g.writeln('${prepared_var_name}.where')
+	g.indent--
+	g.writeln(');')
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln('} else {')
+	g.indent++
+	g.write('${result_var_name} = orm__upsert_ambiguous_error(')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(');')
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln('}')
 }
 
 // write_orm_update writes C code that calls ORM functions for updating rows.
@@ -1798,6 +1986,89 @@ fn (_ &Gen) get_orm_struct_primary_field(fields []ast.StructField) ?ast.StructFi
 		}
 	}
 	return none
+}
+
+fn (g &Gen) get_orm_upsert_conflict_groups(fields []ast.StructField, table_attrs []ast.Attr) [][]string {
+	mut groups := [][]string{}
+	mut named_unique_groups := map[string][]string{}
+	mut named_unique_group_order := []string{}
+	mut seen := map[string]bool{}
+	for field in fields {
+		column_name := g.get_orm_column_name_from_struct_field(field)
+		for attr in field.attrs {
+			match attr.name {
+				'primary' {
+					key := column_name
+					if key !in seen {
+						groups << [column_name]
+						seen[key] = true
+					}
+				}
+				'unique' {
+					if attr.arg != '' && attr.kind == .string {
+						if attr.arg !in named_unique_groups {
+							named_unique_groups[attr.arg] = []string{}
+							named_unique_group_order << attr.arg
+						}
+						named_unique_groups[attr.arg] << column_name
+					} else {
+						key := column_name
+						if key !in seen {
+							groups << [column_name]
+							seen[key] = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+	}
+	for group_name in named_unique_group_order {
+		group := named_unique_groups[group_name]
+		key := group.join(',')
+		if key !in seen {
+			groups << group
+			seen[key] = true
+		}
+	}
+	for attr in table_attrs {
+		if attr.name != 'unique_key' || attr.arg == '' || attr.kind != .string {
+			continue
+		}
+		mut group := []string{}
+		for raw_field_name in attr.arg.split(',') {
+			field_name := raw_field_name.trim_space()
+			if field_name != '' {
+				group << field_name
+			}
+		}
+		key := group.join(',')
+		if group.len > 0 && key !in seen {
+			groups << group
+			seen[key] = true
+		}
+	}
+	return groups
+}
+
+fn (mut g Gen) write_orm_upsert_conflict_groups(groups [][]string) {
+	if groups.len == 0 {
+		g.write('builtin____new_array_with_default_noscan(0, 0, sizeof(Array_string), 0)')
+		return
+	}
+	g.write('builtin__new_array_from_c_array(${groups.len}, ${groups.len}, sizeof(Array_string), _MOV((Array_string[${groups.len}]){')
+	for group in groups {
+		if group.len == 0 {
+			g.write('builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
+			continue
+		}
+		g.write('builtin__new_array_from_c_array(${group.len}, ${group.len}, sizeof(string), _MOV((string[${group.len}]){')
+		for field_name in group {
+			g.write('_S("${field_name}"),')
+		}
+		g.write('})),')
+	}
+	g.write('}))')
 }
 
 // return indexes of any auto-increment fields or fields with default values

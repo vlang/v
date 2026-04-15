@@ -637,43 +637,16 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
-	mut data_fields := []string{}
-	mut data_data := []Primitive{}
+	insert_data := prepare_insert_query_data(data)
 
 	match kind {
 		.insert {
 			mut values := []string{}
 			mut select_fields := []string{}
 
-			for i in 0 .. data.fields.len {
-				column_name := data.fields[i]
-				is_auto_field := i in data.auto_fields
-
-				if data.data.len > 0 {
-					// skip fields and allow the database to insert default and
-					// serial (auto-increment) values where a default (or no)
-					// value was provided
-					if is_auto_field {
-						mut x := data.data[i]
-						skip_auto_field := match mut x {
-							Null { true }
-							string { x == '' }
-							i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
-							f32, f64 { f64(x) == 0 }
-							time.Time { x == time.Time{} }
-							bool { !x }
-							else { false }
-						}
-						if skip_auto_field {
-							continue
-						}
-					}
-
-					data_data << data.data[i]
-				}
+			for column_name in insert_data.fields {
 				select_fields << '${q}${column_name}${q}'
 				values << factory_insert_qm_value(num, qm, c)
-				data_fields << column_name
 				c++
 			}
 
@@ -744,14 +717,155 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
 	}
+	returned_data := if kind == .insert { insert_data } else { data }
 
-	return str, QueryData{
-		fields: data_fields
-		data:   data_data
-		types:  data.types
-		kinds:  data.kinds
-		is_and: data.is_and
+	return str, returned_data
+}
+
+fn prepare_insert_query_data(data QueryData) QueryData {
+	mut prepared := QueryData{
+		types:       data.types.clone()
+		kinds:       data.kinds.clone()
+		auto_fields: data.auto_fields.clone()
+		is_and:      data.is_and.clone()
 	}
+	for i, column_name in data.fields {
+		if i >= data.data.len {
+			prepared.fields << column_name
+			continue
+		}
+		if i in data.auto_fields && should_skip_insert_auto_field(data.data[i]) {
+			continue
+		}
+		prepared.fields << column_name
+		prepared.data << data.data[i]
+	}
+	return prepared
+}
+
+fn should_skip_insert_auto_field(value Primitive) bool {
+	mut x := value
+	return match mut x {
+		Null { true }
+		string { x == '' }
+		i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
+		f32, f64 { f64(x) == 0 }
+		time.Time { x == time.Time{} }
+		bool { !x }
+		else { false }
+	}
+}
+
+fn build_upsert_where(data QueryData, conflict_groups [][]string) !QueryData {
+	mut field_indexes := map[string]int{}
+	for i, field in data.fields {
+		field_indexes[field] = i
+	}
+	mut where := QueryData{}
+	for group in conflict_groups {
+		if group.len == 0 {
+			continue
+		}
+		start := where.fields.len
+		if start > 0 {
+			where.is_and << false
+		}
+		for i, field_name in group {
+			idx := field_indexes[field_name] or {
+				return error('${@FN}(): missing conflict field `${field_name}` in upsert data')
+			}
+			if idx >= data.data.len {
+				return error('${@FN}(): missing conflict value for `${field_name}` in upsert data')
+			}
+			where.fields << field_name
+			where.data << data.data[idx]
+			where.kinds << .eq
+			if i > 0 {
+				where.is_and << true
+			}
+		}
+		if group.len > 1 {
+			where.parentheses << [start, where.fields.len - 1]
+		}
+	}
+	return where
+}
+
+fn upsert_conflict_groups(data QueryData, conflict_groups [][]string) [][]string {
+	mut present_fields := map[string]bool{}
+	for field in data.fields {
+		present_fields[field] = true
+	}
+	mut usable := [][]string{}
+	for group in conflict_groups {
+		if group.len == 0 {
+			continue
+		}
+		mut ok := true
+		for field_name in group {
+			if field_name !in present_fields {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			usable << group
+		}
+	}
+	return usable
+}
+
+pub struct UpsertData {
+pub:
+	valid bool
+pub mut:
+	insert_data QueryData
+	where       QueryData
+}
+
+// prepare_upsert resolves the filtered insert data and the conflict `WHERE` clause for an upsert.
+pub fn prepare_upsert(data QueryData, conflict_groups [][]string) UpsertData {
+	insert_data := prepare_insert_query_data(data)
+	usable_groups := upsert_conflict_groups(insert_data, conflict_groups)
+	if usable_groups.len == 0 {
+		return UpsertData{
+			insert_data: insert_data
+		}
+	}
+	where := build_upsert_where(insert_data, usable_groups) or {
+		return UpsertData{
+			insert_data: insert_data
+		}
+	}
+	return UpsertData{
+		valid:       true
+		insert_data: insert_data
+		where:       where
+	}
+}
+
+// upsert_count converts a `select count(*)` ORM result into an integer count.
+pub fn upsert_count(result [][]Primitive) int {
+	if result.len == 0 || result[0].len == 0 {
+		return 0
+	}
+	count_val := result[0][0]
+	return match count_val {
+		int { count_val }
+		i64 { int(count_val) }
+		u64 { int(count_val) }
+		else { 0 }
+	}
+}
+
+// upsert_missing_conflict_error returns the standard missing-conflict error for SQL upserts.
+pub fn upsert_missing_conflict_error(table Table) ! {
+	return error('upsert(): table `${table.name}` needs at least one primary or unique field with a concrete value')
+}
+
+// upsert_ambiguous_error returns the standard ambiguous-match error for SQL upserts.
+pub fn upsert_ambiguous_error(table Table) ! {
+	return error('upsert(): upsert on table `${table.name}` matched multiple rows')
 }
 
 // Generates an sql select stmt, from universal parameter
