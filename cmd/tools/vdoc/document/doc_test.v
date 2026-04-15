@@ -92,3 +92,24 @@ fn test_merge_doc_comments_keeps_blockquotes_on_separate_lines() {
 	]
 	assert doc.merge_doc_comments(comments).trim_space() == '> **Note**\n> line one\n> line two'
 }
+
+fn test_merge_doc_comments_preserves_readme_markdown() {
+	readme := '# Description
+
+`regex` is a small but powerful regular expression library,
+written in pure V.
+
+1. The basic atomic elements of this regex engine are the tokens.
+   In a query string a simple character is a token.
+
+> **Note**
+> `regex` is *not* PCRE compatible.
+'
+	comments := [
+		doc.DocComment{
+			is_readme: true
+			text:      readme
+		},
+	]
+	assert doc.merge_doc_comments(comments) == readme
+}

@@ -275,3 +275,19 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 	input := '```sh\n> prompt\n> next\n```'
 	assert prepare_markdown_for_html(input) == input
 }
+
+fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
+	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{
+			table: ast.new_table()
+		}
+	}
+	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
+	assert !out.contains('tokens.In')
+	assert !out.contains('mostsimple')
+	assert !out.contains('not<code>abc</code>')
+	assert out.contains('tokens. In a query string a simple character is a token.')
+	assert out.contains('the most simple token')
+	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
+}

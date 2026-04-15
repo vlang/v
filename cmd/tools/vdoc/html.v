@@ -731,21 +731,29 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 }
 
 fn prepare_markdown_for_html(text string) string {
-	if !text.contains('>') {
+	if !text.contains('\n') {
 		return text
 	}
 	lines := text.split_into_lines()
 	mut prepared := []string{cap: lines.len}
 	mut is_codeblock := false
+	mut prev_line := ''
 	for i, line in lines {
 		trimmed := line.trim_space()
 		if trimmed.starts_with('```') {
 			prepared << line
 			is_codeblock = !is_codeblock
+			prev_line = line
 			continue
 		}
 		if is_codeblock {
 			prepared << line
+			prev_line = line
+			continue
+		}
+		if line_continues_previous_block(prev_line, line) && prepared.len > 0 {
+			prepared[prepared.len - 1] += ' ' + trimmed
+			prev_line = line
 			continue
 		}
 		next_line := if i + 1 < lines.len { lines[i + 1] } else { '' }
@@ -754,8 +762,83 @@ fn prepare_markdown_for_html(text string) string {
 		} else {
 			prepared << line
 		}
+		prev_line = line
 	}
 	return prepared.join('\n')
+}
+
+fn line_continues_previous_block(prev_line string, line string) bool {
+	prev_trimmed := prev_line.trim_space()
+	trimmed := line.trim_space()
+	if prev_trimmed == '' || trimmed == '' {
+		return false
+	}
+	if prev_trimmed.starts_with('>') || trimmed.starts_with('>') {
+		return false
+	}
+	if prev_trimmed.starts_with('```') || trimmed.starts_with('```') {
+		return false
+	}
+	if markdown_line_starts_new_block(line) {
+		return false
+	}
+	if prev_trimmed.starts_with('#') || prev_trimmed.starts_with('|')
+		|| markdown_line_is_horizontal_rule(prev_trimmed) {
+		return false
+	}
+	return true
+}
+
+fn markdown_line_starts_new_block(line string) bool {
+	trimmed := line.trim_space()
+	if trimmed == '' {
+		return false
+	}
+	if trimmed.starts_with('#') || trimmed.starts_with('>') || trimmed.starts_with('|')
+		|| trimmed.starts_with('```') || markdown_line_is_horizontal_rule(trimmed) {
+		return true
+	}
+	if markdown_indent_width(line) >= 4 {
+		return true
+	}
+	return markdown_line_is_list_item(trimmed)
+}
+
+fn markdown_line_is_list_item(line string) bool {
+	if line.len > 1 && line[1] == ` ` && line[0] in [`-`, `*`, `+`] {
+		return true
+	}
+	return line.len > 2 && line[2] == ` ` && line[1] == `.` && line[0].is_digit()
+}
+
+fn markdown_line_is_horizontal_rule(line string) bool {
+	line_no_spaces := line.replace(' ', '')
+	if line_no_spaces.len < 3 {
+		return false
+	}
+	for ch in ['-', '=', '*', '_', '~'] {
+		if line_no_spaces.starts_with(ch.repeat(3))
+			&& line_no_spaces.count(ch) == line_no_spaces.len {
+			return true
+		}
+	}
+	return false
+}
+
+fn markdown_indent_width(line string) int {
+	mut width := 0
+	for ch in line {
+		if ch == ` ` {
+			width++
+			continue
+		}
+		if ch == `\t` {
+			width += 4
+			continue
+		}
+		break
+	}
+	return width
 }
 
 fn blockquote_line_needs_hard_break(line string, next_line string) bool {
