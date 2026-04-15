@@ -229,6 +229,36 @@ fn test_buffered_reader_retries_zero_length_reads() {
 	assert r.total_read == total
 }
 
+struct NegativeReader {
+mut:
+	read_count int
+}
+
+fn (mut r NegativeReader) read(mut _ []u8) !int {
+	r.read_count++
+	return -1
+}
+
+fn test_read_all_errors_on_negative_read_count() {
+	mut reader := &NegativeReader{}
+	if _ := read_all(reader: reader) {
+		assert false
+	} else {
+		assert err.msg() == 'io.read_all: reader returned a negative read count (-1)'
+	}
+	assert reader.read_count == 1
+}
+
+fn test_read_any_errors_on_negative_read_count() {
+	mut reader := &NegativeReader{}
+	if _ := read_any(mut reader) {
+		assert false
+	} else {
+		assert err.msg() == 'io.read_any: reader returned a negative read count (-1)'
+	}
+	assert reader.read_count == 1
+}
+
 fn test_totalread_readline() {
 	text := 'Some testing text\nmore_enters'
 	mut s := StringReaderTest{
