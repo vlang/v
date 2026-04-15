@@ -2338,17 +2338,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		if mut left_node is ast.CallExpr {
 			left_node.is_return_used = true
 		}
-		if p.pref.is_fmt {
-			if mut left_node is ast.Ident {
-				// `time.now()` without `time imported` is processed as a method call with `time` being
-				// a `left_node` expression. Import `time` automatically.
-				// TODO: fetch all available modules
-				if left_node.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
-					&& !left_node.scope.known_var(left_node.name) {
-					p.register_implied_import(left_node.name)
-				}
-			}
-		}
+		p.maybe_register_implied_vlib_import(left)
 		mcall_expr := ast.CallExpr{
 			left:               left
 			name:               field_name
@@ -2417,7 +2407,41 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if mut left_node is ast.CallExpr {
 		left_node.is_return_used = true
 	}
+	p.maybe_register_implied_vlib_import(left)
 	return sel_expr
+}
+
+fn (p &Parser) vfmt_vlib_path() string {
+	if p.pref.vlib != '' {
+		return p.pref.vlib
+	}
+	return os.join_path(os.dir(pref.vexe_path()), 'vlib')
+}
+
+fn (mut p Parser) maybe_register_implied_vlib_import(left ast.Expr) {
+	if !p.pref.is_fmt || left !is ast.Ident {
+		return
+	}
+	left_node := left as ast.Ident
+	if left_node.name == '' || left_node.name in p.imports
+		|| left_node.name == p.mod.all_after_last('.')
+		|| left_node.name == p.cur_fn_name.all_after_last('.')
+		|| left_node.scope.known_var(left_node.name) {
+		return
+	}
+	for _, imported_mod in p.imports {
+		if imported_mod == left_node.name || imported_mod.all_after_last('.') == left_node.name {
+			// The module is already imported, potentially under an alias, so this is not a missing import.
+			return
+		}
+	}
+	if left_node.name in p.imported_symbols {
+		return
+	}
+	// vfmt can infer a missing import when the selector prefix matches a top-level vlib module.
+	if os.is_dir(os.join_path(p.vfmt_vlib_path(), left_node.name)) {
+		p.register_implied_import(left_node.name)
+	}
 }
 
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
