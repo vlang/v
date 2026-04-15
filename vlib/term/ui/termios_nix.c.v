@@ -392,6 +392,138 @@ fn escape_end(buf string) int {
 	return 0
 }
 
+@[inline]
+fn modifiers_from_report_param(param int) Modifiers {
+	return match param {
+		2 { .shift }
+		3 { .alt }
+		4 { .shift | .alt }
+		5 { .ctrl }
+		6 { .ctrl | .shift }
+		7 { .ctrl | .alt }
+		8 { .ctrl | .alt | .shift }
+		else { unsafe { Modifiers(0) } }
+	}
+}
+
+@[inline]
+fn event_from_reported_key(codepoint int, raw string, modifiers Modifiers) &Event {
+	if codepoint <= 0 || codepoint > 0x10ffff {
+		return &Event{
+			typ:       .key_down
+			utf8:      raw
+			modifiers: modifiers
+		}
+	}
+	if codepoint <= 255 {
+		ch := u8(codepoint)
+		if ch == `\r` {
+			return &Event{
+				typ:       .key_down
+				ascii:     ch
+				code:      .enter
+				utf8:      raw
+				modifiers: modifiers
+			}
+		}
+		base := single_char(ch.ascii_str())
+		return &Event{
+			typ:       base.typ
+			ascii:     base.ascii
+			code:      base.code
+			utf8:      raw
+			modifiers: base.modifiers | modifiers
+		}
+	}
+	return &Event{
+		typ:       .key_down
+		utf8:      raw
+		modifiers: modifiers
+	}
+}
+
+fn parse_csi_u_key_sequence(single string, buf string) &Event {
+	if buf.len < 4 || buf[0] != `[` || buf[buf.len - 1] != `u` {
+		return unsafe { nil }
+	}
+	parts := buf[1..buf.len - 1].split(';')
+	if parts.len != 2 {
+		return unsafe { nil }
+	}
+	return event_from_reported_key(parts[0].int(), single,
+		modifiers_from_report_param(parts[1].int()))
+}
+
+fn parse_modify_other_keys_sequence(single string, buf string) &Event {
+	if buf.len < 7 || buf[0] != `[` || buf[buf.len - 1] != `~` {
+		return unsafe { nil }
+	}
+	parts := buf[1..buf.len - 1].split(';')
+	if parts.len != 3 || parts[0] != '27' {
+		return unsafe { nil }
+	}
+	return event_from_reported_key(parts[2].int(), single,
+		modifiers_from_report_param(parts[1].int()))
+}
+
+@[inline]
+fn key_code_from_csi_final(final u8) KeyCode {
+	return match final {
+		`A` { .up }
+		`B` { .down }
+		`C` { .right }
+		`D` { .left }
+		`F` { .end }
+		`H` { .home }
+		`P` { .f1 }
+		`Q` { .f2 }
+		`R` { .f3 }
+		`S` { .f4 }
+		else { .null }
+	}
+}
+
+@[inline]
+fn key_code_from_tilde_param(param string) KeyCode {
+	return match param {
+		'2' { .insert }
+		'3' { .delete }
+		'5' { .page_up }
+		'6' { .page_down }
+		'11' { .f1 }
+		'12' { .f2 }
+		'13' { .f3 }
+		'14' { .f4 }
+		'15' { .f5 }
+		'17' { .f6 }
+		'18' { .f7 }
+		'19' { .f8 }
+		'20' { .f9 }
+		'21' { .f10 }
+		'23' { .f11 }
+		'24' { .f12 }
+		else { .null }
+	}
+}
+
+fn parse_csi_modified_key_sequence(buf string) (KeyCode, Modifiers, bool) {
+	if buf.len < 5 || buf[0] != `[` {
+		return KeyCode.null, unsafe { Modifiers(0) }, false
+	}
+	final := buf[buf.len - 1]
+	params := buf[1..buf.len - 1].split(';')
+	if params.len != 2 {
+		return KeyCode.null, unsafe { Modifiers(0) }, false
+	}
+	modifiers := modifiers_from_report_param(params[1].int())
+	if final == `~` {
+		code := key_code_from_tilde_param(params[0])
+		return code, modifiers, code != .null
+	}
+	code := key_code_from_csi_final(final)
+	return code, modifiers, code != .null
+}
+
 fn escape_sequence(buf_ string) (&Event, int) {
 	end := escape_end(buf_)
 	single := buf_[..end] // read until the end of the sequence
@@ -501,6 +633,15 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	//   Special key combinations
 	// ----------------------------
 
+	e := parse_csi_u_key_sequence(single, buf)
+	if unsafe { e != nil } {
+		return e, end
+	}
+	e2 := parse_modify_other_keys_sequence(single, buf)
+	if unsafe { e2 != nil } {
+		return e2, end
+	}
+
 	mut code := KeyCode.null
 	mut modifiers := unsafe { Modifiers(0) }
 	match buf {
@@ -534,36 +675,11 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		modifiers.set(.shift)
 	}
 
-	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {
-		match buf[3] {
-			`2` { modifiers = .shift }
-			`3` { modifiers = .alt }
-			`4` { modifiers = .shift | .alt }
-			`5` { modifiers = .ctrl }
-			`6` { modifiers = .ctrl | .shift }
-			`7` { modifiers = .ctrl | .alt }
-			`8` { modifiers = .ctrl | .alt | .shift }
-			else {}
-		}
-
-		if buf[1] == `1` {
-			match buf[4] {
-				`A` { code = KeyCode.up }
-				`B` { code = KeyCode.down }
-				`C` { code = KeyCode.right }
-				`D` { code = KeyCode.left }
-				`F` { code = KeyCode.end }
-				`H` { code = KeyCode.home }
-				`P` { code = KeyCode.f1 }
-				`Q` { code = KeyCode.f2 }
-				`R` { code = KeyCode.f3 }
-				`S` { code = KeyCode.f4 }
-				else {}
-			}
-		} else if buf[1] == `5` {
-			code = KeyCode.page_up
-		} else if buf[1] == `6` {
-			code = KeyCode.page_down
+	if code == .null {
+		parsed_code, parsed_modifiers, ok := parse_csi_modified_key_sequence(buf)
+		if ok {
+			code = parsed_code
+			modifiers = parsed_modifiers
 		}
 	}
 
