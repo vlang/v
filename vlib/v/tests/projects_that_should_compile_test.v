@@ -93,6 +93,31 @@ fn test_running_subdir_project_with_parent_vmod_works() {
 	assert res.output.trim_space() == 'built'
 }
 
+fn test_running_module_with_same_module_subdirs_setting_works() {
+	root := os.join_path(os.vtmp_dir(), 'v_same_module_subdirs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'app', 'foo', 'src', 'internal', 'nested'))!
+	os.write_file(os.join_path(root, 'app', 'main.v'),
+		'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.answer())\n}\n')!
+	os.write_file(os.join_path(root, 'app', 'foo', 'v.mod'),
+		"Module {\n\tname: 'foo'\n\tsubdirs: ['internal']\n}\n")!
+	os.write_file(os.join_path(root, 'app', 'foo', 'src', 'foo.v'),
+		'module foo\n\npub fn answer() int {\n\treturn secret()\n}\n')!
+	os.write_file(os.join_path(root, 'app', 'foo', 'src', 'internal', 'nested', 'secret.v'),
+		'module foo\n\nfn secret() int {\n\treturn 42\n}\n')!
+	old_dir := os.getwd()
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	os.chdir(root)!
+	res := os.execute('${os.quoted_path(@VEXE)} run app/main.v')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '42'
+}
+
 fn test_module_resolution_is_independent_of_working_directory() {
 	workspace := setup_module_resolution_workdir_fixture()
 	defer {
