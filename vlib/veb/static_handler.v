@@ -145,3 +145,22 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host
 }
+
+fn app_static_handler[A](app &A) StaticHandler {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'StaticHandler' {
+					return app.$(field.name)
+				} $else $if field.typ is $struct {
+					return app_static_handler(app.$(field.name))
+				}
+			}
+		}
+	}
+	return StaticHandler{
+		static_files:      map[string]string{}
+		static_mime_types: map[string]string{}
+		static_hosts:      map[string]string{}
+	}
+}
