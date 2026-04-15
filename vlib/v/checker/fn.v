@@ -1932,9 +1932,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		&& !c.inside_recheck {
 		if node.args[0].expr is ast.Ident {
 			if node.args[0].expr.name == c.table.cur_fn.receiver.name {
-				c.warn('calling builtin `free()` on a method receiver will cause a' +
-					' runtime crash when the receiver is stack-allocated; free individual fields instead',
-					node.pos)
+				receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
+				if !receiver_sym.is_heap() {
+					c.warn('calling builtin `free()` on a method receiver will cause a' +
+						' runtime crash when the receiver is stack-allocated; free individual fields instead',
+						node.pos)
+				}
 			}
 		}
 	}

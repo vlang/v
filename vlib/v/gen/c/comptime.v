@@ -273,6 +273,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					g.write('&')
 				} else if !m.params[0].typ.is_ptr() && node.left.obj.typ.is_ptr() {
 					g.write('*'.repeat(node.left.obj.typ.nr_muls()))
+				} else if !m.params[0].typ.is_ptr() && node.left.obj.is_auto_deref {
+					g.write('*')
 				}
 			}
 		}

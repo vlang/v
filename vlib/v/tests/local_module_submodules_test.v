@@ -13,11 +13,11 @@ fn temp_output_path(name string) string {
 }
 
 fn project_path() string {
-	return os.join_path(os.vtmp_dir(), 'local_module_submodules')
+	return os.join_path(os.real_path(os.vtmp_dir()), 'local_module_submodules')
 }
 
 fn issue_24649_project_path() string {
-	return os.join_path(os.vtmp_dir(), 'issue_24649_local_module_submodules')
+	return os.join_path(os.real_path(os.vtmp_dir()), 'issue_24649_local_module_submodules')
 }
 
 fn write_local_module_submodules_project() {
