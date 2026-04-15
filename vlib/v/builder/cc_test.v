@@ -21,6 +21,16 @@ fn test_c_error_looks_like_cpp_header_with_source_excerpt() {
 	assert c_error_looks_like_cpp_header(gcc_output)
 }
 
+fn test_c_error_looks_like_cpp_header_with_imgui_style_operator_overload() {
+	imgui_output := "/tmp/fake_imgui.h:3:16: error: 'operator' declared as array of functions of type 'float (unsigned long)'\n    3 |     float operator[](unsigned long idx) const { return (&x)[idx]; }\n"
+	assert c_error_looks_like_cpp_header(imgui_output)
+}
+
+fn test_c_error_looks_like_cpp_header_with_class_keyword() {
+	class_output := "/usr/include/foo.hpp:4:1: error: unknown type name 'class'\n    4 | class Foo {\n"
+	assert c_error_looks_like_cpp_header(class_output)
+}
+
 fn test_c_error_looks_like_cpp_header_with_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert !c_error_looks_like_cpp_header(c_output)
