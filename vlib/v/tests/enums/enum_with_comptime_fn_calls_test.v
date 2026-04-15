@@ -9,8 +9,20 @@ enum Colors as u32 {
 	blue  = pack_color(0, 0, 255, 255)
 }
 
+enum CastedColors {
+	red   = int(pack_color(1, 2, 3, 4))
+	green = int(pack_color(5, 6, 7, 8))
+	blue  = int(pack_color(9, 10, 11, 12))
+}
+
 fn test_enum_values_from_comptime_function_calls() {
 	assert u32(Colors.red) == u32(0xff0000ff)
 	assert u32(Colors.green) == u32(0x00ff00ff)
 	assert u32(Colors.blue) == u32(0x0000ffff)
+}
+
+fn test_enum_values_from_casted_comptime_function_calls() {
+	assert int(CastedColors.red) == 0x01020304
+	assert int(CastedColors.green) == 0x05060708
+	assert int(CastedColors.blue) == 0x090a0b0c
 }
