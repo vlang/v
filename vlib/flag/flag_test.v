@@ -250,6 +250,29 @@ fn test_allow_to_build_usage_message() {
 	assert all_strings_found
 }
 
+fn test_usage_shows_default_values_for_defaulted_options() {
+	mut fp := flag.new_flag_parser([])
+	fp.int('count', `c`, 34, 'My parameter')
+	fp.float('ratio', `r`, 1.25, 'My ratio')
+	fp.string('name', `n`, 'guest', 'My name')
+	fp.string('empty', 0, '', 'Empty string')
+	fp.bool('verbose', `v`, false, 'Be chatty')
+	usage := fp.usage()
+	assert usage.contains('My parameter (default 34)')
+	assert usage.contains('My ratio (default 1.25)')
+	assert usage.contains('My name (default "guest")')
+	assert usage.contains('Empty string (default "")')
+	assert usage.contains('Be chatty (default false)')
+}
+
+fn test_builtin_flags_do_not_show_default_values_in_usage() {
+	mut fp := flag.new_flag_parser([])
+	fp.finalize() or { panic(err) }
+	usage := fp.usage()
+	assert !usage.contains('display this help and exit (default false)')
+	assert !usage.contains('output version information and exit (default false)')
+}
+
 fn test_if_app_name_given_but_no_show_usage_message_still_contain_version() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('flag_tool')

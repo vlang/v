@@ -21,6 +21,7 @@ Its main features are:
 - parses flags like `-f` or `--flag` or `--stuff=things` or `--things stuff`.
 - handles bool, int, float and string args.
 - can flexibly generate usage information, listing all the declared flags.
+- shows default values in `FlagParser` usage output for flags declared with parser defaults.
 
 See also the `cli` module, for a more complex command line option parser,
 that supports declaring multiple subcommands each having a separate set of
