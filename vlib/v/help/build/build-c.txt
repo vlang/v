@@ -171,6 +171,9 @@ see also `v help build`.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
+      On x86 C backend builds, `-m32` also selects the i386 target unless you
+      already passed an explicit `-arch`, so `$if i386 {}` and `*.i386.v`
+      files follow the same target width.
       NB: if you need to produce 32-bit code, *and* you are cross compiling
       to another OS, you may need to also set the environment variable
       VCROSS_COMPILER_NAME or pass `-cc your-compiler` for a one-off override,

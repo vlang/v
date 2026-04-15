@@ -881,7 +881,7 @@ void _vcleanup();
 #endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
-voidptr builtin__memdup(voidptr src, isize size);
+VV_LOC voidptr builtin__memdup(voidptr src, isize size);
 '
 
 const c_wyhash_headers = '
