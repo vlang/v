@@ -501,6 +501,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			}
 			else {}
 		}
+
 		if !is_valid_end_of_noreturn_fn {
 			pos = last_stmt.pos
 		}

@@ -158,6 +158,7 @@ fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
 		}
 		else {}
 	}
+
 	return c.table.generic_type_names(node.receiver.typ)
 }
 
@@ -1359,6 +1360,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			left_type = c.expr(mut node.left)
 		}
 	}
+
 	if node.name == '' {
 		left_type = c.check_expr_option_or_result_call(node.left, left_type)
 	} else {
@@ -1538,6 +1540,7 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 			return false
 		}
 	}
+
 	return false
 }
 
@@ -1623,6 +1626,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				return ast.void_type
 			}
 		}
+
 		panic('unreachable')
 	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .json_encode {
 		c.error('json.encode cannot handle shared data', node.pos)
@@ -3083,6 +3087,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 				else {}
 			}
+
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
 				if m := c.table.find_method(type_sym, method_name) {
@@ -3208,6 +3213,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					else {}
 				}
+
 				node.return_type = info.func.return_type
 				if info.func.return_type.has_flag(.generic) {
 					node.return_type_generic = info.func.return_type
@@ -3311,6 +3317,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 						}
 						else {}
 					}
+
 					if left_sym.generic_types.len > 0 {
 						generic_names := left_sym.generic_types.map(c.table.sym(it).name).join(', ')
 						sname = '${left_sym.ngname}<${generic_names}>'
@@ -3407,6 +3414,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		else {}
 	}
+
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 	if method_generic_names_len > 0 && concrete_types.len == method_generic_names_len
 		&& concrete_types.all(!it.has_flag(.generic))
@@ -4491,6 +4499,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 		}
 		else {}
 	}
+
 	node.receiver_type = node.left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
@@ -4731,6 +4740,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				arg_type
 			}
 		}
+
 		normalized_ret_type := if c.table.sym(ret_type).kind == .alias {
 			unaliased_ret_type := c.table.unaliased_type(ret_type)
 			if unaliased_ret_type.has_option_or_result() {
@@ -5022,6 +5032,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				arg_type
 			}
 		}
+
 		node.return_type = c.table.find_or_register_array_fixed(c.unwrap_generic(ret_type),
 			array_info.size, array_info.size_expr, false)
 		if node.return_type.has_flag(.shared_f) {

@@ -216,6 +216,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 								}
 								else {}
 							}
+
 							generic_names := generic_types.map(t.table.sym(it).name)
 							for _, gt_name in cur_fn.generic_names {
 								if gt_name in generic_names

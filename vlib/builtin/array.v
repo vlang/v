@@ -135,7 +135,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	total_size := u64(cap_) * u64(elm_size)
-	mut data := unsafe { voidptr(0) }
+	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_uninit(total_size)
 	} else {
@@ -939,12 +939,11 @@ pub fn (a &array) clone_to_depth(depth int) array {
 			unsafe { arr.set_unsafe(i, &str_clone) }
 		}
 		return arr
-	} else {
-		if a.data != 0 && source_capacity_in_bytes > 0 {
-			unsafe { vmemcpy(arr.data, a.data, source_capacity_in_bytes) }
-		}
-		return arr
 	}
+	if a.data != 0 && source_capacity_in_bytes > 0 {
+		unsafe { vmemcpy(arr.data, a.data, source_capacity_in_bytes) }
+	}
+	return arr
 }
 
 // we manually inline this for single operations for performance without -prod

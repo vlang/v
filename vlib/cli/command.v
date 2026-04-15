@@ -88,6 +88,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.help.flag: ${cmd.defaults.help.flag}'
 		}
 	}
+
 	match cmd.defaults.man {
 		bool {
 			res << '	defaults.man: ${cmd.defaults.man}'
@@ -97,6 +98,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.man.flag: ${cmd.defaults.man.flag}'
 		}
 	}
+
 	match cmd.defaults.version {
 		bool {
 			res << '	defaults.version: ${cmd.defaults.version}'
@@ -106,6 +108,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.version.flag: ${cmd.defaults.version.flag}'
 		}
 	}
+
 	res << '}'
 	return res.join('\n')
 }

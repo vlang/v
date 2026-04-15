@@ -379,6 +379,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 		}
 		else {}
 	}
+
 	return error('unsupported architecture')
 }
 
@@ -635,6 +636,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 					enum_vals.fields[field.name] = Number(value as u64)
 				}
 			}
+
 			if decl.is_flag {
 				match mut value {
 					i64 {
@@ -958,6 +960,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 		}
 		else {}
 	}
+
 	mut ts_ := g.table.sym(typ)
 	ts_.size = int(size)
 	ts_.align = int(align)
@@ -1019,6 +1022,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 		ast.GlobalField { ident.obj.typ }
 		ast.Var { ident.obj.typ }
 	}
+
 	if typ != 0 {
 		return g.get_type_size(typ)
 	}

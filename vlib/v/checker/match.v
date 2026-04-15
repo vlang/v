@@ -210,6 +210,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 										return ast.void_type
 									}
 								}
+
 								c_str = '${node.cond} == ${expr.name}'
 							}
 							ast.SelectorExpr {}
@@ -231,6 +232,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								return ast.void_type
 							}
 						}
+
 						if comptime_match_branch_result {
 							break
 						}
@@ -478,6 +480,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 									}
 									else {}
 								}
+
 								if needs_explicit_cast {
 									c.error('${num} does not fit the range of `${c.table.type_to_str(infer_cast_type)}`',
 										stmt.pos)
@@ -810,6 +813,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					key = c.get_match_case_int_key(mut expr, cond_final_sym) or { (*expr).str() }
 				}
 			}
+
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
 				c.error('match case `${key}` is handled more than once', branch.pos)

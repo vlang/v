@@ -76,6 +76,7 @@ pub fn (cmd &Command) manpage() string {
 			.string, .string_array { mdoc += ' Ar string' }
 			else {}
 		}
+
 		mdoc += '\n'
 	}
 	for i in 0 .. cmd.required_args {

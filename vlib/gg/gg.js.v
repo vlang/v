@@ -521,6 +521,7 @@ fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Eve
 			e.mouse_button = .invalid
 		}
 	}
+
 	e.mouse_x = int(event.offsetX)
 	e.mouse_y = int(event.offsetY)
 	e.mouse_dx = int(event.movementX)

@@ -144,6 +144,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.contains(pat)
 			}
 		}
+
 		if hit {
 			if is_dir(fpath) {
 				subdirs << fpath
@@ -506,6 +507,7 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
+
 	C.chmod(&char(path_s.str), int(new_mode))
 }
 

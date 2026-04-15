@@ -309,6 +309,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 			}
 			else {}
 		}
+
 		sb.write_u8(ch)
 		i++
 	}

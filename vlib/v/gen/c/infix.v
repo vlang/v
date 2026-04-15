@@ -22,6 +22,7 @@ fn (mut g Gen) gen_safe_shift_expr(node ast.InfixExpr) {
 			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		}
 	}
+
 	g.write(g.safe_shift_fn_name(left_type, node.op))
 	g.write('(')
 	g.expr(node.left)
@@ -82,6 +83,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 		}
 	}
+
 	if node.auto_locked != '' {
 		g.writeln(';')
 		g.write('sync__RwMutex_unlock(&${node.auto_locked}->mtx)')
@@ -1085,6 +1087,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 				g.expr(array_expr)
 			}
 		}
+
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
 		}
@@ -1137,6 +1140,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 				ast.no_type
 			}
 		}
+
 		sub_sym := g.table.sym(sub_type)
 		g.write('_${left_sym.cname}_${sub_sym.cname}_index')
 		return
@@ -1217,6 +1221,7 @@ fn (mut g Gen) collect_string_concat_parts(expr ast.Expr, mut parts []ast.Expr) 
 		}
 		else {}
 	}
+
 	parts << expr
 }
 
@@ -1638,6 +1643,7 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1940,6 +1946,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			is_safe_mod { 'VSAFE_MOD_${typ_str}' }
 			else { '' }
 		}
+
 		g.write(vsafe_fn_name)
 		g.write('(')
 		if is_safe_div || is_safe_mod {

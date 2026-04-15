@@ -136,27 +136,36 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 
 	// `if n is ast.Ident && n.is_mut { ... }`
+	// Walk the left side of && chains to find `is` checks for smartcasting.
+	// NOTE: Uses a regular loop with explicit casts instead of
+	// `for mut left_node is ast.InfixExpr` to avoid a codegen bug where
+	// reassignment inside such a loop overwrites the pointed-to InfixExpr
+	// struct instead of reassigning the Expr variable.
 	if !c.inside_sql && node.op == .and {
-		mut left_node := node.left
-		for mut left_node is ast.InfixExpr {
-			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
-				if left_node.right.op == .key_is {
+		mut left_expr := node.left
+		for {
+			if left_expr !is ast.InfixExpr {
+				break
+			}
+			mut left_infix := unsafe { &(left_expr as ast.InfixExpr) }
+			if left_infix.op == .and && left_infix.right is ast.InfixExpr {
+				mut right_infix := unsafe { &(left_infix.right as ast.InfixExpr) }
+				if right_infix.op == .key_is {
 					// search last `n is ast.Ident` in the left
-					from_type := c.expr(mut left_node.right.left)
-					to_type := c.expr(mut left_node.right.right)
-					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type, to_type)
+					from_type := c.expr(mut right_infix.left)
+					to_type := c.expr(mut right_infix.right)
+					c.autocast_in_if_conds(mut node.right, right_infix.left, from_type, to_type)
 				}
 			}
-			if left_node.op == .key_is {
+			if left_infix.op == .key_is {
 				// search `n is ast.Ident`
-				from_type := c.expr(mut left_node.left)
-				to_type := c.expr(mut left_node.right)
-				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
+				from_type := c.expr(mut left_infix.left)
+				to_type := c.expr(mut left_infix.right)
+				c.autocast_in_if_conds(mut node.right, left_infix.left, from_type, to_type)
 				break
-			} else if left_node.op == .and {
-				next_left := left_node.left
-				if next_left is ast.InfixExpr {
-					left_node = next_left
+			} else if left_infix.op == .and {
+				if left_infix.left is ast.InfixExpr {
+					left_expr = left_infix.left
 				} else {
 					break
 				}
@@ -311,6 +320,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+
 	eq_ne := node.op in [.eq, .ne]
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
@@ -456,6 +466,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
+
 			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
@@ -854,6 +865,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ast.no_type
 				}
 			}
+
 			if typ != ast.no_type {
 				$if trace_ci_fixes ? {
 					source_path := if node.pos.file_idx >= 0
@@ -870,6 +882,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							ast.None { 'none' }
 							else { typeof(right_expr).name }
 						}
+
 						eprintln('infix is left=${node.left} left_type=${c.table.type_to_str(left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(typ)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
 							node.pos.line_nr + 1}')
 					}
@@ -974,6 +987,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+
 	// Do an ambiguous expression check for << >> and &, since they all have the same precedence (unlike in C)
 	if !c.is_builtin_mod && node.op in [.amp, .left_shift, .right_shift] {
 		if mut node.left is ast.InfixExpr {
@@ -1351,6 +1365,7 @@ fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
 			return true
 		}
 	}
+
 	return true
 }
 

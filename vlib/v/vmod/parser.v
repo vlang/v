@@ -155,6 +155,7 @@ fn (mut s Scanner) scan_all() {
 			`,` { s.tokenize(.comma, c.ascii_str()) }
 			else { s.tokenize(.unknown, c.ascii_str()) }
 		}
+
 		s.pos++
 	}
 	s.tokenize(.eof, 'eof')
@@ -260,6 +261,7 @@ fn (mut p Parser) parse() !Manifest {
 						mn.unknown[field_name] = [field_value]
 					}
 				}
+
 				i += 2
 				continue
 			}

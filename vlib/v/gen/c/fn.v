@@ -69,6 +69,7 @@ fn (g &Gen) generic_parent_method_fkey(sym ast.TypeSymbol, method_name string) s
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -177,6 +178,7 @@ fn (mut g Gen) node_decl_fkey(node ast.FnDecl) string {
 				false
 			}
 		}
+
 		needs_generic_method_fkey := node.generic_names.len > 0 || node.ninstances > 0
 			|| node.receiver.typ.has_flag(.generic)
 			|| g.type_has_unresolved_generic_parts(node.receiver.typ)
@@ -2264,6 +2266,7 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -2410,6 +2413,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -2461,6 +2465,7 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -2933,6 +2938,7 @@ fn (mut g Gen) resolved_array_builtin_method_return_type(node ast.CallExpr, left
 					arg_type
 				}
 			}
+
 			resolved_mapped_type := g.unwrap_generic(g.recheck_concrete_type(mapped_type))
 			if resolved_mapped_type == 0 {
 				return return_type
@@ -2967,6 +2973,7 @@ fn (mut g Gen) resolved_array_builtin_method_return_type(node ast.CallExpr, left
 		}
 		else {}
 	}
+
 	return return_type
 }
 
@@ -3016,6 +3023,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 		}
 		else {}
 	}
+
 	// For generic fn-type aliases (e.g. `type ParseFunction[T] = fn(string) !T`),
 	// the concrete instantiation is stored as FnType with generic_types holding
 	// the concrete types. Check generic_types on the sym and its parent.
@@ -3747,6 +3755,7 @@ fn (mut g Gen) resolve_current_fn_generic_param_key_type(name string) ast.Type {
 			.array, .array_fixed, .string { ast.int_type }
 			else { ast.Type(0) }
 		}
+
 		if base_type == 0 {
 			return 0
 		}
@@ -3918,6 +3927,7 @@ fn (mut g Gen) is_same_generic_receiver_family(left_type ast.Type, receiver_type
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -3988,6 +3998,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		else {}
 	}
+
 	if left_type == g.unwrap_generic(node.left_type) {
 		resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
 		if resolved_left_type != 0 {
@@ -4761,6 +4772,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		else {}
 	}
+
 	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
@@ -6690,6 +6702,7 @@ fn (mut g Gen) is_gui_app() bool {
 		.console { return false }
 		.auto {}
 	}
+
 	if g.pref.os == .windows {
 		if g.force_main_console {
 			return false

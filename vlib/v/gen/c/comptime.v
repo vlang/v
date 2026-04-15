@@ -1040,6 +1040,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					[]ast.StructField{}
 				}
 			}
+
 			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}

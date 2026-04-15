@@ -287,6 +287,7 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 								c.error(unicode_lit_overflow_message, end_pos)
 							}
 						}
+
 						idx++
 						ch = node.val[idx] or { return ast.string_type }
 					}

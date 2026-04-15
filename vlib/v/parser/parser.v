@@ -879,6 +879,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.other_stmts(ast.empty_stmt)
 			}
 		}
+
 		// clear `cur_comments` after each statement, except a comment stmt
 		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
@@ -1251,6 +1252,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							return p.error_with_pos('unknown `defer` mode: `${mode}`', mode_pos)
 						}
 					}
+
 					p.check(.rpar)
 				}
 				p.inside_defer = true
@@ -1504,6 +1506,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			}
 		}
 	}
+
 	return ast.Ident{
 		tok_kind:       p.tok.kind
 		kind:           .unresolved
@@ -1592,6 +1595,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		'WASM' { ast.Language.wasm }
 		else { ast.Language.v }
 	}
+
 	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
@@ -1671,6 +1675,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 					return p.error('wrong field `${key}`, expecting `cap`')
 				}
 			}
+
 			last_pos = p.tok.pos()
 			p.check(.rcbr)
 		}
@@ -1897,6 +1902,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				'indirections' { ast.GenericKindField.indirections }
 				else { ast.GenericKindField.unknown }
 			}
+
 			pos.extend(p.tok.pos())
 			return ast.SelectorExpr{
 				expr:        ast.Ident{
@@ -3478,6 +3484,7 @@ fn (mut p Parser) skip_scope() {
 			.eof { break }
 			else {}
 		}
+
 		if br_cnt == 0 {
 			break
 		}

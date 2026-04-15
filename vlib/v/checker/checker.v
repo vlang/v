@@ -429,6 +429,7 @@ fn (mut c Checker) resolve_selector_field_type(left_type ast.Type, field_name st
 		}
 		else {}
 	}
+
 	$if trace_ci_fixes ? {
 		if c.file.path.contains('/datatypes/linked_list.v') {
 			eprintln('selector_field left=${c.table.type_to_str(left_type)} sym=${sym.name} field=${field_name} raw=${c.table.type_to_str(field.typ)} final=${c.table.type_to_str(field_type)}')
@@ -1340,6 +1341,7 @@ fn (mut c Checker) expr_is_immutable_source(expr ast.Expr) bool {
 				}
 				else {}
 			}
+
 			return c.expr_is_immutable_source(expr.expr)
 		}
 		ast.IndexExpr {
@@ -1398,6 +1400,7 @@ fn (mut c Checker) type_contains_mutable_aliasing(typ ast.Type, mut checked_type
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1461,6 +1464,7 @@ fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool
 				}
 				else {}
 			}
+
 			return false
 		}
 		ast.AsCast {
@@ -1575,6 +1579,7 @@ fn (mut c Checker) node_immutable_alias_source(node ast.Node, func ast.Fn, call 
 		}
 		else {}
 	}
+
 	for child in node.children() {
 		source := c.node_immutable_alias_source(child, func, call)
 		if source !is ast.EmptyExpr {
@@ -1708,6 +1713,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			return true
 		}
 	}
+
 	return true
 }
 
@@ -1795,6 +1801,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				}
 				else {}
 			}
+
 			if elem_type.has_flag(.shared_f) {
 				expr_name := ast.Expr(expr).str()
 				if expr_name !in c.locked_names {
@@ -1991,6 +1998,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			}
 		}
 	}
+
 	if explicit_lock_needed {
 		c.error('`${to_lock}` is `shared` and needs explicit lock for `${expr.type_name()}`', pos)
 		to_lock = ''
@@ -2035,6 +2043,7 @@ fn (c &Checker) concrete_types_for_type_symbol(typ_sym &ast.TypeSymbol) []ast.Ty
 		}
 		else {}
 	}
+
 	return []ast.Type{}
 }
 
@@ -2063,6 +2072,7 @@ fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string 
 		}
 		else {}
 	}
+
 	return []string{}
 }
 
@@ -2171,6 +2181,7 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 					}
 					else {}
 				}
+
 				mut target_variants := c.table.iface_types[inter_sym.name]
 				for variant in source_types {
 					variant_sym := c.table.sym(ast.mktyp(variant))
@@ -2358,6 +2369,7 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 				}
 				else {}
 			}
+
 			mut checked_method := ast.Fn{
 				...imethod
 				params: imethod.params.clone()
@@ -2649,6 +2661,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		}
 		else {}
 	}
+
 	return ret_type
 }
 
@@ -2679,6 +2692,7 @@ fn (mut c Checker) expr_unhandled_option_type(expr ast.Expr) ast.Type {
 		}
 		else {}
 	}
+
 	return ast.void_type
 }
 
@@ -2929,6 +2943,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		else {}
 	}
+
 	if name_type > 0 {
 		node.name_type = name_type
 		match node.gkind_field {
@@ -3455,6 +3470,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			}
 		}
 	}
+
 	if enum_imin > 0 {
 		// ensure that the minimum value is negative, even with msvc, which has a bug that makes -2147483648 positive ...
 		enum_imin *= -1
@@ -3677,6 +3693,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					}
 				}
 			}
+
 			if has_replacement {
 				field.expr = replacement_expr
 			}
@@ -3820,6 +3837,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				}
 				else {}
 			}
+
 			if !c.pref.is_repl && (c.stmt_level == 1 || (c.stmt_level > 1 && !c.is_last_stmt)) {
 				if mut node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
@@ -4604,6 +4622,7 @@ fn (mut c Checker) recheck_concrete_type(typ ast.Type) ast.Type {
 		}
 		else {}
 	}
+
 	has_generic_flag := typ.has_flag(.generic)
 	has_unresolved := c.type_has_unresolved_generic_parts(typ)
 	if !has_generic_flag && !has_unresolved {
@@ -4916,6 +4935,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					}
 					else {}
 				}
+
 				if no_opt_or_res {
 					c.error('expression should either return an Option or a Result',
 						node.expr.pos())
@@ -5108,6 +5128,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		}
 		ast.NodeError {}
 	}
+
 	return ast.void_type
 }
 
@@ -5131,6 +5152,7 @@ fn (c &Checker) expr_is_known_zero_integer(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -5688,6 +5710,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.expr.val
 			}
 		}
+
 		mut is_overflowed := false
 		v, e := strconv.common_parse_uint2(value_string, 0, bit_size)
 		match e {
@@ -5737,6 +5760,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 					0
 				}
 			}
+
 			max_signed := (u64(1) << (bit_size - 1)) - 1
 
 			is_overflowed = v == signed_one || (signed && v - 2 == max_signed)
@@ -5980,6 +6004,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 				node.pos)
 		}
 	}
+
 	return ast.string_type
 }
 
@@ -6391,6 +6416,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 								}
 								else {}
 							}
+
 							obj_type_str := if obj.typ == 0 {
 								'<none>'
 							} else {
@@ -6552,8 +6578,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			return x.typ
 		}
 		expected_c_type := c.expected_type.clear_option_and_result()
-		if c.inside_assign && expected_c_type != ast.void_type
-			&& expected_c_type != ast.none_type {
+		if c.inside_assign && expected_c_type != ast.void_type && expected_c_type != ast.none_type {
 			if obj := c.file.global_scope.find_global(node.name) {
 				node.kind = .global
 				node.info = ast.IdentVar{
@@ -7193,6 +7218,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 						c.error('`<-` receive expression expected', branch.stmt.right[0].pos())
 					}
 				}
+
 				if mut branch.stmt.left[0] is ast.Ident {
 					ident := branch.stmt.left[0] as ast.Ident
 					if ident.kind == .blank_ident && branch.stmt.op != .decl_assign {
@@ -7207,6 +7233,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				}
 			}
 		}
+
 		c.stmts(mut branch.stmts)
 	}
 	return ast.bool_type
@@ -7314,6 +7341,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	match obj {
 		ast.EmptyScopeObject, ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
+
 	mut expr := ast.empty_expr
 	if obj is ast.Var {
 		if obj.is_mut {
@@ -7699,6 +7727,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
+
 	if typ.has_flag(.option) {
 		left_pos := node.left.pos()
 		if node.left is ast.Ident && node.left.or_expr.kind == .absent {
@@ -8218,6 +8247,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 		}
 		else {}
 	}
+
 	return true
 }
 
@@ -8346,6 +8376,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		}
 		else {}
 	}
+
 	if sym.kind == .map {
 		if !c.ensure_supported_map_key_types(checked_typ, pos) {
 			return c.pref.is_vls
@@ -8464,6 +8495,7 @@ fn (mut c Checker) ensure_supported_map_key_types_in_type(typ ast.Type, pos toke
 		ast.Alias {}
 		else {}
 	}
+
 	return true
 }
 
@@ -8537,6 +8569,7 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 			pos = expr.pos()
 		}
 	}
+
 	if typ.has_flag(.shared_f) {
 		if shared_expr_name != '' && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 			action := if what == 'argument' { 'passed' } else { 'used' }

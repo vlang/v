@@ -78,6 +78,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 			g.n_error('${@LOCATION} Compile time conditional `${cond}` is not handled by the native backend.')
 		}
 	}
+
 	return false
 }
 
@@ -97,6 +98,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		}
 		else {}
 	}
+
 	return ast.eval_comptime_not_user_defined_ident(name, g.pref) or {
 		if name in g.pref.compile_defines {
 			return true

@@ -806,6 +806,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			.power_assign { '**' }
 			else { 'unknown op' }
 		}
+
 		if type_sym.has_method(extracted_op) {
 			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
 		}
@@ -831,6 +832,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			else {}
 		}
+
 		if rec_generic_types.len > 0 {
 			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(),
 				'rec_generic_types') or { return ast.FnDecl{
@@ -1015,6 +1017,7 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
+
 		if language == .v {
 			existing, has_existing := table_fn_lookup(p.table, name)
 			if has_existing {

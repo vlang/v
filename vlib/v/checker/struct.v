@@ -202,6 +202,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							ast.Type(0)
 						}
 					}
+
 					if elem_type == 0 {
 						pos := sym.info.get_name_pos() or { token.Pos{} }
 						if pos.file_idx != -1 {
@@ -926,6 +927,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						ast.SelectorExpr { init_field.expr.or_block.kind != .absent }
 						else { false }
 					}
+
 					if got_type.has_flag(.option) && !has_or_block {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
@@ -976,8 +978,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field_expr_pos)
-						c.note('an implicit clone of the slice was done here',
-							init_field_expr_pos)
+						c.note('an implicit clone of the slice was done here', init_field_expr_pos)
 						mut right := ast.CallExpr{
 							name:           'clone'
 							kind:           .clone
@@ -1181,6 +1182,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		else {}
 	}
+
 	if node.has_update_expr {
 		update_type := c.recheck_concrete_type(c.expr(mut node.update_expr))
 		node.update_expr_type = update_type

@@ -101,6 +101,7 @@ fn (mut p Parser) eval_array_fixed_sizes(mut size_expr ast.Expr) (int, bool) {
 			p.error_with_pos('fixed array size cannot use non-constant value', size_expr.pos())
 		}
 	}
+
 	return fixed_size, size_unresolved
 }
 
@@ -475,6 +476,7 @@ fn (mut p Parser) parse_language() ast.Language {
 			ast.Language.v
 		}
 	}
+
 	if language != .v {
 		p.next()
 		p.check(.dot)
@@ -1002,6 +1004,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 			}
 			else {}
 		}
+
 		return typ
 	}
 	// not found - add placeholder
@@ -1127,6 +1130,7 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 				}
 			}
 		}
+
 		// mod.Foo[int] -> mod
 		// mod.submod.Foo[int] -> mod.submod
 		mod := name.all_before_last('.')

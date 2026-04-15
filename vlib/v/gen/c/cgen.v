@@ -2366,6 +2366,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		}
 		else {}
 	}
+
 	if is_prefix_struct && sym.language == .c {
 		styp = styp[3..]
 		if sym.kind == .struct {
@@ -3162,6 +3163,7 @@ fn (mut g Gen) gen_option_payload_ref(expr ast.PrefixExpr, ret_typ ast.Type, tmp
 		ast.Ident, ast.IndexExpr, ast.SelectorExpr {}
 		else { return false }
 	}
+
 	opt_ptr_var := g.new_tmp_var()
 	opt_styp := g.styp(expr.right_type).replace('*', '')
 	ret_styp := g.styp(ret_typ).replace('*', '')
@@ -3730,6 +3732,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.NodeError {}
 	}
+
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
 	}
@@ -4017,7 +4020,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface || needs_interface_cast_promotion || needs_interface_value_copy) {
+			|| is_primitive_to_interface || needs_interface_cast_promotion
+			|| needs_interface_value_copy) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
@@ -5080,6 +5084,7 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 			verror('map key type `${key_sym.name}` not supported')
 		}
 	}
+
 	return hash_fn, key_eq_fn, clone_fn, free_fn
 }
 
@@ -5797,6 +5802,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.unsafe_level--
 		}
 	}
+
 	g.discard_or_result = old_discard_or_result
 	g.is_void_expr_stmt = old_is_void_expr_stmt
 }
@@ -5887,6 +5893,7 @@ fn (mut g Gen) resolve_typeof_expr_type(expr ast.Expr, default_type ast.Type) as
 		}
 		else {}
 	}
+
 	return default_type
 }
 
@@ -6661,8 +6668,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
 		false
 	} else {
-		field_is_opt || expr_is_auto_heap
-			|| interface_smartcast_selector_emits_ptr
+		field_is_opt || expr_is_auto_heap || interface_smartcast_selector_emits_ptr
 			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
 			|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
 			|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
@@ -6934,6 +6940,7 @@ fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
 		}
 		else {}
 	}
+
 	return true
 }
 
@@ -8749,6 +8756,7 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 					false
 				}
 			}
+
 			if !need_gen_stmt {
 				return
 			}
@@ -8781,6 +8789,7 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 				}
 				else {}
 			}
+
 			if has_low_level_cond {
 				sb.writeln('#endif')
 			}
@@ -8868,6 +8877,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			}
 			else {}
 		}
+
 		g.write_defer_stmts(node.scope, false, node.pos)
 		// continue or break
 		if g.needs_scope_cleanup() && !g.is_builtin_mod {
@@ -8903,6 +8913,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			ast.MatchExpr { expr0.return_type }
 			else { ast.void_type }
 		}
+
 		if fallback_type != ast.void_type && fallback_type != 0 {
 			type0 = g.unwrap_generic(g.recheck_concrete_type(fallback_type))
 		}
@@ -8921,6 +8932,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			ast.Ident { expr0.or_expr.kind }
 			else { ast.OrKind.absent }
 		}
+
 		if or_kind == .propagate_option {
 			type0 = type0.clear_flag(.option)
 		} else if or_kind == .propagate_result {
@@ -9232,6 +9244,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.option)
 			}
 		}
+
 		expr_type_is_result := match expr0 {
 			ast.CallExpr {
 				expr0.return_type.has_flag(.result) && expr0.or_block.kind == .absent
@@ -9240,6 +9253,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.result)
 			}
 		}
+
 		if (fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name)
 			|| (fn_return_is_result && !expr_type_is_result && return_sym.name != result_name) {
 			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
@@ -10096,6 +10110,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			}
 			else {}
 		}
+
 		// add type and dependent types to graph
 		dep_graph.add(sym.scoped_name(), field_deps)
 	}
@@ -11299,6 +11314,7 @@ return ${cast_struct_str};
 					}
 					else {}
 				}
+
 				clone_functions.writeln('
 static inline ${interface_name} ${clone_fn_name}(void* x) {
 return ${clone_expr};
@@ -11386,6 +11402,7 @@ return ${cast_shared_struct_str};
 				}
 				else {}
 			}
+
 			t_methods := g.table.get_embed_methods(st_sym)
 			mut t_method_names := methods.map(it.name)
 			for t_method in t_methods {

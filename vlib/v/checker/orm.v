@@ -120,6 +120,7 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 				return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 			}
 		}
+
 		if has_next_expr {
 			current = next_expr
 			continue
@@ -909,6 +910,7 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 					.avg { '`avg` aggregate requires a numeric field' }
 					else { 'aggregate requires a numeric field' }
 				}
+
 				c.orm_error(msg, pos)
 				return none
 			}
@@ -920,12 +922,14 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 					.max { '`max` aggregate requires a numeric, string, or time.Time field' }
 					else { 'aggregate requires a numeric, string, or time.Time field' }
 				}
+
 				c.orm_error(msg, pos)
 				return none
 			}
 		}
 		else {}
 	}
+
 	return resolved_field
 }
 

@@ -342,6 +342,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				}
 				else {}
 			}
+
 			is_fixed_arr_ret = true
 		} else {
 			str_dumparg_ret_type = str_dumparg_type

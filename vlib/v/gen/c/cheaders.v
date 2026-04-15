@@ -573,7 +573,8 @@ errno_t freopen_s(FILE **stream, const char *filename, const char *mode, FILE *o
 #endif
 '
 
-const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr + c_stdlib_declarations +
+const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
+	c_stdlib_declarations +
 	r'
 // c_headers
 #if defined(__TINYC__)

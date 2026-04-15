@@ -373,6 +373,7 @@ fn get_repo_file_link(repo_url string, repo_branch string, file_name string) str
 		'git.sir.ht' { '/tree/${repo_branch}/${file_name}' }
 		else { '' }
 	}
+
 	if url.path == '/' {
 		return ''
 	}
@@ -508,6 +509,7 @@ fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) 
 			token_content = tok.lit
 		}
 	}
+
 	buf.write_string(html.escape(token_content))
 }
 

@@ -377,6 +377,7 @@ pub fn (mut f Gen) node_str(node ast.Node) string {
 		ast.Expr { f.expr(node) }
 		else { panic('´f.node_str()´ is not implemented for ${node}.') }
 	}
+
 	str := f.out.after(pos)
 	f.out.go_back_to(pos)
 	f.empty_line = was_empty_line
@@ -725,6 +726,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return true
 }
 
@@ -1237,6 +1239,7 @@ pub fn (mut f Gen) type_decl(node ast.TypeDecl) {
 		ast.FnTypeDecl { f.fn_type_decl(node) }
 		ast.SumTypeDecl { f.sum_type_decl(node) }
 	}
+
 	f.writeln('')
 }
 
@@ -2133,6 +2136,7 @@ pub fn (mut f Gen) select_expr(node ast.SelectExpr) {
 				ast.ExprStmt { f.expr(branch.stmt.expr) }
 				else { f.stmt(branch.stmt) }
 			}
+
 			f.single_line_if = false
 			f.write(' {')
 		}

@@ -160,6 +160,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 			}
 		}
 	}
+
 	return unsupported_ctemp_assert_transform
 }
 
@@ -286,6 +287,7 @@ fn (mut g Gen) gen_assert_metainfo_common(node ast.AssertStmt) string {
 		}
 		else {}
 	}
+
 	return metaname
 }
 

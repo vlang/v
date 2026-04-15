@@ -144,6 +144,7 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 				return none
 			}
 		}
+
 		if has_next_expr {
 			current = next_expr
 			continue
@@ -469,6 +470,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 				sym.kind == .enum { '_const_orm__enum_' }
 				else { final_field_typ.idx().str() }
 			}
+
 			g.writeln('(orm__TableField){')
 			g.indent++
 			g.writeln('.name = _S("${field.name}"),')
@@ -1175,6 +1177,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 				''
 			}
 		}
+
 		g.writeln(' .operator = ${kind},')
 		g.write(' .right = ')
 		g.write_orm_expr_to_primitive(expr.right)
@@ -1365,6 +1368,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 					''
 				}
 			}
+
 			if kind == '' {
 				if expr.op == .logical_or {
 					is_and << false
@@ -2125,6 +2129,7 @@ fn (mut g Gen) write_orm_joins(joins []ast.JoinClause) {
 			.right { 'orm__JoinType__right' }
 			.full_outer { 'orm__JoinType__full_outer' }
 		}
+
 		g.writeln('.kind = ${kind_str},')
 
 		// Write joined table info

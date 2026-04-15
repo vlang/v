@@ -451,6 +451,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 			}
 		}
+
 		if res < 0 {
 			if C.errno == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting

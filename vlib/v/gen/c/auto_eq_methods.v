@@ -617,6 +617,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 			}
 		}
 	}
+
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
 	fn_builder.writeln('\t}')
@@ -706,6 +707,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 					fn_builder.write_string('true')
 				}
 			}
+
 			fn_builder.writeln(';')
 			fn_builder.writeln('\t\t}')
 		}

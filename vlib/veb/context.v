@@ -368,6 +368,7 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c, '.gz', 'gzip'
 		}
 	}
+
 	compressed_path := static_compression_cache_path(file_path, ext)
 	// Try to save compressed version for future requests
 	mut write_success := true

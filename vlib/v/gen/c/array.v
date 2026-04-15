@@ -982,6 +982,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	if left_is_array {
 		g.writeln2(';',
 			'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
@@ -1450,6 +1451,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\tbuiltin__array_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
 	g.writeln('}')
 	g.indent--
@@ -2045,6 +2047,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\t${past.tmp_var} = true;')
 	g.writeln2('\tbreak;', '}')
 	g.indent--
@@ -2138,6 +2141,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\t++${past.tmp_var};')
 	g.writeln('}')
 	g.indent--
@@ -2232,6 +2236,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(')) {', '\t${past.tmp_var} = false;')
 	g.writeln2('\tbreak;', '}')
 	g.indent--

@@ -331,6 +331,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			elem_type
 		}
 	}
+
 	result_sym := g.table.final_sym(result_type)
 	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(elem_type) }
 	result_type_str := if result_sym.kind == .function { 'voidptr' } else { g.styp(result_type) }

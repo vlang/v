@@ -64,6 +64,7 @@ fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expecte
 		}
 		else {}
 	}
+
 	g.expr(expr_copy)
 }
 
@@ -161,6 +162,7 @@ fn (mut g Gen) decl_assign_struct_init_needs_tmp(expr ast.Expr) bool {
 			return false
 		}
 	}
+
 	sym := g.table.final_sym(g.unwrap_generic(g.recheck_concrete_type(node.typ)))
 	if sym.info !is ast.Struct {
 		return false
@@ -483,6 +485,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		else {}
 	}
+
 	if node.right.len == 1 && node.left.len > 1 && node.left_types.len == node.left.len {
 		is_generic_context := g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 		concrete_left_types := if is_generic_context {
@@ -1028,6 +1031,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				else {}
 			}
+
 			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 				should_recompute_decl_type = true
 			}
@@ -1219,6 +1223,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			else {}
 		}
+
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
 			orig_var_option := var_type.has_flag(.option)
 			resolved_left_type := g.resolved_expr_type(left, var_type)
@@ -1505,6 +1510,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					.power_assign { '**' }
 					else { 'unknown op' }
 				}
+
 				pos := g.out.len
 				g.expr(left)
 				struct_info := g.table.final_sym(var_type)
@@ -1600,6 +1606,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						'unknown op'
 					}
 				}
+
 				g.expr(left)
 				g.write(' = ')
 				g.expr(left)
@@ -1752,6 +1759,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					is_safe_mod_assign { 'VSAFE_MOD_${div_mod_styp}' }
 					else { '' }
 				}
+
 				if is_safe_div_assign || is_safe_mod_assign {
 					g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
 						typ: g.unwrap_generic(var_type).clear_flag(.shared_f).clear_flag(.atomic_f)

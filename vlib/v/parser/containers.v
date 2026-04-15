@@ -316,6 +316,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 					return ast.ArrayInit{}
 				}
 			}
+
 			if p.tok.kind != .rcbr {
 				p.check(.comma)
 			}

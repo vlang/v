@@ -90,6 +90,7 @@ fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGua
 			false
 		}
 	}
+
 	if !cond_matches {
 		return none
 	}
@@ -98,6 +99,7 @@ fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGua
 		.dec { '(${g.styp(unaliased_typ)})0' }
 		else { return none }
 	}
+
 	return ForCOverflowGuard{
 		cname:      c_name(postfix_var_name)
 		limit_expr: limit_expr

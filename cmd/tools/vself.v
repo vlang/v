@@ -381,8 +381,8 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
 			os.quoted_path(vc_source), '-lws2_32']
 	} else {
-		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
-			'-lm', '-lpthread']
+		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary),
+			os.quoted_path(vc_source), '-lm', '-lpthread']
 	}
 	return parts.join(' ')
 }

@@ -640,6 +640,7 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 				c.error('fixed array size cannot use non-constant value', size_expr.pos())
 			}
 		}
+
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
 				size_expr.pos())

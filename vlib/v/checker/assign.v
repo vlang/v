@@ -48,6 +48,7 @@ fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.
 		}
 		else {}
 	}
+
 	return fallback_type
 }
 
@@ -448,24 +449,24 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left = left.remove_par()
 		is_assign := node.op in [.assign, .decl_assign]
-			match mut left {
-				ast.Ident {
-					if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
-						&& right is ast.PrefixExpr {
-						prefix_right := right as ast.PrefixExpr
-						if prefix_right.right_type == ast.int_literal_type_idx
-							&& prefix_right.right is ast.Ident {
-							ident_right := prefix_right.right as ast.Ident
-							if ident_right.obj is ast.ConstField {
-								const_name := ident_right.name.all_after_last('.')
-								const_val := (ident_right.obj as ast.ConstField).expr
-								c.add_error_detail('Specify the type for the constant value. Example:')
-								c.add_error_detail('         `const ${const_name} = int(${const_val})`')
-								c.error('cannot assign a pointer to a constant with an integer literal value',
-									ident_right.pos)
-							}
+		match mut left {
+			ast.Ident {
+				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
+					&& right is ast.PrefixExpr {
+					prefix_right := right as ast.PrefixExpr
+					if prefix_right.right_type == ast.int_literal_type_idx
+						&& prefix_right.right is ast.Ident {
+						ident_right := prefix_right.right as ast.Ident
+						if ident_right.obj is ast.ConstField {
+							const_name := ident_right.name.all_after_last('.')
+							const_val := (ident_right.obj as ast.ConstField).expr
+							c.add_error_detail('Specify the type for the constant value. Example:')
+							c.add_error_detail('         `const ${const_name} = int(${const_val})`')
+							c.error('cannot assign a pointer to a constant with an integer literal value',
+								ident_right.pos)
 						}
-					} else if left.kind == .blank_ident {
+					}
+				} else if left.kind == .blank_ident {
 					if !is_decl && mut right is ast.None {
 						c.error('cannot assign a `none` value to blank `_` identifier', right.pos)
 					}
@@ -659,6 +660,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
+
 		if mut left is ast.IndexExpr {
 			if left.is_index_operator && node.op != .decl_assign {
 				receiver_name := c.table.sym(c.unwrap_generic(left.left_type)).name
@@ -791,15 +793,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
-				mut missing_fn_concrete_types := false
-				if right is ast.Ident {
-					ident := right as ast.Ident
-					if ident.kind == .function {
-						func, has_func := checker_table_fn_lookup(c.table, ident.name)
-						if has_func {
-							missing_fn_concrete_types = func.generic_names.len > 0
-								&& ident.concrete_types.len == 0
-						}
+			mut missing_fn_concrete_types := false
+			if right is ast.Ident {
+				ident := right as ast.Ident
+				if ident.kind == .function {
+					func, has_func := checker_table_fn_lookup(c.table, ident.name)
+					if has_func {
+						missing_fn_concrete_types = func.generic_names.len > 0
+							&& ident.concrete_types.len == 0
+					}
 				}
 			}
 			if return_sym.kind == .placeholder {
@@ -979,6 +981,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			else {}
 		}
+
 		if node.op == .power_assign {
 			c.markused_power_runtime_support()
 		}
@@ -1001,6 +1004,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				.power_assign { '**' }
 				else { 'unknown op' }
 			}
+
 			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {
 				continue
 			}

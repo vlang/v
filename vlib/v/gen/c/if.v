@@ -236,6 +236,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -432,13 +433,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					cond.expr_type
 				}
-				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name};')
+				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name} = {0};')
 			} else if cond.expr is ast.IndexExpr {
 				value_type := g.table.value_type(g.unwrap_generic(cond.expr.left_type))
 				if value_type.has_flag(.option) {
 					var_name := g.new_tmp_var()
 					guard_vars[i] = var_name
-					g.writeln('${g.styp(value_type)} ${var_name};')
+					g.writeln('${g.styp(value_type)} ${var_name} = {0};')
 				} else {
 					guard_vars[i] = ''
 				}

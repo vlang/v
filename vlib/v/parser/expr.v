@@ -135,6 +135,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 						}
 						else {}
 					}
+
 					p.is_stmt_ident = is_stmt_ident
 				}
 				.name, .key_struct, .key_enum, .key_interface, .key_shared {

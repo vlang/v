@@ -144,6 +144,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+
 			if node.cond is ast.Ident {
 				cond_ident := node.cond as ast.Ident
 				if cond_ident.obj is ast.Var && c.table.is_interface_smartcast(cond_ident.obj)
@@ -212,6 +213,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					.map { unwrapped_sym.map_info().key_type }
 					else { ast.int_type }
 				}
+
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 
@@ -252,6 +254,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					.map { sym.map_info().key_type }
 					else { ast.int_type }
 				}
+
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 
