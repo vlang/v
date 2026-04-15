@@ -5084,6 +5084,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if typ.has_flag(.option) && expr.or_expr.kind != .absent {
 					typ = typ.clear_flag(.option)
 				}
+				if typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
+					resolved_typ := g.resolved_expr_type(expr, typ)
+					if resolved_typ != 0 && resolved_typ != ast.void_type {
+						typ = resolved_typ
+					}
+				}
 			}
 			typ_sym := g.table.sym(typ)
 			needs_tmp_string := !typ.has_option_or_result()

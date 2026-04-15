@@ -83,7 +83,8 @@ fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 	return match expr {
 		ast.Ident {
 			if expr.obj is ast.Var {
-				expr.obj.is_arg || (expr.obj.expr is ast.PrefixExpr && expr.obj.expr.op == .amp)
+				expr.obj.is_arg || expr.obj.expr is ast.AsCast
+					|| (expr.obj.expr is ast.PrefixExpr && expr.obj.expr.op == .amp)
 			} else {
 				false
 			}
@@ -500,6 +501,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !node_.need_fmts[i]
+			&& fmts[i] != `_` {
+			fmts[i] = `_`
+		}
 		mut field_typ := if g.is_type_name_string_expr(expr) {
 			ast.string_type
 		} else if mut expr is ast.AsCast {

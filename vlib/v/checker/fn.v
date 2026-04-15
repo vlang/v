@@ -794,6 +794,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.expected_type = ast.void_type
 	saved_generic_names := node.generic_names
 	mut needs_generic_names_restore := false
+	saved_return_type := node.return_type
 	if c.table.cur_concrete_types.len > 0
 		&& effective_generic_names.len == c.table.cur_concrete_types.len
 		&& node.generic_names != effective_generic_names {
@@ -804,6 +805,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		needs_generic_names_restore = true
 	}
 	c.table.cur_fn = unsafe { node }
+	if c.table.cur_concrete_types.len > 0 {
+		resolved_return_type := c.recheck_concrete_type(node.return_type)
+		if resolved_return_type != ast.void_type && resolved_return_type != 0 {
+			node.return_type = resolved_return_type
+		}
+	}
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.option)
 		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
@@ -963,6 +970,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			*p = saved_generic_names
 		}
 	}
+	node.return_type = saved_return_type
 }
 
 // check_same_type_ignoring_pointers util function to check if the Types are the same, including all
