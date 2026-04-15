@@ -288,13 +288,15 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 					i += 2
 					continue
 				}
-				// Keep package-version URLs like `jquery@3.6.0` unchanged.
-				if i + 1 < rewritten_line.len && rewritten_line[i + 1].is_digit() {
-					sb.write_u8(`@`)
-					i++
-					continue
+				if i + 1 < rewritten_line.len {
+					next := rewritten_line[i + 1]
+					if next == `{` || is_tmpl_ident_start(next) {
+						sb.write_u8(`$`)
+						i++
+						continue
+					}
 				}
-				sb.write_u8(`$`)
+				sb.write_u8(`@`)
 				i++
 				continue
 			}
