@@ -367,6 +367,56 @@ fn set_icon_path(mut res Preferences, raw_path string, option_name string) {
 	res.build_options << '-icon "${res.icon_path}"'
 }
 
+const internal_v_commands = [
+	'run',
+	'crun',
+	'build',
+	'build-module',
+	'help',
+	'version',
+	'new',
+	'init',
+	'install',
+	'link',
+	'list',
+	'outdated',
+	'remove',
+	'search',
+	'show',
+	'unlink',
+	'update',
+	'upgrade',
+	'vlib-docs',
+	'interpret',
+	'translate',
+]
+
+fn has_following_positional_arg(args []string, start int) bool {
+	for idx := start; idx < args.len; idx++ {
+		if !args[idx].starts_with('-') {
+			return true
+		}
+	}
+	return false
+}
+
+fn optional_arg_value(args []string, idx int, command string, known_external_commands []string, def string) (string, bool) {
+	next := args[idx + 1] or { return def, false }
+	if next == '-' {
+		return next, true
+	}
+	if next.starts_with('-') {
+		return def, false
+	}
+	if command == ''
+		&& (next in known_external_commands || next in internal_v_commands || next.ends_with('.v')
+		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| !has_following_positional_arg(args, idx + 2)) {
+		return def, false
+	}
+	return next, true
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	use_v2_requested := '-v2' in args
@@ -737,10 +787,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.relaxed_gcc14 = false
 			}
 			'-prof', '-profile' {
-				res.profile_file = cmdline.option(args[i..], arg, '-')
+				profile_file, profile_file_consumed := optional_arg_value(args, i, command,
+					known_external_commands, '-')
+				res.profile_file = profile_file
 				res.is_prof = true
 				res.build_options << '${arg} ${res.profile_file}'
-				i++
+				if profile_file_consumed {
+					i++
+				}
 			}
 			'-cov', '-coverage' {
 				res.coverage_dir = cmdline.option(args[i..], arg, '-')
