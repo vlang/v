@@ -1746,6 +1746,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	mut tmp_anon_fn_var := ''
+	mut tmp_fn_result_var := ''
+	mut needs_tmp_fn_result_cleanup := false
 	if node.left is ast.AnonFn {
 		if node.left.inherited_vars.len > 0 {
 			tmp_anon_fn_var = g.new_tmp_var()
@@ -1806,7 +1808,27 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	} else if !g.inside_curry_call && node.left is ast.CallExpr && node.name == '' {
 		if node.or_block.kind == .absent {
-			g.expr(ast.Expr(node.left))
+			left_return_typ := g.recheck_concrete_type(g.unwrap_generic(node.left.return_type))
+			if g.table.used_features.anon_fn && g.table.final_sym(left_return_typ).kind == .function {
+				tmp_fn_result_var = g.new_tmp_var()
+				fn_sym := g.table.final_sym(left_return_typ).info as ast.FnType
+				fn_type := g.fn_var_signature(ast.void_type, fn_sym.func.return_type,
+					fn_sym.func.params.map(it.typ), tmp_fn_result_var)
+				line := g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				g.write('${fn_type} = ')
+				g.expr(ast.Expr(node.left))
+				g.writeln(';')
+				g.set_current_pos_as_last_stmt_pos()
+				g.write(line)
+				if g.out.last_n(1) != '\n' {
+					g.writeln('')
+				}
+				g.write(tmp_fn_result_var)
+				needs_tmp_fn_result_cleanup = true
+			} else {
+				g.expr(ast.Expr(node.left))
+			}
 		} else {
 			ret_typ := node.return_type
 
@@ -1889,6 +1911,18 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		''
 	}
+	mut tmp_fn_result_call_value := ''
+	mut tmp_fn_result_call_line := ''
+	if needs_tmp_fn_result_cleanup && !gen_or && !gen_keep_alive && !g.inside_curry_call
+		&& node.return_type != 0 && node.return_type != ast.void_type {
+		tmp_fn_result_call_line = g.go_before_last_stmt()
+		if tmp_fn_result_call_line.ends_with(tmp_fn_result_var) {
+			tmp_fn_result_call_line = tmp_fn_result_call_line[..tmp_fn_result_call_line.len - tmp_fn_result_var.len]
+		}
+		g.empty_line = true
+		tmp_fn_result_call_value = g.new_tmp_var()
+		g.write('${g.styp(node.return_type)} ${tmp_fn_result_call_value} = ${tmp_fn_result_var}')
+	}
 	mut effective_return_type := node.return_type
 	if (gen_or || gen_keep_alive) && node.return_type != 0 {
 		mut ret_typ := effective_return_type
@@ -1968,6 +2002,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	} else {
 		g.fn_call(node)
+	}
+	if needs_tmp_fn_result_cleanup && !gen_or && !gen_keep_alive && !g.inside_curry_call {
+		if node.return_type == ast.void_type {
+			g.writeln(';')
+			g.write('builtin__closure__closure_try_destroy((voidptr)${tmp_fn_result_var})')
+			g.set_current_pos_as_last_stmt_pos()
+		} else if tmp_fn_result_call_value != '' {
+			g.writeln(';')
+			g.writeln('builtin__closure__closure_try_destroy((voidptr)${tmp_fn_result_var});')
+			g.write2(tmp_fn_result_call_line, tmp_fn_result_call_value)
+		}
 	}
 	if gen_or && node.return_type != 0 {
 		g.or_block(tmp_opt, node.or_block, effective_return_type)
