@@ -51,7 +51,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	info := table_sym.info as ast.Struct
 	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name)
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
-	mut sub_structs := map[int]ast.SqlExpr{}
+	mut sub_structs := map[string]ast.SqlExpr{}
 
 	mut has_primary := false
 	mut primary_field := ast.StructField{}
@@ -179,12 +179,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			}
 		}
 
-		sub_structs[int(field.typ)] = subquery_expr
+		sub_structs[field.name] = subquery_expr
 	}
 
 	field_names := fields.map(it.name)
 	if node.aggregate_kind != .none {
-		node.sub_structs = map[int]ast.SqlExpr{}
+		node.sub_structs = map[string]ast.SqlExpr{}
 		if node.aggregate_kind == .count {
 			node.fields = [
 				ast.StructField{
@@ -358,7 +358,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	fields = insert_fields.clone()
 
-	mut sub_structs := map[int]ast.SqlStmtLine{}
+	mut sub_structs := map[string]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
@@ -394,7 +394,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[field.typ] = subquery_expr
+		sub_structs[field.name] = subquery_expr
 	}
 
 	node.fields = fields

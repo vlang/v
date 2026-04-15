@@ -2308,7 +2308,7 @@ pub mut:
 	updated_columns []string // for `update set x=y`
 	table_expr      TypeNode
 	fields          []StructField
-	sub_structs     map[int]SqlStmtLine
+	sub_structs     map[string]SqlStmtLine
 	where_expr      Expr
 	update_exprs    []Expr // for `update`
 	pre_comments    []Comment
@@ -2368,7 +2368,7 @@ pub mut:
 	offset_expr          Expr
 	table_expr           TypeNode
 	fields               []StructField
-	sub_structs          map[int]SqlExpr
+	sub_structs          map[string]SqlExpr
 	or_expr              OrExpr
 	joins                []JoinClause // JOIN clauses for this query
 	aggregate_field_type Type
