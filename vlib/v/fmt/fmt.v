@@ -1671,18 +1671,45 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
 		.update {
-			f.write('update ${table_name} set ')
-			for i, col in node.updated_columns {
-				f.write('${col} = ')
-				f.expr(node.update_exprs[i])
-				if i < node.updated_columns.len - 1 {
-					f.write(', ')
-				} else {
-					f.write(' ')
+			mut has_multiline_update_expr := false
+			for expr in node.update_exprs {
+				if f.node_str(expr).contains('\n') {
+					has_multiline_update_expr = true
+					break
 				}
-				f.wrap_long_line(3, true)
 			}
-			f.write('where ')
+			if has_multiline_update_expr {
+				f.writeln('update ${table_name} set')
+				// SQL block lines use a manual extra tab, so nested update values need two
+				// formatter indent levels to stay visually nested.
+				f.indent += 2
+				for i, col in node.updated_columns {
+					f.write('${col} = ')
+					f.expr(node.update_exprs[i])
+					if i < node.updated_columns.len - 1 {
+						f.write(',')
+					}
+					f.writeln('')
+				}
+				f.indent -= 2
+			} else {
+				f.write('update ${table_name} set ')
+				for i, col in node.updated_columns {
+					f.write('${col} = ')
+					f.expr(node.update_exprs[i])
+					if i < node.updated_columns.len - 1 {
+						f.write(', ')
+					} else {
+						f.write(' ')
+					}
+					f.wrap_long_line(3, true)
+				}
+			}
+			if has_multiline_update_expr {
+				f.write('\twhere ')
+			} else {
+				f.write('where ')
+			}
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
