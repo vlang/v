@@ -1,0 +1,9 @@
+fn test_match_invalid_case_expr() {
+	x := 1
+	match true {
+		x >  {
+			y := 0
+		}
+		else {}
+	}
+}

@@ -891,7 +891,13 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if op in [.decl_assign, .assign] {
 		p.inside_assign_rhs = true
 	}
-	right = p.expr(if op == .power { precedence - 1 } else { precedence })
+	if p.inside_match_case && p.tok.kind == .lcbr {
+		// In a match branch, a bare `{` opens the branch body; it is not the rhs of
+		// the infix operator.
+		p.unexpected(prepend_msg: 'invalid expression:')
+	} else {
+		right = p.expr(if op == .power { precedence - 1 } else { precedence })
+	}
 	p.inside_assign_rhs = old_assign_rhs
 	if op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
