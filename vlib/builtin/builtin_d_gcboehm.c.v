@@ -52,12 +52,13 @@ $if dynamic_boehm ? {
 		} $else {
 			$if !use_bundled_libgc ? {
 				$if macos {
-					#flag -L@VEXEROOT/thirdparty/tcc/lib
-					#flag -lgc
 					$if tinyc {
-						// this is a problem for compiler paths, containing spaces and commas, but tcc does not support -Xlinker :-|
+						// tcc on macOS can leave the bundled GC archive symbols unresolved.
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
 						#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
 					} $else {
+						#flag -L@VEXEROOT/thirdparty/tcc/lib
+						#flag -lgc
 						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
 					}
 				} $else {
