@@ -395,7 +395,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
 					if typ_sym.kind != .interface {
-						c.mark_as_referenced(mut &expr, true)
+						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
 				continue
