@@ -1,4 +1,14 @@
+@[has_globals]
+module main
+
 import cli
+
+__global (
+	if_subcommands_parse_args_called bool
+	flag_should_be_set_called        bool
+	assert_flags_called              bool
+	flag_is_set_in_subcommand_called bool
+)
 
 fn test_if_command_parses_empty_args() {
 	mut cmd := cli.Command{
@@ -22,12 +32,14 @@ fn test_if_subcommands_parse_args() {
 	mut cmd := cli.Command{
 		name: 'command'
 	}
+	if_subcommands_parse_args_called = false
 	subcmd := cli.Command{
 		name:    'subcommand'
 		execute: if_subcommands_parse_args_func
 	}
 	cmd.add_command(subcmd)
 	cmd.parse(['command', 'subcommand', 'arg0', 'arg1'])
+	assert if_subcommands_parse_args_called
 }
 
 fn test_if_subcommand_alias_parses_args() {
@@ -44,6 +56,7 @@ fn test_if_subcommand_alias_parses_args() {
 }
 
 fn if_subcommands_parse_args_func(cmd cli.Command) ! {
+	if_subcommands_parse_args_called = true
 	assert cmd.name == 'subcommand' && cmd.args == ['arg0', 'arg1']
 }
 
@@ -64,11 +77,13 @@ fn test_default_subcommands() {
 }
 
 fn flag_should_be_set(cmd cli.Command) ! {
+	flag_should_be_set_called = true
 	flag := cmd.flags.get_string('flag')!
 	assert flag == 'value'
 }
 
 fn test_if_flag_gets_set() {
+	flag_should_be_set_called = false
 	mut cmd := cli.Command{
 		name:    'command'
 		execute: flag_should_be_set
@@ -78,9 +93,11 @@ fn test_if_flag_gets_set() {
 		name: 'flag'
 	})
 	cmd.parse(['command', '-flag', 'value'])
+	assert flag_should_be_set_called
 }
 
 fn test_if_flag_gets_set_with_abbrev() {
+	flag_should_be_set_called = false
 	mut cmd := cli.Command{
 		name:    'command'
 		execute: flag_should_be_set
@@ -91,9 +108,11 @@ fn test_if_flag_gets_set_with_abbrev() {
 		abbrev: 'f'
 	})
 	cmd.parse(['command', '-f', 'value'])
+	assert flag_should_be_set_called
 }
 
 fn test_if_flag_gets_set_with_long_arg() {
+	flag_should_be_set_called = false
 	mut cmd := cli.Command{
 		name:       'command'
 		execute:    flag_should_be_set
@@ -105,9 +124,11 @@ fn test_if_flag_gets_set_with_long_arg() {
 		abbrev: 'f'
 	})
 	cmd.parse(['command', '--flag', 'value'])
+	assert flag_should_be_set_called
 }
 
 fn assert_flags(cmd cli.Command) ! {
+	assert_flags_called = true
 	flag := cmd.flags.get_string('flag')!
 	assert flag == 'value'
 	value := cmd.flags.get_int('value')!
@@ -117,6 +138,7 @@ fn assert_flags(cmd cli.Command) ! {
 }
 
 fn test_if_multiple_flags_get_set() {
+	assert_flags_called = false
 	mut cmd := cli.Command{
 		name:    'command'
 		execute: assert_flags
@@ -134,9 +156,11 @@ fn test_if_multiple_flags_get_set() {
 		name: 'value'
 	})
 	cmd.parse(['command', '-flag=value', '-value', '42', '-flag-2', 'value-2'])
+	assert assert_flags_called
 }
 
 fn test_if_required_flags_get_set() {
+	assert_flags_called = false
 	mut cmd := cli.Command{
 		name:    'command'
 		execute: assert_flags
@@ -155,9 +179,11 @@ fn test_if_required_flags_get_set() {
 		required: true
 	})
 	cmd.parse(['command', '-flag', 'value', '-value', '42', '-flag-2', 'value-2'])
+	assert assert_flags_called
 }
 
 fn flag_is_set_in_subcommand(cmd cli.Command) ! {
+	flag_is_set_in_subcommand_called = true
 	flag := cmd.flags.get_string('flag') or { panic(err) }
 	assert flag == 'value'
 }
@@ -167,6 +193,7 @@ fn test_if_flag_gets_set_in_subcommand() {
 		name:    'command'
 		execute: empty_func
 	}
+	flag_is_set_in_subcommand_called = false
 	mut subcmd := cli.Command{
 		name:    'subcommand'
 		execute: flag_is_set_in_subcommand
@@ -177,6 +204,7 @@ fn test_if_flag_gets_set_in_subcommand() {
 	})
 	cmd.add_command(subcmd)
 	cmd.parse(['command', 'subcommand', '-flag', 'value'])
+	assert flag_is_set_in_subcommand_called
 }
 
 fn test_if_global_flag_gets_set_in_subcommand() {
@@ -189,12 +217,14 @@ fn test_if_global_flag_gets_set_in_subcommand() {
 		name:   'flag'
 		global: true
 	})
+	flag_is_set_in_subcommand_called = false
 	subcmd := cli.Command{
 		name:    'subcommand'
 		execute: flag_is_set_in_subcommand
 	}
 	cmd.add_command(subcmd)
 	cmd.parse(['command', '-flag', 'value', 'subcommand'])
+	assert flag_is_set_in_subcommand_called
 }
 
 fn test_command_setup() {
