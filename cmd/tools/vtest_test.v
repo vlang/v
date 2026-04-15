@@ -99,6 +99,15 @@ fn test_partial_failure() {
 	assert res.output.contains('To reproduce just failure'), res.output
 }
 
+fn test_run_only_reports_filtered_failures() {
+	failing_test_path := os.join_path(tpath_partial, 'failing_test.v')
+	res :=
+		os.execute('${os.quoted_path(mytest_exe)} test -run-only test_xyz ${os.quoted_path(failing_test_path)}')
+	assert res.exit_code == 1
+	assert res.output.contains('assert 5 == 7'), res.output
+	assert res.output.contains(' 1 failed, 1 total'), res.output
+}
+
 fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	res :=
 		os.execute_or_exit('${os.quoted_path(mytest_exe)} -Wimpure-v test ${os.quoted_path(tpath_impure)}')

@@ -377,9 +377,10 @@ pub fn (mut g Gen) filter_only_matching_fn_names(fnames []string) []string {
 			res << tname
 			continue
 		}
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
 		mut is_matching := false
 		for fn_glob_pattern in g.pref.run_only {
-			if tname.match_glob(fn_glob_pattern) {
+			if tname.match_glob(fn_glob_pattern) || short_tname.match_glob(fn_glob_pattern) {
 				is_matching = true
 				break
 			}
