@@ -34,6 +34,10 @@ pub fn encode(manifest Manifest) string {
 	b.writeln('Module {')
 	b.write_string('\tname: ')
 	b.writeln(quote(manifest.name))
+	if manifest.base_url != '' {
+		b.write_string('\tbase_url: ')
+		b.writeln(quote(manifest.base_url))
+	}
 	b.write_string('\tdescription: ')
 	b.writeln(quote(manifest.description))
 	b.write_string('\tversion: ')

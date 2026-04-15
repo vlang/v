@@ -22,6 +22,7 @@ enum TokenKind {
 pub struct Manifest {
 pub mut:
 	name         string
+	base_url     string
 	description  string
 	version      string
 	license      string
@@ -221,6 +222,9 @@ fn (mut p Parser) parse() !Manifest {
 				match field_name {
 					'name' {
 						mn.name = field_value
+					}
+					'base_url' {
+						mn.base_url = field_value
 					}
 					'version' {
 						mn.version = field_value

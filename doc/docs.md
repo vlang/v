@@ -6119,12 +6119,16 @@ Package are up to date.
    ```v ignore
    Module {
        name: 'mypackage'
+       base_url: 'src'
        description: 'My nice package.'
        version: '0.0.1'
        license: 'MIT'
        dependencies: []
    }
    ```
+
+   `base_url` is optional. When set, V resolves the package sources relative to
+   that folder, next to the `v.mod` file.
 
    Minimal file structure:
    ```

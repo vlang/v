@@ -144,6 +144,42 @@ fn main() {
 	assert run_v_ok('${os.quoted_path(vexe)} run ${os.quoted_path(main_file)}').trim_space() == 'database'
 }
 
+fn test_run_custom_base_url_uses_project_root_lookup() {
+	os.chdir(test_path)!
+	project_dir := os.join_path(test_path, 'run_base_url_project')
+	defer {
+		os.chdir(test_path) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'source', 'foo'))!
+	os.mkdir_all(os.join_path(project_dir, 'source', 'modules', 'dep'))!
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'run_base_url_project'\n\tbase_url: 'source'\n\tdescription: ''\n\tversion: ''\n\tlicense: ''\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'source', 'main.v'), 'module main
+import foo
+import dep
+
+fn main() {
+	println(foo.name() + "+" + dep.name())
+}
+')!
+	os.write_file(os.join_path(project_dir, 'source', 'foo', 'foo.v'), 'module foo
+
+pub fn name() string {
+	return "foo"
+}
+')!
+	os.write_file(os.join_path(project_dir, 'source', 'modules', 'dep', 'dep.v'), 'module dep
+
+pub fn name() string {
+	return "dep"
+}
+')!
+	os.chdir(project_dir)!
+	assert run_v_ok('${os.quoted_path(vexe)} run .').trim_space() == 'foo+dep'
+	assert run_v_ok('${os.quoted_path(vexe)} run source').trim_space() == 'foo+dep'
+	assert run_v_ok('${os.quoted_path(vexe)} run ./source').trim_space() == 'foo+dep'
+}
+
 fn test_thirdparty_object_build_with_multiline_cflags() {
 	mut env := os.environ()
 	existing_cflags := if 'CFLAGS' in env { env['CFLAGS'] } else { '' }
