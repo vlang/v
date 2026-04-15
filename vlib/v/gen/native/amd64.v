@@ -4335,10 +4335,142 @@ fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, co
 
 	match reg.amd64() {
 		.rax {
-			c.mov_var_to_reg(.rdi, var, config)
-			c.g.write8(0x48)
-			c.g.write8(0x89)
-			c.g.write8(0x38)
+			c.mov_reg(.rdi, .rax)
+			c.mov_var_to_reg(.rbx, var, config)
+			end_label := c.g.labels.new_label()
+
+			one_byte_label := c.g.labels.new_label()
+			c.cmp(.rbx, ._32, 0x80)
+			one_byte_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  one_byte_label
+				pos: one_byte_jmp
+			}
+
+			two_byte_label := c.g.labels.new_label()
+			c.cmp(.rbx, ._32, 0x800)
+			two_byte_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  two_byte_label
+				pos: two_byte_jmp
+			}
+
+			three_byte_label := c.g.labels.new_label()
+			c.cmp(.rbx, ._32, 0x10000)
+			three_byte_jmp := c.cjmp(.jl)
+			c.g.labels.patches << LabelPatch{
+				id:  three_byte_label
+				pos: three_byte_jmp
+			}
+
+			// 4-byte utf8: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 18)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0xf0)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 12)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 6)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			mut to_end_jmp := c.jmp(0)
+			c.g.labels.patches << LabelPatch{
+				id:  end_label
+				pos: to_end_jmp
+			}
+
+			// 1-byte utf8: 0xxxxxxx
+			c.g.labels.addrs[one_byte_label] = c.g.pos()
+			c.mov_reg(.rdx, .rbx)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+			to_end_jmp = c.jmp(0)
+			c.g.labels.patches << LabelPatch{
+				id:  end_label
+				pos: to_end_jmp
+			}
+
+			// 2-byte utf8: 110xxxxx 10xxxxxx
+			c.g.labels.addrs[two_byte_label] = c.g.pos()
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 6)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0xc0)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+			to_end_jmp = c.jmp(0)
+			c.g.labels.patches << LabelPatch{
+				id:  end_label
+				pos: to_end_jmp
+			}
+
+			// 3-byte utf8: 1110xxxx 10xxxxxx 10xxxxxx
+			c.g.labels.addrs[three_byte_label] = c.g.pos()
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 12)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0xe0)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rcx, 6)
+			c.shr_reg(.rdx, .rcx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.mov_reg(.rdx, .rbx)
+			c.mov(.rsi, 0x3f)
+			c.bitand_reg(.rdx, .rsi)
+			c.mov(.rsi, 0x80)
+			c.bitor_reg(.rdx, .rsi)
+			c.mov_store(.rdi, .rdx, ._8)
+			c.add8(.rdi, 1)
+
+			c.g.labels.addrs[end_label] = c.g.pos()
+			c.mov(.rdx, 0)
+			c.mov_store(.rdi, .rdx, ._8)
 		}
 		else {
 			c.g.n_error('${@LOCATION} rune to string not implemented for ${reg}')

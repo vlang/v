@@ -101,16 +101,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.cg.cg_lea_var_to_reg(.reg0, pos)
 		}
 		ast.CharLiteral {
-			bytes := g.eval_escape_codes(node.val)
-				.bytes()
-			mut val := rune(0)
-			for i, v in bytes {
-				val |= v << (i * 8)
-				if i >= sizeof(rune) {
-					g.n_error('${@LOCATION} runes are only 4 bytes wide')
-				}
+			decoded := g.eval_escape_codes(node.val)
+			runes := decoded.runes()
+			if runes.len != 1 {
+				g.n_error('${@LOCATION} expected a single rune, got ${runes.len} from `${decoded}`')
 			}
-			g.cg.cg_movabs(.reg0, i64(val))
+			g.cg.cg_movabs(.reg0, i64(runes[0]))
 		}
 		ast.StructInit {
 			pos := g.allocate_by_type('_anonstruct', node.typ)
