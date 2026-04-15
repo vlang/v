@@ -127,7 +127,7 @@ fn test_tmpl_comptime() {
 	index := $tmpl('tmpl/index.html').trim_space()
 	// dump(index)
 	assert index.contains('<br>Line ending with percent %\n')
-	assert index.contains('<br>Line ending with at $\n')
+	assert index.contains('<br>Line ending with at @\n')
 	assert index.contains('<br>Line ending with ampersand &\n')
 	assert index.contains('<br>Line ending with hash #\n')
 	assert index.contains('<br>Line ending with slash /\n')
