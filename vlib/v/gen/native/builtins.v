@@ -59,6 +59,9 @@ pub fn (mut g Gen) generate_builtins() {
 			println(term.green('\n(builtin) ${name}:'))
 		}
 
+		if g.pref.arch == .arm64 {
+			g.align_to(4)
+		}
 		g.stack_var_pos = 0
 		call_addr := g.pos()
 		g.defer_stmts.clear()

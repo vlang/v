@@ -5,6 +5,10 @@ module native
 
 import v.ast
 
+const arm64_bl_opcode = u32(0x94000000)
+const arm64_branch_imm_mask = u32(0x03ffffff)
+const arm64_branch_imm_limit = i64(33_554_432)
+
 enum Arm64Register {
 	x0  // v----
 	x1  // |
@@ -275,9 +279,20 @@ fn (mut c Arm64) adr(r Arm64Register, delta i32) {
 	c.g.println('adr ${r}, ${delta}')
 }
 
+fn arm64_encode_bl_instruction(delta i64) !u32 {
+	if (delta % 4) != 0 {
+		return error('arm64 branch target must be 4-byte aligned, got delta ${delta}')
+	}
+	imm26 := delta / 4
+	if imm26 < -arm64_branch_imm_limit || imm26 > arm64_branch_imm_limit - 1 {
+		return error('arm64 branch target is out of range, got delta ${delta}')
+	}
+	return arm64_bl_opcode | (u32(i32(imm26)) & arm64_branch_imm_mask)
+}
+
 fn (mut c Arm64) bl() {
 	// g.write32(0xa9400000)
-	c.g.write32(i32(0x94000000))
+	c.g.write32(i32(arm64_bl_opcode))
 	c.g.println('bl 0')
 }
 
@@ -506,16 +521,31 @@ fn (mut c Arm64) cg_mov_int_to_var(_var Var, _integer i32, _config VarConfig) {
 	panic('Arm64.cg_mov_int_to_var() not implemented')
 }
 
-fn (mut c Arm64) cg_call(_addr i32) i64 {
-	panic('Arm64.cg_call() not implemented')
+fn (mut c Arm64) cg_call(addr i32) i64 {
+	call_addr := c.g.pos()
+	if addr == 0 {
+		c.bl()
+		return call_addr
+	}
+	instruction := arm64_encode_bl_instruction(i64(addr) - call_addr) or {
+		c.g.n_error(err.msg())
+		return call_addr
+	}
+	c.g.write32(i32(instruction))
+	c.g.println('bl ${addr}')
+	return call_addr
 }
 
 fn (mut c Arm64) cg_zero_fill(_size i32, _var LocalVar) {
 	panic('Arm64.cg_zero_fill() not implemented')
 }
 
-fn (mut c Arm64) cg_call_addr_at(_addr i32, _at i64) i64 {
-	panic('Arm64.cg_call_addr_at() not implemented')
+fn (mut c Arm64) cg_call_addr_at(addr i32, at i64) i64 {
+	instruction := arm64_encode_bl_instruction(i64(addr) - at) or {
+		c.g.n_error(err.msg())
+		return 0
+	}
+	return i64(instruction & arm64_branch_imm_mask)
 }
 
 fn (mut c Arm64) cg_push(_r Register) {
