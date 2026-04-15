@@ -8487,12 +8487,18 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 
 	if exprs_len > 0 {
-		// skip `return $vweb.html()`
+		// `$vweb.html()` / `$veb.html()` expand to statements, so the Result return
+		// needs to be emitted explicitly here.
 		if expr0 is ast.ComptimeCall && expr0.is_vweb {
 			g.inside_return_tmpl = true
 			g.expr(expr0)
 			g.inside_return_tmpl = false
-			g.writeln(';')
+			ret_typ := g.ret_styp(g.unwrap_generic(g.fn_decl.return_type))
+			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+			if !g.is_builtin_mod {
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
+			g.writeln('return (${ret_typ}){0};')
 			return
 		}
 	}
