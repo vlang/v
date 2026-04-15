@@ -357,9 +357,8 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			if !p.is_vls_skip_file {
-				p.check_unused_imports()
-			}
+			// Imported module files are discovered after the initial parse pass,
+			// so unused import warnings are emitted later by the builder.
 			break
 		}
 		stmt := p.top_stmt()

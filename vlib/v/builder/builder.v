@@ -6,6 +6,7 @@ import v.pref
 import v.errors
 import v.util
 import v.ast
+import v.ast.walker
 import v.vmod
 import v.checker
 import v.transformer
@@ -57,6 +58,20 @@ pub mut:
 	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
 	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 	disable_flto          bool
+}
+
+struct CFunctionCallCollector {
+mut:
+	names map[string]bool
+}
+
+fn (mut c CFunctionCallCollector) visit(node &ast.Node) ! {
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		if call.name.starts_with('C.') {
+			c.names[call.name] = true
+		}
+	}
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
@@ -135,6 +150,8 @@ pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 		exit(1)
 	}
 	b.parse_imports()
+	b.check_unused_imports()
+	b.print_frontend_builder_errors()
 	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
 		exit(1)
 	}
@@ -162,6 +179,8 @@ pub fn (mut b Builder) front_stages(v_files []string) ! {
 	}
 
 	b.parse_imports()
+	b.check_unused_imports()
+	b.print_frontend_builder_errors()
 	if b.should_stop_after_frontend_error() && b.has_frontend_errors() {
 		exit(1)
 	}
@@ -402,6 +421,94 @@ pub fn (mut b Builder) resolve_deps() {
 		}
 		b.table.modules = mods
 		b.parsed_files = reordered_parsed_files
+	}
+}
+
+fn import_alias_for_mod(file &ast.File, mod string) ?string {
+	for import_m in file.imports {
+		if import_m.mod == mod {
+			return import_m.alias
+		}
+	}
+	return none
+}
+
+fn register_used_import(mut file ast.File, alias string) {
+	if alias !in file.used_imports {
+		file.used_imports << alias
+	}
+}
+
+fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool {
+	mut collector := CFunctionCallCollector{
+		names: map[string]bool{}
+	}
+	walker.walk(mut collector, file)
+	return collector.names
+}
+
+fn (mut b Builder) mark_imports_used_by_c_function_calls() {
+	for mut file in b.parsed_files {
+		used_c_calls := b.collect_used_c_function_calls(file)
+		if used_c_calls.len == 0 {
+			continue
+		}
+		for c_fn_name, _ in used_c_calls {
+			c_fn := b.table.find_fn(c_fn_name) or { continue }
+			alias := import_alias_for_mod(file, c_fn.mod) or { continue }
+			register_used_import(mut file, alias)
+		}
+	}
+}
+
+fn (mut b Builder) add_unused_import_message(mut file ast.File, message string, pos token.Pos) {
+	file_path := if pos.file_idx < 0 { file.path } else { b.table.filelist[pos.file_idx] }
+	if b.pref.warns_are_errors {
+		err := errors.Error{
+			file_path: file_path
+			pos:       pos
+			reporter:  .parser
+			message:   message
+		}
+		file.errors << err
+		if b.pref.output_mode == .stdout && !b.pref.check_only {
+			util.show_compiler_message('error:', err.CompilerMessage)
+		}
+		return
+	}
+	if b.pref.skip_warnings {
+		return
+	}
+	wrn := errors.Warning{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   message
+	}
+	file.warnings << wrn
+	if b.pref.output_mode == .stdout && !b.pref.check_only {
+		util.show_compiler_message('warning:', wrn.CompilerMessage)
+	}
+}
+
+fn (mut b Builder) check_unused_imports() {
+	if b.pref.is_repl || b.pref.is_fmt {
+		return
+	}
+	b.mark_imports_used_by_c_function_calls()
+	for mut file in b.parsed_files {
+		for import_m in file.imports {
+			alias := import_m.alias
+			mod := import_m.mod
+			if (alias.len == 1 && alias[0] == `_`) || alias in file.used_imports
+				|| alias in file.auto_imports {
+				continue
+			}
+			mod_alias := if alias == mod { alias } else { '${alias} (${mod})' }
+			b.add_unused_import_message(mut file,
+				"module '${mod_alias}' is imported but never used. Use `import ${mod_alias} as _`, to silence this warning, or just remove the unused import line",
+				import_m.mod_pos)
+		}
 	}
 }
 
@@ -813,16 +920,24 @@ struct FunctionRedefinition {
 }
 
 pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.Error {
-	if !b.pref.check_only {
-		util.show_compiler_message('builder error:', pos: pos, file_path: fpath, message: s)
-		exit(1)
-	}
-
 	return errors.Error{
 		file_path: fpath
 		pos:       pos
 		reporter:  .builder
 		message:   s
+	}
+}
+
+fn (b &Builder) print_frontend_builder_errors() {
+	if b.pref.check_only || b.pref.output_mode != .stdout {
+		return
+	}
+	for file in b.parsed_files {
+		for err in file.errors {
+			if err.reporter == .builder {
+				util.show_compiler_message('builder error:', err.CompilerMessage)
+			}
+		}
 	}
 }
 
