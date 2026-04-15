@@ -6132,6 +6132,11 @@ Package are up to date.
    mypackage.v
    ```
 
+   You can also add `subdirs: ['internal']` to `v.mod` to compile files from
+   selected subdirectories as part of the same module. These paths are relative
+   to the module source root, and files there should declare the same
+   `module mypackage`.
+
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
    ```v

@@ -554,10 +554,11 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 		verror("${dir} isn't a directory!")
 	}
 	mut files := os.ls(dir) or { panic(err) }
+	mut source_dir := os.real_path(dir)
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("${dir}")')
 	}
-	res := b.pref.should_compile_filtered_files(dir, files)
+	mut res := b.pref.should_compile_filtered_files(dir, files)
 	if res.len == 0 {
 		// Perhaps the .v files are stored in /src/ ?
 		src_path := os.join_path(dir, 'src')
@@ -566,10 +567,105 @@ pub fn (b &Builder) v_files_from_dir(dir string) []string {
 				println('v_files_from_dir ("${src_path}") (/src/)')
 			}
 			files = os.ls(src_path) or { panic(err) }
-			return b.pref.should_compile_filtered_files(src_path, files)
+			source_dir = os.real_path(src_path)
+			res = b.pref.should_compile_filtered_files(src_path, files)
 		}
 	}
+	return b.with_same_module_subdir_files(source_dir, res)
+}
+
+fn (b &Builder) with_same_module_subdir_files(source_dir string, v_files []string) []string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(source_dir)
+	if vmod_file_location.vmod_file == '' {
+		return v_files
+	}
+	module_source_root := b.module_source_root(vmod_file_location.vmod_folder)
+	if source_dir != module_source_root {
+		return v_files
+	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return v_files }
+	subdirs := manifest.unknown['subdirs'] or { return v_files }
+	if subdirs.len == 0 {
+		return v_files
+	}
+	mut res := v_files.clone()
+	mut seen := map[string]bool{}
+	for file in res {
+		seen[os.real_path(file)] = true
+	}
+	for subdir in subdirs {
+		normalized_subdir := normalize_same_module_subdir(subdir, module_source_root) or {
+			continue
+		}
+		subdir_path := os.join_path(module_source_root, normalized_subdir)
+		b.collect_same_module_v_files(vmod_file_location.vmod_folder, subdir_path, mut seen, mut
+			res)
+	}
 	return res
+}
+
+fn (b &Builder) module_source_root(module_root string) string {
+	real_module_root := os.real_path(module_root)
+	files := os.ls(real_module_root) or { return real_module_root }
+	if b.pref.should_compile_filtered_files(real_module_root, files).len == 0 {
+		src_path := os.join_path(real_module_root, 'src')
+		if os.is_dir(src_path) {
+			return os.real_path(src_path)
+		}
+	}
+	return real_module_root
+}
+
+fn normalize_same_module_subdir(subdir string, module_source_root string) !string {
+	mut normalized := os.norm_path(subdir.trim_space().replace('\\', os.path_separator).replace('/',
+		os.path_separator))
+	if normalized == '' || normalized == '.' || os.is_abs_path(normalized) {
+		return error('invalid subdir')
+	}
+	if os.base(module_source_root) == 'src' {
+		src_prefix := 'src' + os.path_separator
+		if normalized == 'src' {
+			return error('invalid subdir')
+		}
+		if normalized.starts_with(src_prefix) {
+			normalized = normalized.all_after(src_prefix)
+		}
+	}
+	normalized = normalized.trim_left(os.path_separator).trim_right(os.path_separator)
+	if normalized == '' {
+		return error('invalid subdir')
+	}
+	parts := normalized.split(os.path_separator)
+	if '' in parts || '.' in parts || '..' in parts {
+		return error('invalid subdir')
+	}
+	return normalized
+}
+
+fn (b &Builder) collect_same_module_v_files(module_root string, dir string, mut seen map[string]bool, mut res []string) {
+	if !os.is_dir(dir) {
+		return
+	}
+	real_dir := os.real_path(dir)
+	if real_dir != os.real_path(module_root) && os.is_file(os.join_path(real_dir, 'v.mod')) {
+		return
+	}
+	mut entries := os.ls(real_dir) or { return }
+	entries.sort()
+	for file in b.pref.should_compile_filtered_files(real_dir, entries) {
+		real_file := os.real_path(file)
+		if real_file !in seen {
+			seen[real_file] = true
+			res << file
+		}
+	}
+	for entry in entries {
+		subdir_path := os.join_path(real_dir, entry)
+		if os.is_dir(subdir_path) {
+			b.collect_same_module_v_files(module_root, subdir_path, mut seen, mut res)
+		}
+	}
 }
 
 pub fn (b &Builder) log(s string) {
