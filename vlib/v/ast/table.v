@@ -2645,7 +2645,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 }
 
 fn (mut t Table) lower_mut_param_type(typ Type) Type {
-	mut lowered := if typ.is_ptr() && t.sym(typ).kind == .struct {
+	mut lowered := if typ.is_ptr() {
 		typ.ref()
 	} else {
 		typ.set_nr_muls(1)

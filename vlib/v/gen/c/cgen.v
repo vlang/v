@@ -5344,6 +5344,21 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						g.write(node.op.str())
 					}
 				}
+				// For `*val` where val is a mut generic param with pointer type
+				// (e.g. `mut val T` where T=&int -> C: `int** val`), auto-deref needs
+				// an extra `*` so `*val` in V becomes `**val` in C.
+				if node.op == .mul && node.right is ast.Ident {
+					ident_right := node.right as ast.Ident
+					if ident_right.obj is ast.Var && ident_right.obj.is_auto_deref
+						&& ident_right.obj.is_arg && ident_right.obj.generic_typ != 0 {
+						// generic_typ stores the mut-lowered surface type (`&T`) for mut
+						// generic params, but we only need the underlying `T` here.
+						resolved_generic := g.unwrap_generic(ident_right.obj.generic_typ.deref())
+						if resolved_generic.is_ptr() {
+							g.write('*')
+						}
+					}
+				}
 				if tmp_var == '' {
 					g.expr(node.right)
 				} else {

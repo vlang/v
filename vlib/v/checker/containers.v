@@ -7,7 +7,11 @@ import v.token
 
 @[inline]
 fn array_init_result_type(node ast.ArrayInit) ast.Type {
-	return if node.alias_type != ast.void_type { node.alias_type } else { node.typ }
+	return if node.alias_type != 0 && node.alias_type != ast.void_type {
+		node.alias_type
+	} else {
+		node.typ
+	}
 }
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
