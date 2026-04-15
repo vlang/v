@@ -292,6 +292,16 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	$if A is StaticApp {
 		ctx.custom_mime_types = global_app.static_mime_types.clone()
+		mut user_context := X{}
+		user_context.Context = ctx
+		if serve_if_static[X](static_handler_config(global_app.static_files,
+			global_app.static_mime_types, global_app.static_hosts, global_app.enable_static_gzip,
+			global_app.enable_static_zstd, global_app.enable_static_compression,
+			global_app.static_compression_max_size, global_app.static_compression_mime_types,
+			global_app.enable_markdown_negotiation), mut user_context, url, host)
+		{
+			return &user_context.Context
+		}
 	}
 	$if A is ControllerInterface {
 		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
@@ -518,9 +528,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		}
 	}
 
-	if serve_if_static[A, X](&app, mut user_context, url, host) {
-		// successfully served a static file
-		return
+	$if A is StaticApp {
+		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
+			app.static_hosts, app.enable_static_gzip, app.enable_static_zstd,
+			app.enable_static_compression, app.static_compression_max_size,
+			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
+			url, host)
+		{
+			// successfully served a static file
+			return
+		}
 	}
 
 	// Route matching and match route specific middleware as last step
@@ -666,7 +683,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 @[manualfree]
-fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
+fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
 	static_handler := app_static_handler(app)
@@ -738,6 +755,20 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 
 	user_context.send_file(mime_type, static_file)
 	return true
+}
+
+fn static_handler_config(static_files map[string]string, static_mime_types map[string]string, static_hosts map[string]string, enable_static_gzip bool, enable_static_zstd bool, enable_static_compression bool, static_compression_max_size int, static_compression_mime_types []string, enable_markdown_negotiation bool) StaticHandler {
+	return StaticHandler{
+		static_files:                  static_files
+		static_mime_types:             static_mime_types
+		static_hosts:                  static_hosts
+		enable_static_gzip:            enable_static_gzip
+		enable_static_zstd:            enable_static_zstd
+		enable_static_compression:     enable_static_compression
+		static_compression_max_size:   static_compression_max_size
+		static_compression_mime_types: static_compression_mime_types
+		enable_markdown_negotiation:   enable_markdown_negotiation
+	}
 }
 
 // send a string over `conn`

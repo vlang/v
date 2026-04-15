@@ -969,6 +969,8 @@ fn main() {
 
 You can do everything with a controller struct as with a regular `App` struct.
 Register middleware, add static files and you can even register other controllers!
+Static assets registered on either the main app or a controller keep working when
+controllers are mounted, including controllers mounted at `'/'`.
 
 ### Routing
 
