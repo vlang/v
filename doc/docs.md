@@ -5027,7 +5027,7 @@ struct Abc {
 }
 
 a := 2.13
-ch := chan f64{}
+ch := chan f64{cap: 1} // buffered so `try_push()` can succeed without a waiting receiver
 res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
@@ -5043,6 +5043,8 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
+On an unbuffered channel, `try_push()` will return `.not_ready` unless a receiver is ready at
+the same time.
 Usage of these methods and fields in production is not recommended -
 algorithms based on them are often subject to race conditions. Especially `.len` and
 `.closed` should not be used to make decisions.
