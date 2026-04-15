@@ -6,6 +6,7 @@ module checker
 import v.ast
 import v.token
 import encoding.utf8.validate
+import v.util
 
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
@@ -183,11 +184,67 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 
 const unicode_lit_overflow_message = 'unicode character exceeds max allowed value of 0x10ffff, consider using a unicode literal (\\u####)'
 
+fn is_source_char_escaped(source string, idx int) bool {
+	mut backslashes := 0
+	mut i := idx - 1
+	for i >= 0 && source[i] == `\\` {
+		backslashes++
+		i--
+	}
+	return (backslashes & 1) == 1
+}
+
+fn raw_string_literal_source(source string, approx_pos int) ?string {
+	if source.len == 0 {
+		return none
+	}
+	mut hint := approx_pos
+	if hint < 0 {
+		hint = 0
+	} else if hint >= source.len {
+		hint = source.len - 1
+	}
+	mut start := hint
+	for start >= 0 {
+		if source[start] in [`'`, `"`] && !is_source_char_escaped(source, start) {
+			quote := source[start]
+			is_raw := start > 0 && source[start - 1] == `r`
+			mut end := start + 1
+			for end < source.len {
+				if source[end] == quote && (is_raw || !is_source_char_escaped(source, end)) {
+					if end >= hint {
+						return source[start..end + 1]
+					}
+					break
+				}
+				end++
+			}
+		}
+		start--
+	}
+	return none
+}
+
+fn (c &Checker) source_string_literal_is_valid_utf8(node ast.StringLiteral) bool {
+	if node.pos.file_idx < 0 || node.pos.file_idx >= c.table.filelist.len {
+		return validate.utf8_string(node.val)
+	}
+	source := util.read_file(c.table.filelist[node.pos.file_idx]) or {
+		return validate.utf8_string(node.val)
+	}
+	raw_source := raw_string_literal_source(source, node.pos.pos) or {
+		return validate.utf8_string(node.val)
+	}
+	return validate.utf8_string(raw_source)
+}
+
 // unicode character literals are limited to a maximum value of 0x10ffff
 // https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
 @[direct_array_access]
 fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
-	valid_utf8 := validate.utf8_string(node.val)
+	// Validate the bytes that came from the source file, not the decoded string value.
+	// `\x..` escapes are allowed to produce arbitrary bytes intentionally.
+	valid_utf8 := c.source_string_literal_is_valid_utf8(node)
 	if !valid_utf8 {
 		c.note('invalid utf8 byte sequence in string literal', node.pos)
 	}
