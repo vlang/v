@@ -26,7 +26,7 @@ pub:
 @[params]
 pub struct BufferedReadLineConfig {
 pub:
-	delim u8 = `\n` // line delimiter
+	delim u8 = `\n` // line delimiter; `\n` also strips a preceding `\r`
 }
 
 // new_buffered_reader creates a new BufferedReader.
@@ -120,8 +120,10 @@ pub fn (r BufferedReader) end_of_stream() bool {
 }
 
 // read_line attempts to read a line from the buffered reader.
-// It will read until it finds the specified line delimiter
-// such as (\n, the default or \0) or the end of stream.
+// It reads until it finds the specified delimiter or the end of stream.
+// The returned string does not include the delimiter.
+// When the delimiter is `\n`, a preceding `\r` is treated as part of CRLF
+// and is also omitted from the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 	if r.end_of_stream {
 		return Eof{}
@@ -146,13 +148,15 @@ pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 			c := r.buf[i]
 			if c == config.delim {
 				// great, we hit something
-				// do some checking for whether we hit \r\n or just \n
-				if i != 0 && config.delim == `\n` && r.buf[i - 1] == `\r` {
-					x := i - 1
-					line << r.buf[r.offset..x]
-				} else {
-					line << r.buf[r.offset..i]
+				mut end := i
+				if config.delim == `\n` {
+					if i > r.offset && r.buf[i - 1] == `\r` {
+						end--
+					} else if i == r.offset && line.len > 0 && line[line.len - 1] == `\r` {
+						line.delete_last()
+					}
 				}
+				line << r.buf[r.offset..end]
 				r.offset = i + 1
 				return line.bytestr()
 			}
