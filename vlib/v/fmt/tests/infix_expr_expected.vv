@@ -1,3 +1,5 @@
+import js
+
 fn grouped_cond_single_line() {
 	// fmt tries to keep grouped conditions together...
 	_ := one_condition_before && another_condition
