@@ -5,6 +5,25 @@ module c
 
 import v.ast
 
+fn (mut g Gen) if_guard_var_needs_gc_pin(scope &ast.Scope, name string) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	if name == '_' {
+		return false
+	}
+	if v := scope.find_var(name) {
+		return v.is_auto_heap || v.typ.is_any_kind_of_pointer() || g.contains_ptr(v.typ)
+	}
+	return false
+}
+
+fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name string) {
+	if g.if_guard_var_needs_gc_pin(scope, name) {
+		g.writeln('\tGC_reachable_here(&${cvar_name});')
+	}
+}
+
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
 		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime || g.is_assign_lhs {
@@ -501,14 +520,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
 						g.expr(branch.cond.expr)
 						g.writeln(', sizeof(${base_type}));')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					} else if short_opt_is_auto_heap {
 						g.write('\t${base_type}* ${cond_var_name} = HEAP(${base_type}, ')
 						g.expr(branch.cond.expr)
 						g.writeln(');')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					} else {
 						g.write('\t${base_type} ${cond_var_name} = ')
 						g.expr(branch.cond.expr)
 						g.writeln(';')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					}
 				} else {
 					mut is_auto_heap := false
@@ -531,13 +556,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							&& !guard_typ.is_ptr()
 						if guard_is_heap_obj {
 							g.writeln('\t${base_type}* ${left_var_name} = (${base_type}*)${var_name}${dot_or_ptr}data;')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else if is_auto_heap {
 							// Non-heap structs still need a dedicated heap copy when the guard value escapes.
 							// `@[heap]` structs already live behind the option data pointer and must not be copied.
 							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}${dot_or_ptr}data);')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else if base_type.starts_with('Array_fixed') {
 							g.writeln('\t${base_type} ${left_var_name} = {0};')
 							g.writeln('memcpy(${left_var_name}, (${base_type}*)${var_name}.data, sizeof(${base_type}));')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else {
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
@@ -548,9 +579,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 								} else {
 									g.writeln(' = (${base_type}*)${var_name}${dot_or_ptr}data;')
 								}
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							} else {
 								g.write('\t${base_type} ${left_var_name}')
 								g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							}
 						}
 					} else if branch.cond.vars.len > 1 {
@@ -565,8 +600,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									left_var_name := c_name(var.name)
 									if is_auto_heap {
 										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									} else {
 										g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									}
 								}
 							}

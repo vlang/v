@@ -1,0 +1,16 @@
+fn foo() !string {
+	return 'value'
+}
+
+fn lookup() !string {
+	if abs_path := foo() {
+		if abs_path != '' {
+			return abs_path
+		}
+	}
+	return error('missing')
+}
+
+fn main() {
+	lookup() or { '' }
+}
