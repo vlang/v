@@ -3600,7 +3600,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						c.check_enum_field_integer_literal(comptime_lit, signed,
 							node.is_multi_allowed, senum_type, field.expr.pos, mut useen,
 							enum_umin, enum_umax, mut iseen, enum_imin, enum_imax)
-						field.expr = comptime_lit
+						field.expr = ast.Expr(comptime_lit)
 					} else {
 						c.error('the default value for an enum has to be an integer',
 							field.expr.pos)

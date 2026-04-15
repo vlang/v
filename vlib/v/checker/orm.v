@@ -104,11 +104,11 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 						if obj.is_mut {
 							return error('dynamic ORM expressions must use an immutable query-data block alias')
 						}
-						current = obj.expr
+						current = ast.Expr(obj.expr)
 						continue
 					}
 					ast.ConstField {
-						current = obj.expr
+						current = ast.Expr(obj.expr)
 						continue
 					}
 					else {}
@@ -576,7 +576,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	fields = insert_fields.clone()
 
-	mut sub_structs := map[string]ast.SqlStmtLine{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
@@ -612,7 +612,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[field.name] = subquery_expr
+		sub_structs[field.typ] = subquery_expr
 	}
 
 	node.fields = fields

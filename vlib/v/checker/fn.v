@@ -3841,7 +3841,7 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, generic_names [
 			}
 		}
 		lambda.call_ctx = unsafe { node }
-		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, caller_generic_names,
+		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, generic_names,
 			node.concrete_types)
 		if lambda_concrete_types.len == 0 {
 			return

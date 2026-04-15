@@ -128,11 +128,11 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 						if obj.is_mut {
 							return none
 						}
-						current = obj.expr
+						current = ast.Expr(obj.expr)
 						continue
 					}
 					ast.ConstField {
-						current = obj.expr
+						current = ast.Expr(obj.expr)
 						continue
 					}
 					else {}
@@ -288,9 +288,17 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
-	mut sub_structs := map[string]ast.SqlStmtLine{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for key, sub in node.sub_structs {
-		sub_structs[key] = g.build_sql_stmt_line_from_sql_expr(sub)
+		// Find the field type for this field name to use as the int key
+		mut field_typ := ast.Type(0)
+		for field in node.fields {
+			if field.name == key {
+				field_typ = field.typ
+				break
+			}
+		}
+		sub_structs[int(field_typ)] = g.build_sql_stmt_line_from_sql_expr(sub)
 	}
 	return ast.SqlStmtLine{
 		object_var:  node.inserted_var
@@ -811,8 +819,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			if field.name in node.sub_structs {
-				subs << unsafe { node.sub_structs[field.name] }
+			if final_field_typ in node.sub_structs {
+				subs << unsafe { node.sub_structs[int(final_field_typ)] }
 
 				unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
 				subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
@@ -831,8 +839,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			if field.name in node.sub_structs {
-				arrs << unsafe { node.sub_structs[field.name] }
+			if final_field_typ in node.sub_structs {
+				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
 			}
 			field_names << field.name
 		}

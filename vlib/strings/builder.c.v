@@ -251,24 +251,9 @@ pub fn (mut b Builder) str() string {
 
 // ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary.
 pub fn (mut b Builder) ensure_cap(n int) {
-	// code adapted from vlib/builtin/array.v
-	if n <= b.cap {
-		return
-	}
-
-	new_data := vcalloc(n * b.element_size)
-	if b.data != unsafe { nil } {
-		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
-		// TODO: the old data may be leaked when no GC is used (ref-counting?)
-		if b.flags.has(.noslices) {
-			unsafe { free(b.data) }
-		}
-	}
-	unsafe {
-		b.data = new_data
-		b.offset = 0
-		b.cap = n
-	}
+	// Delegate to the array's ensure_cap which handles managed allocation properly
+	mut arr := unsafe { &array(&b) }
+	arr.ensure_cap(n)
 }
 
 // grow_len grows the length of the buffer by `n` bytes if necessary
@@ -290,9 +275,9 @@ pub fn (mut b Builder) grow_len(n int) {
 @[unsafe]
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
-		unsafe { free(b.data) }
 		unsafe {
-			b.data = nil
+			mut arr := &array(&b)
+			arr.free()
 		}
 	}
 }

@@ -872,8 +872,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	var_name := g.get_array_expr_param_name(mut expr)
-	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
 	is_auto_heap := g.array_expr_param_needs_indirect_access(expr, var_name)
 	old_param_auto_heap := g.set_array_expr_param_auto_heap(expr, var_name, is_auto_heap)
 	defer {
@@ -2522,7 +2520,7 @@ fn (mut g Gen) array_expr_roots_at_param(expr ast.Expr, var_name string) bool {
 	mut root := expr
 	for {
 		if mut root is ast.ParExpr {
-			root = root.expr
+			root = ast.Expr(root.expr)
 			continue
 		}
 		break
