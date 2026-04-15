@@ -308,6 +308,56 @@ fn (mut g Gen) array_interface_cast_expr(src_elem_expr string, got_type ast.Type
 	return src_elem_expr
 }
 
+fn (mut g Gen) interface_clone_fn_name(interface_type ast.Type) string {
+	interface_sym := g.table.final_sym(g.table.unaliased_type(g.unwrap_generic(interface_type)))
+	mut fn_name := '__v_interface_clone__${interface_sym.cname}'
+	if interface_sym.info is ast.Interface && interface_sym.info.is_generic {
+		fn_name = g.generic_fn_name(interface_sym.info.concrete_types, fn_name)
+	}
+	return fn_name
+}
+
+fn (mut g Gen) register_array_interface_repeat_fn(array_type ast.Type) string {
+	array_typ := g.table.unaliased_type(g.unwrap_generic(array_type))
+	array_sym := g.table.final_sym(array_typ)
+	if array_sym.kind != .array {
+		return ''
+	}
+	array_info := array_sym.info as ast.Array
+	interface_sym :=
+		g.table.final_sym(g.table.unaliased_type(g.unwrap_generic(array_info.elem_type)))
+	if interface_sym.kind != .interface {
+		return ''
+	}
+	array_styp := g.styp(array_type)
+	elem_styp := g.styp(array_info.elem_type)
+	clone_fn_name := g.interface_clone_fn_name(array_info.elem_type)
+	fn_name := '__v_array_repeat_interface__${array_styp}'
+	mut already_generated := false
+	lock g.generated_array_interface_repeat_fns {
+		already_generated = fn_name in g.generated_array_interface_repeat_fns
+		if !already_generated {
+			g.generated_array_interface_repeat_fns[fn_name] = true
+		}
+	}
+	if already_generated {
+		return fn_name
+	}
+	g.definitions.writeln('${g.static_non_parallel}${array_styp} ${fn_name}(${array_styp} a, ${ast.int_type_name} count);')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('${g.static_non_parallel}inline ${array_styp} ${fn_name}(${array_styp} a, ${ast.int_type_name} count) {')
+	fn_builder.writeln('\t${array_styp} res = builtin__array_repeat_to_depth(*(array*)&a, count, 0);')
+	fn_builder.writeln('\tif (a.len > 0) {')
+	fn_builder.writeln('\t\tfor (${ast.int_type_name} i = 0; i < res.len; ++i) {')
+	fn_builder.writeln('\t\t\t((${elem_styp}*)res.data)[i] = ${clone_fn_name}(((${elem_styp}*)a.data)[i % a.len]);')
+	fn_builder.writeln('\t\t}')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn res;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
+	return fn_name
+}
+
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string, is_amp bool) {
 	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
