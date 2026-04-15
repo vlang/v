@@ -747,6 +747,54 @@ fn test_transform_index_expr_map_read_lowers_to_map_get() {
 	assert call.args.len == 3
 }
 
+fn test_transform_map_index_push_lowers_to_map_get_and_set() {
+	mut t := create_transformer_with_vars({
+		'lists': types.Type(types.Map{
+			key_type:   types.int_
+			value_type: types.Type(types.Array{
+				elem_type: types.int_
+			})
+		})
+	})
+
+	result := t.try_transform_map_index_push(ast.ExprStmt{
+		expr: ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.IndexExpr{
+				lhs:  ast.Ident{
+					name: 'lists'
+				}
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+		}
+	}) or {
+		assert false, 'expected map index push to be transformed'
+		return
+	}
+
+	assert result is ast.ExprStmt
+	expr_stmt := result as ast.ExprStmt
+	assert expr_stmt.expr is ast.CallExpr
+	push_call := expr_stmt.expr as ast.CallExpr
+	assert push_call.lhs is ast.Ident
+	assert (push_call.lhs as ast.Ident).name == 'array__push_noscan'
+	assert push_call.args.len == 2
+	assert push_call.args[0] is ast.CastExpr
+	arr_ptr := push_call.args[0] as ast.CastExpr
+	assert arr_ptr.expr is ast.CallExpr
+	map_call := arr_ptr.expr as ast.CallExpr
+	assert map_call.lhs is ast.Ident
+	assert (map_call.lhs as ast.Ident).name == 'map__get_and_set'
+	assert map_call.args.len == 3
+}
+
 fn test_transform_init_expr_empty_typed_map_lowers_to_new_map() {
 	mut t := create_test_transformer()
 
