@@ -2213,6 +2213,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		}
 		left_type := if recompute_types { mr_types[i] } else { node.left_types[i] }
 		styp := if ident.name in g.defer_vars { '' } else { g.styp(left_type) }
+		needs_auto_heap_alloc := is_auto_heap && node.op == .decl_assign
 		if node.op == .decl_assign {
 			g.write('${styp} ')
 		}
@@ -2229,7 +2230,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		}
 		if left_type.has_flag(.option) {
 			base_typ := g.base_type(left_type)
-			tmp_var := if is_auto_heap {
+			tmp_var := if needs_auto_heap_alloc {
 				if aligned != 0 {
 					'HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned})'
 				} else {
@@ -2261,7 +2262,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
 				if cur_indexexpr != -1 {
-					if is_auto_heap {
+					if needs_auto_heap_alloc {
 						if aligned != 0 {
 							g.writeln('HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned}) });')
 						} else {
@@ -2274,7 +2275,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					}
 					g.cur_indexexpr.delete(cur_indexexpr)
 				} else {
-					if is_auto_heap {
+					if needs_auto_heap_alloc {
 						if aligned != 0 {
 							g.writeln(' = HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned});')
 						} else {
