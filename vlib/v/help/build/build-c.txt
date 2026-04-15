@@ -382,8 +382,10 @@ see also `v help build`.
 
    -thread-stack-size 4194304
       Set the thread stack size to 4MB. Use multiples of 4096.
-      The default is 8MB, which is enough for compiling V programs, with deeply
-      nested expressions (~40 levels).
+      The default is 8MB on 64-bit targets and 2MB on 32-bit targets.
+      8MB is enough for compiling V programs, with deeply nested
+      expressions (~40 levels), while 32-bit targets use a smaller default
+      to reduce per-thread memory usage.
       It may need to be increased, if you are getting stack overflow errors for
       deeply recursive programs like some of the stages of the V compiler itself,
       that use relatively few threads.
