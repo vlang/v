@@ -574,10 +574,27 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
-	s.owns_socket = true
 	if s.opened {
 		return error('net.mbedtls SSLConn.dial, the ssl connection was already open')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if unsafe { s.certs != nil } {
+				C.mbedtls_x509_crt_free(&s.certs.cacert)
+				C.mbedtls_x509_crt_free(&s.certs.client_cert)
+				C.mbedtls_pk_free(&s.certs.client_key)
+				s.certs = unsafe { nil }
+			}
+			C.mbedtls_net_free(&s.server_fd)
+			C.mbedtls_ssl_free(&s.ssl)
+			C.mbedtls_ssl_config_free(&s.conf)
+			free_rng(mut s.ctr_drbg, mut s.entropy)
+			s.handle = 0
+			s.owns_socket = false
+		}
+	}
+	s.owns_socket = true
 
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
@@ -599,6 +616,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 			ret)
 	}
 	s.opened = true
+	connected = true
 }
 
 // addr retrieves the local ip address and port number for this connection
