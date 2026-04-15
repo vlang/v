@@ -24,12 +24,18 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	mut cond_type := ast.void_type
 	if node.is_comptime {
-		if node.cond is ast.AtExpr {
-			cond_type = c.expr(mut node.cond)
+		cond_expr := node.cond
+		if cond_expr is ast.AtExpr {
+			mut checked_cond := node.cond
+			cond_type = c.expr(mut checked_cond)
+			node.cond = checked_cond
 		} else {
 			// for field.name and generic type `T`
-			if node.cond is ast.SelectorExpr {
-				c.expr(mut node.cond)
+			is_selector_cond := node.cond is ast.SelectorExpr
+			if is_selector_cond {
+				mut selector_cond := node.cond
+				c.expr(mut selector_cond)
+				node.cond = selector_cond
 			}
 			cond_type = c.get_expr_type(node.cond)
 		}
@@ -817,16 +823,17 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 			}
 			if node.is_comptime {
+				expr_pos := expr.pos()
 				if is_type_node {
 					if is_comptime_value_match {
 						// type branch in a value match
-						c.error('can not matching a type in a value `\$match`', expr.pos())
+						c.error('can not matching a type in a value `\$match`', expr_pos)
 						return
 					}
 				} else if c.inside_x_matches_type {
 					// value branch in a type match
 					if expr in [ast.IntegerLiteral, ast.BoolLiteral, ast.StringLiteral] {
-						c.error('can not matching a value in a type `\$match`', expr.pos())
+						c.error('can not matching a value in a type `\$match`', expr_pos)
 						return
 					}
 				}
@@ -836,28 +843,28 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .int {
 								c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
-									expr.pos())
+									expr_pos)
 								return
 							}
 						} else if node.cond_type !in ast.integer_type_idxs {
 							c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-								expr.pos())
+								expr_pos)
 							return
 						}
 					} else if expr is ast.BoolLiteral && node.cond_type != ast.bool_type {
 						c.error('can not matching a bool value(`${expr}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-							expr.pos())
+							expr_pos)
 						return
 					} else if expr is ast.StringLiteral {
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .string {
 								c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
-									expr.pos())
+									expr_pos)
 								return
 							}
 						} else if node.cond_type != ast.string_type {
 							c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-								expr.pos())
+								expr_pos)
 							return
 						}
 					}
@@ -951,7 +958,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 
 				allow_mut_selector_smartcast := node.cond is ast.SelectorExpr
 				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope, false,
-					false, allow_mut_selector_smartcast)
+					false, allow_mut_selector_smartcast, true)
 			}
 		}
 	}

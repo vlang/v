@@ -1,0 +1,12 @@
+type SmartcastValue = int | string
+fn main() {
+	mut a := SmartcastValue(1)
+	if a is int {
+		a = 3
+	}
+
+	mut b := SmartcastValue(1)
+	if mut b is int {
+		b = 'hello'
+	}
+}

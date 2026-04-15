@@ -601,22 +601,25 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 					// last stmt has infix expr with CallExpr: foo()? + 'a'
 					mut left_expr := last_stmt.expr.left
 					for {
+						mut next_left_expr := ast.Expr(ast.EmptyExpr{})
 						if mut left_expr is ast.InfixExpr {
 							if left_expr.or_block.stmts.len > 0 {
 								mut or_block_last_stmt := left_expr.or_block.stmts.last()
 								p.mark_last_call_return_as_used(mut or_block_last_stmt)
 							}
-							left_expr = left_expr.left
-							continue
-						}
-						if mut left_expr is ast.CallExpr {
+							next_left_expr = left_expr.left
+						} else if mut left_expr is ast.CallExpr {
 							left_expr.is_return_used = true
 							if left_expr.or_block.stmts.len > 0 {
 								mut or_block_last_stmt := left_expr.or_block.stmts.last()
 								p.mark_last_call_return_as_used(mut or_block_last_stmt)
 							}
+							break
+						} else {
+							break
 						}
-						break
+						left_expr = next_left_expr
+						continue
 					}
 				}
 				ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {

@@ -5376,7 +5376,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						g.writeln('${typ} ${tmp_var};')
 						g.stmts_with_tmp_var([
 							ast.ExprStmt{
-								pos:  node.right.pos()
+								pos:  node.pos
 								expr: node.right
 							},
 						], tmp_var)
@@ -7639,7 +7639,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 						needs_interface_smartcast_deref = true
 					}
 				}
-				obj_sym := g.table.final_sym(g.unwrap_generic(resolved_var.typ))
+				obj_sym := if resolved_var.orig_type != 0 {
+					g.table.final_sym(g.unwrap_generic(resolved_var.orig_type))
+				} else {
+					g.table.final_sym(g.unwrap_generic(resolved_var.typ))
+				}
 				interface_scalar_smartcast_needs_deref := interface_source_is_interface
 					&& smartcast_types.len > 0 && smartcast_types.last().is_ptr()
 					&& !g.inside_selector_lhs

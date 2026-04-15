@@ -2031,8 +2031,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
 		for i, mut call_arg in node.args {
-			if call_arg.expr is ast.CallExpr {
-				node.args[i].typ = c.expr(mut call_arg.expr)
+			is_call_expr := call_arg.expr is ast.CallExpr
+			if is_call_expr {
+				mut arg_expr := call_arg.expr
+				node.args[i].typ = c.expr(mut arg_expr)
+				call_arg.expr = arg_expr
 			} else if mut call_arg.expr is ast.LambdaExpr {
 				if node.concrete_types.len > 0 {
 					call_arg.expr.call_ctx = unsafe { node }
@@ -2104,16 +2107,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
 		if !func.is_variadic && call_arg.expr is ast.ArrayDecompose {
-			if mut call_arg.expr is ast.ArrayDecompose {
-				if call_arg.expr.expr is ast.ArrayInit {
-					extra_params := func.params.len - i
-					array_init := call_arg.expr.expr as ast.ArrayInit
-					if array_init.exprs.len < extra_params {
-						elem_word := if array_init.exprs.len == 1 { 'element' } else { 'elements' }
-						verb_word := if extra_params == 1 { 'is' } else { 'are' }
-						c.error('array decompose has ${array_init.exprs.len} ${elem_word} but ${extra_params} ${verb_word} needed for `${func.name}`',
-							call_arg.pos)
-					}
+			array_decompose_expr := call_arg.expr as ast.ArrayDecompose
+			if array_decompose_expr.expr is ast.ArrayInit {
+				extra_params := func.params.len - i
+				array_init := array_decompose_expr.expr as ast.ArrayInit
+				if array_init.exprs.len < extra_params {
+					elem_word := if array_init.exprs.len == 1 { 'element' } else { 'elements' }
+					verb_word := if extra_params == 1 { 'is' } else { 'are' }
+					c.error('array decompose has ${array_init.exprs.len} ${elem_word} but ${extra_params} ${verb_word} needed for `${func.name}`',
+						call_arg.pos)
 				}
 			}
 		}
@@ -2153,8 +2155,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			c.expr(mut call_arg.expr)
 		})
-		if call_arg.expr is ast.StructInit {
-			arg_typ = c.expr(mut call_arg.expr)
+		is_struct_init_arg := call_arg.expr is ast.StructInit
+		if is_struct_init_arg {
+			mut arg_expr := call_arg.expr
+			arg_typ = c.expr(mut arg_expr)
 		}
 		node.args[i].typ = arg_typ
 		if c.comptime.comptime_for_field_var != '' {
@@ -2211,12 +2215,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		node.args[i] = call_arg
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
+			call_arg_expr_pos := call_arg.expr.pos()
 			if !call_arg.expr.is_lvalue() {
 				if call_arg.expr is ast.StructInit {
 					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${call_arg.expr}`',
-						call_arg.expr.pos())
+						call_arg_expr_pos)
 				} else {
-					c.error('cannot pass expression as `mut`', call_arg.expr.pos())
+					c.error('cannot pass expression as `mut`', call_arg_expr_pos)
 				}
 			}
 			if !param.is_mut {

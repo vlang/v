@@ -120,7 +120,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if expr.obj.ct_type_var != .no_comptime {
 					typ = c.type_resolver.get_type_or_default(expr, typ)
 				}
-				if mut expr.obj.expr is ast.IfGuardExpr {
+				if expr.obj.expr is ast.IfGuardExpr {
 					if var := expr.scope.find_var(expr.name) {
 						typ = var.typ
 					}

@@ -7,6 +7,33 @@ import v.ast
 import v.util
 import v.token
 
+fn smartcast_selector_expr_str(expr ast.SelectorExpr) string {
+	mut expr_str := expr.expr.str()
+	if expr.expr is ast.ParExpr && expr.expr.expr is ast.AsCast {
+		expr_str = expr.expr.expr.expr.str()
+	}
+	return expr_str
+}
+
+fn (g &Gen) is_smartcast_assign_lhs(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return expr.obj is ast.Var && expr.obj.smartcasts.len > 0
+		}
+		ast.SelectorExpr {
+			if expr.expr_type == 0 {
+				return false
+			}
+			scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+				expr.expr_type, expr.field_name)
+			return scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expected_type ast.Type) {
 	mut expr_copy := expr
 	match mut expr_copy {
@@ -909,7 +936,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			var_type = resolved_call_type.clear_option_and_result()
 			val_type = var_type
-			if mut left is ast.Ident && left.obj is ast.Var {
+			if mut left is ast.Ident && mut left.obj is ast.Var {
 				left.obj.typ = var_type
 			}
 		}
@@ -925,7 +952,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if resolved_val_type != 0 && resolved_val_type != ast.void_type {
 				var_type = resolved_val_type
 				val_type = resolved_val_type
-				if mut left is ast.Ident && left.obj is ast.Var {
+				if mut left is ast.Ident && mut left.obj is ast.Var {
 					left.obj.typ = var_type
 				}
 			}
@@ -938,7 +965,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if resolved_or_type != 0 && resolved_or_type != ast.void_type {
 					var_type = g.unwrap_generic(g.recheck_concrete_type(resolved_or_type))
 					val_type = var_type
-					if mut left is ast.Ident && left.obj is ast.Var {
+					if mut left is ast.Ident && mut left.obj is ast.Var {
 						left.obj.typ = var_type
 					}
 				}
@@ -947,7 +974,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		if is_decl && assign_expr_unwraps_option_or_result(val) {
 			var_type = var_type.clear_option_and_result()
 			val_type = val_type.clear_option_and_result()
-			if mut left is ast.Ident && left.obj is ast.Var {
+			if mut left is ast.Ident && mut left.obj is ast.Var {
 				left.obj.typ = var_type
 			}
 		}
@@ -956,12 +983,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				|| (val is ast.PostfixExpr && val.op == .question) {
 				var_type = var_type.clear_option_and_result()
 				val_type = val_type.clear_option_and_result()
-				if mut left is ast.Ident && left.obj is ast.Var {
+				if mut left is ast.Ident && mut left.obj is ast.Var {
 					left.obj.typ = var_type
 				}
 			}
 		}
-		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
+		if is_decl && mut left is ast.Ident && mut left.obj is ast.Var {
 			mut should_recompute_decl_type := false
 			match val {
 				ast.Ident {
@@ -1106,7 +1133,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		if is_decl && var_type.has_flag(.shared_f) && var_type.nr_muls() == 0 {
 			var_type = var_type.set_nr_muls(1)
 		}
-		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
+		if is_decl && mut left is ast.Ident && mut left.obj is ast.Var {
 			left.obj.typ = var_type
 			if mut scope_var := left.scope.find_var(left.name) {
 				scope_var.typ = var_type
@@ -1628,7 +1655,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				}
-				if left in [ast.Ident, ast.SelectorExpr] {
+				if left in [ast.Ident, ast.SelectorExpr] && !g.is_smartcast_assign_lhs(left) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_var || is_decl || is_shared_re_assign {
@@ -1663,8 +1690,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				continue
 			}
 			g.is_assign_lhs = false
-			if left is ast.IndexExpr && g.cur_indexexpr.len > 0 {
-				cur_indexexpr = g.cur_indexexpr.index(left.pos().pos)
+			left_expr := left
+			if left_expr is ast.IndexExpr && g.cur_indexexpr.len > 0 {
+				cur_indexexpr = g.cur_indexexpr.len - 1
 			}
 			if is_fixed_array_var || is_va_list {
 				if is_decl {
