@@ -14,6 +14,13 @@ pub fn new_preferences() &Preferences {
 	return p
 }
 
+fn (p &Preferences) default_thread_stack_size() int {
+	return match p.arch {
+		.arm32, .rv32, .i386, .ppc, .wasm32 { 2 * 1024 * 1024 }
+		else { 8 * 1024 * 1024 }
+	}
+}
+
 fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
@@ -232,6 +239,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	p.find_cc_if_cross_compiling()
 	p.resolve_default_arch()
+	if !p.thread_stack_size_set_by_flag {
+		p.thread_stack_size = p.default_thread_stack_size()
+	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.disable_tcc_shared_backtraces()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
