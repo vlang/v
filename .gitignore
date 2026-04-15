@@ -1,4 +1,4 @@
-# ignore sub-level build binaries and v binary
+# ignore sub-level untracked files and the v binary
 */**/*
 v
 v.exe
@@ -7,7 +7,7 @@ v2.exe
 vdbg
 vdbg.exe
 !*/
-!*.*
+# Do not add !*.* here; it overrides local excludes from .git/info/exclude.
 *.exe
 *.o
 *.so
