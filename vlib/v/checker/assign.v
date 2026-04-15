@@ -8,6 +8,29 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 	return expr.is_auto_deref_var()
 }
 
+fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.Type) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var && expr.obj.smartcasts.len > 0 {
+				return c.exposed_smartcast_type(expr.obj.orig_type, expr.obj.smartcasts.last(),
+					expr.obj.is_mut)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr_type != 0 {
+				scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+					expr.expr_type, expr.field_name)
+				if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+					return c.exposed_smartcast_type(scope_field.orig_type,
+						scope_field.smartcasts.last(), scope_field.is_mut)
+				}
+			}
+		}
+		else {}
+	}
+	return fallback_type
+}
+
 // TODO: 980 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
@@ -141,10 +164,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						for i, mut left in node.left {
 							node.left_types << ast.void_type
 							if mut left is ast.Ident {
-								if left.info is ast.IdentVar {
-									mut ident_var_info := left.info as ast.IdentVar
-									ident_var_info.typ = ast.void_type
-									left.info = ident_var_info
+								if mut left.info is ast.IdentVar {
+									left.info.typ = ast.void_type
 									if mut left.obj is ast.Var {
 										left.obj.typ = ast.void_type
 									}
@@ -234,6 +255,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.is_index_assign = true
 			}
 			left_type = c.expr(mut left)
+			left_type = c.smartcasted_assign_lhs_type(left, left_type)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
 			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
@@ -281,6 +303,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
+		right_pos := right.pos()
+		left_pos := left.pos()
 		if mut right is ast.Ident {
 			// resolve shared right variable
 			if right_type.has_flag(.shared_f) {
@@ -359,7 +383,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			&& right.name in c.global_names {
 			ident_var_info := left.info as ast.IdentVar
 			if ident_var_info.share == .shared_t {
-				c.error('cannot assign global variable to shared variable', right.pos())
+				c.error('cannot assign global variable to shared variable', right_pos)
 			}
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
@@ -382,11 +406,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 
 		if right is ast.StructInit {
 			right_sym := c.table.sym(right_type)
-			c.check_any_type(right_type, right_sym, right.pos())
+			c.check_any_type(right_type, right_sym, right_pos)
 		}
 
 		if left is ast.ParExpr && is_decl {
-			c.error('parentheses are not supported on the left side of `:=`', left.pos())
+			c.error('parentheses are not supported on the left side of `:=`', left_pos)
 		}
 		left = left.remove_par()
 		is_assign := node.op in [.assign, .decl_assign]
@@ -429,7 +453,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						//    println(x)
 						// }`
 						c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
-							right.pos())
+							right_pos)
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t || is_shared_re_assign {
@@ -523,7 +547,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {
-						c.error('cannot assign `nil` to option value', right.pos())
+						c.error('cannot assign `nil` to option value', right_pos)
 					}
 				}
 			}
@@ -563,7 +587,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 				if left_type.has_flag(.option) && right is ast.UnsafeExpr && right.expr.is_nil() {
-					c.error('cannot assign `nil` to option value', right.pos())
+					c.error('cannot assign `nil` to option value', right_pos)
 				}
 			}
 			else {
@@ -647,17 +671,22 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 						}
 					}
-				} else if mut left is ast.Ident && left.kind != .blank_ident
-					&& right is ast.IndexExpr {
-					right_index_expr := right as ast.IndexExpr
-					if right_index_expr.left is ast.Ident && right_index_expr.index is ast.RangeExpr
-						&& (right_index_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe {
+				} else if mut left is ast.Ident && left.kind != .blank_ident {
+					mut should_clone_slice := false
+					right_notice_pos := right.pos()
+					right_expr := right
+					if right_expr is ast.IndexExpr {
+						should_clone_slice = right_expr.left is ast.Ident
+							&& right_expr.index is ast.RangeExpr
+							&& (right_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe
+					}
+					if should_clone_slice {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
-							right.pos())
-						c.note('an implicit clone of the slice was done here', right.pos())
-						right = ast.CallExpr{
+							right_notice_pos)
+						c.note('an implicit clone of the slice was done here', right_notice_pos)
+						mut cloned_right := ast.CallExpr{
 							name:           'clone'
 							kind:           .clone
 							left:           right
@@ -668,8 +697,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							scope:          c.fn_scope
 							is_return_used: true
 						}
-						right_type = c.expr(mut right)
-						node.right[i] = right
+						right_type = c.expr(mut cloned_right)
+						right = cloned_right
+						node.right[i] = cloned_right
 					}
 				}
 			}
@@ -1002,9 +1032,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 								if left_sym.kind == .array_fixed && right_sym.kind == .array
 									&& right is ast.ArrayInit {
 									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
-									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)
 								} else {
-									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)
 								}
 							}
 						}
@@ -1022,7 +1052,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.info is ast.Struct && !left_sym.info.is_anon && right is ast.StructInit
 			&& right.is_anon {
-			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
+			c.error('cannot assign anonymous `struct` to a typed `struct`', right_pos)
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
 			c.error('byte is deprecated, use u8 instead', right.pos())

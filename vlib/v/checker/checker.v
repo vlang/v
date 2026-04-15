@@ -518,7 +518,8 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt is ast.GlobalDecl {
+		is_global_decl := stmt is ast.GlobalDecl
+		if is_global_decl {
 			c.expr_level = 0
 			c.stmt(mut stmt)
 		}
@@ -1632,7 +1633,10 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			if mut expr.obj is ast.Var {
 				if !expr.obj.is_mut && !c.pref.translated && !c.file.is_translated
 					&& !c.inside_unsafe {
-					if c.inside_anon_fn {
+					if expr.obj.smartcasts.len > 0 {
+						c.error('cannot mutate `${expr.name}` in a non-mut smartcast, use `if mut ${expr.name} ...`',
+							expr.pos)
+					} else if c.inside_anon_fn {
 						c.error('the closure copy of `${expr.name}` is immutable, declare it with `mut` to make it mutable',
 							expr.pos)
 					} else {
@@ -1726,6 +1730,15 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
 				return '', expr.pos
+			}
+			scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+				expr.expr_type, expr.field_name)
+			if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+				&& !scope_field.is_mut && !c.pref.translated && !c.file.is_translated
+				&& !c.inside_unsafe {
+				expr_str := expr.str()
+				c.error('cannot mutate `${expr_str}` in a non-mut smartcast, use `if mut ${expr_str} ...`',
+					expr.pos)
 			}
 			// retrieve ast.Field
 			if !c.ensure_type_exists(expr.expr_type, expr.pos) {
@@ -3099,13 +3112,16 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				c.table.export_names[field.name] = check_name
 			}
 		}
-		if field.expr is ast.CallExpr {
-			sym := c.table.sym(c.check_expr_option_or_result_call(field.expr,
-				c.expr(mut field.expr)))
+		is_call_expr := field.expr is ast.CallExpr
+		if is_call_expr {
+			mut field_expr := field.expr
+			sym := c.table.sym(c.check_expr_option_or_result_call(field_expr,
+				c.expr(mut field_expr)))
 			if sym.kind == .multi_return {
 				c.error('const declarations do not support multiple return values yet',
-					field.expr.pos())
+					field_expr.pos())
 			}
+			field.expr = field_expr
 		}
 		const_name := field.name.all_after_last('.')
 		if const_name == c.mod && const_name != 'main' {
@@ -3248,6 +3264,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 		seen_enum_field_names[field.name] = i
 		if field.has_expr {
+			mut replacement_expr := ast.empty_expr
+			mut has_replacement := false
 			match mut field.expr {
 				ast.IntegerLiteral {
 					c.check_enum_field_integer_literal(field.expr, signed, node.is_multi_allowed,
@@ -3309,7 +3327,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 								}
 								iseen << ref_val
 								// Transform to IntegerLiteral for code generation
-								field.expr = ast.IntegerLiteral{
+								has_replacement = true
+								replacement_expr = ast.IntegerLiteral{
 									val: ref_val.str()
 									pos: field.expr.pos
 								}
@@ -3332,7 +3351,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 								}
 								useen << ref_val
 								// Transform to IntegerLiteral for code generation
-								field.expr = ast.IntegerLiteral{
+								has_replacement = true
+								replacement_expr = ast.IntegerLiteral{
 									val: ref_val.str()
 									pos: field.expr.pos
 								}
@@ -3394,54 +3414,64 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						c.check_enum_field_integer_literal(comptime_lit, signed,
 							node.is_multi_allowed, senum_type, field.expr.pos, mut useen,
 							enum_umin, enum_umax, mut iseen, enum_imin, enum_imax)
-						field.expr = comptime_lit
+						has_replacement = true
+						replacement_expr = comptime_lit
 					} else {
 						c.error('the default value for an enum has to be an integer',
 							field.expr.pos)
 					}
 				}
 				else {
+					mut handled_expr := false
 					if mut field.expr is ast.Ident {
 						if field.expr.language == .c {
-							continue
-						}
-						if field.expr.kind == .unresolved {
-							c.ident(mut field.expr)
-						}
-						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
-							// accepts int constants as enum value
-							if mut field.expr.obj is ast.ConstField {
-								if comptime_value := c.eval_comptime_const_expr(field.expr, 0) {
-									if comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
-										field.expr.pos)
-									{
-										c.check_enum_field_integer_literal(comptime_lit, signed,
+							handled_expr = true
+						} else {
+							if field.expr.kind == .unresolved {
+								c.ident(mut field.expr)
+							}
+							if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
+								handled_expr = true
+								// accepts int constants as enum value
+								if mut field.expr.obj is ast.ConstField {
+									if comptime_value := c.eval_comptime_const_expr(field.expr, 0) {
+										if comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
+											field.expr.pos)
+										{
+											c.check_enum_field_integer_literal(comptime_lit,
+												signed, node.is_multi_allowed, senum_type,
+												field.expr.pos, mut useen, enum_umin, enum_umax, mut
+												iseen, enum_imin, enum_imax)
+											has_replacement = true
+											replacement_expr = comptime_lit
+										}
+									}
+									folded_expr :=
+										c.checker_transformer.expr(mut field.expr.obj.expr)
+
+									if folded_expr is ast.IntegerLiteral {
+										c.check_enum_field_integer_literal(folded_expr, signed,
 											node.is_multi_allowed, senum_type, field.expr.pos, mut
 											useen, enum_umin, enum_umax, mut iseen, enum_imin,
 											enum_imax)
-										field.expr = comptime_lit
-										continue
+										has_replacement = true
+										replacement_expr = folded_expr
 									}
 								}
-								folded_expr := c.checker_transformer.expr(mut field.expr.obj.expr)
-
-								if folded_expr is ast.IntegerLiteral {
-									c.check_enum_field_integer_literal(folded_expr, signed,
-										node.is_multi_allowed, senum_type, field.expr.pos, mut
-										useen, enum_umin, enum_umax, mut iseen, enum_imin,
-										enum_imax)
-									field.expr = folded_expr
-								}
 							}
-							continue
 						}
 					}
-					mut pos := field.expr.pos()
-					if pos.pos == 0 {
-						pos = field.pos
+					if !handled_expr {
+						mut pos := field.expr.pos()
+						if pos.pos == 0 {
+							pos = field.pos
+						}
+						c.error('the default value for an enum has to be an integer', pos)
 					}
-					c.error('the default value for an enum has to be an integer', pos)
 				}
+			}
+			if has_replacement {
+				field.expr = replacement_expr
 			}
 		} else {
 			if signed {
@@ -4906,16 +4936,17 @@ fn (c &Checker) expr_is_known_zero_integer(expr ast.Expr) bool {
 // }
 
 fn (mut c Checker) rewrite_smartcast_generic_wrapper_cast(mut node ast.CastExpr, to_type ast.Type) bool {
-	if mut node.expr is ast.Ident {
-		if mut node.expr.obj is ast.Var {
-			if node.expr.obj.smartcasts.len == 0
-				|| c.table.sym(c.unwrap_generic(node.expr.obj.typ)).kind != .sum_type {
+	expr := node.expr
+	if expr is ast.Ident {
+		if expr.obj is ast.Var {
+			if expr.obj.smartcasts.len == 0
+				|| c.table.sym(c.unwrap_generic(expr.obj.typ)).kind != .sum_type {
 				return false
 			}
-			field_name := c.smartcast_wrapper_field_name(node.expr.obj.smartcasts.last(), to_type) or {
+			field_name := c.smartcast_wrapper_field_name(expr.obj.smartcasts.last(), to_type) or {
 				return false
 			}
-			old_expr := ast.Expr(node.expr)
+			old_expr := ast.Expr(expr)
 			node.expr = ast.SelectorExpr{
 				expr:       old_expr
 				field_name: field_name
@@ -6431,6 +6462,14 @@ fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
 	return '__smartcast_index_expr__${ast.Expr(expr).str()}'
 }
 
+fn smartcast_selector_expr_str(expr ast.SelectorExpr) string {
+	mut expr_str := expr.expr.str()
+	if expr.expr is ast.ParExpr && expr.expr.expr is ast.AsCast {
+		expr_str = expr.expr.expr.expr.str()
+	}
+	return expr_str
+}
+
 fn assert_autocast_scope_key(scope &ast.Scope, name string) string {
 	return '${scope.start_pos}:${scope.end_pos}:${name}'
 }
@@ -6461,8 +6500,9 @@ fn (mut c Checker) clear_assert_autocast(scope &ast.Scope, name string) {
 }
 
 fn (mut c Checker) apply_assert_autocasts(mut expr ast.Expr, scope &ast.Scope) {
-	if expr is ast.Ident {
-		ident := expr as ast.Ident
+	expr0 := expr
+	if expr0 is ast.Ident {
+		ident := expr0
 		ident_scope := if !isnil(ident.scope) { ident.scope } else { scope }
 		if autocast := c.find_assert_autocast(ident_scope, ident.name) {
 			// Don't insert an as-cast if the variable is already smartcast to the target type
@@ -6568,11 +6608,13 @@ fn (mut c Checker) remember_assert_autocasts(mut node ast.Expr, scope &ast.Scope
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
-	is_comptime bool, is_option_unwrap bool, allow_mut_selector_smartcast bool) {
+	is_comptime bool, is_option_unwrap bool, allow_mut_selector_smartcast bool,
+	keep_original_mutability bool) {
 	if cur_type.idx() == 0 || to_type_.idx() == 0 {
 		return
 	}
 	sym := c.table.sym(cur_type)
+	cur_kind := c.table.final_sym(c.unwrap_generic(cur_type)).kind
 	mut target_type := to_type_
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
 		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len
@@ -6618,27 +6660,27 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			mut expr_str := expr.expr.str()
-			if mut expr.expr is ast.ParExpr && expr.expr.expr is ast.AsCast {
-				expr_str = expr.expr.expr.expr.str()
-			}
+			expr_str := smartcast_selector_expr_str(expr)
 			field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name)
 			if field != unsafe { nil } {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if mutability is allowed here
 			if !is_mut || expr.is_mut || c.implicit_mutability_enabled() || is_option_unwrap
-				|| orig_type.has_flag(.option) || allow_mut_selector_smartcast {
+				|| orig_type.has_flag(.option) || allow_mut_selector_smartcast
+				|| cur_kind == .sum_type {
 				sc_type := if scope_smartcast_type != ast.no_type {
 					scope_smartcast_type
 				} else {
 					to_type
 				}
 				smartcasts << sc_type
+				scope_field_is_mut := expr.is_mut || (is_mut && (allow_mut_selector_smartcast
+					|| keep_original_mutability || c.implicit_mutability_enabled()))
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
-					is_mut:      expr.is_mut || is_mut
+					is_mut:      scope_field_is_mut
 					typ:         cur_type
 					smartcasts:  smartcasts
 					pos:         expr.pos
@@ -6680,7 +6722,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			}
 			// smartcast either if the value is immutable or if mutability is allowed here
 			if (!is_mut || expr.is_mut || c.implicit_mutability_enabled()
-				|| is_option_unwrap) && !is_already_casted {
+				|| is_option_unwrap || cur_kind == .sum_type) && !is_already_casted {
 				sc_type := if scope_smartcast_type != ast.no_type {
 					scope_smartcast_type
 				} else {
@@ -6715,12 +6757,14 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 						return
 					}
 				}
+				scope_var_is_mut := expr.is_mut
+					|| (is_mut && (keep_original_mutability || c.implicit_mutability_enabled()))
 				new_var := ast.Var{
 					name:              expr.name
 					typ:               cur_type
 					pos:               expr.pos
 					is_used:           true
-					is_mut:            expr.is_mut || is_mut
+					is_mut:            scope_var_is_mut
 					is_auto_deref:     is_auto_deref
 					is_inherited:      is_inherited
 					is_auto_heap:      is_auto_heap
@@ -6964,8 +7008,9 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		if mut last_stmt is ast.ExprStmt {
 			c.expected_type = expected_type
 			// Check for shared array slice - auto clone for safety
-			if mut last_stmt.expr is ast.IndexExpr {
-				index_expr := last_stmt.expr
+			stmt_expr := last_stmt.expr
+			if stmt_expr is ast.IndexExpr {
+				index_expr := stmt_expr
 				if index_expr.index is ast.RangeExpr && index_expr.left_type.has_flag(.shared_f)
 					&& !c.inside_unsafe {
 					// Slicing a shared array creates a view over shared memory.
@@ -7156,7 +7201,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	expr = expr.remove_par()
 	if node.op == .amp {
 		if expr is ast.Nil {
-			c.error('invalid operation: cannot take address of nil', expr.pos())
+			c.error('invalid operation: cannot take address of nil', node.pos)
 		}
 		if mut node.right is ast.PrefixExpr {
 			if node.right.op == .amp {
@@ -7421,15 +7466,16 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		typ = (typ_sym.info as ast.Aggregate).types[0]
 	}
 	if typ.has_flag(.option) {
+		left_pos := node.left.pos()
 		if node.left is ast.Ident && node.left.or_expr.kind == .absent {
 			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `var?[]` to do it',
-				node.left.pos())
+				left_pos)
 		} else if node.left is ast.CallExpr {
 			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped with `func()?`, or use `func() or {default}`',
-				node.left.pos())
+				left_pos)
 		} else if node.left is ast.SelectorExpr && node.left.or_block.kind == .absent {
 			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `${node.left}?` to do it',
-				node.left.pos())
+				left_pos)
 		}
 	} else if typ.has_flag(.result) {
 		c.error('type `!${typ_sym.name}` is a Result, it does not support indexing',

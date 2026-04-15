@@ -97,10 +97,12 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	}
 
 	if mut node.expr is ast.InfixExpr {
-		if node.expr.left is ast.CTempVar {
+		restore_left := node.expr.left is ast.CTempVar
+		restore_right := node.expr.right is ast.CTempVar
+		if restore_left {
 			node.expr.left = save_left
 		}
-		if node.expr.right is ast.CTempVar {
+		if restore_right {
 			node.expr.right = save_right
 		}
 	}

@@ -352,16 +352,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		for i, mut expr in node.exprs {
 			mut typ := ast.void_type
-			if expr is ast.ArrayInit {
+			expr_pos := expr.pos()
+			is_array_init := expr is ast.ArrayInit
+			if is_array_init {
 				old_expected_type := c.expected_type
 				c.expected_type = c.table.value_type(c.expected_type)
-				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				mut expr_copy := expr
+				typ = c.check_expr_option_or_result_call(expr_copy, c.expr(mut expr_copy))
+				expr = expr_copy
 				c.expected_type = old_expected_type
 			} else {
 				// [none]
 				if c.expected_type == ast.none_type && expr is ast.None {
 					c.error('invalid expression `none`, it is not an array of Option type',
-						expr.pos())
+						expr_pos)
 					continue
 				}
 				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))

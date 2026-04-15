@@ -637,32 +637,33 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			}
 			if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != ''
 				&& node.left is ast.Ident {
-				if mut node.left is ast.Ident {
-					if mut node.left.obj is ast.Var {
-						if node.left.obj.ct_type_var == .field_var {
-							scope.register(ast.Var{
-								name:              node.left.name
-								typ:               node.left_type
-								pos:               node.left.pos
-								is_used:           true
-								is_mut:            node.left.is_mut
-								is_inherited:      node.left.obj.is_inherited
-								is_unwrapped:      true
-								orig_type:         node.left_type
-								ct_type_var:       .field_var
-								ct_type_unwrapped: true
-							})
-						}
+				mut left_expr := node.left as ast.Ident
+				if mut left_expr.obj is ast.Var {
+					if left_expr.obj.ct_type_var == .field_var {
+						scope.register(ast.Var{
+							name:              left_expr.name
+							typ:               node.left_type
+							pos:               left_expr.pos
+							is_used:           true
+							is_mut:            left_expr.is_mut
+							is_inherited:      left_expr.obj.is_inherited
+							is_unwrapped:      true
+							orig_type:         node.left_type
+							ct_type_var:       .field_var
+							ct_type_unwrapped: true
+						})
 					}
 				}
 			} else {
-				if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
+				is_smartcast_ident := node.left is ast.Ident
+					&& c.comptime.get_ct_type_var(node.left) == .smartcast
+				if is_smartcast_ident {
 					node.left_type = c.type_resolver.get_type(node.left)
 					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-						scope, true, true, false)
+						scope, true, true, false, false)
 				} else {
 					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-						scope, false, true, false)
+						scope, false, true, false, false)
 				}
 			}
 		} else if node.op == .key_is {
@@ -760,7 +761,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 						if !skip_smartcast
 							&& (left_final_sym.kind in [.interface, .sum_type] || is_option_unwrap) {
 							c.smartcast(mut node.left, node.left_type, right_type, mut scope,
-								is_comptime, is_option_unwrap, false)
+								is_comptime, is_option_unwrap, false, false)
 						}
 					}
 				}
@@ -783,7 +784,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			if left_sym.kind in [.interface, .sum_type] || is_option_unwrap {
 				mut left_expr := first_cond.left
 				c.smartcast(mut left_expr, left_type, right_type, mut scope, false,
-					is_option_unwrap, false)
+					is_option_unwrap, false, false)
 			}
 		}
 		c.smartcast_none_guard_unwrap(control_expr.branches[0].cond, mut scope)
@@ -804,10 +805,10 @@ fn (mut c Checker) smartcast_none_guard_unwrap(cond ast.Expr, mut scope ast.Scop
 		if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
 			cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
 			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true, true,
-				false)
+				false, false)
 		} else {
 			c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false, true,
-				false)
+				false, false)
 		}
 	}
 }
@@ -831,10 +832,10 @@ fn (mut c Checker) smartcast_none_guard_fallthrough(cond ast.Expr, mut scope ast
 			if c.comptime.get_ct_type_var(cond_expr.left) == .smartcast {
 				cond_expr.left_type = c.type_resolver.get_type(cond_expr.left)
 				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, true,
-					true, false)
+					true, false, false)
 			} else {
 				c.smartcast(mut cond_expr.left, cond_expr.left_type, to_type, mut scope, false,
-					true, false)
+					true, false, false)
 			}
 		}
 	}

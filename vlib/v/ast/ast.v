@@ -329,8 +329,14 @@ pub mut:
 // root_ident returns the origin ident where the selector started.
 pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
-	for mut root is SelectorExpr {
-		root = root.expr
+	for {
+		mut next_root := Expr(EmptyExpr{})
+		if mut root is SelectorExpr {
+			next_root = root.expr
+		} else {
+			break
+		}
+		root = next_root
 	}
 	if mut root is Ident {
 		return root
@@ -3051,8 +3057,10 @@ pub fn (mut lx IndexExpr) recursive_arraymap_set_is_setter() {
 	lx.is_setter = true
 	if mut lx.left is IndexExpr {
 		lx.left.recursive_arraymap_set_is_setter()
-	} else if mut lx.left is SelectorExpr && lx.left.expr is IndexExpr {
-		lx.left.expr.recursive_arraymap_set_is_setter()
+	} else if mut lx.left is SelectorExpr {
+		if mut lx.left.expr is IndexExpr {
+			lx.left.expr.recursive_arraymap_set_is_setter()
+		}
 	}
 }
 
@@ -3193,8 +3201,14 @@ pub fn (expr Expr) is_reference() bool {
 // remove_par removes all parenthesis and gets the innermost Expr
 pub fn (mut expr Expr) remove_par() Expr {
 	mut e := expr
-	for mut e is ParExpr {
-		e = e.expr
+	for {
+		mut next_expr := Expr(EmptyExpr{})
+		if mut e is ParExpr {
+			next_expr = e.expr
+		} else {
+			break
+		}
+		e = next_expr
 	}
 	return e
 }

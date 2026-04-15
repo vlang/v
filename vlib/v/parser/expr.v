@@ -1016,12 +1016,16 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 				return right
 			}
 		}
+		mut unwrapped_right := ast.Expr(ast.EmptyExpr{})
 		if mut right is ast.ParExpr {
 			if right.expr is ast.StructInit {
 				p.note_with_pos('unnecessary `()`, use `&${right.expr}` instead of `&(${right.expr})`',
 					right.pos)
-				right = right.expr
+				unwrapped_right = right.expr
 			}
+		}
+		if unwrapped_right !is ast.EmptyExpr {
+			right = unwrapped_right
 		}
 		if mut right is ast.TypeNode {
 			right.typ = right.typ.ref()

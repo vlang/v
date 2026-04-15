@@ -1401,6 +1401,7 @@ pub fn (mut p Parser) key() !ast.Key {
 	// A few small exceptions that can't easily be done via `checker` or `decoder` *after* the
 	// main table has been build since information like `is_multiline` is lost when using the key.text as a
 	// V `map` key directly.
+	mut decoded_key := key
 	if key is ast.Quoted {
 		if p.config.run_checks {
 			quoted := key as ast.Quoted
@@ -1416,11 +1417,11 @@ pub fn (mut p Parser) key() !ast.Key {
 		if p.config.decode_values {
 			mut quoted := key as ast.Quoted
 			decoder.decode_quoted_escapes(mut quoted)!
-			key = ast.Key(quoted)
+			decoded_key = ast.Key(quoted)
 		}
 	}
 
-	return key
+	return decoded_key
 }
 
 // key_value parse and returns a pair `ast.Key` and `ast.Value` type.

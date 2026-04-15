@@ -154,7 +154,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
 				break
 			} else if left_node.op == .and {
-				left_node = left_node.left
+				next_left := left_node.left
+				if next_left is ast.InfixExpr {
+					left_node = next_left
+				} else {
+					break
+				}
 			} else {
 				break
 			}
@@ -1193,8 +1198,9 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 	if isnil(c.fn_scope) || expr_type in [ast.no_type, ast.void_type] {
 		return expr_type
 	}
-	if expr is ast.IndexExpr {
-		index_expr := expr as ast.IndexExpr
+	expr0 := expr
+	if expr0 is ast.IndexExpr {
+		index_expr := expr0
 		scope := c.fn_scope.innermost(index_expr.pos.pos)
 		expr_key := smartcast_index_expr_scope_key(index_expr)
 		if var := scope.find_var(expr_key) {
@@ -1202,12 +1208,12 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 				cast_type := c.exposed_smartcast_type(var.orig_type, var.smartcasts.last(),
 					var.is_mut)
 				if cast_type != expr_type {
-					expr = ast.AsCast{
+					expr = ast.Expr(ast.AsCast{
 						expr:      ast.Expr(index_expr)
 						typ:       cast_type
 						expr_type: expr_type
 						pos:       index_expr.pos
-					}
+					})
 				}
 				return cast_type
 			}
