@@ -1623,7 +1623,10 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
 			&& param.typ.has_flag(.generic) {
 			mut surface_typ := g.unwrap_generic(param.orig_typ)
-			typ = if surface_typ.is_ptr() {
+			// Only use ref() when the pointer comes from the generic type argument
+			// (T=&int), not from the param signature (&T / ?&T).
+			orig_was_ptr := param.orig_typ.nr_muls() > 0
+			typ = if surface_typ.is_ptr() && !orig_was_ptr {
 				surface_typ.ref()
 			} else {
 				surface_typ.set_nr_muls(1)

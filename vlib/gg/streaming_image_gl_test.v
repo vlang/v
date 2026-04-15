@@ -34,7 +34,15 @@ fn test_streaming_r8_zero_buffer_stays_black_on_gl_backend() {
 	assert compile_res.exit_code == 0, compile_res.output
 	run_cmd := 'VGG_STOP_AT_FRAME=2 VGG_SCREENSHOT_FRAMES=2 VGG_SCREENSHOT_FOLDER=${os.quoted_path(temp_dir)} ${os.quoted_path(exe_path)}'
 	run_res := os.execute(run_cmd)
-	assert run_res.exit_code == 0, run_res.output
+	if run_res.exit_code != 0 {
+		if run_res.output.contains('glpixelformat') || run_res.exit_code == 134 {
+			// OpenGL context creation failed (e.g. headless CI runners without GPU).
+			// Skip the test rather than failing.
+			eprintln('skipping: GL context creation failed on this system')
+			return
+		}
+		assert run_res.exit_code == 0, run_res.output
+	}
 	screenshot_path := os.join_path(temp_dir, 'issue10989_repro_2.png')
 	assert os.exists(screenshot_path)
 	assert png_has_non_black_pixels(screenshot_path)! == false

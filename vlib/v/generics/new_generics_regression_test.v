@@ -117,10 +117,10 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 110 failed, 177 passed, 287 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 108 failed, 179 passed, 287 total.'
 // The exact failure count varies slightly across compilers:
-// gcc/tcc: 108, clang: 109, msvc/windows-gcc: 110.
-const expected_summary_generics = 'Summary for all V _test.v files: 108 failed, 179 passed, 287 total.'
+// gcc/tcc: 106, clang: 107, msvc/windows-gcc: 108.
+const expected_summary_generics = 'Summary for all V _test.v files: 106 failed, 181 passed, 287 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
@@ -158,7 +158,6 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_receiver_embed_test.v',
 	'vlib/v/tests/generics/generic_recursive_fn_test.v',
 	'vlib/v/tests/generics/generic_resolve_test.v',
-	'vlib/v/tests/generics/generic_return_array_generic_test.v',
 	'vlib/v/tests/generics/generic_return_test.v',
 	'vlib/v/tests/generics/generic_selector_field_test.v',
 	'vlib/v/tests/generics/generic_selector_indexexpr_test.v',

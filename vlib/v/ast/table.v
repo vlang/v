@@ -2644,8 +2644,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 	return none
 }
 
-fn (mut t Table) lower_mut_param_type(typ Type) Type {
-	mut lowered := if typ.is_ptr() {
+fn (mut t Table) lower_mut_param_type(typ Type, orig_typ ...Type) Type {
+	// When the pointer came from the generic type argument itself (T=&int),
+	// not from the param signature (&T), we need ref() to add one more level.
+	orig_was_ptr := orig_typ.len > 0 && orig_typ[0].nr_muls() > 0
+	mut lowered := if typ.is_ptr() && !orig_was_ptr {
 		typ.ref()
 	} else {
 		typ.set_nr_muls(1)
@@ -2660,7 +2663,7 @@ pub fn (mut t Table) convert_generic_param_type(param Param, generic_names []str
 	if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
 		&& to_types.all(!it.has_flag(.generic)) {
 		if typ := t.convert_generic_type(param.orig_typ, generic_names, to_types) {
-			return t.lower_mut_param_type(typ)
+			return t.lower_mut_param_type(typ, param.orig_typ)
 		}
 	}
 	return t.convert_generic_type(param.typ, generic_names, to_types)
