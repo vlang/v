@@ -54,3 +54,9 @@ fn match_index_range_expr(var string) string{
 			else { 'i#' + var }
 		}
 }
+
+fn match_condition_or_block() {
+	match read_bool() or {} {
+		true {}
+	}
+}

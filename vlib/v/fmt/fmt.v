@@ -430,6 +430,7 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 			}
 			else {}
 		}
+
 		match node {
 			// Attributes are not respected in the stmts position, so this requires manual checking
 			ast.StructDecl, ast.EnumDecl, ast.FnDecl {
@@ -459,6 +460,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 		ast.Expr { f.expr(node) }
 		else { panic('´f.node_str()´ is not implemented for ${node}.') }
 	}
+
 	str := f.out.after(pos)
 	f.out.go_back_to(pos)
 	f.empty_line = was_empty_line
@@ -841,6 +843,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return true
 }
 
@@ -1733,6 +1736,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 		ast.FnTypeDecl { f.fn_type_decl(node) }
 		ast.SumTypeDecl { f.sum_type_decl(node) }
 	}
+
 	f.writeln('')
 }
 
@@ -2937,8 +2941,9 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool, is_comptim
 
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
+	cond, cond_or_expr := match_cond_with_trailing_or_expr(node.cond)
 	f.write('${dollar}match ')
-	f.expr(node.cond)
+	f.expr(cond)
 	f.writeln(' {')
 	f.indent++
 	f.comments(node.comments)
@@ -2969,6 +2974,63 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.indent--
 	f.write('}')
+	f.or_expr(cond_or_expr)
+}
+
+fn match_cond_with_trailing_or_expr(expr ast.Expr) (ast.Expr, ast.OrExpr) {
+	match expr {
+		ast.CallExpr {
+			if expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.Ident {
+			if expr.or_expr.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_expr
+				cond.or_expr = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.IndexExpr {
+			if expr.or_expr.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_expr
+				cond.or_expr = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.ParExpr {
+			cond, or_expr := match_cond_with_trailing_or_expr(expr.expr)
+			if or_expr.kind == .block {
+				mut par_expr := expr
+				par_expr.expr = cond
+				return ast.Expr(par_expr), or_expr
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .arrow && expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		else {}
+	}
+
+	return expr, ast.OrExpr{}
 }
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
@@ -3063,6 +3125,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 					.not_is { f.write(' is ') }
 					else {}
 				}
+
 				f.expr(node.right.expr.right)
 				return
 			}
@@ -3099,6 +3162,7 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 				ast.ExprStmt { f.expr(branch.stmt.expr) }
 				else { f.stmt(branch.stmt) }
 			}
+
 			f.single_line_if = false
 			f.write(' {')
 		}
@@ -3222,6 +3286,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			.right { f.write('right join ') }
 			.full_outer { f.write('full outer join ') }
 		}
+
 		join_sym := f.table.sym(join.table_expr.typ)
 		mut join_table_name := join_sym.name
 		if !join_table_name.starts_with('C.') && !join_table_name.starts_with('JS.') {
