@@ -520,6 +520,13 @@ fn test_orm_func_stmts() {
 	assert only_names[0].score == 0
 	assert only_names[0].created_at == none
 
+	// select distinct `role` from table
+	distinct_roles := qb.select('role')!.distinct()!.order(.asc, 'role')!.query()!
+	assert distinct_roles.len == 3
+	assert distinct_roles.map(it.role) == ['admin', 'employee', 'employer']
+	assert distinct_roles[0].id == 0
+	assert distinct_roles[0].name == ''
+
 	// update with single `set()`
 	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?', 'John')!.update()!
 	john := qb.where('name = ?', 'John')!.query()!

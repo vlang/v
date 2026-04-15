@@ -463,6 +463,12 @@ For a full-record update without spelling out each `set(...)` clause, use `orm.s
 `as_int()`, `as_f64()`, `as_string()`, or `as_time()` to unwrap the typed
 value, or check `has_value` for empty result sets. `count` returns `int`.
 
+To remove duplicate rows from a query, mark it as `DISTINCT` before `query()`:
+
+```v ignore
+	distinct_roles := qb.select('role')!.distinct()!.query()!
+```
+
 9. Drop the table​​:
 
 ```v ignore
