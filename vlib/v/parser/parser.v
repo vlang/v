@@ -1933,7 +1933,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			}
 			static_fn_name := full_type_name + '__static__' + p.peek_token(2).lit
 			if static_fn_name in p.table.fns {
-				func := p.table.fns[static_fn_name]
+				func := unsafe { p.table.fns[static_fn_name] }
 				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false, true))
 				pos := p.tok.pos()
 				p.check_name()

@@ -55,6 +55,7 @@ fn main() {
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		println('V self compiling${run_label} ${options}...')
+		cmd := '${os.quoted_path(vexe)} ${sargs} ${os.quoted_path('cmd/v')}'
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
 			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
@@ -63,9 +64,11 @@ fn main() {
 			}
 		}
 		if !used_pgo {
-			bootstrap_self_build(vroot, clone_args(args), final_binary) or {
-				eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
-				exit(1)
+			if !try_compile(cmd) {
+				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
+					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
+					exit(1)
+				}
 			}
 		}
 		if obinary == '' {
@@ -255,6 +258,17 @@ fn run_cmd(cmd string) ! {
 	if result.output.len > 0 {
 		println(result.output.trim_space())
 	}
+}
+
+fn try_compile(cmd string) bool {
+	result := os.execute(cmd)
+	if result.exit_code != 0 {
+		return false
+	}
+	if result.output.len > 0 {
+		println(result.output.trim_space())
+	}
+	return true
 }
 
 fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string, cc_kind string) bool {
