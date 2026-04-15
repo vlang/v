@@ -957,20 +957,27 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.write('VV_LOC ${trace_fn_ret_type} ${c_name(trace_fn)}(')
 			g.definitions.write_string('VV_LOC ${trace_fn_ret_type} ${c_name(trace_fn)}(')
 
+			mut trace_call_args := []string{}
 			if call_fn.is_fn_var {
 				sig := g.fn_var_signature(ast.void_type, call_fn.func.return_type,
 					call_fn.func.params.map(it.typ), call_fn.name)
 				g.write(sig)
 				g.definitions.write_string(sig)
+				if call_fn.func.params.len > 0 {
+					g.write(', ')
+					g.definitions.write_string(', ')
+					trace_call_args, _, _ = g.fn_decl_params(call_fn.func.params, unsafe { nil },
+						call_fn.func.is_variadic, call_fn.func.is_c_variadic)
+				}
 			} else {
-				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic,
-					call_fn.func.is_c_variadic)
+				trace_call_args, _, _ = g.fn_decl_params(call_fn.func.params, unsafe { nil },
+					call_fn.func.is_variadic, call_fn.func.is_c_variadic)
 			}
 
 			g.writeln(') {')
 			g.definitions.write_string(');\n')
 
-			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
+			orig_fn_args := trace_call_args.join(', ')
 			add_trace_hook := g.pref.is_trace
 				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
 			if g.pref.is_callstack {
@@ -1614,7 +1621,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	for i, param in params {
-		mut caname := if param.name == '_' { '_d${i + 1}' } else { c_name(param.name) }
+		mut caname := if param.name in ['', '_'] { '_d${i + 1}' } else { c_name(param.name) }
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
@@ -5230,10 +5237,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			if !is_fn_var {
 				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
-					g.gen_trace_call(node, name)
 					if node.is_fn_var {
+						g.gen_trace_fn_var_call(node, name, call_generic_names, call_concrete_types)
 						return
 					}
+					g.gen_trace_call(node, name)
 				} else {
 					g.write(g.get_ternary_name(name))
 				}
@@ -5294,6 +5302,21 @@ fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
 	} else {
 		g.write(g.get_ternary_name(name))
 	}
+}
+
+// gen_trace_fn_var_call generates the full traced call for function variables.
+fn (mut g Gen) gen_trace_fn_var_call(node ast.CallExpr, name string, call_generic_names []string, call_concrete_types []ast.Type) {
+	hash_fn, _ := g.table.get_trace_fn_name(g.cur_fn, node)
+	if _ := g.cur_fn.trace_fns[hash_fn] {
+		g.write('${c_name(hash_fn)}(${g.get_ternary_name(name)}')
+		if node.args.len > 0 {
+			g.write(', ')
+		}
+	} else {
+		g.write('${g.get_ternary_name(name)}(')
+	}
+	g.call_args_with_context(node, call_generic_names, call_concrete_types)
+	g.write(')')
 }
 
 fn (mut g Gen) autofree_tmp_arg_init_stmt(prepend string, expr ast.Expr) string {
