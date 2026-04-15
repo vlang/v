@@ -35,6 +35,37 @@ fn comptime_power_value(left ast.ComptTimeConstValue, right ast.ComptTimeConstVa
 	return none
 }
 
+fn (mut c Checker) is_string_array_type(typ ast.Type) bool {
+	final_typ := c.table.unaliased_type(c.unwrap_generic(typ))
+	sym := c.table.final_sym(final_typ)
+	if sym.info is ast.Array {
+		return c.table.unaliased_type(sym.info.elem_type) == ast.string_type
+	}
+	return false
+}
+
+fn (mut c Checker) check_comptime_method_string_auto_expand(mut node ast.ComptimeCall) bool {
+	if c.comptime.comptime_for_method == unsafe { nil } || node.args.len == 0
+		|| node.args.any(it.expr is ast.ArrayDecompose) {
+		return false
+	}
+	method := c.comptime.comptime_for_method
+	if method.params.len - 1 < node.args.len {
+		return false
+	}
+	last_arg := node.args.last()
+	if !c.is_string_array_type(last_arg.typ) {
+		return false
+	}
+	next_param := method.params[node.args.len].typ
+	if c.is_string_array_type(next_param) {
+		return false
+	}
+	c.error('to auto-expand `[]string` arguments in comptime method calls, use `...${last_arg.expr}`',
+		last_arg.pos)
+	return true
+}
+
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(mut node.left)
@@ -231,6 +262,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		for i, mut arg in node.args {
 			// check each arg expression
 			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		if c.check_comptime_method_string_auto_expand(mut node) {
+			return ast.void_type
 		}
 		c.markused_comptimecall(mut node)
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)

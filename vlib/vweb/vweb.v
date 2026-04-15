@@ -830,11 +830,11 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 							}
 
 							if route.middleware == '' {
-								app.$method(args)
+								app.$method(...args)
 							} else if validate_app_middleware(mut app, route.middleware,
 								method.name)
 							{
-								app.$method(args)
+								app.$method(...args)
 							}
 						} else {
 							if route.middleware == '' {
@@ -874,9 +874,9 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 							}
 						}
 						if route.middleware == '' {
-							app.$method(method_args)
+							app.$method(...method_args)
 						} else if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method(method_args)
+							app.$method(...method_args)
 						}
 						return
 					}

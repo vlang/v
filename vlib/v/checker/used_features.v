@@ -11,6 +11,14 @@ fn (mut c Checker) markused_comptime_call(check bool, key string) {
 	}
 }
 
+fn comptime_call_last_arg_type(arg ast.CallArg) ast.Type {
+	return if arg.expr is ast.ArrayDecompose {
+		arg.expr.expr_type
+	} else {
+		arg.typ
+	}
+}
+
 fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
 	if !c.table.used_features.auto_str && !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
 		if !c.table.sym(c.unwrap_generic(node.expr.left_type)).has_method('str') {
@@ -73,8 +81,9 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 			c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${m.name}'] = true
 			if node.args.len > 0 && m.params.len > 0 {
 				last_param := m.params.last().typ
+				last_arg_type := comptime_call_last_arg_type(node.args.last())
 				if (last_param.is_int() || last_param.is_bool())
-					&& c.table.final_sym(node.args.last().typ).kind == .array {
+					&& c.table.final_sym(last_arg_type).kind == .array {
 					c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
 				}
 			}
@@ -83,8 +92,9 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 		m := c.comptime.comptime_for_method
 		if node.args.len > 0 && m.params.len > 0 {
 			last_param := m.params.last().typ
+			last_arg_type := comptime_call_last_arg_type(node.args.last())
 			if (last_param.is_int() || last_param.is_bool())
-				&& c.table.final_sym(node.args.last().typ).kind == .array {
+				&& c.table.final_sym(last_arg_type).kind == .array {
 				c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
 			}
 		}
