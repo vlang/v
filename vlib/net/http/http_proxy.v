@@ -140,14 +140,21 @@ fn (pr &HttpProxy) connect_tcp(host string) !&net.TcpConn {
 }
 
 fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Request) !Response {
-	host_name, port := net.split_address(host.hostname())!
-
-	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }
+	host_name := host.hostname()
+	mut port := host.port().int()
+	if port == 0 {
+		port = if host.scheme == 'https' { 443 } else { 80 }
+	}
+	port_part := if (host.scheme == 'http' && port == 80) || (host.scheme == 'https' && port == 443) {
+		''
+	} else {
+		':${port}'
+	}
 
 	s := req.build_request_headers(req.method, host_name, port,
 		'${host.scheme}://${host_name}${port_part}${path}')
 	if host.scheme == 'https' {
-		mut client := pr.ssl_dial('${host.host}:443')!
+		mut client := pr.ssl_dial('${host_name}:${port}')!
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // TODO: windows ssl
@@ -160,7 +167,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 				client)!
 		}
 	} else if host.scheme == 'http' {
-		mut client := pr.dial('${host.host}:80')!
+		mut client := pr.dial('${host_name}:${port}')!
 		client.set_read_timeout(req.read_timeout)
 		client.set_write_timeout(req.write_timeout)
 		client.write_string(s)!
@@ -195,7 +202,11 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 			validate:               false
 			in_memory_verification: false
 		)!
-		ssl_conn.connect(mut tcp, host.all_before_last(':'))!
+		ssl_conn.connect(mut tcp, host.all_before_last(':')) or {
+			tcp.close() or {}
+			return err
+		}
+		ssl_conn.owns_socket = true
 		return ssl_conn
 	} else if pr.scheme == 'socks5' {
 		return socks.socks5_ssl_dial(pr.host, host, pr.username, pr.password)!
