@@ -167,6 +167,39 @@ fn test_v_cmds_and_flags() {
 	assert no_bm_files_res.output.trim_space() == 'v build-module: no module specified'
 }
 
+fn test_build_command_compiles_vsh_without_running_it() {
+	test_dir := os.join_path(os.vtmp_dir(), 'v_pref_build_vsh_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	script_path := os.join_path(test_dir, 'build_only.vsh')
+	marker_path := os.join_path(test_dir, 'marker.txt')
+	mut exe_path := os.join_path(test_dir, 'build_only')
+	$if windows {
+		exe_path += '.exe'
+	}
+	os.write_file(script_path, "import os
+
+fn main() {
+	marker_path := os.join_path(@DIR, 'marker.txt')
+	os.write_file(marker_path, 'ran') or { panic(err) }
+	println('ran')
+}
+")!
+	build_res := os.execute('${os.quoted_path(vexe)} -silent build ${os.quoted_path(script_path)}')
+	assert build_res.exit_code == 0, build_res.output
+	assert build_res.output == ''
+	assert !os.exists(marker_path)
+	assert os.is_file(exe_path)
+
+	run_res := os.execute(os.quoted_path(exe_path))
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == 'ran'
+	assert os.read_file(marker_path)! == 'ran'
+}
+
 const tfile = os.join_path(os.vtmp_dir(), 'unknown_options_output.c')
 
 fn test_unknown_option_flags_no_run() {

@@ -46,10 +46,10 @@ That works on BusyBox and OpenBSD too, where `/usr/bin/env -S` is not available.
 Running VSH scripts requires V to compile the script before executing it, which can cause a delay
 between when you run `./build.vsh` and when the script actually starts executing.
 
-If you want to fix this, you can "pre-compile" the buildscript by building the script, i.e, running
-`v -skip-running build.vsh`.
+If you want to fix this, you can "pre-compile" the buildscript by building the script with
+`v build build.vsh` (or `v -skip-running build.vsh`).
 
 > You will need to rebuild every time you change the buildscript, and you should also add `/build`
 > to your `.gitignore`
 
-> If you want maximum speed, you can also `v -prod -skip-running build.vsh`
+> If you want maximum speed, you can also `v -prod build build.vsh`
