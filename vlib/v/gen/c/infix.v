@@ -1093,6 +1093,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		node.left_type)))
 	is_aggregate := node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .aggregate
 	right_sym := g.table.sym(node.right_type)
+	mut right_type := node.right_type
+	if (left_sym.kind == .sum_type || is_aggregate) && node.left_type.nr_muls() > 0
+		&& right_type.nr_muls() <= node.left_type.nr_muls() {
+		right_type = right_type.set_nr_muls(0)
+	}
 	if left_sym.kind == .interface && right_sym.kind == .interface {
 		g.gen_interface_is_op(node)
 		return
@@ -1139,7 +1144,14 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
 		variant_idx := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 			ast.void_type)
-		g.write('${int(variant_idx)}')
+		if (left_sym.kind == .sum_type || is_aggregate) && node.left_type.nr_muls() > 0
+			&& variant_idx.nr_muls() <= node.left_type.nr_muls() {
+			g.write('${int(variant_idx.set_nr_muls(0))}')
+		} else {
+			g.write('${int(variant_idx)}')
+		}
+	} else if node.right is ast.TypeNode {
+		g.write('${int(right_type)}')
 	} else {
 		g.expr(node.right)
 	}
