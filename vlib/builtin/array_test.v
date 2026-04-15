@@ -78,14 +78,22 @@ fn test_slice_delete() {
 	assert c == [3.75, 4.25, -1.5]
 }
 
-fn test_delete_last_uses_in_place_fast_path() {
+fn test_delete_last_uses_in_place_fast_path_for_unique_arrays() {
+	mut a := [1, 2, 3, 4]
+	old_data := a.data
+	a.delete(a.len - 1)
+	assert a == [1, 2, 3]
+	assert a.data == old_data
+}
+
+fn test_delete_last_detaches_when_a_slice_exists() {
 	mut a := [1, 2, 3, 4]
 	b := unsafe { a[..a.len] }
 	old_data := a.data
 	a.delete(a.len - 1)
 	assert a == [1, 2, 3]
 	assert b == [1, 2, 3, 4]
-	assert a.data == old_data
+	assert a.data != old_data
 }
 
 fn test_delete_many() {
@@ -101,6 +109,63 @@ fn test_delete_many() {
 	assert c == [1, 2, 3, 4, 8, 9]
 	a.delete_many(0, a.len)
 	assert a == []int{}
+}
+
+fn int_array_with_spare_cap() []int {
+	mut a := []int{len: 5, cap: 8}
+	for i in 0 .. a.len {
+		a[i] = i + 1
+	}
+	return a
+}
+
+fn test_delete_many_unique_arrays_use_in_place_fast_path() {
+	mut a := int_array_with_spare_cap()
+	old_data := a.data
+	a.delete_many(1, 2)
+	assert a == [1, 4, 5]
+	assert a.data == old_data
+	assert a.cap == 3
+}
+
+fn test_insert_detaches_parent_with_existing_slice() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	a.insert(0, 99)
+	assert a == [99, 1, 2, 3, 4, 5]
+	assert b == [2, 3, 4]
+	b[0] = 42
+	assert a == [99, 1, 2, 3, 4, 5]
+}
+
+fn test_slice_pop_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	last := b.pop()
+	b[0] = 20
+	b << 99
+	assert last == 4
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [20, 3, 99]
+}
+
+fn test_slice_trim_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	b.trim(1)
+	b[0] = 20
+	b << 99
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [20, 99]
+}
+
+fn test_slice_clear_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	b.clear()
+	b << 77
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [77]
 }
 
 fn test_short() {
