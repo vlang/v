@@ -633,7 +633,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.wargs << '-Wno-write-strings'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
-		if v.pref.os == .linux && v.pref.build_mode != .build_module {
+		if v.pref.os in [.linux, .android, .termux] && v.pref.build_mode != .build_module {
+			// The live reload shared library resolves symbols from the host executable.
+			// Termux/Android need the same export behavior as Linux, otherwise plain
+			// `-live` can crash while `-cg -live` happens to work via debug linker flags.
 			ccoptions.linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .macos {

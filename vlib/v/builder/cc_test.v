@@ -134,7 +134,33 @@ fn test_msvc_thirdparty_obj_path_keeps_debug_objects_separate() {
 	assert release_obj != debug_obj
 }
 
+fn test_live_termux_linker_args_include_rdynamic_without_debug() {
+	linker_args := builder_linker_args([
+		'-os',
+		'termux',
+		'-cc',
+		'clang',
+		'-live',
+		hello_world_example(),
+	])
+	assert linker_args.contains('-rdynamic')
+}
+
 fn macos_compile_args(args []string) string {
+	return builder_compile_args(args)
+}
+
+fn builder_compile_args(args []string) string {
+	builder := new_test_builder(args)
+	return builder.get_compile_args().join(' ')
+}
+
+fn builder_linker_args(args []string) string {
+	builder := new_test_builder(args)
+	return builder.get_linker_args().join(' ')
+}
+
+fn new_test_builder(args []string) Builder {
 	mut full_args := ['']
 	full_args << args
 	prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
@@ -142,7 +168,7 @@ fn macos_compile_args(args []string) string {
 	builder.out_name_c = os.join_path(os.vtmp_dir(), 'builder_cc_test.tmp.c')
 	builder.setup_ccompiler_options(prefs.ccompiler)
 	builder.setup_output_name()
-	return builder.get_compile_args().join(' ')
+	return builder
 }
 
 fn new_builder_for_args(args []string) Builder {
