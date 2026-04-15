@@ -2403,6 +2403,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_channel {
 		w.fn_by_name('sync.new_channel_st')
 		w.fn_by_name('sync.channel_select')
+		w.fn_by_name('sync.channel_select_lang')
 	}
 	if w.uses_lock {
 		w.mark_by_sym_name('sync.RwMutex')
