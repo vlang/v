@@ -1445,7 +1445,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				continue
 			}
 
-			is_ptr := stmt.op == .assign && stmt.right_types[i].is_ptr() && !array_set
+			left_type := if stmt.left_types.len > i { stmt.left_types[i] } else { ast.no_type }
+			is_ptr := stmt.op == .assign && left_type.is_ptr() && !left_type.has_option_or_result()
+				&& !array_set
 			if is_ptr {
 				g.write('.val')
 			}
