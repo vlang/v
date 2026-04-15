@@ -6,6 +6,11 @@ module c
 import v.ast
 import v.util
 
+struct ForCOverflowGuard {
+	cname      string
+	limit_expr string
+}
+
 fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
 	if base_type == 0 {
 		return base_type
@@ -32,6 +37,87 @@ fn (mut g Gen) write_labeled_continue_gate(label string, prefix string) {
 	g.writeln('${prefix}bool ${continue_flag} = false;')
 	g.writeln('${prefix}${continue_entry_label}: {}')
 	g.writeln('${prefix}if (${continue_flag}) goto ${label}__continue;')
+}
+
+fn for_c_ident_name(expr ast.Expr) string {
+	return match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.ParExpr {
+			for_c_ident_name(expr.expr)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGuard {
+	if node.is_multi || !node.has_cond || !node.has_inc {
+		return none
+	}
+	if node.cond !is ast.InfixExpr {
+		return none
+	}
+	if node.inc !is ast.ExprStmt {
+		return none
+	}
+	cond := node.cond as ast.InfixExpr
+	inc := node.inc as ast.ExprStmt
+	if inc.expr !is ast.PostfixExpr {
+		return none
+	}
+	postfix := inc.expr as ast.PostfixExpr
+	postfix_var_name := for_c_ident_name(postfix.expr)
+	if postfix_var_name == '' {
+		return none
+	}
+	unaliased_typ := g.table.unaliased_type(g.unwrap_generic(postfix.typ))
+	if !unaliased_typ.is_unsigned() {
+		return none
+	}
+	cond_matches := match postfix.op {
+		.inc {
+			(cond.op == .le && for_c_ident_name(cond.left) == postfix_var_name)
+				|| (cond.op == .ge && for_c_ident_name(cond.right) == postfix_var_name)
+		}
+		.dec {
+			(cond.op == .ge && for_c_ident_name(cond.left) == postfix_var_name)
+				|| (cond.op == .le && for_c_ident_name(cond.right) == postfix_var_name)
+		}
+		else {
+			false
+		}
+	}
+	if !cond_matches {
+		return none
+	}
+	limit_expr := match postfix.op {
+		.inc { '(${g.styp(unaliased_typ)})-1' }
+		.dec { '(${g.styp(unaliased_typ)})0' }
+		else { return none }
+	}
+	return ForCOverflowGuard{
+		cname:      c_name(postfix_var_name)
+		limit_expr: limit_expr
+	}
+}
+
+fn (mut g Gen) write_for_c_inc_expr(node ast.ForCStmt) {
+	mut processed := false
+	if node.inc is ast.ExprStmt && node.inc.expr is ast.ConcatExpr {
+		for inc_expr_idx, inc_expr in node.inc.expr.vals {
+			g.expr(inc_expr)
+			if inc_expr_idx < node.inc.expr.vals.len - 1 {
+				g.write(', ')
+			}
+		}
+		processed = true
+	}
+	if !processed {
+		g.stmt(node.inc)
+	}
 }
 
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
@@ -85,8 +171,16 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('${node.label}__break: {}')
 		}
 	} else {
+		overflow_guard := g.for_c_unsigned_overflow_guard(node) or { ForCOverflowGuard{} }
+		has_overflow_guard := overflow_guard.cname.len > 0
+		overflow_guard_flag := if has_overflow_guard { g.new_tmp_var() } else { '' }
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
+		if has_overflow_guard {
+			g.writeln('{')
+			g.indent++
+			g.writeln('bool ${overflow_guard_flag} = false;')
+		}
 		if node.label.len > 0 {
 			g.writeln('${node.label}:')
 		}
@@ -108,22 +202,22 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			}
 		}
 		if node.has_cond {
+			if has_overflow_guard {
+				g.write('!${overflow_guard_flag} && (')
+			}
 			g.expr(node.cond)
+			if has_overflow_guard {
+				g.write(')')
+			}
 		}
 		g.write('; ')
 		if node.has_inc {
-			mut processed := false
-			if node.inc is ast.ExprStmt && node.inc.expr is ast.ConcatExpr {
-				for inc_expr_idx, inc_expr in node.inc.expr.vals {
-					g.expr(inc_expr)
-					if inc_expr_idx < node.inc.expr.vals.len - 1 {
-						g.write(', ')
-					}
-				}
-				processed = true
-			}
-			if !processed {
-				g.stmt(node.inc)
+			if has_overflow_guard {
+				g.write('(${overflow_guard.cname} == ${overflow_guard.limit_expr} ? (${overflow_guard_flag} = true, 0) : (')
+				g.write_for_c_inc_expr(node)
+				g.write('))')
+			} else {
+				g.write_for_c_inc_expr(node)
 			}
 		}
 		g.writeln(') {')
@@ -141,6 +235,10 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		}
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.writeln('}')
+		if has_overflow_guard {
+			g.indent--
+			g.writeln('}')
+		}
 		if node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
 		}
