@@ -552,6 +552,9 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 			}
 		}
 	}
+	if g.should_emit_c_fallback_decl(node) {
+		return true
+	}
 	if node.is_c_extern {
 		return true
 	}
@@ -613,6 +616,31 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	return is_used_by_main
 }
 
+fn file_has_c_includes(file &ast.File) bool {
+	if file == unsafe { nil } {
+		return false
+	}
+	for stmt in file.stmts {
+		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude'] {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
+	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file) {
+		return false
+	}
+	if node.source_file == unsafe { nil } {
+		return true
+	}
+	if !node.source_file.path.starts_with(g.pref.vlib) {
+		return true
+	}
+	return node.mod == 'main' || node.source_file.is_test
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	$if trace_cgen_fn_decl ? {
 		eprintln('>   g.tid: ${g.tid} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | fn_decl: ${node.name}')
@@ -662,12 +690,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.do_int_overflow_checks = prev_do_int_overflow_checks
 	}
 
-	// handle `@[c_extern] fn C.some_name() int` declarations:
+	// Emit extern prototypes for headerless `fn C.some_name() int`
+	// declarations. Header-backed C declarations keep relying on the included
+	// prototypes to avoid redeclaration conflicts.
 	old_inside_c_extern := g.inside_c_extern
 	defer {
 		g.inside_c_extern = old_inside_c_extern
 	}
-	if node.language == .c && node.is_c_extern {
+	if node.is_c_extern || g.should_emit_c_fallback_decl(node) {
 		g.inside_c_extern = true
 	}
 
@@ -747,10 +777,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// TODO: For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
-	if node.language == .c {
-		if !g.inside_c_extern {
-			return
-		}
+	if node.language == .c && !g.inside_c_extern {
+		return
 	}
 	old_is_vlines_enabled := g.is_vlines_enabled
 	g.is_vlines_enabled = true
