@@ -29,6 +29,26 @@ fn (g &Gen) veb_context_html_arg() string {
 	return ctx_param.name
 }
 
+fn (mut g Gen) is_string_array_type(typ ast.Type) bool {
+	final_typ := g.table.unaliased_type(g.unwrap_generic(typ))
+	sym := g.table.final_sym(final_typ)
+	if sym.info is ast.Array {
+		return g.table.unaliased_type(sym.info.elem_type) == ast.string_type
+	}
+	return false
+}
+
+fn (mut g Gen) comptime_call_expands_string_args(m &ast.Fn, node ast.ComptimeCall) bool {
+	if node.args.len == 0 || node.args.last().expr !is ast.ArrayDecompose {
+		return false
+	}
+	array_decompose := node.args.last().expr as ast.ArrayDecompose
+	if !g.is_string_array_type(array_decompose.expr_type) || m.params.len - 1 < node.args.len {
+		return false
+	}
+	return !g.is_string_array_type(m.params[node.args.len].typ)
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	left_type := g.resolved_expr_type(node.left, node.left_type)
 	if node.is_method && g.comptime.comptime_for_method != unsafe { nil } {
@@ -226,16 +246,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		if g.inside_call && m.return_type == ast.void_type {
 			g.error('method `${m.name}()` (no value) used as value', node.pos)
 		}
-		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
-			arg := node.args.last()
-			param := m.params[node.args.len]
-
-			arg.expr in [ast.IndexExpr, ast.Ident] && g.table.type_to_str(arg.typ) == '[]string'
-				&& g.table.type_to_str(param.typ) != '[]string'
-		} else {
-			false
-		}
+		expand_strs := g.comptime_call_expands_string_args(m, node)
 		mut has_decompose := !m.is_variadic && node.args.any(it.expr is ast.ArrayDecompose)
+			&& !expand_strs
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			if g.inside_call {
