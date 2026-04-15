@@ -183,6 +183,23 @@ pub fn resolve_addrs_fuzzy(addr string, typ SocketType) ![]Addr {
 	return resolve_addrs(addr, .unix, typ)
 }
 
+fn wrap_getaddrinfo_error(code int) ! {
+	if code == 0 {
+		return
+	}
+	$if windows {
+		socket_error(0 - code)!
+	} $else {
+		if code == C.EAI_SYSTEM {
+			err_code := error_code()
+			return error_with_code('net: getaddrinfo failed: ${os.posix_get_error_msg(err_code)}',
+				err_code)
+		}
+		return error_with_code('net: getaddrinfo failed: ${unsafe { cstring_to_vstring(C.gai_strerror(code)) }}',
+			code)
+	}
+}
+
 // resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	address, port := split_address(addr)!
@@ -213,13 +230,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 
 	sport := '${port}'
 
-	// This might look silly but is recommended by MSDN
-	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
-	} $else {
-		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
-		wrap_error(x)!
-	}
+	wrap_getaddrinfo_error(C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
 
 	defer {
 		C.freeaddrinfo(results)
