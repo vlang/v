@@ -668,6 +668,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	for {
 		if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr
 			&& node in [ast.CallExpr, ast.IndexExpr, ast.SelectorExpr] {
+			p.promote_if_expr_to_value(mut node)
 			node = p.call_expr_with_left(node)
 			p.is_stmt_ident = is_stmt_ident
 			continue
@@ -681,6 +682,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				&& p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
 				return node
 			}
+			p.promote_if_expr_to_value(mut node)
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node
@@ -689,6 +691,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 		} else if left !is ast.IntegerLiteral && p.tok.kind in [.lsbr, .nilsbr]
 			&& (p.tok.line_nr == p.prev_tok.line_nr || (p.prev_tok.kind == .string
 			&& p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n'))) {
+			p.promote_if_expr_to_value(mut node)
 			if p.peek_tok.kind == .question && p.peek_token(2).kind == .name {
 				p.next()
 				p.error_with_pos('cannot use Option type name as concrete type', p.tok.pos())
@@ -702,6 +705,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			// sum type as cast `x := SumType as Variant`
 			if !p.inside_asm {
 				pos := p.tok.pos()
+				p.promote_if_expr_to_value(mut node)
 				p.next()
 				typ := p.parse_type()
 				node = ast.AsCast{
@@ -736,6 +740,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			&& !(p.tok.kind in [.minus, .amp, .mul, .arrow, .key_as, .key_in, .key_is]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
+			p.promote_if_expr_to_value(mut node)
 			node = p.infix_expr(node)
 			// return early `if bar is SumType as b {`
 			if p.tok.kind == .key_as && p.inside_if {
@@ -799,6 +804,16 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 		}
 	}
 	return node
+}
+
+fn (mut p Parser) promote_if_expr_to_value(mut expr ast.Expr) {
+	match mut expr {
+		ast.IfExpr {
+			expr.is_expr = true
+			expr.force_expr = true
+		}
+		else {}
+	}
 }
 
 fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {

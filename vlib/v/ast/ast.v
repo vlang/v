@@ -1337,11 +1337,12 @@ pub:
 	pos           token.Pos
 	post_comments []Comment
 pub mut:
-	left     Expr       // `a` in `a := if ...`
-	branches []IfBranch // includes all `else if` branches
-	is_expr  bool
-	typ      Type
-	has_else bool
+	left       Expr       // `a` in `a := if ...`
+	branches   []IfBranch // includes all `else if` branches
+	is_expr    bool
+	force_expr bool
+	typ        Type
+	has_else   bool
 	// implements bool // comptime $if implements interface
 }
 
