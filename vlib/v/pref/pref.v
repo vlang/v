@@ -792,6 +792,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
 				res.cflags += ' ${arg}'
+				res.build_options << arg
+				if arg == '-m32' && res.arch == ._auto {
+					res.arch = .i386
+				}
 			}
 			'-color' {
 				res.use_color = .always

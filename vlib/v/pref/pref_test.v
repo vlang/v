@@ -146,6 +146,22 @@ fn test_musl_keeps_explicit_gc_selection() {
 	assert prefs.gc_mode == .boehm_full_opt
 }
 
+fn test_m32_sets_i386_arch_when_not_explicitly_set() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .i386
+	assert prefs.build_options.contains('-m32')
+}
+
+fn test_m32_does_not_override_explicit_arch() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-arch', 'amd64', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .amd64
+	assert prefs.build_options.contains('-m32')
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
