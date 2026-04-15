@@ -121,6 +121,23 @@ fn test_select_blocks() {
 	assert is_open == false
 }
 
+fn test_select_closed_receive_beats_timeout() {
+	ch := chan bool{}
+	ch.close()
+	mut got := true
+	mut timed_out := false
+	select {
+		got = <-ch {
+			assert got == false
+		}
+		10 * time.millisecond {
+			timed_out = true
+		}
+	}
+	assert got == false
+	assert timed_out == false
+}
+
 fn test_select_else_skips_closed_buffered_receive() {
 	ch := chan int{cap: 1}
 	ch <- 1
