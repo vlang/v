@@ -47,3 +47,26 @@ fn test_assert_failure_runs_scoped_defer_cleanup() {
 	assert res.output.contains('assert false')
 	assert !os.exists(assert_failed_defer_cleanup_path)
 }
+
+fn test_run_only_reports_filtered_failures() {
+	test_path := os.join_path(os.vtmp_dir(), 'issue_22778_run_only_${os.getpid()}_test.v')
+	defer {
+		os.rm(test_path) or {}
+	}
+	test_source := [
+		'fn test_ok() {',
+		'	assert true',
+		'}',
+		'',
+		'fn test_fail() {',
+		"	assert false, 'expected to fail'",
+		'}',
+	].join_lines()
+	os.write_file(test_path, test_source)!
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -test-runner normal -run-only test_fail ${os.quoted_path(test_path)}')
+	assert res.exit_code == 1
+	assert res.output.contains('fn test_fail'), res.output
+	assert res.output.contains('expected to fail'), res.output
+	assert !res.output.contains('fn test_ok'), res.output
+}
