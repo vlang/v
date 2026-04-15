@@ -1,0 +1,7 @@
+vlib/v/checker/tests/veb_handler_param_type_err.vv:17:42: error: veb app method `index` parameter `params` has unsupported type `Params`; parameters after the context are populated from strings and must be `string`, integer, or `bool`
+   15 | fn main() {}
+   16 | 
+   17 | pub fn (app &App) index(mut ctx Context, params Params) veb.Result {
+      |                                          ~~~~~~
+   18 |     return veb.no_result()
+   19 | }
