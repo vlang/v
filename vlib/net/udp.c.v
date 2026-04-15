@@ -23,6 +23,7 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
+	is_blocking    bool = true
 }
 
 pub fn dial_udp(raddr string) !&UdpConn {
@@ -33,11 +34,15 @@ pub fn dial_udp(raddr string) !&UdpConn {
 		// bind to any port (or file) (we dont care in this
 		// case because we only care about the remote)
 		if sock := new_udp_socket_for_remote(addr) {
-			return &UdpConn{
+			mut conn := &UdpConn{
 				sock:          sock
 				read_timeout:  udp_default_read_timeout
 				write_timeout: udp_default_write_timeout
 			}
+			$if net_nonblocking_sockets ? {
+				conn.is_blocking = false
+			}
+			return conn
 		}
 	}
 
@@ -102,13 +107,21 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 		}
 	}
 	addr_len := sizeof(Addr)
-	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-		&addr_len))!
+	mut res := 0
+	if c.is_blocking {
+		// Honor read deadlines/timeouts before entering a blocking recvfrom call.
+		c.wait_for_read()!
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
+			&addr_len))!
+	} else {
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
+			&addr_len))!
+	}
 	if res > 0 {
 		return res, addr
 	}
 	code := error_code()
-	if code == int(error_ewouldblock) {
+	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		// same setup as in tcp
 		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
@@ -189,11 +202,15 @@ pub fn listen_udp(laddr string) !&UdpConn {
 	// here we are binding to the first address
 	// and that is probably not ideal
 	addr := addrs[0]
-	return &UdpConn{
+	mut conn := &UdpConn{
 		sock:          new_udp_socket(addr)!
 		read_timeout:  udp_default_read_timeout
 		write_timeout: udp_default_write_timeout
 	}
+	$if net_nonblocking_sockets ? {
+		conn.is_blocking = false
+	}
+	return conn
 }
 
 fn new_udp_socket(local_addr Addr) !&UdpSocket {
