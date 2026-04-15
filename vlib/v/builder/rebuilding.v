@@ -5,10 +5,13 @@ import hash
 import time
 import rand
 import strings
+import v.ast
 import v.util
 import v.pref
 import v.vcache
 import runtime
+
+const crun_cache_format_version = 'crun_cache_v2'
 
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
@@ -294,7 +297,7 @@ pub fn (mut b Builder) should_rebuild() bool {
 	mut cm := vcache.new_cache_manager(b.crun_cache_keys)
 	// always rebuild, when the compilation options changed between 2 sequential cruns:
 	sbuild_options := cm.load('.build_options', '.crun') or { return true }
-	if sbuild_options != b.pref.build_options.join('\n') {
+	if sbuild_options != b.crun_build_options_signature() {
 		return true
 	}
 	sdependencies := cm.load('.dependencies', '.crun') or {
@@ -302,13 +305,16 @@ pub fn (mut b Builder) should_rebuild() bool {
 		// rebuild, which will fill in the dependencies cache for the next crun
 		return true
 	}
-	dependencies := sdependencies.split('\n')
-	// we have already compiled these source files, and have their dependencies
-	dependencies_stamp := most_recent_timestamp(dependencies)
-	if dependencies_stamp < exe_stamp {
-		return false
+	dependencies := sdependencies.split('\n').filter(it != '')
+	for dependency in dependencies {
+		if !os.is_file(dependency) {
+			return true
+		}
+		if os.file_last_mod_unix(dependency) >= exe_stamp {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
 fn most_recent_timestamp(files []string) i64 {
@@ -328,9 +334,9 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 	if b.pref.is_crun {
 		// save the dependencies after the first compilation, they will be used for subsequent ones:
 		mut cm := vcache.new_cache_manager(b.crun_cache_keys)
-		dependency_files := b.parsed_files.map(it.path)
+		dependency_files := b.crun_dependency_files()
 		cm.save('.dependencies', '.crun', dependency_files.join('\n')) or {}
-		cm.save('.build_options', '.crun', b.pref.build_options.join('\n')) or {}
+		cm.save('.build_options', '.crun', b.crun_build_options_signature()) or {}
 	}
 	mut timers := util.get_timers()
 	timers.show_remaining()
@@ -382,6 +388,93 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
 		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
+}
+
+fn (b &Builder) crun_build_options_signature() string {
+	mut parts := []string{cap: b.pref.build_options.len + 1}
+	parts << crun_cache_format_version
+	parts << b.pref.build_options
+	return parts.join('\n')
+}
+
+fn add_existing_crun_dependency(mut dependencies map[string]bool, path string) {
+	if path == '' {
+		return
+	}
+	real_path := os.real_path(path)
+	if os.is_file(real_path) {
+		dependencies[real_path] = true
+	}
+}
+
+fn (b &Builder) crun_hash_stmt_dependency_path(node ast.HashStmt) string {
+	match node.kind {
+		'include', 'preinclude', 'postinclude' {
+			if node.main.starts_with('<') && node.main.ends_with('>') {
+				return ''
+			}
+			mut path := node.main.trim('"')
+			if !os.is_abs_path(path) {
+				path = os.join_path(os.dir(node.source_file), path)
+			}
+			return path
+		}
+		'insert' {
+			mut path := node.main.trim('"')
+			if !os.is_abs_path(path) {
+				path = os.join_path(os.dir(node.source_file), path)
+			}
+			return path
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn (b &Builder) collect_crun_stmt_dependencies(mut dependencies map[string]bool, stmt ast.Stmt) {
+	match stmt {
+		ast.HashStmt {
+			add_existing_crun_dependency(mut dependencies, b.crun_hash_stmt_dependency_path(stmt))
+		}
+		ast.ExprStmt {
+			if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				b.collect_crun_if_expr_dependencies(mut dependencies, stmt.expr)
+			}
+		}
+		else {}
+	}
+}
+
+fn (b &Builder) collect_crun_if_expr_dependencies(mut dependencies map[string]bool, expr ast.IfExpr) {
+	for branch in expr.branches {
+		for stmt in branch.stmts {
+			b.collect_crun_stmt_dependencies(mut dependencies, stmt)
+		}
+	}
+}
+
+fn (mut b Builder) crun_dependency_files() []string {
+	mut dependencies := map[string]bool{}
+	for file in b.parsed_files {
+		add_existing_crun_dependency(mut dependencies, file.path)
+		for template_path in file.template_paths {
+			add_existing_crun_dependency(mut dependencies, template_path)
+		}
+		for embedded_file in file.embedded_files {
+			add_existing_crun_dependency(mut dependencies, embedded_file.apath)
+		}
+		for stmt in file.stmts {
+			b.collect_crun_stmt_dependencies(mut dependencies, stmt)
+		}
+	}
+	for cflag in b.get_os_cflags() {
+		value := cflag.eval() or { continue }
+		add_existing_crun_dependency(mut dependencies, value)
+	}
+	mut files := dependencies.keys()
+	files.sort()
+	return files
 }
 
 pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
