@@ -127,7 +127,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if c.expected_type == ast.void_type && node_is_expr {
 		c.expected_type = c.expected_or_type
 	}
-	expr_required := c.expected_type != ast.void_type
+	expr_required := node.force_expr || c.expected_type != ast.void_type
 		|| (node.is_comptime && node.is_expr && node.has_else && c.fn_level > 0)
 	former_expected_type := c.expected_type
 	if node_is_expr {
