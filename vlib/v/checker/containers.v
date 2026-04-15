@@ -14,28 +14,68 @@ fn array_init_result_type(node ast.ArrayInit) ast.Type {
 	}
 }
 
-fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
-	$if trace_ci_fixes ? {
-		if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0
-			&& c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
-			eprintln('array_init ${c.table.cur_fn.name} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} elem_pos=${node.elem_type_pos} exprs=${node.exprs.len} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
+fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
+	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
+}
+
+fn (mut c Checker) fixed_array_contains_inferred_size(typ ast.Type) bool {
+	mut current_type := typ.clear_option_and_result()
+	for {
+		current_sym := c.table.sym(current_type)
+		if current_sym.kind != .array_fixed {
+			return false
 		}
+		current_info := current_sym.array_fixed_info()
+		if is_inferred_fixed_array_size_expr(current_info.size_expr) {
+			return true
+		}
+		current_type = current_info.elem_type.clear_option_and_result()
 	}
+	return false
+}
+
+fn (mut c Checker) resolve_fixed_array_literal_type(typ ast.Type, elem_type ast.Type, expr_count int) ast.Type {
+	raw_typ := typ.clear_option_and_result()
+	sym := c.table.sym(raw_typ)
+	if sym.kind != .array_fixed {
+		return typ
+	}
+	info := sym.array_fixed_info()
+	mut fixed_size := info.size
+	mut size_expr := info.size_expr
+	if is_inferred_fixed_array_size_expr(size_expr) {
+		fixed_size = expr_count
+		size_expr = ast.empty_expr
+	} else if fixed_size <= 0 {
+		mut mutable_size_expr := size_expr
+		resolved_typ := c.eval_array_fixed_sizes(mut mutable_size_expr, fixed_size, elem_type)
+		resolved_info := c.table.sym(resolved_typ).array_fixed_info()
+		fixed_size = resolved_info.size
+		size_expr = resolved_info.size_expr
+	}
+	if fixed_size <= 0 {
+		c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
+			size_expr.pos())
+		return typ
+	}
+	idx := c.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr, info.is_fn_ret)
+	mut resolved_typ := ast.new_type(idx)
+	if typ.has_flag(.generic) || elem_type.has_flag(.generic) {
+		resolved_typ = resolved_typ.set_flag(.generic)
+	}
+	if typ.has_flag(.option) {
+		resolved_typ = resolved_typ.set_flag(.option)
+	}
+	return resolved_typ
+}
+
+fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	is_inferred_array_literal := node.exprs.len > 0 && !node.is_fixed && !node.has_cap
 		&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
 		&& node.generic_typ == 0 && node.generic_elem_type == 0
 	if c.has_active_generic_recheck_context() {
 		is_untyped_empty_array := node.exprs.len == 0 && !node.is_fixed && !node.has_cap
 			&& !node.has_len && !node.has_init && node.elem_type_pos.pos == node.pos.pos
-		$if trace_ci_fixes ? {
-			if c.file.path.contains('/eventbus/') {
-				eprintln('array_init file=${c.file.path} fn=${if c.table.cur_fn == unsafe { nil } {
-					'<none>'
-				} else {
-					c.table.cur_fn.name
-				}} active=${c.has_active_generic_recheck_context()} expected=${c.table.type_to_str(c.expected_type)} typ=${c.table.type_to_str(node.typ)} elem=${c.table.type_to_str(node.elem_type)} empty=${is_untyped_empty_array}')
-			}
-		}
 		if node.generic_typ == 0 && node.typ != ast.void_type
 			&& (node.typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(node.typ)) {
 			node.generic_typ = node.typ
@@ -58,11 +98,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					node.elem_type = expected_array_sym.info.elem_type
 				}
 				else {}
-			}
-			$if trace_ci_fixes ? {
-				if c.file.path.contains('/eventbus/') {
-					eprintln('array_init expected apply expected=${c.table.type_to_str(expected_array_typ)} new_typ=${c.table.type_to_str(node.typ)} new_elem=${c.table.type_to_str(node.elem_type)}')
-				}
 			}
 		}
 		base_node_typ := if node.generic_typ != 0 { node.generic_typ } else { node.typ }
@@ -94,11 +129,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			|| c.type_has_unresolved_generic_parts(node.elem_type) {
 			node.typ = ast.void_type
 			node.elem_type = ast.void_type
-		}
-		$if trace_ci_fixes ? {
-			if c.table.cur_fn.name in ['arrays.chunk_while', 'arrays.group_by'] {
-				eprintln('array_init reset ${c.table.cur_fn.name} concretes=${c.table.cur_concrete_types.map(c.table.type_to_str(it))}')
-			}
 		}
 	}
 	mut elem_type := ast.void_type
@@ -206,7 +236,53 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 		}
 		// T{0} initialization when T is an array
-		if !node.is_fixed && node.expr_types.len == 0 {
+		if node.is_fixed && node.has_val && node.expr_types.len == 0 {
+			if c.table.final_sym(node.elem_type).kind == .array_fixed {
+				elem_info := c.table.final_sym(node.elem_type).array_fixed_info()
+				if c.array_fixed_has_unresolved_size(elem_info)
+					&& !c.fixed_array_contains_inferred_size(node.elem_type) {
+					node.elem_type = c.resolve_fixed_array_literal_type(node.elem_type,
+						elem_info.elem_type, 0)
+				}
+			}
+			mut expected_elem_type := node.elem_type
+			mut should_infer_fixed_elem_type :=
+				c.table.final_sym(expected_elem_type).kind == .array_fixed
+				&& c.fixed_array_contains_inferred_size(expected_elem_type)
+			for i, mut expr in node.exprs {
+				old_expected_type := c.expected_type
+				if should_infer_fixed_elem_type && i == 0 {
+					c.expected_type = ast.void_type
+				} else {
+					c.expected_type = expected_elem_type
+				}
+				mut typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				c.expected_type = old_expected_type
+				if expr is ast.CallExpr {
+					ret_sym := c.table.sym(typ)
+					if ret_sym.kind == .array_fixed {
+						typ = c.cast_fixed_array_ret(typ, ret_sym)
+					}
+					node.has_callexpr = true
+				}
+				if should_infer_fixed_elem_type && i == 0
+					&& c.table.final_sym(typ).kind == .array_fixed {
+					expected_elem_type = typ
+					node.elem_type = typ
+					should_infer_fixed_elem_type = false
+				}
+				c.check_expected(typ, expected_elem_type) or {
+					c.error('invalid array element: ${err.msg()}', expr.pos())
+				}
+				node.expr_types << typ
+			}
+			node.typ = c.resolve_fixed_array_literal_type(node.typ, node.elem_type, node.exprs.len)
+			resolved_info := c.table.sym(node.typ.clear_option_and_result()).array_fixed_info()
+			if resolved_info.size != node.exprs.len {
+				c.error('fixed array expects ${resolved_info.size} value(s), but got ${node.exprs.len}',
+					node.pos)
+			}
+		} else if !node.is_fixed && node.expr_types.len == 0 {
 			for mut expr in node.exprs {
 				typ := c.expr(mut expr)
 				c.check_expected(typ, node.elem_type) or {

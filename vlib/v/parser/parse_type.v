@@ -109,12 +109,22 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	// fixed array
 	if p.tok.kind != .rsbr {
 		mut fixed_size := 0
-		mut size_expr := p.expr(0)
 		mut size_unresolved := true
-		if p.pref.is_fmt {
-			fixed_size = 987654321
+		mut size_expr := ast.empty_expr
+		if p.allow_auto_fixed_array_size && p.tok.kind == .dotdot && p.peek_tok.kind == .rsbr {
+			size_expr = ast.RangeExpr{
+				pos:  p.tok.pos()
+				low:  ast.empty_expr
+				high: ast.empty_expr
+			}
+			p.next()
 		} else {
-			fixed_size, size_unresolved = p.eval_array_fixed_sizes(mut size_expr)
+			size_expr = p.expr(0)
+			if p.pref.is_fmt {
+				fixed_size = 987654321
+			} else {
+				fixed_size, size_unresolved = p.eval_array_fixed_sizes(mut size_expr)
+			}
 		}
 		p.check(.rsbr)
 		p.fixed_array_dim++

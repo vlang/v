@@ -1730,6 +1730,7 @@ pub mut:
 	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
 	init_type         Type   // init: value type
 	typ               Type   // array type
+	literal_typ       Type   // array type as written, preserved for fmt
 	generic_typ       Type   // original generic array type; reused for later concrete instantiations
 	alias_type        Type   // alias type
 	has_callexpr      bool   // has expr which needs tmp var to initialize it
