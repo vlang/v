@@ -58,8 +58,10 @@ fn (mut ctx Context) termios_setup() ! {
 	if ctx.cfg.capture_events {
 		// Set raw input mode by unsetting ICANON and ECHO,
 		// as well as disable e.g. ctrl+c and ctrl.z
-		tios.c_iflag &= termios.invert(termios.flag(int(C.IGNBRK) | int(C.BRKINT) | int(C.PARMRK) | int(C.IXON)))
-		tios.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ISIG) | int(C.ECHO) | int(C.IEXTEN) | int(C.TOSTOP)))
+		tios.c_iflag &=
+			termios.invert(termios.flag(int(C.IGNBRK) | int(C.BRKINT) | int(C.PARMRK) | int(C.IXON)))
+		tios.c_lflag &=
+			termios.invert(termios.flag(int(C.ICANON) | int(C.ISIG) | int(C.ECHO) | int(C.IEXTEN) | int(C.TOSTOP)))
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
 		tios.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ECHO)))

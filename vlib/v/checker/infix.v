@@ -571,7 +571,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						left_info := left_sym.info
 						if left_info is ast.Struct {
 							if left_info.concrete_types.len > 0 {
-								c.table.register_fn_concrete_types(method.fkey(), left_info.concrete_types)
+								c.table.register_fn_concrete_types(method.fkey(),
+									left_info.concrete_types)
 							}
 						}
 					} else {
@@ -595,7 +596,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						right_info := right_sym.info
 						if right_info is ast.Struct {
 							if right_info.concrete_types.len > 0 {
-								c.table.register_fn_concrete_types(method.fkey(), right_info.concrete_types)
+								c.table.register_fn_concrete_types(method.fkey(),
+									right_info.concrete_types)
 							}
 						}
 					} else {
