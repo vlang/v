@@ -62,6 +62,7 @@ pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 		voidptr { return val }
 		string, EmptyExpr, f32, f64 {}
 	}
+
 	return none
 }
 
@@ -117,6 +118,7 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		}
 		EmptyExpr {}
 	}
+
 	return none
 }
 
@@ -208,6 +210,7 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 		}
 		EmptyExpr {}
 	}
+
 	return none
 }
 
@@ -260,6 +263,7 @@ pub fn (val ComptTimeConstValue) f64() ?f64 {
 		rune {}
 		EmptyExpr {}
 	}
+
 	return none
 }
 
@@ -310,6 +314,7 @@ pub fn (val ComptTimeConstValue) string() ?string {
 		}
 		EmptyExpr {}
 	}
+
 	return none
 }
 
