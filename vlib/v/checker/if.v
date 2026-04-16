@@ -575,6 +575,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					branch.pos)
 			}
 		}
+		end_if:
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
@@ -583,7 +584,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				nbranches_without_return++
 			}
 		}
-		end_if:
 		if comptime_remove_curr_branch_stmts && !c.pref.output_cross_c {
 			// remove the branch statements since they may contain OS-specific code.
 			branch.stmts = []

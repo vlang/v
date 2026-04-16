@@ -5700,12 +5700,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 				mut has_slice_call := false
+				// When taking the address of an auto-deref variable (e.g. `&receiver`
+				// where the receiver is already a pointer in C), the `&` and the
+				// implicit dereference cancel out, so emit neither.
+				is_amp_auto_deref := node.op == .amp && node.right.is_auto_deref_var()
 				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
 					if has_slice_call {
 						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else {
+					} else if !is_amp_auto_deref {
 						g.write(node.op.str())
 					}
 				}
