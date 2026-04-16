@@ -1840,8 +1840,7 @@ pub fn (fm FlagMapper) parsed_flags() []FlagData {
 	return flags
 }
 
-// handled_positions returns unique, sorted position indices from the input args
-// that were consumed during parsing.
+// `handled_positions` returns unique, sorted position indices from the input args that were consumed during parsing.
 pub fn (fm FlagMapper) handled_positions() []int {
 	mut seen := map[int]bool{}
 	mut result := []int{}
