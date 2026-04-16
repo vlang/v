@@ -192,7 +192,7 @@ const c_common_macros = '
 		#else
 			#define VV_EXP  extern __attribute__((visibility("default")))
 		#endif
-		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE) || defined(_VOBJECTFILE))
+		#if defined(_VOBJECTFILE) || (defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE)))
 			#define VV_LOC static
 		#else
 			#define VV_LOC  __attribute__ ((visibility ("hidden")))
