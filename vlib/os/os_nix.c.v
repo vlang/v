@@ -1,7 +1,6 @@
 module os
 
 #include <dirent.h>
-#include <spawn.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>

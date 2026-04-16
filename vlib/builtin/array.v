@@ -30,12 +30,15 @@ pub enum ArrayFlags {
 	is_slice // this array is a slice view into another array's managed buffer
 }
 
+@[_packed]
 struct ArrayDataHeader {
 mut:
 	has_slices bool
 }
 
-const array_data_header_size = int(sizeof(ArrayDataHeader))
+// Must be aligned to at least the maximum fundamental type alignment (pointer size)
+// so that the array data following the header is properly aligned.
+const array_data_header_size = int(sizeof(voidptr))
 
 @[inline]
 fn array_data_allocation_size(total_size u64) u64 {

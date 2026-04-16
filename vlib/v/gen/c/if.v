@@ -35,23 +35,10 @@ fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name st
 	}
 }
 
-fn (mut g Gen) if_guard_error_cleanup(var_name string, typ ast.Type) {
-	if g.pref.building_v {
-		return
-	}
-	cvar_name := c_name(var_name)
-	if typ.has_flag(.result) {
-		g.writeln('\tif (${cvar_name}.is_error) { builtin___v_free(${cvar_name}.err._object); }')
-		return
-	}
-	if typ.has_flag(.option) {
-		tmp_op := if var_name in g.tmp_var_ptr || typ.has_flag(.option_mut_param_t) {
-			'->'
-		} else {
-			'.'
-		}
-		g.writeln('\tif (${cvar_name}${tmp_op}state != 0) { builtin___v_free(${cvar_name}${tmp_op}err._object); }')
-	}
+fn (mut g Gen) if_guard_error_cleanup(_ string, _ ast.Type) {
+	// TODO: the frees here cause double-free crashes when error objects
+	// are shared/global (e.g. map access errors reuse the same MessageError).
+	// Disabled until a safe ownership/refcounting mechanism is implemented.
 }
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {

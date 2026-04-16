@@ -354,7 +354,7 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #else
 	typedef struct _IO_FILE FILE;
 #endif
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__linux__)
 	typedef i64 fpos_t;
 #endif
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -539,7 +539,9 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 char *fgets(char *str, int n, FILE *stream);
 isize getline(char **lineptr, size_t *n, FILE *stream);
+#if !defined(__linux__)
 int fgetpos(FILE *stream, fpos_t *pos);
+#endif
 int ferror(FILE *stream);
 int feof(FILE *stream);
 int getc(FILE *stream);
