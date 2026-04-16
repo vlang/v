@@ -3579,6 +3579,12 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 					final_concrete_types << t_typ
 				}
 			}
+			// If concrete types still contain generic parameters (e.g. Vec3[U] where U
+			// is unresolved), don't create a partially-resolved struct entry. The struct
+			// will be properly instantiated when all type parameters are known.
+			if final_concrete_types.any(it.has_flag(.generic)) {
+				return typ
+			}
 		}
 		GenericInst {
 			// Resolve GenericInst concrete_types that still contain generic parameters.
@@ -3716,7 +3722,7 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 				}
 			}
 			mut info := ts.info
-			info.is_generic = final_concrete_types.any(it.has_flag(.generic))
+			info.is_generic = false
 			info.concrete_types = final_concrete_types
 			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
@@ -3916,10 +3922,12 @@ fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, con
 					needs_unwrap_types << method.params[i].typ
 				}
 			}
-			if method.return_type.has_flag(.generic) && method.return_type != method.params[0].typ {
-				if method.return_type !in needs_unwrap_types {
-					needs_unwrap_types << method.return_type
-				}
+		}
+		// Check return type outside the parameter loop so methods with no
+		// non-receiver params (e.g. `magnitude()`) are also covered.
+		if method.return_type.has_flag(.generic) && method.return_type != method.params[0].typ {
+			if method.return_type !in needs_unwrap_types {
+				needs_unwrap_types << method.return_type
 			}
 		}
 	}
@@ -4330,7 +4338,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 			continue
 		}
 		if sym.info is Struct {
-			if sym.info.concrete_types.len > 0 && sym.info.parent_type.has_flag(.generic) {
+			if sym.info.concrete_types.len > 0 && sym.info.parent_type.has_flag(.generic)
+				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
 				// Only register if none of this type's methods have been registered yet
 				// by the first pass (generic_inst handling), to avoid interfering with
 				// types that are already correctly handled.

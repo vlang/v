@@ -517,7 +517,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 
 	// Add -fwrapv to handle UB overflows
-	if ccoptions.cc in [.gcc, .clang, .tcc] && v.pref.os in [.macos, .linux, .openbsd, .windows] {
+	if ccoptions.cc in [.gcc, .clang, .tcc]
+		&& v.pref.os in [.macos, .linux, .openbsd, .freebsd, .windows] {
 		ccoptions.args << '-fwrapv'
 	}
 
