@@ -314,7 +314,7 @@ fn (mut p Parser) sql_stmt_after_prefix(prefix SqlPrefix) ast.SqlStmt {
 			p.unexpected_with_pos(pos, got: 'eof, while parsing an SQL statement')
 			return ast.SqlStmt{}
 		}
-		lines << p.parse_sql_stmt_line()
+		lines << p.parse_sql_stmt_line(prefix.is_dynamic)
 	}
 
 	p.next()
@@ -356,14 +356,9 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 	}
 }
 
-fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
+fn (mut p Parser) parse_sql_stmt_line(is_dynamic bool) ast.SqlStmtLine {
 	pre_comments := p.eat_comments()
 	mut n := p.check_name() // insert
-	mut is_dynamic := false
-	if n == 'dynamic' {
-		is_dynamic = true
-		n = p.check_name()
-	}
 	pos := p.tok.pos()
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
