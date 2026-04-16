@@ -4340,26 +4340,11 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 		if sym.info is Struct {
 			if sym.info.concrete_types.len > 0 && sym.info.parent_type.has_flag(.generic)
 				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
-				// Only register if none of this type's methods have been registered yet
-				// by the first pass (generic_inst handling), to avoid interfering with
-				// types that are already correctly handled.
 				parent_sym := t.sym(sym.info.parent_type)
-				mut any_method_registered := false
 				for method in parent_sym.methods {
-					if method.generic_names.len == sym.info.concrete_types.len {
-						a := t.fn_generic_types[method.fkey()] or { [][]Type{} }
-						if sym.info.concrete_types in a {
-							any_method_registered = true
-							break
-						}
-					}
-				}
-				if !any_method_registered {
-					for method in parent_sym.methods {
-						if method.generic_names.len == sym.info.concrete_types.len
-							&& t.should_auto_register_concrete_method(method, sym.info.parent_type, sym.info.concrete_types) {
-							t.register_fn_concrete_types(method.fkey(), sym.info.concrete_types)
-						}
+					if method.generic_names.len == sym.info.concrete_types.len
+						&& t.should_auto_register_concrete_method(method, sym.info.parent_type, sym.info.concrete_types) {
+						t.register_fn_concrete_types(method.fkey(), sym.info.concrete_types)
 					}
 				}
 			}

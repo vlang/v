@@ -3775,6 +3775,14 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
+	// Also check by fn_name to avoid duplicates when the same conversion
+	// is requested with different type flags (e.g., mutability):
+	for existing in g.sumtype_casting_fns {
+		if existing.fn_name == fn_name {
+			g.sumtype_definitions[i] = true
+			return fn_name
+		}
+	}
 	if !same_parent_sumtype_alias {
 		for got_sym.parent_idx != 0 && got_sym.idx !in (exp_sym.info as ast.SumType).variants {
 			got_sym = g.table.sym(ast.idx_to_type(got_sym.parent_idx))

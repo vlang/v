@@ -53,9 +53,9 @@ pub fn (mut r Readline) enable_raw_mode() {
 	mut raw := r.orig_termios
 	// println('> r.orig_termios: ${r.orig_termios}')
 	// println('>            raw: ${raw}')
-	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	raw.c_iflag &= termios.invert(termios.flag(int(C.BRKINT) | int(C.ICRNL) | int(C.INPCK) | int(C.ISTRIP) | int(C.IXON)))
 	raw.c_cflag |= termios.flag(C.CS8)
-	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
+	raw.c_lflag &= termios.invert(termios.flag(int(C.ECHO) | int(C.ICANON) | int(C.IEXTEN) | int(C.ISIG)))
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
 	termios.tcsetattr(0, C.TCSADRAIN, mut raw)
@@ -75,9 +75,9 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 		return
 	}
 	mut raw := r.orig_termios
-	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	raw.c_iflag &= termios.invert(termios.flag(int(C.BRKINT) | int(C.ICRNL) | int(C.INPCK) | int(C.ISTRIP) | int(C.IXON)))
 	raw.c_cflag |= termios.flag(C.CS8)
-	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN)
+	raw.c_lflag &= termios.invert(termios.flag(int(C.ECHO) | int(C.ICANON) | int(C.IEXTEN)))
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
 	termios.tcsetattr(0, C.TCSADRAIN, mut raw)

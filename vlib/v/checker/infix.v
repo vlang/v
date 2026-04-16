@@ -568,6 +568,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if left_sym.has_method_with_generic_parent(op_str) {
 					if method := left_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
+						left_info := left_sym.info
+						if left_info is ast.Struct {
+							if left_info.concrete_types.len > 0 {
+								c.table.register_fn_concrete_types(method.fkey(), left_info.concrete_types)
+							}
+						}
 					} else {
 						return_type = left_type
 					}
@@ -586,6 +592,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if right_sym.has_method_with_generic_parent(op_str) {
 					if method := right_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
+						right_info := right_sym.info
+						if right_info is ast.Struct {
+							if right_info.concrete_types.len > 0 {
+								c.table.register_fn_concrete_types(method.fkey(), right_info.concrete_types)
+							}
+						}
 					} else {
 						return_type = right_type
 					}
