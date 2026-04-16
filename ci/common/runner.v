@@ -7,11 +7,21 @@ import time
 
 // exec is a helper function, to execute commands and exit early, if they fail.
 pub fn exec(command string) {
-	log.info('cmd: ${command}')
-	result := os.system(command)
+	cmd := resolve_v_command(command)
+	log.info('cmd: ${cmd}')
+	result := os.system(cmd)
 	if result != 0 {
 		exit(result)
 	}
+}
+
+// resolve_v_command ensures that commands starting with `v ` use the V from @VEXEROOT,
+// not a potentially different V found via PATH.
+fn resolve_v_command(command string) string {
+	if command.starts_with('v ') {
+		return os.quoted_path(os.join_path_single(@VEXEROOT, 'v')) + command[1..]
+	}
+	return command
 }
 
 // unset is a helper function to unset a specific env variable.
@@ -37,7 +47,7 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	}
 }
 
-const self_command = 'v ' +
+const self_command = os.quoted_path(os.join_path_single(@VEXEROOT, 'v')) + ' ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +
 	'.vsh'
 
