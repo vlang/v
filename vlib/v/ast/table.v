@@ -4322,6 +4322,25 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 			}
 		}
 	}
+	// Second pass: register method concrete types for Struct types that were
+	// already converted from GenericInst (e.g. by unwrap_generic_type_ex)
+	// but whose methods haven't been registered yet.
+	for sym in t.type_symbols {
+		if sym.kind != .struct {
+			continue
+		}
+		if sym.info is Struct {
+			if sym.info.concrete_types.len > 0 && sym.info.parent_type.has_flag(.generic) {
+				parent_sym := t.sym(sym.info.parent_type)
+				for method in parent_sym.methods {
+					if method.generic_names.len == sym.info.concrete_types.len
+						&& t.should_auto_register_concrete_method(method, sym.info.parent_type, sym.info.concrete_types) {
+						t.register_fn_concrete_types(method.fkey(), sym.info.concrete_types)
+					}
+				}
+			}
+		}
+	}
 }
 
 // Extracts all generic names from Type<A>[B] => B when <A>[B] is present
