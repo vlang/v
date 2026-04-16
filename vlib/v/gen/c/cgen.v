@@ -494,7 +494,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				global_g.str_types << str_type
 			}
 			for scf in g.sumtype_casting_fns {
-				if scf !in global_g.sumtype_casting_fns {
+				mut already_exists := false
+				for existing in global_g.sumtype_casting_fns {
+					if existing.fn_name == scf.fn_name {
+						already_exists = true
+						break
+					}
+				}
+				if !already_exists {
 					global_g.sumtype_casting_fns << scf
 				}
 			}

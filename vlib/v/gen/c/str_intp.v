@@ -730,6 +730,12 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			|| node.expr_types[i].is_float_valptr() {
 			return false
 		}
+		// Float types use strg() (g format) by default, which differs from str()
+		// for negative zero: strg() returns "0.0", str() returns "-0.0".
+		// Fall back to the str_intp path which correctly calls strg().
+		if node.expr_types[i].is_float() {
+			return false
+		}
 		if i < node.fwidths.len && node.fwidths[i] != 0 {
 			return false
 		}
