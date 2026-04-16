@@ -203,7 +203,9 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 		voidptr {
 			return u64(val)
 		}
-		rune {}
+		rune {
+			return u64(val)
+		}
 		EmptyExpr {}
 	}
 	return none

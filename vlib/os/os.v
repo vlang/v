@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module os
 
+import io
 import strings
 
 pub const max_path_len = 4096
@@ -153,7 +154,7 @@ fn read_lines_from_open_file(mut file File) ![]string {
 	mut pending_cr := false
 	for {
 		nread := file.read(mut buf) or {
-			if err is Eof {
+			if err is io.Eof {
 				break
 			}
 			unsafe {
