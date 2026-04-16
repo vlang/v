@@ -457,7 +457,7 @@ extern "C" {
 		#define strncasecmp _strnicmp
 	#endif
 #elif defined(__OpenBSD__)
-	struct __sFstub;
+	struct __sFstub { long _stub; };
 	extern struct __sFstub __stdin[];
 	extern struct __sFstub __stdout[];
 	extern struct __sFstub __stderr[];
