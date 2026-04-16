@@ -807,6 +807,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 							}
 						}
 					}
+
 					g.println('; global ${fi.name}, size: ${size}')
 				}
 			}
@@ -1019,6 +1020,7 @@ pub fn (mut g Gen) get_lpaths() string {
 			['/dev/null']
 		}
 	}
+
 	lpaths << g.linker_include_paths
 	return lpaths.map('-L${it}').join(' ')
 }

@@ -655,6 +655,7 @@ fn decode_base64(value string) []u8 {
 		3 { padded += '=' }
 		else {}
 	}
+
 	return base64.decode(padded)
 }
 

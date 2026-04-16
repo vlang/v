@@ -830,6 +830,7 @@ fn split_mapping_entry(content string) MappingEntry {
 			}
 			else {}
 		}
+
 		i++
 	}
 	return MappingEntry{}
@@ -933,6 +934,7 @@ fn parse_quoted_string(src string) !string {
 				out << esc
 			}
 		}
+
 		i++
 	}
 	return out.bytestr()
@@ -999,6 +1001,7 @@ fn strip_comments(line string) string {
 			}
 			else {}
 		}
+
 		i++
 	}
 	return line.trim_right(' \t')

@@ -2264,6 +2264,7 @@ fn should_break_grapheme(gs GraphemeState, r rune, prop GraphemeBreakProperty) b
 		}
 		else {}
 	}
+
 	if prop in [.cr, .lf, .control] {
 		return true
 	}

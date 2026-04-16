@@ -177,6 +177,7 @@ fn main() {
 			}
 		}
 	}
+
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
@@ -199,6 +200,7 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1], exit_code: 0) }
 		else {}
 	}
+
 	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
 	eprintln('For usage information, use ${term.highlight_command('v help')}.')
 	exit(1)

@@ -171,6 +171,7 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 			.string { fmt += 's' }
 			.unformatted { fmt += 'd' }
 		}
+
 		return fmt
 	}
 	// Infer from expression type

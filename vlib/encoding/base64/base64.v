@@ -23,6 +23,7 @@ pub fn url_decode(data string) []u8 {
 		3 { result += '=' } // 1 pad char
 		else {} // no padding
 	}
+
 	return decode(result)
 }
 
@@ -35,6 +36,7 @@ pub fn url_decode_str(data string) string {
 		3 { result += '=' } // 1 pad char
 		else {} // no padding
 	}
+
 	return decode_str(result)
 }
 

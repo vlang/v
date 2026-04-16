@@ -84,6 +84,7 @@ fn install_modules(modules []Module, selected_server_url string) {
 				continue
 			}
 		}
+
 		if !m.is_external {
 			increment_module_download_count(m.name, selected_server_url) or {
 				vpm_error('failed to increment the download count for `${m.name}`',

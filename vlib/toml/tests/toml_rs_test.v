@@ -316,5 +316,6 @@ fn to_toml_rs(value ast.Value, array_type int) string {
 			return str
 		}
 	}
+
 	return '<error>'
 }

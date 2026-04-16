@@ -188,6 +188,7 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
+
 	g.local_vars << v
 	return v
 }
@@ -238,6 +239,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -314,6 +316,7 @@ pub fn (g &Gen) is_pure_type(typ ast.Type) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

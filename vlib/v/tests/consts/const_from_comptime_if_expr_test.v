@@ -13,6 +13,7 @@ fn test_const_from_comptime_if_expr() {
 		'goodbyte' { color + ' some other text' }
 		else { 'invalid' }
 	}
+
 	println(val)
 	assert true
 }

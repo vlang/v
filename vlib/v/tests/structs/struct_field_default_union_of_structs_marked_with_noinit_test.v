@@ -32,6 +32,7 @@ fn draw(r Renderable) int {
 			println('o_O')
 		}
 	}
+
 	return 1
 }
 

@@ -230,6 +230,7 @@ fn test_array_init_with_sumtype() {
 			assert false
 		}
 	}
+
 	match a1 {
 		Xyz {
 			assert a1.val == 2

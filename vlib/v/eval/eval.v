@@ -258,6 +258,7 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 			e.error('unsupported expression ${cond}')
 		}
 	}
+
 	return false
 }
 

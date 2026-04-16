@@ -157,6 +157,7 @@ pub fn (c &Cookie) str() string {
 			b.write_string('; SameSite=Strict')
 		}
 	}
+
 	return b.str()
 }
 

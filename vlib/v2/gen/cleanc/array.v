@@ -388,6 +388,7 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	if arr_expr is ast.ArrayInitExpr {
 		elem_type := g.extract_array_elem_type(arr_expr.typ)
 		if elem_type != '' {
@@ -494,6 +495,7 @@ fn (mut g Gen) infer_array_method_elem_type(expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -661,6 +663,7 @@ fn (g &Gen) extract_array_elem_expr(e ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return ast.empty_expr
 }
 
@@ -685,6 +688,7 @@ fn (g &Gen) is_dynamic_array_type(e ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -701,6 +705,7 @@ fn extract_array_init_arg(expr ast.Expr) ?ast.ArrayInitExpr {
 		}
 		else {}
 	}
+
 	return none
 }
 

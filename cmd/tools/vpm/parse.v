@@ -85,6 +85,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 		is_local_repository(m) { ModuleKind.local }
 		else { ModuleKind.registered }
 	}
+
 	ident, version := if kind == .ssh {
 		if m.count('@') > 1 {
 			m.all_before_last('@'), m.all_after_last('@')
@@ -99,6 +100,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 		.ssh { ident.replace(':', '/') + at_version(version) }
 		else { ident.all_after('//').trim_string_right('.git') + at_version(version) }
 	}
+
 	if key in p.modules {
 		return
 	}

@@ -11,6 +11,7 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 		'JS.Array', 'JS.Map' { dval = '' }
 		else { dval = '{}' }
 	}
+
 	return dval
 }
 
@@ -59,6 +60,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = 'undefined'
 		}
 	}
+
 	return styp
 }
 
@@ -134,6 +136,7 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 			styp = 'undefined'
 		}
 	}
+
 	return styp
 }
 
@@ -259,6 +262,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			panic('TODO: unhandled thread in JS')
 		}
 	}
+
 	/*
 	else {
 			println('jsgen.typ: Unhandled type ${t}')

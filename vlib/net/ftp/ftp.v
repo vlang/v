@@ -176,6 +176,7 @@ pub fn (mut zftp FTP) cd(dir string) ! {
 		}
 		else {}
 	}
+
 	$if debug {
 		println('CD ${data}')
 	}

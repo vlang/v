@@ -377,6 +377,7 @@ fn (mut p Parser) stmt() ast.Stmt {
 			return p.complete_simple_stmt(expr, false)
 		}
 	}
+
 	p.error('unknown stmt: ${p.tok}')
 }
 
@@ -994,6 +995,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 							'len' { len = p.expr(.lowest) }
 							else { p.error('expecting one of `cap, init, len`, got `${key}`') }
 						}
+
 						if p.tok == .comma {
 							p.next()
 						}
@@ -2278,6 +2280,7 @@ fn (mut p Parser) fn_arguments() []ast.Expr {
 				p.expr(.lowest)
 			}
 		}
+
 		// short struct config syntax
 		// TODO: if also supported anywhere else it can be moved to `p.expr()`
 		if p.tok == .colon {
@@ -2668,6 +2671,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 				ast.Ident { field_name = value.name }
 				else { p.error('expected field name, got ${value.name()}') }
 			}
+
 			p.next()
 			value = p.expr(.lowest)
 		}

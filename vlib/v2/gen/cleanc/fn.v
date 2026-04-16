@@ -35,6 +35,7 @@ fn (mut g Gen) is_error_call_expr(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	// Also check environment type
 	expr_type := g.get_expr_type(expr)
 	if expr_type == 'IError' {
@@ -240,6 +241,7 @@ fn (mut g Gen) extract_tuple_fields_from_return_type(fn_typ types.FnType) ?[]str
 		types.ResultType { ret_type.base_type }
 		else { ret_type }
 	}
+
 	if inner is types.Tuple {
 		tuple_types := inner.get_types()
 		mut fields := []string{cap: tuple_types.len}
@@ -1004,6 +1006,7 @@ fn direct_generic_placeholder_name(e ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -1750,6 +1753,7 @@ fn returned_ident_name(expr ast.Expr) ?string {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2178,6 +2182,7 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 		}
 		else {}
 	}
+
 	if raw_type := g.get_raw_type(arg) {
 		if raw_type is types.Pointer || raw_type is types.Nil {
 			return true
@@ -2220,6 +2225,7 @@ fn (mut g Gen) expr_produces_pointer(arg ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -2408,6 +2414,7 @@ fn extract_fn_type(raw_type types.Type) ?types.FnType {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -3072,6 +3079,7 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, call_args []ast.Expr) ?string 
 		'signal' { return 'void*' }
 		else {}
 	}
+
 	return none
 }
 
@@ -3970,6 +3978,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			}
 			else {}
 		}
+
 		if arg_type_name == '' {
 			arg_type_name = g.get_expr_type(first_arg)
 		}
@@ -4774,6 +4783,7 @@ fn expr_has_generic_placeholder(e ast.Expr) bool {
 				}
 				else {}
 			}
+
 			return false
 		}
 		else {

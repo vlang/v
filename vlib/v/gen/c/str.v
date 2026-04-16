@@ -135,6 +135,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				false
 			}
 		}
+
 		exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
 		if unwrap_opt_or_res {
 			typ = exp_typ

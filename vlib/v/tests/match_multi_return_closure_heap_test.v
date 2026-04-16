@@ -22,6 +22,7 @@ fn make_cfg(ch string) Cfg {
 				's' { f32(4), f32(5), f32(6) }
 				else { f32(7), f32(8), f32(9) }
 			}
+
 			println('${x} ${y} ${z}')
 		}
 	}

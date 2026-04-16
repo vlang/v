@@ -344,6 +344,7 @@ fn calc_digest_with_evpkey(key &C.EVP_PKEY, message []u8, opt SignerOpts) ![]u8 
 			return digest
 		}
 	}
+
 	return error('Not should be here')
 }
 
@@ -451,6 +452,7 @@ fn default_digest(key &C.EVP_PKEY) !&C.EVP_MD {
 			return error('Unsupported bits size')
 		}
 	}
+
 	return error('should not here')
 }
 

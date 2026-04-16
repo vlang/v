@@ -70,6 +70,7 @@ fn new_stream_with_options(key []u8, nonce []u8, opt Options) !Stream {
 			return error('new_stream_with_options: unsupported nonce size')
 		}
 	}
+
 	// if this an extended chacha20 construct, derives a new key and nonce
 	new_key, new_nonce := if extended {
 		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce, opt.use_64bit_counter)!

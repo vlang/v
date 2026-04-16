@@ -7,6 +7,7 @@ fn test_match_on_sumtype_alias_variants() {
 		int { a.str() }
 		string { a }
 	}
+
 	assert result == '10'
 }
 

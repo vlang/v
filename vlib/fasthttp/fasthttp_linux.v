@@ -330,6 +330,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 					eprintln('ERROR: sendfile() failed with errno=${errno_val}')
 				}
 			}
+
 			handle_client_closure(epoll_fd, client_fd, mut client_fds)
 			return
 		}

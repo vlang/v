@@ -27,6 +27,7 @@ fn (b BUnary) eval(env &Environment) !bool {
 	match b {
 		BNot, BExpr, BFact, BDefine { return b.eval(env)! }
 	}
+
 	return false
 }
 

@@ -27,6 +27,7 @@ fn test_main() {
 		}
 		else {}
 	}
+
 	assert f == Foo(?Bar{
 		i: 0
 	})

@@ -26,6 +26,7 @@ fn (h ExampleHandler) handle(req Request) Response {
 			'Not found\n'
 		}
 	}
+
 	res.status_code = status_code
 	return res
 }

@@ -308,6 +308,7 @@ fn pg_type_from_v(typ int) !string {
 			''
 		}
 	}
+
 	if str == '' {
 		return error('Unknown type ${typ}')
 	}
@@ -382,6 +383,7 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			else {}
 		}
+
 		return error('Unknown field type ${typ}')
 	} else {
 		return orm.Null{}

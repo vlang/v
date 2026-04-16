@@ -462,6 +462,7 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			}
 			else {}
 		}
+
 		// Try cache lookup in main
 		if cache_key.len > 0 {
 			if existing := map_get_type_id(m.type_store.cache, cache_key) {

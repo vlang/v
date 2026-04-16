@@ -265,6 +265,7 @@ fn (r Readline) analyse_extended_control() Action {
 		}
 		else {}
 	}
+
 	return .nothing
 }
 
@@ -282,6 +283,7 @@ fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
 		}
 		else {}
 	}
+
 	return .nothing
 }
 
@@ -309,6 +311,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.completion { r.completion() }
 		else {}
 	}
+
 	return false
 }
 

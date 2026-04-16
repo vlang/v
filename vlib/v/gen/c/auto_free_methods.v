@@ -98,6 +98,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			// verror("could not generate free method '${fn_name}' for type '${styp}'")
 		}
 	}
+
 	return fn_name
 }
 

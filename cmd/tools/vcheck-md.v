@@ -586,6 +586,7 @@ fn (mut f MDFile) check_link_target_match(ad AnchorData) {
 							anchor.line
 						}
 					}
+
 					wprintln(wline(f.path, line, 0,
 						'multiple link target for non existing link (#${link})'))
 					found_error_warning = true

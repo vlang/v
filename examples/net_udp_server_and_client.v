@@ -36,6 +36,7 @@ fn main() {
 				}
 				else {}
 			}
+
 			c.write_string(line)!
 			read, _ := c.read(mut buf)!
 			println('server : ' + buf[0..read].bytestr())

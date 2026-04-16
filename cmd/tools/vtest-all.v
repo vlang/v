@@ -552,6 +552,7 @@ fn rm_existing(paths OneOrManyStrings) bool {
 			return existing
 		}
 	}
+
 	return false
 }
 

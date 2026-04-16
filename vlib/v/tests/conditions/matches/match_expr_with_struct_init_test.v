@@ -12,6 +12,7 @@ fn test_match_expr_with_struct_init() {
 			Test{''}
 		}
 	}
+
 	println(b)
 	assert b.a == ''
 }

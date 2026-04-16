@@ -27,6 +27,7 @@ fn prehash_oid(ph PreHash) []u8 {
 		// unreachable, called from mu_prehash, which is called from sign when ph != .none
 		.none { panic('mldsa: prehash_oid called with .none') }
 	}
+
 	return [u8(0x06), 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, suffix]
 }
 

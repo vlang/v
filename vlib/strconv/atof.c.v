@@ -469,5 +469,6 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 			return error('not a number')
 		}
 	}
+
 	return unsafe { res.f }
 }

@@ -754,6 +754,7 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 		.short, .short_long, .v, .v_flag_parser, .go_flag, .cmd_exe { dc.delimiter }
 		.long { dc.delimiter.repeat(2) }
 	}
+
 	long_delimiter := match dc.style {
 		.short, .v, .go_flag, .cmd_exe { dc.delimiter }
 		.long, .v_flag_parser, .short_long { dc.delimiter.repeat(2) }

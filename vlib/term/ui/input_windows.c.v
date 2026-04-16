@@ -225,6 +225,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						typ := if e.dwButtonState == 0 {
 							if ctx.mouse_down != .unknown {
 								button = ctx.mouse_down
@@ -277,6 +278,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						ctx.mouse_down = button
 						ctx.event(&Event{
 							typ:       .mouse_down

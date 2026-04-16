@@ -269,8 +269,7 @@ fn run_comparison() {
 
 	// Print comparison table
 	println('')
-	println('  ${rpad('test', 44)} ${lpad('boehm', 9)} ${lpad('vgc', 9)} ${lpad('ratio',
-		9)}')
+	println('  ${rpad('test', 44)} ${lpad('boehm', 9)} ${lpad('vgc', 9)} ${lpad('ratio', 9)}')
 	println('  ${'—'.repeat(44)} ${'—'.repeat(9)} ${'—'.repeat(9)} ${'—'.repeat(9)}')
 
 	for ti in 0 .. 5 {
@@ -287,8 +286,8 @@ fn run_comparison() {
 			''
 		}
 		label := '${ratio:.2f}x${winner}'
-		println('  ${rpad(test_name(ti), 44)} ${lpad('${mb} ms', 9)} ${lpad('${mv} ms',
-			9)} ${lpad(label, 9)}')
+		println('  ${rpad(test_name(ti), 44)} ${lpad('${mb} ms', 9)} ${lpad('${mv} ms', 9)} ${lpad(label,
+			9)}')
 	}
 
 	// Heap usage

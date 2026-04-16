@@ -54,6 +54,7 @@ pub fn (node XMLNode) pretty_str(original_indent string, depth int, reverse_enti
 					builder.write_string(']]>')
 				}
 			}
+
 			builder.write_u8(`\n`)
 		}
 		builder.write_string(indent)
@@ -94,6 +95,7 @@ fn (list []DTDListItem) pretty_str(indent string) string {
 				builder.write_string(']>')
 			}
 		}
+
 		builder.write_u8(`\n`)
 	}
 	builder.write_u8(`]`)

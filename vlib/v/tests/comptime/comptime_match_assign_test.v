@@ -17,6 +17,7 @@ fn test_comptime_match_assign() {
 		123 { '123' }
 		$else { 'unknown' }
 	}
+
 	assert y == '123'
 
 	j := true
@@ -38,6 +39,7 @@ fn test_comptime_match_assign_reverse() {
 		os3 { 'm' }
 		$else { 'unknown' }
 	}
+
 	assert x == 'w'
 
 	b1 := true
@@ -49,6 +51,7 @@ fn test_comptime_match_assign_reverse() {
 		b3 { 'b3' }
 		$else { 'unknown' }
 	}
+
 	assert y == 'b2'
 
 	i1 := 123
@@ -60,6 +63,7 @@ fn test_comptime_match_assign_reverse() {
 		i3 { '1023' }
 		$else { 'unknown' }
 	}
+
 	assert z == 'unknown'
 }
 
@@ -77,6 +81,7 @@ fn decode_number[T](str string) !T {
 		$float { T(strconv.atof_quick(str)) }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
 	}
+
 	return val
 }
 

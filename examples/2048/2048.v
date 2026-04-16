@@ -832,6 +832,7 @@ fn (mut b Board) move(d Direction) (Board, bool) {
 		.up { b.transpose().to_left().transpose() }
 		.down { b.transpose().hmirror().to_left().hmirror().transpose() }
 	}
+
 	// If the board hasn't changed, it's an illegal move, don't allow it.
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -1241,6 +1242,7 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
 		}
+
 		// oidx_fmt := gg.TextCfg{...fmt,size: 14}
 		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
 		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
@@ -1391,6 +1393,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 		}
 		else {}
 	}
+
 	if app.state in [.play, .freeplay] {
 		if !app.is_ai_mode {
 			match key {
@@ -1464,6 +1467,7 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		else {}
 	}
+
 	if e.typ in [.key_down, .touches_began, .touches_ended, .mouse_down, .mouse_up, .resized,
 		.restored, .focused, .resumed] {
 		app.request_redraw()

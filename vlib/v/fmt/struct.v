@@ -88,6 +88,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 			else {}
 		}
+
 		// Handle comments before the field
 		if field.pre_comments.len > 0 {
 			f.comments(field.pre_comments, level: .indent)
@@ -193,6 +194,7 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 		}
 		else {}
 	}
+
 	return false
 }
 

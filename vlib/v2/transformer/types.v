@@ -481,6 +481,7 @@ fn (t &Transformer) type_to_variant_name(e ast.Type) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -896,6 +897,7 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 		}
 		else {}
 	}
+
 	match typ {
 		types.Primitive {
 			if typ.props.has(types.Properties.boolean) {
@@ -944,6 +946,7 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 		}
 		else {}
 	}
+
 	// For aggregates, use a compound-literal zero init: `((T){0})`.
 	return ast.Expr(ast.InitExpr{
 		typ: t.type_to_ast_type_expr(typ)
@@ -971,6 +974,7 @@ fn (t &Transformer) unwrap_array_or_string_type(typ types.Type) ?types.Type {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -1003,6 +1007,7 @@ fn (t &Transformer) type_expr_to_c_name(typ ast.Expr) string {
 		}
 		else {}
 	}
+
 	return typ.name().replace('.', '__')
 }
 
@@ -1054,6 +1059,7 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1093,6 +1099,7 @@ fn (t &Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected type
 		}
 		else {}
 	}
+
 	match expected {
 		types.OptionType, types.ResultType {
 			match expr {
@@ -1113,6 +1120,7 @@ fn (t &Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected type
 				}
 				else {}
 			}
+
 			if expr_type := t.get_expr_type(expr) {
 				if expected is types.OptionType && expr_type is types.OptionType {
 					return expr
@@ -1129,6 +1137,7 @@ fn (t &Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected type
 		}
 		else {}
 	}
+
 	if base is types.Enum {
 		enum_name := t.type_to_c_name(base)
 		return t.resolve_enum_shorthand(expr, enum_name)

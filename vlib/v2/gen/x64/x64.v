@@ -302,10 +302,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 						.ge { cc_ge }
 						else { cc_e }
 					}
+
 					asm_setcc_al_movzx(mut g, cc)
 				}
 				else {}
 			}
+
 			g.store_reg_to_val(0, val_id)
 		}
 		.store {
@@ -716,6 +718,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 						`'` { raw_bytes << 39 }
 						else { raw_bytes << str_content[i + 1] }
 					}
+
 					i += 2
 				} else {
 					raw_bytes << str_content[i]

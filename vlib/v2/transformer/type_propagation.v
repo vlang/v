@@ -564,6 +564,7 @@ fn (mut t Transformer) infer_prop_type(expr ast.Expr) ?types.Type {
 			return none
 		}
 	}
+
 	return none
 }
 

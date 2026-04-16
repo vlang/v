@@ -109,6 +109,7 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 			handler.not_founds++
 		}
 	}
+
 	r.set_version(req.version)
 	return r
 }
@@ -214,6 +215,7 @@ fn (mut handler MyCountingHandler) handle(req http.Request) http.Response {
 			r.set_status(.not_found)
 		}
 	}
+
 	r.set_version(req.version)
 	return r
 }

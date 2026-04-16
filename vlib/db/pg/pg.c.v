@@ -687,6 +687,7 @@ pub fn (db &DB) begin(param PQTransactionParam) ! {
 		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
 		.serializable { sql_stmt += 'SERIALIZABLE' }
 	}
+
 	_ := C.PQexec(db.conn, &char(sql_stmt.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {

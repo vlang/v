@@ -91,5 +91,6 @@ fn (mut p BParser) unary_expr() !BUnary {
 		}
 		else {}
 	}
+
 	return error('unary failed, unexpected ${t}')
 }

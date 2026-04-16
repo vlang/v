@@ -430,6 +430,7 @@ fn (mut app App) dot_cmd(cmd string) {
 					return
 				}
 			}
+
 			println('Mode set to: ${app.mode}')
 		}
 		'.headers' {
