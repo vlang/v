@@ -237,7 +237,7 @@ fn escape_default_string(value string) string {
 
 fn flag_default_value[T](value T) string {
 	$if T is string {
-		return '"${escape_default_string(value as string)}"'
+		return '"${escape_default_string(value)}"'
 	} $else {
 		return '${value}'
 	}

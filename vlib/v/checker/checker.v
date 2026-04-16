@@ -4770,7 +4770,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				// Also compare with unwrapped generic types to avoid false positives
 				unwrapped_node_typ := c.unwrap_generic(node.typ)
-				if node.expr_type.clear_flag(.option) != unwrapped_node_typ.clear_flag(.option) {
+				if node.expr_type.clear_flag(.option) != unwrapped_node_typ.clear_flag(.option)
+					&& !node.expr_type.has_flag(.generic) && !node.typ.has_flag(.generic) {
 					mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 					if type_sym.kind == .sum_type {
 						s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
