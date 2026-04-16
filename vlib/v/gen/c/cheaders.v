@@ -456,7 +456,21 @@ extern "C" {
 	#ifndef strncasecmp
 		#define strncasecmp _strnicmp
 	#endif
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__BIONIC__)
+#elif defined(__OpenBSD__)
+	struct __sFstub;
+	extern struct __sFstub __stdin[];
+	extern struct __sFstub __stdout[];
+	extern struct __sFstub __stderr[];
+	#ifndef stdin
+		#define stdin ((FILE *)__stdin)
+	#endif
+	#ifndef stdout
+		#define stdout ((FILE *)__stdout)
+	#endif
+	#ifndef stderr
+		#define stderr ((FILE *)__stderr)
+	#endif
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__BIONIC__)
 	extern FILE* __stdinp;
 	extern FILE* __stdoutp;
 	extern FILE* __stderrp;
