@@ -2366,7 +2366,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			call_arg_expr_pos := call_arg.expr.pos()
 			if !call_arg.expr.is_lvalue() {
 				if call_arg.expr is ast.StructInit {
-					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${ast.Expr(call_arg.expr)}`',
+					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${call_arg.expr}`',
 						call_arg_expr_pos)
 				} else {
 					c.error('cannot pass expression as `mut`', call_arg_expr_pos)

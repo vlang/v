@@ -1156,7 +1156,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		mut unwrapped_right := ast.Expr(ast.EmptyExpr{})
 		if mut right is ast.ParExpr {
 			if right.expr is ast.StructInit {
-				p.note_with_pos('unnecessary `()`, use `&${ast.Expr(right.expr)}` instead of `&(${ast.Expr(right.expr)})`',
+				p.note_with_pos('unnecessary `()`, use `&${right.expr}` instead of `&(${right.expr})`',
 					right.pos)
 				unwrapped_right = right.expr
 			}
