@@ -76,11 +76,9 @@ pub fn run[A, X](mut global_app A, port int) {
 pub struct RunParams {
 pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
-	family net.AddrFamily = .ip6
-	host   string
-	port   int = default_port
-	// number of picoev event loops for the default non-SSL backend.
-	// keep `1` to preserve the historical single-loop behavior.
+	family                    net.AddrFamily = .ip6
+	host                      string
+	port                      int  = default_port
 	nr_workers                int  = 1
 	show_startup_message      bool = true
 	timeout_in_seconds        int  = 30
@@ -374,84 +372,6 @@ fn should_close_ssl_connection(req http.Request, resp http.Response, client_want
 		return false
 	}
 	return req.version != .v1_1
-}
-
-struct FileResponse {
-pub mut:
-	open              bool
-	file              os.File
-	total             i64
-	pos               i64
-	should_close_conn bool
-}
-
-// close the open file and reset the struct to its default values
-pub fn (mut fr FileResponse) done() {
-	fr.open = false
-	fr.file.close()
-	fr.total = 0
-	fr.pos = 0
-	fr.should_close_conn = false
-}
-
-struct StringResponse {
-pub mut:
-	open              bool
-	str               string
-	pos               i64
-	should_close_conn bool
-}
-
-// free the current string and reset the struct to its default values
-@[manualfree]
-pub fn (mut sr StringResponse) done() {
-	sr.open = false
-	sr.pos = 0
-	sr.should_close_conn = false
-	unsafe { sr.str.free() }
-}
-
-$if !new_veb ? {
-	// EV context
-	struct RequestParams {
-		global_app         voidptr
-		controllers        []&ControllerPath
-		routes             &map[string]Route
-		timeout_in_seconds int
-	mut:
-		// request body buffer
-		buf &u8 = unsafe { nil }
-		// request bodies are assembled in byte buffers to avoid repeated string reallocations
-		body_buffers [][]u8
-		// chunked request bodies track framing separately so they can be decoded once when complete
-		chunked_body_trackers []ChunkedBodyTracker
-		// idx keeps track of how much of the request body has been read
-		// for each incomplete request, see `handle_conn`
-		idx                 []int
-		incomplete_requests []http.Request
-		file_responses      []FileResponse
-		string_responses    []StringResponse
-	}
-
-	// reset request parameters for `fd`:
-	// reset content-length index and the http request
-	@[manualfree]
-	pub fn (mut params RequestParams) request_done(fd int) {
-		mut request := &params.incomplete_requests[fd]
-		request.reset()
-		if params.body_buffers[fd].cap > 0 {
-			unsafe { params.body_buffers[fd].free() }
-			params.body_buffers[fd] = []u8{}
-		}
-		if params.chunked_body_trackers[fd].line_buf.cap > 0 {
-			unsafe { params.chunked_body_trackers[fd].line_buf.free() }
-		}
-		params.chunked_body_trackers[fd] = ChunkedBodyTracker{}
-		params.idx[fd] = 0
-		$if trace_handle_read ? {
-			eprintln('>>>>> fd: ${fd} | request_done.')
-		}
-	}
 }
 
 interface BeforeAcceptApp {
@@ -792,17 +712,6 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 		return error('connection was closed before send_string')
 	}
 	conn.write_string(s)!
-}
-
-// send a string ptr over `conn`
-fn send_string_ptr(mut conn net.TcpConn, ptr &u8, len int) !int {
-	$if trace_send_string_conn ? {
-		eprintln('> send_string: conn: ${ptr_str(conn)}')
-	}
-	if voidptr(conn) == unsafe { nil } {
-		return error('connection was closed before send_string')
-	}
-	return conn.write_ptr(ptr, len)
 }
 
 // Set s to the form error

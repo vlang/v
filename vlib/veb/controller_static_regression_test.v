@@ -1,6 +1,5 @@
 module veb
 
-import net
 import net.http
 import net.urllib
 import os
@@ -104,25 +103,12 @@ fn regression_handle_app_request(mut app AppStaticRegressionApp, req http.Reques
 		panic(err)
 	}
 
-	$if new_veb ? {
-		params := RequestParams{
-			global_app:                unsafe { voidptr(&app) }
-			controllers_sorted:        controllers_sorted
-			routes:                    &routes
-			benchmark_page_generation: false
-		}
-		return handle_request_and_route[AppStaticRegressionApp, RegressionContext](mut app, req, 0,
-			params)
-	} $else {
-		params := &RequestParams{
-			global_app:         unsafe { voidptr(&app) }
-			controllers:        controllers_sorted
-			routes:             &routes
-			timeout_in_seconds: 2
-		}
-		mut conn := net.TcpConn{}
-		return handle_request[AppStaticRegressionApp, RegressionContext](mut conn, req, params) or {
-			panic(err)
-		}
+	params := RequestParams{
+		global_app:                unsafe { voidptr(&app) }
+		controllers_sorted:        controllers_sorted
+		routes:                    &routes
+		benchmark_page_generation: false
 	}
+	return handle_request_and_route[AppStaticRegressionApp, RegressionContext](mut app, req, 0,
+		params)
 }

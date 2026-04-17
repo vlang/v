@@ -514,7 +514,7 @@ pub fn (mut ctx Context) takeover_conn() {
 			write_timeout: 30 * time.second
 		}
 	} else if ctx.conn != unsafe { nil } {
-		// For the picoev backend: the connection exists but uses non-blocking I/O.
+		// The connection exists but uses non-blocking I/O.
 		// Switch to blocking mode for reliable SSE writes.
 		fd := ctx.conn.handle
 		$if !windows {

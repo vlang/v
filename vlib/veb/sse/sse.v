@@ -38,7 +38,7 @@ pub mut:
 // start an SSE connection
 pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 	if ctx.conn == unsafe { nil } {
-		eprintln('[veb.sse] WARNING: SSE requires a direct TCP connection (ctx.conn) which is not available with this server backend. Use the default (picoev) backend instead of `-d new_veb` for SSE support.')
+		eprintln('[veb.sse] WARNING: SSE requires a direct TCP connection (ctx.conn) which is not available. Use `ctx.takeover_conn()` before starting an SSE connection.')
 		return &SSEConnection{
 			conn: unsafe { nil }
 		}

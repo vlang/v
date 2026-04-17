@@ -53,7 +53,7 @@ fn testsuite_begin() {
 
 fn test_large_request_body() {
 	// string of a's of 8.96mb send over the connection
-	// veb reads a maximum of 4096KB per picoev loop cycle
+	// veb reads a maximum of 4096KB per read cycle
 	// this test tests if veb is able to do multiple of these
 	// cycles and updates the response body each cycle
 	mut buf := []u8{len: veb.max_read * 10, init: `a`}

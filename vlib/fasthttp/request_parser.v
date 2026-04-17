@@ -1,8 +1,8 @@
 module fasthttp
 
 const empty_space = u8(` `)
-const cr_char = u8(`\r`)
-const lf_char = u8(`\n`)
+const cr_char = u8(0x0d)
+const lf_char = u8(0x0a)
 
 // libc memchr is AVX2-accelerated via glibc IFUNC
 @[inline]
