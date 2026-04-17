@@ -348,7 +348,8 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		os.rm(bootstrap_v1) or {}
 		os.rm(bootstrap_v2) or {}
 	}
-	vc_source := os.join_path(vroot, 'vc', 'v.c')
+	vc_source := os.join_path(vroot, 'vc',
+		if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
 	if !os.exists(vc_source) {
 		return error('bootstrap fallback failed: `${vc_source}` is missing')
 	}

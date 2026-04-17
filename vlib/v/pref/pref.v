@@ -948,8 +948,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-native' {
-				res.backend = .native
-				res.build_options << arg
+				eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.')
 			}
 			'-interpret' {
 				res.backend = .interpret
