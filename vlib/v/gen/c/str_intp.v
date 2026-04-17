@@ -102,6 +102,7 @@ fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
 		ast.Ident { expr }
 		else { return false }
 	}
+
 	match ident.obj {
 		ast.Var {
 			if ident.obj.is_unwrapped {
@@ -116,6 +117,7 @@ fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -268,6 +270,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				// ast.f64_type { fmt_type = .si_g64 }
 				else { fmt_type = .si_g64 }
 			}
+
 			remove_tail_zeros = true
 		} else if fspec in [`e`, `E`] {
 			match typ {
