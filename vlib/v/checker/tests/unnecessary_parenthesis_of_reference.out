@@ -1,32 +1,1562 @@
-vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:29:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:29:10: notice: unnecessary `()`, use `&ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 393
+            col: 17
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 393
+            col: 17
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x + other.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 408
+            col: 32
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 408
+            col: 32
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y + other.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 423
+            col: 47
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 423
+            col: 47
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z + other.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 438
+            col: 62
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 438
+            col: 62
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w + other.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 28
+        pos: 386
+        col: 10
+        file_idx: 43
+        last_line: 28
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 64
+        line_nr: 28
+        pos: 386
+        col: 10
+        file_idx: 43
+        last_line: 28
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+}` instead of `&(ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 393
+            col: 17
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 393
+            col: 17
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x + other.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 408
+            col: 32
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 408
+            col: 32
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y + other.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 423
+            col: 47
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 423
+            col: 47
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z + other.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 438
+            col: 62
+            file_idx: -1
+            last_line: 28
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 28
+            pos: 438
+            col: 62
+            file_idx: -1
+            last_line: 28
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w + other.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 28
+        pos: 386
+        col: 10
+        file_idx: 43
+        last_line: 28
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 64
+        line_nr: 28
+        pos: 386
+        col: 10
+        file_idx: 43
+        last_line: 28
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+})`
    27 | // ritorna una nuova Quadrica somma del ricevente e di un'altra
    28 | fn (q &Quad) add(other &Quad) &Quad {
    29 |     return &(Quad{q.x + other.x, q.y + other.y, q.z + other.z, q.w + other.w})
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    30 | }
    31 |
-vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:34:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:34:10: notice: unnecessary `()`, use `&ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 579
+            col: 17
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 579
+            col: 17
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x - other.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 594
+            col: 32
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 594
+            col: 32
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y - other.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 609
+            col: 47
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 609
+            col: 47
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z - other.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 624
+            col: 62
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 624
+            col: 62
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w - other.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 33
+        pos: 572
+        col: 10
+        file_idx: 43
+        last_line: 33
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 64
+        line_nr: 33
+        pos: 572
+        col: 10
+        file_idx: 43
+        last_line: 33
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+}` instead of `&(ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 579
+            col: 17
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 579
+            col: 17
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x - other.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 594
+            col: 32
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 594
+            col: 32
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y - other.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 609
+            col: 47
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 609
+            col: 47
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z - other.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 624
+            col: 62
+            file_idx: -1
+            last_line: 33
+        }
+        name_pos: token.Pos{
+            len: 11
+            line_nr: 33
+            pos: 624
+            col: 62
+            file_idx: -1
+            last_line: 33
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w - other.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 33
+        pos: 572
+        col: 10
+        file_idx: 43
+        last_line: 33
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 64
+        line_nr: 33
+        pos: 572
+        col: 10
+        file_idx: 43
+        last_line: 33
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+})`
    32 | // ritorna una nuova Quadrica differenza tra il ricevente e un'altra
    33 | fn (q &Quad) sub(other &Quad) &Quad {
    34 |     return &(Quad{q.x - other.x, q.y - other.y, q.z - other.z, q.w - other.w})
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    35 | }
    36 |
-vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:39:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:39:10: notice: unnecessary `()`, use `&ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 743
+            col: 15
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 743
+            col: 15
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 749
+            col: 21
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 749
+            col: 21
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 755
+            col: 27
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 755
+            col: 27
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 761
+            col: 33
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 761
+            col: 33
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 38
+        pos: 738
+        col: 10
+        file_idx: 43
+        last_line: 38
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 28
+        line_nr: 38
+        pos: 738
+        col: 10
+        file_idx: 43
+        last_line: 38
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+}` instead of `&(ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 743
+            col: 15
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 743
+            col: 15
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.x
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 749
+            col: 21
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 749
+            col: 21
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.y
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 755
+            col: 27
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 755
+            col: 27
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.z
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 761
+            col: 33
+            file_idx: 43
+            last_line: 38
+        }
+        name_pos: token.Pos{
+            len: 1
+            line_nr: 38
+            pos: 761
+            col: 33
+            file_idx: 43
+            last_line: 38
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: -q.w
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 38
+        pos: 738
+        col: 10
+        file_idx: 43
+        last_line: 38
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 28
+        line_nr: 38
+        pos: 738
+        col: 10
+        file_idx: 43
+        last_line: 38
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+})`
    37 | // ritorna una nuova Quadrica ottenuta negando il ricevente
    38 | fn (q &Quad) neg() &Quad {
    39 |     return &(Quad{-q.x, -q.y, -q.z, -q.w})
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    40 | }
    41 |
-vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:44:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:44:10: notice: unnecessary `()`, use `&ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 909
+            col: 17
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 909
+            col: 17
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 923
+            col: 31
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 923
+            col: 31
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 937
+            col: 45
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 937
+            col: 45
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 951
+            col: 59
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 951
+            col: 59
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 43
+        pos: 902
+        col: 10
+        file_idx: 43
+        last_line: 43
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 60
+        line_nr: 43
+        pos: 902
+        col: 10
+        file_idx: 43
+        last_line: 43
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+}` instead of `&(ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 909
+            col: 17
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 909
+            col: 17
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 923
+            col: 31
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 923
+            col: 31
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 937
+            col: 45
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 937
+            col: 45
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 951
+            col: 59
+            file_idx: -1
+            last_line: 43
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 43
+            pos: 951
+            col: 59
+            file_idx: -1
+            last_line: 43
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w * factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 43
+        pos: 902
+        col: 10
+        file_idx: 43
+        last_line: 43
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 60
+        line_nr: 43
+        pos: 902
+        col: 10
+        file_idx: 43
+        last_line: 43
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+})`
    42 | // ritorna una nuova Quadrica ottenuta moltiplicando il ricevente per una costante
    43 | fn (q &Quad) mult(factor f64) &Quad {
    44 |     return &(Quad{q.x * factor, q.y * factor, q.z * factor, q.w * factor})
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    45 | }
    46 |
-vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:49:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:49:10: notice: unnecessary `()`, use `&ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1100
+            col: 17
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1100
+            col: 17
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1114
+            col: 31
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1114
+            col: 31
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1128
+            col: 45
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1128
+            col: 45
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1142
+            col: 59
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1142
+            col: 59
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 48
+        pos: 1093
+        col: 10
+        file_idx: 43
+        last_line: 48
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 60
+        line_nr: 48
+        pos: 1093
+        col: 10
+        file_idx: 43
+        last_line: 48
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+}` instead of `&(ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: [ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1100
+            col: 17
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1100
+            col: 17
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.x / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1114
+            col: 31
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1114
+            col: 31
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.y / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1128
+            col: 45
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1128
+            col: 45
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.z / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }, ast.StructInitField{
+        pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1142
+            col: 59
+            file_idx: -1
+            last_line: 48
+        }
+        name_pos: token.Pos{
+            len: 10
+            line_nr: 48
+            pos: 1142
+            col: 59
+            file_idx: -1
+            last_line: 48
+        }
+        pre_comments: []
+        end_comments: []
+        next_comments: []
+        has_prev_newline: false
+        has_break_line: false
+        is_embed: false
+        expr: q.w / factor
+        name: ''
+        typ: ast.Type(0x0 = 0)
+        expected_type: ast.Type(0x0 = 0)
+        parent_type: ast.Type(0x75 = 117)
+    }]
+    update_expr_comments: []
+    typ_str: 'Quad'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 4
+        line_nr: 48
+        pos: 1093
+        col: 10
+        file_idx: 43
+        last_line: 48
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 60
+        line_nr: 48
+        pos: 1093
+        col: 10
+        file_idx: 43
+        last_line: 48
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: true
+})`
    47 | // ritorna una nuova Quadrica ottenuta dividendo il ricevente per una costante
    48 | fn (q &Quad) div(factor f64) &Quad {
    49 |     return &(Quad{q.x / factor, q.y / factor, q.z / factor, q.w / factor})

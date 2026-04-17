@@ -5,7 +5,48 @@ vlib/v/checker/tests/check_fn_init_as_mutable.vv:3:16: notice: unused parameter:
       |                ~~
     4 | 
     5 | fn main() {
-vlib/v/checker/tests/check_fn_init_as_mutable.vv:6:14: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := MyStruct{....}`
+vlib/v/checker/tests/check_fn_init_as_mutable.vv:6:14: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: []
+    update_expr_comments: []
+    typ_str: 'MyStruct'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 8
+        line_nr: 5
+        pos: 77
+        col: 13
+        file_idx: 43
+        last_line: 5
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 10
+        line_nr: 5
+        pos: 77
+        col: 13
+        file_idx: 43
+        last_line: 5
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: false
+}`
     4 | 
     5 | fn main() {
     6 |     process(mut MyStruct{})

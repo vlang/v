@@ -3,4 +3,45 @@ vlib/v/checker/tests/assign_array_init_to_fixed_array_var.vv:2:5: error: cannot 
     2 | a = [1, 2, 3]
       |     ~~~~~~~~~
     3 | dump(a)
-Details: try `a = [1, 2, 3]!` instead (with `!` after the array literal)
+Details: try `a = ast.ArrayInit{
+    expr_types: [28, 28, 28]
+    exprs: [1, 2, 3]
+    ecmnts: [[], [], []]
+    pre_cmnts: []
+    len_expr: ast.EmptyExpr
+    init_expr: ast.EmptyExpr
+    cap_expr: ast.EmptyExpr
+    mod: 'main'
+    pos: token.Pos{
+        len: 9
+        line_nr: 1
+        pos: 25
+        col: 4
+        file_idx: 43
+        last_line: 1
+    }
+    elem_type_pos: token.Pos{
+        len: 1
+        line_nr: 1
+        pos: 25
+        col: 4
+        file_idx: 43
+        last_line: 1
+    }
+    generic_elem_type: ast.Type(0x0 = 0)
+    init_type: ast.Type(0x0 = 0)
+    typ: ast.Type(0x34 = 52)
+    literal_typ: ast.Type(0x0 = 0)
+    generic_typ: ast.Type(0x0 = 0)
+    alias_type: ast.Type(0x1 = 1)
+    elem_type: ast.Type(0x8 = 8)
+    is_fixed: false
+    has_cap: false
+    has_callexpr: false
+    has_init: false
+    has_index: false
+    has_len: false
+    from_to_fixed_size: false
+    has_val: false
+    is_option: false
+}!` instead (with `!` after the array literal)

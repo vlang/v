@@ -1,4 +1,54 @@
-vlib/v/checker/tests/option_map_err.vv:22:13: error: type `?map[string]f64` is an Option, it must be unwrapped first; use `op2.opmap?` to do it
+vlib/v/checker/tests/option_map_err.vv:22:13: error: type `?map[string]f64` is an Option, it must be unwrapped first; use `ast.SelectorExpr{
+    or_block: ast.OrExpr{
+        kind: absent
+        pos: token.Pos{
+            len: 0
+            line_nr: 0
+            pos: 0
+            col: 0
+            file_idx: -1
+            last_line: 0
+        }
+        scope: &# 0 - 0
+
+        err_used: false
+        stmts: []
+    }
+    generic_from_embed_types: []
+    from_embed_types: []
+    expr: op2
+    field_name: 'opmap'
+    scope: &# 50 - 248
+  * var: op - ast.Type(0x76 = 118)
+  * var: op2 - ast.Type(0x76 = 118)
+    # 129 - 152
+      * var: err - ast.Type(0x1e = 30)
+
+    mut_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 5
+        line_nr: 21
+        pos: 230
+        col: 12
+        file_idx: 43
+        last_line: 21
+    }
+    name_type: ast.Type(0x0 = 0)
+    expr_type: ast.Type(0x76 = 118)
+    typ: ast.Type(0x1000075 = 16777333)
+    next_token: [
+    gkind_field: unknown
+    is_mut: false
+    has_hidden_receiver: false
+    is_field_typ: false
+}?` to do it
    20 |         }
    21 |     }
    22 |     assert op2.opmap['1'] == 1.0

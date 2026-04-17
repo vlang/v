@@ -1,4 +1,52 @@
-vlib/v/checker/tests/selector_expr_opt_map_get_err.vv:8:9: error: type `?map[string]string` is an Option, it must be unwrapped first; use `x.m?` to do it
+vlib/v/checker/tests/selector_expr_opt_map_get_err.vv:8:9: error: type `?map[string]string` is an Option, it must be unwrapped first; use `ast.SelectorExpr{
+    or_block: ast.OrExpr{
+        kind: absent
+        pos: token.Pos{
+            len: 0
+            line_nr: 0
+            pos: 0
+            col: 0
+            file_idx: -1
+            last_line: 0
+        }
+        scope: &# 0 - 0
+
+        err_used: false
+        stmts: []
+    }
+    generic_from_embed_types: []
+    from_embed_types: []
+    expr: x
+    field_name: 'm'
+    scope: &# 46 - 99
+  * var: x - ast.Type(0x76 = 118)
+    # 88 - 97
+
+    mut_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 1
+        line_nr: 7
+        pos: 75
+        col: 8
+        file_idx: 43
+        last_line: 7
+    }
+    name_type: ast.Type(0x0 = 0)
+    expr_type: ast.Type(0x76 = 118)
+    typ: ast.Type(0x1000075 = 16777333)
+    next_token: [
+    gkind_field: unknown
+    is_mut: false
+    has_hidden_receiver: false
+    is_field_typ: false
+}?` to do it
     6 | fn main() {
     7 |     x := Abc{}
     8 |     _ := x.m['test'] or { 'test' }

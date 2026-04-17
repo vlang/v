@@ -170,7 +170,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
-		arr.data = alloc_array_data(total_size)
+		arr.data = alloc_array_data_uninit(total_size)
 	} else {
 		arr.data = alloc_array_data(total_size)
 	}

@@ -1,4 +1,45 @@
-vlib/v/checker/tests/pass_mut_lit.vv:10:12: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := Box{....}`
+vlib/v/checker/tests/pass_mut_lit.vv:10:12: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ast.StructInit{
+    pre_comments: []
+    generic_types: []
+    init_fields: []
+    update_expr_comments: []
+    typ_str: 'Box'
+    update_expr: ast.EmptyExpr
+    name_pos: token.Pos{
+        len: 3
+        line_nr: 9
+        pos: 101
+        col: 11
+        file_idx: 43
+        last_line: 9
+    }
+    update_expr_pos: token.Pos{
+        len: 0
+        line_nr: 0
+        pos: 0
+        col: 0
+        file_idx: -1
+        last_line: 0
+    }
+    pos: token.Pos{
+        len: 5
+        line_nr: 9
+        pos: 101
+        col: 11
+        file_idx: 43
+        last_line: 9
+    }
+    generic_typ: ast.Type(0x0 = 0)
+    typ: ast.Type(0x75 = 117)
+    update_expr_type: ast.Type(0x0 = 0)
+    language: v
+    unresolved: false
+    is_anon: false
+    is_update_embed: false
+    has_update_expr: false
+    is_short_syntax: false
+    no_keys: false
+}`
     8 | }
     9 | 
    10 | modify(mut Box{}, 10)

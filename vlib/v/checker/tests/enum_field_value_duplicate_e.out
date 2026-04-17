@@ -1,3 +1,10 @@
+vlib/v/checker/tests/enum_field_value_duplicate_e.vv:2:6: error: enum value `2` already exists
+    1 | enum MyEnum {
+    2 |     a = one
+      |         ~~~
+    3 |     b
+    4 |     c = one
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed
 vlib/v/checker/tests/enum_field_value_duplicate_e.vv:4:6: error: enum value `2` already exists
     2 |     a = one
     3 |     b
