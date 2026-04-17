@@ -4654,7 +4654,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if node.kind in [.sort, .sorted] {
 		if node.kind == .sort {
 			if node.left is ast.CallExpr {
-				c.error('the `sort()` method can be called only on mutable receivers, but `${ast.Expr(node.left)}` is a call expression',
+				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 					node.pos)
 			}
 			c.check_for_mut_receiver(mut node.left)
@@ -5045,7 +5045,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	} else if node.kind in [.sort, .sorted] {
 		if node.kind == .sort {
 			if node.left is ast.CallExpr {
-				c.error('the `sort()` method can be called only on mutable receivers, but `${ast.Expr(node.left)}` is a call expression',
+				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 					node.pos)
 			}
 			c.check_for_mut_receiver(mut node.left)
