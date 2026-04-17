@@ -1,36 +1,4 @@
-vlib/v/checker/tests/comptime_field_name_assign_incorrect_type_err.vv:11:25: error: cannot assign to `ast.ComptimeSelector{
-    or_block: ast.OrExpr{
-        kind: absent
-        pos: token.Pos{
-            len: 1
-            line_nr: 10
-            pos: 146
-            col: 18
-            file_idx: 43
-            last_line: 10
-        }
-        scope: &# 126 - 166
-
-        err_used: false
-        stmts: []
-    }
-    typ_key: 'field.typ|f1'
-    left: t
-    field_expr: field.name
-    pos: token.Pos{
-        len: 13
-        line_nr: 10
-        pos: 132
-        col: 4
-        file_idx: 43
-        last_line: 10
-    }
-    left_type: ast.Type(0x75 = 117)
-    typ: ast.Type(0x0 = 0)
-    has_parens: true
-    is_name: true
-    is_method: false
-}`: expected `int`, not `string`
+vlib/v/checker/tests/comptime_field_name_assign_incorrect_type_err.vv:11:25: error: cannot assign to `t.$(field.name)`: expected `int`, not `string`
     9 |     mut t := T{}
    10 |     $for field in T.fields {
    11 |         t.$(field.name) = data[field.name]

@@ -1113,7 +1113,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						// disallow invalid `t.$(field.name)` type assignment
 						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
 							|| field_sym.kind == .enum) {
-							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
+							c.error('cannot assign to `${ast.Expr(left)}`: ${c.expected_msg(right_type,
 								field_type)}', right.pos())
 						}
 					} else {
@@ -1121,7 +1121,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
 								if left_sym.kind == .array_fixed && right_sym.kind == .array
 									&& right is ast.ArrayInit {
-									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
+									c.add_error_detail('try adding `!` after the array literal, e.g.: `${left} = [...]!`')
 									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)
 								} else {
 									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)

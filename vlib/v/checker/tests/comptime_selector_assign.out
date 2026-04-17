@@ -5,40 +5,7 @@ vlib/v/checker/tests/comptime_selector_assign.vv:18:24: error: mismatched types:
       |                                 ^
    19 |         }
    20 |     }
-vlib/v/checker/tests/comptime_selector_assign.vv:18:24: error: cannot assign to `ast.ComptimeSelector{
-    or_block: ast.OrExpr{
-        kind: absent
-        pos: token.Pos{
-            len: 1
-            line_nr: 17
-            pos: 291
-            col: 21
-            file_idx: 43
-            last_line: 17
-        }
-        scope: &# 211 - 297
-    # 237 - 268
-
-        err_used: false
-        stmts: []
-    }
-    typ_key: 'field.typ|email'
-    left: typ
-    field_expr: field.name
-    pos: token.Pos{
-        len: 13
-        line_nr: 17
-        pos: 277
-        col: 7
-        file_idx: 43
-        last_line: 17
-    }
-    left_type: ast.Type(0x75 = 117)
-    typ: ast.Type(0x0 = 0)
-    has_parens: true
-    is_name: true
-    is_method: false
-}`: expected `string`, not `int literal`
+vlib/v/checker/tests/comptime_selector_assign.vv:18:24: error: cannot assign to `typ.$(field.name)`: expected `string`, not `int literal`
    16 |                 typ.$(field.name) = 2
    17 |             }
    18 |             typ.$(field.name) = 3
