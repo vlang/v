@@ -118,7 +118,12 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 			continue
 		}
 		type_styp := g.gen_type_name_for_free_call(typ_)
-		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${type_styp}_free(it->_${sub_sym.cname}); return; }')
+		free_fn_name := if sub_sym.is_builtin() {
+			'builtin__${type_styp}_free'
+		} else {
+			'${type_styp}_free'
+		}
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${free_fn_name}(it->_${sub_sym.cname}); return; }')
 	}
 	fn_builder.writeln('}')
 }

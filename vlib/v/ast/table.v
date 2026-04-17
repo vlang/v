@@ -1132,6 +1132,16 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
+	// Allow C type aliases to override existing C types (e.g. `type C.WCHAR = u16`
+	// on Windows where WCHAR is already registered from system headers):
+	if typ.kind == .alias && typ.language == .c && existing_symbol.language == .c {
+		t.type_symbols[existing_idx] = &TypeSymbol{
+			...typ
+			idx:        existing_idx
+			is_builtin: existing_symbol.is_builtin
+		}
+		return existing_idx
+	}
 	// Override the already registered builtin types with the actual
 	// v struct declarations in the vlib/builtin module sources:
 	if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)

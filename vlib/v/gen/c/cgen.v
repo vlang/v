@@ -7892,7 +7892,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node_typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else if !((g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type))
+			} else if !((g.is_cc_msvc && (g.styp(node_typ) == g.styp(expr_type)
+				|| g.styp(g.table.unaliased_type(node_typ)) == g.styp(g.table.unaliased_type(expr_type))))
 				|| (final_sym.kind == .array_fixed && final_expr_sym == final_sym)) {
 				// not cast fixed array, which will use `memcpy`
 				cast_label = '(${styp})'

@@ -119,9 +119,12 @@ fn wide_ptr_to_string(wstr &u16) string {
 }
 
 fn looks_like_utf16le_captured_output(raw string) bool {
-	if raw.len < 2 || raw.len % 2 != 0 {
+	if raw.len < 2 {
 		return false
 	}
+	// Allow odd-length buffers: Windows text-mode translation can insert
+	// extra bytes (e.g. \r before \n), producing odd-length UTF-16LE output.
+	// In that case, just ignore the trailing byte during detection.
 	if raw[0] == 0xff && raw[1] == 0xfe {
 		return true
 	}
@@ -189,7 +192,32 @@ fn decode_windows_captured_output(raw string) string {
 		return utf16_captured_output_to_string(raw, false)
 	}
 	if validate.utf8_string(raw) {
-		return raw
+		// Check for embedded null bytes, which suggest this is actually UTF-16
+		// that wasn't detected (e.g. due to text-mode \r\n translation corrupting
+		// the byte alignment). Strip null bytes as a recovery heuristic.
+		mut has_null := false
+		for i in 0 .. raw.len {
+			if raw[i] == 0 {
+				has_null = true
+				break
+			}
+		}
+		if !has_null {
+			return raw
+		}
+		// Contains null bytes — likely corrupted UTF-16LE.
+		// Strip null bytes and normalize \r\n to \n (text-mode artifacts).
+		mut cleaned := strings.new_builder(raw.len)
+		for i in 0 .. raw.len {
+			if raw[i] == 0 {
+				continue
+			}
+			if raw[i] == 0x0D && i + 1 < raw.len && raw[i + 1] == 0x0A {
+				continue
+			}
+			cleaned.write_u8(raw[i])
+		}
+		return cleaned.str()
 	}
 	mut wide := raw.to_wide(from_ansi: true)
 	if isnil(wide) {

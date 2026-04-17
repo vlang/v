@@ -2276,7 +2276,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	if ast.builtin_array_generic_methods_matcher.matches(field_name) {
+	if ast.builtin_array_generic_methods_matcher.matches(field_name) && (p.tok.kind == .lpar
+		|| is_generic_call || (p.tok.kind == .not && p.peek_tok.kind == .lpar)) {
 		if p.file_backend_mode == .v || p.file_backend_mode == .c {
 			p.register_auto_import('builtin.closure')
 		}

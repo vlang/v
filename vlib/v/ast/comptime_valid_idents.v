@@ -89,10 +89,11 @@ pub fn eval_comptime_not_user_defined_ident(ident string, the_pref &pref.Prefere
 				is_true = !the_pref.m64
 			}
 			'little_endian' {
-				is_true = $if little_endian { true } $else { false }
+				// ppc64le is little-endian (the 'le' suffix), all others below are big-endian
+				is_true = the_pref.arch !in [.ppc64, .ppc, .sparc64, .s390x]
 			}
 			'big_endian' {
-				is_true = $if big_endian { true } $else { false }
+				is_true = the_pref.arch in [.ppc64, .ppc, .sparc64, .s390x]
 			}
 			else {
 				return error('invalid \$if condition: unknown cpu_features `${ident}`')
