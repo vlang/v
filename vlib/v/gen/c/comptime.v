@@ -317,7 +317,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				break
 			} else if i - 1 < node.args.len - 1 {
 				g.expr(node.args[i - 1].expr)
-				g.write(', ')
+				if i < m.params.len - 1 {
+					g.write(', ')
+				}
 			} else if !expand_strs && i == node.args.len {
 				g.expr(node.args[i - 1].expr)
 				break
@@ -1040,6 +1042,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					[]ast.StructField{}
 				}
 			}
+
 			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
@@ -1257,13 +1260,14 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	}
 	mut has_field := false
 	mut field := ast.StructField{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
-		&& sym.language == .v {
-		// x.Foo.y => access the embedded struct
-		for embed in sym.info.embeds {
-			embed_sym := g.table.sym(embed)
-			if embed_sym.embed_name() == field_name {
-				return embed
+	if field_name.len > 0 && field_name[0].is_capital() && sym.language == .v {
+		if sym.info is ast.Struct {
+			// x.Foo.y => access the embedded struct
+			for embed in sym.info.embeds {
+				embed_sym := g.table.sym(embed)
+				if embed_sym.embed_name() == field_name {
+					return embed
+				}
 			}
 		}
 	} else {

@@ -88,6 +88,7 @@ fn event(e &gg.Event, mut g Game) {
 			}
 			else {}
 		}
+
 		return
 	}
 	if !g.anim && e.typ == .mouse_down && e.mouse_button == .left {

@@ -439,6 +439,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					e.error('unknown selector expression: ${exp.type_name()}')
 				}
 			}
+
 			e.error(exp.str())
 		}
 		ast.ArrayInit {
@@ -606,6 +607,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
+
 	return empty
 }
 
@@ -652,6 +654,7 @@ fn (e &Eval) get_escape(r rune) rune {
 			`e`
 		}
 	}
+
 	if res == `e` {
 		e.error('unknown escape: `${r}`')
 	}

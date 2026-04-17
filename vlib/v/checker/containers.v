@@ -395,7 +395,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
 					if typ_sym.kind != .interface {
-						c.mark_as_referenced(mut &expr, true)
+						c.mark_as_referenced(mut &node.exprs[i], true)
 					}
 				}
 				continue
@@ -640,6 +640,7 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 				c.error('fixed array size cannot use non-constant value', size_expr.pos())
 			}
 		}
+
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
 				size_expr.pos())

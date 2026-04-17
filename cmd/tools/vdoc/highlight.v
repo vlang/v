@@ -65,6 +65,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 				lit = tok.lit
 			}
 		}
+
 		return lit
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{
@@ -146,6 +147,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 					}
 				}
 			}
+
 			buf.write_string(highlight_code(tok, tok_typ))
 			if prev_prev.kind == .eof || prev.kind == .eof || next_tok.kind == .eof {
 				break

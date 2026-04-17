@@ -35,20 +35,10 @@ fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name st
 	}
 }
 
-fn (mut g Gen) if_guard_error_cleanup(var_name string, typ ast.Type) {
-	cvar_name := c_name(var_name)
-	if typ.has_flag(.result) {
-		g.writeln('\tif (${cvar_name}.is_error) { builtin___v_free(${cvar_name}.err._object); }')
-		return
-	}
-	if typ.has_flag(.option) {
-		tmp_op := if var_name in g.tmp_var_ptr || typ.has_flag(.option_mut_param_t) {
-			'->'
-		} else {
-			'.'
-		}
-		g.writeln('\tif (${cvar_name}${tmp_op}state != 0) { builtin___v_free(${cvar_name}${tmp_op}err._object); }')
-	}
+fn (mut g Gen) if_guard_error_cleanup(_ string, _ ast.Type) {
+	// TODO: the frees here cause double-free crashes when error objects
+	// are shared/global (e.g. map access errors reuse the same MessageError).
+	// Disabled until a safe ownership/refcounting mechanism is implemented.
 }
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
@@ -236,6 +226,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -432,13 +423,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					cond.expr_type
 				}
-				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name};')
+				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name} = {0};')
 			} else if cond.expr is ast.IndexExpr {
 				value_type := g.table.value_type(g.unwrap_generic(cond.expr.left_type))
 				if value_type.has_flag(.option) {
 					var_name := g.new_tmp_var()
 					guard_vars[i] = var_name
-					g.writeln('${g.styp(value_type)} ${var_name};')
+					g.writeln('${g.styp(value_type)} ${var_name} = {0};')
 				} else {
 					guard_vars[i] = ''
 				}

@@ -44,5 +44,6 @@ fn (mut g Gen) nsyscall(syscall SysCall) i32 {
 			// g.n_error('syscall is unsupported on platform ${g.pref.os}')
 		}
 	}
+
 	return 0
 }

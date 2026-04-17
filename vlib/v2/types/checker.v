@@ -1058,6 +1058,7 @@ fn (mut c Checker) generic_args_expr(expr ast.GenericArgs) Type {
 		}
 		else {}
 	}
+
 	lhs_type := c.expr(expr.lhs)
 	if lhs_type is FnType {
 		fn_type := lhs_type as FnType
@@ -1154,6 +1155,7 @@ fn (mut c Checker) scope_type_for_ident_expr(expr ast.Expr) ?Type {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -1917,6 +1919,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		}
 		else {}
 	}
+
 	// TODO: remove (add all variants)
 	c.log('expr: unhandled ${expr.name()}')
 	return int_
@@ -1971,6 +1974,7 @@ fn (mut c Checker) type_expr(expr ast.Expr) Type {
 		}
 		else {}
 	}
+
 	return c.expr(resolved)
 }
 
@@ -3142,6 +3146,7 @@ fn (c &Checker) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -3547,6 +3552,7 @@ fn fix_self_ref_type(t Type, self_name string, self_fields []Field, self_embedde
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -4261,6 +4267,7 @@ fn (mut c Checker) call_expr_cast_target(lhs_expr ast.Expr) ?Type {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -5002,6 +5009,7 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			c.log('find_field_or_method: unhandled ${t.name()}')
 		}
 	}
+
 	// else if t is FnType {
 	// 			c.log('FnType: ${t.name}')
 	// }

@@ -320,6 +320,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			return error('invalid stmt type to document')
 		}
 	}
+
 	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
 	if d.filter_symbol_names.len != 0 && !included {
 		return error('not included in the list of symbol names')

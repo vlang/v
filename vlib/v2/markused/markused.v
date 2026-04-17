@@ -328,6 +328,7 @@ fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environ
 		}
 		else {}
 	}
+
 	// Method on []ElemType — receiver name is Array_ElemType.
 	// Use the string name which includes [] prefix for array types.
 	recv_name := decl.receiver.typ.name()
@@ -719,6 +720,7 @@ fn (w &Walker) interface_name_from_expr(expr ast.Expr, mod_name string) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -792,6 +794,7 @@ fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []st
 		}
 		else {}
 	}
+
 	return out
 }
 

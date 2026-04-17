@@ -10,6 +10,7 @@ import v.pref
 import v.errors
 import v.checker
 import strings
+import context
 
 struct Context {
 mut:
@@ -397,6 +398,7 @@ fn (t Tree) scope_object(node ast.ScopeObject) &Node {
 		ast.Var { t.var(node) }
 		ast.AsmRegister { t.asm_register(node) }
 	}
+
 	return obj
 }
 
@@ -488,6 +490,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.EmptyStmt { return t.empty_stmt(node) }
 		ast.DebuggerStmt { return t.debugger_stmt(node) }
 	}
+
 	return t.null_node()
 }
 

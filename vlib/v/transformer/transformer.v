@@ -225,6 +225,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 					t.expr(mut node.expr)
 				}
 			}
+
 			if mut node.expr is ast.CallExpr && node.expr.is_expand_simple_interpolation {
 				t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
 			}
@@ -276,6 +277,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.TypeDecl {}
 	}
+
 	return node
 }
 
@@ -538,6 +540,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 			}
 		}
 	}
+
 	for mut stmt in node.stmts {
 		stmt = t.stmt(mut stmt)
 	}
@@ -737,6 +740,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return node
 }
 
@@ -761,6 +765,7 @@ fn (mut t Transformer) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.Sq
 			}
 		}
 	}
+
 	return item
 }
 
@@ -1189,6 +1194,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
+
 		return node
 	}
 }

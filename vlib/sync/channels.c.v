@@ -629,6 +629,7 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 	outer: for {
 		rnd := rand.intn(channels.len) or { 0 }
 		mut num_closed := 0
+		mut ready_closed_idx := -1
 		for j, _ in channels {
 			mut i := j + rnd
 			if i >= channels.len {
@@ -648,14 +649,20 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 				unsafe {
 					C.memset(objrefs[i], 0, channels[i].objsize)
 				}
-				event_idx = i
-				break outer
+				if ready_closed_idx == -1 {
+					ready_closed_idx = i
+				}
+				num_closed++
 			} else if stat == .closed {
 				num_closed++
 			}
 		}
 		if num_closed == channels.len {
 			event_idx = -2
+			break outer
+		}
+		if ready_closed_idx >= 0 {
+			event_idx = ready_closed_idx
 			break outer
 		}
 		if timeout <= 0 {

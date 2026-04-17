@@ -114,6 +114,7 @@ fn parse_comparator(input string) ?Comparator {
 			input
 		}
 	}
+
 	version := coerce_version(raw_version) or { return none }
 	return Comparator{version, op}
 }
@@ -154,6 +155,7 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 		`^` { return expand_caret(input[1..]) }
 		else {}
 	}
+
 	if input.contains(hyphen_range_sep) {
 		return expand_hyphen(input)
 	}

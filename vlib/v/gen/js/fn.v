@@ -126,6 +126,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -186,6 +187,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -384,6 +386,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -490,6 +493,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')

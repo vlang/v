@@ -46,7 +46,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	total_size := u64(cap_) * u64(elm_size)
-	mut data := unsafe { voidptr(0) }
+	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_noscan_uninit(total_size)
 	} else {
@@ -192,7 +192,7 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if size == 0 {
 		size = u64(a.element_size)
 	}
-	mut data := unsafe { voidptr(0) }
+	mut data := unsafe { nil }
 	if depth > 0 {
 		data = alloc_array_data(size)
 	} else {
@@ -328,7 +328,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 	if size == 0 {
 		size++
 	}
-	mut data := unsafe { voidptr(0) }
+	mut data := unsafe { nil }
 	if depth == 0 {
 		data = alloc_array_data_noscan(size)
 	} else {

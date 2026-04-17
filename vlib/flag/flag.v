@@ -231,8 +231,8 @@ fn flag_value_description(c FlagConfig, default_description string) string {
 }
 
 fn escape_default_string(value string) string {
-	return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r',
-		'\\r').replace('\t', '\\t')
+	return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t',
+		'\\t')
 }
 
 fn flag_default_value[T](value T) string {
@@ -498,14 +498,18 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagC
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string, c FlagConfig) f64 {
-	value := fs.float_flag(name, abbr, usage, c, flag_default_value(fdefault)) or { return fdefault }
+	value := fs.float_flag(name, abbr, usage, c, flag_default_value(fdefault)) or {
+		return fdefault
+	}
 	return value
 }
 
 // float_val is a generic version of `float` that supports optional defaults.
 // Use `?f64(none)` as default to receive an optional result.
 pub fn (mut fs FlagParser) float_val[T](name string, abbr u8, fdefault T, usage string, c FlagConfig) T {
-	value := fs.float_flag(name, abbr, usage, c, flag_default_value(fdefault)) or { return fdefault }
+	value := fs.float_flag(name, abbr, usage, c, flag_default_value(fdefault)) or {
+		return fdefault
+	}
 	return value
 }
 
@@ -534,14 +538,18 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string, c Flag
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string, c FlagConfig) string {
-	value := fs.string_flag(name, abbr, usage, c, flag_default_value(sdefault)) or { return sdefault }
+	value := fs.string_flag(name, abbr, usage, c, flag_default_value(sdefault)) or {
+		return sdefault
+	}
 	return value
 }
 
 // string_val is a generic version of `string` that supports optional defaults.
 // Use `?string(none)` as default to receive an optional result.
 pub fn (mut fs FlagParser) string_val[T](name string, abbr u8, sdefault T, usage string, c FlagConfig) T {
-	value := fs.string_flag(name, abbr, usage, c, flag_default_value(sdefault)) or { return sdefault }
+	value := fs.string_flag(name, abbr, usage, c, flag_default_value(sdefault)) or {
+		return sdefault
+	}
 	return value
 }
 

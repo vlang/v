@@ -2850,6 +2850,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 							.mod { '__mod' }
 							else { '' }
 						}
+
 						if op_name != '' {
 							// Generate function call: Type__op(lhs, rhs)
 							fn_name := '${type_name}${op_name}'
@@ -2943,6 +2944,7 @@ fn (mut t Transformer) transform_embed_file_comptime_chain(expr ast.Expr, compti
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2966,6 +2968,7 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 		}
 		else {}
 	}
+
 	return none
 }
 

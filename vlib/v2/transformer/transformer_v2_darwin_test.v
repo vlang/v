@@ -246,6 +246,7 @@ fn (mut c ExprTypeChecker) check_expr(expr ast.Expr) {
 					ast.IfExpr { ' if' }
 					else { '' }
 				}
+
 				c.details << 'id=${pos.id} kind=${kind}${extra}'
 			}
 		}

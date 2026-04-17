@@ -287,6 +287,7 @@ fn event(event &ui.Event, mut app App) {
 		}
 		else {}
 	}
+
 	app.should_redraw = true
 }
 
@@ -339,6 +340,7 @@ fn (mut app App) paint(event &ui.Event) {
 		.right { app.secondary_color }
 		else { app.bg_color }
 	}
+
 	for x in x_start .. x_start + app.size {
 		for y in y_start .. y_start + app.size {
 			app.set_pixel(x, y, color)

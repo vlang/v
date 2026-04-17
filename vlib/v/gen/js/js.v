@@ -1145,6 +1145,7 @@ fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type
 		}
 		else {}
 	}
+
 	return unsupported_ctemp_assert_transform
 }
 
@@ -1202,6 +1203,7 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 		}
 		else {}
 	}
+
 	return metaname
 }
 
@@ -1252,6 +1254,7 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 	}
+
 	// g.writeln(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
@@ -1607,6 +1610,7 @@ fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 				verror('unexpected branch stmt: ${it.kind}')
 			}
 		}
+
 		return
 	}
 	g.write(it.kind.str())
@@ -1691,6 +1695,7 @@ fn (mut g JsGen) cc_type(typ ast.Type, _is_prefix_struct bool) string {
 		}
 		else {}
 	}
+
 	if styp.starts_with('JS__') {
 		styp = styp[4..]
 	}
@@ -3161,6 +3166,7 @@ fn (mut g JsGen) should_wrap_js_selector_rvalue(expr ast.Expr, expected_type ast
 		ast.SelectorExpr {}
 		else { return false }
 	}
+
 	target_sym := g.table.final_sym(g.unwrap_generic(expected_type))
 	if target_sym.language == .js || target_sym.name.starts_with('JS.') {
 		return false
@@ -3342,6 +3348,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 					''
 				}
 			}
+
 			g.write('.${name} (')
 			g.expr(it.right)
 			g.gen_deref_ptr(it.right_type)
@@ -4050,6 +4057,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 					verror('unreachable')
 				}
 			}
+
 			g.write('new ${g.styp(key_typ)}(')
 
 			g.expr(expr.left)
@@ -4067,6 +4075,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 					verror('not yet implemented')
 				}
 			}
+
 			g.write(')')
 		}
 	} else if left_sym_kind == .string {

@@ -366,59 +366,79 @@ pub mut:
 	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
 }
 
-fn ccompiler_type_from_name(ccompiler string) ?pref.CompilerType {
+fn ccompiler_type_from_name_with_ok(ccompiler string) (pref.CompilerType, bool) {
 	cc_file_name := os.file_name(ccompiler).to_lower_ascii()
-	return match true {
-		cc_file_name.contains('tcc') || cc_file_name.contains('tinyc') { .tinyc }
-		cc_file_name.contains('gcc') { .gcc }
-		cc_file_name.contains('clang') { .clang }
-		cc_file_name.contains('emcc') { .emcc }
-		cc_file_name == 'cl' || cc_file_name == 'cl.exe' || cc_file_name.contains('msvc') { .msvc }
-		cc_file_name.contains('mingw') { .mingw }
-		cc_file_name.contains('++') { .cplusplus }
-		else { none }
+	if cc_file_name.contains('tcc') || cc_file_name.contains('tinyc') {
+		return pref.CompilerType.tinyc, true
 	}
+	if cc_file_name.contains('gcc') {
+		return pref.CompilerType.gcc, true
+	}
+	if cc_file_name.contains('clang') {
+		return pref.CompilerType.clang, true
+	}
+	if cc_file_name.contains('emcc') {
+		return pref.CompilerType.emcc, true
+	}
+	if cc_file_name == 'cl' || cc_file_name == 'cl.exe' || cc_file_name.contains('msvc') {
+		return pref.CompilerType.msvc, true
+	}
+	if cc_file_name.contains('mingw') {
+		return pref.CompilerType.mingw, true
+	}
+	if cc_file_name.contains('++') {
+		return pref.CompilerType.cplusplus, true
+	}
+	return pref.CompilerType.tinyc, false
+}
+
+fn ccompiler_type_from_name(ccompiler string) ?pref.CompilerType {
+	resolved, ok := ccompiler_type_from_name_with_ok(ccompiler)
+	return if ok { resolved } else { none }
+}
+
+fn ccompiler_type_from_version_output_with_ok(output string) (pref.CompilerType, bool) {
+	if output == '' {
+		return pref.CompilerType.tinyc, false
+	}
+	lower_output := output.to_lower_ascii()
+	if lower_output.contains('tiny c compiler') || lower_output.contains('tinycc')
+		|| lower_output.contains('\ntcc') || lower_output.starts_with('tcc') {
+		return pref.CompilerType.tinyc, true
+	}
+	if lower_output.contains('clang') {
+		return pref.CompilerType.clang, true
+	}
+	if lower_output.contains('gcc version') || lower_output.contains('(gcc)')
+		|| lower_output.contains('free software foundation') || lower_output.contains('gcc ') {
+		return pref.CompilerType.gcc, true
+	}
+	if lower_output.contains('emscripten') || lower_output.contains('emcc') {
+		return pref.CompilerType.emcc, true
+	}
+	if (lower_output.contains('microsoft') && lower_output.contains('c/c++'))
+		|| lower_output.contains('msvc') {
+		return pref.CompilerType.msvc, true
+	}
+	return pref.CompilerType.tinyc, false
 }
 
 fn ccompiler_type_from_version_output(output string) ?pref.CompilerType {
-	if output == '' {
-		return none
-	}
-	lower_output := output.to_lower_ascii()
-	return match true {
-		lower_output.contains('tiny c compiler') || lower_output.contains('tinycc')
-			|| lower_output.contains('\ntcc') || lower_output.starts_with('tcc') {
-			.tinyc
-		}
-		lower_output.contains('clang') {
-			.clang
-		}
-		lower_output.contains('gcc version') || lower_output.contains('(gcc)')
-			|| lower_output.contains('free software foundation') || lower_output.contains('gcc ') {
-			.gcc
-		}
-		lower_output.contains('emscripten') || lower_output.contains('emcc') {
-			.emcc
-		}
-		(lower_output.contains('microsoft') && lower_output.contains('c/c++'))
-			|| lower_output.contains('msvc') {
-			.msvc
-		}
-		else {
-			none
-		}
-	}
+	resolved, ok := ccompiler_type_from_version_output_with_ok(output)
+	return if ok { resolved } else { none }
 }
 
 fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.CompilerType {
-	if resolved := ccompiler_type_from_name(ccompiler) {
-		return resolved
+	resolved_by_name, name_ok := ccompiler_type_from_name_with_ok(ccompiler)
+	if name_ok {
+		return resolved_by_name
 	}
 	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
 		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
-		if resolved := ccompiler_type_from_version_output(res.output) {
-			return resolved
+		resolved_by_version, version_ok := ccompiler_type_from_version_output_with_ok(res.output)
+		if version_ok {
+			return resolved_by_version
 		}
 	}
 	return fallback
@@ -497,7 +517,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 
 	// Add -fwrapv to handle UB overflows
-	if ccoptions.cc in [.gcc, .clang, .tcc] && v.pref.os in [.macos, .linux, .openbsd, .windows] {
+	if ccoptions.cc in [.gcc, .clang, .tcc]
+		&& v.pref.os in [.macos, .linux, .openbsd, .freebsd, .windows] {
 		ccoptions.args << '-fwrapv'
 	}
 

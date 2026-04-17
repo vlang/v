@@ -93,6 +93,8 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 	mut current := expr
 	for {
 		current = current.remove_par()
+		mut next_expr := current
+		mut has_next_expr := false
 		match current {
 			ast.SqlQueryDataExpr {
 				return current as ast.SqlQueryDataExpr
@@ -104,21 +106,26 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 						if obj.is_mut {
 							return error('dynamic ORM expressions must use an immutable query-data block alias')
 						}
-						current = obj.expr
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					ast.ConstField {
-						current = obj.expr
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					else {}
 				}
-				return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 			}
 			else {
 				return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 			}
 		}
+
+		if has_next_expr {
+			current = next_expr
+			continue
+		}
+		return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 	}
 	return error('dynamic ORM expressions must use a query-data block or immutable alias to one')
 }
@@ -576,7 +583,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	fields = insert_fields.clone()
 
-	mut sub_structs := map[string]ast.SqlStmtLine{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
@@ -612,7 +619,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[field.name] = subquery_expr
+		sub_structs[field.typ] = subquery_expr
 	}
 
 	node.fields = fields
@@ -903,6 +910,7 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 					.avg { '`avg` aggregate requires a numeric field' }
 					else { 'aggregate requires a numeric field' }
 				}
+
 				c.orm_error(msg, pos)
 				return none
 			}
@@ -914,12 +922,14 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 					.max { '`max` aggregate requires a numeric, string, or time.Time field' }
 					else { 'aggregate requires a numeric, string, or time.Time field' }
 				}
+
 				c.orm_error(msg, pos)
 				return none
 			}
 		}
 		else {}
 	}
+
 	return resolved_field
 }
 

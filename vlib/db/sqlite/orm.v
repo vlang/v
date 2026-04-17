@@ -234,6 +234,7 @@ fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 			err = bind_array(stmt, mut c, data)
 		}
 	}
+
 	return err
 }
 

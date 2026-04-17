@@ -39,6 +39,7 @@ fn new_normal_test_runner() &TestRunner {
 			'absolute' { false }
 			else { true }
 		}
+
 		return tr
 	}
 }

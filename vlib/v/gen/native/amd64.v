@@ -146,6 +146,7 @@ fn (mut c Amd64) dec(reg Amd64Register) {
 		.r12 { c.g.write8(0xc4) }
 		else { c.g.n_error('unhandled inc ${reg}') }
 	}
+
 	c.g.println('dec ${reg}')
 }
 
@@ -163,6 +164,7 @@ fn (mut c Amd64) neg(reg Amd64Register) {
 		.rax { c.g.write8(0xd8) }
 		else { c.g.n_error('unhandled neg ${reg}') }
 	}
+
 	c.g.println('neg ${reg}')
 }
 
@@ -193,6 +195,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
+
 	// Third byte (modr/m byte) depends on the regiister being compared to
 	match reg {
 		.r12 { c.g.write8(0xfc) }
@@ -203,6 +206,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 		.rbx { c.g.write8(0xfb) }
 		else { c.g.n_error('unhandled cmp reg ${reg}') }
 	}
+
 	match size {
 		._8 {
 			c.g.write8(i32(val))
@@ -214,6 +218,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
+
 	c.g.println('cmp ${reg}, ${val}')
 }
 
@@ -274,6 +279,7 @@ fn (mut c Amd64) cmp_reg(reg Amd64Register, reg2 Amd64Register) {
 			c.g.n_error('${@LOCATION} Cannot compare ${reg} and ${reg2}')
 		}
 	}
+
 	c.g.println('cmp ${reg}, ${reg2}')
 }
 
@@ -704,6 +710,7 @@ fn (mut c Amd64) mov64(reg Amd64Register, val Number) {
 			eprintln('unhandled mov64 ${reg}')
 		}
 	}
+
 	c.g.write64(val)
 	c.g.println('mov64 ${reg}, ${val}')
 }
@@ -875,6 +882,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 				.rcx, .r9 { c.g.write8(0x4d + far_var_offset) }
 				else { c.g.n_error('${@LOCATION} unsupported reg ${reg}') }
 			}
+
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -890,6 +898,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 				8 { Size._64 }
 				else { c.g.n_error('${@LOCATION} unsupported size of global var') }
 			}
+
 			mut addr_reg := Amd64Register.rdx
 			if reg == .rdx || reg == .edx {
 				addr_reg = .rax
@@ -1049,6 +1058,7 @@ fn (mut c Amd64) lea_var_to_reg(reg Amd64Register, var_offset i32) {
 		}
 		else {}
 	}
+
 	c.g.write8(0x8d)
 	far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 	match reg {
@@ -1060,6 +1070,7 @@ fn (mut c Amd64) lea_var_to_reg(reg Amd64Register, var_offset i32) {
 		.rcx { c.g.write8(0x4d + far_var_offset) }
 		else { c.g.n_error('${@LOCATION} unsupported reg ${reg}') }
 	}
+
 	if is_far_var {
 		c.g.write32(i32((0xffffffff - i64(var_offset) + 1) % 0x100000000))
 	} else {
@@ -1140,6 +1151,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Amd64Register, var Var, config VarConfig) {
 					'mov', 'QWORD'
 				}
 			}
+
 			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 			match reg {
 				.eax, .rax { c.g.write8(0x45 + far_var_offset) }
@@ -1150,6 +1162,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Amd64Register, var Var, config VarConfig) {
 				.rcx { c.g.write8(0x4d + far_var_offset) }
 				else { c.g.n_error('${@LOCATION} unsupported reg ${reg}') }
 			}
+
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -1327,6 +1340,7 @@ fn (mut c Amd64) cg_gen_syscall(node ast.CallExpr) {
 				return
 			}
 		}
+
 		i++
 	}
 	c.syscall()
@@ -1735,6 +1749,7 @@ fn (mut c Amd64) learel(reg Amd64Register, val i32) {
 			c.g.n_error('${@LOCATION} learel must use rsi, rcx or rax')
 		}
 	}
+
 	c.g.write32(val)
 	c.g.println('lea ${reg}, rip + ${val}')
 }
@@ -1765,6 +1780,7 @@ fn (mut c Amd64) mov_neg1(reg Amd64Register) {
 			c.g.n_error('${@LOCATION} unhandled mov ${reg}, -1')
 		}
 	}
+
 	c.g.println('mov ${reg}, -1')
 }
 
@@ -1812,6 +1828,7 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 			c.g.n_error('${@LOCATION} unhandled xor ${reg}, ${reg}')
 		}
 	}
+
 	c.g.println('xor ${reg}, ${reg}')
 }
 
@@ -1865,6 +1882,7 @@ fn (mut c Amd64) mov(r Amd64Register, val i32) {
 					c.g.n_error('${@LOCATION} unhandled mov ${r}')
 				}
 			}
+
 			c.g.write32(val)
 			c.g.println('mov ${r}, ${val}')
 		}
@@ -1910,6 +1928,7 @@ fn (mut c Amd64) mul_reg_rax(b Amd64Register) {
 			c.g.n_error('${@LOCATION} unhandled mul ${b}')
 		}
 	}
+
 	c.g.println('mul ${b}')
 }
 
@@ -1954,6 +1973,7 @@ fn (mut c Amd64) div_reg_rax(b Amd64Register) {
 			c.g.n_error('unhandled div ${b}')
 		}
 	}
+
 	c.g.println('div ${b}')
 }
 
@@ -2067,6 +2087,7 @@ fn (mut c Amd64) sar8(r Amd64Register, val u8) {
 			c.g.n_error('unhandled sar ${r}, ${val}')
 		}
 	}
+
 	c.g.write8(val)
 	c.g.println('sar ${r}, ${val}')
 }
@@ -2278,6 +2299,7 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		c.lea_var_to_reg(.rax, return_pos)
 	}
 
@@ -2485,6 +2507,7 @@ fn (mut c Amd64) assign_float(node ast.AssignStmt, i i32, right ast.Expr, left a
 			c.g.n_error('${@LOCATION} unexpected assignment op ${node.op}')
 		}
 	}
+
 	c.mov_float_xmm0_var(.rdx, var_type)
 }
 
@@ -2990,6 +3013,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 				c.g.expr(node.exprs[0])
 			}
 		}
+
 		typ := if node.types.len > 1 { c.g.return_type } else { node.types[0] }
 		if typ == ast.float_literal_type_idx && c.g.return_type == ast.f32_type_idx {
 			if c.g.pref.arch == .amd64 {
@@ -3228,6 +3252,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 				}
 				else {}
 			}
+
 			if is_f32 {
 				c.g.write32(0x00110ff3)
 				c.g.println('movss [rax], xmm0')
@@ -3296,6 +3321,7 @@ fn (mut c Amd64) cg_assign_stmt(node ast.AssignStmt) {
 					4 { Size._32 }
 					else { Size._64 }
 				}
+
 				match node.op {
 					.decl_assign, .assign {
 						c.mov_store(.rbx, .rcx, size)
@@ -3476,6 +3502,7 @@ fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
 			c.pop_sse(.xmm1)
 		}
 	}
+
 	match node.op {
 		.eq, .ne {
 			c.g.write32(i32(0xc1c20ff3))
@@ -4238,6 +4265,7 @@ fn (mut c Amd64) cg_init_struct(var Var, init ast.StructInit) {
 				}
 				else {}
 			}
+
 			for f in init.init_fields {
 				c.g.println('; ${var.name}.${f.name}')
 				field := ts.find_field(f.name) or {
@@ -5055,6 +5083,7 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 					}
 					else {}
 				}
+
 				addr2 := c.jmp(0)
 				c.g.labels.patches << LabelPatch{
 					id:  label2
@@ -5079,6 +5108,7 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 					}
 					else {}
 				}
+
 				c.add_sse(.xmm0, .xmm0, expr.typ)
 				c.g.labels.addrs[label2] = c.g.pos()
 			} else {
@@ -5111,6 +5141,7 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 					}
 					else {}
 				}
+
 				c.add_sse(.xmm1, .xmm1, expr.expr_type)
 				c.add_reg(.rdx, .rdx)
 				c.cmp_sse(.xmm0, .xmm1, expr.expr_type)
@@ -5130,6 +5161,7 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 					}
 					else {}
 				}
+
 				addr2 := c.jmp(0)
 				c.g.labels.patches << LabelPatch{
 					id:  label2
@@ -5148,6 +5180,7 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 					}
 					else {}
 				}
+
 				c.add_reg(.rax, .rdx)
 				c.g.labels.addrs[label2] = c.g.pos()
 			} else {

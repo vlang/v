@@ -1065,6 +1065,20 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		tmp_out_var := g.new_tmp_var()
 		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var, true)
 	} else {
+		// When a smartcast variable (e.g. `tree` smartcast to `Empty`) is used as a
+		// struct init field that expects the original sumtype (e.g. `Tree[T]`), prevent
+		// the smartcast unwrapping so the variable is emitted as-is (the sumtype value).
+		if sfield.expr is ast.Ident {
+			exp_sym := g.table.final_sym(g.unwrap_generic(sfield.expected_type))
+			if exp_sym.kind == .sum_type {
+				scope := g.file.scope.innermost(sfield.expr.pos.pos)
+				if v := scope.find_var(sfield.expr.name) {
+					if v.smartcasts.len > 0 {
+						g.prevent_sum_type_unwrapping_once = true
+					}
+				}
+			}
+		}
 		g.left_is_opt = true
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	}

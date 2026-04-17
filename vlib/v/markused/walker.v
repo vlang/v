@@ -902,6 +902,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					}
 				}
 			}
+
 			if node.obj is ast.Var && node.obj.is_unwrapped {
 				w.used_option++
 			}
@@ -1516,6 +1517,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			ast.SumType { rsym.info.parent_type }
 			else { ast.Type(0) }
 		}
+
 		if parent_type != 0 && parent_type.has_flag(.generic) {
 			generic_fn_name := '${int(parent_type.set_nr_muls(0))}.${node.name}'
 			if generic_fn_name in w.all_fns {
@@ -1661,6 +1663,7 @@ fn (w &Walker) generic_parent_method_fkey(sym ast.TypeSymbol, method_name string
 		}
 		else {}
 	}
+
 	return '', ast.no_type
 }
 

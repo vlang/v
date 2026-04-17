@@ -89,6 +89,7 @@ pub fn (mut tx Tx) commit() ! {
 			tx.inner.conn.orm_release_savepoint(tx.inner.savepoint_name)!
 		}
 	}
+
 	tx.inner.active = false
 }
 
@@ -105,6 +106,7 @@ pub fn (mut tx Tx) rollback() ! {
 			tx.inner.conn.orm_release_savepoint(tx.inner.savepoint_name)!
 		}
 	}
+
 	tx.inner.active = false
 }
 

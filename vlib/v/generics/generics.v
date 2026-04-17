@@ -3,7 +3,6 @@ module generics
 // TODO do scopes need to be cloned?
 import v.pref
 import v.ast
-import arrays
 import strings
 
 // Stage for solving generics
@@ -69,8 +68,8 @@ pub fn (mut g Generics) stmts(mut nodes []ast.Stmt) []ast.Stmt {
 			}
 		}
 	}
-	for i in arrays.reverse_iterator(solved_indexes) {
-		nodes.delete(*i)
+	for idx := solved_indexes.len; idx > 0; idx-- {
+		nodes.delete(solved_indexes[idx - 1])
 	}
 	nodes << solved_generic_fns
 	return nodes
@@ -328,6 +327,7 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.TypeDecl {}
 	}
+
 	return node
 }
 
@@ -434,6 +434,7 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		}
 		else {}
 	}
+
 	if is_prefix_struct && sym.language == .c {
 		styp = styp[3..]
 		if sym.kind == .struct {
@@ -872,6 +873,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 								})
 							}
 						}
+
 						return ast.Expr(ast.Ident{
 							...node
 							obj:     ast.Var{
@@ -1291,6 +1293,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return node
 }
 
@@ -1315,6 +1318,7 @@ fn (mut g Generics) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQu
 			}
 		}
 	}
+
 	return item
 }
 

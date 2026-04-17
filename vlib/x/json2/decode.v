@@ -394,6 +394,7 @@ fn (decoder &Decoder) is_empty_value(value_info ValueInfo) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

@@ -729,5 +729,6 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 				0)
 		}
 	}
+
 	return dst
 }

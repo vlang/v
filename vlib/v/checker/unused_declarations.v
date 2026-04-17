@@ -106,6 +106,7 @@ fn (mut c Checker) check_unused_declarations_in_stmts(stmts []ast.Stmt) {
 			}
 			else {}
 		}
+
 		if c.should_abort {
 			return
 		}

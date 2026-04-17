@@ -508,6 +508,7 @@ fn (t &Transformer) fn_type_returns_result(typ types.Type) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -526,6 +527,7 @@ fn (t &Transformer) fn_type_returns_option(typ types.Type) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1023,6 +1025,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			'array__last_index' { 'last_index' }
 			else { '' }
 		}
+
 		if method_name != '' {
 			if info := t.get_array_method_info(expr.args[0]) {
 				fn_name := t.register_needed_array_method(info, method_name)
@@ -3378,6 +3381,7 @@ fn (t &Transformer) maxof_constant(type_name string) ?ast.Expr {
 		'f64' { '1.797693134862315708145274237317043567981e+308' }
 		else { return none }
 	}
+
 	return ast.Expr(ast.BasicLiteral{
 		kind:  .number
 		value: val
@@ -3410,6 +3414,7 @@ fn (mut t Transformer) minof_constant(type_name string) ?ast.Expr {
 		'f64' { '-1.797693134862315708145274237317043567981e+308' }
 		else { return none }
 	}
+
 	return ast.Expr(ast.BasicLiteral{
 		kind:  .number
 		value: val

@@ -7,7 +7,8 @@ struct MysqlErrorPayload {
 }
 
 fn test_clone_mysql_cstring_keeps_json_encodable_error_text() {
-	mut backing := "Incorrect string value: 'undefined' for function uuid_to_bin; code: 1411".bytes()
+	mut backing :=
+		"Incorrect string value: 'undefined' for function uuid_to_bin; code: 1411".bytes()
 	backing << u8(0)
 	msg := clone_mysql_cstring(backing.data)
 

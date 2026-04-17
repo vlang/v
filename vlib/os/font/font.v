@@ -160,6 +160,7 @@ pub fn get_path_variant(font_path string, variant Variant) string {
 			}
 		}
 	}
+
 	res := '${fpath}${file}.ttf'
 	return res
 }

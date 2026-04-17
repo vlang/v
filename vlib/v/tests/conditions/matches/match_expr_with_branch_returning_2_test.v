@@ -10,6 +10,7 @@ fn foo() ! {
 			0
 		}
 	}
+
 	println(a)
 	assert a == 2
 }
@@ -23,6 +24,7 @@ fn foo_first_branch_returns(b bool) ! {
 			2
 		}
 	}
+
 	println(a)
 	assert a == 2
 }

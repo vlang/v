@@ -109,6 +109,7 @@ fn (mut g Game) move_player(dir Direction) {
 		.left { -1, 0 }
 		.right { 1, 0 }
 	}
+
 	target := Pos{g.player.x + dx, g.player.y + dy}
 	if !g.is_valid_pos(target) {
 		return
@@ -188,6 +189,7 @@ fn (mut g Game) key_down(key gg.KeyCode, _ gg.Modifier, _ voidptr) {
 		}
 		else {}
 	}
+
 	if g.win {
 		return
 	}
@@ -199,6 +201,7 @@ fn (mut g Game) key_down(key gg.KeyCode, _ gg.Modifier, _ voidptr) {
 		.d, .right { Direction.right }
 		else { return }
 	}
+
 	g.move_player(dir)
 	g.win = g.boxes.all(g.warehouse[it.y][it.x] == `@`)
 }

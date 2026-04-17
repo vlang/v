@@ -457,6 +457,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
+
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
 			if fields.len == 0 {
@@ -1039,6 +1040,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			return none
 		}
 	}
+
 	return none
 }
 
@@ -1520,6 +1522,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 									return false, false
 								}
 							}
+
 							sb.write_string('${is_true}')
 							return is_true, false
 						}
@@ -1547,6 +1550,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 												return false, false
 											}
 										}
+
 										match cond.op {
 											.eq {
 												sb.write_string('${is_true}')
@@ -1598,6 +1602,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 												return false, false
 											}
 										}
+
 										sb.write_string('${is_true}')
 										return is_true, true
 									} else if cond.left.field_name == 'return_type' {
@@ -1629,6 +1634,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 													return false, false
 												}
 											}
+
 											sb.write_string('${is_true}')
 											return is_true, false
 										} else {
@@ -1653,11 +1659,12 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 									return is_true, true
 								}
 								else {
-									c.error('definition of `${ast.Expr(cond.left)}` is unknown at compile time',
+									c.error('definition of `${cond.left}` is unknown at compile time',
 										cond.pos)
 									return false, false
 								}
 							}
+
 							c.error('invalid \$if condition: SelectorExpr', cond.pos)
 							return false, false
 						}
@@ -1690,6 +1697,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 											return false, false
 										}
 									}
+
 									sb.write_string('${is_true}')
 									return is_true, true
 								}
@@ -1704,6 +1712,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 							return false, false
 						}
 					}
+
 					c.error('invalid \$if condition', cond.pos)
 					return false, false
 				}
@@ -1849,6 +1858,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 						'is_expand_simple_interpolation' { method.is_expand_simple_interpolation }
 						else { false }
 					}
+
 					sb.write_string('${is_true}')
 					return is_true, true
 				}
@@ -1862,6 +1872,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			return false, false
 		}
 	}
+
 	c.error('invalid \$if condition ${cond}', cond.pos())
 	return false, false
 }

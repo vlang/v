@@ -79,6 +79,7 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 			.unknown
 		}
 	}
+
 	return ast.ComptimeType{
 		kind: kind
 		pos:  pos
@@ -628,6 +629,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 			return ast.ComptimeFor{}
 		}
 	}
+
 	spos := p.tok.pos()
 	stmts := p.parse_block()
 	return ast.ComptimeFor{
@@ -673,6 +675,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@PLATFORM' { token.AtKind.platform }
 		else { token.AtKind.unknown }
 	}
+
 	expr := ast.AtExpr{
 		name: name
 		pos:  p.tok.pos()

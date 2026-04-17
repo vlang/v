@@ -290,9 +290,21 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 				}
 				if i + 1 < rewritten_line.len {
 					next := rewritten_line[i + 1]
-					if next == `{` || is_tmpl_ident_start(next) {
+					if next == `{` {
 						sb.write_u8(`$`)
 						i++
+						continue
+					}
+					if is_tmpl_ident_start(next) {
+						// Bare @ident: find the end of the identifier and wrap with ${}
+						mut end := i + 2
+						for end < rewritten_line.len && is_tmpl_ident_part(rewritten_line[end]) {
+							end++
+						}
+						sb.write_string('\${')
+						sb.write_string(rewritten_line[i + 1..end])
+						sb.write_u8(`}`)
+						i = end
 						continue
 					}
 				}
@@ -309,6 +321,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 			}
 			else {}
 		}
+
 		sb.write_u8(ch)
 		i++
 	}

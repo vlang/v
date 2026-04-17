@@ -1,14 +1,7 @@
 vlib/v/checker/tests/if_smartcast_mutation_err.vv:5:3: error: cannot mutate `a` in a non-mut smartcast, use `if mut a ...`
-    3 |     mut a := SmartcastValue(1)
+    3 |     a := SmartcastValue(1)
     4 |     if a is int {
     5 |         a = 3
       |         ^
     6 |     }
-    7 |
-vlib/v/checker/tests/if_smartcast_mutation_err.vv:10:7: error: cannot assign to `b`: expected `int`, not `string`
-    8 |     mut b := SmartcastValue(1)
-    9 |     if mut b is int {
-   10 |         b = 'hello'
-      |             ~~~~~~~
-   11 |     }
-   12 | }
+    7 | }

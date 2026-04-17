@@ -153,6 +153,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 								g.cg.cg_cmp_var_reg(cond.left as ast.Ident, .reg0)
 							}
 						}
+
 						match cond.op {
 							.gt {
 								jump_addr = g.cg.cg_cjmp(.jle)
@@ -178,6 +179,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 			}
 			else {}
 		}
+
 		// dump(node.cond)
 		g.expr(node.cond)
 	}

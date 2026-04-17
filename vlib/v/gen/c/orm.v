@@ -117,6 +117,8 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 	mut current := expr
 	for {
 		current = current.remove_par()
+		mut next_expr := current
+		mut has_next_expr := false
 		match current {
 			ast.SqlQueryDataExpr {
 				return current as ast.SqlQueryDataExpr
@@ -128,21 +130,26 @@ fn (g &Gen) resolve_sql_query_data_expr(expr ast.Expr) ?ast.SqlQueryDataExpr {
 						if obj.is_mut {
 							return none
 						}
-						current = obj.expr
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					ast.ConstField {
-						current = obj.expr
-						continue
+						next_expr = obj.expr
+						has_next_expr = true
 					}
 					else {}
 				}
-				return none
 			}
 			else {
 				return none
 			}
 		}
+
+		if has_next_expr {
+			current = next_expr
+			continue
+		}
+		return none
 	}
 	return none
 }
@@ -288,9 +295,17 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
-	mut sub_structs := map[string]ast.SqlStmtLine{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for key, sub in node.sub_structs {
-		sub_structs[key] = g.build_sql_stmt_line_from_sql_expr(sub)
+		// Find the field type for this field name to use as the int key
+		mut field_typ := ast.Type(0)
+		for field in node.fields {
+			if field.name == key {
+				field_typ = field.typ
+				break
+			}
+		}
+		sub_structs[int(field_typ)] = g.build_sql_stmt_line_from_sql_expr(sub)
 	}
 	return ast.SqlStmtLine{
 		object_var:  node.inserted_var
@@ -455,6 +470,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 				sym.kind == .enum { '_const_orm__enum_' }
 				else { final_field_typ.idx().str() }
 			}
+
 			g.writeln('(orm__TableField){')
 			g.indent++
 			g.writeln('.name = _S("${field.name}"),')
@@ -811,8 +827,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			if field.name in node.sub_structs {
-				subs << unsafe { node.sub_structs[field.name] }
+			if final_field_typ in node.sub_structs {
+				subs << unsafe { node.sub_structs[int(final_field_typ)] }
 
 				unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
 				subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
@@ -831,8 +847,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			if field.name in node.sub_structs {
-				arrs << unsafe { node.sub_structs[field.name] }
+			if final_field_typ in node.sub_structs {
+				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
 			}
 			field_names << field.name
 		}
@@ -1161,6 +1177,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 				''
 			}
 		}
+
 		g.writeln(' .operator = ${kind},')
 		g.write(' .right = ')
 		g.write_orm_expr_to_primitive(expr.right)
@@ -1351,6 +1368,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 					''
 				}
 			}
+
 			if kind == '' {
 				if expr.op == .logical_or {
 					is_and << false
@@ -2111,6 +2129,7 @@ fn (mut g Gen) write_orm_joins(joins []ast.JoinClause) {
 			.right { 'orm__JoinType__right' }
 			.full_outer { 'orm__JoinType__full_outer' }
 		}
+
 		g.writeln('.kind = ${kind_str},')
 
 		// Write joined table info

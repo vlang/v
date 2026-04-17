@@ -81,6 +81,7 @@ fn (mut c Checker) stmt_has_visible_mutation(stmt ast.Stmt, root_name string, ro
 		}
 		else {}
 	}
+
 	return c.node_children_have_visible_mutation(ast.Node(stmt), root_name, root_type)
 }
 
@@ -113,6 +114,7 @@ fn (mut c Checker) expr_has_visible_mutation(expr ast.Expr, root_name string, ro
 		}
 		else {}
 	}
+
 	return c.node_children_have_visible_mutation(ast.Node(expr), root_name, root_type)
 }
 

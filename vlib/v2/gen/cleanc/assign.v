@@ -197,6 +197,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 							''
 						}
 					}
+
 					if fn_ret_type != '' && fn_ret_type != 'int' && fn_ret_type in g.tuple_aliases {
 						tuple_type = fn_ret_type
 					}
@@ -1040,6 +1041,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			.right_shift_assign { '>>=' }
 			else { '=' }
 		}
+
 		g.sb.write_string(' ${op_str} ')
 		mut rhs_array_elem_type := g.infer_array_method_elem_type(rhs)
 		mut assign_lhs_type := g.get_expr_type(lhs)

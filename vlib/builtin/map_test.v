@@ -1,4 +1,5 @@
 import rand
+import strings
 
 const strings = unique_strings(7000, 10)
 

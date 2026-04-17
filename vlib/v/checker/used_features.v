@@ -83,8 +83,7 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 				last_param := m.params.last().typ
 				last_arg_type := comptime_call_last_arg_type(node.args.last())
 				if (last_param.is_int() || last_param.is_float()
-					|| last_param.is_bool())
-					&& c.table.final_sym(last_arg_type).kind == .array {
+					|| last_param.is_bool()) && c.table.final_sym(last_arg_type).kind == .array {
 					c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
 				}
 			}

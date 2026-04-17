@@ -511,6 +511,7 @@ $if sokol_wayland ? {
 			u32(btn_middle) { MouseButton.middle }
 			else { MouseButton.invalid }
 		}
+
 		if sapp_btn != .invalid {
 			etype := if state == wl_pointer_button_state_pressed {
 				EventType.mouse_down

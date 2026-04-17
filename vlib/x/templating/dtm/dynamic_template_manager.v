@@ -343,6 +343,7 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 				//	println('get cache : ${cash_req}')
 			}
 		}
+
 		return html
 	} else {
 		tm.stop_cache_handler()
@@ -607,6 +608,7 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 						html = r_b_html.bytestr()
 					}
 				}
+
 				// Function is used to signal that the process has finished using the cache information. The 'nbr_of_remaining_request' counter is therefore updated."
 				tm.remaining_template_request(false, value.id)
 				return html
@@ -892,6 +894,7 @@ fn (mut tm DynamicTemplateManager) chandler_clear_specific_cache(id int) (int, b
 					}
 				}
 			}
+
 			return key, true
 		}
 	}

@@ -137,6 +137,7 @@ fn draw_rain_column(rc RainColumn, app App) {
 				6 { u8(225) }
 				else { u8(255) }
 			}
+
 			at_head := i == rc.head - 1
 			cfg := gg.TextCfg{
 				size:  font_size

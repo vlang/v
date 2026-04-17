@@ -331,5 +331,6 @@ fn (mut c Create) create_files_and_directories() {
 		.lib { 'library' }
 		.web { 'web' }
 	}
+
 	println('Created ${kind} project `${c.name}`')
 }

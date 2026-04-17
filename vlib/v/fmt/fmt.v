@@ -834,7 +834,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				stmt := expr.stmts[0]
 				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr
 					&& (stmt.expr as ast.CallExpr).comments.len > 0 {
-					if comment := stmt.expr.comments[0] {
+					if comment := (stmt.expr as ast.CallExpr).comments[0] {
 						if !comment.is_multi {
 							return false
 						}

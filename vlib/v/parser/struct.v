@@ -376,6 +376,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						// TODO: implement all types??
 						else {}
 					}
+
 					has_default_expr = true
 					comments << p.eat_comments(same_line: true)
 				}

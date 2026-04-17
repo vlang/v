@@ -108,7 +108,7 @@ fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
 		buf := [4096]u8{}
 		mut lines := []string{cap: nr_frames}
 		unsafe {
-			bp := &buf[0]
+			bp := &u8(&buf[0])
 			for C.fgets(&char(bp), 4096, f) != 0 {
 				line := tos(bp, vstrlen(bp)).trim_chars(' \t\n\r', .trim_both)
 				// atos output format: `func_name (in binary) (file.v:42)`
@@ -208,7 +208,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 						buf := [1000]u8{}
 						mut output := ''
 						unsafe {
-							bp := &buf[0]
+							bp := &u8(&buf[0])
 							for C.fgets(&char(bp), 1000, f) != 0 {
 								output += tos(bp, vstrlen(bp))
 							}

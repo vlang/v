@@ -3112,6 +3112,7 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 				types.Alias { lhs_type.base_type }
 				else { lhs_type }
 			}
+
 			if base_lhs is types.Array || base_lhs is types.ArrayFixed || base_lhs is types.Map
 				|| base_lhs is types.String {
 				if node.rhs.name == 'len' {
@@ -3135,6 +3136,7 @@ fn (mut g Gen) get_raw_type_inner(node ast.Expr) ?types.Type {
 					''
 				}
 			}
+
 			if iface_name != '' {
 				short_name := if iface_name.contains('__') {
 					iface_name.all_after_last('__')
@@ -3409,6 +3411,7 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 

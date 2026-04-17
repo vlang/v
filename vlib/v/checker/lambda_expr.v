@@ -54,9 +54,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		}
 		for idx in node.params.len .. exp_sym.info.func.params.len {
 			eparam_type := exp_sym.info.func.params[idx].typ
-			if eparam_type.has_flag(.generic) {
-				generic_types[eparam_type] = true
-			}
+			c.lambda_expr_push_generic_names(mut generic_names, eparam_type)
 		}
 		c.append_omitted_callback_params(mut params, exp_sym.info.func.params, node.pos,
 			'__v_lambda_unused_param_', unsafe { nil })

@@ -513,6 +513,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 					}
 					else {}
 				}
+
 				if attr.starts_with('json:') {
 					json_attr := json_attr_value(attr) or { continue }
 					if json_attr == '-' {

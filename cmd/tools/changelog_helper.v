@@ -265,6 +265,7 @@ fn (mut app App) process_line(text string) ! {
 			}
 			else {}
 		}
+
 		app.counter++
 	} else {
 		line := Line{category, s}

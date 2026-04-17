@@ -5,6 +5,11 @@ module os
 
 import strings
 
+// Eof error means that we reach the end of the file.
+pub struct Eof {
+	Error
+}
+
 pub const max_path_len = 4096
 
 pub const wd_at_startup = getwd()
@@ -224,6 +229,7 @@ pub fn sigint_to_signal_name(si int) string {
 		15 { return 'SIGTERM' }
 		else {}
 	}
+
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {

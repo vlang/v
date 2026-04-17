@@ -2284,6 +2284,7 @@ fn find_target_or_expr_path_in_stmt(stmt ast.Stmt, target_id int, prefix string)
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2530,6 +2531,7 @@ fn find_target_or_expr_path_in_expr(expr ast.Expr, target_id int, prefix string)
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2867,6 +2869,7 @@ fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.
 			.right_shift_assign { token.Token.right_shift }
 			else { return none }
 		}
+
 		if stmt.lhs.len != 1 || stmt.rhs.len != 1 {
 			return none
 		}
@@ -4407,6 +4410,7 @@ fn (t &Transformer) stmt_uses_ident(stmt ast.Stmt, name string) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -4612,6 +4616,7 @@ fn (t &Transformer) expr_has_or_expr(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -6095,6 +6100,7 @@ fn (t &Transformer) return_expr_should_skip_sumtype_wrap(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	if typ := t.get_expr_type(expr) {
 		match typ {
 			types.Interface {
@@ -6630,6 +6636,7 @@ fn (t &Transformer) sprintf_int_format_suffix(typ types.Type, decimal string, un
 		}
 		else {}
 	}
+
 	return decimal
 }
 
@@ -6730,6 +6737,7 @@ fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
 				}
 			}
 		}
+
 		return fmt
 	}
 	// Infer from expression type
@@ -6757,6 +6765,7 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 		}
 		else {}
 	}
+
 	// When an explicit format is specified, pass the expression as-is.
 	// The user has explicitly chosen the format, so no wrapping is needed
 	// (e.g., ${ptr:p} should pass the pointer directly, not call .str()).
@@ -7659,6 +7668,7 @@ fn (mut t Transformer) register_needed_array_method(info ArrayMethodInfo, method
 		}
 		else {}
 	}
+
 	return fn_name
 }
 
@@ -7925,6 +7935,7 @@ fn (mut t Transformer) transform_array_init_with_exprs(arr ast.ArrayInitExpr, ex
 		}
 		else {}
 	}
+
 	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
 	if arr.len is ast.PostfixExpr {
 		postfix := arr.len as ast.PostfixExpr
@@ -8849,6 +8860,7 @@ fn (mut t Transformer) clone_value_expr(expr ast.Expr, typ types.Type) ast.Expr 
 		}
 		else {}
 	}
+
 	return expr
 }
 

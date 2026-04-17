@@ -256,6 +256,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			return false
 		}
 	}
+
 	return true
 }
 

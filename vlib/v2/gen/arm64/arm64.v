@@ -1688,6 +1688,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				else {}
 			}
+
 			// Keep narrow integer results (i1/i8/i16/i32) canonical after 64-bit
 			// ALU ops so upper garbage bits do not leak through later uses.
 			// Skip for comparison ops (cset always produces 0 or 1, already canonical).
@@ -4267,6 +4268,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							4 { g.emit(asm_ldr_w(Reg(8), Reg(src_reg))) }
 							else { g.emit_ldr_reg_offset(8, src_reg, 0) }
 						}
+
 						g.store_reg_to_val(8, val_id)
 					}
 				} else if tuple_offset := g.stack_map[tuple_id] {
@@ -4339,6 +4341,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 										g.emit(asm_ldr(Reg(8), Reg(10)))
 									}
 								}
+
 								g.store_reg_to_val(8, val_id)
 								handled_wrapper_payload_extract = true
 							}
@@ -4411,6 +4414,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 							}
 							else {}
 						}
+
 						g.store_reg_to_val(8, val_id)
 					} else {
 						field_offset := tuple_offset + field_byte_off
@@ -5058,6 +5062,7 @@ fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id i
 		}
 		else {}
 	}
+
 	// Some SSA pseudo-values are mutable placeholders whose current value is
 	// carried by `assign dest, src` instructions. Follow such assignments so
 	// pointer payloads stored through these placeholders are detected.
@@ -5266,6 +5271,7 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -5919,6 +5925,7 @@ fn parse_const_int_literal(name string) i64 {
 			base == 16 && ch >= `A` && ch <= `F` { u64(ch - `A` + 10) }
 			else { break }
 		}
+
 		if digit >= base {
 			break
 		}
@@ -6012,6 +6019,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 						`'` { str_content << 39 }
 						else { str_content << next_char }
 					}
+
 					i += 2
 				} else {
 					str_content << raw_content[i]
@@ -6144,6 +6152,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 					`"` { g.macho.str_data << 0x22 } // double quote
 					else { g.macho.str_data << raw_bytes[i2 + 1] }
 				}
+
 				i2 += 2
 			} else {
 				g.macho.str_data << raw_bytes[i2]
@@ -6492,6 +6501,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 					-1
 				}
 			}
+
 			if scaled >= 0 {
 				match size {
 					1 { g.emit(asm_str_imm_b(Reg(rt), sp, u32(scaled))) }
@@ -6499,6 +6509,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 					4 { g.emit(asm_str_imm_w(Reg(rt), sp, u32(scaled))) }
 					else { g.emit(asm_str_imm(Reg(rt), sp, u32(scaled))) }
 				}
+
 				return
 			}
 			// Try 2-instruction: add scratch, sp, #imm; str rt, [scratch, #off]
@@ -6519,6 +6530,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 						4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
 						else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
 					}
+
 					return
 				}
 				if sp_high > 0 && sp_low <= 255 {
@@ -6529,6 +6541,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 						4 { g.emit(asm_stur_w(Reg(rt), Reg(scratch), sp_low)) }
 						else { g.emit(asm_stur(Reg(rt), Reg(scratch), sp_low)) }
 					}
+
 					return
 				}
 				// sp_low > 255: try scaled immediate from the high-aligned base
@@ -6550,6 +6563,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 							-1
 						}
 					}
+
 					if sp_low_scaled >= 0 {
 						g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
 						match size {
@@ -6558,6 +6572,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 							4 { g.emit(asm_str_imm_w(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
 							else { g.emit(asm_str_imm(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
 						}
+
 						return
 					}
 				}
@@ -6591,6 +6606,7 @@ fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 				-1
 			}
 		}
+
 		if scaled >= 0 {
 			match size {
 				1 { g.emit(asm_str_imm_b(Reg(rt), Reg(rn), u32(scaled))) }
@@ -6702,6 +6718,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 					-1
 				}
 			}
+
 			if scaled >= 0 {
 				match size {
 					1 { g.emit(asm_ldr_imm_b(Reg(rt), sp, u32(scaled))) }
@@ -6709,6 +6726,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 					4 { g.emit(asm_ldr_imm_w(Reg(rt), sp, u32(scaled))) }
 					else { g.emit(asm_ldr_imm(Reg(rt), sp, u32(scaled))) }
 				}
+
 				return
 			}
 			// Try 2-instruction: add scratch, sp, #imm; ldr rt, [scratch]
@@ -6729,6 +6747,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 						4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
 						else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
 					}
+
 					return
 				}
 				if sp_high > 0 && sp_low <= 255 {
@@ -6739,6 +6758,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 						4 { g.emit(asm_ldur_w(Reg(rt), Reg(scratch), sp_low)) }
 						else { g.emit(asm_ldur(Reg(rt), Reg(scratch), sp_low)) }
 					}
+
 					return
 				}
 				// sp_low > 255: try scaled immediate from the high-aligned base
@@ -6760,6 +6780,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 							-1
 						}
 					}
+
 					if sp_low_scaled >= 0 {
 						g.emit(asm_add_imm_lsl12(Reg(scratch), sp, u32(sp_high)))
 						match size {
@@ -6768,6 +6789,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 							4 { g.emit(asm_ldr_imm_w(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
 							else { g.emit(asm_ldr_imm(Reg(rt), Reg(scratch), u32(sp_low_scaled))) }
 						}
+
 						return
 					}
 				}
@@ -6801,6 +6823,7 @@ fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 				-1
 			}
 		}
+
 		if scaled >= 0 {
 			match size {
 				1 { g.emit(asm_ldr_imm_b(Reg(rt), Reg(rn), u32(scaled))) }
@@ -7394,6 +7417,7 @@ fn (mut g Gen) mem_access_size_bytes(val_typ_id ssa.TypeID, ptr_val_id int) int 
 		}
 		else {}
 	}
+
 	return ptr_elem_size
 }
 
@@ -7506,6 +7530,7 @@ fn (mut g Gen) pointer_carried_aggregate_size_bytes(ptr_id int, depth int, mut s
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -7669,6 +7694,7 @@ fn (mut g Gen) inferred_aggregate_carried_size_bytes(val_id int, depth int, mut 
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -7776,6 +7802,7 @@ fn (mut g Gen) type_size(typ_id ssa.TypeID) int {
 			size = 0
 		}
 	}
+
 	if typ_id < g.type_size_stack.len {
 		g.type_size_stack[typ_id] = false
 	}
@@ -8004,6 +8031,7 @@ fn (g &Gen) is_known_zero_value(val_id int, depth int) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -8131,6 +8159,7 @@ fn (g &Gen) ptr_originates_from_sumtype_data_word(ptr_id int, depth int) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -8441,6 +8470,7 @@ fn (g &Gen) sumtype_wrapper_source_from_data_ptr(ptr_id int, expected_wrapper_ty
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -8516,6 +8546,7 @@ fn (g &Gen) sumtype_wrapper_source_from_unwrapped_value(val_id int, expected_wra
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -8540,6 +8571,7 @@ fn (g &Gen) unwrap_passthrough_value(val_id int, depth int) int {
 		}
 		else {}
 	}
+
 	return val_id
 }
 

@@ -241,6 +241,7 @@ fn get_excluded_os_labels(user_os string) []string {
 		'freebsd' { 'OS: FreeBSD' }
 		else { '' }
 	}
+
 	return all_os_labels.filter(it != user_label)
 }
 

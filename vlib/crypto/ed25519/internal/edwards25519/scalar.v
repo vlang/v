@@ -1157,6 +1157,7 @@ fn generate_scalar(size int) !Scalar {
 			s.s[31] &= (1 * 16) - 1
 		}
 	}
+
 	return s
 }
 

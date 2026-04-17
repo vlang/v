@@ -24,10 +24,10 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('typedef struct _IO_FILE FILE;'), generated_c
 	assert generated_c.contains('typedef __builtin_va_list va_list;'), generated_c
 	assert generated_c.contains('typedef char* va_list;'), generated_c
-	assert generated_c.contains('int vfprintf(FILE *stream, const char *format, va_list ap);'),
-		generated_c
-	assert generated_c.contains('int vsnprintf(char *str, size_t size, const char *format, va_list ap);'),
-		generated_c
+	assert generated_c.contains('int vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+
+	assert generated_c.contains('int vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
+
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 }

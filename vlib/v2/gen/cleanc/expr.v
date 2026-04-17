@@ -206,6 +206,7 @@ fn (mut g Gen) selector_method_value_name(node ast.SelectorExpr) ?string {
 			}
 			else {}
 		}
+
 		if !is_fn_value {
 			return none
 		}
@@ -764,6 +765,7 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 					false
 				}
 			}
+
 			if is_addressable {
 				g.sb.write_string('(*(${base}*)(((u8*)(&')
 				g.expr(expr)
@@ -787,6 +789,7 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 					false
 				}
 			}
+
 			if is_addressable {
 				g.sb.write_string('(*(${base}*)(((u8*)(&')
 				g.expr(expr)
@@ -1289,6 +1292,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			.le { '<=' }
 			else { '==' }
 		}
+
 		g.sb.write_string('(string__compare(')
 		g.gen_string_cmp_operand(node.lhs, lhs_is_string_ptr)
 		g.sb.write_string(', ')
@@ -1360,6 +1364,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			.div { 'div' }
 			else { '' }
 		}
+
 		if op_name != '' {
 			method_fn := '${lhs_type}__${op_name}'
 			if method_fn in g.fn_return_types || method_fn in g.fn_param_is_ptr {
@@ -1411,6 +1416,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 				}
 				else {}
 			}
+
 			return
 		}
 	}
@@ -1453,6 +1459,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		.question { '==' } // match arm lowering uses ? as equality test
 		else { '==' }
 	}
+
 	g.sb.write_string(' ${op} ')
 	if is_bitwise_op && rhs_is_float {
 		cast_type := if node.op in [.left_shift, .right_shift] {
@@ -1958,6 +1965,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 						.bit_not { '~' }
 						else { '' }
 					}
+
 					g.sb.write_string(op)
 					g.expr(node.expr)
 				}
@@ -2280,6 +2288,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				.dec { '--' }
 				else { '' }
 			}
+
 			g.sb.write_string(op)
 		}
 		ast.ModifierExpr {
@@ -2596,6 +2605,7 @@ fn (mut g Gen) unwrap_addr_of_value_expr(expr ast.Expr) ?ast.Expr {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2617,6 +2627,7 @@ fn (mut g Gen) is_type_reference_expr(node ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -2639,6 +2650,7 @@ fn (g &Gen) contains_as_cast_expr(node ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -2658,6 +2670,7 @@ fn (mut g Gen) expr_cast_target_type(node ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -3361,6 +3374,7 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -3677,6 +3691,7 @@ fn (mut g Gen) gen_comptime_expr(node ast.ComptimeExpr) {
 				g.sb.write_string('${c_empty_v_string_expr()} /* unknown comptime: ${name} */')
 			}
 		}
+
 		return
 	}
 	if node.expr is ast.CallExpr {

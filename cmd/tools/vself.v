@@ -64,7 +64,12 @@ fn main() {
 			}
 		}
 		if !used_pgo {
-			compile(vroot, cmd)
+			if !try_compile(cmd) {
+				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
+					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
+					exit(1)
+				}
+			}
 		}
 		if obinary == '' {
 			backup_old_version_and_rename_newer(short_v_name) or { panic(err.msg()) }
@@ -227,6 +232,14 @@ fn with_output_arg(args []string, output string) []string {
 	return res
 }
 
+fn clone_args(args []string) []string {
+	mut cloned := []string{cap: args.len}
+	for arg in args {
+		cloned << arg.clone()
+	}
+	return cloned
+}
+
 fn compose_v_cmd(vexe string, args []string, source string) string {
 	mut parts := []string{cap: args.len + 2}
 	parts << os.quoted_path(vexe)
@@ -245,6 +258,17 @@ fn run_cmd(cmd string) ! {
 	if result.output.len > 0 {
 		println(result.output.trim_space())
 	}
+}
+
+fn try_compile(cmd string) bool {
+	result := os.execute(cmd)
+	if result.exit_code != 0 {
+		return false
+	}
+	if result.output.len > 0 {
+		println(result.output.trim_space())
+	}
+	return true
 }
 
 fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string, cc_kind string) bool {
@@ -311,15 +335,56 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	return true
 }
 
-fn compile(vroot string, cmd string) {
-	result := os.execute_or_exit(cmd)
-	if result.exit_code != 0 {
-		eprintln('cannot compile to `${vroot}`: \n${result.output}')
-		exit(1)
+fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
+	bootstrap_prefix := '.vself_bootstrap'
+	mut bootstrap_v1 := '${bootstrap_prefix}_v1'
+	mut bootstrap_v2 := '${bootstrap_prefix}_v2'
+	exe_ext := if os.user_os() == 'windows' { '.exe' } else { '' }
+	bootstrap_v1 += exe_ext
+	bootstrap_v2 += exe_ext
+	os.rm(bootstrap_v1) or {}
+	os.rm(bootstrap_v2) or {}
+	defer {
+		os.rm(bootstrap_v1) or {}
+		os.rm(bootstrap_v2) or {}
 	}
-	if result.output.len > 0 {
-		println(result.output.trim_space())
+	vc_source := os.join_path(vroot, 'vc', 'v.c')
+	if !os.exists(vc_source) {
+		return error('bootstrap fallback failed: `${vc_source}` is missing')
 	}
+	cc := os.getenv_opt('CC') or {
+		if os.user_os() == 'windows' { 'gcc' } else { 'cc' }
+	}
+	bootstrap_v1_build_cmd := bootstrap_c_cmd(cc, bootstrap_v1, vc_source)
+	run_cmd(bootstrap_v1_build_cmd) or {
+		return error('bootstrap fallback failed while building v1.\n${err.msg()}')
+	}
+	mut bootstrap_args := ['-no-parallel']
+	bootstrap_args << with_output_arg(args, bootstrap_v2)
+	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
+	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	run_cmd(bootstrap_v2_cmd) or {
+		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
+	}
+	final_args := with_output_arg(args, final_binary)
+	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
+	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	run_cmd(final_cmd) or {
+		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
+	}
+}
+
+fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
+	mut parts := []string{cap: 8}
+	parts << os.quoted_path(cc)
+	if os.user_os() == 'windows' {
+		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
+			os.quoted_path(vc_source), '-lws2_32']
+	} else {
+		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary),
+			os.quoted_path(vc_source), '-lm', '-lpthread']
+	}
+	return parts.join(' ')
 }
 
 fn list_folder(short_v_name string, bmessage string, message string) {

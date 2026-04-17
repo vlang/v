@@ -589,7 +589,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-							app.$method(mut user_context, args)
+							app.$method(mut user_context, ...args)
 						} else {
 							app.$method(mut user_context)
 						}
@@ -616,7 +616,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-							app.$method(mut user_context, args)
+							app.$method(mut user_context, ...args)
 						} else {
 							app.$method(mut user_context)
 						}
@@ -635,7 +635,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						if method_args.len + 1 != method.args.len {
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
-						app.$method(mut user_context, method_args)
+						app.$method(mut user_context, ...method_args)
 						return
 					}
 				}

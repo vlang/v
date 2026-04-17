@@ -575,6 +575,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					branch.pos)
 			}
 		}
+		end_if:
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
@@ -583,7 +584,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				nbranches_without_return++
 			}
 		}
-		end_if:
 		if comptime_remove_curr_branch_stmts && !c.pref.output_cross_c {
 			// remove the branch statements since they may contain OS-specific code.
 			branch.stmts = []
@@ -696,6 +696,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 					ast.no_type
 				}
 			}
+
 			if right_type != ast.no_type {
 				$if trace_ci_fixes ? {
 					source_path := if node.pos.file_idx >= 0
@@ -712,6 +713,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 							ast.None { 'none' }
 							else { typeof(right_expr).name }
 						}
+
 						eprintln('if is left=${node.left} left_type=${c.table.type_to_str(node.left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(right_type)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
 							node.pos.line_nr + 1}')
 					}

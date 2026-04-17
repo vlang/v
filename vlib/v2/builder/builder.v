@@ -1751,6 +1751,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			.eval { 'eval' }
 			else { '' }
 		}
+
 		for backend_mod in all_backends {
 			if backend_mod != own {
 				ssa_builder.skip_modules[backend_mod] = true

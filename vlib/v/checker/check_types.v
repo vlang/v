@@ -832,6 +832,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 							64
 						}
 					}
+
 					if ival > moffset && !c.pref.translated && !c.file.is_translated {
 						c.error('shift count for type `${left_sym_final.name}` too large (maximum: ${moffset} bits)',
 							node.right.pos())
@@ -859,6 +860,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			return left_type
 		}
 	}
+
 	return left_type
 }
 
@@ -1040,6 +1042,7 @@ fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int)
 		}
 		else {}
 	}
+
 	return []ast.Type{}, 0
 }
 
@@ -1124,6 +1127,7 @@ fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Typ
 		}
 		else {}
 	}
+
 	expected_type_args, expected_parent_idx := c.generic_type_args_and_parent_idx(generic_typ)
 	actual_type_args, actual_parent_idx := c.generic_type_args_and_parent_idx(concrete_typ)
 	if expected_parent_idx == 0 || expected_parent_idx != actual_parent_idx
@@ -1722,6 +1726,7 @@ fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_typ
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1769,6 +1774,7 @@ fn (mut c Checker) os_raw_io_unsupported_type(typ ast.Type, path string, mut che
 		}
 		else {}
 	}
+
 	return none
 }
 

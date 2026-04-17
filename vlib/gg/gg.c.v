@@ -527,6 +527,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			// dump(e)
 		}
 	}
+
 	$if linux && !sokol_wayland ? {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
 			// with X11, sokol does not send .char events for some keys; we will emulate them for consistency here:
@@ -539,6 +540,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 				.delete { 127 }
 				else { u32(e.key_code) }
 			}
+
 			e.key_code = .invalid
 			e.typ = .char
 			if ctx.config.event_fn != unsafe { nil } {
@@ -835,6 +837,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 			create_default_pass(dontcare_pass)
 		}
 	}
+
 	gfx.begin_pass(pass)
 	sgl.draw()
 	gfx.end_pass()

@@ -165,6 +165,7 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 		}
 		else {}
 	}
+
 	if !typ.has_flag(.generic) && !g.type_has_unresolved_generic_parts(typ) {
 		return typ
 	}
@@ -645,6 +646,7 @@ fn (mut g Gen) resolved_call_like_expr_type(expr ast.Expr) ast.Type {
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -719,10 +721,13 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					}
 				}
 				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-					&& expr.obj.expr is ast.Ident && expr.obj.expr.or_expr.kind != .absent {
-					resolved_or_type := g.resolved_or_block_value_type(expr.obj.expr.or_expr)
-					if resolved_or_type != 0 {
-						return resolved_or_type
+					&& expr.obj.expr is ast.Ident {
+					ident_expr := expr.obj.expr as ast.Ident
+					if ident_expr.or_expr.kind != .absent {
+						resolved_or_type := g.resolved_or_block_value_type(ident_expr.or_expr)
+						if resolved_or_type != 0 {
+							return resolved_or_type
+						}
 					}
 				}
 				if expr.obj.ct_type_var == .generic_param {
@@ -875,10 +880,12 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 									generic_names, concrete_types, true)
 								if resolved_field_type != source_field_type {
 									field_type = resolved_field_type
-								} else if converted_field_type := muttable.convert_generic_type(source_field_type,
-									generic_names, concrete_types)
-								{
-									field_type = converted_field_type
+								} else {
+									if converted_field_type := muttable.convert_generic_type(source_field_type,
+										generic_names, concrete_types)
+									{
+										field_type = converted_field_type
+									}
 								}
 							}
 						}
@@ -901,10 +908,12 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 											generic_names, sym.info.concrete_types, true)
 										if resolved_field_type != source_field_type {
 											field_type = resolved_field_type
-										} else if converted_field_type := muttable.convert_generic_type(source_field_type,
-											generic_names, sym.info.concrete_types)
-										{
-											field_type = converted_field_type
+										} else {
+											if converted_field_type := muttable.convert_generic_type(source_field_type,
+												generic_names, sym.info.concrete_types)
+											{
+												field_type = converted_field_type
+											}
 										}
 									}
 								}
@@ -913,6 +922,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						}
 						else {}
 					}
+
 					$if trace_ci_fixes ? {
 						if g.file.path.contains('binary_search_tree.v') && expr.expr is ast.Ident
 							&& expr.expr.name == 'tree' {
@@ -1246,6 +1256,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 		}
 		else {}
 	}
+
 	resolved := g.type_resolver.get_type_or_default(expr, default_typ)
 	if resolved != 0 {
 		return g.unwrap_generic(resolved)

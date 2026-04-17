@@ -562,6 +562,7 @@ pub fn (mut db DB) begin(param Sqlite3TransactionParam) ! {
 		.immediate { sql_stmt += 'IMMEDIATE;' }
 		.exclusive { sql_stmt += 'EXCLUSIVE;' }
 	}
+
 	db.exec(sql_stmt)!
 }
 

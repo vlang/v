@@ -93,6 +93,7 @@ fn logical_arg_type_from_value(m mir.Module, val_id int, depth int) ?int {
 		}
 		else {}
 	}
+
 	return none
 }
 

@@ -872,8 +872,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	var_name := g.get_array_expr_param_name(mut expr)
-	g.refresh_array_expr_param_type(expr, var_name, inp_elem_type)
 	is_auto_heap := g.array_expr_param_needs_indirect_access(expr, var_name)
 	old_param_auto_heap := g.set_array_expr_param_auto_heap(expr, var_name, is_auto_heap)
 	defer {
@@ -984,6 +982,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	if left_is_array {
 		g.writeln2(';',
 			'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
@@ -1452,6 +1451,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\tbuiltin__array_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
 	g.writeln('}')
 	g.indent--
@@ -2047,6 +2047,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\t${past.tmp_var} = true;')
 	g.writeln2('\tbreak;', '}')
 	g.indent--
@@ -2140,6 +2141,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(') {', '\t++${past.tmp_var};')
 	g.writeln('}')
 	g.indent--
@@ -2234,6 +2236,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
+
 	g.writeln2(')) {', '\t${past.tmp_var} = false;')
 	g.writeln2('\tbreak;', '}')
 	g.indent--
@@ -2521,11 +2524,13 @@ fn (mut g Gen) array_expr_takes_param_address(expr ast.Expr, var_name string) bo
 fn (mut g Gen) array_expr_roots_at_param(expr ast.Expr, var_name string) bool {
 	mut root := expr
 	for {
+		mut next_root := root
 		if mut root is ast.ParExpr {
-			root = root.expr
-			continue
+			next_root = root.expr
+		} else {
+			break
 		}
-		break
+		root = next_root
 	}
 	match mut root {
 		ast.AsCast {

@@ -861,6 +861,7 @@ fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, 
 				''
 			}
 		}
+
 		if variant_hint != '' {
 			for i, v in variants {
 				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
@@ -1058,6 +1059,7 @@ fn (g &Gen) is_sum_payload_expr(node ast.Expr, variant string) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

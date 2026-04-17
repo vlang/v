@@ -879,6 +879,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.other_stmts(ast.empty_stmt)
 			}
 		}
+
 		// clear `cur_comments` after each statement, except a comment stmt
 		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
@@ -1251,6 +1252,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							return p.error_with_pos('unknown `defer` mode: `${mode}`', mode_pos)
 						}
 					}
+
 					p.check(.rpar)
 				}
 				p.inside_defer = true
@@ -1490,12 +1492,21 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		}
 		else {
 			if p.tok.kind == .dot {
-				if var := p.scope.find_var(name) { var.typ } else { 0 }
+				obj := p.scope.find_ptr(name)
+				if obj != unsafe { nil } {
+					match obj {
+						ast.Var { obj.typ }
+						else { 0 }
+					}
+				} else {
+					0
+				}
 			} else {
 				0
 			}
 		}
 	}
+
 	return ast.Ident{
 		tok_kind:       p.tok.kind
 		kind:           .unresolved
@@ -1584,6 +1595,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		'WASM' { ast.Language.wasm }
 		else { ast.Language.v }
 	}
+
 	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
@@ -1663,6 +1675,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 					return p.error('wrong field `${key}`, expecting `cap`')
 				}
 			}
+
 			last_pos = p.tok.pos()
 			p.check(.rcbr)
 		}
@@ -1889,6 +1902,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				'indirections' { ast.GenericKindField.indirections }
 				else { ast.GenericKindField.unknown }
 			}
+
 			pos.extend(p.tok.pos())
 			return ast.SelectorExpr{
 				expr:        ast.Ident{
@@ -1915,9 +1929,17 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if !known_var && lit0_is_capital && p.peek_tok.kind == .dot && language == .v
 			&& p.peek_token(2).kind == .name {
 			type_name := p.tok.lit
-			full_type_name := if mod != '' { '${mod}.${type_name}' } else { p.imported_symbols[type_name] or {
-					p.prepend_mod(type_name)} }
-			if func := p.table.find_fn(full_type_name + '__static__' + p.peek_token(2).lit) {
+			mut full_type_name := ''
+			if mod != '' {
+				full_type_name = '${mod}.${type_name}'
+			} else if type_name in p.imported_symbols {
+				full_type_name = p.imported_symbols[type_name]
+			} else {
+				full_type_name = p.prepend_mod(type_name)
+			}
+			static_fn_name := full_type_name + '__static__' + p.peek_token(2).lit
+			if static_fn_name in p.table.fns {
+				func := unsafe { p.table.fns[static_fn_name] }
 				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false, true))
 				pos := p.tok.pos()
 				p.check_name()
@@ -3463,6 +3485,7 @@ fn (mut p Parser) skip_scope() {
 			.eof { break }
 			else {}
 		}
+
 		if br_cnt == 0 {
 			break
 		}

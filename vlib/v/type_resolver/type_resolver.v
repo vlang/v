@@ -248,6 +248,7 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 			return default_typ
 		}
 	}
+
 	return default_typ
 }
 

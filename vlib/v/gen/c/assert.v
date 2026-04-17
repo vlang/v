@@ -108,13 +108,7 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	}
 }
 
-struct UnsupportedAssertCtempTransform {
-	Error
-}
-
-const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
-
-fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) !ast.Expr {
+fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
 	match expr {
 		ast.CallExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -132,7 +126,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
 				if sym.kind == .struct {
 					if (sym.info as ast.Struct).is_union {
-						return unsupported_ctemp_assert_transform
+						return none
 					}
 				}
 				return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -160,7 +154,8 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 			}
 		}
 	}
-	return unsupported_ctemp_assert_transform
+
+	return none
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
@@ -286,6 +281,7 @@ fn (mut g Gen) gen_assert_metainfo_common(node ast.AssertStmt) string {
 		}
 		else {}
 	}
+
 	return metaname
 }
 

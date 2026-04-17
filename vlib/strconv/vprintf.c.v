@@ -294,6 +294,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 						d1 = if positive { u64(x) } else { u64(-x) }
 					}
 				}
+
 				tmp := format_dec_old(d1,
 					pad_ch:    pad_ch
 					len0:      len0

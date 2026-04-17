@@ -1493,6 +1493,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = t.pointer_size
 		}
 	}
+
 	sym.size = size
 	sym.align = align
 	return size, align
@@ -1819,6 +1820,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.aggregate {}
 	}
+
 	mut nr_muls := typ.nr_muls()
 	if typ.has_flag(.shared_f) {
 		nr_muls--
@@ -2049,6 +2051,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	if m := t.find_method(name) {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
 			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
@@ -2093,6 +2096,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2298,6 +2302,7 @@ pub fn (t &TypeSymbol) get_methods() []Fn {
 		}
 		else {}
 	}
+
 	for method in inherited_methods {
 		if method.name in existing_method_names {
 			continue

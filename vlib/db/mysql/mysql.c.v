@@ -252,6 +252,7 @@ pub fn (mut db DB) set_transaction_level(level MySQLTransactionLevel) ! {
 		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
 		.serializable { sql_stmt += 'SERIALIZABLE' }
 	}
+
 	result := db.exec_none(sql_stmt)
 	if result != 0 {
 		db.throw_mysql_error()!

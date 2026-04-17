@@ -796,6 +796,7 @@ fn (mut t Transformer) transform_map_init_expr(expr ast.MapInitExpr) ast.Expr {
 		}
 		else {}
 	}
+
 	// Empty map literals `{}` rely on checker-provided expected type.
 	// Use the inferred map type from the environment when the AST node doesn't carry one.
 	if !have_explicit_map_type {
@@ -1894,6 +1895,7 @@ fn (t &Transformer) get_field_array_elem_interface_type(struct_name string, fiel
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -1977,6 +1979,7 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 		}
 		else {}
 	}
+
 	return none
 }
 

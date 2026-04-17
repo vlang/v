@@ -121,6 +121,7 @@ fn replace_placeholders_with_data(line string, data &map[string]DtmMultiTypeMap,
 				}
 			}
 		}
+
 		rline = rline.replace(placeholder, val_str)
 	}
 	// If no output is found for the placeholder being processed, then the placeholder is escaped
@@ -341,6 +342,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			}
 			else {}
 		}
+
 		// by default, just copy 1:1
 		source.writeln(insert_template_code(fn_name, tmpl_str_start, line, data, state))
 	}

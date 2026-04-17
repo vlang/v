@@ -458,6 +458,7 @@ fn (mut game Game) key_down(key gg.KeyCode) {
 		}
 		else {}
 	}
+
 	if game.state != .running {
 		return
 	}

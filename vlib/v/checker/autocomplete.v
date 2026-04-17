@@ -272,6 +272,7 @@ fn (mut c Checker) ident_hover(node_ ast.Expr) {
 		}
 		else {}
 	}
+
 	if declaration == '' {
 		exit(0)
 	}
@@ -456,6 +457,7 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 		}
 		else {}
 	}
+
 	if pos.file_idx != -1 {
 		println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
 	}
@@ -631,6 +633,7 @@ fn (c &Checker) vls_gen_mod_type_details(mut details []Detail, mod string, kinds
 						'${sym.kind}'
 					}
 				}
+
 				if info := c.table.vls_info['${key}_${sym.name}'] {
 					doc = info.doc
 				}
@@ -699,6 +702,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 		}
 		else {}
 	}
+
 	// Aliases and other types can have methods, add them
 	for method in sym.methods {
 		method_ret_type := c.table.sym(method.return_type)
@@ -756,6 +760,7 @@ fn (c &Checker) vls_map_v_kind_to_lsp_kind(kind ast.Kind) DetailKind {
 			return .text
 		}
 	}
+
 	return .text
 }
 

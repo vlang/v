@@ -266,6 +266,7 @@ fn new_udp_socket_for_remote(raddr Addr) !&UdpSocket {
 			panic('Invalid family')
 		}
 	}
+
 	mut sock := new_udp_socket(addr)!
 	sock.has_r = true
 	sock.r = raddr

@@ -8,6 +8,31 @@ import v.token
 import v.util
 import os
 
+fn table_fn_lookup(table &ast.Table, name string) (ast.Fn, bool) {
+	if name !in table.fns {
+		return ast.Fn{}, false
+	}
+	return unsafe { table.fns[name] }, true
+}
+
+fn comptime_define_idx(attrs []ast.Attr) int {
+	for idx in 0 .. attrs.len {
+		if attrs[idx].kind == .comptime_define {
+			return idx
+		}
+	}
+	return ast.invalid_type_idx
+}
+
+fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) token.Pos {
+	for method in sym.methods {
+		if method.name == name {
+			return method.name_pos
+		}
+	}
+	return fallback
+}
+
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
@@ -53,13 +78,22 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	p.check(.lpar)
 	args := p.call_args()
 	if p.tok.kind != .rpar && !p.pref.is_vls {
-		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
+		mut params := []ast.Param{}
+		fn_info, has_fn_info := table_fn_lookup(p.table, fn_name)
+		if has_fn_info {
+			params = fn_info.params.clone()
+		} else {
+			mod_fn_info, has_mod_fn_info := table_fn_lookup(p.table, '${p.mod}.${fn_name}')
+			if has_mod_fn_info {
+				params = mod_fn_info.params.clone()
+			}
+		}
 		min_required_params := min_required_call_args(params)
 		if args.len < min_required_params && p.prev_tok.kind != .comma {
 			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
 			p.unexpected_with_pos(pos, expecting: '`,`')
 		} else if args.len > params.len {
-			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
+			ok_arg_pos := if params.len > 0 { args[params.len - 1].pos } else { args[0].pos }
 			pos := token.Pos{
 				...ok_arg_pos
 				col: u16(ok_arg_pos.col + ok_arg_pos.len)
@@ -611,7 +645,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
-	conditional_ctdefine_idx := fn_attrs.find_comptime_define() or { -1 }
+	conditional_ctdefine_idx := comptime_define_idx(fn_attrs)
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -707,9 +741,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
-					if enum_fn := type_sym.find_method(name) {
-						name_pos = enum_fn.name_pos
-					}
+					name_pos = type_method_name_pos(type_sym, name, name_pos)
 					p.error_with_pos('duplicate method `${name}`, `${name}` is an enum type built-in method',
 						name_pos)
 				} else {
@@ -774,6 +806,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			.power_assign { '**' }
 			else { 'unknown op' }
 		}
+
 		if type_sym.has_method(extracted_op) {
 			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
 		}
@@ -799,6 +832,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			else {}
 		}
+
 		if rec_generic_types.len > 0 {
 			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(),
 				'rec_generic_types') or { return ast.FnDecl{
@@ -881,7 +915,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
 	file_mode := p.file_backend_mode
 	if is_main {
-		if _ := p.table.find_fn('main.main') {
+		if 'main.main' in p.table.fns {
 			if '.' in os.args {
 				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
 perhaps there are multiple V programs in this directory, and you need to
@@ -983,8 +1017,10 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
+
 		if language == .v {
-			if existing := p.table.fns[name] {
+			existing, has_existing := table_fn_lookup(p.table, name)
+			if has_existing {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function

@@ -1499,6 +1499,7 @@ fn (b &Builder) try_eval_const_float(expr ast.Expr) f64 {
 		}
 		else {}
 	}
+
 	return 0.0
 }
 
@@ -1651,6 +1652,7 @@ fn parse_const_uint_literal(lit string) u64 {
 			base == 16 && ch >= `A` && ch <= `F` { u64(ch - `A` + 10) }
 			else { break }
 		}
+
 		if digit >= base {
 			break
 		}
@@ -1735,6 +1737,7 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 					i64(0)
 				}
 			}
+
 			return result2
 		}
 		ast.PrefixExpr {
@@ -1780,6 +1783,7 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -1881,6 +1885,7 @@ fn (b &Builder) try_eval_const_string(expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -3503,6 +3508,7 @@ fn process_v_escapes(s string) string {
 					continue
 				}
 			}
+
 			i += 2
 		} else {
 			result << s[i]
@@ -3648,6 +3654,7 @@ fn (mut b Builder) prepare_snprintf_arg(val ValueID, fmt string) ValueID {
 		}
 		else {}
 	}
+
 	return val
 }
 
@@ -5485,6 +5492,7 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			'O_CLOEXEC' { '16777216' }
 			else { '' }
 		}
+
 		if c_const_val.len > 0 {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), c_const_val)
 		}
@@ -5509,6 +5517,7 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			'stdin' { '__stdinp' }
 			else { c_name }
 		}
+
 		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)

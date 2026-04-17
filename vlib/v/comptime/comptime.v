@@ -129,6 +129,7 @@ pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.TypeDecl {}
 	}
+
 	return node
 }
 
@@ -187,6 +188,7 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 								ast.IdentFn { expr.left.expr.info.typ }
 								ast.IdentVar { expr.left.expr.info.typ }
 							}
+
 							if ident_typ != ast.no_type {
 								return c.check_type_equality(ident_typ, expr.right)!
 							}
@@ -219,6 +221,7 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 		}
 		else {}
 	}
+
 	return error('Cannot solve')
 }
 
@@ -285,6 +288,7 @@ pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
 			return c.expr(mut node)
 		}
 	}
+
 	return node
 }
 
@@ -473,6 +477,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return node
 }
 
@@ -497,5 +502,6 @@ fn (mut c Comptime) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQu
 			}
 		}
 	}
+
 	return item
 }

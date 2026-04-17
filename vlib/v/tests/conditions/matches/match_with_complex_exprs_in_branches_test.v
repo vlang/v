@@ -12,6 +12,7 @@ fn test_match_with_array_map_in_branches() {
 			''
 		}
 	}
+
 	println(ret)
 	assert ret == "['0', '1']"
 }
@@ -28,6 +29,7 @@ fn test_match_expr_of_multi_expr_stmts() {
 			int(0)
 		}
 	}
+
 	println(ret)
 	assert ret == 2
 }
@@ -39,6 +41,7 @@ fn test_match_expression_on_complex_bool_conditions() {
 		(s[1] == `e`) { 'second' }
 		else { 'not found' }
 	}
+
 	println(x)
 	assert x == 'first'
 }

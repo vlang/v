@@ -97,6 +97,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			// Prefer the bundled header: older OpenBSD libgc headers still use the
+			// unsupported `"X"` asm constraint in `GC_reachable_here` under tcc.
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L/usr/local/lib
 			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")

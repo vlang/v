@@ -1,10 +1,5 @@
 module os
 
-// Eof error means that we reach the end of the file.
-pub struct Eof {
-	Error
-}
-
 // NotExpected is a generic error that means that we receave a not expected error.
 pub struct NotExpected {
 	cause string

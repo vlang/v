@@ -8,6 +8,24 @@ import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
+fn first_attr_by_name(attrs []ast.Attr, name string) (ast.Attr, bool) {
+	for attr in attrs {
+		if attr.name == name {
+			return attr, true
+		}
+	}
+	return ast.Attr{}, false
+}
+
+fn comptime_define_attr_idx(attrs []ast.Attr) int {
+	for idx in 0 .. attrs.len {
+		if attrs[idx].kind == .comptime_define {
+			return idx
+		}
+	}
+	return ast.invalid_type_idx
+}
+
 @[inline]
 fn (c &Checker) implicit_mutability_enabled() bool {
 	return c.pref.disable_explicit_mutability
@@ -140,6 +158,7 @@ fn (mut c Checker) effective_fn_generic_names(node &ast.FnDecl) []string {
 		}
 		else {}
 	}
+
 	return c.table.generic_type_names(node.receiver.typ)
 }
 
@@ -380,7 +399,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && node.attrs.len > 0 {
 		required_args_attr := ['export', '_linker_section']
 		for attr_name in required_args_attr {
-			if attr := node.attrs.find_first(attr_name) {
+			attr, has_attr := first_attr_by_name(node.attrs, attr_name)
+			if has_attr {
 				if attr.arg == '' {
 					c.error('missing argument for @[${attr_name}] attribute', attr.pos)
 				} else if attr_name == 'export' {
@@ -420,7 +440,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.language == .v && node.return_type.clear_option_and_result() == ast.any_type {
 			c.error('cannot use type `any` here', node.return_type_pos)
 		}
-		if ct_attr_idx := node.attrs.find_comptime_define() {
+		ct_attr_idx := comptime_define_attr_idx(node.attrs)
+		if ct_attr_idx != ast.invalid_type_idx {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
 			c.error('only functions that do NOT return values can have `@[if ${sexpr}]` tags',
 				node.pos)
@@ -1164,7 +1185,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	mut can_use_outer_generic_context := node.decl.generic_names.len > 0
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
-	c.cur_anon_fn = unsafe { &node }
+	c.cur_anon_fn = unsafe { node }
 	mut has_generic := false
 	for mut var in node.inherited_vars {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
@@ -1339,6 +1360,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			left_type = c.expr(mut node.left)
 		}
 	}
+
 	if node.name == '' {
 		left_type = c.check_expr_option_or_result_call(node.left, left_type)
 	} else {
@@ -1518,6 +1540,7 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 			return false
 		}
 	}
+
 	return false
 }
 
@@ -1603,6 +1626,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				return ast.void_type
 			}
 		}
+
 		panic('unreachable')
 	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .json_encode {
 		c.error('json.encode cannot handle shared data', node.pos)
@@ -3063,6 +3087,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 				else {}
 			}
+
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
 				if m := c.table.find_method(type_sym, method_name) {
@@ -3188,6 +3213,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					else {}
 				}
+
 				node.return_type = info.func.return_type
 				if info.func.return_type.has_flag(.generic) {
 					node.return_type_generic = info.func.return_type
@@ -3291,6 +3317,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 						}
 						else {}
 					}
+
 					if left_sym.generic_types.len > 0 {
 						generic_names := left_sym.generic_types.map(c.table.sym(it).name).join(', ')
 						sname = '${left_sym.ngname}<${generic_names}>'
@@ -3387,6 +3414,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		else {}
 	}
+
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 	if method_generic_names_len > 0 && concrete_types.len == method_generic_names_len
 		&& concrete_types.all(!it.has_flag(.generic))
@@ -3841,7 +3869,7 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, generic_names [
 			}
 		}
 		lambda.call_ctx = unsafe { node }
-		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, caller_generic_names,
+		lambda_concrete_types := c.generic_lambda_concrete_types(lambda, generic_names,
 			node.concrete_types)
 		if lambda_concrete_types.len == 0 {
 			return
@@ -4471,6 +4499,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 		}
 		else {}
 	}
+
 	node.receiver_type = node.left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
@@ -4711,6 +4740,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				arg_type
 			}
 		}
+
 		normalized_ret_type := if c.table.sym(ret_type).kind == .alias {
 			unaliased_ret_type := c.table.unaliased_type(ret_type)
 			if unaliased_ret_type.has_option_or_result() {
@@ -5002,6 +5032,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				arg_type
 			}
 		}
+
 		node.return_type = c.table.find_or_register_array_fixed(c.unwrap_generic(ret_type),
 			array_info.size, array_info.size_expr, false)
 		if node.return_type.has_flag(.shared_f) {

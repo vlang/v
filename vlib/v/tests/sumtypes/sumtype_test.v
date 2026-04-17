@@ -311,6 +311,7 @@ fn test_int_cast_to_sumtype() {
 			assert false
 		}
 	}
+
 	// var
 	i := 111
 	b := Abc(i)
@@ -596,6 +597,7 @@ fn handle(e Expr) string {
 			return 'if'
 		}
 	}
+
 	return ''
 }
 

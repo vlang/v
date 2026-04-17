@@ -169,6 +169,7 @@ fn (kind OperationKind) to_str() string {
 		.in { 'IN' }
 		.not_in { 'NOT IN' }
 	}
+
 	return str
 }
 
@@ -685,6 +686,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 								'/'
 							}
 						}
+
 						str += '${d.name} ${op} ${qm}'
 					} else {
 						str += '${qm}'
@@ -706,6 +708,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 			str += 'DELETE FROM ${q}${table.name}${q} WHERE '
 		}
 	}
+
 	// where
 	if kind == .update || kind == .delete {
 		str += gen_where_clause(where, q, qm, num, mut &c)

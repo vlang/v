@@ -320,6 +320,7 @@ pub fn (mut c Arm64) cg_gen_exit(expr ast.Expr) {
 			c.g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
+
 	match c.g.pref.os {
 		.macos {
 			c.mov(.x0, return_code)
@@ -334,6 +335,7 @@ pub fn (mut c Arm64) cg_gen_exit(expr ast.Expr) {
 			c.g.n_error('unsupported os ${c.g.pref.os}')
 		}
 	}
+
 	c.svc()
 }
 
@@ -346,6 +348,7 @@ pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 			c.g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
+
 	c.mov(.x0, 0)
 	c.svc()
 }

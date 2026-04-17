@@ -643,6 +643,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 								`s` { current_flags.dot_all = true }
 								else {}
 							}
+
 							pos++
 						}
 						if pos < pattern.len {
@@ -826,6 +827,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 					}
 					else {}
 				}
+
 				if pos < pattern.len && pattern[pos] == `?` {
 					q.greedy = false
 					pos++
@@ -1089,6 +1091,7 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 					}
 				}
 			}
+
 			continue
 
 			backtrack:
