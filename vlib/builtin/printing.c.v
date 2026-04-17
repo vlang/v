@@ -55,9 +55,6 @@ pub fn flush_stdout() {
 	$if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
-	} $else $if native {
-		// Native backend uses C.write() directly, no libc buffering to flush.
-		// C.stdout data symbol cannot be resolved through GOT.
 	} $else {
 		C.fflush(C.stdout)
 	}
@@ -68,8 +65,6 @@ pub fn flush_stderr() {
 	$if freestanding {
 		not_implemented := 'flush_stderr is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
-	} $else $if native {
-		// Native backend uses C.write() directly, no libc buffering to flush.
 	} $else {
 		C.fflush(C.stderr)
 	}

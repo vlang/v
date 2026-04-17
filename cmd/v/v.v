@@ -290,9 +290,6 @@ fn rebuild(prefs &pref.Preferences) {
 		.js_node, .js_freestanding, .js_browser {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
-		.native {
-			util.launch_tool(prefs.is_verbose, 'builders/native_builder', os.args[1..])
-		}
 		.interpret {
 			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
 		}

@@ -11,7 +11,7 @@ pub const valid_comptime_if_platforms = ['amd64', 'i386', 'aarch64', 'arm64', 'a
 pub const valid_comptime_if_cpu_features = ['x64', 'x32', 'little_endian', 'big_endian']
 pub const valid_comptime_if_other = ['apk', 'js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 	'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-	'interpreter', 'es5', 'profile', 'wasm32', 'wasm32_wasi', 'fast_math', 'native', 'autofree']
+	'interpreter', 'es5', 'profile', 'wasm32', 'wasm32_wasi', 'fast_math', 'autofree']
 pub const valid_comptime_not_user_defined = all_valid_comptime_idents()
 pub const valid_comptime_compression_types = ['none', 'zlib']
 
@@ -158,9 +158,6 @@ pub fn eval_comptime_not_user_defined_ident(ident string, the_pref &pref.Prefere
 			'fast_math' {
 				is_true = the_pref.fast_math
 			}
-			'native' {
-				is_true = the_pref.backend == .native
-			}
 			'autofree' {
 				is_true = the_pref.autofree
 			}
@@ -203,7 +200,6 @@ pub const system_ident_map = {
 	// Backend
 	'js':                 '_VJS'
 	'wasm32_emscripten':  '__EMSCRIPTEN__'
-	'native':             '_VNATIVE'
 	// Compiler
 	'gcc':                '__V_GCC__'
 	'tinyc':              '__TINYC__'

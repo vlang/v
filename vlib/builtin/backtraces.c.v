@@ -10,8 +10,6 @@ pub fn print_backtrace() {
 	$if !no_backtrace ? {
 		$if freestanding {
 			println(bare_backtrace())
-		} $else $if native {
-			// TODO: native backtrace solution
 		} $else $if tinyc {
 			C.tcc_backtrace(c'Backtrace')
 		} $else $if use_libbacktrace ? {

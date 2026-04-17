@@ -23,16 +23,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint('     file: '); eprint(file); eprint(':');
 	    C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(vcurrent_hash())
-		$if !vinix && !native {
+		$if !vinix {
 			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
 		eprintln('=========================================')
 		flush_stdout()
 		// vfmt on
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -88,15 +86,13 @@ pub fn panic(s string) {
 		eprintln(s)
 		eprint(' v hash: ')
 		eprintln(vcurrent_hash())
-		$if !vinix && !native {
+		$if !vinix {
 			eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
 		flush_stdout()
 		// vfmt on
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)

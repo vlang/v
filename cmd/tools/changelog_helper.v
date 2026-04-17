@@ -15,7 +15,6 @@ enum Category {
 	web
 	orm
 	db
-	native
 	cgen
 	js_backend
 	comptime
@@ -46,8 +45,6 @@ const category_titles = '#### Improvements in the language
 #### ORM
 
 #### Database drivers
-
-#### Native backend
 
 #### C backend
 
@@ -195,8 +192,6 @@ fn (mut app App) process_line(text string) ! {
 		category = .compiler_internals
 	} else if is_improvements(text) {
 		category = .improvements
-	} else if is_native(text) {
-		category = .native
 	} else if is_vfmt(text) {
 		category = .vfmt
 	} else if text.contains('docs:') || text.contains('doc:') {
@@ -297,7 +292,6 @@ const category_map = {
 	.web:                '#### Web'
 	.orm:                '#### ORM'
 	.db:                 '#### Database drivers'
-	.native:             '#### Native backend'
 	.cgen:               '#### C backend'
 	.js_backend:         '#### JavaScript backend'
 	.comptime:           '#### Comptime'
@@ -326,7 +320,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	// Trim "prefix:" for some categories
 	// mut capitalized := false
 	mut has_prefix := true
-	if l.category in [.cgen, .checker, .improvements, .native, .orm, .interpreter] {
+	if l.category in [.cgen, .checker, .improvements, .orm, .interpreter] {
 		has_prefix = false
 		if semicolon_pos := line_text.index(': ') {
 			prefix := line_text[..semicolon_pos]
@@ -543,14 +537,6 @@ const web_strings = [
 
 fn is_web(text string) bool {
 	return is_xxx(text, web_strings)
-}
-
-const native_strings = [
-	'native:',
-]
-
-fn is_native(text string) bool {
-	return is_xxx(text, native_strings)
 }
 
 const vfmt_strings = [

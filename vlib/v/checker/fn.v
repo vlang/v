@@ -1895,16 +1895,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			return ret_typ
 		}
 	}
-	mut is_native_builtin := false
-	if !found && c.pref.backend == .native {
-		if fn_name in ast.native_builtins {
-			unsafe { c.table.fns[fn_name].usages++ }
-			found = true
-			func = unsafe { c.table.fns[fn_name] }
-			c.mark_fn_decl_as_referenced(func.fkey())
-			is_native_builtin = true
-		}
-	}
 	if !found && c.pref.is_vsh {
 		// TODO: test this hack more extensively
 		os_name := 'os.${fn_name}'
@@ -1922,13 +1912,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			unsafe { c.table.fns[os_name].usages++ }
 			c.mark_fn_decl_as_referenced(f.fkey())
 		}
-	}
-	if is_native_builtin {
-		if args_len > 0 && fn_name in print_everything_fns {
-			c.builtin_args(mut node, fn_name, func)
-			return func.return_type
-		}
-		return ast.void_type
 	}
 	// check for arg (var) of fn type
 	if !found {

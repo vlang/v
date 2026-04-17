@@ -53,10 +53,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			println('> used_fn, found matching symbol: ${m}')
 		}
 	}
-	if pref_.backend == .native {
-		// Note: this is temporary, until the native backend supports more features!
-		all_fn_root_names << 'main.main'
-	} else {
+	{
 		mut core_fns := [
 			'main.main',
 		]

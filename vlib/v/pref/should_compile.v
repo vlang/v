@@ -63,9 +63,6 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
 			continue
 		}
-		if prefs.backend == .native && !prefs.should_compile_native(file) {
-			continue
-		}
 		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
 			continue
 		}
@@ -152,18 +149,10 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'solaris.c.v',
 		'_',
-		'native.v',
-		'_',
 		'wasm32_emscripten.c.v',
 		'_',
 	])
 	return res
-}
-
-pub fn (prefs &Preferences) should_compile_native(file string) bool {
-	// allow custom filtering for native backends,
-	// but if there are no other rules, default to the c backend rules
-	return prefs.should_compile_c(file)
 }
 
 // TODO: Rework this using is_target_of()
@@ -178,7 +167,7 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os == .all {
 		return true
 	}
-	if prefs.backend != .native && file.ends_with('_native.v') {
+	if file.ends_with('_native.v') {
 		return false
 	}
 	if prefs.building_v && prefs.output_cross_c && file.ends_with('_windows.v') {

@@ -165,10 +165,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		eprintln('On Android no backtrace is available.')
 		return false
 	}
-	$if native {
-		eprintln('native backend does not support backtraces yet.')
-		return false
-	} $else $if no_backtrace ? {
+	$if no_backtrace ? {
 		return false
 	} $else {
 		$if linux && !freestanding {

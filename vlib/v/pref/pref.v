@@ -61,7 +61,6 @@ pub enum Backend {
 	js_node         // The JavaScript NodeJS backend
 	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
-	native          // The Native backend
 	wasm            // The WebAssembly backend
 }
 
@@ -1088,7 +1087,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					continue
 				}
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, wasm')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1409,7 +1408,7 @@ pub fn backend_from_string(s string) !Backend {
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }
 		'wasm' { .wasm }
-		'native' { .native }
+		'native' { eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.') }
 		'go' { .golang }
 		else { error('Unknown backend type ${s}') }
 	}

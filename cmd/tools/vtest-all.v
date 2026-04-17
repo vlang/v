@@ -20,8 +20,6 @@ const vargs = args_string.all_before('test-all')
 
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
-const hw_native_no_builtin_size_limit = 300
-
 const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 
 const clang_path = os.find_abs_path_of_executable('clang') or { '' }
@@ -189,48 +187,6 @@ fn get_all_commands() []Command {
 			line:  '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
-		// Note: -experimental is used here, just to suppress the warnings,
-		// that are otherwise printed by the native backend,
-		// until globals and hash statements *are implemented*:
-		$if linux {
-			res << Command{
-				line:  '${vexe} -experimental -b native run examples/native/hello_world.v > /dev/null'
-				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
-			}
-			res << Command{
-				line:     '${vexe} -no-builtin -experimental -b native examples/hello_world.v > /dev/null'
-				okmsg:    'V compiles examples/hello_world.v on the native backend for linux with `-no-builtin` & the executable is <= ${hw_native_no_builtin_size_limit} bytes'
-				rmfile:   'examples/hello_world'
-				after_cb: fn () ! {
-					file := 'examples/hello_world'
-					if !os.exists(file) {
-						return error('>> file ${file} does not exist')
-					}
-					if os.file_size(file) > hw_native_no_builtin_size_limit {
-						return error('>> file ${file} bigger than ${hw_native_no_builtin_size_limit} bytes')
-					}
-				}
-			}
-		}
-		// only compilation:
-		res << Command{
-			line:   '${vexe} -os linux -experimental -b native -o hw.linux examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the native backend for linux'
-			rmfile: ['hw.linux', 'hw.linux.o']
-		}
-		res << Command{
-			line:   '${vexe} -os macos -experimental -b native -o hw.macos examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the native backend for macos'
-			rmfile: ['hw.macos', 'hw.macos.o']
-		}
-		$if windows {
-			res << Command{
-				line:   '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
-				okmsg:  'V compiles hello_world.v on the native backend for windows'
-				rmfile: ['hw.exe', 'hw.o']
-			}
-		}
-		//
 		res << Command{
 			line:   '${vexe} -b js -o hw.js examples/hello_world.v'
 			okmsg:  'V compiles hello_world.v on the JS backend'
