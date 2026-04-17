@@ -7,7 +7,7 @@ module os
 #include <sys/types.h>
 #include <sys/statvfs.h>
 #include <utime.h>
-#include "@VEXEROOT/vlib/os/execute_capture_nix.h"
+#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
 
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
