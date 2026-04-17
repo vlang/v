@@ -7594,7 +7594,12 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		g.writeln('}));\n')
 	}
 	select_result := g.new_tmp_var()
-	g.write('int ${select_result} = sync__channel_select_lang(&${chan_array}, ${directions_array}, &${objs_array}, ')
+	// `for select` (is_expr) needs `channel_select` which uses `.closed` mode so that
+	// closed channels are counted and `-2` is returned when all are closed, terminating
+	// the loop. Plain `select` uses `channel_select_lang` with `.ready` mode so that
+	// closed receive cases return zero values (matching Go semantics).
+	select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
+	g.write('int ${select_result} = ${select_fn}(&${chan_array}, ${directions_array}, &${objs_array}, ')
 	if has_timeout {
 		g.expr(timeout_expr)
 	} else if has_else {

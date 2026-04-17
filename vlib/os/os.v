@@ -5,6 +5,11 @@ module os
 
 import strings
 
+// Eof error means that we reach the end of the file.
+pub struct Eof {
+	Error
+}
+
 pub const max_path_len = 4096
 
 pub const wd_at_startup = getwd()
