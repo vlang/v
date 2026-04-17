@@ -919,8 +919,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
 				} else if left_final_sym.kind !in [.interface, .sum_type]
-					&& !c.comptime.is_comptime(node.left)
-					&& !c.is_orig_sumtype(node.left) {
+					&& !c.comptime.is_comptime(node.left) && !c.is_orig_sumtype(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
 					variant_typ := if left_type.nr_muls() > 0
