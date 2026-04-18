@@ -211,8 +211,8 @@ fn has_complete_body(buf &u8, buf_len int) bool {
 					break
 				}
 			}
-			if i + 3 < buf_len && buf[i] == `\r` && buf[i + 1] == `\n`
-				&& buf[i + 2] == `\r` && buf[i + 3] == `\n` {
+			if i + 3 < buf_len && buf[i] == `\r` && buf[i + 1] == `\n` && buf[i + 2] == `\r`
+				&& buf[i + 3] == `\n` {
 				header_end = i + 4
 				break
 			}
