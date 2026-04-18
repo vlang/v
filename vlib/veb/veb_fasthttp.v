@@ -5,6 +5,8 @@ module veb
 
 import fasthttp
 import net.http
+import strconv
+import strings
 import time
 import net.urllib
 
@@ -74,9 +76,17 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 
 	s := req.buffer.bytestr()
 	// Parse the raw request bytes into a standard `http.Request`.
-	req2 := http.parse_request_str(s.clone()) or {
+	mut req2 := http.parse_request_str(s.clone()) or {
 		return fasthttp.HttpResponse{
 			content: 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+		}
+	}
+	// If the request uses chunked transfer encoding, decode the chunked body
+	if transfer_encoding_is_chunked(req2.header) {
+		req2.data = decode_chunked_body(req2.data) or {
+			return fasthttp.HttpResponse{
+				content: 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+			}
 		}
 	}
 	// Create and populate the `veb.Context`.
@@ -161,4 +171,36 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	user_context.Context = ctx
 	handle_route[A, X](mut app, mut user_context, url, host, params.routes)
 	return &user_context.Context
+}
+
+// decode_chunked_body decodes a chunked transfer-encoded body string
+// into the raw body content.
+fn decode_chunked_body(data string) !string {
+	mut sb := strings.new_builder(data.len)
+	mut pos := 0
+	for pos < data.len {
+		// Find the end of the chunk size line
+		line_end := data.index_after_('\r\n', pos)
+		if line_end == -1 {
+			return error('invalid chunked body: missing chunk size line ending')
+		}
+		chunk_size_str := data[pos..line_end].all_before(';').trim_space()
+		if chunk_size_str.len == 0 {
+			return error('invalid chunked body: empty chunk size')
+		}
+		chunk_size := int(strconv.parse_uint(chunk_size_str, 16, 64) or {
+			return error('invalid chunked body: bad chunk size')
+		})
+		pos = line_end + 2 // skip past \r\n
+		if chunk_size == 0 {
+			// Terminal chunk - skip trailers
+			break
+		}
+		if pos + chunk_size > data.len {
+			return error('invalid chunked body: chunk data truncated')
+		}
+		sb.write_string(data[pos..pos + chunk_size])
+		pos += chunk_size + 2 // skip chunk data + \r\n delimiter
+	}
+	return sb.str()
 }

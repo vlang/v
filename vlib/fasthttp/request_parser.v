@@ -145,3 +145,97 @@ fn (slice Slice) to_string(buffer []u8) string {
 	}
 	return buffer[slice.start..slice.start + slice.len].bytestr()
 }
+
+// has_chunked_transfer_encoding_in_buf scans the header bytes for a
+// "Transfer-Encoding:" header whose value contains "chunked" (case-insensitive).
+@[direct_array_access]
+fn has_chunked_transfer_encoding_in_buf(buf &u8, header_end int) bool {
+	te_lower := 'transfer-encoding:'
+	for i := 0; i < header_end - te_lower.len; i++ {
+		unsafe {
+			if buf[i] != `\n` {
+				continue
+			}
+			pos := i + 1
+			if pos + te_lower.len > header_end {
+				continue
+			}
+			mut matched := true
+			for j := 0; j < te_lower.len; j++ {
+				mut ch := buf[pos + j]
+				if ch >= `A` && ch <= `Z` {
+					ch = ch + 32
+				}
+				if ch != te_lower[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				chunked_str := 'chunked'
+				for val_start := pos + te_lower.len; val_start < header_end - chunked_str.len; val_start++ {
+					if buf[val_start] == `\r` || buf[val_start] == `\n` {
+						break
+					}
+					mut cmatch := true
+					for k := 0; k < chunked_str.len; k++ {
+						mut ch2 := buf[val_start + k]
+						if ch2 >= `A` && ch2 <= `Z` {
+							ch2 = ch2 + 32
+						}
+						if ch2 != chunked_str[k] {
+							cmatch = false
+							break
+						}
+					}
+					if cmatch {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// parse_content_length_from_buf scans the header bytes for a Content-Length header
+// and returns its integer value, or -1 if not found.
+@[direct_array_access]
+fn parse_content_length_from_buf(buf &u8, header_end int) int {
+	cl_lower := 'content-length:'
+	for i := 0; i < header_end - cl_lower.len; i++ {
+		unsafe {
+			if buf[i] != `\n` {
+				continue
+			}
+			pos := i + 1
+			if pos + cl_lower.len > header_end {
+				continue
+			}
+			mut matched := true
+			for j := 0; j < cl_lower.len; j++ {
+				mut ch := buf[pos + j]
+				if ch >= `A` && ch <= `Z` {
+					ch = ch + 32
+				}
+				if ch != cl_lower[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				mut start := pos + cl_lower.len
+				for start < header_end && buf[start] == ` ` {
+					start++
+				}
+				mut val := 0
+				for start < header_end && buf[start] >= `0` && buf[start] <= `9` {
+					val = val * 10 + int(buf[start] - `0`)
+					start++
+				}
+				return val
+			}
+		}
+	}
+	return -1
+}
