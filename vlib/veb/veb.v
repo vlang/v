@@ -295,11 +295,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		ctx.custom_mime_types = global_app.static_mime_types.clone()
 		mut user_context := X{}
 		user_context.Context = ctx
-		if serve_if_static[X](static_handler_config(global_app.static_files,
-			global_app.static_mime_types, global_app.static_hosts, global_app.enable_static_gzip,
-			global_app.enable_static_zstd, global_app.enable_static_compression,
-			global_app.static_compression_max_size, global_app.static_compression_mime_types,
-			global_app.enable_markdown_negotiation), mut user_context, url, host)
+		if serve_if_static[A, X](global_app, mut user_context, url, host)
 		{
 			return &user_context.Context
 		}
@@ -458,10 +454,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	$if A is StaticApp {
-		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
-			app.static_hosts, app.enable_static_gzip, app.enable_static_zstd,
-			app.enable_static_compression, app.static_compression_max_size,
-			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
+		if serve_if_static[A, X](app, mut user_context,
 			url, host)
 		{
 			// successfully served a static file
@@ -612,7 +605,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 @[manualfree]
-fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
+fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
 	static_handler := app_static_handler(app)
