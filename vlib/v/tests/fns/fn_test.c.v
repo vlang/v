@@ -51,7 +51,7 @@ interface MyInterface {}
 
 type F9 = fn (MyInterface)
 
-fn C.atoi(&u8) i32
+fn C.atoi(const_s &char) i32
 fn C.freec(ptr voidptr)
 
 @[trusted]

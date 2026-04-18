@@ -3998,6 +3998,25 @@ fn (mut g Gen) expr_needs_heap_promotion_for_interface_cast(expr ast.Expr) bool 
 	}
 }
 
+fn (g &Gen) interface_cast_requires_field_aliasing(expected_type ast.Type, expr ast.Expr) bool {
+	if !expr.is_lvalue() {
+		return false
+	}
+	interface_type := if expected_type.is_ptr() {
+		expected_type.deref()
+	} else {
+		expected_type
+	}
+	interface_sym := g.table.final_sym(interface_type)
+	if interface_sym.kind != .interface {
+		return false
+	}
+	return match interface_sym.info {
+		ast.Interface { interface_sym.info.fields.any(it.is_mut) }
+		else { false }
+	}
+}
+
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
@@ -4027,18 +4046,23 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 
 		is_primitive_to_interface := is_interface_cast && expr is ast.Ident
 			&& g.table.sym(got).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .bool, .rune, .string]
+		preserve_interface_field_aliasing := is_interface_cast
+			&& g.interface_cast_requires_field_aliasing(exp, expr)
 
 		// Interface casts must not store pointers into stack-rooted lvalues such as
 		// local variables or fields on by-value fn args (`p.email`).
-		is_stack_rooted_interface_expr = is_interface_cast && g.interface_expr_needs_heap(expr)
+		is_stack_rooted_interface_expr = is_interface_cast && !preserve_interface_field_aliasing
+			&& g.interface_expr_needs_heap(expr)
 		// Interface casts must not store pointers into expressions without a
 		// stable address, including stack-rooted lvalues and slice results.
-		needs_interface_cast_promotion := is_interface_cast
+		needs_interface_cast_promotion := is_interface_cast && !preserve_interface_field_aliasing
 			&& g.expr_needs_heap_promotion_for_interface_cast(expr)
 		// Value-to-interface conversions should preserve value semantics by storing a detached copy.
 		// The only exception is an explicit mutable borrow, which must keep aliasing the original.
-		needs_interface_value_copy := is_interface_cast && !g.expected_arg_mut && !got_is_ptr
-			&& expr.is_lvalue()
+		// Interfaces with mutable fields also need to alias the original lvalue so field reads/writes
+		// stay connected to the concrete value instead of a detached clone.
+		needs_interface_value_copy := is_interface_cast && !preserve_interface_field_aliasing
+			&& !g.expected_arg_mut && !got_is_ptr && expr.is_lvalue()
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()

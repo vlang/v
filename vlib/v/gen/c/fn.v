@@ -6435,30 +6435,52 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		expected_ref_inner_type := expected_type.deref()
 		expected_ref_inner_sym := g.table.sym(expected_ref_inner_type)
 		if expected_ref_inner_sym.kind in [.interface, .sum_type] {
-			if arg_typ.is_ptr() && arg_typ.deref() == expected_ref_inner_type {
-				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+			mut effective_arg_expr := arg.expr
+			mut effective_arg_typ := arg_typ
+			if expected_ref_inner_sym.kind == .sum_type && arg.expr is ast.CastExpr {
+				cast_expr := arg.expr
+				cast_target_type := g.unwrap_generic(if cast_expr.typ != 0 {
+					cast_expr.typ
+				} else {
+					arg_typ
+				})
+				if cast_target_type.idx() == expected_ref_inner_type.idx()
+					&& cast_expr.expr_type != 0 {
+					effective_arg_expr = cast_expr.expr
+					effective_arg_typ = g.unwrap_generic(cast_expr.expr_type)
+				}
+			}
+			effective_arg_sym := g.table.sym(effective_arg_typ)
+			if effective_arg_typ.is_ptr() && effective_arg_typ.deref() == expected_ref_inner_type {
+				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(effective_arg_expr,
 					expected_ref_inner_type)
-				g.expr(arg.expr)
-			} else if arg_sym.kind == expected_ref_inner_sym.kind
-				&& arg_typ.idx() == expected_ref_inner_type.idx()
-				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
-				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(arg.expr,
+				g.expr(effective_arg_expr)
+			} else if effective_arg_sym.kind == expected_ref_inner_sym.kind
+				&& effective_arg_typ.idx() == expected_ref_inner_type.idx() {
+				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(effective_arg_expr,
 					expected_ref_inner_type)
-				g.write('&')
-				g.expr(arg.expr)
-			} else if arg_typ == ast.nil_type || arg_typ.is_voidptr()
-				|| (arg.expr is ast.UnsafeExpr && arg.expr.expr is ast.Nil) {
+				if effective_arg_expr in [ast.Ident, ast.SelectorExpr] {
+					g.write('&')
+					g.expr(effective_arg_expr)
+				} else {
+					g.write('ADDR(${g.styp(expected_ref_inner_type)}, ')
+					g.expr_with_cast(effective_arg_expr, effective_arg_typ, expected_ref_inner_type)
+					g.write(')')
+				}
+			} else if effective_arg_typ == ast.nil_type
+				|| effective_arg_typ.is_voidptr()
+				|| (effective_arg_expr is ast.UnsafeExpr && effective_arg_expr.expr is ast.Nil) {
 				g.write('((void*)0)')
 			} else {
 				if expected_ref_inner_sym.kind == .sum_type {
 					// `&Variant` -> `&SumType` needs a stable heap-allocated wrapper and
 					// must preserve aliasing with the original variant payload.
-					g.expr_with_cast(arg.expr, arg_typ, expected_type)
+					g.expr_with_cast(effective_arg_expr, effective_arg_typ, expected_type)
 				} else {
 					// interface conversions don't box by reference, so HEAP is needed to
 					// ensure the pointer remains valid after the current scope ends.
 					g.write('HEAP(${expected_ref_inner_sym.cname}, ')
-					g.expr_with_cast(arg.expr, arg_typ, expected_ref_inner_type)
+					g.expr_with_cast(effective_arg_expr, effective_arg_typ, expected_ref_inner_type)
 					g.write(')')
 				}
 			}
