@@ -1119,7 +1119,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						// disallow invalid `t.$(field.name)` type assignment
 						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
 							|| field_sym.kind == .enum) {
-							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
+							c.error('cannot assign to `${ast.Expr(left)}`: ${c.expected_msg(right_type,
 								field_type)}', right.pos())
 						}
 					} else {

@@ -2,6 +2,7 @@ module fasthttp
 
 import net
 import sync.stdatomic
+import time
 
 #include <sys/event.h>
 #include <sys/stat.h>
@@ -52,6 +53,7 @@ mut:
 	write_buf      []u8
 	write_pos      int
 	request_active bool
+	read_start     i64 // monotonic timestamp (in microseconds) when first data was received
 
 	// Sendfile state
 	file_fd  int = -1
@@ -64,6 +66,7 @@ pub mut:
 	family                  net.AddrFamily = .ip6
 	port                    int
 	max_request_buffer_size int = 8192
+	timeout_in_seconds      int = 30
 	socket_fd               int = -1
 	poll_fd                 int = -1 // kqueue fd
 	user_data               voidptr
@@ -80,6 +83,7 @@ pub fn new_server(config ServerConfig) !&Server {
 		family:                  config.family
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
+		timeout_in_seconds:      config.timeout_in_seconds
 		user_data:               config.user_data
 		request_handler:         config.handler
 		running:                 stdatomic.new_atomic(false)
@@ -175,8 +179,96 @@ fn send_pending(c_ptr voidptr) bool {
 	return !(c.write_pos >= c.write_buf.len && c.file_fd == -1)
 }
 
+const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
+
 fn send_bad_request(fd int) {
 	C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len, 0)
+}
+
+fn send_request_timeout(fd int) {
+	C.send(fd, status_408_response.data, status_408_response.len, 0)
+}
+
+// has_complete_body checks if a raw HTTP request buffer contains the full body
+// as indicated by the Content-Length header. Returns true if:
+//   - there is no Content-Length header (body not expected)
+//   - Content-Length is 0
+//   - enough body bytes have been received
+// Returns false only when Content-Length indicates more body data is expected.
+@[direct_array_access]
+fn has_complete_body(buf &u8, buf_len int) bool {
+	// Find end of headers: \r\n\r\n or \n\n
+	mut header_end := -1
+	for i := 0; i < buf_len - 1; i++ {
+		unsafe {
+			if buf[i] == `\n` {
+				if i + 1 < buf_len && buf[i + 1] == `\n` {
+					header_end = i + 2
+					break
+				}
+				if i + 2 < buf_len && buf[i + 1] == `\r` && buf[i + 2] == `\n` {
+					header_end = i + 3
+					break
+				}
+			}
+			if i + 3 < buf_len && buf[i] == `\r` && buf[i + 1] == `\n`
+				&& buf[i + 2] == `\r` && buf[i + 3] == `\n` {
+				header_end = i + 4
+				break
+			}
+		}
+	}
+	if header_end < 0 {
+		return false // headers not complete yet
+	}
+	// Search for Content-Length header (case-insensitive)
+	// Look for "\nContent-Length:" or "\ncontent-length:" at start of a line
+	mut content_length := -1
+	for i := 0; i < header_end - 16; i++ {
+		unsafe {
+			if buf[i] != `\n` {
+				continue
+			}
+			// Start of a line — check for "Content-Length:"
+			mut pos := i + 1
+			// Skip optional \r after \n (for \r\n line endings)
+			cl_lower := 'content-length:'
+			if pos + cl_lower.len > header_end {
+				continue
+			}
+			mut matched := true
+			for j := 0; j < cl_lower.len; j++ {
+				mut ch := buf[pos + j]
+				// to lowercase
+				if ch >= `A` && ch <= `Z` {
+					ch = ch + 32
+				}
+				if ch != cl_lower[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				// Parse the number after "Content-Length: "
+				mut start := pos + cl_lower.len
+				for start < header_end && buf[start] == ` ` {
+					start++
+				}
+				mut val := 0
+				for start < header_end && buf[start] >= `0` && buf[start] <= `9` {
+					val = val * 10 + int(buf[start] - `0`)
+					start++
+				}
+				content_length = val
+				break
+			}
+		}
+	}
+	if content_length <= 0 {
+		return true // no content-length or zero: body complete
+	}
+	body_received := buf_len - header_end
+	return body_received >= content_length
 }
 
 fn handle_write(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
@@ -245,6 +337,7 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 
 	c.write_pos = 0
 	c.read_len = 0
+	c.read_start = 0
 
 	if send_pending(c_ptr) {
 		add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
@@ -275,6 +368,24 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 	if c.read_len >= buf_size {
 		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
 		close_conn(server, kq, c_ptr, mut clients)
+		return
+	}
+
+	// Record when we first started receiving data for this request
+	if c.read_start == 0 {
+		c.read_start = time.sys_mono_now()
+	}
+
+	// Check if the full body has been received according to Content-Length
+	if !has_complete_body(&c.read_buf[0], c.read_len) {
+		// Body not complete yet - check for timeout
+		elapsed_us := time.sys_mono_now() - c.read_start
+		timeout_us := i64(server.timeout_in_seconds) * 1_000_000
+		if elapsed_us >= timeout_us {
+			send_request_timeout(c.fd)
+			close_conn(server, kq, c_ptr, mut clients)
+		}
+		// Otherwise wait for more data on the next kqueue event
 		return
 	}
 
@@ -430,6 +541,21 @@ pub fn (mut s Server) run() ! {
 				handle_read(s, s.poll_fd, event.udata, mut clients)
 			} else if event.filter == i16(C.EVFILT_WRITE) {
 				handle_write(s, s.poll_fd, event.udata, mut clients)
+			}
+		}
+		// Sweep for connections waiting for body data that have timed out
+		if s.timeout_in_seconds > 0 {
+			now := time.sys_mono_now()
+			timeout_us := i64(s.timeout_in_seconds) * 1_000_000
+			for client_fd in clients.keys() {
+				c_ptr := clients[client_fd] or { continue }
+				c := unsafe { &Conn(c_ptr) }
+				if c.read_start > 0 && c.read_len > 0 && !c.request_active {
+					if now - c.read_start >= timeout_us {
+						send_request_timeout(c.fd)
+						close_conn(s, s.poll_fd, c_ptr, mut clients)
+					}
+				}
 			}
 		}
 	}

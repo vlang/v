@@ -77,6 +77,7 @@ pub:
 	family                  net.AddrFamily = .ip6
 	port                    int            = 3000
 	max_request_buffer_size int            = 8192
+	timeout_in_seconds      int            = 30
 	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
 }

@@ -2349,7 +2349,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			call_arg_expr_pos := call_arg.expr.pos()
 			if !call_arg.expr.is_lvalue() {
 				if call_arg.expr is ast.StructInit {
-					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${call_arg.expr}`',
+					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${ast.Expr(call_arg.expr)}`',
 						call_arg_expr_pos)
 				} else {
 					c.error('cannot pass expression as `mut`', call_arg_expr_pos)
@@ -4637,7 +4637,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if node.kind in [.sort, .sorted] {
 		if node.kind == .sort {
 			if node.left is ast.CallExpr {
-				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
+				c.error('the `sort()` method can be called only on mutable receivers, but `${ast.Expr(node.left)}` is a call expression',
 					node.pos)
 			}
 			c.check_for_mut_receiver(mut node.left)
@@ -5028,7 +5028,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	} else if node.kind in [.sort, .sorted] {
 		if node.kind == .sort {
 			if node.left is ast.CallExpr {
-				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
+				c.error('the `sort()` method can be called only on mutable receivers, but `${ast.Expr(node.left)}` is a call expression',
 					node.pos)
 			}
 			c.check_for_mut_receiver(mut node.left)

@@ -846,28 +846,28 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					if expr is ast.IntegerLiteral {
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .int {
-								c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+								c.error('can not matching a int value(`${ast.Expr(expr)}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
 									expr_pos)
 								return
 							}
 						} else if node.cond_type !in ast.integer_type_idxs {
-							c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+							c.error('can not matching a int value(`${ast.Expr(expr)}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
 								expr_pos)
 							return
 						}
 					} else if expr is ast.BoolLiteral && node.cond_type != ast.bool_type {
-						c.error('can not matching a bool value(`${expr}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+						c.error('can not matching a bool value(`${ast.Expr(expr)}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
 							expr_pos)
 						return
 					} else if expr is ast.StringLiteral {
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .string {
-								c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+								c.error('can not matching a string value(`${ast.Expr(expr)}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
 									expr_pos)
 								return
 							}
 						} else if node.cond_type != ast.string_type {
-							c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+							c.error('can not matching a string value(`${ast.Expr(expr)}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
 								expr_pos)
 							return
 						}

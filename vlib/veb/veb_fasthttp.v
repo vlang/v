@@ -50,6 +50,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		port:                    params.port
 		handler:                 parallel_request_handler[A, X]
 		max_request_buffer_size: params.max_request_buffer_size
+		timeout_in_seconds:      params.timeout_in_seconds
 		user_data:               voidptr(request_params)
 	}) or {
 		eprintln('Failed to create server: ${err}')
