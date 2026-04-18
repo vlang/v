@@ -278,7 +278,10 @@ pub fn (s string) int() int {
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
 pub fn (s string) i64() i64 {
-	return i64(JS.parseInt(s.str))
+	mut res := i64(0)
+	#res = new i64(BigInt(s.str))
+
+	return res
 }
 
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
@@ -319,14 +322,14 @@ pub fn (s string) u32() u32 {
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
 pub fn (s string) u64() u64 {
-	return u64(JS.parseInt(s.str))
-}
-
-pub fn (s string) u8() u64 {
-	res := u8(0)
-	#res.val = u8(JS.parseInt(s.str))
+	mut res := u64(0)
+	#res = new u64(BigInt(s.str))
 
 	return res
+}
+
+pub fn (s string) u8() u8 {
+	return u8(JS.parseInt(s.str))
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.

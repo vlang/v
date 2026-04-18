@@ -1,5 +1,14 @@
 module builtin
 
+fn C.setvbuf(voidptr, &char, i32, usize) i32
+
+// set_stream_unbuffered switches a stdio stream to unbuffered mode without using the
+// deprecated `setbuf` API on Windows toolchains.
+@[unsafe]
+fn set_stream_unbuffered(stream voidptr) {
+	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
+}
+
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprintln(s string) {
@@ -90,7 +99,7 @@ pub fn unbuffer_stdout() {
 		not_implemented := 'unbuffer_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
 	} $else {
-		unsafe { C.setbuf(C.stdout, 0) }
+		unsafe { set_stream_unbuffered(C.stdout) }
 	}
 }
 

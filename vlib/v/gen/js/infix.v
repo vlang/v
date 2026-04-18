@@ -219,6 +219,34 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 			}
 			else {}
 		}
+	} else if !g.pref.output_es5
+		&& (left.sym.kind in [.i64, .u64] || right.sym.kind in [.i64, .u64]) {
+		if left.sym.kind in [.i64, .u64] && node.right is ast.IntegerLiteral {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.cast_stack << left.typ
+			g.expr(node.right)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else if right.sym.kind in [.i64, .u64] && node.left is ast.IntegerLiteral {
+			g.cast_stack << right.typ
+			g.expr(node.left)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		}
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
@@ -258,6 +286,34 @@ fn (mut g JsGen) infix_expr_cmp_op(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.gen_deref_ptr(right.typ)
 			g.write(')')
+		}
+	} else if !g.pref.output_es5
+		&& (left.sym.kind in [.i64, .u64] || right.sym.kind in [.i64, .u64]) {
+		if left.sym.kind in [.i64, .u64] && node.right is ast.IntegerLiteral {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.cast_stack << left.typ
+			g.expr(node.right)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else if right.sym.kind in [.i64, .u64] && node.left is ast.IntegerLiteral {
+			g.cast_stack << right.typ
+			g.expr(node.left)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
 		}
 	} else {
 		g.expr(node.left)

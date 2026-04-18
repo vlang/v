@@ -163,11 +163,11 @@ fn (a &array) set_len(i int) {
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	v_sort(mut a, compare)
+	#v_sort(a, compare instanceof voidptr ? compare.val : compare)
 }
 
 pub fn (mut a array) sort_with_compare_old(compare voidptr) {
-	#a.val.arr.arr.sort(compare)
+	#a.val.arr.arr.sort(compare instanceof voidptr ? compare.val : compare)
 }
 
 pub fn (mut a array) sort() {

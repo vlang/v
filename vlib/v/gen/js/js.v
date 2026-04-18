@@ -353,14 +353,14 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	if g.pref.is_stats {
 		g.writeln('let bt = main__start_testing(new int(${all_tfuncs.len}), new string("${g.pref.path}"))')
 	}
-	for tname in all_tfuncs {
+	for i, tname in all_tfuncs {
 		tcname := g.js_name(tname)
 
 		if g.pref.is_stats {
 			g.writeln('main__BenchedTests_testing_step_start(bt,new string("${tcname}"))')
 			g.writeln('try {')
 		}
-		g.writeln('let res = ${tcname}(); if (res instanceof Promise) { await res; }')
+		g.writeln('let res_${i} = ${tcname}(); if (res_${i} instanceof Promise) { await res_${i}; }')
 		if g.pref.is_stats {
 			g.writeln('} finally {')
 			g.writeln('main__BenchedTests_testing_step_end(bt);')
@@ -407,6 +407,30 @@ fn (g &JsGen) get_all_test_function_names() []string {
 		all_tfuncs << tsuite_end
 	}
 	return all_tfuncs
+}
+
+fn (mut g JsGen) write_js_default_value(typ ast.Type) {
+	sym := g.table.sym(g.table.unaliased_type(typ))
+	if sym.kind != .array_fixed {
+		g.write(g.to_js_typ_val(typ))
+		return
+	}
+	info := sym.info as ast.ArrayFixed
+	tmp := g.new_tmp_var()
+	idx := g.new_tmp_var()
+	g.writeln('(function() {')
+	g.inc_indent()
+	g.writeln('const ${tmp} = [];')
+	g.writeln('for (let ${idx} = 0; ${idx} < ${info.size}; ${idx}++) {')
+	g.inc_indent()
+	g.write('${tmp}.push(')
+	g.write_js_default_value(info.elem_type)
+	g.writeln(');')
+	g.dec_indent()
+	g.writeln('}')
+	g.writeln('return new array(new array_buffer({arr: ${tmp}, len: new int(${info.size}), cap: new int(${info.size})}));')
+	g.dec_indent()
+	g.write('})()')
 }
 
 pub fn (mut g JsGen) enter_namespace(name string) {
@@ -2070,7 +2094,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				if field.has_default_expr {
 					g.expr(field.default_expr)
 				} else {
-					g.write('${g.to_js_typ_val(field.typ)}')
+					g.write_js_default_value(field.typ)
 				}
 				g.writeln('\n}')
 			}
@@ -2096,7 +2120,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				} else if field.typ.has_flag(.option) {
 					g.write('none__')
 				} else {
-					g.write('${g.to_js_typ_val(field.typ)}')
+					g.write_js_default_value(field.typ)
 				}
 			}
 			if i < node.fields.len - 1 {
@@ -2208,8 +2232,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
-			t := g.to_js_typ_val(it.elem_type)
-			g.write(t)
+			g.write_js_default_value(it.elem_type)
 		}
 		g.writeln(');')
 		g.dec_indent()
@@ -2240,8 +2263,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
-			t := g.to_js_typ_val(it.elem_type)
-			g.write(t)
+			g.write_js_default_value(it.elem_type)
 		}
 		g.writeln(');')
 		g.dec_indent()
@@ -3858,10 +3880,18 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 
 	// Skip cast if type is the same as the parent caster
 	if g.cast_stack.len > 0 {
-		if g.cast_stack.last() in ast.integer_type_idxs {
+		cast_type := g.cast_stack.last()
+		if cast_type in ast.integer_type_idxs {
+			cast_sym := g.table.final_sym(cast_type)
 			g.write('new ')
-
-			g.write('int(${it.val})')
+			g.write(g.styp(cast_type))
+			g.write('(')
+			if cast_sym.kind in [.i64, .u64] {
+				g.write('"${it.val}"')
+			} else {
+				g.write(it.val)
+			}
+			g.write(')')
 			return
 		}
 	}

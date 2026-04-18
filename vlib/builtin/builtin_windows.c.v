@@ -79,8 +79,8 @@ fn builtin_init() {
 		C.SetConsoleMode(C.GetStdHandle(std_error_handle),
 			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		unsafe {
-			C.setbuf(C.stdout, 0)
-			C.setbuf(C.stderr, 0)
+			set_stream_unbuffered(C.stdout)
+			set_stream_unbuffered(C.stderr)
 		}
 	}
 	$if !no_backtrace ? {

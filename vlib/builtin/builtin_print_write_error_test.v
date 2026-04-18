@@ -20,8 +20,14 @@ fn main() {
 '
 
 fn test_println_does_not_hang_on_failed_stdout_write() {
+	child_source_path := os.join_path(os.vtmp_dir(),
+		'broken_stdout_child_${time.now().unix_milli()}.v')
+	os.write_file(child_source_path, broken_stdout_child_source)!
+	defer {
+		os.rm(child_source_path) or {}
+	}
 	mut p := os.new_process(@VEXE)
-	p.set_args(['-e', broken_stdout_child_source])
+	p.set_args(['run', child_source_path])
 	p.set_redirect_stdio()
 	p.run()
 	defer {

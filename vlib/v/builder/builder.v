@@ -65,13 +65,15 @@ mut:
 	names map[string]bool
 }
 
-fn (mut c CFunctionCallCollector) visit(node &ast.Node) ! {
+fn c_function_call_collector_visit(node &ast.Node, data voidptr) bool {
+	mut c := unsafe { &CFunctionCallCollector(data) }
 	if node is ast.Expr && node is ast.CallExpr {
 		call := node as ast.CallExpr
 		if call.name.starts_with('C.') {
 			c.names[call.name] = true
 		}
 	}
+	return true
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
@@ -443,7 +445,7 @@ fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool
 	mut collector := CFunctionCallCollector{
 		names: map[string]bool{}
 	}
-	walker.walk(mut collector, file)
+	walker.inspect(file, &collector, c_function_call_collector_visit)
 	return collector.names
 }
 
