@@ -3352,6 +3352,17 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 			c.error('duplicate of a module name `${field.name}`', name_pos)
 		}
+		for imp in c.file.imports {
+			imp_alias := if imp.alias.len > 0 { imp.alias } else { imp.mod.all_after_last('.') }
+			if const_name == imp_alias {
+				name_pos := token.Pos{
+					...field.pos
+					len: util.no_cur_mod(field.name, c.mod).len
+				}
+				c.error('const `${const_name}` conflicts with imported module `${imp.mod}`',
+					name_pos)
+			}
+		}
 		if const_name == '_' {
 			name_pos := token.Pos{
 				...field.pos

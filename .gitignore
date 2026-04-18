@@ -1,5 +1,8 @@
 # ignore sub-level untracked files and the v binary
 */**/*
+# unignore checker test files
+!vlib/v/checker/tests/*.vv
+!vlib/v/checker/tests/*.out
 v
 v.exe
 v2
