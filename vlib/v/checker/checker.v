@@ -3680,16 +3680,18 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 											replacement_expr = comptime_lit
 										}
 									}
-									folded_expr :=
-										c.checker_transformer.expr(mut field.expr.obj.expr)
+									if !has_replacement {
+										folded_expr :=
+											c.checker_transformer.expr(mut field.expr.obj.expr)
 
-									if folded_expr is ast.IntegerLiteral {
-										c.check_enum_field_integer_literal(folded_expr, signed,
-											node.is_multi_allowed, senum_type, field.expr.pos, mut
-											useen, enum_umin, enum_umax, mut iseen, enum_imin,
-											enum_imax)
-										has_replacement = true
-										replacement_expr = folded_expr
+										if folded_expr is ast.IntegerLiteral {
+											c.check_enum_field_integer_literal(folded_expr, signed,
+												node.is_multi_allowed, senum_type, field.expr.pos, mut
+												useen, enum_umin, enum_umax, mut iseen, enum_imin,
+												enum_imax)
+											has_replacement = true
+											replacement_expr = folded_expr
+										}
 									}
 								}
 							}

@@ -1100,7 +1100,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		node.left_type)))
 	is_aggregate := node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .aggregate
 	right_sym := g.table.sym(node.right_type)
-	mut right_type := node.right_type
+	mut right_type := g.unwrap_generic(node.right_type)
 	// When the LHS is a smartcast variable whose original type is a sum type,
 	// use the original sum type so the `is` check works on the tag field.
 	// But only when the smartcast target is NOT itself a sum type — for nested

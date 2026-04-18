@@ -860,7 +860,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_expr := node.right
 			mut typ := match right_expr {
 				ast.TypeNode {
-					right_expr.typ
+					if right_expr.typ.has_flag(.generic) {
+						c.unwrap_generic(right_expr.typ)
+					} else {
+						right_expr.typ
+					}
 				}
 				ast.None {
 					ast.none_type_idx

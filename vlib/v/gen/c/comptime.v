@@ -218,11 +218,12 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.writeln('builtin__string_free(&_tmpl_res_${fn_name});')
 		} else {
 			// return $tmpl string
-			g.write(cur_line)
 			if g.inside_return_tmpl {
-				g.write('return ')
+				g.writeln('return _tmpl_res_${fn_name};')
+			} else {
+				g.write(cur_line)
+				g.write('_tmpl_res_${fn_name}')
 			}
-			g.write('_tmpl_res_${fn_name}')
 		}
 		return
 	}

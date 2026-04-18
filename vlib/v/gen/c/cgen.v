@@ -3042,7 +3042,15 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							ret_typ := g.fn_decl.return_type.clear_flag(.result)
+							// on assignment or struct field initialization
+							inside_assign_context := g.inside_struct_init
+								|| g.inside_assign
+								|| (!g.inside_return && g.inside_match_result)
+							ret_typ := if inside_assign_context {
+								stmt.typ
+							} else {
+								g.fn_decl.return_type.clear_flag(.result)
+							}
 							styp = g.base_type(ret_typ)
 							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
 								g.expr(ast.Expr(stmt.expr))
@@ -6180,12 +6188,23 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut selector_expr_expr := node.expr
 	mut is_sumtype_smartcast_expr_ptr := false
+	// Track if the ident's original type is a sumtype/interface and it has
+	// smartcasts; the ident codegen dereferences the variant pointer with `*`,
+	// so the result is a value even if the original type is a pointer.
+	mut smartcast_ident_already_dereferenced := false
 	if mut selector_expr_expr is ast.Ident && selector_scope != unsafe { nil } {
 		selector_expr_expr.scope = selector_scope
 		if scope_var := selector_scope.find_var(selector_expr_expr.name) {
 			if scope_var.smartcasts.len > 0 {
 				selector_expr_expr.obj = *scope_var
 				is_sumtype_smartcast_expr_ptr = g.table.final_sym(g.unwrap_generic(scope_var.typ)).kind == .sum_type
+				orig_sym := g.table.final_sym(g.unwrap_generic(scope_var.orig_type))
+				// For sum types: ident codegen emits `*name->_variant` which
+				// dereferences the variant pointer, producing a value.
+				// For interfaces: ident codegen emits `*(type*)name._variant`
+				// which also dereferences the interface field pointer.
+				// In both cases the expression result is a value, not a ptr.
+				smartcast_ident_already_dereferenced = orig_sym.kind in [.sum_type, .interface]
 			}
 		}
 	}
@@ -6683,19 +6702,27 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	interface_smartcast_expr_is_dereferenced := is_interface_smartcast_expr
 		&& smartcast_expr_var.smartcasts.last().nr_muls() == exposed_interface_smartcast_type.nr_muls() + 1
+	// An interface smartcast to a non-interface type normally produces a pointer
+	// (the interface stores fields as pointers). But the ident codegen may
+	// already dereference the pointer, depending on the exposed smartcast type.
+	// If exposed_interface_smartcast_type has the same nr_muls as the raw
+	// smartcast type, the pointer is NOT exposed (ident adds `*` dereference).
 	interface_smartcast_selector_emits_ptr := is_interface_smartcast_selector
 		|| (is_interface_smartcast_expr
-		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind != .interface)
+		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind != .interface
+		&& exposed_interface_smartcast_type.is_ptr())
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
 		false
 	} else {
 		field_is_opt || expr_is_auto_heap || interface_smartcast_selector_emits_ptr
-			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced)
-			|| (((!is_dereferenced && !is_interface_smartcast_lhs && unwrapped_expr_type.is_ptr())
-			|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
+			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced
+			&& !smartcast_ident_already_dereferenced) || (((!is_dereferenced
+			&& !is_interface_smartcast_lhs && !smartcast_ident_already_dereferenced
+			&& unwrapped_expr_type.is_ptr()) || sym.kind == .chan || alias_to_ptr)
+			&& node.from_embed_types.len == 0)
 			|| (node.expr.is_as_cast() && g.inside_smartcast)
 			|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr()
-			&& !is_interface_smartcast_lhs)
+			&& !is_interface_smartcast_lhs && !smartcast_ident_already_dereferenced)
 	}
 	if !has_embed && left_is_ptr {
 		g.write('->')
@@ -10228,6 +10255,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 									&& call_expr.or_block.kind == .absent {
 									g.write('${cvar_name} = ')
 									return_wrapped = true
+								} else if call_expr.or_block.kind != .absent {
+									// Call with ? or ! - the call codegen will
+									// unwrap the option/result, so assign the
+									// unwrapped value to the or-block's data slot.
+									g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 								}
 							} else if expr_stmt.expr is ast.CallExpr {
 								call_expr := expr_stmt.expr as ast.CallExpr

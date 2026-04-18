@@ -1219,7 +1219,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				// dump(extra)
 				extra_pos = extra_pos.extend(p.tok.pos())
 			} else if p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n')
-				&& p.tok.kind !in [.comment, .semicolon, .rcbr, .eof] {
+				&& p.tok.kind !in [.comment, .semicolon, .rcbr, .eof, .key_return, .key_break, .key_continue] {
 				line_nr := p.tok.line_nr
 				err := p.unexpected(got: p.tok.str(), expecting: '`,`')
 				for p.tok.kind != .eof && p.tok.line_nr == line_nr {

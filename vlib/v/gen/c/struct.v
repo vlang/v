@@ -93,7 +93,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 		is_anon = sym.info.is_anon
 	}
-	is_generic_default := sym.kind !in [.struct, .array_fixed, .generic_inst]
+	mut is_generic_default := sym.kind !in [.struct, .array_fixed, .generic_inst]
 		&& base_node_typ.has_flag(.generic) // T{}
 	is_array := sym.kind in [.array_fixed, .array]
 	if sym.kind == .array_fixed {
@@ -157,6 +157,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		pointee_type := resolved_ptr_type.set_nr_muls(0)
 		basetyp := g.styp(pointee_type)
 		pointee_sym := g.table.final_sym(pointee_type)
+		// For primitive pointer types (e.g. T{} where T = &int), the default
+		// value is a null pointer, not a compound literal address.
+		if pointee_sym.kind !in [.struct, .array_fixed, .array, .sum_type, .interface, .map]
+			&& !pointee_sym.is_heap() && node.init_fields.len == 0 {
+			g.write('0')
+			return
+		}
+		// We're generating a compound literal address `&(type){...}`,
+		// so is_generic_default must not suppress the content and closing brace.
+		is_generic_default = false
 		if pointee_sym.is_heap() {
 			is_ptr_heap_init = true
 			if aligned != 0 {

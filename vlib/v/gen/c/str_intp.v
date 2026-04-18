@@ -12,52 +12,6 @@ module c
 import v.ast
 import v.util
 
-// When a smartcast variable's original type is a sumtype with an explicit
-// str() method, generate a call to the sumtype's str() with the original
-// un-smartcasted variable, bypassing the variant's auto-generated str().
-// Returns true if handled, false if the caller should use the normal path.
-fn (mut g Gen) gen_sumtype_str_for_smartcast(expr ast.Expr) bool {
-	if expr is ast.Ident && expr.obj is ast.Var && expr.obj.smartcasts.len > 0 {
-		orig := g.unwrap_generic(expr.obj.typ)
-		orig_sym := g.table.sym(orig)
-		if orig_sym.kind == .sum_type && orig_sym.has_method('str') {
-			str_fn_name := g.get_str_fn(orig)
-			_, str_method_expects_ptr, _ := orig_sym.str_method_info()
-			g.write2(str_fn_name, '(')
-			if expr.obj.is_auto_deref || orig.is_ptr() || expr.obj.is_mut {
-				if str_method_expects_ptr {
-					// pointer variable, str() expects pointer - pass as-is
-				} else {
-					g.write('*')
-				}
-			}
-			g.write(c_name(expr.name))
-			g.write(')')
-			return true
-		}
-	} else if expr is ast.SelectorExpr {
-		scope := g.file.scope.innermost(expr.pos.pos)
-		field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name)
-		if field != unsafe { nil } && field.smartcasts.len > 0 {
-			orig := g.unwrap_generic(field.orig_type)
-			orig_sym := g.table.sym(orig)
-			if orig_sym.kind == .sum_type && orig_sym.has_method('str') {
-				str_fn_name := g.get_str_fn(orig)
-				_, str_method_expects_ptr, _ := orig_sym.str_method_info()
-				g.write2(str_fn_name, '(')
-				if !str_method_expects_ptr && orig.is_ptr() {
-					g.write('*')
-				}
-				g.prevent_sum_type_unwrapping_once = true
-				g.expr(expr)
-				g.write(')')
-				return true
-			}
-		}
-	}
-	return false
-}
-
 fn (mut g Gen) is_type_name_string_expr(expr ast.Expr) bool {
 	return match expr {
 		ast.SelectorExpr {
@@ -484,9 +438,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				}
 			}
 		}
-		if !is_comptime_for_var && g.gen_sumtype_str_for_smartcast(expr) {
-			// handled
-		} else if exp_typ.has_flag(.option) && expr is ast.Ident && g.is_comptime_for_var(expr) {
+		if exp_typ.has_flag(.option) && expr is ast.Ident && g.is_comptime_for_var(expr) {
 			str_fn_name := g.get_str_fn(exp_typ.clear_flag(.option))
 			g.write('${str_fn_name}(*(${g.base_type(exp_typ)}*)(')
 			old_inside_opt_or_res := g.inside_opt_or_res
@@ -778,6 +730,20 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			|| node.expr_types[i].is_float_valptr() {
 			return false
 		}
+		// Interface types need the full str_intp path for vtable dispatch and
+		// interface smartcasts need it for correct pointer prefix handling.
+		expr_i := node.exprs[i]
+		if expr_i is ast.Ident && expr_i.obj is ast.Var {
+			expr_var := expr_i.obj as ast.Var
+			if expr_var.orig_type != 0
+				&& g.table.final_sym(g.unwrap_generic(expr_var.orig_type)).kind == .interface {
+				return false
+			}
+		}
+		etyp_sym := g.table.final_sym(node.expr_types[i])
+		if etyp_sym.kind == .interface {
+			return false
+		}
 		if i < node.fwidths.len && node.fwidths[i] != 0 {
 			return false
 		}
@@ -799,9 +765,7 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 		}
 	}
 	if node.exprs.len == 1 && node.vals.len == 2 && node.vals[0].len == 0 && node.vals[1].len == 0 {
-		if !g.gen_sumtype_str_for_smartcast(node.exprs[0]) {
-			g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
-		}
+		g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
 		return true
 	}
 	mut part_count := 0
@@ -833,9 +797,7 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			if written_parts > 0 {
 				g.write(', ')
 			}
-			if !g.gen_sumtype_str_for_smartcast(node.exprs[i]) {
-				g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
-			}
+			g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
 			written_parts++
 		}
 	}

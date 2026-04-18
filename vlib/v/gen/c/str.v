@@ -76,6 +76,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	// When interface smartcast expr produces a pointer in C but type was already dereffed,
+	// we need to dereference the generated expression.
+	is_interface_smartcast_to_nonptr := !is_ptr && expr is ast.Ident && expr.obj is ast.Var
+		&& (expr.obj as ast.Var).smartcasts.len > 0
+		&& (expr.obj as ast.Var).smartcasts.last().is_ptr()
+		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface
+		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).smartcasts.last())).kind != .interface
 	use_raw_interface_smartcast_expr := is_ptr && expr is ast.Ident && expr.obj is ast.Var
 		&& (expr.obj as ast.Var).smartcasts.len > 0
 		&& (expr.obj as ast.Var).smartcasts.last().is_ptr()
@@ -208,6 +215,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				g.write('*'.repeat(etype.nr_muls()))
 			}
+		} else if !str_method_expects_ptr && is_interface_smartcast_to_nonptr {
+			g.write('*')
 		} else if sym.is_c_struct() {
 			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
