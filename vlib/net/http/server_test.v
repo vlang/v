@@ -119,10 +119,9 @@ fn test_server_custom_handler() {
 	defer {
 		log.warn('${@FN} finished')
 	}
-	mut handler := MyHttpHandler{}
 	mut server := &http.Server{
 		accept_timeout: atimeout
-		handler:        handler
+		handler:        MyHttpHandler{}
 		addr:           '127.0.0.1:18197'
 	}
 	t := spawn server.listen_and_serve()
@@ -179,10 +178,14 @@ fn test_server_custom_handler() {
 	server.stop()
 	t.wait()
 
-	assert handler.counter == 5
-	assert handler.oks == 3
-	assert handler.not_founds == 1
-	assert handler.redirects == 1
+	if mut server.handler is MyHttpHandler {
+		assert server.handler.counter == 5
+		assert server.handler.oks == 3
+		assert server.handler.not_founds == 1
+		assert server.handler.redirects == 1
+	} else {
+		assert false, 'expected MyHttpHandler, got ${typeof(server.handler).name}'
+	}
 }
 
 struct ProgressCalls {
@@ -406,10 +409,9 @@ fn (mut handler KeepAliveHandler) handle(req http.Request) http.Response {
 fn test_server_keep_alive() {
 	log.warn('${@FN} started')
 	defer { log.warn('${@FN} finished') }
-	mut handler := KeepAliveHandler{}
 	mut server := &http.Server{
 		accept_timeout:       atimeout
-		handler:              handler
+		handler:              KeepAliveHandler{}
 		addr:                 '127.0.0.1:18198'
 		show_startup_message: false
 	}
@@ -457,17 +459,20 @@ fn test_server_keep_alive() {
 	t.wait()
 
 	// Verify all 3 requests were handled
-	assert handler.request_count == 3
+	if mut server.handler is KeepAliveHandler {
+		assert server.handler.request_count == 3
+	} else {
+		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
+	}
 }
 
 fn test_server_keep_alive_many_requests() {
 	log.warn('${@FN} started')
 	defer { log.warn('${@FN} finished') }
 	total_requests := 64
-	mut handler := KeepAliveHandler{}
 	mut server := &http.Server{
 		accept_timeout:          atimeout
-		handler:                 handler
+		handler:                 KeepAliveHandler{}
 		addr:                    '127.0.0.1:18199'
 		show_startup_message:    false
 		max_keep_alive_requests: 0
@@ -506,16 +511,19 @@ fn test_server_keep_alive_many_requests() {
 
 	server.stop()
 	t.wait()
-	assert handler.request_count == total_requests + 1
+	if mut server.handler is KeepAliveHandler {
+		assert server.handler.request_count == total_requests + 1
+	} else {
+		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
+	}
 }
 
 fn test_server_max_keep_alive_requests() {
 	log.warn('${@FN} started')
 	defer { log.warn('${@FN} finished') }
-	mut handler := KeepAliveHandler{}
 	mut server := &http.Server{
 		accept_timeout:          atimeout
-		handler:                 handler
+		handler:                 KeepAliveHandler{}
 		addr:                    '127.0.0.1:18200'
 		show_startup_message:    false
 		max_keep_alive_requests: 3 // Limit to 3 requests per connection
@@ -563,7 +571,11 @@ fn test_server_max_keep_alive_requests() {
 	server.stop()
 	t.wait()
 
-	assert handler.request_count == 3
+	if mut server.handler is KeepAliveHandler {
+		assert server.handler.request_count == 3
+	} else {
+		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
+	}
 }
 
 fn read_http_response(mut conn net.TcpConn) !string {

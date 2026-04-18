@@ -105,7 +105,11 @@ fn js_stacktrace() string {
 #return new map(cloned);
 #}
 #if (typeof value !== 'object') return value;
-#if (typeof value.$toJS === 'function') return value;
+#if (typeof value.$toJS === 'function') {
+#let cloned = Object.create(Object.getPrototypeOf(value) || Object.prototype);
+#for (const key of Object.keys(value)) cloned[key] = v_clone_value(value[key]);
+#return cloned;
+#}
 #let cloned;
 #try {
 #cloned = typeof value.constructor === 'function' ? new value.constructor({}) : Object.create(Object.getPrototypeOf(value));

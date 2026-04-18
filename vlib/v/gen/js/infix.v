@@ -334,6 +334,11 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		// arr << val
 		array_info := left.unaliased_sym.info as ast.Array
 		g.write('array_push(')
+		old_inside_left_shift := g.inside_left_shift
+		g.inside_left_shift = true
+		defer {
+			g.inside_left_shift = old_inside_left_shift
+		}
 		//&& array_info.elem_type != g.unwrap_generic(node.right_type)
 		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
 			g.expr(node.left)

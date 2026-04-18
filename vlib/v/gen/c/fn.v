@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module c
 
+import os
 import strings
 import v.ast
 import v.util
@@ -677,8 +678,37 @@ fn file_has_c_includes(file &ast.File) bool {
 	return false
 }
 
+fn file_imports_c_header_module(file &ast.File) bool {
+	if file == unsafe { nil } {
+		return false
+	}
+	for imp in file.imports {
+		if imp.source_name.ends_with('.c') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) module_has_c_header_module(file &ast.File) bool {
+	if file_imports_c_header_module(file) {
+		return true
+	}
+	if file == unsafe { nil } || g.table == unsafe { nil } || file.path == '' {
+		return false
+	}
+	helper_dir := os.join_path(os.dir(file.path), 'c')
+	for path in g.table.filelist {
+		if path.starts_with(helper_dir + os.path_separator) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
-	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file) {
+	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file)
+		|| g.module_has_c_header_module(node.source_file) {
 		return false
 	}
 	if node.source_file == unsafe { nil } {

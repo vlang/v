@@ -1403,28 +1403,35 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			mut array_set := false
 			mut map_set := false
 			if left is ast.IndexExpr {
-				g.expr(left.left)
-				if left.left_type.is_ptr() {
-					g.write('.valueOf()')
-				}
 				array_set = true
 
 				if left.is_map {
 					map_set = true
-					// FIXME: if you update a key already in the map, it will still
-					// increment length, which it shouldn't since length should match
-					// the actual amount of elements in the map
-					// using a getter that calls JS Object.entries().length or
-					// Object.values().length to get the real length would probably
-					// work, but I'm hesitant about the amount of overhead this will
-					// introduce since those functions return arrays and not iterables,
-					// which might consume a lot of memory and cycles to set up
+					g.write('if (!')
+					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
+					g.write('.has(')
+					g.expr(left.index)
+					g.write('.\$toJS())) ')
+					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
 					g.writeln('.length++;')
 					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
 					g.write('.map[')
 					g.expr(left.index)
 					g.write('.\$toJS()] = { val: ')
 				} else {
+					g.expr(left.left)
+					if left.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
 					g.write('.arr.set(')
 					g.write('new int(')
 					g.cast_stack << ast.int_type_idx
@@ -3113,17 +3120,15 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		}
 		g.write(')')
 	} else if left_sym.kind == .map {
-		g.expr(expr.left)
-
 		if expr.is_setter && !g.inside_left_shift {
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
 			g.inside_map_set = true
 			g.write('.getOrSet(')
-		} else {
-			g.write('.get(')
-		}
-		g.expr(expr.index)
-		g.write('.\$toJS()')
-		if expr.is_setter {
+			g.expr(expr.index)
+			g.write('.\$toJS()')
 			// g.write(', ${g.to_js_typ_val(left_typ.)')
 			match left_sym.info {
 				ast.Map {
@@ -3133,8 +3138,28 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 					verror('unreachable')
 				}
 			}
+
+			g.write(')')
+		} else {
+			match left_sym.info {
+				ast.Map {
+					tmp := g.new_tmp_var()
+					g.write('(function() { let ${tmp} = ')
+					g.expr(expr.left)
+					if expr.left_type.is_ptr() {
+						g.write('.valueOf()')
+					}
+					g.write('.get(')
+					g.expr(expr.index)
+					g.write('.\$toJS()); return js_is_undefined(${tmp}).valueOf() ? ')
+					g.write(g.to_js_typ_val(left_sym.info.value_type))
+					g.write(' : ${tmp}; })()')
+				}
+				else {
+					verror('unreachable')
+				}
+			}
 		}
-		g.write(')')
 	} else if left_sym.kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
@@ -4064,36 +4089,48 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 		}
 		g.write(')')
 	} else if left_sym_kind == .map {
-		g.expr(expr.left)
+		lsym := g.table.sym(expr.left_type)
+		value_typ := match lsym.info {
+			ast.Map {
+				lsym.info.value_type
+			}
+			else {
+				verror('unreachable')
+				ast.void_type
+			}
+		}
 
 		if expr.is_setter {
-			g.inside_map_set = true
-			g.write('.map.set(')
-		} else {
-			g.write('.map.get(')
-		}
-		g.expr(expr.index)
-		g.write('.\$toJS()')
-		if !expr.is_setter {
-			g.write(')')
-		} else {
-			g.write(',')
-			lsym := g.table.sym(expr.left_type)
-			key_typ := match lsym.info {
-				ast.Map {
-					lsym.info.value_type
-				}
-				else {
-					verror('unreachable')
-				}
-			}
-
-			g.write('new ${g.styp(key_typ)}(')
-
+			g.write('if (!')
 			g.expr(expr.left)
-			g.write('.map.get(')
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.has(')
 			g.expr(expr.index)
-			g.write('.\$toJS())')
+			g.write('.\$toJS())) ')
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.writeln('.length++;')
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.map[')
+			g.expr(expr.index)
+			g.write('.\$toJS()] = { val: ')
+			g.write('new ${g.styp(value_typ)}(')
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.getOrSet(')
+			g.expr(expr.index)
+			g.write('.\$toJS(), ')
+			g.write(g.to_js_typ_val(value_typ))
+			g.write(')')
 			match op {
 				.inc {
 					g.write('.val + 1)')
@@ -4106,7 +4143,21 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 				}
 			}
 
-			g.write(')')
+			g.write(', key: ')
+			g.expr(expr.index)
+			g.write(' }')
+		} else {
+			tmp := g.new_tmp_var()
+			g.write('(function() { let ${tmp} = ')
+			g.expr(expr.left)
+			if expr.left_type.is_ptr() {
+				g.write('.valueOf()')
+			}
+			g.write('.get(')
+			g.expr(expr.index)
+			g.write('.\$toJS()); return js_is_undefined(${tmp}).valueOf() ? ')
+			g.write(g.to_js_typ_val(value_typ))
+			g.write(' : ${tmp}; })()')
 		}
 	} else if left_sym_kind == .string {
 		if expr.is_setter {

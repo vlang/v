@@ -967,6 +967,18 @@ fn (v &Builder) rsp_safe_arg(arg string) string {
 	return arg
 }
 
+fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+	if v.pref.no_rsp || v.pref.os == .termux {
+		return false
+	}
+	for arg in rsp_args {
+		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
+			return false
+		}
+	}
+	return true
+}
+
 fn (v &Builder) c_project_source_name() string {
 	mut output_name := os.file_name(v.pref.out_name)
 	if output_name == '' {
@@ -1206,20 +1218,11 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		rsp_args := all_args.map(v.rsp_safe_arg(it))
 		shell_args := rsp_args.join(' ')
-		mut str_args := if v.pref.no_rsp {
+		mut should_use_rsp := v.should_use_rsp(rsp_args)
+		mut str_args := if !should_use_rsp {
 			shell_args.replace('\n', ' ')
 		} else {
 			shell_args
-		}
-		mut should_use_rsp := !v.pref.no_rsp
-		if should_use_rsp {
-			for arg in rsp_args {
-				if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
-					should_use_rsp = false
-					str_args = shell_args
-					break
-				}
-			}
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {

@@ -80,32 +80,32 @@ pub fn (db DB) drop(table orm.Table) ! {
 }
 
 // orm_begin starts a transaction for ORM helpers.
-pub fn (mut db DB) orm_begin() ! {
+pub fn (db DB) orm_begin() ! {
 	db.begin()!
 }
 
 // orm_commit commits a transaction for ORM helpers.
-pub fn (mut db DB) orm_commit() ! {
+pub fn (db DB) orm_commit() ! {
 	db.commit()!
 }
 
 // orm_rollback rolls back a transaction for ORM helpers.
-pub fn (mut db DB) orm_rollback() ! {
+pub fn (db DB) orm_rollback() ! {
 	db.rollback()!
 }
 
 // orm_savepoint creates a savepoint for ORM helpers.
-pub fn (mut db DB) orm_savepoint(name string) ! {
+pub fn (db DB) orm_savepoint(name string) ! {
 	db.savepoint(name)!
 }
 
 // orm_rollback_to rolls back to a savepoint for ORM helpers.
-pub fn (mut db DB) orm_rollback_to(name string) ! {
+pub fn (db DB) orm_rollback_to(name string) ! {
 	db.rollback_to(name)!
 }
 
 // orm_release_savepoint releases a savepoint for ORM helpers.
-pub fn (mut db DB) orm_release_savepoint(name string) ! {
+pub fn (db DB) orm_release_savepoint(name string) ! {
 	db.release_savepoint(name)!
 }
 

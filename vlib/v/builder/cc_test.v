@@ -170,6 +170,21 @@ fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 	assert linker_args.contains('-rdynamic')
 }
 
+fn test_should_use_rsp_for_linux_by_default() {
+	builder := new_test_builder([hello_world_example()])
+	assert builder.should_use_rsp(['-o', builder.out_name_c])
+}
+
+fn test_should_not_use_rsp_for_termux() {
+	builder := new_test_builder(['-os', 'termux', hello_world_example()])
+	assert !builder.should_use_rsp(['-o', builder.out_name_c])
+}
+
+fn test_should_not_use_rsp_for_args_with_embedded_single_quotes() {
+	builder := new_test_builder([hello_world_example()])
+	assert !builder.should_use_rsp(["'\\''"])
+}
+
 fn test_setup_ccompiler_options_detects_cc_alias_path_as_clang() {
 	$if windows {
 		return
