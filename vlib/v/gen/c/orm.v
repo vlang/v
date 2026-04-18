@@ -1739,6 +1739,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				}
 
 				ident.name = array_get_call_code
+				ident.obj = ast.Var{
+					name: array_get_call_code
+				}
 				where_expr.right = ident
 				sub.where_expr = where_expr
 
@@ -1771,6 +1774,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					mut right_where_expr := where_expr.right as ast.Ident
 					left_where_expr.name = fkey
 					right_where_expr.name = tmp
+					right_where_expr.obj = ast.Var{
+						name: tmp
+					}
 					where_expr.left = left_where_expr
 					where_expr.right = ast.SelectorExpr{
 						pos:        right_where_expr.pos
@@ -2086,7 +2092,7 @@ fn (mut g Gen) write_orm_upsert_conflict_groups(groups [][]string) {
 		}
 		g.write('})),')
 	}
-	g.write('}))')
+	g.write('}))') // closing: `}` compound literal init, `)` _MOV, `)` new_array_from_c_array
 }
 
 // return indexes of any auto-increment fields or fields with default values

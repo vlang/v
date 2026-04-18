@@ -312,6 +312,10 @@ fn main() {
 	unbuffer_stdout()
 	os.chdir(vroot)!
 	args_idx := os.args.index('test-self')
+	if args_idx < 0 {
+		eprintln('vtest-self: could not find `test-self` in os.args: ${os.args}')
+		exit(1)
+	}
 	vargs := os.args[1..args_idx]
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
