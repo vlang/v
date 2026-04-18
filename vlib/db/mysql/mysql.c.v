@@ -218,7 +218,7 @@ pub fn (mut db DB) autocommit(mode bool) ! {
 }
 
 // commit commits the current transaction.
-pub fn (mut db DB) commit() ! {
+pub fn (db &DB) commit() ! {
 	db.check_connection_is_established()!
 	result := C.mysql_commit(db.conn)
 
@@ -233,7 +233,7 @@ pub struct MySQLTransactionParam {
 }
 
 // begin begins a new transaction.
-pub fn (mut db DB) begin(param MySQLTransactionParam) ! {
+pub fn (db &DB) begin(param MySQLTransactionParam) ! {
 	db.check_connection_is_established()!
 	db.set_transaction_level(param.transaction_level)!
 	result := db.exec_none('START TRANSACTION')
@@ -243,7 +243,7 @@ pub fn (mut db DB) begin(param MySQLTransactionParam) ! {
 }
 
 // set_transaction_level set level for the transaction
-pub fn (mut db DB) set_transaction_level(level MySQLTransactionLevel) ! {
+pub fn (db &DB) set_transaction_level(level MySQLTransactionLevel) ! {
 	db.check_connection_is_established()!
 	mut sql_stmt := 'SET TRANSACTION ISOLATION LEVEL '
 	match level {
@@ -260,7 +260,7 @@ pub fn (mut db DB) set_transaction_level(level MySQLTransactionLevel) ! {
 }
 
 // rollback rollbacks the current transaction.
-pub fn (mut db DB) rollback() ! {
+pub fn (db &DB) rollback() ! {
 	db.check_connection_is_established()!
 	result := C.mysql_rollback(db.conn)
 
@@ -270,7 +270,7 @@ pub fn (mut db DB) rollback() ! {
 }
 
 // rollback_to rollbacks to a specified savepoint.
-pub fn (mut db DB) rollback_to(savepoint string) ! {
+pub fn (db &DB) rollback_to(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -282,7 +282,7 @@ pub fn (mut db DB) rollback_to(savepoint string) ! {
 }
 
 // savepoint create a new savepoint.
-pub fn (mut db DB) savepoint(savepoint string) ! {
+pub fn (db &DB) savepoint(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -294,7 +294,7 @@ pub fn (mut db DB) savepoint(savepoint string) ! {
 }
 
 // release_savepoint releases a specified savepoint.
-pub fn (mut db DB) release_savepoint(savepoint string) ! {
+pub fn (db &DB) release_savepoint(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
