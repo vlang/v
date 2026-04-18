@@ -90,8 +90,6 @@ const essential_list = [
 	'vlib/v/fmt/fmt_test.v',
 	'vlib/v/gen/c/coutput_test.v',
 	'vlib/v/gen/js/program_test.v',
-	'vlib/v/gen/native/macho_test.v',
-	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/x/json2/tests/json2_test.v',

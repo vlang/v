@@ -1,7 +1,6 @@
 // vtest retry: 3
 // vtest build: present_node?
 import rand
-import strings
 
 const strings = unique_strings(200, 10)
 

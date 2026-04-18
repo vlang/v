@@ -33,8 +33,13 @@ pub fn (x f64) str() string {
 // strg return a `f64` as `string` in "g" printf format.
 @[inline]
 pub fn (x f64) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float64u{
+			f: x
+		}
+		if f.u == strconv.double_minus_zero || f.u == strconv.double_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
@@ -99,8 +104,13 @@ pub fn (x f32) str() string {
 // strg return a `f32` as `string` in "g" printf format
 @[inline]
 pub fn (x f32) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float32u{
+			f: x
+		}
+		if f.u == strconv.single_minus_zero || f.u == strconv.single_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {

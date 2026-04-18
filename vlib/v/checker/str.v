@@ -168,6 +168,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 					node.fmt_poss[i])
 			}
 			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
+				|| (typ.is_float() && fmt in [`g`, `G`])
 		}
 		// check recursive str
 		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
