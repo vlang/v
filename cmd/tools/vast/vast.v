@@ -10,6 +10,7 @@ import v.pref
 import v.errors
 import v.checker
 import strings
+import context
 
 struct Context {
 mut:
