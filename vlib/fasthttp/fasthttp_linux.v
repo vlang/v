@@ -438,7 +438,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 						} else {
 							header_end_pos
 						}
-						for hi = hi_start; hi <= total_bytes_read - 4; hi++ {
+						for hi := hi_start; hi <= total_bytes_read - 4; hi++ {
 							if readed_request_buffer[hi] == `\r`
 								&& readed_request_buffer[hi + 1] == `\n`
 								&& readed_request_buffer[hi + 2] == `\r`
