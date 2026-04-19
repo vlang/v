@@ -35,10 +35,12 @@ fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name st
 	}
 }
 
-fn (mut g Gen) if_guard_error_cleanup(_ string, _ ast.Type) {
-	// TODO: the frees here cause double-free crashes when error objects
-	// are shared/global (e.g. map access errors reuse the same MessageError).
-	// Disabled until a safe ownership/refcounting mechanism is implemented.
+fn (mut g Gen) if_guard_error_cleanup(cvar_name string, expr_type ast.Type) {
+	if expr_type.has_flag(.option) {
+		g.writeln('\tif (${cvar_name}.state == 2 && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	} else if expr_type.has_flag(.result) {
+		g.writeln('\tif (${cvar_name}.is_error && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	}
 }
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
@@ -394,6 +396,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut guard_vars := []string{}
 	mut guard_expr_types := []ast.Type{len: node.branches.len}
 	mut guard_else_uses_err := []bool{len: node.branches.len}
+	mut guard_owns_error := []bool{len: node.branches.len}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
@@ -403,6 +406,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 			guard_idx = i // saves the last if guard index
 			guard_else_uses_err[i] = g.if_guard_else_uses_err(node, i)
+			guard_owns_error[i] = cond.expr is ast.IndexExpr
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
@@ -470,7 +474,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							g.writeln('\tIError err = ${cvar_name}.err;')
 						}
 					}
-				} else if guard_expr_types[guard_idx] != 0 {
+				} else if guard_owns_error[guard_idx] && guard_expr_types[guard_idx] != 0 {
 					g.if_guard_error_cleanup(cvar_name, guard_expr_types[guard_idx])
 				}
 			}
@@ -726,7 +730,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	for i, var_name in guard_vars {
-		if var_name == '' || guard_expr_types[i] == 0 || guard_else_uses_err[i] {
+		if var_name == '' || guard_expr_types[i] == 0 || guard_else_uses_err[i]
+			|| !guard_owns_error[i] {
 			continue
 		}
 		if node.has_else && i == node.branches.len - 2 {

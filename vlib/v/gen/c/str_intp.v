@@ -719,6 +719,12 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 const simple_string_interpolation_default_precision = 987698
 
 fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts []u8) bool {
+	if g.is_autofree || g.pref.gc_mode == .boehm_leak {
+		// The fast `string_plus_many` lowering can leave nested temporary
+		// strings without scope cleanup in autofree/leak-detection modes.
+		// Use the regular `str_intp` path there so temporaries remain explicit.
+		return false
+	}
 	if node.exprs.len == 0 || node.expr_types.len < node.exprs.len {
 		return false
 	}

@@ -4454,14 +4454,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				}
 			}
-			// For auto-heap variables in generic contexts, the variable is
-			// already a pointer in C. Treat got_is_ptr as true to prevent
-			// adding a spurious `&`, and suppress the auto-heap deref in
-			// g.expr() so it emits `t` (the pointer) instead of `(*t)`.
+			// Auto-heap variables are already pointers in C. Treat them as
+			// pointer-backed here to avoid wrapping the raw pointer in an
+			// extra HEAP(...) and to suppress the usual auto-deref in g.expr().
 			mut effective_got_is_ptr := got_is_ptr
 			mut suppress_auto_heap_deref := false
-			if !got_is_ptr && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
-				&& expr is ast.Ident && g.resolved_ident_is_auto_heap(expr) {
+			if !got_is_ptr && expr is ast.Ident && g.resolved_ident_is_auto_heap(expr) {
 				effective_got_is_ptr = true
 				suppress_auto_heap_deref = true
 			}
