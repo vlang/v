@@ -10,7 +10,6 @@ import v.pref
 import v.errors
 import v.checker
 import strings
-import context
 
 struct Context {
 mut:
@@ -23,14 +22,14 @@ mut:
 	hide_names       map[string]bool
 }
 
-const context = &Context{}
+const vast_context = &Context{}
 
 fn main() {
 	if os.args.len < 2 {
 		eprintln('not enough parameters')
 		exit(1)
 	}
-	mut ctx := unsafe { context }
+	mut ctx := unsafe { vast_context }
 	mut fp := flag.new_flag_parser(os.args[2..])
 	fp.application('v ast')
 	fp.usage_example('demo.v       generate demo.json file.')
@@ -181,7 +180,7 @@ fn json(file string) string {
 	// parse file with comment
 	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
 
-	if context.check {
+	if vast_context.check {
 		mut the_checker := checker.new_checker(t.table, pref_)
 		the_checker.check(mut ast_file)
 	}
@@ -202,13 +201,13 @@ mut:
 // add item to object node
 @[inline]
 fn (mut node Node) add(key string, child &Node) {
-	if context.hide_names.len > 0 && key in context.hide_names {
+	if vast_context.hide_names.len > 0 && key in vast_context.hide_names {
 		return
 	}
-	if context.is_terse {
+	if vast_context.is_terse {
 		return
 	}
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_object(mut node, key, child)
@@ -217,10 +216,10 @@ fn (mut node Node) add(key string, child &Node) {
 // add item to object node
 @[inline]
 fn (mut node Node) add_terse(key string, child &Node) {
-	if context.hide_names.len > 0 && key in context.hide_names {
+	if vast_context.hide_names.len > 0 && key in vast_context.hide_names {
 		return
 	}
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_object(mut node, key, child)
@@ -229,7 +228,7 @@ fn (mut node Node) add_terse(key string, child &Node) {
 // add item to array node
 @[inline]
 fn (mut node Node) add_item(child &Node) {
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_array(mut node, child)
