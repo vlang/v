@@ -1745,18 +1745,22 @@ fn c_project_source_from_object_path(obj_path string) ?string {
 	return none
 }
 
+fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {
+	if source_kind == .unknown {
+		return false
+	}
+	if os.exists(obj_path) && os.file_last_mod_unix(obj_path) < os.file_last_mod_unix(source_file) {
+		return true
+	}
+	return v.ccoptions.cc == .tcc && v.pref.os == .macos
+}
+
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	if os.exists(obj_path) {
-		// Some .o files are distributed with no source
-		// for example thirdparty\tcc\lib\openlibm.o
-		// the best we can do for them is just copy them,
-		// and hope that they work with any compiler...
-		os.cp(obj_path, opath) or { panic(err) }
-		return
-	}
+	thirdparty_desc_path := v.pref.cache_manager.mod_postfix_with_key2cpath(mod,
+		'.thirdparty.description.txt', obj_path)
 	mut source_file := c_project_source_from_object_path(obj_path) or { '' }
 	source_kind := if source_file.ends_with('.c') {
 		SourceKind.c
@@ -1767,14 +1771,35 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	} else {
 		SourceKind.unknown
 	}
+	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path,
+		source_file, source_kind)
+	if os.exists(obj_path) && !compile_bundled_source {
+		// Some .o files are distributed with no source
+		// for example thirdparty\tcc\lib\openlibm.o
+		// the best we can do for them is just copy them,
+		// and hope that they work with any compiler...
+		os.cp(obj_path, opath) or { panic(err) }
+		return
+	}
 	if source_kind == .unknown {
 		base := obj_path.all_before_last('.')
 		eprintln('> File not found: ${base}{.c,.cpp,.S}')
 		verror('build_thirdparty_obj_file only support .c, .cpp, and .S source file.')
 	}
-	mut rebuild_reason_message := '${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
+	bundled_object_is_stale := os.exists(obj_path)
+		&& os.file_last_mod_unix(obj_path) < os.file_last_mod_unix(source_file)
+	cached_object_was_built_from_source := os.exists(thirdparty_desc_path)
+	mut rebuild_reason_message := if bundled_object_is_stale {
+		'${os.quoted_path(obj_path)} is older than ${os.quoted_path(source_file)}, rebuilding it in ${os.quoted_path(opath)} ...'
+	} else if compile_bundled_source {
+		'${os.quoted_path(obj_path)} is bundled for a different object format; rebuilding it in ${os.quoted_path(opath)} from ${os.quoted_path(source_file)} ...'
+	} else {
+		'${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
+	}
 	if os.exists(opath) {
-		if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
+		if compile_bundled_source && !cached_object_was_built_from_source {
+			rebuild_reason_message = '${os.quoted_path(opath)} was copied from a bundled object, rebuilding it from ${os.quoted_path(source_file)} ...'
+		} else if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
 			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)}, rebuilding ...'
 		} else {
 			return

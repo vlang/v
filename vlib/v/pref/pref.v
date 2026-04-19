@@ -756,6 +756,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-retry-compilation' {
 				res.retry_compilation = false
+				res.build_options << arg
 			}
 			'-musl' {
 				res.is_musl = true

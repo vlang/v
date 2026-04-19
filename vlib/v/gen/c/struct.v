@@ -375,7 +375,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					}
 				}
 				if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					old_inside_return := g.inside_return
+					g.inside_return = false
 					resolved_sfield_typ := g.resolved_expr_type(ast.Expr(sfield.expr), sfield.typ)
+					g.inside_return = old_inside_return
 					if resolved_sfield_typ != 0 {
 						sfield.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_sfield_typ))
 					}
@@ -578,8 +581,11 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 			}
 		}
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			old_inside_return := g.inside_return
+			g.inside_return = false
 			resolved_field_typ := g.resolved_expr_type(ast.Expr(resolved_field.expr),
 				resolved_field.typ)
+			g.inside_return = old_inside_return
 			if resolved_field_typ != 0 {
 				resolved_field.typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
 			}
@@ -999,6 +1005,11 @@ fn (mut g Gen) struct_init_ptr_field(target string, sfield ast.StructInitField, 
 }
 
 fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
+	old_inside_return := g.inside_return
+	g.inside_return = false
+	defer {
+		g.inside_return = old_inside_return
+	}
 	field_type_sym := g.table.sym(sfield.typ)
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {

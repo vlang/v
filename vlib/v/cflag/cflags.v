@@ -148,7 +148,8 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 			libs << copt
 			continue
 		}
-		if copt.ends_with('.a') {
+		if copt.ends_with('.a') || copt.ends_with('.so') || copt.ends_with('.dylib')
+			|| copt.ends_with('.dll') || copt.ends_with('.lib') {
 			libs << '"${copt}"'
 			continue
 		}

@@ -660,7 +660,7 @@ pub fn (mut f File) seek(pos i64, mode SeekMode) ! {
 		$if windows {
 			res = C._fseeki64(f.cfile, pos, whence)
 		} $else {
-			res = C.fseeko(f.cfile, pos, whence)
+			res = C.fseek(f.cfile, pos, whence)
 		}
 	}
 	$if x32 {
