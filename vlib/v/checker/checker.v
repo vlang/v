@@ -127,7 +127,7 @@ mut:
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
-	vweb_gen_types                   []ast.Type // vweb route checks
+	vweb_gen_types                   []ast.Type // veb route checks
 	timers                           &util.Timers = util.get_timers()
 	type_resolver                    type_resolver.TypeResolver
 	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
@@ -168,9 +168,6 @@ mut:
 
 	js_string           ast.Type                 = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
 	checker_transformer &transformer.Transformer = unsafe { nil }
-
-	shown_xvweb_deprecation bool // prevents showing the deprecation more than once per compilation
-	shown_vweb_deprecation  bool // prevents showing the deprecation more than once per compilation
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -792,9 +789,9 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.change_current_file(last_file)
 	c.timers.show('checker_post_process_generic_fns')
 
-	c.timers.start('checker_verify_all_vweb_routes')
-	c.verify_all_vweb_routes()
-	c.timers.show('checker_verify_all_vweb_routes')
+	c.timers.start('checker_verify_all_veb_routes')
+	c.verify_all_veb_routes()
+	c.timers.show('checker_verify_all_veb_routes')
 
 	c.check_unused_declarations(ast_files)
 
@@ -4491,12 +4488,10 @@ fn (mut c Checker) resolve_pseudo_variables(oflag string, pos token.Pos) ?string
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
-	if node.mod == 'x.vweb' && !c.shown_xvweb_deprecation {
-		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
-		c.shown_xvweb_deprecation = true
-	} else if node.mod == 'vweb' && !c.shown_vweb_deprecation {
-		println('`vweb` has been deprecated. Please use the more stable and fast `veb` instead.')
-		c.shown_vweb_deprecation = true
+	if node.mod == 'x.vweb' {
+		c.error('`x.vweb` has been removed. Use `import veb` instead.', node.pos)
+	} else if node.mod == 'vweb' {
+		c.error('`vweb` has been removed. Use `import veb` instead.', node.pos)
 	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {
@@ -6385,7 +6380,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 				}
 				ast.Var {
-					// inside vweb tmpl ident positions are meaningless, use the position of the comptime call.
+					// inside veb tmpl ident positions are meaningless, use the position of the comptime call.
 					// if the variable is declared before the comptime call then we can assume all is well.
 					// `node.name !in node.scope.objects && node.scope.start_pos < c.comptime_call_pos` (inherited)
 					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects
@@ -6439,7 +6434,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					$if trace_vweb_guard ? {
+					$if trace_veb_guard ? {
 						if node.name in ['params', 'app', 'global_app', 'request_app'] {
 							expr_kind := typeof(obj.expr).name
 							mut expr_type_str := '<none>'

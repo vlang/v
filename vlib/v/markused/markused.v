@@ -215,7 +215,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 
 		if k.ends_with('before_request') {
-			// TODO: add a more specific check for the .before_request() method in vweb apps
+			// TODO: add a more specific check for the .before_request() method in veb apps
 			all_fn_root_names << k
 			continue
 		}
@@ -255,10 +255,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
-	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
-	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter',
-		'x.vweb.Context')
+	handle_veb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 
 	if 'debug_used_features' in pref_.compile_defines {
 		eprintln('> debug_used_features: ${table.used_features}')
@@ -310,9 +307,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			}
 		}
 	}
-
-	walker.mark_by_sym_name('vweb.RedirectParams')
-	walker.mark_by_sym_name('vweb.RequestParams')
 
 	for kcon, con in all_consts {
 		if pref_.is_shared && con.is_pub {
@@ -446,16 +440,16 @@ fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, ty
 	}
 }
 
-fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
+fn handle_veb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
 	context_name string) {
-	// handle vweb magic router methods:
+	// handle veb magic router methods:
 	result_type_idx := table.find_type(result_name)
 	if result_type_idx == 0 {
 		return
 	}
 	all_fn_root_names << filter_name
-	typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
-	mark_all_methods_used(mut table, mut all_fn_root_names, typ_vweb_context)
+	typ_veb_context := table.find_type(context_name).set_nr_muls(1)
+	mark_all_methods_used(mut table, mut all_fn_root_names, typ_veb_context)
 	for vgt in table.used_features.used_veb_types {
 		sym_app := table.sym(vgt)
 		pvgt := int(vgt.set_nr_muls(1)).str()

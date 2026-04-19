@@ -323,7 +323,7 @@ a copy of the compiler rather than replacing it with `v self`.
 | `debug_codegen`                   | Prints automatically generated V code during the scanning phase                                                     |
 | `debug_interface_table`           | Prints generated interfaces during C generation                                                                     |
 | `debug_interface_type_implements` | Prints debug information when checking that a type implements in interface                                          |
-| `print_vweb_template_expansions`  | Prints vweb compiled HTML files                                                                                     |
+| `print_vweb_template_expansions`  | Prints veb compiled HTML files                                                                                      |
 | `time_checking`                   | Prints the time spent checking files and other related information                                                  |
 | `time_parsing`                    | Prints the time spent parsing files and other related information                                                   |
 |                                   |                                                                                                                     |

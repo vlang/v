@@ -242,16 +242,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	if node.kind == .html {
 		ret_sym := c.table.sym(c.table.cur_fn.return_type)
-		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
-			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
-			c.error('`\$${ct_call}.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) ${ct_call}.Result { return \$${ct_call}.html(\'index.html\') }`',
+		if ret_sym.cname != 'veb__Result' {
+			c.error("`\$veb.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) veb.Result { return \$veb.html('index.html') }`",
 				node.pos)
 		}
-		rtyp := if node.is_veb {
-			c.table.find_type('veb.Result')
-		} else {
-			c.table.find_type('vweb.Result')
-		}
+		rtyp := c.table.find_type('veb.Result')
 		node.result_type = rtyp
 		return rtyp
 	}
@@ -1040,19 +1035,24 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 	return none
 }
 
-fn (mut c Checker) verify_vweb_params_for_method(node &ast.Fn) (bool, int, int) {
+fn (mut c Checker) verify_veb_params_for_method(node &ast.Fn) (bool, int, int) {
 	margs := node.params.len - 1 // first arg is the receiver/this
 	// if node.attrs.len == 0 || (node.attrs.len == 1 && node.attrs[0].name == 'post') {
 	if node.attrs.len == 0 {
 		// allow non custom routed methods, with 1:1 mapping
 		return true, -1, margs
 	}
+	mut context_params := 0
 	if node.params.len > 1 {
 		for param in node.params[1..] {
+			if c.has_veb_context(param.typ) {
+				context_params++
+				continue
+			}
 			param_sym := c.table.final_sym(param.typ)
 			if !(param_sym.is_string() || param_sym.is_number() || param_sym.is_float()
 				|| param_sym.kind == .bool) {
-				c.error('invalid type `${param_sym.name}` for parameter `${param.name}` in vweb app method `${node.name}` (only strings, numbers, and bools are allowed)',
+				c.error('invalid type `${param_sym.name}` for parameter `${param.name}` in veb app method `${node.name}` (only strings, numbers, and bools are allowed)',
 					param.pos)
 			}
 		}
@@ -1063,30 +1063,30 @@ fn (mut c Checker) verify_vweb_params_for_method(node &ast.Fn) (bool, int, int) 
 			route_attributes += a.name.count(':')
 		}
 	}
-	return route_attributes == margs, route_attributes, margs
+	return route_attributes == margs - context_params, route_attributes, margs - context_params
 }
 
-fn (mut c Checker) verify_all_vweb_routes() {
+fn (mut c Checker) verify_all_veb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
 	c.table.used_features.used_veb_types = c.vweb_gen_types
-	typ_vweb_result := c.table.find_type('vweb.Result')
+	typ_veb_result := c.table.find_type('veb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {
 		sym_app := c.table.sym(vgt)
 		for m in sym_app.methods {
-			if m.return_type == typ_vweb_result {
-				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
+			if m.return_type == typ_veb_result {
+				is_ok, nroute_attributes, nargs := c.verify_veb_params_for_method(m)
 				if !is_ok {
 					f := unsafe { &ast.FnDecl(m.source_fn) }
 					if f == unsafe { nil } {
 						continue
 					}
-					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ
+					if f.return_type == typ_veb_result && f.receiver.typ == m.params[0].typ
 						&& f.name == m.name && !f.attrs.contains('post') {
 						c.change_current_file(f.source_file) // setup of file path for the warning
-						c.warn('mismatched parameters count between vweb method `${sym_app.name}.${m.name}` (${nargs}) and route attribute ${m.attrs} (${nroute_attributes})',
+						c.warn('mismatched parameters count between veb method `${sym_app.name}.${m.name}` (${nargs}) and route attribute ${m.attrs} (${nroute_attributes})',
 							f.pos)
 					}
 				}

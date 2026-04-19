@@ -8,9 +8,9 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 // build as a project folder
 const efolders = [
 	'examples/viewer',
-	'examples/vweb_orm_jwt',
-	'examples/vweb_fullstack',
 	'examples/fasthttp',
+	'examples/veb_orm_jwt/src',
+	'examples/veb_fullstack/src',
 ]
 
 pub fn normalised_vroot_path(path string) string {

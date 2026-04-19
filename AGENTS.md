@@ -406,7 +406,7 @@ Only the following `$`-prefixed functions are supported:
 * `$embed_file('path')` - embed a file's contents into the binary.
   Paths can be absolute, relative to the source file, or use pseudo
   variables like `@VEXEROOT` or `@VMODROOT`.
-* `$tmpl('path')` - compile a V template file (used by vweb/veb).
+* `$tmpl('path')` - compile a V template file (used by veb).
 * `$env('VAR')` - read an environment variable at compile time.
 * `$d('ident', default)` - read a `-d ident=value` compile-time
   define, with a default fallback.

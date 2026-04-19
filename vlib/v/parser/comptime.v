@@ -140,7 +140,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
+const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 
 fn (p &Parser) resolve_tmpl_path_expr(expr ast.Expr) ?string {
 	return p.resolve_tmpl_path_expr_with_depth(expr, 0)
@@ -278,28 +278,19 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	p.check(.dollar)
 	mut is_veb := false
 	if p.peek_tok.kind == .dot {
-		name := p.check_name() // skip `vweb.html()` TODO
-		if name != 'vweb' && name != 'veb' {
+		name := p.check_name()
+		if name != 'veb' {
 			p.error(error_msg)
 			return err_node
 		}
 		import_mods := p.ast_imports.map(it.mod)
-		if name == 'vweb' {
-			if 'vweb' !in import_mods && 'x.vweb' !in import_mods {
-				p.error_with_pos('`\$vweb` cannot be used without importing vweb',
-					start_pos.extend(p.prev_tok.pos()))
-				return err_node
-			}
-			p.register_used_import('vweb')
-		} else if name == 'veb' {
-			if 'veb' !in import_mods {
-				p.error_with_pos('`\$veb` cannot be used without importing veb',
-					start_pos.extend(p.prev_tok.pos()))
-				return err_node
-			}
-			p.register_used_import('veb')
-			is_veb = true
+		if 'veb' !in import_mods {
+			p.error_with_pos('`\$veb` cannot be used without importing veb',
+				start_pos.extend(p.prev_tok.pos()))
+			return err_node
 		}
+		p.register_used_import('veb')
+		is_veb = true
 		p.check(.dot)
 	}
 	method_name := p.check_name()
@@ -397,10 +388,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut literal_string_param := if is_html && !has_string_arg { '' } else { p.tok.lit }
 	mut arg := ast.CallArg{}
 	if is_html && !(has_string_arg || p.tok.kind == .rpar) {
-		p.error('expecting `\$vweb.html()` for a default template path or `\$vweb.html("/path/to/template.html")`')
+		p.error('expecting `\$veb.html()` for a default template path or `\$veb.html("/path/to/template.html")`')
 	}
 	if is_html && p.tok.kind != .string {
-		// $vweb.html() can have no arguments
+		// $veb.html() can have no arguments
 	} else {
 		arg_expr := p.expr(0)
 		if resolved_path := p.resolve_tmpl_path_expr(arg_expr) {
@@ -436,7 +427,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
-	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// Compile veb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
 	fn_path_joined := fn_path.join(os.path_separator)
@@ -450,7 +441,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		resolved_path
 	}
-	// Looking next to the vweb program
+	// Looking next to the veb program
 	dir := os.dir(compiled_vfile_path)
 	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'

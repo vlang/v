@@ -84,7 +84,7 @@ by using any of the following commands in a terminal:
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
 * `v new --web abcd` → creates a new project in the new folder `abcd`, using the veb template.
 
-The `v new --web` template uses `veb`, V's current web framework. `vweb` is deprecated.
+The `v new --web` template uses `veb`, V's web framework.
 
 ## Table of Contents
 

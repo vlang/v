@@ -521,9 +521,7 @@ fn is_parser(text string) bool {
 }
 
 const web_strings = [
-	'vweb',
 	'veb',
-	'x.vweb',
 	'websocket:',
 	'pico',
 	'x.sessions',

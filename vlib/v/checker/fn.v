@@ -300,8 +300,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
-		typ_vweb_result := c.table.find_type('veb.Result')
-		if node.return_type == typ_vweb_result {
+		typ_veb_result := c.table.find_type('veb.Result')
+		if node.return_type == typ_veb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
@@ -579,7 +579,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
-		// needed for proper error reporting during vweb route checking
+		// needed for proper error reporting during veb route checking
 		if node.method_idx < sym.methods.len {
 			sym.methods[node.method_idx].source_fn = voidptr(node)
 		} else {
@@ -1023,18 +1023,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 
-	// vweb checks
-	if node.attrs.len > 0 && c.file.imports.any(it.mod == 'vweb') {
-		// If it's a vweb action (has the ['/url'] attribute), make sure it returns a vweb.Result
-		for attr in node.attrs {
-			if attr.name.starts_with('/') {
-				if c.table.sym(node.return_type).name != 'vweb.Result' {
-					c.error('vweb actions must return `vweb.Result`', node.pos)
-				}
-				break
-			}
-		}
-	}
 	if node.is_expand_simple_interpolation {
 		match true {
 			!node.is_method {
@@ -4045,8 +4033,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 				}
 			}
 			c.fn_decl(mut concrete_fn)
-			if concrete_fn.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
-				'vweb.run', 'vweb.run_at'] {
+			if concrete_fn.name in ['veb.run', 'veb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct

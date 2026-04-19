@@ -576,8 +576,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	original_node_typ := node.typ
 	concrete_node_typ := c.recheck_concrete_type(node.typ)
-	$if trace_vweb_guard ? {
-		if c.file.path.contains('/vlib/vweb/vweb.v') {
+	$if trace_veb_guard ? {
+		if c.file.path.contains('/vlib/veb/veb.v') {
 			node_type_str := if node.typ == 0 { '<none>' } else { c.table.type_to_str(node.typ) }
 			concrete_type_str := if concrete_node_typ == 0 {
 				'<none>'

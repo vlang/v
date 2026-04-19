@@ -1551,7 +1551,7 @@ pub fn (mut f Gen) chan_init(mut node ast.ChanInit) {
 pub fn (mut f Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.kind == .html {
-			f.write('\$vweb.html()')
+			f.write('\$veb.html()')
 		} else {
 			f.write("\$tmpl('${node.args_var}')")
 		}

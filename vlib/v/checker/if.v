@@ -293,7 +293,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 					unwrapped_guard_typ := branch.cond.expr_type.clear_option_and_result()
 					if w := branch.scope.find_var(var.name) {
-						$if trace_vweb_guard ? {
+						$if trace_veb_guard ? {
 							if var.name == 'params' {
 								expr_type_str := if branch.cond.expr_type == 0 {
 									'<none>'

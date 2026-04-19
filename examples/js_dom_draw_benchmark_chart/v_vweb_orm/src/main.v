@@ -1,11 +1,15 @@
 module main
 
-import vweb
+import veb
 import time
 import db.sqlite
 
+pub struct Context {
+	veb.Context
+}
+
 struct App {
-	vweb.Context
+	veb.StaticHandler
 }
 
 @[table: 'benchmark']
@@ -23,23 +27,17 @@ struct Response {
 }
 
 fn main() {
-	vweb.run_at(new_app(), vweb.RunParams{
-		port: 4000
-	}) or { panic(err) }
-}
-
-fn new_app() &App {
 	mut app := &App{}
-	return app
+	veb.run_at[App, Context](mut app, port: 4000)
 }
 
 @['/hello-world']
-pub fn (mut app App) hello_world() vweb.Result {
-	return app.text('hello world')
+pub fn (mut app App) hello_world(mut ctx Context) veb.Result {
+	return ctx.text('hello world')
 }
 
 @['/sqlite-memory/:count']
-pub fn (mut app App) sqlite_memory(count int) vweb.Result {
+pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
 	mut update_stopwatchs := []int{}
@@ -97,35 +95,35 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		select: select_stopwatchs
 		update: update_stopwatchs
 	}
-	return app.json(response)
+	return ctx.json(response)
 }
 
 @['/sqlite-file/:count']
-pub fn (mut app App) sqlite_file(count int) vweb.Result {
+pub fn (mut app App) sqlite_file(mut ctx Context, count int) veb.Result {
 	response := Response{
 		insert: []
 		select: []
 		update: []
 	}
-	return app.json(response)
+	return ctx.json(response)
 }
 
 @['/postgres/:count']
-pub fn (mut app App) postgres(count int) vweb.Result {
+pub fn (mut app App) postgres(mut ctx Context, count int) veb.Result {
 	response := Response{
 		insert: []
 		select: []
 		update: []
 	}
-	return app.json(response)
+	return ctx.json(response)
 }
 
 @['/mysql/:count']
-pub fn (mut app App) mysql(count int) vweb.Result {
+pub fn (mut app App) mysql(mut ctx Context, count int) veb.Result {
 	response := Response{
 		insert: []
 		select: []
 		update: []
 	}
-	return app.json(response)
+	return ctx.json(response)
 }

@@ -175,25 +175,16 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			cur_line = g.go_before_last_stmt()
 		}
 
-		ret_sym := g.table.sym(g.fn_decl.return_type)
 		fn_name := g.fn_decl.name.replace('.', '__').to_lower() + node.pos.pos.str()
-		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
-		is_veb := ret_sym.cname == 'veb__Result'
 
 		for stmt in node.veb_tmpl.stmts {
 			if stmt is ast.FnDecl {
 				if stmt.name.starts_with('main.veb_tmpl') {
 					if is_html {
 						g.inside_vweb_tmpl = true
-						if is_veb {
-							g.vweb_filter_fn_name = 'veb__filter'
-						} else if is_x_vweb {
-							g.vweb_filter_fn_name = 'x__vweb__filter'
-						} else {
-							g.vweb_filter_fn_name = 'vweb__filter'
-						}
+						g.vweb_filter_fn_name = 'veb__filter'
 					}
-					// insert stmts from vweb_tmpl fn
+					// insert stmts from veb_tmpl fn
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
 					//
 					g.inside_vweb_tmpl = false
@@ -204,16 +195,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 
 		if is_html {
-			// return a vweb or x.vweb html template
-			if is_veb {
-				g.writeln('veb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
-			} else if is_x_vweb {
-				g.writeln('x__vweb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
-			} else {
-				// old vweb:
-				app_name := g.fn_decl.params[0].name
-				g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name});')
-			}
+			g.writeln('veb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
 			g.writeln('strings__Builder_free(&sb_${fn_name});')
 			g.writeln('builtin__string_free(&_tmpl_res_${fn_name});')
 		} else {
@@ -943,13 +925,13 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if methods.len > 0 {
 			g.writeln('FunctionData ${node.val_var} = {0};')
 		}
-		typ_vweb_result := g.table.find_type('vweb.Result')
+		typ_veb_result := g.table.find_type('veb.Result')
 		for method in methods {
 			g.defer_stmts = old_defer_stmts
 			g.push_new_comptime_info()
 			g.comptime.inside_comptime_for = true
-			// filter vweb route methods (non-generic method)
-			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
+			// filter veb route methods (non-generic method)
+			if method.receiver_type != 0 && method.return_type == typ_veb_result {
 				rec_sym := g.table.sym(method.receiver_type)
 				if rec_sym.kind == .struct {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {

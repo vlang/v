@@ -294,7 +294,7 @@ mut:
 	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
-	vweb_filter_fn_name  string   // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
+	vweb_filter_fn_name  string   // veb__filter, used by $veb.html() for escaping strings in templates
 	export_funcs         []string // for .dll export function names
 	//
 	type_default_impl_level int
@@ -9054,7 +9054,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 
 	if exprs_len > 0 {
-		// `$vweb.html()` / `$veb.html()` expand to statements, so the Result return
+		// `$veb.html()` expands to statements, so the Result return
 		// needs to be emitted explicitly here.
 		if expr0 is ast.ComptimeCall && expr0.is_vweb {
 			g.inside_return_tmpl = true

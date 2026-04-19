@@ -126,9 +126,6 @@ pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[strin
 	if s.contains('Result') {
 		println('${s}')
 	}
-	if s.starts_with('x.vweb') {
-		s = s.replace_once('x.vweb.', 'veb.')
-	}
 	return s
 }
 
@@ -2331,19 +2328,11 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.kind == .html {
 			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
-				if node.is_veb {
-					f.write('\$veb.html(')
-				} else {
-					f.write('\$vweb.html(')
-				}
+				f.write('\$veb.html(')
 				f.expr(node.args[0].expr)
 				f.write(')')
 			} else {
-				if node.is_veb {
-					f.write('\$veb.html()')
-				} else {
-					f.write('\$vweb.html()')
-				}
+				f.write('\$veb.html()')
 			}
 		} else {
 			f.write('\$tmpl(')

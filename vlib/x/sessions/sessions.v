@@ -37,11 +37,11 @@ pub fn verify_session_id(raw_sid string, secret []u8) (string, bool) {
 }
 
 // CurrentSession contains the session data during a request.
-// If you use x.vweb you could embed it on your Context struct to have easy access to the session id and data.
+// If you use veb you could embed it on your Context struct to have easy access to the session id and data.
 // Usage example:
 // ```v
 // struct Context {
-//     vweb.Context
+//     veb.Context
 //     sessions.CurrentSessions[User]
 // }
 // ```
@@ -62,9 +62,9 @@ pub:
 	secure      bool
 }
 
-// Sessions can be used to easily integrate sessions with x.vweb.
+// Sessions can be used to easily integrate sessions with veb.
 // This struct contains the store that holds all session data it also provides
-// an easy way to manage sessions in your vweb app.
+// an easy way to manage sessions in your veb app.
 // Usage example:
 // ```v
 // pub struct App {
@@ -153,7 +153,7 @@ pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
 			s.store.set(sid, data)!
 			ctx.CurrentSession.session_data = data
 		}
-		eprintln('[vweb.sessions] error: trying to save data without a valid session!')
+		eprintln('[veb.sessions] error: trying to save data without a valid session!')
 	}
 }
 

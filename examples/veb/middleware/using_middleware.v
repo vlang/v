@@ -1,103 +1,93 @@
 module main
 
-import vweb
+import veb
 
-// for another example see vlib/vweb/tests/middleware_test_server.v
+// for another example see vlib/veb/tests/middleware_test.v
 const http_port = 8080
 
-struct App {
-	vweb.Context
-pub:
-	middlewares map[string][]vweb.Middleware
+pub struct Context {
+	veb.Context
 mut:
 	is_authenticated bool
 }
 
-fn main() {
-	mut app := new_app()
-	vweb.run(app, http_port)
+struct App {
+	veb.Middleware[Context]
 }
 
-fn new_app() &App {
-	mut app := &App{
-		middlewares: {
-			// chaining is allowed, middleware will be evaluated in order
-			'/admin/': [other_func1, other_func2]
-			'/early':  [middleware_early]
-		}
-	}
+fn main() {
+	mut app := &App{}
 
-	// do stuff with app
-	// ...
-	return app
+	// chaining is allowed, middleware will be evaluated in order
+	app.Middleware.use(handler: other_func1)
+	app.Middleware.use(handler: other_func2)
+
+	// route-specific middleware
+	app.Middleware.route_use('/admin/:path...', handler: check_auth)
+	app.Middleware.route_use('/early', handler: middleware_early)
+
+	veb.run[App, Context](mut app, http_port)
 }
 
 @['/']
-pub fn (mut app App) index() vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	println('Index page')
 	title := 'Home Page'
 
 	content := $tmpl('templates/index.html')
 	base := $tmpl('templates/base.html')
-	return app.html(base)
+	return ctx.html(base)
 }
 
-@[middleware: check_auth]
 @['/admin/secrets']
-pub fn (mut app App) secrets() vweb.Result {
+pub fn (app &App) secrets(mut ctx Context) veb.Result {
 	println('Secrets page')
 	title := 'Secret Admin Page'
 
 	content := $tmpl('templates/secret.html')
 	base := $tmpl('templates/base.html')
-	return app.html(base)
+	return ctx.html(base)
 }
 
 @['/admin/:sub']
-pub fn (mut app App) dynamic(sub string) vweb.Result {
+pub fn (app &App) dynamic(mut ctx Context, sub string) veb.Result {
 	println('Dynamic page')
 	title := 'Secret dynamic'
 
 	content := sub
 	base := $tmpl('templates/base.html')
-	return app.html(base)
+	return ctx.html(base)
 }
 
 @['/early']
-pub fn (mut app App) early() vweb.Result {
+pub fn (app &App) early(mut ctx Context) veb.Result {
 	println('Early page')
 	title := 'Early Exit'
 
 	content := $tmpl('templates/early.html')
 	base := $tmpl('templates/base.html')
-	return app.html(base)
+	return ctx.html(base)
 }
 
-// is always executed first!
-pub fn (mut app App) before_request() {
-	app.is_authenticated = false
-	println('0')
-}
-
-pub fn (mut app App) check_auth() bool {
-	println('3')
-	if app.is_authenticated == false {
-		app.redirect('/')
-	}
-	return app.is_authenticated
-}
-
-fn other_func1(mut _ctx vweb.Context) bool {
+fn other_func1(mut ctx Context) bool {
 	println('1')
 	return true
 }
 
-fn other_func2(mut _ctx vweb.Context) bool {
+fn other_func2(mut ctx Context) bool {
 	println('2')
 	return true
 }
 
-fn middleware_early(mut ctx vweb.Context) bool {
+fn check_auth(mut ctx Context) bool {
+	println('3')
+	if ctx.is_authenticated == false {
+		ctx.redirect('/')
+	}
+	return ctx.is_authenticated
+}
+
+fn middleware_early(mut ctx Context) bool {
 	println('4')
 	ctx.text(':(')
 	// returns false, so the middleware propagation is stopped and the user will see the text ":("
