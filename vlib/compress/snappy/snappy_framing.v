@@ -262,7 +262,8 @@ pub fn (mut dec StreamDecoder) write(buf []u8) !int {
 		} else if chunk_type == chunk_type_padding || int(chunk_type) >= 0x80 {
 			// skip
 		} else {
-			dec_err := error('snappy framing: unsupported unskippable chunk type 0x${chunk_type:02x}')
+			dec_err :=
+				error('snappy framing: unsupported unskippable chunk type 0x${chunk_type:02x}')
 			dec.err = dec_err
 			return dec_err
 		}
@@ -284,22 +285,51 @@ pub fn (mut dec StreamDecoder) write(buf []u8) !int {
 	return buf.len
 }
 
-// read removes and returns the decoded bytes accumulated so far.
+// read removes and returns decoded bytes. When the output buffer is empty it
+// surfaces any error recorded during write()/close(). Only then does it return
+// io.Eof{} for a cleanly terminated stream.
 pub fn (mut dec StreamDecoder) read(mut buf []u8) !int {
-	// If there are dec.output left, let the reader read it even if closed.
-	if dec.closed && dec.output.len == 0 {
+	// Always drain already-decoded output first so the caller never loses data.
+	if dec.output.len > 0 {
+		n := copy(mut buf, dec.output)
+		dec.output = dec.output[n..]
+		return n
+	}
+
+	if dec.closed {
+		// Surface truncation / malformed-stream errors before EOF.
+		if err := dec.err {
+			return err
+		}
 		return io.Eof{}
 	}
 
-	n := copy(mut buf, dec.output)
-	dec.output = dec.output[n..]
-
-	return n
+	return 0
 }
 
-// close sets the stream to closed, not allowing and writes and only allowing to read the remaining bytes.
-pub fn (mut dec StreamDecoder) close() {
+// close marks the stream finished and validates its terminal state.
+// Returns an error if the stream was truncated or the identifier was never received.
+// The error is also stored internally so read() will surface it after draining output.
+pub fn (mut dec StreamDecoder) close() ! {
+	if dec.closed {
+		return
+	}
 	dec.closed = true
+
+	remaining := dec.buf.len - dec.offset
+
+	if remaining > 0 {
+		err :=
+			error('snappy framing: stream closed with ${remaining} unprocessed bytes (truncated chunk)')
+		dec.err = err
+		return err
+	}
+
+	if !dec.identified && dec.buf.len > 0 {
+		err := error('snappy framing: stream closed before identifier chunk was received')
+		dec.err = err
+		return err
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ fn stream_round_trip(label string, input []u8) ! {
 
 // drain_decoder closes dec and returns all decoded bytes accumulated so far.
 fn drain_decoder(mut dec StreamDecoder) []u8 {
-	dec.close()
+	dec.close() or { panic(err) }
 	mut collected := []u8{}
 	mut chunk := []u8{len: 4096}
 	for {
@@ -257,7 +257,7 @@ fn test_incremental_decoder_read_drains_output() {
 	stream := encode_stream('hello world'.bytes())
 	mut dec := StreamDecoder{}
 	dec.write(stream) or { panic(err) }
-	dec.close()
+	dec.close() or { panic(err) }
 
 	mut buf := []u8{len: 4096}
 
@@ -278,7 +278,7 @@ fn test_incremental_decoder_write_after_close_errors() {
 	stream := encode_stream('hello'.bytes())
 	mut dec := StreamDecoder{}
 	dec.write(stream) or { panic(err) }
-	dec.close()
+	dec.close() or { panic(err) }
 	dec.write(stream) or { return } // expected error
 	panic('expected write on closed decoder to fail')
 }
