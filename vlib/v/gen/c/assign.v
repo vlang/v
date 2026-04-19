@@ -156,16 +156,16 @@ fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) decl_assign_struct_init_needs_tmp(expr ast.Expr) bool {
-	node := match expr {
+	mut node := ast.StructInit{}
+	match expr {
 		ast.StructInit {
-			expr
+			node = expr
 		}
 		ast.ParExpr {
-			if expr.expr is ast.StructInit {
-				expr.expr
-			} else {
+			if expr.expr !is ast.StructInit {
 				return false
 			}
+			node = expr.expr as ast.StructInit
 		}
 		else {
 			return false

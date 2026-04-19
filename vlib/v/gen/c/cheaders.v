@@ -347,10 +347,139 @@ const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
-#include <stdio.h>  // TODO: remove all these includes, define all function signatures and types manually
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h> // for va_list
+#if defined(_MSC_VER)
+typedef struct _iobuf FILE;
+typedef char* va_list;
+#ifndef _ADDRESSOF
+	#define _ADDRESSOF(v) (&(v))
+#endif
+#ifndef _INTSIZEOF
+	#define _INTSIZEOF(n) ((sizeof(n) + sizeof(int) -
+	1) & ~(sizeof(int) -
+	1))
+#endif
+#ifndef va_start
+	#define va_start(ap, v) ((void)((ap) = (va_list)_ADDRESSOF(v) + _INTSIZEOF(v)))
+#endif
+#ifndef va_arg
+	#define va_arg(ap, t) (*(t*)((ap += _INTSIZEOF(t)) -
+	_INTSIZEOF(t)))
+#endif
+#ifndef va_end
+	#define va_end(ap) ((void)((ap) = (va_list)0))
+#endif
+#ifndef va_copy
+	#define va_copy(dest, src) ((dest) = (src))
+#endif
+FILE* __cdecl __acrt_iob_func(unsigned index);
+#define stdin (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
+#else
+	#if defined(__APPLE__)
+typedef struct __sFILE FILE;
+extern FILE* __stdinp;
+extern FILE* __stdoutp;
+extern FILE* __stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
+	#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+typedef struct __sFILE FILE;
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+	#else
+typedef struct _IO_FILE FILE;
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+	#endif
+typedef __builtin_va_list va_list;
+#ifndef va_start
+	#define va_start(ap, v) __builtin_va_start(ap, v)
+#endif
+#ifndef va_arg
+	#define va_arg(ap, t) __builtin_va_arg(ap, t)
+#endif
+#ifndef va_end
+	#define va_end(ap) __builtin_va_end(ap)
+#endif
+#ifndef va_copy
+	#define va_copy(dest, src) __builtin_va_copy(dest, src)
+#endif
+#endif
+int vfprintf(FILE *stream, const char *format, va_list ap);
+int vsnprintf(char *str, size_t size, const char *format, va_list ap);
+int fprintf(FILE *stream, const char *format, ...);
+int printf(const char *format, ...);
+int snprintf(char *str, size_t size, const char *format, ...);
+int sprintf(char *str, const char *format, ...);
+int sscanf(const char *str, const char *format, ...);
+int scanf(const char *format, ...);
+int puts(const char *str);
+int fputs(const char *str, FILE *stream);
+int getchar(void);
+int putchar(int ch);
+int getc(FILE *stream);
+int fgetc(FILE *stream);
+int ungetc(int ch, FILE *stream);
+int fflush(FILE *stream);
+int feof(FILE *stream);
+int ferror(FILE *stream);
+void clearerr(FILE *stream);
+int setvbuf(FILE *stream, char *buf, int mode, size_t size);
+long ftell(FILE *stream);
+void rewind(FILE *stream);
+FILE *fopen(const char *filename, const char *mode);
+FILE *fdopen(int fd, const char *mode);
+FILE *freopen(const char *filename, const char *mode, FILE *stream);
+int fileno(FILE *stream);
+size_t fread(void *ptr, size_t size, size_t items, FILE *stream);
+size_t fwrite(const void *ptr, size_t size, size_t items, FILE *stream);
+char *fgets(char *str, int size, FILE *stream);
+int fclose(FILE *stream);
+FILE *popen(const char *command, const char *mode);
+int pclose(FILE *stream);
+void *malloc(size_t size);
+void *calloc(size_t nitems, size_t size);
+void *realloc(void *ptr, size_t size);
+void *aligned_alloc(size_t alignment, size_t size);
+void free(void *ptr);
+int atexit(void (*cb)(void));
+void exit(int status);
+int atoi(const char *str);
+char *getenv(const char *name);
+int setenv(const char *name, const char *value, int overwrite);
+int unsetenv(const char *name);
+int system(const char *command);
+int remove(const char *path);
+int rename(const char *old_path, const char *new_path);
+char *realpath(const char *path, char *resolved_path);
+void qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
+size_t strlen(const char *str);
+char *strerror(int errnum);
+void *memcpy(void *dest, const void *src, size_t n);
+void *memmove(void *dest, const void *src, size_t n);
+void *memset(void *dest, int ch, size_t n);
+int memcmp(const void *left, const void *right, size_t n);
+void *memchr(const void *str, int c, size_t n);
+char *strchr(const char *str, int c);
+char *strrchr(const char *str, int c);
+int fseek(FILE *stream, long offset, int whence);
+isize getline(char **lineptr, size_t *n, FILE *stream);
+#ifndef _IOFBF
+	#define _IOFBF 0
+#endif
+#ifndef _IOLBF
+	#define _IOLBF 1
+#endif
+#ifndef _IONBF
+	#define _IONBF 2
+#endif
+#ifndef EOF
+	#define EOF (-1)
+#endif
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers
@@ -358,9 +487,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #endif
 #if defined(_MSC_VER)
 // Ensure C99-like return semantics and NUL-termination for MSVC snprintf/vsnprintf.
-#ifndef va_copy
-	#define va_copy(dest, src) ((dest) = (src))
-#endif
 static int v__vsnprintf(char *s, size_t n, const char *fmt, va_list ap) {
 	va_list ap_copy;
 	va_copy(ap_copy, ap);

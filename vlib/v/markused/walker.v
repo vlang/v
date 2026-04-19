@@ -2113,6 +2113,19 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.uses_mem_align = w.uses_mem_align || decl.is_aligned
 				for iface_typ in decl.implements_types {
 					w.mark_by_type(iface_typ.typ)
+					iface_sym := w.table.sym(iface_typ.typ)
+					for method in iface_sym.methods {
+						if impl_method := isym.find_method_with_generic_parent(method.name) {
+							w.fn_by_name(impl_method.fkey())
+						} else {
+							impl_method, _ := w.table.find_method_from_embeds(isym, method.name) or {
+								ast.Fn{}, []ast.Type{}
+							}
+							if impl_method.name != '' {
+								w.fn_by_name(impl_method.fkey())
+							}
+						}
+					}
 				}
 			}
 		}

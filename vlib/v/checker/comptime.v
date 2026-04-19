@@ -475,14 +475,15 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				}
 				c.comptime.comptime_for_field_value = field
 				c.comptime.comptime_for_field_var = node.val_var
+				resolved_field_typ := c.unwrap_generic(field.typ)
 				c.type_resolver.update_ct_type(node.val_var, c.field_data_type)
-				c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
-				c.comptime.comptime_for_field_type = field.typ
+				c.type_resolver.update_ct_type('${node.val_var}.typ', resolved_field_typ)
+				c.comptime.comptime_for_field_type = resolved_field_typ
 				c.comptime.has_different_types = has_different_types
 				c.stmts(mut node.stmts)
 
-				if field.typ != ast.no_type {
-					unwrapped_expr_type := c.unwrap_generic(field.typ)
+				if resolved_field_typ != ast.no_type {
+					unwrapped_expr_type := c.unwrap_generic(resolved_field_typ)
 					tsym := c.table.sym(unwrapped_expr_type)
 					c.markused_comptimefor(mut node, unwrapped_expr_type)
 					if tsym.kind == .array_fixed {
@@ -604,11 +605,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_variant_var = node.val_var
 			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
 			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
-			$if trace_ci_fixes ? {
-				if c.file.path.contains('decode_sumtype.v') {
-					eprintln('comptime variants val_var=${node.val_var} variant=${c.table.type_to_str(variant)} sumtype=${c.table.type_to_str(typ)}')
-				}
-			}
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}

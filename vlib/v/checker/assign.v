@@ -32,6 +32,9 @@ fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.
 	match expr {
 		ast.Ident {
 			if expr.obj is ast.Var && expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type.has_flag(.option) {
+					return expr.obj.orig_type
+				}
 				if expr.obj.is_mut && expr.obj.orig_type != 0 {
 					orig_sym := c.table.final_sym(expr.obj.orig_type)
 					if orig_sym.kind == .sum_type {
@@ -47,6 +50,9 @@ fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.
 				scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
 					expr.expr_type, expr.field_name)
 				if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+					if scope_field.orig_type.has_flag(.option) {
+						return scope_field.orig_type
+					}
 					return c.exposed_smartcast_type(scope_field.orig_type,
 						scope_field.smartcasts.last(), scope_field.is_mut)
 				}

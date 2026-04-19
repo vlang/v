@@ -13,6 +13,18 @@ const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending
 const max_len = break_points[break_points.len - 1]
 const bs = '\\'
 
+fn call_arg_spread_str(arg ast.CallArg) string {
+	return match arg.expr {
+		ast.ArrayDecompose {
+			decompose := arg.expr as ast.ArrayDecompose
+			'...${decompose.expr.str()}'
+		}
+		else {
+			arg.str()
+		}
+	}
+}
+
 @[minify]
 pub struct Fmt {
 pub:
@@ -2383,11 +2395,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 				inner_args := if node.args_var != '' {
 					node.args_var
 				} else {
-					node.args.map(if it.expr is ast.ArrayDecompose {
-						'...${it.expr.expr.str()}'
-					} else {
-						it.str()
-					}).join(', ')
+					node.args.map(call_arg_spread_str).join(', ')
 				}
 				method_expr := if node.has_parens {
 					'(${node.method_name}(${inner_args}))'

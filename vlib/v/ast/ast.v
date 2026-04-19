@@ -2355,7 +2355,7 @@ pub mut:
 	updated_columns  []string // for `update set x=y`
 	table_expr       TypeNode
 	fields           []StructField
-	sub_structs      map[int]SqlStmtLine
+	sub_structs      map[string]SqlStmtLine
 	where_expr       Expr
 	update_exprs     []Expr // for `update`
 	update_data_expr Expr
@@ -2410,6 +2410,7 @@ pub:
 	pos          token.Pos
 pub mut:
 	typ                  Type
+	scope                &Scope = unsafe { nil }
 	db_expr              Expr // `db` in `sql db {`
 	where_expr           Expr
 	order_expr           Expr
@@ -2618,10 +2619,10 @@ pub fn (expr Expr) is_pure_literal() bool {
 pub fn (expr Expr) is_auto_deref_var() bool {
 	return match expr {
 		Ident {
-			if expr.obj is Var {
-				expr.obj.is_auto_deref
-			} else {
-				false
+			obj := expr.obj
+			match obj {
+				Var { obj.is_auto_deref }
+				else { false }
 			}
 		}
 		PrefixExpr {
@@ -2636,10 +2637,10 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 pub fn (expr Expr) is_auto_deref_arg() bool {
 	return match expr {
 		Ident {
-			if expr.obj is Var {
-				expr.obj.is_auto_deref && expr.obj.is_arg
-			} else {
-				false
+			obj := expr.obj
+			match obj {
+				Var { obj.is_auto_deref && obj.is_arg }
+				else { false }
 			}
 		}
 		else {

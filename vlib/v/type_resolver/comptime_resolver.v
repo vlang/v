@@ -52,14 +52,10 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			node.ct_expr
 		}
 		ast.IndexExpr {
-			if node.left is ast.Ident {
-				node.left.ct_expr
-			} else {
-				false
-			}
+			t.has_comptime_expr(node.left)
 		}
 		ast.SelectorExpr {
-			return node.expr is ast.Ident && node.expr.ct_expr
+			t.has_comptime_expr(node.expr)
 		}
 		ast.InfixExpr {
 			return node.left_ct_expr || node.right_ct_expr

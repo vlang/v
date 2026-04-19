@@ -1053,7 +1053,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_field_var = node.val_var
 				g.comptime.comptime_for_field_value = field
-				g.comptime.comptime_for_field_type = field.typ
+				resolved_field_typ := g.unwrap_generic(field.typ)
+				g.comptime.comptime_for_field_type = resolved_field_typ
 				g.writeln('/* field ${i} : ${field.name} */ {')
 				g.writeln('\t${node.val_var}.name = _S("${field.name}");')
 				if field.attrs.len == 0 {
@@ -1064,8 +1065,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 						attrs.join(', ') + '}));\n')
 				}
-				field_sym := g.table.sym(field.typ)
-				styp := field.typ
+				field_sym := g.table.sym(resolved_field_typ)
+				styp := resolved_field_typ
 				unaliased_styp := g.table.unaliased_type(styp)
 
 				g.writeln('\t${node.val_var}.typ = ${int(styp.idx())};\t// ${g.table.type_to_str(styp)}')
@@ -1074,9 +1075,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 				g.writeln('\t${node.val_var}.is_embed = ${field.is_embed};')
 
-				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
-				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
-				g.writeln('\t${node.val_var}.is_option = ${field.typ.has_flag(.option)};')
+				g.writeln('\t${node.val_var}.is_shared = ${resolved_field_typ.has_flag(.shared_f)};')
+				g.writeln('\t${node.val_var}.is_atomic = ${resolved_field_typ.has_flag(.atomic_f)};')
+				g.writeln('\t${node.val_var}.is_option = ${resolved_field_typ.has_flag(.option)};')
 
 				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
 				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
@@ -1085,9 +1086,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
 				g.writeln('\t${node.val_var}.is_enum = ${field_sym.kind == .enum};')
 
-				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
+				g.writeln('\t${node.val_var}.indirections = ${resolved_field_typ.nr_muls()};')
 
-				g.type_resolver.update_ct_type('${node.val_var}.typ', field.typ)
+				g.type_resolver.update_ct_type('${node.val_var}.typ', resolved_field_typ)
 				g.type_resolver.update_ct_type('${node.val_var}.unaliased_typ', unaliased_styp)
 				g.stmts(node.stmts)
 				g.write_defer_stmts(node.scope, false, node.pos)

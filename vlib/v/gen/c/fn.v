@@ -165,6 +165,10 @@ fn free_method_matches_receiver_expr(expr ast.Expr, receiver_name string) bool {
 	}
 }
 
+fn (g &Gen) prefers_msvc_compatible_code() bool {
+	return g.is_cc_msvc || g.pref.os == .windows
+}
+
 fn (mut g Gen) node_decl_fkey(node ast.FnDecl) string {
 	if node.is_method && !node.name.contains('_T_') {
 		receiver_sym := g.table.sym(node.receiver.typ)
@@ -653,6 +657,26 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: ${is_used_by_main} | node.name: ${node.name} | fkey: ${fkey} | node.is_method: ${node.is_method}')
 		}
+		if !is_used_by_main && node.is_method {
+			receiver_type := g.table.final_type(node.receiver.typ.set_nr_muls(0))
+			for isym in g.table.type_symbols {
+				if isym.kind != .interface || isym.info !is ast.Interface {
+					continue
+				}
+				if isym.idx !in g.table.used_features.used_syms {
+					continue
+				}
+				inter_info := isym.info as ast.Interface
+				impl_types := inter_info.implementor_types(true)
+				if receiver_type !in impl_types {
+					continue
+				}
+				if isym.has_method(node.name) || isym.has_method_with_generic_parent(node.name) {
+					is_used_by_main = true
+					break
+				}
+			}
+		}
 		if !is_used_by_main {
 			$if trace_skip_unused_fns_in_c_code ? {
 				g.writeln('// trace_skip_unused_fns_in_c_code, ${node.name}, fkey: ${fkey}')
@@ -857,6 +881,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
 	if node.language == .c && !g.inside_c_extern {
+		return
+	}
+	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
+	if node.language == .c && c_sym_name in ['va_start', 'va_arg', 'va_end', 'va_copy'] {
 		return
 	}
 	old_is_vlines_enabled := g.is_vlines_enabled

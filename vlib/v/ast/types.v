@@ -138,6 +138,22 @@ pub mut:
 	align         int = -1
 }
 
+pub fn (sym TypeSymbol) aggregate_variant_type(idx int) Type {
+	info := sym.info
+	return match info {
+		Aggregate {
+			if idx >= 0 && idx < info.types.len {
+				info.types[idx]
+			} else {
+				Type(0)
+			}
+		}
+		else {
+			Type(0)
+		}
+	}
+}
+
 // max of 8
 pub enum TypeFlag as u32 {
 	option             = 1 << 24

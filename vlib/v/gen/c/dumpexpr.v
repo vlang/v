@@ -51,6 +51,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar {
+				ident_info := node.expr.var_info()
 				current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 				if current_fn_ident_type != 0 {
 					is_auto_deref := node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
@@ -82,7 +83,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 							if re != 0 {
 								expr_type = re
 							} else {
-								expr_type = g.unwrap_generic(node.expr.info.typ)
+								expr_type = g.unwrap_generic(ident_info.typ)
 							}
 						}
 					}

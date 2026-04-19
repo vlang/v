@@ -84,11 +84,15 @@ fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 	}
 	return match expr {
 		ast.Ident {
-			if expr.obj is ast.Var {
-				expr.obj.is_arg || expr.obj.expr is ast.AsCast
-					|| (expr.obj.expr is ast.PrefixExpr && expr.obj.expr.op == .amp)
-			} else {
-				false
+			obj := expr.obj
+			match obj {
+				ast.Var {
+					obj.is_arg || obj.expr is ast.AsCast
+						|| (obj.expr is ast.PrefixExpr && obj.expr.op == .amp)
+				}
+				else {
+					false
+				}
 			}
 		}
 		ast.PrefixExpr {
@@ -174,9 +178,10 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				typ = g.unwrap_generic(node.expr_types[i])
 			} else {
 				typ = g.unwrap_generic(expr.obj.smartcasts.last())
-				cast_sym := g.table.sym(typ)
-				if cast_sym.info is ast.Aggregate {
-					typ = cast_sym.info.types[g.aggregate_type_idx]
+				cast_sym := *g.table.sym(typ)
+				smartcast_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+				if smartcast_variant_typ != 0 {
+					typ = smartcast_variant_typ
 				} else if expr.obj.ct_type_var == .smartcast {
 					typ = g.unwrap_generic(g.type_resolver.get_type(expr))
 				}
@@ -357,9 +362,10 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	}
 	// Resolve aggregate types (from multi-branch match arms) to the
 	// concrete variant type for the current iteration.
-	orig_typ_sym := g.table.sym(orig_typ)
-	if orig_typ_sym.info is ast.Aggregate {
-		orig_typ = orig_typ_sym.info.types[g.aggregate_type_idx]
+	orig_typ_sym := *g.table.sym(orig_typ)
+	orig_variant_typ := orig_typ_sym.aggregate_variant_type(g.aggregate_type_idx)
+	if orig_variant_typ != 0 {
+		orig_typ = orig_variant_typ
 	}
 	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
 	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
@@ -426,9 +432,10 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
-					cast_sym := g.table.sym(exp_typ)
-					if cast_sym.info is ast.Aggregate {
-						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
+					cast_sym := *g.table.sym(exp_typ)
+					exp_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if exp_variant_typ != 0 {
+						exp_typ = exp_variant_typ
 					}
 					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
 						exp_typ = exp_typ.clear_flag(.option)
@@ -525,9 +532,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					node_.expr_types[i]
 				} else {
 					mut typ := g.unwrap_generic(expr.obj.smartcasts.last())
-					cast_sym := g.table.sym(typ)
-					if cast_sym.info is ast.Aggregate {
-						typ = cast_sym.info.types[g.aggregate_type_idx]
+					cast_sym := *g.table.sym(typ)
+					field_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if field_variant_typ != 0 {
+						typ = field_variant_typ
 					} else if expr.obj.ct_type_var == .smartcast {
 						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
 					}
@@ -589,9 +597,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 			// Resolve aggregate types (from multi-branch match arms) to the
 			// concrete variant type for the current iteration.
-			field_sym := g.table.sym(field_typ)
-			if field_sym.info is ast.Aggregate {
-				field_typ = field_sym.info.types[g.aggregate_type_idx]
+			field_sym := *g.table.sym(field_typ)
+			interp_variant_typ := field_sym.aggregate_variant_type(g.aggregate_type_idx)
+			if interp_variant_typ != 0 {
+				field_typ = interp_variant_typ
 			}
 			// Clear option flag for variables unwrapped via `or {}` blocks
 			if field_typ.has_flag(.option) && g.should_clear_option_flag(expr) {

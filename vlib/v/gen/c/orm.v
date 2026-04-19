@@ -22,6 +22,22 @@ fn orm_field_access_name(field_name string) string {
 	return c_name(field_name)
 }
 
+fn (g &Gen) orm_inserting_object_type(obj ast.ScopeObject) ast.Type {
+	return match obj {
+		ast.Var {
+			if obj.smartcasts.len > 0 && obj.orig_type != 0
+				&& g.table.final_sym(g.table.final_type(obj.orig_type)).kind == .sum_type {
+				obj.orig_type
+			} else {
+				obj.typ
+			}
+		}
+		else {
+			ast.void_type
+		}
+	}
+}
+
 fn (g &Gen) orm_primitive_field_name(typ ast.Type) string {
 	final_typ := g.table.final_type(typ.clear_flag(.option))
 	sym := g.table.sym(final_typ)
@@ -295,23 +311,16 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
-	mut sub_structs := map[int]ast.SqlStmtLine{}
+	mut sub_structs := map[string]ast.SqlStmtLine{}
 	for key, sub in node.sub_structs {
-		// Find the field type for this field name to use as the int key
-		mut field_typ := ast.Type(0)
-		for field in node.fields {
-			if field.name == key {
-				field_typ = field.typ
-				break
-			}
-		}
-		sub_structs[int(field_typ)] = g.build_sql_stmt_line_from_sql_expr(sub)
+		sub_structs[key] = g.build_sql_stmt_line_from_sql_expr(sub)
 	}
 	return ast.SqlStmtLine{
 		object_var:  node.inserted_var
 		fields:      node.fields
 		table_expr:  node.table_expr
 		sub_structs: sub_structs
+		scope:       node.scope
 	}
 }
 
@@ -556,7 +565,7 @@ fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connec
 		if inserting_object.typ.is_ptr() {
 			member_access_type = '->'
 		}
-		inserting_object_type = inserting_object.typ
+		inserting_object_type = g.orm_inserting_object_type(inserting_object)
 	}
 	inserting_object_sym := g.table.sym(inserting_object_type)
 	data_var_name := g.new_tmp_var()
@@ -827,8 +836,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			if final_field_typ in node.sub_structs {
-				subs << unsafe { node.sub_structs[int(final_field_typ)] }
+			if field.name in node.sub_structs {
+				subs << unsafe { node.sub_structs[field.name] }
 
 				unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
 				subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
@@ -847,8 +856,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			if final_field_typ in node.sub_structs {
-				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
+			if field.name in node.sub_structs {
+				arrs << unsafe { node.sub_structs[field.name] }
 			}
 			field_names << field.name
 		}
@@ -871,7 +880,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		if inserting_object.typ.is_ptr() {
 			member_access_type = '->'
 		}
-		inserting_object_type = inserting_object.typ
+		inserting_object_type = g.orm_inserting_object_type(inserting_object)
 	}
 
 	inserting_object_sym := g.table.sym(inserting_object_type)

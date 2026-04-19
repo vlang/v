@@ -212,6 +212,7 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 		aggregate_field: aggregate_field
 		is_insert:       is_insert
 		typ:             typ.set_flag(.result)
+		scope:           p.scope
 		or_expr:         or_expr
 		db_expr:         prefix.db_expr
 		where_expr:      where_expr

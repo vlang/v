@@ -829,12 +829,15 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				name := if mut node.expr is ast.Ident {
 					// var
 					if node.expr.info is ast.IdentVar && node.expr.language == .v {
-						g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f, .result))).replace('*', '')
+						ident_info := node.expr.var_info()
+						g.styp(g.unwrap_generic(ident_info.typ.clear_flags(.shared_f, .result))).replace('*',
+							'')
 					} else {
 						node.cname
 					}
 				} else if mut node.expr is ast.CallExpr {
-					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*', '').replace('.', '__')
+					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*',
+						'').replace('.', '__')
 				} else {
 					node.cname
 				}

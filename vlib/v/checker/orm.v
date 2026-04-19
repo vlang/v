@@ -335,6 +335,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			has_where:    true
 			where_expr:   ast.None{}
 			typ:          field.typ.clear_flag(.option).set_flag(.result)
+			scope:        c.fn_scope
 			db_expr:      node.db_expr
 			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
@@ -583,7 +584,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	fields = insert_fields.clone()
 
-	mut sub_structs := map[int]ast.SqlStmtLine{}
+	mut sub_structs := map[string]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
@@ -619,7 +620,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[field.typ] = subquery_expr
+		sub_structs[field.name] = subquery_expr
 	}
 
 	node.fields = fields

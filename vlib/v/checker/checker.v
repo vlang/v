@@ -1843,8 +1843,27 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			}
 			scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
 				expr.expr_type, expr.field_name)
+			mut selector_smartcast_is_mut := false
+			if scope_field != unsafe { nil } {
+				selector_smartcast_is_mut = scope_field.is_mut
+			}
+			if !selector_smartcast_is_mut {
+				expr_sym := c.table.sym(expr.expr_type)
+				if field := c.table.find_field(expr_sym, expr.field_name) {
+					if field.is_mut {
+						if root_ident := expr.root_ident() {
+							selector_smartcast_is_mut = root_ident.is_mut()
+							if !selector_smartcast_is_mut {
+								if v := expr.scope.find_var(root_ident.name) {
+									selector_smartcast_is_mut = v.is_mut
+								}
+							}
+						}
+					}
+				}
+			}
 			if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
-				&& !scope_field.is_mut && !c.pref.translated && !c.file.is_translated
+				&& !selector_smartcast_is_mut && !c.pref.translated && !c.file.is_translated
 				&& !c.inside_unsafe {
 				expr_str := expr.str()
 				c.error('cannot mutate `${expr_str}` in a non-mut smartcast, use `if mut ${expr_str} ...`',
@@ -6935,8 +6954,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					if root_ident := expr.root_ident() {
+						is_mut = root_ident.is_mut()
 						if v := scope.find_var(root_ident.name) {
-							is_mut = v.is_mut
+							is_mut = is_mut || v.is_mut
 						}
 					}
 				}
@@ -7456,6 +7476,12 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 						}
 						else {
 							obj.is_auto_heap = true
+						}
+					}
+
+					if as_interface {
+						for method in type_sym.methods {
+							c.mark_fn_decl_as_referenced(method.fkey())
 						}
 					}
 				}
