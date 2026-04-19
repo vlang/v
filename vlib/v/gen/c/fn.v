@@ -671,7 +671,13 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 				if receiver_type !in impl_types {
 					continue
 				}
-				if isym.has_method(node.name) || isym.has_method_with_generic_parent(node.name) {
+				mut interface_requires_method := false
+				if interface_method := isym.find_method(node.name) {
+					interface_requires_method = interface_method.no_body
+				} else if interface_method := isym.find_method_with_generic_parent(node.name) {
+					interface_requires_method = interface_method.no_body
+				}
+				if interface_requires_method {
 					is_used_by_main = true
 					break
 				}
