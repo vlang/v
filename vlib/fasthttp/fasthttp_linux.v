@@ -24,6 +24,7 @@ fn C.fstat(fd i32, buf &C.stat) i32
 
 @[typedef]
 union C.epoll_data_t {
+mut:
 	ptr voidptr
 	fd  int
 	u32 u32
@@ -31,6 +32,7 @@ union C.epoll_data_t {
 }
 
 struct C.epoll_event {
+mut:
 	events u32
 	data   C.epoll_data_t
 }
@@ -152,7 +154,7 @@ fn create_server_socket(server Server) int {
 	return server_fd
 }
 
-// Function to add a file descriptor to the epoll instance
+// add_fd_to_epoll adds a file descriptor to the epoll instance
 fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 	mut ev := C.epoll_event{
 		events: events
@@ -166,7 +168,7 @@ fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 	return 0
 }
 
-// Function to remove a file descriptor from the epoll instance
+// remove_fd_from_epoll removes a file descriptor from the epoll instance
 fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
 	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
 	if ret == -1 {
@@ -269,7 +271,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 	}
 
 	if response.file_path != '' {
-		mut fd := C.open(response.file_path.str, C.O_RDONLY)
+		mut fd := C.open(response.file_path.str, C.O_RDONLY, 0)
 		if fd == -1 {
 			eprintln('ERROR: open file failed')
 			handle_client_closure(epoll_fd, client_fd, mut client_fds)
@@ -431,12 +433,12 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 
 					// Check if headers are complete (\r\n\r\n)
 					if !headers_complete && total_bytes_read >= 4 {
-						for hi := if header_end_pos == -1 {
+						hi_start := if header_end_pos == -1 {
 							0
 						} else {
 							header_end_pos
 						}
-						; hi <= total_bytes_read - 4; hi++ {
+						for hi = hi_start; hi <= total_bytes_read - 4; hi++ {
 							if readed_request_buffer[hi] == `\r`
 								&& readed_request_buffer[hi + 1] == `\n`
 								&& readed_request_buffer[hi + 2] == `\r`
