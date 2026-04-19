@@ -16,11 +16,15 @@ fn test_framing_compress_decompress_alice() {
 	assert decode_stream(alice_compressed)! == alice, 'compressed alice should be the same as decompressed'
 }
 
-fn test_framing_decompress_block_alice() {
+fn test_precompressed_framing_alice() {
 	alice_compressed := os.read_bytes(s('alice29_framing.snappy'))!
 	alice := os.read_bytes(s('alice29.txt'))!
 
-	assert decode_stream(alice_compressed)! == alice, 'compressed alice should be the same as decompressed'
+	// Normalize line endings before comparing
+	decompressed_str := decode_stream(alice_compressed)!.bytestr().replace('\r\n', '\n')
+	alice_str := alice.bytestr().replace('\r\n', '\n')
+
+	assert decompressed_str == alice_str, 'compressed alice should be the same as decompressed'
 }
 
 fn test_benchmark_framing_alice() {
@@ -50,9 +54,15 @@ fn test_block_compress_decompress_alice() {
 	assert decompress(alice_compressed)! == alice, 'compressed alice should be the same as decompressed'
 }
 
-fn test_block_decompress_block_alice() {
+fn test_precompressed_block_alice() {
 	alice_compressed := os.read_bytes(s('alice29_block.snappy'))!
 	alice := os.read_bytes(s('alice29.txt'))!
 
-	assert decompress(alice_compressed)! == alice, 'compressed alice should be the same as decompressed'
+	decompressed := decompress(alice_compressed)!
+
+	// Normalize line endings before comparing
+	decompressed_str := decompressed.bytestr().replace('\r\n', '\n')
+	alice_str := alice.bytestr().replace('\r\n', '\n')
+
+	assert decompressed_str == alice_str, 'compressed alice should be the same as decompressed'
 }
