@@ -390,6 +390,9 @@ fn read_uvarint(data []u8, pos int) (u32, int, bool) {
 	for i < data.len && i - pos < 5 {
 		b := data[i]
 		i++
+		if shift == 28 && b > 0x0f {
+			return 0, pos, false
+		}
 		val |= u32(b & 0x7f) << shift
 		if b & 0x80 == 0 {
 			return val, i, true
