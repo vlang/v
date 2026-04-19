@@ -376,7 +376,7 @@ FILE* __cdecl __acrt_iob_func(unsigned index);
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
 #else
-	#if defined(__APPLE__)
+	#if defined(__APPLE__) || defined(__FreeBSD__)
 typedef struct __sFILE FILE;
 extern FILE* __stdinp;
 extern FILE* __stdoutp;
@@ -384,7 +384,7 @@ extern FILE* __stderrp;
 #define stdin __stdinp
 #define stdout __stdoutp
 #define stderr __stderrp
-	#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+	#elif defined(__NetBSD__) || defined(__DragonFly__)
 typedef struct __sFILE FILE;
 extern FILE* stdin;
 extern FILE* stdout;
