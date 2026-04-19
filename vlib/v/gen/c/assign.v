@@ -2069,9 +2069,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 										&& right_type_for_compare == exp_type_for_compare
 									right_is_auto_heap := right_ident.is_auto_heap()
 										|| g.resolved_ident_is_auto_heap(right_ident)
-									use_raw_auto_heap_ident = right_is_auto_heap
-										&& !use_heap_pointed_ident && resolved_right_type != 0
-										&& !resolved_right_type.is_ptr()
+									use_raw_auto_heap_ident = exp_type.is_ptr()
+										&& right_is_auto_heap && !use_heap_pointed_ident
+										&& resolved_right_type != 0 && !resolved_right_type.is_ptr()
 								}
 							}
 							if use_heap_pointed_ident {
