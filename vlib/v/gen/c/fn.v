@@ -6451,10 +6451,18 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				}
 			}
 			effective_arg_sym := g.table.sym(effective_arg_typ)
-			if effective_arg_typ.is_ptr() && effective_arg_typ.deref() == expected_ref_inner_type {
+			effective_arg_is_auto_heap_ident := effective_arg_expr is ast.Ident
+				&& g.resolved_ident_is_auto_heap(effective_arg_expr)
+			if (effective_arg_typ.is_ptr() && effective_arg_typ.deref() == expected_ref_inner_type)
+				|| (effective_arg_is_auto_heap_ident
+				&& effective_arg_typ.idx() == expected_ref_inner_type.idx()) {
 				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(effective_arg_expr,
 					expected_ref_inner_type)
-				g.expr(effective_arg_expr)
+				if effective_arg_is_auto_heap_ident {
+					g.write_raw_receiver_expr(effective_arg_expr)
+				} else {
+					g.expr(effective_arg_expr)
+				}
 			} else if effective_arg_sym.kind == expected_ref_inner_sym.kind
 				&& effective_arg_typ.idx() == expected_ref_inner_type.idx() {
 				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(effective_arg_expr,

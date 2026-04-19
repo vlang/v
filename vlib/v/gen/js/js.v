@@ -484,8 +484,20 @@ pub fn (mut g JsGen) init() {
 	if g.pref.output_es5 {
 		g.definitions.writeln('globalThis = \$global;')
 	}
+	g.definitions.writeln('let \$ref_id_gen = 0;')
 	g.definitions.writeln('function \$ref(value) { if (value instanceof \$ref) { return value; } this.val = value; } ')
 	g.definitions.writeln('\$ref.prototype.valueOf = function() { return this.val; } ')
+	g.definitions.writeln('\$ref.prototype.\$toJS = function() {')
+	g.definitions.writeln('\tconst value = this.val;')
+	g.definitions.writeln('\tif (value === null || value === undefined) { return value; }')
+	g.definitions.writeln('\tif (typeof value === "object" || typeof value === "function") {')
+	g.definitions.writeln('\t\tif (!Object.prototype.hasOwnProperty.call(value, "__v_ref_id")) {')
+	g.definitions.writeln('\t\t\tObject.defineProperty(value, "__v_ref_id", { value: ++\$ref_id_gen, enumerable: false, configurable: false, writable: false });')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t\treturn "__v_ref_" + value.__v_ref_id;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn value;')
+	g.definitions.writeln('} ')
 	g.definitions.writeln('function \$ref_index(value, parent, index) { let ref = new \$ref(value); ref._v_array = parent; ref._v_index = index; return ref; } ')
 	if g.pref.backend != .js_node {
 		g.definitions.writeln('const \$process = {')
@@ -1599,7 +1611,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			}
 			if left is ast.IndexExpr && left.is_map {
 				g.write(', key: ')
-				g.expr(left.index)
+				g.write_map_stored_key(left.index, left.index_type)
 				g.write(' }')
 			}
 			if semicolon {
@@ -1777,7 +1789,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.write('; ${i} < ')
 		g.expr(it.high)
-		g.writeln('; ${i} = new int(${i} + 1)) {')
+		g.writeln('; ${i}.val++) {')
 		g.inside_loop = false
 		g.inc_indent()
 		g.writeln('try { ')
@@ -3205,6 +3217,19 @@ fn (mut g JsGen) expr_string(expr ast.Expr) string {
 	return g.out.cut_to(pos).trim_space()
 }
 
+fn (mut g JsGen) write_map_stored_key(expr ast.Expr, typ ast.Type) {
+	if typ == 0 || typ == ast.invalid_type {
+		g.write('v_clone_value(')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
+	copy_fn := g.get_copy_fn(typ)
+	g.write('${copy_fn}(')
+	g.expr(expr)
+	g.write(')')
+}
+
 fn (mut g JsGen) should_wrap_js_selector_rvalue(expr ast.Expr, expected_type ast.Type) bool {
 	if expected_type == 0 || expected_type.is_ptr() {
 		return false
@@ -3514,7 +3539,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 			g.write(': { val: ')
 			g.expr(val)
 			g.write(', key: ')
-			g.expr(key)
+			g.write_map_stored_key(key, it.key_type)
 			g.write(' }')
 			if i < it.keys.len - 1 {
 				g.write(',')
@@ -4144,7 +4169,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			}
 
 			g.write(', key: ')
-			g.expr(expr.index)
+			g.write_map_stored_key(expr.index, expr.index_type)
 			g.write(' }')
 		} else {
 			tmp := g.new_tmp_var()
