@@ -8,6 +8,7 @@ const bzip2_max_groups = 6
 const bzip2_max_alpha = 258
 const bzip2_group_size = 50
 const bzip2_max_code_len = 20
+const bzip2_max_selectors = 18002
 const bzip2_crc_poly = u32(0x04c11db7)
 
 @[params]
@@ -101,6 +102,7 @@ pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
 	if lvl < `1` || lvl > `9` {
 		return error('bzip2: invalid block size marker')
 	}
+	block_limit := int(lvl - `0`) * 100000
 	mut out := []u8{}
 	mut stream_crc := u32(0)
 	for {
@@ -141,7 +143,7 @@ pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
 			return error('bzip2: invalid huffman group count')
 		}
 		n_selectors := int(r.read_bits(15)!)
-		if n_selectors < 1 || n_selectors > 18002 {
+		if n_selectors < 1 || n_selectors > bzip2_max_selectors {
 			return error('bzip2: invalid selector count')
 		}
 		mut selectors_mtf := []int{len: n_selectors}
@@ -218,13 +220,20 @@ pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
 				break
 			}
 			if next_sym == bzip2_runa || next_sym == bzip2_runb {
-				mut s := -1
-				mut n := 1
+				mut s := i64(-1)
+				mut n := i64(1)
+				remaining := block_limit - decoded_syms.len
+				if remaining < 1 {
+					return error('bzip2: block output exceeds declared block size')
+				}
 				for {
 					if next_sym == bzip2_runa {
 						s += n
 					} else {
 						s += n * 2
+					}
+					if s + 1 > i64(remaining) {
+						return error('bzip2: block output exceeds declared block size')
 					}
 					n *= 2
 					if group_pos == 0 {
@@ -243,13 +252,14 @@ pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
 						break
 					}
 				}
-				run_len := s + 1
+				run_len := int(s + 1)
 				if run_len < 1 {
 					return error('bzip2: invalid run length')
 				}
 				if mtf.len == 0 {
 					return error('bzip2: invalid run with empty mtf table')
 				}
+				ensure_block_output_limit(decoded_syms.len, run_len, block_limit)!
 				for _ in 0 .. run_len {
 					decoded_syms << mtf[0]
 				}
@@ -269,6 +279,7 @@ pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
 			}
 			sym := mtf[pos]
 			move_to_front_int(mut mtf, pos)
+			ensure_block_output_limit(decoded_syms.len, 1, block_limit)!
 			decoded_syms << sym
 		}
 
@@ -333,7 +344,7 @@ fn encode_block(src []u8) !EncodedBlock {
 		return error('bzip2: internal error, empty symbol stream')
 	}
 	n_groups := select_group_count(mtf_symbols.len)
-	n_selectors := (mtf_symbols.len + bzip2_group_size - 1) / bzip2_group_size
+	n_selectors := selector_count_from_symbol_count(mtf_symbols.len)!
 	mut selectors := []int{len: n_selectors, init: 0}
 	selector_mtf := encode_selector_mtf(selectors, n_groups)
 	freq := symbol_freq(mtf_symbols, alpha_size)
@@ -373,6 +384,26 @@ fn select_group_count(n_syms int) int {
 		return 5
 	}
 	return 6
+}
+
+fn selector_count_from_symbol_count(n_symbols int) !int {
+	if n_symbols < 1 {
+		return error('bzip2: invalid selector count')
+	}
+	n_selectors := (n_symbols + bzip2_group_size - 1) / bzip2_group_size
+	if n_selectors < 1 || n_selectors > bzip2_max_selectors {
+		return error('bzip2: invalid selector count')
+	}
+	return n_selectors
+}
+
+fn ensure_block_output_limit(decoded_len int, add_len int, block_limit int) ! {
+	if decoded_len < 0 || add_len < 0 || block_limit < 0 {
+		return error('bzip2: invalid block output state')
+	}
+	if decoded_len > block_limit || add_len > block_limit - decoded_len {
+		return error('bzip2: block output exceeds declared block size')
+	}
 }
 
 fn symbol_freq(symbols []int, alpha_size int) []int {

@@ -85,3 +85,27 @@ fn test_decompress_rejects_crc_mismatch() {
 	}
 	assert false
 }
+
+fn test_selector_count_limit_boundaries() {
+	below_limit := selector_count_from_symbol_count(900050) or { panic(err) }
+	at_limit := selector_count_from_symbol_count(900100) or { panic(err) }
+	assert below_limit == 18001
+	assert at_limit == 18002
+
+	_ := selector_count_from_symbol_count(900101) or {
+		assert err.msg().contains('invalid selector count')
+		return
+	}
+	assert false
+}
+
+fn test_block_output_limit_guard() {
+	ensure_block_output_limit(0, 100000, 100000) or { panic(err) }
+	ensure_block_output_limit(99999, 1, 100000) or { panic(err) }
+
+	ensure_block_output_limit(100000, 1, 100000) or {
+		assert err.msg().contains('block output exceeds declared block size')
+		return
+	}
+	assert false
+}
