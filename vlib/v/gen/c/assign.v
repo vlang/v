@@ -1408,20 +1408,30 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& g.table.final_sym(left.left_type).kind == .map
 				g.is_assign_lhs = left_is_map_index
 				left_expr := g.expr_string(left)
-				mut fixed_right_expr := ''
-				if is_fixed_array_init {
-					right := val as ast.ArrayInit
-					right_var := g.new_tmp_var()
-					g.write('${arr_typ} ${right_var} = ')
-					g.expr(right)
-					g.writeln(';')
-					fixed_right_expr = right_var
+				if !is_fixed_array_init && assign_expr_unwraps_option_or_result(val) {
+					// val has an or-block — its code generator emits unwrap
+					// statements via go_before_last_stmt(), so we must emit
+					// memcpy() inline. Capturing val with expr_string() would
+					// slurp those statements into the memcpy() argument list.
+					g.write('memcpy(${left_expr}, ')
+					g.expr(val)
+					g.writeln(', sizeof(${arr_typ}));')
 				} else {
-					fixed_right_expr = g.expr_string(val)
+					mut fixed_right_expr := ''
+					if is_fixed_array_init {
+						right := val as ast.ArrayInit
+						right_var := g.new_tmp_var()
+						g.write('${arr_typ} ${right_var} = ')
+						g.expr(right)
+						g.writeln(';')
+						fixed_right_expr = right_var
+					} else {
+						fixed_right_expr = g.expr_string(val)
+					}
+					g.writeln('')
+					g.writeln('memcpy(${left_expr}, ${fixed_right_expr}, sizeof(${arr_typ}));')
 				}
 				g.is_assign_lhs = old_is_assign_lhs
-				g.writeln('')
-				g.writeln('memcpy(${left_expr}, ${fixed_right_expr}, sizeof(${arr_typ}));')
 				g.is_assign_lhs = false
 			}
 		} else {
