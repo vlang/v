@@ -559,13 +559,14 @@ fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connec
 	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
 	if node.scope != unsafe { nil } {
-		inserting_object := node.scope.find(node.object_var) or {
-			verror('`${node.object_var}` is not found in scope')
+		if inserting_object := node.scope.find(node.object_var) {
+			if inserting_object.typ.is_ptr() {
+				member_access_type = '->'
+			}
+			inserting_object_type = g.orm_inserting_object_type(inserting_object)
+		} else {
+			inserting_object_type = node.table_expr.typ
 		}
-		if inserting_object.typ.is_ptr() {
-			member_access_type = '->'
-		}
-		inserting_object_type = g.orm_inserting_object_type(inserting_object)
 	}
 	inserting_object_sym := g.table.sym(inserting_object_type)
 	data_var_name := g.new_tmp_var()
@@ -874,13 +875,14 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
 	if node.scope != unsafe { nil } {
-		inserting_object := node.scope.find(node.object_var) or {
-			verror('`${node.object_var}` is not found in scope')
+		if inserting_object := node.scope.find(node.object_var) {
+			if inserting_object.typ.is_ptr() {
+				member_access_type = '->'
+			}
+			inserting_object_type = g.orm_inserting_object_type(inserting_object)
+		} else {
+			inserting_object_type = node.table_expr.typ
 		}
-		if inserting_object.typ.is_ptr() {
-			member_access_type = '->'
-		}
-		inserting_object_type = g.orm_inserting_object_type(inserting_object)
 	}
 
 	inserting_object_sym := g.table.sym(inserting_object_type)

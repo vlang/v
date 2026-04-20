@@ -986,7 +986,7 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 }
 
 fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int) {
-	base_typ := typ.clear_flags().clear_option_and_result()
+	base_typ := c.table.fully_unaliased_type(typ.clear_flags().clear_option_and_result())
 	sym := c.table.sym(base_typ)
 	match sym.info {
 		ast.Struct {
