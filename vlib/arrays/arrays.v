@@ -156,6 +156,9 @@ pub fn group[T](arrs ...[]T) [][]T {
 // chunk array into a single array of arrays where each element is the next `size` elements of the original.
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
 pub fn chunk[T](array []T, size int) [][]T {
+	if size <= 0 || array.len == 0 {
+		return [][]T{}
+	}
 	// allocate chunk array
 	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
 
@@ -222,7 +225,7 @@ pub:
 // Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
 // Example: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) // => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window[T](array []T, attr WindowAttribute) [][]T {
-	if array.len == 0 {
+	if array.len == 0 || attr.size <= 0 || attr.step <= 0 {
 		return [][]T{}
 	}
 	// allocate snapshot array
