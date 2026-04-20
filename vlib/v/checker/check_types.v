@@ -1160,6 +1160,31 @@ fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Typ
 		else {}
 	}
 
+	// sumtype coercion: if expected is a generic sumtype and concrete_typ matches
+	// one of its variants, try to infer the generic type from the matching variant.
+	if param_sym.info is ast.SumType && generic_typ.has_flag(.generic) {
+		actual_sym := c.table.sym(concrete_typ)
+		actual_base_name := if actual_sym.ngname != '' {
+			actual_sym.ngname
+		} else {
+			ast.strip_generic_params(actual_sym.name)
+		}
+		for variant in param_sym.info.variants {
+			variant_sym := c.table.sym(variant)
+			variant_base_name := if variant_sym.ngname != '' {
+				variant_sym.ngname
+			} else {
+				ast.strip_generic_params(variant_sym.name)
+			}
+			if variant_base_name == actual_base_name {
+				inferred_type := c.infer_composite_generic_type(gt_name, variant, concrete_typ)
+				if inferred_type != ast.void_type {
+					return inferred_type
+				}
+			}
+		}
+	}
+
 	expected_type_args, expected_parent_idx := c.generic_type_args_and_parent_idx(generic_typ)
 	actual_type_args, actual_parent_idx := c.generic_type_args_and_parent_idx(concrete_typ)
 	if expected_parent_idx == 0 || actual_parent_idx == 0 || expected_type_args.len == 0

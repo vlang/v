@@ -6733,7 +6733,23 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// Selector receivers for interface smartcasts still need pointer-style field
 	// access even when the exposed smartcast type is a value type like `string`.
-	interface_smartcast_expr_is_dereferenced := false
+	// EXCEPT: when inside string interpolation (`inside_interface_deref`), the
+	// ident codegen already emits `*` to dereference the pointer to a scalar
+	// builtin (e.g. `(*v._string)`), so the selector must use `.` not `->`.
+	mut interface_smartcast_expr_is_dereferenced := false
+	if is_interface_smartcast_expr && g.inside_interface_deref {
+		last_sc := smartcast_expr_var.smartcasts.last()
+		last_sc_sym := g.table.final_sym(g.unwrap_generic(last_sc))
+		raw_sc_kind := if last_sc.is_ptr() {
+			g.table.final_sym(g.unwrap_generic(last_sc.deref())).kind
+		} else {
+			last_sc_sym.kind
+		}
+		if raw_sc_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface,
+			.sum_type, .function] {
+			interface_smartcast_expr_is_dereferenced = true
+		}
+	}
 	// An interface smartcast to a non-interface type normally produces a pointer
 	// (the interface stores fields as pointers). But the ident codegen may
 	// already dereference the pointer, depending on the exposed smartcast type.
