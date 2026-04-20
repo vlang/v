@@ -650,7 +650,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.expr(args.expr)
 			}
 			w.expr(node.or_block)
-			if node.is_vweb {
+			if node.is_template {
 				w.stmts(node.veb_tmpl.stmts)
 			}
 			if node.kind == .embed_file {

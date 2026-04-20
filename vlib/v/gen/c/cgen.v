@@ -145,7 +145,7 @@ mut:
 	inside_if_result                     bool
 	inside_match_option                  bool
 	inside_match_result                  bool
-	inside_vweb_tmpl                     bool
+	inside_veb_tmpl                      bool
 	inside_return                        bool
 	inside_return_tmpl                   bool
 	inside_struct_init                   bool
@@ -294,7 +294,7 @@ mut:
 	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
-	vweb_filter_fn_name  string   // veb__filter, used by $veb.html() for escaping strings in templates
+	veb_filter_fn_name   string   // veb__filter, used by $veb.html() for escaping strings in templates
 	export_funcs         []string // for .dll export function names
 	//
 	type_default_impl_level int
@@ -3131,7 +3131,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	if g.inside_ternary > 0 {
 		g.write2('', ')')
 	}
-	if g.needs_scope_cleanup() && !g.inside_vweb_tmpl && stmts.len > 0 && !last_stmt_was_return {
+	if g.needs_scope_cleanup() && !g.inside_veb_tmpl && stmts.len > 0 && !last_stmt_was_return {
 		// use the first stmt to get the scope
 		stmt := stmts[0]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
@@ -9056,7 +9056,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if exprs_len > 0 {
 		// `$veb.html()` expands to statements, so the Result return
 		// needs to be emitted explicitly here.
-		if expr0 is ast.ComptimeCall && expr0.is_vweb {
+		if expr0 is ast.ComptimeCall && expr0.is_template {
 			g.inside_return_tmpl = true
 			g.expr(expr0)
 			g.inside_return_tmpl = false

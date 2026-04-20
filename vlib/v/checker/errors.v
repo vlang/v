@@ -55,7 +55,7 @@ fn (mut c Checker) error(message string, pos token.Pos, options MessageOptions) 
 		return
 	}
 	mut msg := message.replace('`Array_', '`[]')
-	if c.pref.is_vweb { // is_vweb is set for veb template checking
+	if c.pref.is_template { // set during veb template checking
 		// Show in which veb action the error occurred (for easier debugging)
 		veb_action := c.table.cur_fn.name.replace('veb_tmpl_', '')
 		mut j := 0

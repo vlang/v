@@ -4035,8 +4035,8 @@ fn (mut c Checker) post_process_generic_fns() ! {
 			c.fn_decl(mut concrete_fn)
 			if concrete_fn.name in ['veb.run', 'veb.run_at'] {
 				for ct in concrete_types {
-					if ct !in c.vweb_gen_types {
-						c.vweb_gen_types << ct
+					if ct !in c.veb_gen_types {
+						c.veb_gen_types << ct
 					}
 				}
 			}

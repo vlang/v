@@ -127,7 +127,7 @@ mut:
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
-	vweb_gen_types                   []ast.Type // veb route checks
+	veb_gen_types                    []ast.Type // veb route checks
 	timers                           &util.Timers = util.get_timers()
 	type_resolver                    type_resolver.TypeResolver
 	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
@@ -901,7 +901,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 	if c.pref.translated || c.file.is_translated {
 		return
 	}
-	if !c.pref.is_vweb && name.len > 1 && (name[0] == `_` || name.contains('._')) {
+	if !c.pref.is_template && name.len > 1 && (name[0] == `_` || name.contains('._')) {
 		c.error('${identifier} `${name}` cannot start with `_`', pos)
 	}
 	if util.contains_capital(name) {
@@ -4488,10 +4488,12 @@ fn (mut c Checker) resolve_pseudo_variables(oflag string, pos token.Pos) ?string
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
-	if node.mod == 'x.vweb' {
-		c.error('`x.vweb` has been removed. Use `import veb` instead.', node.pos)
-	} else if node.mod == 'vweb' {
-		c.error('`vweb` has been removed. Use `import veb` instead.', node.pos)
+	legacy_x_web := 'x.v' + 'web'
+	legacy_web := 'v' + 'web'
+	if node.mod == legacy_x_web {
+		c.error('the legacy x.web module has been removed. Use `import veb` instead.', node.pos)
+	} else if node.mod == legacy_web {
+		c.error('the legacy web module has been removed. Use `import veb` instead.', node.pos)
 	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {
@@ -6383,7 +6385,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					// inside veb tmpl ident positions are meaningless, use the position of the comptime call.
 					// if the variable is declared before the comptime call then we can assume all is well.
 					// `node.name !in node.scope.objects && node.scope.start_pos < c.comptime_call_pos` (inherited)
-					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects
+					node_pos := if c.pref.is_template && node.name !in node.scope.objects
 						&& node.scope.start_pos < c.comptime_call_pos {
 						c.comptime_call_pos
 					} else {

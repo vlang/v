@@ -156,13 +156,13 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		return c.table.find_type('v.embed_file.EmbedFileData')
 	}
-	if node.is_vweb {
+	if node.is_template {
 		// TODO: assoc parser bug
 		save_cur_fn := c.table.cur_fn
 		pref_ := *c.pref
 		pref2 := &pref.Preferences{
 			...pref_
-			is_vweb: true
+			is_template: true
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
@@ -298,7 +298,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 
 		return c.fn_return_type
 	}
-	if node.is_vweb {
+	if node.is_template {
 		return ast.string_type
 	}
 	// s.$my_str()
@@ -1067,13 +1067,13 @@ fn (mut c Checker) verify_veb_params_for_method(node &ast.Fn) (bool, int, int) {
 }
 
 fn (mut c Checker) verify_all_veb_routes() {
-	if c.vweb_gen_types.len == 0 {
+	if c.veb_gen_types.len == 0 {
 		return
 	}
-	c.table.used_features.used_veb_types = c.vweb_gen_types
+	c.table.used_features.used_veb_types = c.veb_gen_types
 	typ_veb_result := c.table.find_type('veb.Result')
 	old_file := c.file
-	for vgt in c.vweb_gen_types {
+	for vgt in c.veb_gen_types {
 		sym_app := c.table.sym(vgt)
 		for m in sym_app.methods {
 			if m.return_type == typ_veb_result {

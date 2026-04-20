@@ -122,7 +122,7 @@ pub mut:
 	is_fmt             bool
 	is_vdoc            bool
 	is_vet             bool
-	is_vweb            bool // skip _ var warning in templates
+	is_template        bool // skip _ var warning in templates
 	is_ios_simulator   bool
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed

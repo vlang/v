@@ -463,7 +463,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			if p.pref.is_fmt {
 				return ast.ComptimeCall{
 					scope:       unsafe { nil }
-					is_vweb:     true
+					is_template: true
 					is_veb:      is_veb
 					method_name: method_name
 					kind:        if is_html { .html } else { .tmpl }
@@ -520,7 +520,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	file.template_line_map = p.template_line_map
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
-		is_vweb:     true
+		is_template: true
 		is_veb:      is_veb
 		veb_tmpl:    file
 		method_name: method_name

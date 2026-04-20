@@ -2,7 +2,7 @@ module main
 
 import os
 import veb
-// import vweb.assets
+// import veb.assets
 import time
 
 pub struct Context {

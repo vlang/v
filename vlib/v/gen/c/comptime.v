@@ -167,7 +167,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.write('${g.defer_return_tmp_var}')
 		return
 	}
-	if node.is_vweb {
+	if node.is_template {
 		is_html := node.kind == .html
 		mut cur_line := ''
 
@@ -181,14 +181,14 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			if stmt is ast.FnDecl {
 				if stmt.name.starts_with('main.veb_tmpl') {
 					if is_html {
-						g.inside_vweb_tmpl = true
-						g.vweb_filter_fn_name = 'veb__filter'
+						g.inside_veb_tmpl = true
+						g.veb_filter_fn_name = 'veb__filter'
 					}
 					// insert stmts from veb_tmpl fn
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
 					//
-					g.inside_vweb_tmpl = false
-					g.vweb_filter_fn_name = ''
+					g.inside_veb_tmpl = false
+					g.veb_filter_fn_name = ''
 					break
 				}
 			}
@@ -353,7 +353,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		// p.error('`${p.expr_var.name}` needs to be a reference')
 		// }
 		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if node.is_vweb {
+		if node.is_template {
 			if j > 0 {
 				g.write(' else ')
 			}

@@ -25,7 +25,7 @@ npm run start:dev --prefix typescript_vanilla_typeorm
 Run the Benchmarks V Part
 
 ```sh
-v run v_vweb_orm/src/
+v run v_veb_orm/src/
 ```
 
 Run the Chart

@@ -2325,7 +2325,7 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 }
 
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
-	if node.is_vweb {
+	if node.is_template {
 		if node.kind == .html {
 			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
 				f.write('\$veb.html(')
