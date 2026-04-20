@@ -4080,7 +4080,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		needs_interface_value_copy := is_interface_cast && !preserve_interface_field_aliasing
 			&& !g.expected_arg_mut && !got_is_ptr && expr_is_lvalue
 		force_auto_heap_value_deref = needs_interface_value_copy && expr is ast.Ident
-			&& g.resolved_ident_is_auto_heap(expr)
+			&& g.resolved_ident_is_auto_heap(expr) && !g.ident_unwraps_option_or_result(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr_is_lvalue
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
@@ -8135,6 +8135,24 @@ fn (mut g Gen) ident(node ast.Ident) {
 					&& !g.inside_selector_lhs
 					&& raw_smartcast_target_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface, .sum_type, .function]
 				if !prevent_sum_type_unwrapping_once {
+					// Special-case: sumtype variant is an Option type and we are
+					// past `if x != none` — emit the simple correct expression
+					// `*(INNER*)(name.__option_VARIANT->data)`. The general loop
+					// below produces malformed C for this case.
+					if obj_sym.kind == .sum_type && is_option && resolved_var.is_unwrapped
+						&& !is_auto_heap && !resolved_var.orig_type.has_flag(.option) {
+						variant_typ := if resolved_var.ct_type_var == .smartcast {
+							g.unwrap_generic(g.type_resolver.get_type(node)).set_flag(.option)
+						} else {
+							smartcast_types[0]
+						}
+						variant_sym := g.table.sym(variant_typ)
+						variant_field := g.get_sumtype_variant_name(variant_typ, variant_sym)
+						inner_typ := variant_typ.clear_flag(.option)
+						inner_styp := g.styp(g.unwrap_generic(inner_typ))
+						g.write('*(${inner_styp}*)(${name}._${variant_field}->data)')
+						return
+					}
 					nested_unwrap := smartcast_types.len > 1
 					unwrap_sumtype := is_option && nested_unwrap && obj_sym.kind == .sum_type
 					if unwrap_sumtype {

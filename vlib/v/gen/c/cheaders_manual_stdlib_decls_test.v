@@ -37,7 +37,8 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('double atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
-	assert generated_c.contains('#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
+	assert generated_c.contains('#if defined(__APPLE__) || defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
+	assert generated_c.contains('#elif defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdin;\nextern FILE* __stdout;\nextern FILE* __stderr;\n#define stdin __stdin\n#define stdout __stdout\n#define stderr __stderr'), generated_c
 }
 

@@ -211,7 +211,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
 		&& (node.right.val == '' || (node.left is ast.SelectorExpr
-		|| (node.left is ast.Ident && node.left.or_expr.kind == .absent))) {
+		|| (node.left is ast.Ident && node.left.or_expr.kind == .absent
+		&& !(node.left.obj is ast.Var && node.left.obj.ct_type_var == .smartcast
+		&& g.table.sym(g.unwrap_generic(node.left.obj.orig_type)).kind == .sum_type)))) {
 		if node.right.val == '' {
 			// `str == ''` -> `str.len == 0` optimization
 			g.write('(')
