@@ -386,9 +386,12 @@ extern FILE* __stderrp;
 #define stderr __stderrp
 	#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 typedef struct __sFILE FILE;
-extern FILE* stdin;
-extern FILE* stdout;
-extern FILE* stderr;
+extern FILE* __stdinp;
+extern FILE* __stdoutp;
+extern FILE* __stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
 	#else
 typedef struct _IO_FILE FILE;
 extern FILE* stdin;
