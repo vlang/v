@@ -59,6 +59,7 @@ const c_manual_prelude_decl_names = [
 	'atexit',
 	'exit',
 	'atoi',
+	'atof',
 	'getenv',
 	'setenv',
 	'unsetenv',

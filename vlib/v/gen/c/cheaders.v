@@ -452,6 +452,7 @@ void srand(unsigned int seed);
 int atexit(void (*cb)(void));
 void exit(int status);
 int atoi(const char *str);
+double atof(const char *str);
 char *getenv(const char *name);
 int setenv(const char *name, const char *value, int overwrite);
 int unsetenv(const char *name);
