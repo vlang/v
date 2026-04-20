@@ -9051,8 +9051,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if exprs_len > 0 && expr0 is ast.Ident && expr0.obj is ast.Var && expr0.obj.typ != 0 {
 		resolved_obj_type := g.unwrap_generic(g.recheck_concrete_type(expr0.obj.typ))
 		if resolved_obj_type != 0 && !resolved_obj_type.has_option_or_result()
-			&& type0.has_option_or_result()
-			&& type0.clear_option_and_result() == resolved_obj_type {
+			&& type0.has_option_or_result() && type0.clear_option_and_result() == resolved_obj_type {
 			type0 = resolved_obj_type
 		}
 	}

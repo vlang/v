@@ -1739,6 +1739,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 									arg.expr.obj.typ
 								}
 							}
+
 							if init_typ != 0 {
 								typ = c.infer_composite_generic_type(gt_name, param_infer_typ,
 									init_typ)
