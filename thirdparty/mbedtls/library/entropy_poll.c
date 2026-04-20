@@ -119,6 +119,11 @@ static int getrandom_wrapper(void *buf, size_t buflen, unsigned int flags)
  *
  * Documentation: https://netbsd.gw.com/cgi-bin/man-cgi?sysctl+7
  */
+#if defined(__APPLE__)
+#include <stdlib.h>
+#define HAVE_ARC4RANDOM
+#endif
+
 #if (defined(__FreeBSD__) || defined(__NetBSD__)) && !defined(HAVE_GETRANDOM)
 #include <sys/param.h>
 #include <sys/sysctl.h>
@@ -171,7 +176,13 @@ int mbedtls_platform_entropy_poll(void *data,
     ((void) ret);
 #endif /* HAVE_GETRANDOM */
 
-#if defined(HAVE_SYSCTL_ARND)
+#if defined(HAVE_ARC4RANDOM)
+    ((void) file);
+    ((void) read_len);
+    arc4random_buf(output, len);
+    *olen = len;
+    return 0;
+#elif defined(HAVE_SYSCTL_ARND)
     ((void) file);
     ((void) read_len);
     if (sysctl_arnd_wrapper(output, len) == -1) {

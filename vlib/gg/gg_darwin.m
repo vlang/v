@@ -114,6 +114,16 @@ void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) 
 	NSRectFill(rect);
 }
 
+static void mark_view_tree_needs_display(NSView *view) {
+	if (view == nil) {
+		return;
+	}
+	[view setNeedsDisplay:YES];
+	for (NSView *subview in [view subviews]) {
+		mark_view_tree_needs_display(subview);
+	}
+}
+
 void darwin_window_refresh() {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		NSWindow *window = [NSApp mainWindow];
@@ -123,7 +133,12 @@ void darwin_window_refresh() {
 		if (window == nil) {
 			return;
 		}
-		[[window contentView] setNeedsDisplay:YES];
+		NSView *contentView = [window contentView];
+		if (contentView == nil) {
+			return;
+		}
+		mark_view_tree_needs_display(contentView);
+		[window displayIfNeeded];
 	});
 
 	// puts("refresh");

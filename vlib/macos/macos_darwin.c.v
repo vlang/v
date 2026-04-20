@@ -127,6 +127,107 @@ pub fn msg_rect(obj Id, selector string) Rect {
 	return C.macos_objc_msg_rect(obj, sel(selector))
 }
 
+// ── Multi-argument message sending ─────────────────────────────────
+
+@[inline]
+pub fn msg_id1(obj Id, selector string, a0 Id) Id {
+	return C.macos_objc_msg_id1(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_id2(obj Id, selector string, a0 Id, a1 Id) Id {
+	return C.macos_objc_msg_id2(obj, sel(selector), a0, a1)
+}
+
+@[inline]
+pub fn msg_id3(obj Id, selector string, a0 Id, a1 Id, a2 Id) Id {
+	return C.macos_objc_msg_id3(obj, sel(selector), a0, a1, a2)
+}
+
+@[inline]
+pub fn msg_id4(obj Id, selector string, a0 Id, a1 Id, a2 Id, a3 Id) Id {
+	return C.macos_objc_msg_id4(obj, sel(selector), a0, a1, a2, a3)
+}
+
+@[inline]
+pub fn msg_id_rect(obj Id, selector string, r Rect) Id {
+	return C.macos_objc_msg_id_rect(obj, sel(selector), r)
+}
+
+@[inline]
+pub fn msg_id_f64(obj Id, selector string, a0 f64) Id {
+	return C.macos_objc_msg_id_f64(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_id_u64(obj Id, selector string, a0 u64) Id {
+	return C.macos_objc_msg_id_u64(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void1(obj Id, selector string, a0 Id) {
+	C.macos_objc_msg_void1(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void2(obj Id, selector string, a0 Id, a1 Id) {
+	C.macos_objc_msg_void2(obj, sel(selector), a0, a1)
+}
+
+@[inline]
+pub fn msg_void3(obj Id, selector string, a0 Id, a1 Id, a2 Id) {
+	C.macos_objc_msg_void3(obj, sel(selector), a0, a1, a2)
+}
+
+@[inline]
+pub fn msg_void_bool(obj Id, selector string, a0 bool) {
+	C.macos_objc_msg_void_bool(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void_i64(obj Id, selector string, a0 i64) {
+	C.macos_objc_msg_void_i64(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void_u64(obj Id, selector string, a0 u64) {
+	C.macos_objc_msg_void_u64(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void_f64(obj Id, selector string, a0 f64) {
+	C.macos_objc_msg_void_f64(obj, sel(selector), a0)
+}
+
+@[inline]
+pub fn msg_void_rect(obj Id, selector string, r Rect) {
+	C.macos_objc_msg_void_rect(obj, sel(selector), r)
+}
+
+// ── Runtime class helpers ──────────────────────────────────────────
+
+@[inline]
+pub fn allocate_class_pair(superclass Id, name string) Id {
+	return C.macos_objc_allocate_class_pair(superclass, &char(name.str), 0)
+}
+
+@[inline]
+pub fn register_class_pair(cls Id) {
+	C.macos_objc_register_class_pair(cls)
+}
+
+@[inline]
+pub fn add_method(cls Id, sel_name string, imp voidptr, types string) bool {
+	return C.macos_class_add_method(cls, sel(sel_name), imp, &char(types.str))
+}
+
+@[inline]
+pub fn add_protocol(cls Id, proto Protocol) bool {
+	return C.macos_class_add_protocol(cls, proto)
+}
+
+// ── Allocation ─────────────────────────────────────────────────────
+
 @[inline]
 pub fn alloc(class_name string) Id {
 	return msg_id(get_class(class_name), 'alloc')
