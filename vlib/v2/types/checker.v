@@ -933,10 +933,26 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	}
 	// unwrap aliases for compatibility checks
 	if exp_type is Alias {
-		return c.check_types(exp_type.base_type, got_type)
+		exp_al := exp_type as Alias
+		mut exp_base := exp_al.base_type
+		if exp_base.name() == '' && exp_al.name != '' {
+			// Stale alias - re-resolve base type from scope
+			exp_base = c.resolve_stale_alias(exp_al.name)
+		}
+		if exp_base.name() != '' {
+			return c.check_types(exp_base, got_type)
+		}
 	}
 	if got_type is Alias {
-		return c.check_types(exp_type, got_type.base_type)
+		got_al := got_type as Alias
+		mut got_base := got_al.base_type
+		if got_base.name() == '' && got_al.name != '' {
+			// Stale alias - re-resolve base type from scope
+			got_base = c.resolve_stale_alias(got_al.name)
+		}
+		if got_base.name() != '' {
+			return c.check_types(exp_type, got_base)
+		}
 	}
 	// Self-hosted binaries can occasionally lose primitive literal flags while
 	// still preserving stable type names like `int_literal`/`float_literal`.
@@ -964,20 +980,26 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	}
 	// primitives: allow numeric type promotions (e.g. int→f64, int→u16)
 	if exp_type is Primitive && got_type is Primitive {
-		if exp_type.is_number() && got_type.is_number() {
+		exp_prim := exp_type as Primitive
+		got_prim := got_type as Primitive
+		if exp_prim.is_number() && got_prim.is_number() {
 			return true
 		}
 	}
 	// sum type: accept any variant type
 	if exp_type is SumType {
-		if got_type in exp_type.variants {
+		exp_smt := exp_type as SumType
+		if got_type in exp_smt.variants {
 			return true
 		}
 	}
 	// voidptr: any pointer type is assignable to voidptr (Pointer{void_})
-	if exp_type is Pointer && exp_type.base_type is Void {
-		if got_type is Pointer {
-			return true
+	if exp_type is Pointer {
+		exp_pt := exp_type as Pointer
+		if exp_pt.base_type is Void {
+			if got_type is Pointer {
+				return true
+			}
 		}
 	}
 
@@ -1259,18 +1281,20 @@ fn (mut c Checker) infix_expr(expr ast.InfixExpr) Type {
 	// Check for operator overloading on struct types
 	resolved_lhs := resolve_alias(lhs_type)
 	if resolved_lhs is Struct {
+		resolved_lhs_st := resolved_lhs as Struct
 		op_name := expr.op.str()
-		type_name := resolved_lhs.name
+		tname := resolved_lhs_st.name
 		mut methods := []&Fn{}
 		rlock c.env.methods {
-			if type_name in c.env.methods {
-				methods = unsafe { c.env.methods[type_name] }
+			if tname in c.env.methods {
+				methods = unsafe { c.env.methods[tname] }
 			}
 		}
 		for method in methods {
 			if method.name == op_name {
 				if method.typ is FnType {
-					if ret := method.typ.return_type {
+					method_ft := method.typ as FnType
+					if ret := method_ft.return_type {
 						return ret
 					}
 				}
@@ -1293,10 +1317,11 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 	// Visit field value expressions to store their types in the environment
 	resolved_imm := resolved
 	if resolved_imm is Struct {
+		resolved_imm_st := resolved_imm as Struct
 		for field in expr.fields {
 			if field.value !is ast.EmptyExpr {
 				expected_type_prev := c.expected_type
-				for sf in resolved_imm.fields {
+				for sf in resolved_imm_st.fields {
 					if sf.name == field.name {
 						c.expected_type = to_optional_type(sf.typ)
 						break
@@ -1502,8 +1527,9 @@ fn (mut c Checker) prefix_expr(expr ast.PrefixExpr) Type {
 		}
 	} else if expr.op == .mul {
 		if expr_type is Pointer {
+			expr_pt := expr_type as Pointer
 			// c.log('DEREF')
-			return expr_type.base_type
+			return expr_pt.base_type
 		} else if expr_type is Interface {
 			// Interface types are internally pointers, so dereference is valid
 			// This handles match narrowing where the concrete type is still behind a pointer
@@ -1666,11 +1692,12 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			mut resolved := resolve_alias(typ)
 			resolved_imm := resolved
 			if resolved_imm is Struct {
+				resolved_imm_st2 := resolved_imm as Struct
 				for field in expr.fields {
 					expected_type_prev2 := c.expected_type
 					mut field_type := Type(void_)
 					mut found := false
-					for sf in resolved_imm.fields {
+					for sf in resolved_imm_st2.fields {
 						if sf.name == field.name {
 							field_type = sf.typ
 							found = true
@@ -4626,11 +4653,12 @@ fn (mut c Checker) struct_implements_name(st Struct, target string) bool {
 	}
 	if st.name != '' && st.implements.len == 0 {
 		if obj := c.lookup_type_by_name(st.name) {
-			if obj is Struct && obj.name != st.name {
-				return c.struct_implements_name(obj, target)
-			}
 			if obj is Struct {
-				for impl_name in obj.implements {
+				obj_st := obj as Struct
+				if obj_st.name != st.name {
+					return c.struct_implements_name(obj_st, target)
+				}
+				for impl_name in obj_st.implements {
 					if impl_name == target || impl_name.all_after_last('__') == target {
 						return true
 					}
@@ -4660,10 +4688,31 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 	}
 	match t {
 		Alias {
+			al := t as Alias
 			// Avoid infinite recursion on unresolved/cyclic aliases.
-			base_name := t.base_type.name()
-			if base_name != '' && base_name != t.name {
-				if field_or_method_type := c.find_field_or_method(t.base_type, name) {
+			mut alias_base := al.base_type
+			base_name := alias_base.name()
+			if base_name == '' && al.name != '' {
+				// Stale alias with unresolved base type - re-resolve from scope
+				if resolved_obj := c.scope.lookup_parent(al.name.all_after_last('__'), 0) {
+					alias_base = resolve_alias(resolved_obj.typ())
+				}
+				if alias_base.name() == '' && al.name.contains('__') {
+					al_mod_name := al.name.all_before_last('__')
+					if mod_obj := c.scope.lookup_parent(al_mod_name, 0) {
+						if mod_obj is Module {
+							mod_m := mod_obj as Module
+							al_short := al.name.all_after_last('__')
+							if resolved_mod_obj := mod_m.scope.lookup_parent(al_short, 0) {
+								alias_base = resolve_alias(resolved_mod_obj.typ())
+							}
+						}
+					}
+				}
+			}
+			resolved_base_name := alias_base.name()
+			if resolved_base_name != '' && resolved_base_name != al.name {
+				if field_or_method_type := c.find_field_or_method(alias_base, name) {
 					return field_or_method_type
 				}
 			}
@@ -4777,14 +4826,15 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			}
 		}
 		Interface {
-			// c.log('looking for fields on interface ${t.name()}')
+			iface := t as Interface
+			// c.log('looking for fields on interface ${iface.name}')
 			// If the interface was embedded in a Pointer/Alias before its fields
 			// were populated (e.g. struct field `&Downloader` resolved before
 			// process_pending_interface_decls ran), re-resolve from scope.
-			iface_fields := if t.fields.len == 0 && t.name.len > 0 {
-				c.resolve_interface_fields(t)
+			iface_fields := if iface.fields.len == 0 && iface.name.len > 0 {
+				c.resolve_interface_fields(iface)
 			} else {
-				t.fields
+				iface.fields
 			}
 			for field in iface_fields {
 				if field.name == name {
@@ -4828,9 +4878,11 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			}
 		}
 		Pointer {
-			return c.find_field_or_method(t.base_type, name)!
+			pt := t as Pointer
+			return c.find_field_or_method(pt.base_type, name)!
 		}
 		OptionType {
+			ot := t as OptionType
 			if name == 'state' {
 				return u8_
 			}
@@ -4844,11 +4896,12 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				})
 			}
 			if name == 'data' {
-				return t.base_type
+				return ot.base_type
 			}
-			return c.find_field_or_method(t.base_type, name)!
+			return c.find_field_or_method(ot.base_type, name)!
 		}
 		ResultType {
+			rt := t as ResultType
 			if name == 'is_error' {
 				return bool_
 			}
@@ -4862,9 +4915,9 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				})
 			}
 			if name == 'data' {
-				return t.base_type
+				return rt.base_type
 			}
-			return c.find_field_or_method(t.base_type, name)!
+			return c.find_field_or_method(rt.base_type, name)!
 		}
 		// TODO:
 		// currently should be handled at bottom by find_method call
@@ -4891,7 +4944,8 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			}
 		}
 		Struct {
-			if t.name == embed_file_helper_type_name {
+			st := t as Struct
+			if st.name == embed_file_helper_type_name {
 				match name {
 					'_data', 'path', 'apath' {
 						return string_
@@ -4918,8 +4972,8 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 					else {}
 				}
 			}
-			if name == 'clone' && c.struct_implements_name(t, 'IClone') {
-				return fn_with_return_type(empty_fn_type(), Type(t))
+			if name == 'clone' && c.struct_implements_name(st, 'IClone') {
+				return fn_with_return_type(empty_fn_type(), Type(st))
 			}
 			// If struct has no fields (stale copy from self-referential generic instantiation),
 			// look up the generic template from scope and use its field types.
@@ -4934,15 +4988,15 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 					}
 				}
 			}
-			for field in t.fields {
+			for field in st.fields {
 				// c.log('comparing field ${field.name} with ${name} for ${t.name}')
 				if field.name == name {
-					c.log('found field ${name} for ${t.name}: ${field.typ.name()}')
+					c.log('found field ${name} for ${st.name}: ${field.typ.name()}')
 					return field.typ
 				}
 			}
 			// Check if accessing an embedded struct by its type name (e.g., params.FetchConfig)
-			for embedded_type in t.embedded {
+			for embedded_type in st.embedded {
 				emb_name := embedded_type.name
 				if emb_name == name || emb_name.all_after('__') == name {
 					// Look up the current version from scope (embedded copy may have stale fields)
@@ -4952,7 +5006,7 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 					return Type(embedded_type)
 				}
 			}
-			for embedded_type in t.embedded {
+			for embedded_type in st.embedded {
 				// Look up the current version from scope to avoid stale field copies
 				mut live_type := Type(embedded_type)
 				emb_n := embedded_type.name
@@ -4968,23 +5022,25 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			}
 		}
 		SumType {
+			smt := t as SumType
 			// if !c.expecting_method {
 			mut prev_type := Type(nil_)
-			for i, variant in t.variants {
+			for i, variant in smt.variants {
 				if variant is Struct {
+					variant_st := variant as Struct
 					mut has_field := false
-					for field in variant.fields {
+					for field in variant_st.fields {
 						if field.name == name {
 							has_field = true
 							if i > 0 && field.typ.name() != prev_type.name() {
-								return error('field ${name} must have the same type for all variants of ${t.name()}')
+								return error('field ${name} must have the same type for all variants of ${smt.name()}')
 							}
 							prev_type = field.typ
 							break
 						}
 					}
 					if !has_field {
-						return error('not all variants of ${t.name()} have the field ${name}')
+						return error('not all variants of ${smt.name()} have the field ${name}')
 					}
 				}
 			}

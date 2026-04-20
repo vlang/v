@@ -4080,7 +4080,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		needs_interface_value_copy := is_interface_cast && !preserve_interface_field_aliasing
 			&& !g.expected_arg_mut && !got_is_ptr && expr_is_lvalue
 		force_auto_heap_value_deref = needs_interface_value_copy && expr is ast.Ident
-			&& g.resolved_ident_is_auto_heap(expr) && !g.ident_unwraps_option_or_result(expr)
+			&& g.scope_ident_is_auto_heap(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr_is_lvalue
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()

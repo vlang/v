@@ -537,6 +537,21 @@ fn (mut g Gen) resolved_ident_is_auto_heap(expr ast.Ident) bool {
 	return false
 }
 
+// scope_ident_is_auto_heap reports whether `expr`'s scope variable has
+// is_auto_heap set. Unlike `resolved_ident_is_auto_heap`, this ignores
+// `expr.obj.is_auto_heap` because a use-site Ident's obj copy may have been
+// toggled by `mark_as_referenced` even when the declaration was emitted as
+// a value (e.g. vars declared inside nested scopes where fn_scope.find_var
+// misses them).
+fn (mut g Gen) scope_ident_is_auto_heap(expr ast.Ident) bool {
+	if expr.scope != unsafe { nil } {
+		if v := expr.scope.find_var(expr.name) {
+			return v.is_auto_heap
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_ident_array_elem_type(expr ast.Ident) ast.Type {
 	scope_type := g.resolved_scope_var_type(expr)
 	if scope_type != 0 {
