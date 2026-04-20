@@ -145,6 +145,8 @@ fn test_chunk() {
 	z2 := chunk[string](y, 3)
 	assert z2 == [['a', 'b', 'c'], ['d', 'e', 'f']]
 	assert chunk[int]([]int{}, 2) == [][]int{}
+	assert chunk[int](x, 0) == [][]int{}
+	assert chunk[int](x, -2) == [][]int{}
 }
 
 fn test_chunk_while() {
@@ -170,6 +172,8 @@ fn test_window() {
 		[4, 5, 6]]
 	assert window[int](x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window[int]([]int{}, size: 2) == [][]int{}
+	assert window[int](x, size: 0) == [][]int{}
+	assert window[int](x, size: 2, step: 0) == [][]int{}
 }
 
 /////////////////////////////
