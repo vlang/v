@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module markdown
 
+import encoding.html as ehtml
+
 // parse_inline parses src as inline content and returns a slice of inline nodes.
 pub fn parse_inline(src string, opts Options, ref_map map[string]LinkRef) []&Node {
 	mut p := InlineParser{
@@ -601,6 +603,11 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 				p.pos = ref_close + 1
 				return [node]
 			}
+			if raw_label.len > 0 {
+				// Do not downgrade explicit [text][label] to shortcut [text].
+				p.pos = saved
+				return none
+			}
 		}
 	}
 	// Shortcut reference [label].
@@ -817,30 +824,9 @@ fn (mut p InlineParser) try_entity() ?&Node {
 	if semi > 32 || semi < 2 {
 		return none
 	}
-	name := rest[1..semi]
-	if name.len == 0 {
-		return none
-	}
-	mut decoded := ''
-	if name[0] == `#` {
-		if name.len > 1 {
-			if name[1] == `x` || name[1] == `X` {
-				n := parse_hex(name[2..])
-				if n > 0 {
-					decoded = rune(n).str()
-				}
-			} else {
-				n := name[1..].int()
-				if n > 0 {
-					decoded = rune(n).str()
-				}
-			}
-		}
-	} else {
-		// Named entity: pass through raw for renderer to escape.
-		decoded = '&${name};'
-	}
-	if decoded.len == 0 {
+	candidate := rest[..semi + 1]
+	decoded := ehtml.unescape(candidate, all: true)
+	if decoded == candidate {
 		return none
 	}
 	p.pos += semi + 1
@@ -888,22 +874,4 @@ fn (mut p InlineParser) try_linkify() ?&Node {
 		}
 	}
 	return none
-}
-
-// parse_hex parses a hexadecimal integer string.
-fn parse_hex(s string) int {
-	mut n := 0
-	for i := 0; i < s.len; i++ {
-		ch := s[i]
-		if ch >= `0` && ch <= `9` {
-			n = n * 16 + int(ch - `0`)
-		} else if ch >= `a` && ch <= `f` {
-			n = n * 16 + int(ch - `a`) + 10
-		} else if ch >= `A` && ch <= `F` {
-			n = n * 16 + int(ch - `A`) + 10
-		} else {
-			break
-		}
-	}
-	return n
 }

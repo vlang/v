@@ -256,7 +256,7 @@ blockquotes, task lists, tables, HTML escaping) work reliably without crashes.
 Run the test suite:
 
 ```bash
-./vnew -silent test vlib/x/markdown/markdown_test.v
+v -silent test vlib/x/markdown/markdown_test.v
 ```
 
 Or write your own:
@@ -272,7 +272,7 @@ fn test_my_markdown() {
 
 ## Contributing
 
-- Follow V style guidelines (use `./vnew fmt -w` on edits)
+- Follow V style guidelines (use `v fmt -w` on edits)
 - Add tests for new features
 - Update documentation for public API changes
 - Keep CommonMark compliance as the baseline

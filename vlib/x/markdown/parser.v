@@ -32,6 +32,35 @@ fn new_block_parser(src string, opts Options, ref_map map[string]LinkRef) BlockP
 	}
 }
 
+// nested_block_parser creates a nested parser that inherits the current options
+// and reference definitions.
+fn (p &BlockParser) nested_block_parser(lines []string) BlockParser {
+	mut refs := map[string]LinkRef{}
+	for k, v in p.ref_map {
+		refs[k] = v
+	}
+	return BlockParser{
+		opts:    p.opts
+		lines:   lines
+		ref_map: refs
+		fn_defs: map[string]&Node{}
+	}
+}
+
+// merge_nested_state propagates nested parser state back to the parent parser.
+fn (mut p BlockParser) merge_nested_state(inner BlockParser) {
+	for k, v in inner.ref_map {
+		p.ref_map[k] = v
+	}
+	if p.opts.footnotes {
+		for k, v in inner.fn_defs {
+			if k !in p.fn_defs {
+				p.fn_defs[k] = v
+			}
+		}
+	}
+}
+
 // parse parses the full document and returns the AST root node.
 fn (mut p BlockParser) parse() &Node {
 	mut doc := new_node(.document)
@@ -624,15 +653,9 @@ fn (mut p BlockParser) parse_blockquote(indent int) &Node {
 	}
 	mut node := new_node(.blockquote)
 	// Recursively parse the blockquote content.
-	mut inner := BlockParser{
-		opts:    p.opts
-		lines:   bq_lines
-		ref_map: p.ref_map
-	}
+	mut inner := p.nested_block_parser(bq_lines)
 	inner.parse_blocks(mut node, 0)
-	for k, v in inner.ref_map {
-		p.ref_map[k] = v
-	}
+	p.merge_nested_state(inner)
 	return node
 }
 
@@ -688,9 +711,16 @@ fn parse_list_marker(line string) (ListMarker, bool) {
 		num_end++
 	}
 	if num_end > 0 && num_end < rest.len && (rest[num_end] == `.` || rest[num_end] == `)`) {
+		marker_end := num_end + 1
+		if marker_end < rest.len && rest[marker_end] != ` ` && rest[marker_end] != `\t` {
+			return ListMarker{}, false
+		}
 		num_str := rest[..num_end]
 		start := num_str.int()
-		content_indent := sp + num_end + 2
+		mut content_indent := sp + marker_end + 1
+		if marker_end < rest.len && rest[marker_end] == `\t` {
+			content_indent = sp + marker_end + (4 - ((sp + marker_end) % 4))
+		}
 		return ListMarker{
 			is_ordered:  true
 			start:       start
@@ -876,17 +906,11 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 	}
 
 	// Recursively parse the item's content with fresh parser
-	mut inner := BlockParser{
-		opts:    p.opts
-		lines:   item_lines
-		ref_map: p.ref_map
-	}
+	mut inner := p.nested_block_parser(item_lines)
 	inner.parse_blocks(mut item, 0)
 
-	// Merge back any new link references
-	for k, v in inner.ref_map {
-		p.ref_map[k] = v
-	}
+	// Merge back any new link references and footnote definitions.
+	p.merge_nested_state(inner)
 
 	// Prepend task checkbox node if detected (must be first child).
 	if has_task {

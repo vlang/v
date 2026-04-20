@@ -43,6 +43,19 @@ fn test_html_escape_in_text() {
 	assert html.contains('&lt;')
 }
 
+fn test_named_entities_are_decoded_before_render() {
+	assert to_html('&copy;') == '<p>©</p>\n'
+	assert to_html('&amp;') == '<p>&amp;</p>\n'
+}
+
+fn test_unknown_named_entity_is_left_as_literal_text() {
+	assert to_html('&not_a_real_entity;') == '<p>&amp;not_a_real_entity;</p>\n'
+}
+
+fn test_numeric_entities_are_decoded() {
+	assert to_html('&#169; &#xA9;') == '<p>© ©</p>\n'
+}
+
 fn test_empty_input() {
 	assert to_html('') == ''
 }
@@ -73,6 +86,17 @@ fn test_ordered_list() {
 	assert html.contains('first')
 }
 
+fn test_ordered_list_marker_requires_whitespace_or_eol() {
+	assert to_html('1.test') == '<p>1.test</p>\n'
+	assert to_html('1)test') == '<p>1)test</p>\n'
+}
+
+fn test_ordered_list_marker_allows_space_tab_or_eol() {
+	assert to_html('1. item') == '<ol>\n<li>item</li>\n</ol>\n'
+	assert to_html('1)\titem') == '<ol>\n<li>item</li>\n</ol>\n'
+	assert to_html('1.') == '<ol>\n<li></li>\n</ol>\n'
+}
+
 fn test_blockquote() {
 	html := to_html('> quote')
 	assert html.contains('<blockquote>')
@@ -97,6 +121,18 @@ fn test_valid_link_ref_def_is_resolved() {
 	src := '[ok]: <https://example.com>\n\n[ok]'
 	html := to_html(src)
 	assert html.contains('<a href="https://example.com">ok</a>')
+}
+
+fn test_full_reference_does_not_fallback_to_shortcut_when_label_is_undefined() {
+	src := '[text]: https://example.com/text\n\n[text][missing]'
+	html := to_html(src)
+	assert html == '<p>[text][missing]</p>\n'
+}
+
+fn test_shortcut_reference_still_resolves_normally() {
+	src := '[text]: https://example.com/text\n\n[text]'
+	html := to_html(src)
+	assert html == '<p><a href="https://example.com/text">text</a></p>\n'
 }
 
 fn test_gfm_table_header_uses_th_cells() {
@@ -224,6 +260,27 @@ fn test_task_list_xhtml_checkbox_self_closing() {
 		}
 	})
 	assert html.contains('<input type="checkbox" disabled="" checked="" />')
+}
+
+fn test_footnote_definition_inside_list_item_is_preserved() {
+	src := '- item[^note]\n\n  [^note]: footnote in list\n\noutside[^note]'
+	html := to_html_opts(src, Options{
+		footnotes: true
+	})
+	assert html.contains('item<sup><a href="#fn-note" id="fnref-note">1</a></sup>')
+	assert html.contains('outside<sup><a href="#fn-note" id="fnref-note">1</a></sup>')
+	assert html.contains('<li id="fn-note">footnote in list')
+	assert html.contains('<a href="#fnref-note">&#x21A9;</a></li>')
+}
+
+fn test_footnote_definition_inside_blockquote_is_preserved() {
+	src := '> quote[^q]\n>\n> [^q]: footnote in quote'
+	html := to_html_opts(src, Options{
+		footnotes: true
+	})
+	assert html.contains('quote<sup><a href="#fn-q" id="fnref-q">1</a></sup>')
+	assert html.contains('<li id="fn-q">footnote in quote')
+	assert html.contains('<a href="#fnref-q">&#x21A9;</a></li>')
 }
 
 fn test_link_ref_def_multiline_title() {
