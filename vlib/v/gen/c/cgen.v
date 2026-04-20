@@ -8071,9 +8071,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if emit_auto_heap_deref {
 				g.write('(*(')
 			}
-			// Skip smartcasts for comptime_for variables to avoid using stale types
+			// Skip smartcasts for comptime_for variables to avoid using stale types.
+			// Direct assignment to an option variable (e.g. `if x != none { x = ... }`)
+			// targets the option struct itself, not the smartcast value, so smartcasts
+			// must be skipped. But selector LHS (`opt_var.field = ...`) still needs the
+			// smartcast unwrap to access the inner struct.
 			skip_smartcasts := g.is_comptime_for_var(node)
-				|| (g.is_assign_lhs && resolved_var.orig_type.has_flag(.option))
+				|| (g.is_assign_lhs && resolved_var.orig_type.has_flag(.option)
+				&& !g.inside_selector_lhs)
 			if has_resolved_var && resolved_var.smartcasts.len > 0 && !skip_smartcasts {
 				mut smartcast_types := resolved_var.smartcasts.clone()
 				if resolved_var.orig_type.has_flag(.option) {
