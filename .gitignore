@@ -1,14 +1,13 @@
 # ignore sub-level untracked files and the v binary
 */**/*
+
 # unignore checker test files
 !vlib/v/checker/tests/*.vv
 !vlib/v/checker/tests/*.out
-v
-v.exe
-v2
-v2.exe
-vdbg
-vdbg.exe
+
+# unignore vlib/x/markdown
+!vlib/x/markdown/**
+
 !*/
 # Do not add !*.* here; it overrides local excludes from .git/info/exclude.
 *.exe
@@ -28,23 +27,20 @@ a.out
 .noprefix.vrepl_temp
 
 # ignore v build files
+# *.exe is already ignored above
+/v
+/v2
 /vc
 /v.c
 /v.*.c
 /v.c.out
 /v_old
-/v_old.exe
+/vdbg
 /vold
-/vold.exe
 /vnew
-/vnew.exe
 /vprod
 /vprod_gcc
 /vprod_clang
-/vprod.exe
-/vprod_gcc.exe
-/vprod_clang.exe
-/vprod_msvc.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
@@ -68,11 +64,10 @@ cache/
 !GNUmakefile
 
 # ignore editor files
-.idea
-.project
-.classpath
-.c9
-.vs
+.project/
+.classpath/
+.c9/
+.vs/
 *.launch
 .settings/
 *.sublime-workspace
@@ -143,7 +138,7 @@ vls.log
 .idea/
 /*.iml
 
-#ignore generated files:
+# ignore generated files:
 wasm.v
 
 # ignore large GTK *.gir files
@@ -153,7 +148,7 @@ Gtk-4.0.gir
 vlib/builtin/js/*.js
 vlib/v/tests/*.js
 
-#ignore tags indexes, used by emacs/vim:
+# ignore tags indexes, used by emacs/vim:
 ETAGS
 TAGS
 tags
@@ -169,7 +164,7 @@ autofuzz.log
 .project.gf
 .aider*
 
-#ignore common file names for bugs/reproductions
+# ignore common file names for bugs/reproductions
 bug*
 issue*
 
