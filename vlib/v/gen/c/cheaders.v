@@ -392,6 +392,14 @@ extern FILE* __stderrp;
 #define stdin __stdinp
 #define stdout __stdoutp
 #define stderr __stderrp
+	#elif defined(__OpenBSD__)
+typedef struct __sFILE FILE;
+extern FILE* __stdin;
+extern FILE* __stdout;
+extern FILE* __stderr;
+#define stdin __stdin
+#define stdout __stdout
+#define stderr __stderr
 	#else
 typedef struct _IO_FILE FILE;
 extern FILE* stdin;
