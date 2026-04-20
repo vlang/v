@@ -497,6 +497,15 @@ isize getline(char **lineptr, size_t *n, FILE *stream);
 #ifndef EOF
 	#define EOF (-1)
 #endif
+#ifndef SEEK_SET
+	#define SEEK_SET 0
+#endif
+#ifndef SEEK_CUR
+	#define SEEK_CUR 1
+#endif
+#ifndef SEEK_END
+	#define SEEK_END 2
+#endif
 #ifndef RAND_MAX
 	#if defined(_MSC_VER)
 		#define RAND_MAX 0x7fff
