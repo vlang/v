@@ -213,7 +213,7 @@ fn test_at_ccompiler() {
 
 fn test_at_backend() {
 	println('Current language backend is ${@BACKEND}')
-	assert @BACKEND in ['c', 'golang', 'interpret', 'js_node', 'js_browser', 'js_freestanding',
+	assert @BACKEND in ['c', 'interpret', 'js_node', 'js_browser', 'js_freestanding',
 		'native', 'wasm']
 }
 

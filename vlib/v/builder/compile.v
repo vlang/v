@@ -148,18 +148,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		}
 
 		actual_rf
-	} else if b.pref.backend == .golang {
-		go_basename := $if windows { 'go.exe' } $else { 'go' }
-		os.find_abs_path_of_executable(go_basename) or {
-			panic('Could not find `${go_basename}` in system path. Do you have Go installed?')
-		}
 	} else {
 		compiled_file
 	}
 	if b.pref.backend.is_js() || b.pref.backend == .wasm {
 		run_args << compiled_file
-	} else if b.pref.backend == .golang {
-		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
 

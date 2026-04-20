@@ -4296,14 +4296,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		c.error('invalid OS/platform condition `${node.ct_low_level_cond}` in #${node.kind}',
 			node.pos)
 	}
-	if c.pref.backend == .golang || c.is_js_backend {
-		// consider the best way to handle the .go.vv files
-		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
-			&& !c.file.path.ends_with('.go.vv') {
-			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
+	if c.is_js_backend {
+		if !c.file.path.ends_with('.js.v') {
+			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
 				node.pos)
 		}
-		if c.pref.backend != .golang && c.mod == 'main' {
+		if c.mod == 'main' {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
