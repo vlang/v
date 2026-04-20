@@ -43,7 +43,11 @@ fn (mut g Gen) comptime_call_expands_string_args(m &ast.Fn, node ast.ComptimeCal
 		return false
 	}
 	array_decompose := node.args.last().expr as ast.ArrayDecompose
-	if !g.is_string_array_type(array_decompose.expr_type) || m.params.len - 1 < node.args.len {
+	mut array_type := g.resolved_expr_type(array_decompose.expr, array_decompose.expr_type)
+	if array_type == ast.void_type {
+		array_type = array_decompose.expr_type
+	}
+	if !g.is_string_array_type(array_type) || m.params.len - 1 < node.args.len {
 		return false
 	}
 	return !g.is_string_array_type(m.params[node.args.len].typ)
@@ -288,7 +292,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				&& node.args[i - 1].expr is ast.ArrayDecompose {
 				mut d_count := 0
 				for d_i in i .. m.params.len {
-					g.write('*(${g.styp(m.params[i].typ)}*)builtin__array_get(')
+					g.write('*(${g.styp(m.params[d_i].typ)}*)builtin__array_get(')
 					g.expr(ast.Expr(node.args[i - 1].expr))
 					g.write(', ${d_count})')
 

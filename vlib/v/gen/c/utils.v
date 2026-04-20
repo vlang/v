@@ -851,6 +851,16 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 						mut resolved := g.resolved_expr_type(expr.obj.expr, expr.obj.typ)
 						if resolved != 0 {
 							resolved = g.unwrap_generic(g.recheck_concrete_type(resolved))
+							if expr.obj.typ != 0 {
+								resolved_obj_type :=
+									g.unwrap_generic(g.recheck_concrete_type(expr.obj.typ))
+								if resolved_obj_type != 0
+									&& !g.type_has_unresolved_generic_parts(resolved_obj_type)
+									&& resolved.has_option_or_result()
+									&& resolved.clear_option_and_result() == resolved_obj_type {
+									return resolved_obj_type
+								}
+							}
 							if g.type_has_unresolved_generic_parts(resolved) {
 								call_like_type := g.resolved_call_like_expr_type(expr.obj.expr)
 								if call_like_type != 0 && !call_like_type.has_flag(.generic)

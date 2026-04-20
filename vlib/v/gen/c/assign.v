@@ -1367,8 +1367,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && (is_fixed_array_init
-			|| (unaliased_right_sym.kind == .array_fixed && val in [ast.Ident, ast.CastExpr])) {
+		} else if node.op == .assign && (is_fixed_array_init || is_fixed_array_var
+			|| (unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr)) {
 			// Fixed arrays
 			if unaliased_left_sym.kind != .array_fixed && unaliased_right_sym.kind == .array_fixed
 				&& (g.pref.translated || g.file.is_translated) {
@@ -1399,37 +1399,24 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
 			} else {
-				mut v_var := ''
 				arr_typ := styp.trim('*')
+				old_is_assign_lhs := g.is_assign_lhs
+				g.is_assign_lhs = false
+				left_expr := g.expr_string(left)
+				mut fixed_right_expr := ''
 				if is_fixed_array_init {
 					right := val as ast.ArrayInit
-					v_var = g.new_tmp_var()
-					g.write('${arr_typ} ${v_var} = ')
+					right_var := g.new_tmp_var()
+					g.write('${arr_typ} ${right_var} = ')
 					g.expr(right)
 					g.writeln(';')
+					fixed_right_expr = right_var
 				} else {
-					v_var = g.expr_string(val)
+					fixed_right_expr = g.expr_string(val)
 				}
-				pos := g.out.len
-				g.expr(left)
-
-				if g.is_arraymap_set && g.arraymap_set_pos >= 0 {
-					if g.arraymap_set_pos > 0 {
-						g.go_back_to(g.arraymap_set_pos)
-					}
-					g.write(', &${v_var})')
-					g.is_arraymap_set = false
-					g.arraymap_set_pos = 0
-				} else {
-					g.go_back_to(pos)
-					is_var_mut := !is_decl && left.is_auto_deref_var()
-					addr_left := if is_var_mut { '' } else { '&' }
-					g.writeln('')
-					g.write('memcpy(${addr_left}')
-					g.expr(left)
-					addr_val := if is_fixed_array_var { '' } else { '&' }
-					g.writeln(', ${addr_val}${v_var}, sizeof(${arr_typ}));')
-				}
+				g.is_assign_lhs = old_is_assign_lhs
+				g.writeln('')
+				g.writeln('memcpy(${left_expr}, ${fixed_right_expr}, sizeof(${arr_typ}));')
 				g.is_assign_lhs = false
 			}
 		} else {

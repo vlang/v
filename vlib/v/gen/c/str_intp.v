@@ -741,8 +741,11 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 		if i >= node.need_fmts.len || node.need_fmts[i] || i >= fmts.len || fmts[i] == `_` {
 			return false
 		}
-		if node.expr_types[i].is_any_kind_of_pointer() || node.expr_types[i].is_int_valptr()
-			|| node.expr_types[i].is_float_valptr() {
+		normalized_expr_type := g.table.fully_unaliased_type(g.unwrap_generic(node.expr_types[i]))
+		// Pointer aliases need the full `str_intp` path so nil formatting stays
+		// consistent with plain pointer interpolation.
+		if normalized_expr_type.is_any_kind_of_pointer() || normalized_expr_type.is_int_valptr()
+			|| normalized_expr_type.is_float_valptr() {
 			return false
 		}
 		// Interface types need the full str_intp path for vtable dispatch and

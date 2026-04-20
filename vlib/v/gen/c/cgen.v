@@ -4466,15 +4466,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			// pointer-backed only when interface semantics require aliasing the
 			// original storage. Plain value-to-interface conversions still need
 			// a detached copy, even when the value itself lives in auto-heap storage.
-			// The exception is values that already came from option/result unwrapping:
-			// those are already detached heap objects and should be passed through
-			// directly instead of being wrapped in HEAP(...) a second time.
 			mut effective_got_is_ptr := got_is_ptr
 			mut suppress_auto_heap_deref := false
 			if !got_is_ptr && expr is ast.Ident && g.resolved_ident_is_auto_heap(expr)
 				&& (g.expected_arg_mut
-				|| g.interface_cast_requires_field_aliasing(expected_type, expr)
-				|| g.ident_unwraps_option_or_result(expr)) {
+				|| g.interface_cast_requires_field_aliasing(expected_type, expr)) {
 				effective_got_is_ptr = true
 				suppress_auto_heap_deref = true
 			}
@@ -9052,6 +9048,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			type0 = type0.clear_flag(.result)
 		}
 	}
+	if exprs_len > 0 && expr0 is ast.Ident && expr0.obj is ast.Var && expr0.obj.typ != 0 {
+		resolved_obj_type := g.unwrap_generic(g.recheck_concrete_type(expr0.obj.typ))
+		if resolved_obj_type != 0 && !resolved_obj_type.has_option_or_result()
+			&& type0.has_option_or_result()
+			&& type0.clear_option_and_result() == resolved_obj_type {
+			type0 = resolved_obj_type
+		}
+	}
 
 	if exprs_len > 0 {
 		// `$veb.html()` expands to statements, so the Result return
@@ -11712,7 +11716,11 @@ return ${cast_shared_struct_str};
 						mut adapter_params := ['void* _x']
 						for i in 1 .. method.params.len {
 							arg := method.params[i]
-							arg_name := if arg.name.len > 0 { c_name(arg.name) } else { 'arg${i}' }
+							arg_name := if arg.name.len > 0 && arg.name != '_' {
+								c_name(arg.name)
+							} else {
+								'arg${i}'
+							}
 							adapter_params << '${g.styp(arg.typ)} ${arg_name}'
 							adapter_args << arg_name
 						}

@@ -143,13 +143,14 @@ fn find_tmpl_complex_at_expr_end(line string, start int) int {
 	for i < line.len && is_tmpl_ident_part(line[i]) {
 		i++
 	}
+	mut has_complex_suffix := false
 	for i + 1 < line.len && line[i] == `.` && is_tmpl_ident_start(line[i + 1]) {
 		i += 2
+		has_complex_suffix = true
 		for i < line.len && is_tmpl_ident_part(line[i]) {
 			i++
 		}
 	}
-	mut has_complex_suffix := false
 	for i < line.len {
 		if line[i] == `[` {
 			expr_end := find_tmpl_balanced_end(line, i, `[`, `]`)
