@@ -6745,8 +6745,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		} else {
 			last_sc_sym.kind
 		}
-		if raw_sc_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface,
-			.sum_type, .function] {
+		if raw_sc_kind !in [.struct, .aggregate, .array, .array_fixed, .map, .interface, .sum_type,
+			.function] {
 			interface_smartcast_expr_is_dereferenced = true
 		}
 	}
