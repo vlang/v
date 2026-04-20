@@ -1401,7 +1401,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else {
 				arr_typ := styp.trim('*')
 				old_is_assign_lhs := g.is_assign_lhs
-				g.is_assign_lhs = false
+				// For map IndexExpr LHS, keep is_assign_lhs = true so the index
+				// generator emits `map_get_and_set` (which inserts missing keys)
+				// instead of `map_get` (which returns a zero-default buffer).
+				left_is_map_index := left is ast.IndexExpr
+					&& g.table.final_sym(left.left_type).kind == .map
+				g.is_assign_lhs = left_is_map_index
 				left_expr := g.expr_string(left)
 				mut fixed_right_expr := ''
 				if is_fixed_array_init {
