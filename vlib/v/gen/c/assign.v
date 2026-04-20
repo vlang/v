@@ -35,7 +35,16 @@ fn (g &Gen) is_smartcast_assign_lhs(expr ast.Expr) bool {
 			}
 			scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
 				expr.expr_type, expr.field_name)
-			return scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+			if scope_field == unsafe { nil } || scope_field.smartcasts.len == 0 {
+				return false
+			}
+			// Option field smartcast on LHS: the assignment replaces the option
+			// as a whole (e.g. `s.x = 10` or `s.x = none` inside `if s.x != none`),
+			// so skip unwrap treatment that's only meant for sumtype reassignments.
+			if scope_field.orig_type.has_flag(.option) {
+				return false
+			}
+			return true
 		}
 		else {
 			return false
