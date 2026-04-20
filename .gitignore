@@ -8,6 +8,9 @@
 # unignore vlib/x/markdown
 !vlib/x/markdown/**
 
+# unignore vlib/x/compress/bzip2
+!vlib/x/compress/bzip2/**
+
 !*/
 # Do not add !*.* here; it overrides local excludes from .git/info/exclude.
 *.exe
