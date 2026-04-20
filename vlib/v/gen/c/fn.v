@@ -54,6 +54,8 @@ const c_manual_prelude_decl_names = [
 	'realloc',
 	'aligned_alloc',
 	'free',
+	'rand',
+	'srand',
 	'atexit',
 	'exit',
 	'atoi',

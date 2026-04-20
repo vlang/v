@@ -447,6 +447,8 @@ void *calloc(size_t nitems, size_t size);
 void *realloc(void *ptr, size_t size);
 void *aligned_alloc(size_t alignment, size_t size);
 void free(void *ptr);
+int rand(void);
+void srand(unsigned int seed);
 int atexit(void (*cb)(void));
 void exit(int status);
 int atoi(const char *str);
@@ -482,6 +484,13 @@ isize getline(char **lineptr, size_t *n, FILE *stream);
 #endif
 #ifndef EOF
 	#define EOF (-1)
+#endif
+#ifndef RAND_MAX
+	#if defined(_MSC_VER)
+		#define RAND_MAX 0x7fff
+	#else
+		#define RAND_MAX 2147483647
+	#endif
 #endif
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
