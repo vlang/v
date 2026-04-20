@@ -400,6 +400,12 @@ extern FILE* __stderr;
 #define stdin __stdin
 #define stdout __stdout
 #define stderr __stderr
+	#elif defined(__MINGW32__) || defined(__MINGW64__)
+typedef struct _iobuf FILE;
+FILE* __cdecl __acrt_iob_func(unsigned index);
+#define stdin  (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
 	#else
 typedef struct _IO_FILE FILE;
 extern FILE* stdin;
