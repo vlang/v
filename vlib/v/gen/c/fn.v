@@ -12,6 +12,73 @@ import v.util
 // has[int, string]() => has_T_int_string()
 const c_fn_name_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
+// c_manual_prelude_decl_names matches the C stdlib declarations emitted by `c_headers`.
+// When one of these symbols is declared in V as `fn C.name(...)`, cgen must not emit an
+// extra fallback prototype, or it can conflict with the prelude declaration.
+const c_manual_prelude_decl_names = [
+	'vfprintf',
+	'vsnprintf',
+	'fprintf',
+	'printf',
+	'snprintf',
+	'sprintf',
+	'sscanf',
+	'scanf',
+	'puts',
+	'perror',
+	'fputs',
+	'getchar',
+	'putchar',
+	'getc',
+	'fgetc',
+	'ungetc',
+	'fflush',
+	'feof',
+	'ferror',
+	'clearerr',
+	'setvbuf',
+	'ftell',
+	'rewind',
+	'fopen',
+	'fdopen',
+	'freopen',
+	'fileno',
+	'fread',
+	'fwrite',
+	'fgets',
+	'fclose',
+	'popen',
+	'pclose',
+	'malloc',
+	'calloc',
+	'realloc',
+	'aligned_alloc',
+	'free',
+	'atexit',
+	'exit',
+	'atoi',
+	'getenv',
+	'setenv',
+	'unsetenv',
+	'system',
+	'remove',
+	'rename',
+	'realpath',
+	'qsort',
+	'strcmp',
+	'strlen',
+	'strerror',
+	'memcpy',
+	'memmove',
+	'memset',
+	'memcmp',
+	'memchr',
+	'strchr',
+	'strrchr',
+	'fseek',
+	'getline',
+]
+
 fn collect_function_defer_stmts(node &ast.FnDecl) []ast.DeferStmt {
 	mut defer_stmts := []ast.DeferStmt{}
 	mut seen_idxs := []int{}
@@ -736,9 +803,14 @@ fn (g &Gen) module_has_c_header_module(file &ast.File) bool {
 	return false
 }
 
+fn (g &Gen) c_prelude_provides_decl(c_sym_name string) bool {
+	return !g.pref.no_preludes && !g.pref.is_bare && c_sym_name in c_manual_prelude_decl_names
+}
+
 fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
+	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
 	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file)
-		|| g.module_has_c_header_module(node.source_file) {
+		|| g.module_has_c_header_module(node.source_file) || g.c_prelude_provides_decl(c_sym_name) {
 		return false
 	}
 	if node.source_file == unsafe { nil } {
