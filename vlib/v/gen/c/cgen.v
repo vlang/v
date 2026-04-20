@@ -11621,6 +11621,7 @@ return ${cast_shared_struct_str};
 				name = g.specialized_method_name_from_receiver(method, st, name)
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
+				mut adapter_receiver_typ := g.styp(method.params[0].typ)
 				_, embed_types := g.table.find_method_from_embeds(st_sym, method.name) or {
 					ast.Fn{}, []ast.Type{}
 				}
@@ -11697,10 +11698,39 @@ return ${cast_shared_struct_str};
 					methods_wrapper.writeln('}')
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call = wrapper_method_name
+					adapter_receiver_typ = '${cctype}*'
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type
 					&& st != ast.nil_type {
-					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
+					if cctype == cctype2 {
+						mut adapter_name := '${cctype}_${name}_Interface_${interface_name}_method_adapter'
+						method_sym := g.table.sym(method.params[0].typ)
+						if method_sym.is_builtin() {
+							adapter_name = 'builtin__${adapter_name}'
+						}
+						mut adapter_args := []string{cap: method.params.len - 1}
+						mut adapter_params := ['void* _x']
+						for i in 1 .. method.params.len {
+							arg := method.params[i]
+							arg_name := if arg.name.len > 0 { c_name(arg.name) } else { 'arg${i}' }
+							adapter_params << '${g.styp(arg.typ)} ${arg_name}'
+							adapter_args << arg_name
+						}
+						methods_wrapper.writeln('static inline ${g.ret_styp(method.return_type)} ${adapter_name}(${adapter_params.join(', ')}) {')
+						methods_wrapper.write_string('\t')
+						if method.return_type != ast.void_type {
+							methods_wrapper.write_string('return ')
+						}
+						methods_wrapper.write_string('${method_call}((${adapter_receiver_typ})_x')
+						if adapter_args.len > 0 {
+							methods_wrapper.write_string(', ${adapter_args.join(', ')}')
+						}
+						methods_wrapper.writeln(');')
+						methods_wrapper.writeln('}')
+						methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = ${adapter_name},')
+					} else {
+						methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
+					}
 				}
 			}
 			// For interface methods not found in the type's explicit methods,
@@ -11721,7 +11751,15 @@ return ${cast_shared_struct_str};
 						methods_wrapper.writeln('static inline string ${wrapper_name}(${cctype}* x) {')
 						methods_wrapper.writeln('\treturn ${str_fn_name}(*x);')
 						methods_wrapper.writeln('}')
-						methods_struct.writeln('\t\t._method_str = (void*) ${wrapper_name},')
+						if cctype == cctype2 {
+							adapter_name := '${cctype}_str_Interface_${interface_name}_method_adapter'
+							methods_wrapper.writeln('static inline string ${adapter_name}(void* _x) {')
+							methods_wrapper.writeln('\treturn ${wrapper_name}((${cctype}*)_x);')
+							methods_wrapper.writeln('}')
+							methods_struct.writeln('\t\t._method_str = ${adapter_name},')
+						} else {
+							methods_struct.writeln('\t\t._method_str = (void*) ${wrapper_name},')
+						}
 					}
 				}
 			}
