@@ -457,6 +457,7 @@ int system(const char *command);
 int remove(const char *path);
 int rename(const char *old_path, const char *new_path);
 char *realpath(const char *path, char *resolved_path);
+int mkstemp(char *stemplate);
 void qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
 int strcmp(const char *left, const char *right);
 size_t strlen(const char *str);

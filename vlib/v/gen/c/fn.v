@@ -64,6 +64,7 @@ const c_manual_prelude_decl_names = [
 	'remove',
 	'rename',
 	'realpath',
+	'mkstemp',
 	'qsort',
 	'strcmp',
 	'strlen',
