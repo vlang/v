@@ -4026,6 +4026,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut mutable_is_mut_arg_pos := 0
+	mut force_auto_heap_value_deref := false
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
@@ -4078,6 +4079,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		// stay connected to the concrete value instead of a detached clone.
 		needs_interface_value_copy := is_interface_cast && !preserve_interface_field_aliasing
 			&& !g.expected_arg_mut && !got_is_ptr && expr_is_lvalue
+		force_auto_heap_value_deref = needs_interface_value_copy && expr is ast.Ident
+			&& g.resolved_ident_is_auto_heap(expr)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr_is_lvalue
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
@@ -4117,7 +4120,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
 		old_inside_assign_fn_var := g.inside_assign_fn_var
-		if is_stack_rooted_interface_expr && g.expr_root_ident_unwraps_option_or_result(expr) {
+		if force_auto_heap_value_deref {
+			g.inside_assign_fn_var = false
+		} else if is_stack_rooted_interface_expr && g.expr_root_ident_unwraps_option_or_result(expr) {
 			g.inside_assign_fn_var = true
 		}
 		g.expr(expr)
