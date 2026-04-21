@@ -210,6 +210,38 @@ fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	assert !compilation.output.contains(symbol)
 }
 
+fn test_no_main_exports_initialize_windows_runtime() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_no_main_export_windows_init.vv')
+	os.write_file(test_source,
+		"module no_main\n\n@[export: 'v_sdl_app_quit']\npub fn app_quit() {}\n")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	generated_c_lines := compilation.output.split_into_lines()
+	expected_lines := [
+		'static void _vno_main_init_caller(void);',
+		'static void _vno_main_cleanup_caller(void);',
+		'void v_sdl_app_quit(void) {',
+		'_vno_main_init_caller();',
+		'void _vinit(int ___argc, voidptr ___argv) {',
+		'static bool once = false; if (once) {return;} once = true;',
+		'void _vcleanup(void) {',
+		'static void _vno_main_cleanup_caller(void) {',
+		'static void _vno_main_init_caller(void) {',
+		'con_valid = AttachConsole(ATTACH_PARENT_PROCESS);',
+		'err = freopen_s(&res_fp, "NUL", "w", stdout);',
+		'_vinit(0,0);',
+		'atexit(_vno_main_cleanup_caller);',
+	]
+	for expected_line in expected_lines {
+		assert does_line_match_one_of_generated_lines(expected_line, generated_c_lines)
+	}
+}
+
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
 	for cline in generated_c_lines {
 		if line == cline {

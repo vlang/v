@@ -9836,6 +9836,7 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 
 	g.write_debug_calls_typeof_functions()
 
@@ -9950,6 +9951,7 @@ fn (mut g Gen) write_init_function() {
 
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
+	g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_S("_vcleanup"));')
 	}
@@ -9976,6 +9978,23 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 		println(g.out.after(fn_vcleanup_start_pos))
+	}
+
+	if !g.pref.is_shared && 'no_main' in g.table.modules && g.export_funcs.len > 0 {
+		g.definitions.writeln('static void _vno_main_init_caller(void);')
+		g.definitions.writeln('static void _vno_main_cleanup_caller(void);')
+		g.writeln('static void _vno_main_cleanup_caller(void) {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\t_vcleanup();')
+		g.writeln('}')
+		g.writeln('static void _vno_main_init_caller(void) {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.pref.os == .windows {
+			g.gen_windows_stdio_setup(false)
+		}
+		g.writeln('\t_vinit(0,0);')
+		g.writeln('\tatexit(_vno_main_cleanup_caller);')
+		g.writeln('}')
 	}
 
 	if g.pref.is_shared {

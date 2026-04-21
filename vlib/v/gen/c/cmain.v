@@ -47,6 +47,25 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
+fn (mut g Gen) gen_windows_stdio_setup(force_console bool) {
+	g.writeln('\tBOOL con_valid = FALSE;')
+	if force_console {
+		g.writeln('\tcon_valid = AllocConsole();')
+	} else {
+		g.writeln('\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
+	}
+	g.writeln('\tFILE* res_fp = 0;')
+	g.writeln('\terrno_t err;')
+	g.writeln('\tif (con_valid) {')
+	g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout);')
+	g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr);')
+	g.writeln('\t} else {')
+	g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);')
+	g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);')
+	g.writeln('\t}')
+	g.writeln('\t(void)err;')
+}
+
 pub fn fix_reset_dbg_line(src strings.Builder, out_file string) strings.Builder {
 	util.timing_start(@FN)
 	defer {
@@ -108,23 +127,7 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
-
-			g.writeln('\tBOOL con_valid = FALSE;')
-			if g.force_main_console {
-				g.writeln('\tcon_valid = AllocConsole();')
-			} else {
-				g.writeln('\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
-			}
-			g.writeln('\tFILE* res_fp = 0;')
-			g.writeln('\terrno_t err;')
-			g.writeln('\tif (con_valid) {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout);')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr);')
-			g.writeln('\t} else {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);')
-			g.writeln('\t}')
-			g.writeln('\t(void)err;')
+			g.gen_windows_stdio_setup(g.force_main_console)
 
 			return
 		}
