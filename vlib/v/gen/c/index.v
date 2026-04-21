@@ -802,6 +802,17 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				}
 			}
 			if val_type.has_flag(.option) {
+				or_value_type := g.resolved_or_block_value_type(node.or_expr)
+				keep_option_result := node.is_option || (node.or_expr.kind == .block
+					&& (or_value_type in [ast.none_type, ast.none_type_idx]
+					|| or_value_type.has_flag(.option)))
+				plain_val_type := val_type.clear_option_and_result()
+				plain_val_sym := g.table.final_sym(plain_val_type)
+				plain_val_type_str := if plain_val_sym.kind == .function {
+					'voidptr'
+				} else {
+					g.styp(plain_val_type)
+				}
 				g.writeln('${val_type_str} ${tmp_opt} = {0};')
 				g.writeln('if (${tmp_opt_ptr}) {')
 				g.writeln('\t${tmp_opt} = *${tmp_opt_ptr};')
@@ -814,7 +825,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				if is_gen_or_and_assign_rhs {
 					g.set_current_pos_as_last_stmt_pos()
 				}
-				g.write('\n${cur_line}${tmp_opt}')
+				if keep_option_result {
+					g.write('\n${cur_line}${tmp_opt}')
+				} else {
+					g.write('\n${cur_line}(*(${plain_val_type_str}*)${tmp_opt}.data)')
+				}
 			} else {
 				opt_val_type := g.styp(val_type.set_flag(.option))
 				g.writeln('${opt_val_type} ${tmp_opt} = {0};')
