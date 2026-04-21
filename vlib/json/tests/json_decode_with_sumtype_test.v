@@ -56,3 +56,34 @@ fn test_json_decode_with_sumtype_struct_field_without_type_field() {
 		confirmations: 743970
 	})
 }
+
+type ApiDetails = string | map[string]string
+
+fn test_json_decode_with_sumtype_map_variant_without_type_field() {
+	api_docs_file := r'
+[
+	{
+		"CloseHandle": [
+			"https://learn.microsoft.com/windows/win32/api/handleapi/nf-handleapi-closehandle",
+			"Closes an open object handle.",
+			"The \n<b>CloseHandle</b> function ...",
+			{
+				"hObject": "A valid handle to an open object."
+			},
+			{},
+			"If the function succeeds, ..."
+		]
+	}
+]
+'
+	decoded := json.decode([]map[string][]ApiDetails, api_docs_file)!
+	close_handle := decoded[0]['CloseHandle'] or { panic('missing CloseHandle docs') }
+
+	assert close_handle.len == 6
+	assert close_handle[0] == ApiDetails('https://learn.microsoft.com/windows/win32/api/handleapi/nf-handleapi-closehandle')
+	assert close_handle[3] == ApiDetails({
+		'hObject': 'A valid handle to an open object.'
+	})
+	assert close_handle[4] == ApiDetails(map[string]string{})
+	assert close_handle[5] == ApiDetails('If the function succeeds, ...')
+}
