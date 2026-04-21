@@ -4,6 +4,17 @@ import os
 import v.pref
 import v.util
 
+fn live_runtime_quoted_path(target_os pref.OS, path string) string {
+	return match target_os {
+		.windows { '"${path.replace('"', '\\"')}"' }
+		else { "'" + path.replace("'", "'\\''") + "'" }
+	}
+}
+
+fn live_runtime_quoted_path_for_c_string(target_os pref.OS, path string) string {
+	return live_runtime_quoted_path(target_os, path).replace('\\', '\\\\').replace('"', '\\"')
+}
+
 fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
 		g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
@@ -118,7 +129,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
-	ccpath := util.cescaped_path(g.pref.ccompiler)
+	ccpath := live_runtime_quoted_path_for_c_string(g.pref.os, g.pref.ccompiler)
 	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	mut vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
