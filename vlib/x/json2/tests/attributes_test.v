@@ -46,10 +46,35 @@ struct Foo {
 	a int @[required]
 }
 
+struct JsonNullAttrBar {
+	name ?string @[json_null]
+}
+
+struct JsonNullAttrFoo {
+	name   ?string @[json_null]
+	age    ?int    @[json_null]
+	text   ?string
+	other  ?JsonNullAttrBar
+	other2 ?JsonNullAttrBar @[json_null]
+}
+
 fn test_last_field_requiered() {
 	assert json.decode[Foo]('{"a":0}')! == Foo{
 		a: 0
 	}
+}
+
+fn test_json_null_attribute() {
+	assert json.encode(JsonNullAttrFoo{}) == '{"name":null,"age":null,"other2":null}'
+	assert json.encode(JsonNullAttrFoo{ name: '' }) == '{"name":"","age":null,"other2":null}'
+	assert json.encode(JsonNullAttrFoo{ age: 10 }) == '{"name":null,"age":10,"other2":null}'
+	assert json.encode(JsonNullAttrFoo{
+		age:    10
+		other2: JsonNullAttrBar{
+			name: none
+		}
+	}) == '{"name":null,"age":10,"other2":{"name":null}}'
+	assert json.decode[JsonNullAttrFoo](json.encode(JsonNullAttrFoo{}))! == JsonNullAttrFoo{}
 }
 
 fn test_skip_and_rename_attributes() {
