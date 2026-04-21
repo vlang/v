@@ -18,32 +18,99 @@ fn debug_font_println(s string) {
 	println(s)
 }
 
-// default returns an absolute path the default system TTF font.
-// If the env variable `VUI_FONT` is set this is used instead.
+fn is_readable_font_file(font_path string) bool {
+	if font_path == '' {
+		return false
+	}
+	return !font_path.to_lower().ends_with('.ttc') && os.is_file(font_path)
+		&& os.is_readable(font_path)
+}
+
+fn use_font_if_readable(font_path string) string {
+	if is_readable_font_file(font_path) {
+		debug_font_println('Using font "${font_path}"')
+		return font_path
+	}
+	return ''
+}
+
+fn find_first_font_in_paths(font_paths []string) string {
+	for font_path in font_paths {
+		if is_readable_font_file(font_path) {
+			return font_path.clone()
+		}
+	}
+	return ''
+}
+
+fn find_first_font_in_dirs(font_dirs []string) string {
+	for font_dir in font_dirs {
+		if !os.is_dir(font_dir) {
+			continue
+		}
+		mut font_paths := os.walk_ext(font_dir, '.ttf')
+		font_paths.sort()
+		font_path := find_first_font_in_paths(font_paths)
+		if font_path != '' {
+			return font_path
+		}
+	}
+	return ''
+}
+
+fn default_user_font_dirs() []string {
+	mut font_dirs := []string{}
+	if config_dir := os.config_dir() {
+		font_dirs << os.join_path(config_dir, 'v', 'fonts')
+	}
+	return font_dirs
+}
+
+fn bundled_font_dirs() []string {
+	return [os.join_path(@VEXEROOT, 'examples', 'assets', 'fonts')]
+}
+
+fn find_fc_match_font(output string) string {
+	return find_first_font_in_paths(output.split('\n'))
+}
+
+// default returns an absolute path to a readable default font.
+// Search order:
+// 1. The env variable `VUI_FONT`.
+// 2. A user-provided fallback font under `${os.config_dir()}/v/fonts`.
+// 3. Platform defaults and `fc-match`.
+// 4. Bundled fonts under `@VEXEROOT/examples/assets/fonts`.
 // NOTE that, in some cases, the function calls out to external OS programs
 // so running this in a hot loop is not advised.
 @[manualfree]
 pub fn default() string {
 	env_font := os.getenv('VUI_FONT')
-	if env_font != '' && os.exists(env_font) {
+	if env_font != '' && os.is_file(env_font) && os.is_readable(env_font) {
+		debug_font_println('Using font "${env_font}"')
 		return env_font
 	}
 	unsafe { env_font.free() }
+	user_font_path := find_first_font_in_dirs(default_user_font_dirs())
+	if user_font_path != '' {
+		debug_font_println('Using font "${user_font_path}"')
+		return user_font_path
+	}
 	$if windows {
-		if os.exists('C:\\Windows\\Fonts\\segoeui.ttf') {
-			debug_font_println('Using font "C:\\Windows\\Fonts\\segoeui.ttf"')
-			return 'C:\\Windows\\Fonts\\segoeui.ttf'
+		fonts := ['C:\\Windows\\Fonts\\segoeui.ttf', 'C:\\Windows\\Fonts\\arial.ttf']
+		for system_font in fonts {
+			existing_font := use_font_if_readable(system_font)
+			if existing_font != '' {
+				return existing_font
+			}
 		}
-		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
-		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
 	$if macos {
 		fonts := ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
 			'/Library/Fonts/Arial.ttf']
-		for font in fonts {
-			if os.is_file(font) {
-				debug_font_println('Using font "${font}"')
-				return font
+		for system_font in fonts {
+			existing_font := use_font_if_readable(system_font)
+			if existing_font != '' {
+				return existing_font
 			}
 		}
 		unsafe { fonts.free() }
@@ -67,9 +134,9 @@ pub fn default() string {
 						if candidate_font.contains('.ttf') {
 							for location in font_locations {
 								candidate_path := os.join_path_single(location, candidate_font)
-								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
-									debug_font_println('Using font "${candidate_path}"')
-									return candidate_path
+								existing_font := use_font_if_readable(candidate_path)
+								if existing_font != '' {
+									return existing_font
 								}
 								unsafe { candidate_path.free() }
 							}
@@ -89,18 +156,21 @@ pub fn default() string {
 	}
 	mut fm := os.execute("fc-match --format='%{file}\n' -s")
 	if fm.exit_code == 0 {
-		lines := fm.output.split('\n')
-		for l in lines {
-			if !l.contains('.ttc') {
-				debug_font_println('Using font "${l}"')
-				return l
-			}
+		fc_match_font_path := find_fc_match_font(fm.output)
+		if fc_match_font_path != '' {
+			unsafe { fm.free() }
+			debug_font_println('Using font "${fc_match_font_path}"')
+			return fc_match_font_path
 		}
-		unsafe { lines.free() }
 	} else {
-		panic('fc-match failed to fetch system font')
+		debug_font_println('fc-match failed to fetch system font')
 	}
 	unsafe { fm.free() }
+	bundled_font_path := find_first_font_in_dirs(bundled_font_dirs())
+	if bundled_font_path != '' {
+		debug_font_println('Using font "${bundled_font_path}"')
+		return bundled_font_path
+	}
 	panic('failed to init the font')
 }
 
