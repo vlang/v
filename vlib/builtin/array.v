@@ -1163,6 +1163,7 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // sort can take a boolean test expression as its single argument.
 // The expression uses 2 'magic' variables `a` and `b` as pointers to the two elements
 // being compared.
+// Equal elements keep their original relative order.
 //
 // Example: mut aa := [5,2,1,10]; aa.sort(); assert aa == [1,2,5,10] // will sort the array in ascending order
 // Example: mut aa := [5,2,1,10]; aa.sort(b < a); assert aa == [10,5,2,1] // will sort the array in descending order
@@ -1171,6 +1172,7 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
 // sorted returns a sorted copy of the original array. The original array is *NOT* modified.
 // See also .sort() .
+// Equal elements keep their original relative order.
 // Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
 // Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
 pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
@@ -1182,6 +1184,7 @@ pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 // - `-1` when `a` should come before `b` ( `a < b` )
 // - `1`  when `b` should come before `a` ( `b < a` )
 // - `0`  when the order cannot be determined ( `a == b` )
+// Returning `0` keeps equal elements in their original relative order.
 //
 // Example:
 // ```v
@@ -1208,6 +1211,7 @@ pub fn (mut a array) sort_with_compare(callback FnSortCB) {
 // sorted_with_compare sorts a clone of the array. The original array is not modified.
 // It uses the results of the given function to determine sort order.
 // See also .sort_with_compare()
+// Equal elements keep their original relative order.
 pub fn (a &array) sorted_with_compare(callback FnSortCB) array {
 	mut r := a.clone()
 	unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }

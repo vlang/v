@@ -1213,31 +1213,40 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// so they need internal linkage to avoid duplicate symbols at link time.
 	sort_fn_visibility := if g.static_modifier != '' { g.static_modifier } else { 'VV_LOC ' }
 	g.sort_fn_definitions.writeln('${sort_fn_visibility}int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
-	c_condition := if comparison_type.sym.has_method('<') {
+	c_condition := g.array_sort_lt_condition(comparison_type, use_lambda, lambda_fn_name,
+		left_expr, right_expr, 'a', 'b')
+	reverse_condition := g.array_sort_lt_condition(comparison_type, use_lambda, lambda_fn_name,
+		right_expr, left_expr, 'b', 'a')
+	g.sort_fn_definitions.writeln('\tif (${c_condition}) return -1;')
+	g.sort_fn_definitions.writeln('\tif (${reverse_condition}) return 1;')
+	g.sort_fn_definitions.writeln('\treturn 0;')
+	g.sort_fn_definitions.writeln('}\n')
+
+	// write call to the generated function
+	g.gen_array_sort_call(node, compare_fn, left_is_array)
+}
+
+fn (mut g Gen) array_sort_lt_condition(comparison_type Type, use_lambda bool, lambda_fn_name string, left_expr string, right_expr string, left_arg string, right_arg string) string {
+	if use_lambda {
+		return '${lambda_fn_name}(${left_arg}, ${right_arg})'
+	}
+	if comparison_type.sym.has_method('<') {
 		method_name := if comparison_type.sym.is_builtin() {
 			'builtin__${g.styp(comparison_type.typ)}__lt'
 		} else {
 			'${g.styp(comparison_type.typ)}__lt'
 		}
-		'${method_name}(${left_expr}, ${right_expr})'
-	} else if comparison_type.unaliased_sym.has_method('<') {
+		return '${method_name}(${left_expr}, ${right_expr})'
+	}
+	if comparison_type.unaliased_sym.has_method('<') {
 		method_name := if comparison_type.unaliased_sym.is_builtin() {
 			'builtin__${g.styp(comparison_type.unaliased)}__lt'
 		} else {
 			'${g.styp(comparison_type.unaliased)}__lt'
 		}
-		'${method_name}(${left_expr}, ${right_expr})'
-	} else if use_lambda {
-		'${lambda_fn_name}(a, b)'
-	} else {
-		'${left_expr} < ${right_expr}'
+		return '${method_name}(${left_expr}, ${right_expr})'
 	}
-	g.sort_fn_definitions.writeln('\tif (${c_condition}) return -1;')
-	g.sort_fn_definitions.writeln('\telse return 1;')
-	g.sort_fn_definitions.writeln('}\n')
-
-	// write call to the generated function
-	g.gen_array_sort_call(node, compare_fn, left_is_array)
+	return '${left_expr} < ${right_expr}'
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_array bool) {
