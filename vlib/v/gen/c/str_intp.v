@@ -454,6 +454,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.inside_opt_or_res = old_inside_opt_or_res
 			g.write('.data))')
 		} else {
+			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
+				return
+			}
 			g.gen_expr_to_string(expr, exp_typ)
 		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
@@ -783,7 +786,9 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 		}
 	}
 	if node.exprs.len == 1 && node.vals.len == 2 && node.vals[0].len == 0 && node.vals[1].len == 0 {
-		g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
+		if !g.gen_windows_liveshared_string_tmp(node.exprs[0], node.expr_types[0]) {
+			g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
+		}
 		return true
 	}
 	mut part_count := 0
@@ -815,10 +820,37 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			if written_parts > 0 {
 				g.write(', ')
 			}
-			g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
+			if !g.gen_windows_liveshared_string_tmp(node.exprs[i], node.expr_types[i]) {
+				g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
+			}
 			written_parts++
 		}
 	}
 	g.write('}))')
+	return true
+}
+
+fn (g &Gen) should_materialize_windows_liveshared_string(expr ast.Expr, typ ast.Type) bool {
+	if g.pref.os != .windows || !g.pref.is_liveshared || g.inside_const {
+		return false
+	}
+	// The live shared DLL path on Windows is sensitive to nested string-returning
+	// expressions inside interpolation compound literals, so lower them via temps.
+	if typ == ast.string_type {
+		return expr !is ast.Ident && expr !is ast.StringLiteral && expr !is ast.SelectorExpr
+			&& expr !is ast.ComptimeSelector
+	}
+	return true
+}
+
+fn (mut g Gen) gen_windows_liveshared_string_tmp(expr ast.Expr, typ ast.Type) bool {
+	if !g.should_materialize_windows_liveshared_string(expr, typ) {
+		return false
+	}
+	past := g.past_tmp_var_new()
+	g.write('string ${past.tmp_var} = ')
+	g.gen_expr_to_string(expr, typ)
+	g.writeln(';')
+	g.past_tmp_var_done(past)
 	return true
 }

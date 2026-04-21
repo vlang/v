@@ -1,0 +1,14 @@
+// vtest vflags: -os windows -sharedlive -shared
+module main
+
+import time
+
+@[live]
+fn print_message2() {
+	t := time.now()
+	println('Time: ${t}')
+}
+
+fn main() {
+	print_message2()
+}
