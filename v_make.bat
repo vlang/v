@@ -16,6 +16,8 @@ set V_BOOTSTRAP=./v_win_bootstrap.exe
 set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_C_FILE=./vc/v_win.c
+set where_exe=where.exe
+if not ["%SystemRoot%"] == [""] if exist "%SystemRoot%\System32\where.exe" set where_exe=%SystemRoot%\System32\where.exe
 
 REM TCC variables
 set tcc_url=https://github.com/vlang/tccbin
@@ -150,7 +152,7 @@ call :move_updated_to_v
 goto :success
 
 :clang_strap
-where /q clang
+"%where_exe%" /q clang
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> Clang not found
 	if not [!compiler!] == [] goto :error
