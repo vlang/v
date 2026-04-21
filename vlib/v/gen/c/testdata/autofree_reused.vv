@@ -1,4 +1,10 @@
 // vtest vflags: -autofree
+fn use_plus_assign() {
+	mut s := u8(`a`).ascii_str()
+	s += u8(`b`).ascii_str()
+	println(s)
+}
+
 fn main() {
 	b := byteptr(c'a')
 	s := unsafe { b.vbytes(1) }
@@ -7,4 +13,5 @@ fn main() {
 	bb := byteptr(c'a')
 	ss := unsafe { bb.vstring() }
 	println(ss)
+	use_plus_assign()
 }

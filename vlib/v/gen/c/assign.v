@@ -627,8 +627,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
 	// or `x.str = [new value]` )
-	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.op == .assign
-		&& node.left_types.len == 1 && node.left[0] in [ast.Ident, ast.SelectorExpr]
+	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.left_types.len == 1
+		&& node.left[0] in [ast.Ident, ast.SelectorExpr] && (node.op == .assign
+		|| (node.op == .plus_assign && node.left_types[0] == ast.string_type))
 	if af && node.right.len == 1 && node.right[0] is ast.CallExpr {
 		call_expr := node.right[0] as ast.CallExpr
 		if call_expr.is_method && call_expr.left is ast.CallExpr {
@@ -640,7 +641,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if af {
 		first_left_type := node.left_types[0]
 		first_left_sym := g.table.sym(node.left_types[0])
-		if first_left_type == ast.string_type || first_left_sym.kind == .array {
+		if first_left_type == ast.string_type
+			|| (node.op == .assign && first_left_sym.kind == .array) {
 			type_to_free = if first_left_type == ast.string_type { 'string' } else { 'array' }
 			mut ok := true
 			left0 := node.left[0]
@@ -723,7 +725,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				val_type = g.unwrap_generic(resolved_right_type)
 			}
 		}
-		val := node.right[i]
+		mut val := node.right[i]
+		mut str_add_rhs_tmp := ''
+		mut str_add_rhs_needs_free := false
+		mut skip_str_add_rhs_clone := false
 		if is_decl && g.cur_concrete_types.len > 0 && val is ast.CallExpr
 			&& val.return_type_generic != 0 {
 			mut resolved_val_type := g.resolve_return_type(val).clear_option_and_result()
@@ -1587,6 +1592,22 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_mut_arg_pointer_rebind = true
 			}
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
+				if g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp
+					&& val !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+					str_add_rhs_tmp = '_str_add_rhs_${node.pos.pos}_${i}'
+					g.writeln(g.autofree_tmp_arg_init_stmt('string ${str_add_rhs_tmp} = ', val))
+					val = ast.Expr(ast.Ident{
+						mod:  g.cur_mod.name
+						name: str_add_rhs_tmp
+					})
+					str_add_rhs_needs_free = true
+					skip_str_add_rhs_clone = true
+					defer(fn) {
+						if str_add_rhs_needs_free {
+							g.writeln('builtin__string_free(&${str_add_rhs_tmp});')
+						}
+					}
+				}
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
 						// strs[0] += str2 => `strs[0] = _string__plus(strs[0], str2)`
@@ -1901,7 +1922,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut cloned := false
 			if g.is_autofree {
 				if right_sym.kind in [.array, .string] && !unwrapped_val_type.has_flag(.shared_f) {
-					if g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
+					if !skip_str_add_rhs_clone
+						&& g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
 						cloned = true
 					}
 				} else if right_sym.info is ast.Interface && var_type != ast.error_type {
