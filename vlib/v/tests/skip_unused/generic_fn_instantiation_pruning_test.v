@@ -88,3 +88,39 @@ fn test_skip_unused_does_not_emit_impl_methods_for_interface_extensions() {
 	assert res.output.contains('VV_LOC bool main__Elem_equal(')
 	assert !res.output.contains('main__Thing_equal(')
 }
+
+fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_26928')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'issue_26928.v')
+	source := [
+		'module main',
+		'',
+		'import time',
+		'import x.json2',
+		'',
+		'struct Meta {',
+		'\tcreated_at ?time.Time',
+		'}',
+		'',
+		'struct Req {',
+		'\tMeta',
+		'\tname string',
+		'}',
+		'',
+		'fn main() {',
+		'\t_ := json2.decode[Req](\'{"name":"x"}\') or { panic(err) }',
+		'}',
+	].join('\n')
+	os.write_file(source_path, source) or { panic(err) }
+	res := os.execute('${os.quoted_path(vexe)} -w -o - ${os.quoted_path(source_path)}')
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+	assert res.output.contains('x__json2__decode_struct_key_T_main__Req')
+	assert res.output.contains('x__json2__check_required_struct_fields_T_main__Req')
+	assert res.output.contains('x__json2__create_value_from_optional_T_time__Time')
+}

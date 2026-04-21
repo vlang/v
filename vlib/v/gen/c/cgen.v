@@ -10192,6 +10192,49 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					struct_names[name] = true
 				}
 			}
+			ast.GenericInst {
+				if struct_names[name]
+					|| (g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms) {
+					continue
+				}
+				parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
+				if parent_sym.info !is ast.Struct {
+					continue
+				}
+				parent_info := parent_sym.info as ast.Struct
+				generic_names := parent_info.generic_types.map(g.table.sym(it).name)
+				mut concrete_info := parent_info
+				concrete_info.is_generic = false
+				mut concrete_fields := []ast.StructField{cap: parent_info.fields.len}
+				mut concrete_embeds := []ast.Type{cap: parent_info.embeds.len}
+				mut muttable := unsafe { &ast.Table(g.table) }
+				for field in parent_info.fields {
+					mut concrete_field := field
+					if generic_names.len == sym.info.concrete_types.len {
+						if resolved := muttable.convert_generic_type(field.typ, generic_names,
+							sym.info.concrete_types)
+						{
+							concrete_field.typ = resolved
+						}
+					}
+					concrete_fields << concrete_field
+				}
+				for embed in parent_info.embeds {
+					if generic_names.len == sym.info.concrete_types.len {
+						if resolved := muttable.convert_generic_type(embed, generic_names,
+							sym.info.concrete_types)
+						{
+							concrete_embeds << resolved
+							continue
+						}
+					}
+					concrete_embeds << embed
+				}
+				concrete_info.fields = concrete_fields
+				concrete_info.embeds = concrete_embeds
+				g.struct_decl(concrete_info, name, false, false)
+				struct_names[name] = true
+			}
 			ast.Thread {
 				if !g.pref.is_bare && !g.pref.no_builtin
 					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
