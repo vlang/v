@@ -7,6 +7,11 @@
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.out
 
+# unignore c codegen testdata files
+!vlib/v/gen/c/testdata/*.vv
+!vlib/v/gen/c/testdata/*.out
+!vlib/v/gen/c/testdata/*.c.must_have
+
 # unignore vlib/x/markdown
 !vlib/x/markdown/**
 
