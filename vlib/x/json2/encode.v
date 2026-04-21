@@ -1,5 +1,7 @@
 module json2
 
+import time
+
 // EncoderOptions provides a list of options for encoding
 @[params]
 pub struct EncoderOptions {
@@ -433,10 +435,62 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 	} $else {
 		$for variant in T.variants {
 			if val is variant {
-				encoder.encode_value(val)
+				variant_name := sumtype_variant_name(typeof(variant.typ).name)
+				$if variant.typ is time.Time {
+					encoder.encode_sumtype_time_variant(val, variant_name)
+				} $else $if variant.typ is $struct {
+					encoder.encode_sumtype_struct_variant(val, variant_name)
+				} $else {
+					encoder.encode_value(val)
+				}
 			}
 		}
 	}
+}
+
+fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
+	if is_first {
+		if encoder.prettify {
+			encoder.increment_level()
+		}
+	} else {
+		encoder.output << `,`
+	}
+	if encoder.prettify {
+		encoder.add_indent()
+	}
+	encoder.encode_string(key)
+	encoder.output << `:`
+	if encoder.prettify {
+		encoder.output << ` `
+	}
+	return false
+}
+
+fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name string) {
+	encoder.output << `{`
+	mut is_first := unsafe { encoder.encode_struct_fields[T](val, true, [], '') }
+	is_first = encoder.encode_object_key(is_first, '_type')
+	encoder.encode_string(variant_name)
+	if encoder.prettify && !is_first {
+		encoder.decrement_level()
+		encoder.add_indent()
+	}
+	encoder.output << `}`
+}
+
+fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name string) {
+	encoder.output << `{`
+	mut is_first := true
+	is_first = encoder.encode_object_key(is_first, '_type')
+	encoder.encode_string(variant_name)
+	is_first = encoder.encode_object_key(is_first, 'value')
+	encoder.encode_number(val.unix())
+	if encoder.prettify && !is_first {
+		encoder.decrement_level()
+		encoder.add_indent()
+	}
+	encoder.output << `}`
 }
 
 struct EncoderFieldInfo {
