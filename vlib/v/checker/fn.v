@@ -1468,6 +1468,8 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 			node.pos)
 	} else if arg.expr is ast.ArrayDecompose {
 		c.error('`${fn_name}` cannot print variadic values', node.pos)
+	} else if c.fail_if_private_implicit_str(arg.typ, node.pos, 'print') {
+		return
 	}
 	c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 	c.inside_interface_deref = false
@@ -3106,6 +3108,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				iname := left_sym.name
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
 					node.pos)
+			}
+			if c.fail_if_private_implicit_str(left_type, node.pos,
+				'call auto-generated `.str()` on')
+			{
+				return ast.string_type
 			}
 			node.receiver_type = left_type.clear_ref()
 			node.return_type = ast.string_type
