@@ -136,19 +136,30 @@ const c_common_macros = '
 	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
 #endif
-#ifndef _WIN32
-	#if defined(__has_include) && !defined(__TINYC__)
-		#if __has_include(<execinfo.h>)
-			#include <execinfo.h>
-		#else
-			// On linux: int backtrace(void **__array, int __size);
-			// On BSD: size_t backtrace(void **, size_t);
-		#endif
-	#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__has_include) && !defined(__TINYC__)
+	#if __has_include(<execinfo.h>) && !defined(_WIN32)
+		#define __V_HAVE_EXECINFO_H 1
 		#include <execinfo.h>
 	#else
 		// On linux: int backtrace(void **__array, int __size);
 		// On BSD: size_t backtrace(void **, size_t);
+	#endif
+#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+	#define __V_HAVE_EXECINFO_H 1
+	#include <execinfo.h>
+#else
+	// On linux: int backtrace(void **__array, int __size);
+	// On BSD: size_t backtrace(void **, size_t);
+#endif
+#ifndef __V_HAVE_EXECINFO_H
+	#ifdef __cplusplus
+	extern "C" {
+	#endif
+	int backtrace(void **__array, int __size);
+	char **backtrace_symbols(void *const *__array, int __size);
+	void backtrace_symbols_fd(void *const *__array, int __size, int __fd);
+	#ifdef __cplusplus
+	}
 	#endif
 #endif
 #ifdef __TINYC__
