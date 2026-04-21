@@ -6,6 +6,10 @@ import v.ast
 import v.util
 import v.token
 
+fn (c &Checker) can_be_embedded_in_struct(typ ast.Type) bool {
+	return c.table.final_sym(typ).kind in [.struct, .function]
+}
+
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {
@@ -43,15 +47,17 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 			}
 			embed_sym := c.table.sym(embed.typ)
+			embed_final_sym := c.table.final_sym(embed.typ)
 			if embed_sym.info is ast.Alias {
-				parent_sym := c.table.sym(embed_sym.info.parent_type)
-				if parent_sym.kind != .struct {
+				parent_sym := c.table.final_sym(embed_sym.info.parent_type)
+				if parent_sym.kind !in [.struct, .function] {
 					c.error('`${embed_sym.name}` (alias of `${parent_sym.name}`) is not a struct',
 						embed.pos)
 				}
-			} else if embed_sym.kind != .struct {
+			} else if embed_sym.kind !in [.struct, .function] {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
-			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
+			} else if embed_final_sym.kind == .struct
+				&& (embed_final_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
 				struct_sym.info.is_heap = true
 			}
 			embed_is_generic := embed.typ.has_flag(.generic)
@@ -1390,7 +1396,10 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 	}
 
 	for embed in info.embeds {
-		embed_sym := c.table.sym(embed)
+		embed_sym := c.table.final_sym(embed)
+		if embed_sym.kind != .struct {
+			continue
+		}
 		if embed_sym.info is ast.Struct {
 			if embed_sym.info.is_union {
 				mut embed_union_fields := c.table.struct_fields(embed_sym)

@@ -1017,10 +1017,9 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 						node.type_pos)
 				}
 
-				// check if embed types are struct
+				// check if embed types are supported for struct embedding
 				for embed_type in parent_typ_sym.info.embeds {
-					final_embed_sym := c.table.final_sym(embed_type)
-					if final_embed_sym.kind != .struct {
+					if !c.can_be_embedded_in_struct(embed_type) {
 						c.error('cannot embed non-struct `${c.table.sym(embed_type).name}`',
 							node.type_pos)
 					}
@@ -1030,7 +1029,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 						mut is_embed := false
 						field_sym := c.table.sym(field.typ)
 						if field_sym.info is ast.Alias {
-							if c.table.sym(field_sym.info.parent_type).kind != .struct {
+							if !c.can_be_embedded_in_struct(field.typ) {
 								c.error('cannot embed non-struct `${field_sym.name}`',
 									field.type_pos)
 								is_embed = true
