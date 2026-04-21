@@ -1,0 +1,4 @@
+fn main() {
+	i := -(-2)
+	println(i)
+}
