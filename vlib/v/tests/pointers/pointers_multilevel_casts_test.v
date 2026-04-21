@@ -3,6 +3,27 @@ struct Struct {
 	x    int
 }
 
+struct EventA24309 {
+mut:
+	value int
+}
+
+struct EventB24309 {
+mut:
+	value int
+}
+
+type Event24309 = EventA24309 | EventB24309
+
+fn increment_sumtype_value_24309(event &Event24309) int {
+	unsafe {
+		mut event_a := &EventA24309(event)
+		event_a.value++
+		event_a.value++
+		return event_a.value
+	}
+}
+
 fn test_byte_pointer_casts() {
 	unsafe {
 		pb := &u8(1)
@@ -73,4 +94,12 @@ fn test_pointer_casts_with_indexing() {
 		idx := 1
 		assert &u64(pnumbers)[idx] == 456
 	}
+}
+
+fn test_sumtype_pointer_cast_uses_underlying_variant_pointer() {
+	mut event := Event24309(EventA24309{
+		value: 4
+	})
+	assert increment_sumtype_value_24309(&event) == 6
+	assert (event as EventA24309).value == 6
 }
