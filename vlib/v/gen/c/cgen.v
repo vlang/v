@@ -8611,6 +8611,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.write(')')
 			return
 		}
+		use_dynamic_ptr_payload := node_typ.is_ptr() && expr_type.is_ptr()
+			&& final_expr_sym.kind == .sum_type
+			&& final_sym.kind !in [.sum_type, .interface] && final_sym.language == .c
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO: handle the type in fn casts, not just exprs
 			/*
@@ -8710,7 +8713,15 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					expr_styp := g.styp(node.expr_type)
 					g.write('(${expr_styp})')
 				}
-				g.expr(node.expr)
+				if use_dynamic_ptr_payload {
+					// C pointer casts from sum types/interfaces must target the stored payload pointer,
+					// not the wrapper address itself.
+					g.write('(*((void**)(')
+					g.expr(node.expr)
+					g.write(')))')
+				} else {
+					g.expr(node.expr)
+				}
 				g.inside_assign_fn_var = old_inside_assign_fn_var
 				g.inside_cast = old_inside_cast
 				g.write('))')
