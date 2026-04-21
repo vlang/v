@@ -78,6 +78,48 @@ fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.
 	return fallback_type
 }
 
+fn (mut c Checker) reset_option_assignment_smartcast(mut expr ast.Ident, left_type ast.Type) {
+	if expr.scope == unsafe { nil } {
+		return
+	}
+	if var := expr.scope.find_var(expr.name) {
+		expr.scope.objects[expr.name] = ast.Var{
+			...var
+			typ:          left_type
+			pos:          var.pos
+			orig_type:    ast.no_type
+			smartcasts:   []ast.Type{}
+			is_unwrapped: false
+		}
+	}
+}
+
+fn (mut c Checker) update_option_assignment_smartcast(mut expr ast.Expr, left_type ast.Type, right ast.Expr, right_type ast.Type) {
+	if !left_type.has_flag(.option) {
+		return
+	}
+	match mut expr {
+		ast.Ident {
+			mut original_pos := expr.pos
+			if var := expr.scope.find_var(expr.name) {
+				original_pos = var.pos
+			}
+			if right_type == ast.none_type || right_type == ast.nil_type
+				|| right_type.has_flag(.option) || right.is_nil()
+				|| (right is ast.UnsafeExpr && right.expr.is_nil()) {
+				c.reset_option_assignment_smartcast(mut expr, left_type)
+				return
+			}
+			c.smartcast(mut expr, left_type, left_type.clear_flag(.option), mut expr.scope, false,
+				true, false, true)
+			if mut scope_var := expr.scope.find_var(expr.name) {
+				scope_var.pos = original_pos
+			}
+		}
+		else {}
+	}
+}
+
 // TODO: 980 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
@@ -1173,6 +1215,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
 			c.error('byte is deprecated, use u8 instead', right.pos())
+		}
+		if original_op == .assign {
+			c.update_option_assignment_smartcast(mut left, left_type, right, right_type)
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
