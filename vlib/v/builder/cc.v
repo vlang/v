@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
+import hash.fnv1a
 import os
 import v.ast
 import v.cflag
@@ -26,6 +27,13 @@ const missing_libatomic_markers = [
 	'library not found for -latomic',
 	'cannot find libatomic',
 ]!
+
+fn live_windows_import_lib_path(source_path string) string {
+	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
+	os.mkdir_all(cache_dir) or {}
+	key := fnv1a.sum64_string(os.real_path(source_path)).str()
+	return os.join_path(cache_dir, 'host_symbols_${key}.a')
+}
 
 fn extract_c_struct_name(line string) string {
 	start := line.index('struct ') or { return '' } + 'struct '.len
@@ -778,6 +786,18 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				// Resolve sapp_* and similar host symbols when the live-reload dylib is loaded.
 				ccoptions.args << '-undefined'
 				ccoptions.args << 'dynamic_lookup'
+			}
+		}
+		if v.pref.os == .windows && ccoptions.cc != .msvc {
+			host_import_lib := v.tcc_quoted_path(live_windows_import_lib_path(v.pref.path))
+			if v.pref.is_livemain {
+				// Re-export host graphics/backend symbols so the live-reload DLL can reuse them.
+				ccoptions.linker_flags << '-Wl,--export-all-symbols'
+				ccoptions.linker_flags << '-Wl,--out-implib,${host_import_lib}'
+			}
+			if v.pref.is_liveshared {
+				// Link the live-reload DLL against the host executable's import library.
+				ccoptions.linker_flags << host_import_lib
 			}
 		}
 	}

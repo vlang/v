@@ -287,6 +287,33 @@ fn test_thirdparty_cross_compile_config_for_freebsd_matches_target() {
 	]
 }
 
+fn test_live_windows_main_linker_args_export_host_symbols() {
+	linker_args := builder_linker_args([
+		'-os',
+		'windows',
+		'-cc',
+		'gcc',
+		'-live',
+		hot_reload_graph_example(),
+	])
+	assert linker_args.contains('-Wl,--export-all-symbols')
+	assert linker_args.contains('-Wl,--out-implib,')
+	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
+}
+
+fn test_live_windows_shared_linker_args_include_host_import_lib() {
+	linker_args := builder_linker_args([
+		'-os',
+		'windows',
+		'-cc',
+		'gcc',
+		'-sharedlive',
+		'-shared',
+		hot_reload_graph_example(),
+	])
+	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
+}
+
 fn test_should_use_rsp_for_linux_by_default() {
 	builder := new_test_builder([hello_world_example()])
 	assert builder.should_use_rsp(['-o', builder.out_name_c])
@@ -361,6 +388,10 @@ fn macos_version_min_flags(compile_args string) []string {
 
 fn hello_world_example() string {
 	return os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+}
+
+fn hot_reload_graph_example() string {
+	return os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'graph.v')
 }
 
 fn test_c_output_suggests_missing_typedef_for_c_struct_with_issue_19050_output() {
