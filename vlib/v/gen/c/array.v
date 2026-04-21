@@ -215,13 +215,17 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 }
 
+fn (mut g Gen) normalized_array_interface_cast_type(typ ast.Type) ast.Type {
+	return g.table.unaliased_type(g.unwrap_generic(typ)).clear_flags(.generic, .variadic)
+}
+
 fn (mut g Gen) can_convert_array_to_interface_array(got_type ast.Type, expected_type ast.Type) bool {
 	if got_type.is_ptr() || expected_type.is_ptr() || got_type.has_option_or_result()
 		|| expected_type.has_option_or_result() {
 		return false
 	}
-	got := g.table.unaliased_type(g.unwrap_generic(got_type))
-	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	got := g.normalized_array_interface_cast_type(got_type)
+	expected := g.normalized_array_interface_cast_type(expected_type)
 	if got == expected {
 		return false
 	}
@@ -232,8 +236,8 @@ fn (mut g Gen) can_convert_array_to_interface_array(got_type ast.Type, expected_
 }
 
 fn (mut g Gen) can_convert_array_elem_to_interface_array(got ast.Type, expected ast.Type) bool {
-	got_type := g.table.unaliased_type(g.unwrap_generic(got))
-	expected_type := g.table.unaliased_type(g.unwrap_generic(expected))
+	got_type := g.normalized_array_interface_cast_type(got)
+	expected_type := g.normalized_array_interface_cast_type(expected)
 	got_sym := g.table.final_sym(got_type)
 	expected_sym := g.table.final_sym(expected_type)
 	if got_sym.kind == .array && expected_sym.kind == .array {
@@ -245,8 +249,8 @@ fn (mut g Gen) can_convert_array_elem_to_interface_array(got ast.Type, expected 
 }
 
 fn (mut g Gen) register_array_interface_cast_fn(got_type ast.Type, expected_type ast.Type) string {
-	got := g.table.unaliased_type(g.unwrap_generic(got_type))
-	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	got := g.normalized_array_interface_cast_type(got_type)
+	expected := g.normalized_array_interface_cast_type(expected_type)
 	fn_name := '__v_array_to_interface_array__${g.styp(got)}__to__${g.styp(expected)}'
 	mut already_generated := false
 	lock g.generated_array_interface_cast_fns {
@@ -280,8 +284,8 @@ fn (mut g Gen) register_array_interface_cast_fn(got_type ast.Type, expected_type
 }
 
 fn (mut g Gen) array_interface_cast_expr(src_elem_expr string, got_type ast.Type, expected_type ast.Type) string {
-	got := g.table.unaliased_type(g.unwrap_generic(got_type))
-	expected := g.table.unaliased_type(g.unwrap_generic(expected_type))
+	got := g.normalized_array_interface_cast_type(got_type)
+	expected := g.normalized_array_interface_cast_type(expected_type)
 	if got == expected {
 		return src_elem_expr
 	}

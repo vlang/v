@@ -409,13 +409,20 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	}
 }
 
+fn (mut c Checker) normalized_array_interface_cast_type(typ ast.Type) ast.Type {
+	return c.table.unaliased_type(c.unwrap_generic(typ)).clear_flags(.generic, .variadic)
+}
+
 fn (mut c Checker) can_convert_array_to_interface_array(got ast.Type, expected ast.Type) bool {
 	if got.is_ptr() || expected.is_ptr() || got.has_option_or_result()
 		|| expected.has_option_or_result() {
 		return false
 	}
-	got_type := c.table.unaliased_type(c.unwrap_generic(got))
-	expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	got_type := c.normalized_array_interface_cast_type(got)
+	expected_type := c.normalized_array_interface_cast_type(expected)
+	if got_type == expected_type {
+		return false
+	}
 	if c.table.final_sym(got_type).kind != .array || c.table.final_sym(expected_type).kind != .array {
 		return false
 	}
@@ -423,8 +430,8 @@ fn (mut c Checker) can_convert_array_to_interface_array(got ast.Type, expected a
 }
 
 fn (mut c Checker) can_convert_array_elem_to_interface_array(got ast.Type, expected ast.Type) bool {
-	got_type := c.table.unaliased_type(c.unwrap_generic(got))
-	mut expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	got_type := c.normalized_array_interface_cast_type(got)
+	mut expected_type := c.normalized_array_interface_cast_type(expected)
 	got_sym := c.table.final_sym(got_type)
 	mut expected_sym := c.table.final_sym(expected_type)
 	if got_sym.kind == .array && expected_sym.kind == .array {
