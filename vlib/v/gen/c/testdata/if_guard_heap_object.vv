@@ -14,4 +14,11 @@ fn main() {
 	if img := create_image() {
 		println(img.id)
 	}
+	image := HeapImage{
+		id: 7
+	}
+	mut images := []HeapImage{}
+	images << image
+	indexed := images[0]
+	println(indexed.id)
 }
