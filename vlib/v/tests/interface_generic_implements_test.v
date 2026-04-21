@@ -17,3 +17,48 @@ fn test_main() {
 	}
 	assert b.foo() == 0
 }
+
+interface Any {}
+
+interface AInterface {
+	a int
+}
+
+struct StructA {
+mut:
+	a int
+}
+
+struct Container {
+mut:
+	any Any
+}
+
+fn (mut c Container) set[T](obj Any) {
+	c.any = obj
+}
+
+fn (c &Container) get[T]() !&T {
+	if c.any is T {
+		return c.any
+	}
+	return error('ops')
+}
+
+fn test_generic_interface_value_can_be_returned_as_interface_ref() {
+	a := &StructA{
+		a: 100
+	}
+	b := &StructA{
+		a: 200
+	}
+	mut c := &Container{
+		any: a
+	}
+	c.set[StructA](b)
+	c.set[AInterface](b)
+	d := c.get[StructA]() or { panic(err) }
+	e := c.get[AInterface]() or { panic(err) }
+	assert d.a == 200
+	assert e.a == 200
+}

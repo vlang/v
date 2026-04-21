@@ -4291,18 +4291,27 @@ fn (mut g Gen) gen_interface_to_interface_conversion(expr ast.Expr, expr_type as
 
 	mut info := expr_type_sym.info as ast.Interface
 	right_info := to_sym.info as ast.Interface
+	left_variants := info.implementor_types(true)
+	right_variants := right_info.implementor_types(true)
 	lock info.conversions {
 		if to_type !in info.conversions {
 			// For conversion into an empty interface, all of the left's variants
 			// are valid (empty interfaces accept anything).
 			if right_info.methods.len == 0 && right_info.fields.len == 0 {
-				info.conversions[to_type] = info.types.clone()
+				info.conversions[to_type] = left_variants.clone()
 			} else {
-				info.conversions[to_type] = info.types.filter(it in right_info.types)
+				info.conversions[to_type] = g.interface_conversion_variants(left_variants,
+					right_variants)
 			}
 		}
 	}
 	expr_type_sym.info = info
+}
+
+fn (g &Gen) interface_conversion_variants(left_variants []ast.Type, right_variants []ast.Type) []ast.Type {
+	return left_variants.filter(fn [right_variants] (left_variant ast.Type) bool {
+		return right_variants.any(it.idx() == left_variant.idx())
+	})
 }
 
 // expr_with_array_element_upcast materializes an array whose elements are boxed into
@@ -4503,6 +4512,22 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
 			}
 		}
+		return
+	}
+	if got_sym.info is ast.Interface && exp_sym.info is ast.Interface && expected_is_ptr
+		&& !got_is_ptr && !got_type.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+		if expr is ast.UnsafeExpr && expr.expr is ast.Nil {
+			g.write('((void*)0)')
+			return
+		}
+		target_interface_type := expected_type.deref()
+		g.write('HEAP(${exp_sym.cname}, ')
+		if got_type.idx() != target_interface_type.idx() {
+			g.gen_interface_to_interface_conversion(expr, got_type, target_interface_type)
+		} else {
+			g.expr(expr)
+		}
+		g.write(')')
 		return
 	}
 	if got_sym.info is ast.Interface && exp_sym.info is ast.Interface
@@ -6421,6 +6446,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// from a different generic instantiation. Re-resolve from the
 					// actual field type using current concrete types.
 					mut smartcasts := field.smartcasts.clone()
+					if smartcasts.len > 1 {
+						mut deduped_smartcasts := []ast.Type{cap: smartcasts.len}
+						for smartcast_typ in smartcasts {
+							if deduped_smartcasts.len == 0
+								|| deduped_smartcasts.last() != smartcast_typ {
+								deduped_smartcasts << smartcast_typ
+							}
+						}
+						smartcasts = deduped_smartcasts.clone()
+					}
+					if field_sym.kind == .interface && smartcasts.len > 0 {
+						smartcasts = [
+							g.exposed_smartcast_type(field.orig_type, smartcasts.last(),
+								field.is_mut),
+						]
+					}
 					resolved_scope_field_typ := if g.cur_fn != unsafe { nil }
 						&& g.cur_concrete_types.len > 0 {
 						g.unwrap_generic(field_typ)
@@ -9061,6 +9102,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	} else {
 		ast.void_type
 	}
+	if exprs_len > 0 && expr0 is ast.SelectorExpr && type0_default != ast.void_type {
+		scope_field := expr0.scope.find_struct_field(expr0.expr.str(), expr0.expr_type,
+			expr0.field_name)
+		if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+			type0 = type0_default
+		}
+	}
 	if exprs_len > 0 && type0 == ast.void_type {
 		fallback_type := match expr0 {
 			ast.IfExpr { expr0.typ }
@@ -11168,12 +11216,15 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		mut info := expr_type_sym.info as ast.Interface
 		right_info := sym.info as ast.Interface
+		left_variants := info.implementor_types(true)
+		right_variants := right_info.implementor_types(true)
 		lock info.conversions {
 			if node.typ !in info.conversions {
 				if right_info.methods.len == 0 && right_info.fields.len == 0 {
-					info.conversions[node.typ] = info.types.clone()
+					info.conversions[node.typ] = left_variants.clone()
 				} else {
-					info.conversions[node.typ] = info.types.filter(it in right_info.types)
+					info.conversions[node.typ] = g.interface_conversion_variants(left_variants,
+						right_variants)
 				}
 			}
 		}
