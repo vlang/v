@@ -272,7 +272,7 @@ fn test_pointer() {
 }
 
 fn test_sumtypes() {
-	assert json.encode(StructType[SumTypes]{}) == '{"val":{"val":""}}' // is_none := val.$(field.name).str() == 'unknown sum type value'
+	assert json.encode(StructType[SumTypes]{}) == '{"val":{"val":"","_type":"${typeof(StructType[string]{}).name}"}}' // is_none := val.$(field.name).str() == 'unknown sum type value'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 
@@ -282,7 +282,7 @@ fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
+	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":{"_type":"${typeof(time.Time{}).name.all_after_last('.')}","value":${fixed_time.unix()}}}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
@@ -294,7 +294,7 @@ fn test_sumtypes() {
 		val: StructType[string]{
 			val: '111111'
 		}
-	}) == '{"val":{"val":"111111"}}'
+	}) == '{"val":{"val":"111111","_type":"${typeof(StructType[string]{}).name}"}}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
