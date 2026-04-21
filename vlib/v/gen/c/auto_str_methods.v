@@ -483,8 +483,21 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 					{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
 					{_S(")"), 0, {0}, 0, 0, 0}
 				}))'
-				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-					' return ${res};\n')
+				if should_use_indent_func(sub_sym.kind) {
+					tmpvar := g.new_tmp_var()
+					fn_builder.writeln('\tif (x._typ == _${styp}_${sub_sym.cname}_index) {')
+					fn_builder.writeln('\t\tif (builtin__isnil(x._object) || builtin__autostr_addr_in_stack(x._object)) {')
+					fn_builder.writeln('\t\t\treturn builtin__isnil(x._object) ? _S("nil") : _S("<circular>");')
+					fn_builder.writeln('\t\t}')
+					fn_builder.writeln('\t\tbuiltin__autostr_addr_push(x._object);')
+					fn_builder.writeln('\t\tstring ${tmpvar} = ${res};')
+					fn_builder.writeln('\t\tbuiltin__autostr_addr_pop();')
+					fn_builder.writeln('\t\treturn ${tmpvar};')
+					fn_builder.writeln('\t}')
+				} else {
+					fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+						' return ${res};\n')
+				}
 			} else {
 				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
 					' return _S("<circular>");\n')
