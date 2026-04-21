@@ -1710,7 +1710,7 @@ fn (mut c Builder) cc_windows_cross() {
 fn (mut b Builder) build_thirdparty_obj_files() {
 	b.log('build_thirdparty_obj_files: v.ast.cflags: ${b.table.cflags}')
 	for flag in b.get_os_cflags() {
-		if flag.value.ends_with('.o') {
+		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
