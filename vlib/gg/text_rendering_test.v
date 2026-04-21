@@ -5,9 +5,13 @@ import fontstash
 const embedded_test_mono_font = $embed_file('@VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf')
 
 fn new_test_text_context() (&Context, &fontstash.Context) {
+	return new_test_text_context_with_atlas(512, 512)
+}
+
+fn new_test_text_context_with_atlas(width int, height int) (&Context, &fontstash.Context) {
 	mut fons := fontstash.create_internal(&C.FONSparams{
-		width:  512
-		height: 512
+		width:  width
+		height: height
 		flags:  0
 	})
 	assert fons != unsafe { nil }
@@ -15,6 +19,7 @@ fn new_test_text_context() (&Context, &fontstash.Context) {
 	assert font_id != fontstash.invalid
 	fons.set_font(font_id)
 	fons.set_size(16)
+	fons.set_error_callback(expand_atlas_callback, fons)
 	return &Context{
 		ft:          &FT{
 			fons: fons
@@ -56,4 +61,19 @@ fn test_text_width_counts_trailing_space_advance() {
 	assert ctx.text_width('a ') == int(advance / ctx.scale)
 	width, _ := ctx.text_size('a ')
 	assert width == int(advance / ctx.scale)
+}
+
+fn test_text_atlas_expands_on_overflow() {
+	_, fons := new_test_text_context_with_atlas(64, 64)
+	defer {
+		fontstash.delete_internal(fons)
+	}
+	before_width, before_height := fons.get_atlas_size()
+	mut bounds := [4]f32{}
+	for size in [48, 64, 80] {
+		fons.set_size(size)
+		_ = fons.text_bounds(0, 0, 'Some very long text here 0123456789', &bounds[0])
+	}
+	after_width, after_height := fons.get_atlas_size()
+	assert after_width > before_width || after_height > before_height
 }
