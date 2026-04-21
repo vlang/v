@@ -4691,9 +4691,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_option_or_result() {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
-		if got_type_raw.is_ptr() {
-			g.error('cannot convert reference to `shared`', expr.pos())
-		}
 		if exp_sym.kind == .array {
 			g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
 		} else if exp_sym.kind == .map {
@@ -4703,6 +4700,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		}
 		old_is_shared := g.is_shared
 		g.is_shared = false
+		if got_type_raw.is_ptr() {
+			g.write('*'.repeat(got_type_raw.nr_muls()))
+		}
 		g.expr(expr)
 		g.is_shared = old_is_shared
 		g.writeln('}, sizeof(${shared_styp}))')

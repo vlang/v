@@ -83,6 +83,11 @@ fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expecte
 		else {}
 	}
 
+	if expected_type.has_flag(.shared_f) && !value_type.has_flag(.shared_f) && value_type.is_ptr()
+		&& !expected_type.has_option_or_result() {
+		g.expr_with_cast(expr_copy, value_type, expected_type)
+		return
+	}
 	g.expr(expr_copy)
 }
 
