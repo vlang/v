@@ -76,6 +76,18 @@ fn test_issue_11379_js_browser_builtin_print_call_does_not_panic() {
 	assert os.exists(output)
 }
 
+fn test_issue_20667_js_can_compile_game_of_life_example() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path('examples', 'game_of_life', 'life.v')
+	output := os.join_path(output_dir, 'game_of_life.js')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -prod -b js -w -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	assert os.exists(output)
+}
+
 fn find_test_files() []string {
 	files := os.ls(test_dir) or { panic(err) }
 	// The life example never exits, so tests would hang with it, skip
