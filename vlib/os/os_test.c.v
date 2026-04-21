@@ -483,6 +483,10 @@ fn test_realpath_existing() {
 	rpath := os.real_path(existing_file)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(existing_file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(existing_file) or {}
 }
 
@@ -532,6 +536,10 @@ fn test_realpath_absolutepath_symlink() ! {
 	println(rpath)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(symlink_name) or {}
 	os.rm(file_name) or {}
 }
