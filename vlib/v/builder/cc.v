@@ -1075,7 +1075,15 @@ fn (mut v Builder) setup_output_name() {
 }
 
 pub fn (mut v Builder) tcc_quoted_path(p string) string {
-	return os.quoted_path(v.tcc_windows_path(p))
+	wp := v.tcc_windows_path(p)
+	if v.ccoptions.cc == .tcc && !v.pref.no_rsp {
+		// tcc has a bug that prevents it from parsing names quoted with `'` in .rsp files,
+		// so force double-quoted, backslash-escaped paths for tcc rsp mode.
+		mut escaped := wp.replace('\\', '\\\\')
+		escaped = escaped.replace('"', '\\"')
+		return '"${escaped}"'
+	}
+	return os.quoted_path(wp)
 }
 
 fn looks_like_windows_path(value string) bool {
@@ -1496,6 +1504,10 @@ pub fn (mut v Builder) cc() {
 					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
 						if v.pref.is_verbose {
 							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
+						} else {
+							$if macos {
+								eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler} (this is much slower)'))
+							}
 						}
 						continue
 					}

@@ -9,6 +9,13 @@ module os
 #include <utime.h>
 #insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
 
+// short_path is a Windows-only helper that returns the DOS 8.3 short path.
+// On non-Windows platforms it simply returns the given path unchanged,
+// so that callers guarded by `$if windows { ... }` type-check on other targets.
+pub fn short_path(path string) string {
+	return path
+}
+
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
 
