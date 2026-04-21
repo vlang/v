@@ -28,6 +28,20 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 	return expr.is_auto_deref_var()
 }
 
+fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
+	if expr !is ast.Ident || c.table.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
+		return false
+	}
+	ident := expr as ast.Ident
+	for param in c.table.cur_fn.params {
+		if param.name == ident.name {
+			source_typ := if param.orig_typ != 0 { param.orig_typ } else { param.typ }
+			return source_typ.is_any_kind_of_pointer()
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.Type) ast.Type {
 	match expr {
 		ast.Ident {
@@ -394,7 +408,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(mut right)
 				}
 			}
-			if assign_expr_is_auto_deref(right) && right_type.is_ptr() {
+			if assign_expr_is_auto_deref(right) && right_type.is_ptr()
+				&& !c.auto_deref_source_type_is_pointer(right) {
 				left_type = ast.mktyp(right_type.deref())
 			} else {
 				left_type = ast.mktyp(right_type)

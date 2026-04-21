@@ -1124,7 +1124,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// When assigning from an auto-deref variable (e.g. mut ref param),
 				// the resolved type from scope includes the extra pointer level.
 				// Deref it to match the V value semantics.
-				if val is ast.Ident && val.is_auto_deref_var() && resolved_val_type.is_ptr() {
+				if val is ast.Ident && val.is_auto_deref_var() && resolved_val_type.is_ptr()
+					&& !g.auto_deref_source_type_is_pointer(val) {
 					resolved_val_type = resolved_val_type.deref()
 				}
 				// Preserve shared/atomic flags from the original declaration.
@@ -1352,7 +1353,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// the checker's left_types[i] for blank idents can be
 					// overwritten by a later generic instantiation.
 					mut blank_styp := g.styp(val_type)
-					if val is ast.Ident && val.is_auto_deref_var() {
+					if val is ast.Ident && val.is_auto_deref_var()
+						&& !g.auto_deref_source_type_is_pointer(val) {
 						blank_styp = '${blank_styp}*'
 					}
 					if blank_styp.ends_with('*') {
@@ -1888,7 +1890,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								}
 							}
 						}
-						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped {
+						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped
+							&& !g.auto_deref_source_type_is_pointer(val) {
 							g.write('*')
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])

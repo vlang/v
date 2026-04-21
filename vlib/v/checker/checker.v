@@ -344,10 +344,11 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 				}
 			}
 		}
-		// Keep `mut x := param` as a value copy during generic rechecks too.
-		// `c.expr(param)` returns the wrapped pointer type for auto-deref vars,
-		// but the declaration itself already inferred the dereferenced value type.
-		if expr_is_auto_deref_ident && refreshed_type.is_ptr() {
+		// Keep `mut x := param` as a value copy during generic rechecks when the
+		// original parameter type was lowered from a non-pointer source type.
+		// Pointer-typed mut params should keep their declared pointer type.
+		if expr_is_auto_deref_ident && refreshed_type.is_ptr()
+			&& !c.auto_deref_source_type_is_pointer(expr) {
 			refreshed_type = refreshed_type.deref()
 		}
 		$if trace_ci_fixes ? {

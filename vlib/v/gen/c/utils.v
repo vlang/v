@@ -293,6 +293,20 @@ fn (g &Gen) is_auto_deref_source_ident(expr ast.Expr) bool {
 	return false
 }
 
+fn (g &Gen) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
+	if expr !is ast.Ident || g.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
+		return false
+	}
+	ident := expr as ast.Ident
+	for param in g.cur_fn.params {
+		if param.name == ident.name {
+			source_typ := if param.orig_typ != 0 { param.orig_typ } else { param.typ }
+			return source_typ.is_any_kind_of_pointer()
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	mut scope := if expr.scope != unsafe { nil } {
 		expr.scope.innermost(expr.pos.pos)
@@ -335,8 +349,10 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 						refreshed_expr_type = call_like_type
 					}
 				}
-				// Keep `mut x := param` as a value copy when re-resolving locals.
-				if g.is_auto_deref_source_ident(v.expr) && refreshed_expr_type.is_ptr() {
+				// Keep `mut x := param` as a value copy when re-resolving locals,
+				// unless the original mut parameter type was already a pointer.
+				if g.is_auto_deref_source_ident(v.expr) && refreshed_expr_type.is_ptr()
+					&& !g.auto_deref_source_type_is_pointer(v.expr) {
 					refreshed_expr_type = refreshed_expr_type.deref()
 				}
 				// If the variable was initialized with an `or {}` block that
@@ -399,7 +415,8 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 							}
 						}
 						if g.is_auto_deref_source_ident(parent_v.expr)
-							&& refreshed_parent_type.is_ptr() {
+							&& refreshed_parent_type.is_ptr()
+							&& !g.auto_deref_source_type_is_pointer(parent_v.expr) {
 							refreshed_parent_type = refreshed_parent_type.deref()
 						}
 						parent_v.typ = refreshed_parent_type
