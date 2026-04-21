@@ -136,7 +136,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						val_desc := if field.default_expr_typ.is_ptr() { 'is' } else { 'is not' }
 						c.error('field ${err_desc} reference but default value ${val_desc} reference',
 							default_pos)
-					} else if field.default_expr is ast.StructInit {
+					} else if field.default_expr is ast.StructInit
+						|| (field.typ.is_ptr()
+						&& (field.default_expr is ast.Ident || field.default_expr is ast.SelectorExpr)) {
 						c.error('reference field must be initialized with reference', default_pos)
 					}
 				}
