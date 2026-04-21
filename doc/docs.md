@@ -1356,6 +1356,10 @@ memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
 does not alter the parent:
 
+When a slice expression like `a[2..4]` is assigned to another array outside
+`unsafe`, V inserts an implicit `.clone()` and shows a notice. The
+shared-memory examples below therefore use `unsafe {}` intentionally.
+
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 
@@ -1406,8 +1410,9 @@ println(b) // [7, 3]
 ```
 
 Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
-So without the `.clone()` call the result of the code above will be the same. Make the slice in an
-`unsafe {}` block if you want to reuse memory, otherwise use explicit cloning.
+So without the `.clone()` call the result of the code above will be the same.
+Make the slice in an `unsafe {}` block if you want to reuse memory,
+otherwise use explicit cloning.
 
 ##### Slices with negative indexes
 
