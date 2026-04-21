@@ -314,6 +314,15 @@ fn test_live_windows_shared_linker_args_include_host_import_lib() {
 	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
 }
 
+fn test_shared_windows_builds_do_not_add_subsystem_flags() {
+	mut builder := new_test_builder(['-os', 'windows', '-shared', hello_world_example()])
+	assert builder.get_subsystem_flag() == ''
+	compile_args := builder.get_compile_args().join(' ')
+	assert !compile_args.contains('-municode')
+	assert !compile_args.contains('-mwindows')
+	assert !compile_args.contains('-mconsole')
+}
+
 fn test_should_use_rsp_for_linux_by_default() {
 	builder := new_test_builder([hello_world_example()])
 	assert builder.should_use_rsp(['-o', builder.out_name_c])

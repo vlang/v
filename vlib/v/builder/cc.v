@@ -826,7 +826,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	if v.pref.os == .windows {
-		ccoptions.post_args << v.get_subsystem_flag()
+		subsystem_flag := v.get_subsystem_flag()
+		if subsystem_flag != '' {
+			ccoptions.post_args << subsystem_flag
+		}
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS').replace('\n', ' ')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS').replace('\n', ' ')
@@ -1592,6 +1595,9 @@ fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
 }
 
 fn (mut b Builder) get_subsystem_flag() string {
+	if b.pref.is_shared || b.pref.build_mode == .build_module || b.pref.is_o {
+		return ''
+	}
 	return match b.pref.subsystem {
 		.auto { '-municode' }
 		.console { '-municode -mconsole' }
@@ -1906,7 +1912,10 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << debug_options
 
 	all_args << args
-	all_args << c.get_subsystem_flag()
+	subsystem_flag := c.get_subsystem_flag()
+	if subsystem_flag != '' {
+		all_args << subsystem_flag
+	}
 	all_args << c.pref.ldflags
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
