@@ -682,6 +682,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-live' {
 				res.is_livemain = true
+				res.compile_defines << 'livemain'
+				res.compile_defines_all << 'livemain'
 			}
 			'-sharedlive' {
 				res.is_liveshared = true
