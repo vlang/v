@@ -10,6 +10,11 @@ fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
 }
 
+fn is_array_init_type_expr_field(name string) bool {
+	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
+		'indirections']
+}
+
 fn (mut p Parser) parse_fixed_array_literal_elem_type() ast.Type {
 	elem_type_pos := p.tok.pos()
 	if p.tok.kind == .name && p.tok.lit == 'byte' {
@@ -124,12 +129,31 @@ fn (mut p Parser) parse_fixed_array_literal_values(array_type ast.Type, is_optio
 	}
 }
 
+fn (p &Parser) is_array_init_elem_type_expr() bool {
+	if p.tok.kind == .key_typeof {
+		return true
+	}
+	if p.tok.kind != .name {
+		return false
+	}
+	mut offset := 1
+	mut has_type_field := false
+	for p.peek_token(offset).kind == .dot && p.peek_token(offset + 1).kind == .name {
+		if is_array_init_type_expr_field(p.peek_token(offset + 1).lit) {
+			has_type_field = true
+		}
+		offset += 2
+	}
+	return has_type_field
+}
+
 fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.ArrayInit {
 	first_pos := p.tok.pos()
 	mut last_pos := p.tok.pos()
 	mut array_type := ast.void_type
 	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
+	mut elem_type_expr := ast.empty_expr
 	mut exprs := []ast.Expr{}
 	mut ecmnts := [][]ast.Comment{}
 	mut pre_cmnts := []ast.Comment{}
@@ -147,27 +171,35 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			line_nr := p.tok.line_nr
 			p.next()
 			// []string
-			if p.tok.kind in [.name, .amp, .lsbr, .lpar, .question, .key_shared, .not]
-				&& p.tok.line_nr == line_nr {
+			is_elem_type_expr := p.is_array_init_elem_type_expr()
+			if (p.tok.kind in [.name, .amp, .lsbr, .lpar, .question, .key_shared, .not]
+				|| is_elem_type_expr) && p.tok.line_nr == line_nr {
 				elem_type_pos = p.tok.pos()
-				elem_type = p.parse_type()
-				// this is set here because it's a known type, others could be the
-				// result of expr so we do those in checker
-				if elem_type != 0 {
-					if elem_type.has_flag(.result) {
-						p.error_with_pos('arrays do not support storing Result values',
-							elem_type_pos)
-					}
-					idx := p.table.find_or_register_array(elem_type)
-					if elem_type.has_flag(.generic) {
-						array_type = ast.new_type(idx).set_flag(.generic)
-					} else {
-						array_type = ast.new_type(idx)
-					}
-					if is_option {
-						array_type = array_type.set_flag(.option)
-					}
+				if is_elem_type_expr {
+					elem_type_expr = p.expr(0)
 					has_type = true
+				} else {
+					elem_type = p.parse_type()
+					// this is set here because it's a known type, others could be the
+					// result of expr so we do those in checker
+					if elem_type != 0 {
+						if elem_type.has_flag(.result) {
+							p.error_with_pos('arrays do not support storing Result values',
+								elem_type_pos)
+						}
+						idx := p.table.find_or_register_array(elem_type)
+						if elem_type.has_flag(.generic) {
+							array_type = ast.new_type(idx).set_flag(.generic)
+						} else {
+							array_type = ast.new_type(idx)
+						}
+						if is_option {
+							array_type = array_type.set_flag(.option)
+						}
+						has_type = true
+					} else {
+						last_pos = p.tok.pos()
+					}
 				}
 			}
 			last_pos = p.tok.pos()
@@ -280,6 +312,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	} else {
 		array_type = (p.table.sym(alias_array_type).info as ast.Alias).parent_type
 		elem_type = p.table.sym(array_type).array_info().elem_type
+		has_type = true
 		p.next()
 	}
 	mut has_len := false
@@ -287,7 +320,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut len_expr := ast.empty_expr
 	mut cap_expr := ast.empty_expr
 	mut attr_pos := token.Pos{}
-	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
+	if p.tok.kind == .lcbr && exprs.len == 0 && has_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {
@@ -329,25 +362,26 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
-		is_fixed:      is_fixed
-		has_val:       has_val
-		mod:           p.mod
-		elem_type:     elem_type
-		typ:           array_type
-		alias_type:    alias_array_type
-		exprs:         exprs
-		ecmnts:        ecmnts
-		pre_cmnts:     pre_cmnts
-		pos:           pos
-		elem_type_pos: elem_type_pos
-		has_len:       has_len
-		len_expr:      len_expr
-		has_cap:       has_cap
-		has_init:      has_init
-		has_index:     has_index
-		cap_expr:      cap_expr
-		init_expr:     init_expr
-		is_option:     is_option
+		is_fixed:       is_fixed
+		has_val:        has_val
+		mod:            p.mod
+		elem_type:      elem_type
+		typ:            array_type
+		alias_type:     alias_array_type
+		exprs:          exprs
+		ecmnts:         ecmnts
+		pre_cmnts:      pre_cmnts
+		elem_type_expr: elem_type_expr
+		pos:            pos
+		elem_type_pos:  elem_type_pos
+		has_len:        has_len
+		len_expr:       len_expr
+		has_cap:        has_cap
+		has_init:       has_init
+		has_index:      has_index
+		cap_expr:       cap_expr
+		init_expr:      init_expr
+		is_option:      is_option
 	}
 }
 

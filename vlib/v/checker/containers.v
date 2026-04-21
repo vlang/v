@@ -18,6 +18,11 @@ fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
 }
 
+fn is_array_init_type_expr_field(name string) bool {
+	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
+		'indirections']
+}
+
 fn (mut c Checker) fixed_array_contains_inferred_size(typ ast.Type) bool {
 	mut current_type := typ.clear_option_and_result()
 	for {
@@ -67,6 +72,71 @@ fn (mut c Checker) resolve_fixed_array_literal_type(typ ast.Type, elem_type ast.
 		resolved_typ = resolved_typ.set_flag(.option)
 	}
 	return resolved_typ
+}
+
+fn (mut c Checker) array_init_elem_type_from_expr(expr ast.Expr) ast.Type {
+	match expr {
+		ast.ParExpr {
+			return c.array_init_elem_type_from_expr(expr.expr)
+		}
+		ast.TypeNode {
+			return c.unwrap_generic(expr.typ)
+		}
+		ast.TypeOf {
+			return c.unwrap_generic(c.type_resolver.typeof_type(expr.expr, expr.typ))
+		}
+		ast.SelectorExpr {
+			if expr.is_field_typ {
+				return c.unwrap_generic(c.type_resolver.get_type(expr))
+			}
+			if expr.name_type != 0 && is_array_init_type_expr_field(expr.field_name) {
+				return c.unwrap_generic(c.type_resolver.typeof_field_type(expr.name_type,
+					expr.field_name))
+			}
+			if is_array_init_type_expr_field(expr.field_name) {
+				base_type := c.array_init_elem_type_from_expr(expr.expr)
+				if base_type != ast.void_type {
+					return c.unwrap_generic(c.type_resolver.typeof_field_type(base_type,
+						expr.field_name))
+				}
+			}
+			return ast.void_type
+		}
+		else {
+			return ast.void_type
+		}
+	}
+}
+
+fn (mut c Checker) resolve_array_init_elem_type_expr(mut node ast.ArrayInit) {
+	if node.elem_type_expr is ast.EmptyExpr {
+		return
+	}
+	old_expected_type := c.expected_type
+	c.expected_type = ast.void_type
+	c.expr(mut node.elem_type_expr)
+	c.expected_type = old_expected_type
+	resolved_elem_type := c.array_init_elem_type_from_expr(node.elem_type_expr)
+	if resolved_elem_type == ast.void_type {
+		c.error('array_init: invalid comptime type expression, expected a type field such as `typeof(expr).idx` or `T.typ`',
+			node.elem_type_pos)
+		return
+	}
+	if resolved_elem_type.has_flag(.result) {
+		c.error('arrays do not support storing Result values', node.elem_type_pos)
+		return
+	}
+	node.elem_type = resolved_elem_type
+	idx := c.table.find_or_register_array(resolved_elem_type)
+	node.typ = if resolved_elem_type.has_flag(.generic)
+		|| c.type_has_unresolved_generic_parts(resolved_elem_type) {
+		ast.new_type(idx).set_flag(.generic)
+	} else {
+		ast.new_type(idx)
+	}
+	if node.is_option {
+		node.typ = node.typ.set_flag(.option)
+	}
 }
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
@@ -130,6 +200,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			node.typ = ast.void_type
 			node.elem_type = ast.void_type
 		}
+	}
+	if node.typ == ast.void_type && node.elem_type_expr !is ast.EmptyExpr {
+		c.resolve_array_init_elem_type_expr(mut node)
 	}
 	mut elem_type := ast.void_type
 	unwrap_elem_type := c.unwrap_generic(node.elem_type)

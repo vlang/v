@@ -1931,10 +1931,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	if node.is_fixed && node.is_option {
 		f.write('?')
 	}
-	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
+	if node.exprs.len == 0 && ((node.typ != 0 && node.typ != ast.void_type)
+		|| node.elem_type_expr !is ast.EmptyExpr) {
 		// `x := []string{}`
 		if node.alias_type != ast.void_type {
 			f.write(f.type_to_str_using_aliases(node.alias_type, f.mod2alias))
+		} else if node.elem_type_expr !is ast.EmptyExpr {
+			f.write('[]')
+			f.expr(node.elem_type_expr)
 		} else {
 			f.write(f.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}

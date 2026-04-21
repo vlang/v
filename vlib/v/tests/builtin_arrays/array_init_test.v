@@ -283,3 +283,20 @@ fn test_array_of_map_with_len_no_default() {
 		2: 2
 	}]
 }
+
+fn empty_array_from_generic_typ[T]() []T {
+	return []T.typ{}
+}
+
+fn test_array_init_from_typeof_idx() {
+	fixed := [1, 2, 3]!
+	dyn := []typeof(fixed[0]).idx{}
+	assert typeof(dyn).name == '[]int'
+	assert dyn.len == 0
+}
+
+fn test_array_init_from_generic_typ() {
+	ints := empty_array_from_generic_typ[int]()
+	assert typeof(ints).name == '[]int'
+	assert ints.len == 0
+}

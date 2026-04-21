@@ -477,7 +477,11 @@ pub fn (x Expr) str() string {
 			if x.has_init {
 				fields << 'init: ${x.init_expr.str()}'
 			}
-			typ_str := global_table.type_to_str(x.elem_type)
+			typ_str := if x.elem_type_expr !is EmptyExpr {
+				x.elem_type_expr.str()
+			} else {
+				global_table.type_to_str(x.elem_type)
+			}
 			if fields.len > 0 {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
@@ -487,6 +491,8 @@ pub fn (x Expr) str() string {
 			} else {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{}'
+				} else if x.exprs.len == 0 && typ_str != '' {
+					return '[]${typ_str}{}'
 				} else {
 					return x.exprs.str()
 				}
