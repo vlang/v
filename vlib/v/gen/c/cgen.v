@@ -1295,6 +1295,11 @@ pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, sym ast.TypeSymbol) st
 	return if typ.has_flag(.option) { '_option_${sym.cname}' } else { sym.cname }
 }
 
+@[inline]
+fn (g &Gen) sumtype_runtime_variants(typ ast.Type) []ast.Type {
+	return g.table.sumtype_matchable_variants(typ.idx_type())
+}
+
 // get_sumtype_casting_variant_name returns a helper-safe variant name that
 // keeps pointer-depth distinctions for sumtype cast wrappers.
 @[inline]
@@ -1326,9 +1331,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 			}
 			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(u32 sidx) {')
 			g.definitions.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(u32);')
+			runtime_variants := g.sumtype_runtime_variants(ast.idx_to_type(ityp))
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
-				for v in sum_info.variants {
+				for v in runtime_variants {
 					subtype := g.table.sym(v)
 					g.writeln('\tif( sidx == _v_type_idx_${g.get_sumtype_variant_name(v, subtype)}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
@@ -1338,7 +1344,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
 				mut idxs := []ast.Type{}
-				for v in sum_info.variants {
+				for v in runtime_variants {
 					if v in idxs {
 						continue
 					}
@@ -1353,7 +1359,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('${static_prefix}u32 v_typeof_sumtype_idx_${sym.cname}(u32 sidx) {')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${u32(ityp)};')
-				for v in sum_info.variants {
+				for v in runtime_variants {
 					subtype := g.table.sym(v)
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${u32(v)};')
 				}
@@ -1362,7 +1368,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln2('\tswitch(sidx) {', '\t\tcase ${tidx}: return ${u32(ityp)};')
 				mut idxs := []ast.Type{}
-				for v in sum_info.variants {
+				for v in runtime_variants {
 					if v in idxs {
 						continue
 					}
@@ -3834,8 +3840,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
 		got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
 		type_idx = g.table.type_idxs[got_name].str()
-		exp_info := exp_sym.info as ast.SumType
-		for variant in exp_info.variants {
+		for variant in g.sumtype_runtime_variants(exp) {
 			variant_sym := g.table.sym(variant)
 			if variant_sym.info is ast.FnType {
 				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
@@ -4157,7 +4162,7 @@ fn (g &Gen) single_pointer_sumtype_nil_variant(expected_type ast.Type, expr ast.
 		return 0
 	}
 	mut variant := ast.Type(0)
-	for sumtype_variant in (expected_sym.info as ast.SumType).variants {
+	for sumtype_variant in g.sumtype_runtime_variants(expected_type) {
 		if g.table.unaliased_type(sumtype_variant).is_any_kind_of_pointer() {
 			if variant != 0 {
 				return 0
@@ -4187,7 +4192,7 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 	if expected_sym.kind != .sum_type {
 		return got_type
 	}
-	variants := (expected_sym.info as ast.SumType).variants
+	variants := g.sumtype_runtime_variants(expected_type)
 	for variant in variants {
 		if g.is_exact_sumtype_variant_match(variant, got_type) {
 			return variant
@@ -4608,7 +4613,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			sumtype_got_type
 		}
 		if nil_sumtype_variant != 0
-			|| g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false) {
+			|| g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false)
+			|| g.table.sumtype_has_variant_recursive(expected_deref_type, got_deref_type, false) {
 			mut is_already_sum_type := false
 			scope := g.file.scope.innermost(expr.pos().pos)
 			if expr is ast.Ident {
@@ -10151,11 +10157,12 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				mut idxs := []ast.Type{}
+				runtime_variants := g.sumtype_runtime_variants(ast.idx_to_type(sym.idx))
 				if !g.pref.is_prod {
 					// Do not print union sum type coment in prod mode
 					g.type_definitions.writeln('')
 					g.type_definitions.writeln('// Union sum type ${name} = ')
-					for variant in sym.info.variants {
+					for variant in runtime_variants {
 						if variant in idxs {
 							continue
 						}
@@ -10166,7 +10173,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 				g.type_definitions.writeln('struct ${name} {')
 				g.type_definitions.writeln('\tunion {')
-				for variant in sym.info.variants {
+				for variant in runtime_variants {
 					if variant in idxs {
 						continue
 					}
@@ -10372,7 +10379,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 				}
 			}
 			ast.SumType {
-				for variant in sym.info.variants {
+				for variant in g.sumtype_runtime_variants(ast.idx_to_type(sym.idx)) {
 					vsym := g.table.sym(variant)
 					if vsym.info !is ast.Struct {
 						continue
@@ -11277,7 +11284,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		}
 
 		// fill as cast name table
-		for variant in expr_type_sym.info.variants {
+		for variant in g.sumtype_runtime_variants(node.expr_type) {
 			idx := u32(variant).str()
 			if idx in g.as_cast_type_names {
 				continue
