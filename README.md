@@ -426,6 +426,8 @@ Note the TCC website is old; the current TCC repository can be found
 [here](https://repo.or.cz/w/tinycc.git).
 V utilizes pre-built TCC binaries located at
 [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
+On Linux, `make` retries the portable `thirdparty-linuxmusl-*` TCC bundle when
+the host-specific bundle does not run on the current system.
 To rebuild the bundled `thirdparty/tcc` in place from upstream TinyCC on the
 platforms that have an in-tree build script, run `make latest_tcc_source`.
 Pass `TCC_COMMIT=<hash-or-branch>` to pin a specific upstream revision.

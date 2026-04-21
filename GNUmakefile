@@ -239,14 +239,37 @@ fresh_tcc:
 	rm -rf $(TMPTCC)
 ifndef local
 ifeq ($(HAS_GIT),1)
-# Check whether a TCC branch exists for the user's system configuration.
-ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell $(GIT) ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
-	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
-else
-	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
-	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
-endif
+	@set -e; \
+	branches="$$( $(GIT) ls-remote --heads $(TCCREPO) 2> /dev/null | awk '{sub("refs/heads/","",$$2); print $$2}' || true )"; \
+	preferred_branch='thirdparty-$(TCCOS)-$(TCCARCH)'; \
+	fallback_branch=''; \
+	if [ "$(LINUX)" = "1" ]; then \
+		fallback_branch='thirdparty-linuxmusl-$(TCCARCH)'; \
+	fi; \
+	selected_branch=''; \
+	if printf '%s\n' "$$branches" | grep -Fx "$$preferred_branch" > /dev/null; then \
+		selected_branch="$$preferred_branch"; \
+	elif [ "$$fallback_branch" != '' ] && [ "$$fallback_branch" != "$$preferred_branch" ] \
+		&& printf '%s\n' "$$branches" | grep -Fx "$$fallback_branch" > /dev/null; then \
+		selected_branch="$$fallback_branch"; \
+	fi; \
+	if [ "$$selected_branch" = '' ]; then \
+		echo "Pre-built TCC not available for $$preferred_branch at $(TCCREPO), will use the system compiler: $(CC)"; \
+		$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) "$(TMPTCC)"; \
+	else \
+		$(GITFASTCLONE) --branch "$$selected_branch" $(TCCREPO) "$(TMPTCC)"; \
+		if ! "$(TMPTCC)/tcc.exe" --version > /dev/null 2> /dev/null; then \
+			if [ "$$fallback_branch" != '' ] && [ "$$fallback_branch" != "$$selected_branch" ] \
+				&& printf '%s\n' "$$branches" | grep -Fx "$$fallback_branch" > /dev/null; then \
+				echo "Pre-built TCC bundle $$selected_branch did not run; retrying with $$fallback_branch."; \
+				rm -rf "$(TMPTCC)"; \
+				$(GITFASTCLONE) --branch "$$fallback_branch" $(TCCREPO) "$(TMPTCC)"; \
+			fi; \
+			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+		else \
+			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+		fi; \
+	fi
 else
 	@echo "git is required to clone $(TCCREPO)"
 	@exit 1

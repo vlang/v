@@ -1423,14 +1423,31 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 	cc := os.file_name(s).to_lower_ascii()
 	return match true {
-		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
-		cc.contains('gcc') { .gcc }
-		cc.contains('clang') { .clang }
-		cc.contains('emcc') { .emcc }
-		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') { .msvc }
-		cc.contains('mingw') { .mingw }
-		cc.contains('++') { .cplusplus }
-		else { .gcc }
+		cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
+			|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc') {
+			.tinyc
+		}
+		cc.contains('gcc') {
+			.gcc
+		}
+		cc.contains('clang') {
+			.clang
+		}
+		cc.contains('emcc') {
+			.emcc
+		}
+		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') {
+			.msvc
+		}
+		cc.contains('mingw') {
+			.mingw
+		}
+		cc.contains('++') {
+			.cplusplus
+		}
+		else {
+			.gcc
+		}
 	}
 }
 
