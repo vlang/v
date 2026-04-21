@@ -504,7 +504,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 		if node.is_comptime {
 			// branches may not have been processed by c.stmts()
-			if has_top_return(branch.stmts) {
+			if c.has_top_return(branch.stmts) {
 				nbranches_with_return++
 			} else {
 				nbranches_without_return++

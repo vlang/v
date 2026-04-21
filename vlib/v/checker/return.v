@@ -385,40 +385,20 @@ fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.
 
 // Note: has_top_return/1 should be called on *already checked* stmts,
 // which do have their stmt.expr.is_noreturn set properly:
-fn has_top_return(stmts []ast.Stmt) bool {
+fn (mut c Checker) has_top_return(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		match stmt {
 			ast.Return {
 				return true
 			}
 			ast.Block {
-				if has_top_return(stmt.stmts) {
+				if c.has_top_return(stmt.stmts) {
 					return true
 				}
 			}
 			ast.ExprStmt {
-				if stmt.expr is ast.CallExpr {
-					// do not ignore panic() calls on non checked stmts
-					if stmt.expr.is_noreturn
-						|| (stmt.expr.is_method == false && stmt.expr.name == 'panic') {
-						return true
-					}
-				} else if stmt.expr is ast.ComptimeCall {
-					if stmt.expr.kind == .compile_error {
-						return true
-					}
-				} else if stmt.expr is ast.LockExpr {
-					if has_top_return(stmt.expr.stmts) {
-						return true
-					}
-				} else if stmt.expr is ast.IfExpr {
-					if has_top_return_in_if_expr(stmt.expr) {
-						return true
-					}
-				} else if stmt.expr is ast.MatchExpr {
-					if has_top_return_in_match_expr(stmt.expr) {
-						return true
-					}
+				if c.expr_never_falls_through(stmt.expr) {
+					return true
 				}
 			}
 			else {}
@@ -427,19 +407,161 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	return false
 }
 
-fn has_top_return_in_if_expr(if_expr ast.IfExpr) bool {
+fn (mut c Checker) expr_never_falls_through(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			// do not ignore panic() calls on non checked stmts
+			return expr.is_noreturn
+				|| (expr.is_method == false && expr.name == 'panic')
+				|| c.call_expr_propagates_always_error(expr)
+		}
+		ast.ComptimeCall {
+			return expr.kind == .compile_error
+		}
+		ast.LockExpr {
+			return c.has_top_return(expr.stmts)
+		}
+		ast.IfExpr {
+			return c.has_top_return_in_if_expr(expr)
+		}
+		ast.MatchExpr {
+			return c.has_top_return_in_match_expr(expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) call_expr_propagates_always_error(node ast.CallExpr) bool {
+	if node.should_be_skipped || node.or_block.kind != .propagate_result {
+		return false
+	}
+	mut func := ast.Fn{}
+	if node.is_method {
+		if node.left_type == 0 {
+			return false
+		}
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		if left_sym.kind == .placeholder {
+			return false
+		}
+		func = c.table.find_method(left_sym, node.name) or { return false }
+	} else {
+		if node.name == '' {
+			return false
+		}
+		func = c.table.find_fn(node.name) or { return false }
+	}
+	return c.fn_always_errors(func)
+}
+
+fn (mut c Checker) fn_always_errors(func ast.Fn) bool {
+	if func.name == '' || func.source_fn == unsafe { nil } || func.no_body || func.language != .v
+		|| !func.return_type.has_flag(.result) {
+		return false
+	}
+	fkey := func.fkey()
+	if fkey in c.always_error_fn_cache {
+		return c.always_error_fn_cache[fkey]
+	}
+	if fkey in c.always_error_fn_in_progress {
+		return false
+	}
+	c.always_error_fn_in_progress[fkey] = true
+	defer {
+		c.always_error_fn_in_progress.delete(fkey)
+	}
+	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
+	result := c.stmts_always_error(fn_decl.stmts)
+	c.always_error_fn_cache[fkey] = result
+	return result
+}
+
+fn (mut c Checker) stmts_always_error(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if c.stmt_always_errors(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) stmt_always_errors(stmt ast.Stmt) bool {
+	match stmt {
+		ast.Return {
+			return c.return_stmt_always_errors(stmt)
+		}
+		ast.Block {
+			return c.stmts_always_error(stmt.stmts)
+		}
+		ast.ExprStmt {
+			return c.expr_always_errors(stmt.expr)
+		}
+		ast.ForStmt {
+			return stmt.is_inf && stmt.stmts.len == 0
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) expr_always_errors(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			return expr.is_noreturn || c.call_expr_propagates_always_error(expr)
+		}
+		ast.ComptimeCall {
+			return expr.kind == .compile_error
+		}
+		ast.IfExpr {
+			return c.if_expr_always_errors(expr)
+		}
+		ast.MatchExpr {
+			return c.match_expr_always_errors(expr)
+		}
+		ast.LockExpr {
+			return c.stmts_always_error(expr.stmts)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) return_stmt_always_errors(node ast.Return) bool {
+	if node.types.len == 1 && c.table.unaliased_type(node.types[0]).idx() == ast.error_type_idx {
+		return true
+	}
+	return false
+}
+
+fn (mut c Checker) has_top_return_in_if_expr(if_expr ast.IfExpr) bool {
 	if if_expr.branches.len < 2 || !if_expr.has_else {
 		return false
 	}
 	for branch in if_expr.branches {
-		if !has_top_return(branch.stmts) {
+		if !c.has_top_return(branch.stmts) {
 			return false
 		}
 	}
 	return true
 }
 
-fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
+fn (mut c Checker) if_expr_always_errors(if_expr ast.IfExpr) bool {
+	if if_expr.branches.len < 2 || !if_expr.has_else {
+		return false
+	}
+	for branch in if_expr.branches {
+		if !c.stmts_always_error(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut c Checker) has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 	if match_expr.branches.len == 0 {
 		return false
 	}
@@ -462,7 +584,7 @@ fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 		}
 		if has_else {
 			for branch in match_expr.branches {
-				if !has_top_return(branch.stmts) {
+				if !c.has_top_return(branch.stmts) {
 					return false
 				}
 			}
@@ -471,7 +593,40 @@ fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 		return false
 	}
 	for branch in match_expr.branches {
-		if !has_top_return(branch.stmts) {
+		if !c.has_top_return(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut c Checker) match_expr_always_errors(match_expr ast.MatchExpr) bool {
+	if match_expr.branches.len == 0 {
+		return false
+	}
+	if match_expr.is_comptime {
+		mut has_else := false
+		for branch in match_expr.branches {
+			if branch.is_else {
+				has_else = true
+				break
+			}
+			for expr in branch.exprs {
+				if expr is ast.Ident && expr.name == '\$else' {
+					has_else = true
+					break
+				}
+			}
+			if has_else {
+				break
+			}
+		}
+		if !has_else {
+			return false
+		}
+	}
+	for branch in match_expr.branches {
+		if !c.stmts_always_error(branch.stmts) {
 			return false
 		}
 	}
