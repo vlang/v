@@ -1205,6 +1205,10 @@ fn (mut c Checker) infer_composite_generic_type(gt_name string, generic_typ ast.
 				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
 					arg_sym.info.elem_type)
 			}
+			if arg_sym.info is ast.ArrayFixed {
+				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+					arg_sym.info.elem_type)
+			}
 		}
 		ast.ArrayFixed {
 			if arg_sym.info is ast.ArrayFixed && param_sym.info.size == arg_sym.info.size {
@@ -1718,6 +1722,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							break
 						}
 					}
+				} else if arg_sym.info is ast.ArrayFixed && param_sym.info is ast.Array {
+					typ = c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+						arg_sym.info.elem_type)
 				} else if arg_sym.info is ast.ArrayFixed && param_sym.info is ast.ArrayFixed {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
 					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
