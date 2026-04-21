@@ -14,6 +14,8 @@ const utf16le_output_exe_filename = os.join_path(tfolder, 'utf16le_output.exe')
 const utf16le_output_source_filename = os.join_path(tfolder, 'utf16le_output.v')
 const stdin_exit_exe_filename = os.join_path(tfolder, 'stdin_exit.exe')
 const stdin_exit_source_filename = os.join_path(tfolder, 'stdin_exit.v')
+const argv_echo_exe_filename = os.join_path(tfolder, 'argv_echo.exe')
+const argv_echo_source_filename = os.join_path(tfolder, 'argv_echo.v')
 const echo_process_source_code = '
 module main
 import io
@@ -63,6 +65,17 @@ fn main() {
 }
 '
 
+const argv_echo_source_code = '
+module main
+import os
+
+fn main() {
+	for arg in os.args[1..] {
+		println(arg)
+	}
+}
+'
+
 const echo_wait_timeout = 5 // seconds
 
 fn testsuite_begin() {
@@ -94,6 +107,10 @@ fn testsuite_begin() {
 	os.write_file(stdin_exit_source_filename, stdin_exit_source_code)!
 	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stdin_exit_exe_filename)} ${os.quoted_path(stdin_exit_source_filename)}')
 	assert os.exists(stdin_exit_exe_filename)
+
+	os.write_file(argv_echo_source_filename, argv_echo_source_code)!
+	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(argv_echo_exe_filename)} ${os.quoted_path(argv_echo_source_filename)}')
+	assert os.exists(argv_echo_exe_filename)
 }
 
 fn testsuite_end() {
@@ -184,6 +201,30 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 	p.close()
 	assert output.contains('V_OS_TEST_PORT=exact_path'), 'stdout:\n${output}\nstderr:\n${errors}'
 	assert !output.contains('stale-prefix-exe'), output
+}
+
+fn test_new_process_passes_spaced_path_args_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	file_arg := os.join_path(tfolder, 'path with spaces', 'child file.txt')
+	dir_arg := os.join_path(tfolder, 'path with spaces') + '\\'
+	quoted_arg := 'value with "quotes"'
+	mut p := os.new_process(argv_echo_exe_filename)
+	p.set_args([file_arg, dir_arg, quoted_arg, 'marker'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	output := p.stdout_slurp().trim_space()
+	errors := p.stderr_slurp().trim_space()
+	p.close()
+	lines := output.split_into_lines()
+	assert lines.len == 4, 'stdout:\n${output}\nstderr:\n${errors}'
+	assert lines[0] == file_arg
+	assert lines[1] == dir_arg
+	assert lines[2] == quoted_arg
+	assert lines[3] == 'marker'
 }
 
 fn test_new_process_uses_path_for_bare_command_names() {
