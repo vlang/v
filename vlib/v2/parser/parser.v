@@ -1119,17 +1119,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				p.exp_lcbr = true
 				expr := p.expr(.lowest)
 				p.exp_lcbr = exp_lcbr
-				p.expect(.lcbr)
-				// TODO:
-				for p.tok != .rcbr {
-					// otherwise we will break on `}` from `${x}`
-					if p.tok == .string {
-						p.string_literal(.v)
-					} else {
-						p.next()
-					}
-				}
-				p.expect(.rcbr)
+				p.skip_balanced_brace_block()
 				lhs = ast.Expr(ast.SqlExpr{
 					expr: expr
 					pos:  sql_pos
@@ -1526,6 +1516,34 @@ fn (mut p Parser) block() []ast.Stmt {
 	// 	p.error('init must be in parens when `{` is expected, eg. `if x == (Type{}) {`')
 	// }
 	return stmts
+}
+
+fn (mut p Parser) skip_balanced_brace_block() {
+	p.expect(.lcbr)
+	mut depth := 1
+	for depth > 0 {
+		match p.tok {
+			.eof {
+				p.error('unexpected eof while parsing block')
+			}
+			.lcbr {
+				depth++
+				p.next()
+			}
+			.rcbr {
+				depth--
+				p.next()
+			}
+			// Consume the full string/interpolation so braces inside `${...}` do
+			// not interfere with raw block skipping.
+			.string {
+				_ = p.string_literal(.v)
+			}
+			else {
+				p.next()
+			}
+		}
+	}
 }
 
 @[inline]
