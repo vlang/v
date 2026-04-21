@@ -1473,6 +1473,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			export_alias := '${weak}${type_name} ${fn_attrs}${attr.arg}(${arg_str})'
 			g.definitions.writeln('VV_EXP ${export_alias}; // exported fn ${node.name}')
 			g.writeln('${export_alias} {')
+			if !g.pref.is_shared && 'no_main' in g.table.modules {
+				g.writeln('\t_vno_main_init_caller();')
+			}
 			g.write2('\treturn ${name}(', fargs.join(', '))
 			g.writeln2(');', '}')
 		}
