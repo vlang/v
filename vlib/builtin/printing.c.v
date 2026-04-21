@@ -170,6 +170,11 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	mut ptr := unsafe { buf }
 	mut remaining_bytes := isize(buf_len)
 	mut x := isize(0)
+	$if windows {
+		if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
+			return
+		}
+	}
 	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
 		// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
 		// before writing directly via write() syscall to prevent output reordering.
