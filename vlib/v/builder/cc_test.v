@@ -205,6 +205,23 @@ fn test_sqlite_thirdparty_validation_error_ignores_other_modules() {
 	assert sqlite_thirdparty_validation_error('json.cjson', obj_path, source_path, .cpp) == ''
 }
 
+fn test_linux_cross_target_for_amd64() {
+	target := linux_cross_target_for_arch(.amd64) or { panic(err) }
+	assert target.triple == 'x86_64-linux-gnu'
+	assert target.lib_dir == 'x86_64-linux-gnu'
+	assert target.dynamic_linker == '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+	assert target.linker_emulation == 'elf_x86_64'
+}
+
+fn test_linux_cross_target_for_arm64_errors() {
+	if target := linux_cross_target_for_arch(.arm64) {
+		assert false, 'unexpected target: ${target}'
+	} else {
+		assert err.msg().contains('only `-arch amd64`')
+		assert err.msg().contains('linuxroot')
+	}
+}
+
 fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 	linker_args := builder_linker_args([
 		'-os',

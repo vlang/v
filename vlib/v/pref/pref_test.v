@@ -164,6 +164,15 @@ fn test_cross_compile_windows_m32_uses_i386_arch_and_compiler() {
 	assert prefs.build_options.contains('-m32')
 }
 
+fn test_cross_compile_defaults_linux_to_amd64() {
+	if pref.get_host_os() == .linux {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'linux', target], false)
+	assert prefs.arch == .amd64
+}
+
 fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	old_cross_compiler := os.getenv('VCROSS_COMPILER_NAME')

@@ -180,6 +180,8 @@ see also `v help build`.
       in order to override the default cross compiler,
       that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
       `clang` for targeting Linux from other operating systems).
+      Note: the bundled Linux cross-compilation sysroot currently contains
+      x86_64 runtime files only, so `-os linux -arch arm64` is not supported yet.
 
    -macosx-version-min 11.0
       Only relevant on macos. It will be passed as -mmacosx-version-min=11.0 to
