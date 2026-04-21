@@ -23,6 +23,9 @@ fn C.CreateSymbolicLinkW(&u16, &u16, u32) i32
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
 fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
 
+// See https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getshortpathnamew
+fn C.GetShortPathNameW(&u16, &u16, u32) u32
+
 fn C._getpid() i32
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
@@ -289,6 +292,33 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		}
 		matches << fpath
 	}
+}
+
+// short_path returns the Windows DOS 8.3 short path when it is available.
+// If the path does not exist, or if short names are unavailable, it returns the original path.
+pub fn short_path(path string) string {
+	if path == '' {
+		return ''
+	}
+	normalized := path.replace('/', '\\')
+	mut short_buf := [max_path_buffer_size]u16{}
+	mut wpath := normalized.to_wide()
+	defer {
+		unsafe { free(voidptr(wpath)) }
+	}
+	short_len := C.GetShortPathNameW(wpath, &short_buf[0], max_path_buffer_size)
+	if short_len > 0 && short_len < u32(max_path_buffer_size) {
+		return unsafe { string_from_wide2(&short_buf[0], int(short_len)) }
+	}
+	parent := dir(normalized)
+	if parent == '' || parent == '.' || parent == normalized || !is_dir(parent) {
+		return path
+	}
+	short_parent := short_path(parent)
+	if short_parent == parent {
+		return path
+	}
+	return join_path_single(short_parent, file_name(normalized))
 }
 
 pub fn utime(path string, actime i64, modtime i64) ! {

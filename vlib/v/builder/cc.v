@@ -366,6 +366,8 @@ pub mut:
 	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
 }
 
+type WindowsPathResolver = fn (string) string
+
 fn ccompiler_type_from_name_with_ok(ccompiler string) (pref.CompilerType, bool) {
 	cc_file_name := os.file_name(ccompiler).to_lower_ascii()
 	if cc_file_name.contains('tcc') || cc_file_name.contains('tinyc') {
@@ -948,13 +950,64 @@ fn (mut v Builder) setup_output_name() {
 }
 
 pub fn (mut v Builder) tcc_quoted_path(p string) string {
-	if v.ccoptions.cc == .tcc && !v.pref.no_rsp {
-		// tcc has a bug, that prevents it from being able to parse names quoted with ' in .rsp files :-|
-		mut escaped := p.replace('\\', '\\\\')
-		escaped = escaped.replace('"', '\\"')
-		return '"${escaped}"'
+	return os.quoted_path(v.tcc_windows_path(p))
+}
+
+fn looks_like_windows_path(value string) bool {
+	return value.contains('\\') || value.contains('/') || (value.len > 1 && value[1] == `:`)
+}
+
+fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
+	if arg == '' {
+		return ''
 	}
-	return os.quoted_path(p)
+	if start := arg.index('"') {
+		end := arg.last_index('"') or { -1 }
+		if end > start {
+			path := arg[start + 1..end]
+			if looks_like_windows_path(path) {
+				return arg[..start] + '"${resolver(path)}"' + arg[end + 1..]
+			}
+		}
+	}
+	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
+		if arg.starts_with(prefix) {
+			path := arg[prefix.len..].trim_space().trim('"')
+			if looks_like_windows_path(path) {
+				return prefix + '"${resolver(path)}"'
+			}
+		}
+	}
+	trimmed := arg.trim_space().trim('"')
+	if !arg.starts_with('-') && looks_like_windows_path(trimmed) {
+		return '"${resolver(trimmed)}"'
+	}
+	return arg
+}
+
+fn short_windows_path(path string) string {
+	$if windows {
+		return os.short_path(path)
+	}
+	return path
+}
+
+fn (v &Builder) tcc_windows_path(p string) string {
+	$if windows {
+		if v.ccoptions.cc == .tcc {
+			return short_windows_path(p)
+		}
+	}
+	return p
+}
+
+fn (v &Builder) tcc_windows_path_arg(arg string) string {
+	$if windows {
+		if v.ccoptions.cc == .tcc {
+			return rewrite_windows_path_arg(arg, short_windows_path)
+		}
+	}
+	return arg
 }
 
 fn (v &Builder) rsp_safe_arg(arg string) string {
@@ -1216,7 +1269,8 @@ pub fn (mut v Builder) cc() {
 		//
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
-		rsp_args := all_args.map(v.rsp_safe_arg(it))
+		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
+		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
 		shell_args := rsp_args.join(' ')
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
@@ -1236,9 +1290,9 @@ pub fn (mut v Builder) cc() {
 		if should_use_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = str_args.replace('\\', '\\\\')
-			rspexpr := '@${response_file}'
-			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
 			write_response_file(response_file, response_file_content)
+			rspexpr := '@${v.tcc_windows_path(response_file)}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
 			if !v.ccoptions.debug_mode {
 				v.pref.cleanup_files << response_file
 			}
@@ -1813,7 +1867,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	os.chdir(v.pref.vroot) or {}
 
 	cc_options := if source_kind == .asm {
-		'-o ${os.quoted_path(opath)} -c ${os.quoted_path(source_file)}'
+		'-o ${v.tcc_quoted_path(opath)} -c ${v.tcc_quoted_path(source_file)}'
 	} else {
 		mut all_options := []string{cap: 4}
 		all_options << v.pref.third_party_option
@@ -1821,7 +1875,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		all_options << '-o ${v.tcc_quoted_path(opath)}'
 		all_options << '-c ${v.tcc_quoted_path(source_file)}'
 		cpp_file := source_kind == .cpp
-		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).map(v.tcc_windows_path_arg(it)).join(' ')
 	}
 
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
