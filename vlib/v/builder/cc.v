@@ -1565,7 +1565,30 @@ fn (mut b Builder) get_subsystem_flag() string {
 	}
 }
 
+struct LinuxCrossTarget {
+	triple           string
+	lib_dir          string
+	dynamic_linker   string
+	linker_emulation string
+}
+
+fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
+	if arch != .amd64 {
+		return error('Linux cross compilation currently supports only `-arch amd64`; the bundled linuxroot sysroot does not provide `${arch}` runtime files.')
+	}
+	return LinuxCrossTarget{
+		triple:           'x86_64-linux-gnu'
+		lib_dir:          'x86_64-linux-gnu'
+		dynamic_linker:   '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+		linker_emulation: 'elf_x86_64'
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
+	linux_cross_target := linux_cross_target_for_arch(b.pref.arch) or {
+		verror(err.msg())
+		return
+	}
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
 	b.setup_output_name()
@@ -1575,13 +1598,17 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 	b.ensure_linuxroot_exists(sysroot)
-	obj_file := b.out_name_c + '.o'
+	obj_file := if b.pref.build_mode == .build_module {
+		b.pref.out_name
+	} else {
+		b.out_name_c + '.o'
+	}
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
-	cc_args << '-target x86_64-linux-gnu'
+	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
 	cc_args << others
@@ -1604,13 +1631,16 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
+	if b.pref.build_mode == .build_module {
+		return
+	}
 	// Compile compiler runtime builtins (provides __udivti3 etc. for 128-bit integer
 	// operations used by thirdparty code like mbedtls bignum.c, since the linuxroot
 	// sysroot doesn't include libgcc or compiler-rt).
 	builtins_src := os.join_path(@VEXEROOT, 'thirdparty', 'builtins', 'compiler_builtins.c')
-	builtins_obj := os.join_path(os.vtmp_dir(), 'compiler_builtins.o')
+	builtins_obj := os.join_path(os.vtmp_dir(), 'compiler_builtins_${linux_cross_target.lib_dir}.o')
 	if os.exists(builtins_src) {
-		builtins_cmd := '${b.quote_compiler_name(cc_name)} -w -fPIC -target x86_64-linux-gnu -o ${os.quoted_path(builtins_obj)} -c ${os.quoted_path(builtins_src)}'
+		builtins_cmd := '${b.quote_compiler_name(cc_name)} -w -fPIC -target ${linux_cross_target.triple} -o ${os.quoted_path(builtins_obj)} -c ${os.quoted_path(builtins_src)}'
 		builtins_res := os.execute(builtins_cmd)
 		if builtins_res.exit_code != 0 {
 			println('Warning: failed to compile compiler builtins for cross compilation.')
@@ -1618,16 +1648,16 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	mut linker_args := [
 		'-L',
-		os.quoted_path('${sysroot}/usr/lib/x86_64-linux-gnu/'),
+		os.quoted_path(os.join_path(sysroot, 'usr', 'lib', linux_cross_target.lib_dir)),
 		'-L',
-		os.quoted_path('${sysroot}/lib/x86_64-linux-gnu'),
+		os.quoted_path(os.join_path(sysroot, 'lib', linux_cross_target.lib_dir)),
 		'--sysroot=' + os.quoted_path(sysroot),
 		'-v',
 		'-o',
 		os.quoted_path(out_name),
-		'-m elf_x86_64',
+		'-m ${linux_cross_target.linker_emulation}',
 		'-dynamic-linker',
-		os.quoted_path('/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'),
+		os.quoted_path(linux_cross_target.dynamic_linker),
 		os.quoted_path('${sysroot}/crt1.o'),
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),

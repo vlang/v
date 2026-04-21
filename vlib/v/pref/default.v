@@ -75,16 +75,14 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 		p.build_options << '-os ${host_os.lower()}'
 	}
 
-	if !p.output_cross_c {
-		if p.os != host_os {
-			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
-			if host_os == .macos && p.os == .linux {
-				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
-				if p.arch == ._auto {
-					p.set_default_arch(.amd64)
-				}
-				p.parse_define('use_bundled_libgc')
-			}
+	if !p.output_cross_c && p.os != host_os {
+		if p.os == .linux && p.arch == ._auto {
+			// The bundled linuxroot sysroot currently only contains x86_64 runtime files.
+			p.set_default_arch(.amd64)
+		}
+		// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+		if host_os == .macos && p.os == .linux {
+			p.parse_define('use_bundled_libgc')
 		}
 	}
 }
