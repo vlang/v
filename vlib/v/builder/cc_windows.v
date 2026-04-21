@@ -15,6 +15,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 			return error('C compiler `${v.pref.ccompiler}` was requested with `-cc`, but was not found.')
 		}
 		v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+		v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 		return
 	}
 	cmd_version := '${v.quote_compiler_name(v.pref.ccompiler)} -v'
@@ -45,7 +46,9 @@ pub fn (mut v Builder) find_win_cc() ! {
 		}
 		v.pref.ccompiler = 'msvc'
 		v.pref.ccompiler_type = .msvc
+		v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 		return
 	}
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+	v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 }

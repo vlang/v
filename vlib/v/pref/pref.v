@@ -246,6 +246,7 @@ pub mut:
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
+	gc_set_by_flag      bool              // true when the compiler receives `-gc`
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -583,6 +584,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-gc' {
 				gc_mode := cmdline.option(args[i..], '-gc', '')
+				res.gc_set_by_flag = true
 				match gc_mode {
 					'none' {
 						res.gc_mode = .no_gc
