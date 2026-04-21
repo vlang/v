@@ -1440,7 +1440,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else if var_type.has_flag(.option) {
-				g.expr_with_opt(val, val_type, var_type)
+				// Blank ident option types can be stale across generic instantiations.
+				// Use the actual RHS option type when it is available so `_ = val`
+				// does not rewrap the expression into a mismatched option payload.
+				blank_option_type := if val_type.has_flag(.option) { val_type } else { var_type }
+				g.expr_with_opt(val, val_type, blank_option_type)
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
