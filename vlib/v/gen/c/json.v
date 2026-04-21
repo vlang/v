@@ -470,7 +470,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	mut variant_symbols := []ast.TypeSymbol{}
 	mut at_least_one_prim := false
 	mut object_variant_count := 0
-	mut fallback_struct_variant_typ := ''
+	mut fallback_object_variant_typ := ''
 	for variant in info.variants {
 		variant_typ := g.styp(variant)
 		variant_types << variant_typ
@@ -481,10 +481,10 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			|| variant_sym.kind == .enum || variant_sym.name == 'time.Time'
 		if variant_sym.name != 'time.Time' && final_variant_sym.kind in [.struct, .map] {
 			object_variant_count++
-			if object_variant_count == 1 && final_variant_sym.kind == .struct {
-				fallback_struct_variant_typ = variant_typ
+			if object_variant_count == 1 {
+				fallback_object_variant_typ = variant_typ
 			} else {
-				fallback_struct_variant_typ = ''
+				fallback_object_variant_typ = ''
 			}
 		}
 		unmangled_variant_name := variant_sym.name.split('.').last()
@@ -597,18 +597,10 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
-		if object_variant_count == 1 && fallback_struct_variant_typ != '' {
-			tmp := g.new_tmp_var()
+		if object_variant_count == 1 && fallback_object_variant_typ != '' {
 			dec.writeln('\t\t} else if (cJSON_IsObject(root)) {')
-			dec.writeln('\t\t\t${result_name}_${fallback_struct_variant_typ} ${tmp} = ${js_dec_name(fallback_struct_variant_typ)}(root);')
-			dec.writeln('\t\t\tif (${tmp}.is_error) {')
-			dec.writeln('\t\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
-			dec.writeln('\t\t\t}')
-			if is_option {
-				dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${fallback_struct_variant_typ}_to_sumtype_${sym.cname}((${fallback_struct_variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
-			} else {
-				dec.writeln('\t\t\t${prefix}res = ${fallback_struct_variant_typ}_to_sumtype_${sym.cname}((${fallback_struct_variant_typ}*)${tmp}.data, false);')
-			}
+			g.gen_sumtype_variant_decode(fallback_object_variant_typ, sym.cname, ret_styp, prefix,
+				is_option, '\t\t\t', mut dec)
 		}
 		dec.writeln('\t\t}')
 
