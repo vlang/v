@@ -9,6 +9,8 @@ import time
 
 const zooming_percent_per_frame = 5
 const movement_percent_per_frame = 10
+const tile_text_size_step = 8
+const min_tile_text_size = 8
 
 const default_window_width = 544
 const default_window_height = 560
@@ -353,6 +355,21 @@ fn (b Board) to_left() Board {
 
 fn yx2i(y int, x int) u32 {
 	return u32(y) << 16 | u32(x)
+}
+
+@[inline]
+fn quantized_tile_text_size(size int) int {
+	if size < min_tile_text_size {
+		return 0
+	}
+	return size / tile_text_size_step * tile_text_size_step
+}
+
+@[inline]
+fn animated_tile_text_size(base_size int, animation_scale f64) int {
+	// gg/fontstash caches glyphs by size, so quantize the zoom animation to keep the
+	// atlas stable during long autoplay sessions.
+	return quantized_tile_text_size(int(animation_scale * (base_size - 1)))
 }
 
 @[inline]
@@ -1211,9 +1228,13 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 		xpos := xoffset + tw / 2
 		ypos := yoffset + th / 2
 		mut fmt := app.label_format(.tile)
+		text_size := animated_tile_text_size(fmt.size, anim_size)
+		if text_size == 0 {
+			return
+		}
 		fmt = gg.TextCfg{
 			...fmt
-			size: int(anim_size * (fmt.size - 1))
+			size: text_size
 		}
 		match app.tile_format {
 			.normal {
@@ -1224,20 +1245,24 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			}
 			.exponent {
 				app.gg.draw_text(xpos, ypos, '2', fmt)
-				fs2 := int(f32(fmt.size) * 0.67)
-				app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-					'${tidx}', gg.TextCfg{
-					...fmt
-					size:  fs2
-					align: gg.HorizontalAlign.left
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.67))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
+						'${tidx}', gg.TextCfg{
+						...fmt
+						size:  fs2
+						align: gg.HorizontalAlign.left
+					})
+				}
 			}
 			.shifts {
-				fs2 := int(f32(fmt.size) * 0.6)
-				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
-					...fmt
-					size: fs2
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.6))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
+						...fmt
+						size: fs2
+					})
+				}
 			}
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
