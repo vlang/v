@@ -112,7 +112,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 		encoder.output << `}`
 	} $else $if T.unaliased_typ is $enum {
-		if encoder.enum_as_int {
+		if encoder.enum_as_int || enum_uses_json_as_number[T]() {
 			encoder.encode_number(int(val))
 		} else {
 			mut enum_val := 'unknown enum value'
@@ -408,7 +408,7 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 }
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
-	if encoder.enum_as_int {
+	if encoder.enum_as_int || enum_uses_json_as_number[T]() {
 		encoder.encode_number(int(val))
 	} else {
 		mut enum_val := 'unknown enum value'

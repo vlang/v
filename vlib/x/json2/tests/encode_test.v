@@ -16,6 +16,12 @@ enum TestEnum {
 
 type EnumAlias = TestEnum
 
+@[json_as_number]
+enum NumberedTestEnum {
+	a
+	b = 5
+}
+
 type Sum = int | string
 type SumAlias = Sum
 
@@ -23,6 +29,10 @@ struct Basic {
 	a int
 	b string
 	c bool
+}
+
+struct NumberedEnumWrap {
+	a NumberedTestEnum
 }
 
 type BasicAlias = Basic
@@ -140,6 +150,14 @@ fn test_enums() {
 	// Ensure that only `json: ` attrs is applied
 	assert json.encode(TestEnum.d) == '"d"'
 	assert json.encode(EnumAlias(TestEnum.d)) == '"d"'
+}
+
+fn test_enum_json_as_number_attribute() {
+	assert json.encode(NumberedTestEnum.a) == '0'
+	assert json.encode(NumberedTestEnum.b) == '5'
+	assert json.encode(NumberedEnumWrap{
+		a: .a
+	}) == '{"a":0}'
 }
 
 fn test_sumtypes() {
