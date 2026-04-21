@@ -86,6 +86,98 @@ fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expecte
 	g.expr(expr_copy)
 }
 
+fn (mut g Gen) auto_heap_assignment_uses_existing_storage(expr ast.Expr, expr_type ast.Type) bool {
+	// Reusing container-backed storage avoids leaking a fresh HEAP() copy for
+	// `@[heap]` values like `x := arr[i]`. Keep the old path under autofree,
+	// because aliasing array storage there would hand ownership to the local.
+	if g.is_autofree {
+		return false
+	}
+	return match expr {
+		ast.IndexExpr { g.auto_heap_array_index_uses_existing_storage(expr, expr_type) }
+		else { false }
+	}
+}
+
+fn (mut g Gen) auto_heap_array_index_uses_existing_storage(node ast.IndexExpr, expr_type ast.Type) bool {
+	if node.index is ast.RangeExpr || node.or_expr.kind != .absent || node.is_option {
+		return false
+	}
+	mut resolved_expr_type := g.recheck_concrete_type(g.resolved_expr_type(ast.Expr(node),
+		expr_type))
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(expr_type)
+	}
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(node.typ)
+	}
+	elem_type := g.unwrap_generic(resolved_expr_type)
+	if elem_type == 0 || elem_type.is_ptr() || !g.table.final_sym(elem_type).is_heap() {
+		return false
+	}
+	mut resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
+		node.left_type))
+	if resolved_left_type == 0 || resolved_left_type == ast.void_type {
+		resolved_left_type = g.recheck_concrete_type(node.left_type)
+	}
+	left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
+	return left_sym.kind == .array
+}
+
+fn (mut g Gen) write_auto_heap_assignment_expr(expr ast.Expr, expr_type ast.Type) bool {
+	return match expr {
+		ast.IndexExpr { g.write_auto_heap_array_index_expr(expr, expr_type) }
+		else { false }
+	}
+}
+
+fn (mut g Gen) write_auto_heap_array_index_expr(node ast.IndexExpr, expr_type ast.Type) bool {
+	if !g.auto_heap_array_index_uses_existing_storage(node, expr_type) {
+		return false
+	}
+	mut resolved_expr_type := g.recheck_concrete_type(g.resolved_expr_type(ast.Expr(node),
+		expr_type))
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(expr_type)
+	}
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(node.typ)
+	}
+	elem_type := g.unwrap_generic(resolved_expr_type)
+	elem_type_str := g.styp(elem_type)
+	mut resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
+		node.left_type))
+	if resolved_left_type == 0 || resolved_left_type == ast.void_type {
+		resolved_left_type = g.recheck_concrete_type(node.left_type)
+	}
+	left_type := if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+	left_is_ptr := left_type.is_ptr() || node.left.is_auto_deref_var()
+	left_is_shared := left_type.has_flag(.shared_f)
+	array_get_fn := if node.is_gated { 'builtin__array_get_ni' } else { 'builtin__array_get' }
+	g.write('((${elem_type_str}*)${array_get_fn}(')
+	if left_is_ptr && !left_is_shared {
+		g.write('*')
+	}
+	if node.left is ast.IndexExpr {
+		g.inside_array_index = true
+		g.expr(ast.Expr(node.left))
+		g.inside_array_index = false
+	} else {
+		g.expr(ast.Expr(node.left))
+	}
+	if left_is_shared {
+		if left_is_ptr {
+			g.write('->val')
+		} else {
+			g.write('.val')
+		}
+	}
+	g.write(', ')
+	g.expr(node.index)
+	g.write('))')
+	return true
+}
+
 fn (mut g Gen) write_assign_target_expr(left ast.Expr, var_type ast.Type) {
 	if left.is_auto_deref_var() && !var_type.has_flag(.shared_f) {
 		g.write('*')
@@ -1871,6 +1963,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						is_option_unwrapped := assign_expr_unwraps_option_or_result(val)
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
+						auto_heap_uses_existing_storage := is_auto_heap && !is_fn_var
+							&& !is_option_auto_heap
+							&& g.auto_heap_assignment_uses_existing_storage(val, val_type)
 						// For large structs (with large fixed arrays), avoid stack-allocated
 						// compound literals which can cause stack overflow. Use vcalloc directly.
 						mut is_large_struct_heap := false
@@ -1878,7 +1973,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							&& g.struct_has_large_fixed_array(val.typ) {
 							is_large_struct_heap = true
 						}
-						if is_auto_heap && !is_fn_var && !is_large_struct_heap {
+						if is_auto_heap && !is_fn_var && !is_large_struct_heap
+							&& !auto_heap_uses_existing_storage {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
@@ -1997,7 +2093,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								}
 							}
 							if nval == val {
-								g.expr_in_value_context(nval, val_type, var_type)
+								if auto_heap_uses_existing_storage {
+									g.write_auto_heap_assignment_expr(nval, val_type)
+								} else {
+									g.expr_in_value_context(nval, val_type, var_type)
+								}
 								if !is_fn_var && is_auto_heap && is_option_auto_heap
 									&& !is_large_struct_heap {
 									if aligned != 0 {
@@ -2010,7 +2110,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
 						if !is_fn_var && is_auto_heap && !is_option_auto_heap
-							&& !is_large_struct_heap {
+							&& !auto_heap_uses_existing_storage && !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {
