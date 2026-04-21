@@ -586,6 +586,9 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
 	}
+	if c.generic_inst_sumtype_has_variant(expected, ast.mktyp(got)) {
+		return true
+	}
 	if exp_sym.kind == .placeholder && c.expected_type != ast.void_type {
 		base_type := c.table.find_type(exp_sym.ngname)
 		if base_type != 0 {
@@ -1085,7 +1088,96 @@ fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int)
 	return []ast.Type{}, 0
 }
 
-fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
+fn (mut c Checker) concrete_sumtype_variants(typ ast.Type) []ast.Type {
+	clean_typ := typ.clear_flags().clear_option_and_result()
+	sym := c.table.sym(clean_typ)
+	match sym.info {
+		ast.SumType {
+			return sym.info.variants.clone()
+		}
+		ast.GenericInst {
+			parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
+			if parent_sym.info !is ast.SumType {
+				return []ast.Type{}
+			}
+			parent_info := parent_sym.info as ast.SumType
+			generic_names := c.table.get_generic_names(parent_info.generic_types)
+			mut variants := parent_info.variants.clone()
+			for i in 0 .. variants.len {
+				variant_sym := c.table.sym(variants[i])
+				if variants[i].has_flag(.generic) || variant_sym.kind == .generic_inst
+					|| c.type_has_unresolved_generic_parts(variants[i]) {
+					variants[i] = c.table.unwrap_generic_type(variants[i], generic_names,
+						sym.info.concrete_types)
+				}
+			}
+			return variants
+		}
+		else {
+			return []ast.Type{}
+		}
+	}
+}
+
+fn (mut c Checker) infer_sumtype_variant_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
+	variants := c.concrete_sumtype_variants(generic_typ)
+	if variants.len == 0 {
+		return ast.void_type
+	}
+	actual_sym := c.table.sym(concrete_typ)
+	actual_base_name := if actual_sym.ngname != '' {
+		actual_sym.ngname
+	} else {
+		ast.strip_generic_params(actual_sym.name)
+	}
+	mut exact_variants := []ast.Type{}
+	mut structural_variants := []ast.Type{}
+	mut generic_variants := []ast.Type{}
+	for variant in variants {
+		variant_sym := c.table.sym(variant)
+		variant_base_name := if variant_sym.ngname != '' {
+			variant_sym.ngname
+		} else {
+			ast.strip_generic_params(variant_sym.name)
+		}
+		if variant_base_name == actual_base_name {
+			exact_variants << variant
+		} else if variant.has_flag(.generic) && c.table.sym(variant).name == gt_name {
+			generic_variants << variant
+		} else if gt_name in c.table.generic_type_names(variant)
+			|| c.type_has_unresolved_generic_parts(variant) {
+			structural_variants << variant
+		}
+	}
+	for variant_group in [exact_variants, structural_variants, generic_variants] {
+		for variant in variant_group {
+			inferred_type := c.infer_composite_generic_type(gt_name, variant, concrete_typ)
+			if inferred_type != ast.void_type {
+				return inferred_type
+			}
+		}
+	}
+	return ast.void_type
+}
+
+fn (mut c Checker) generic_inst_sumtype_has_variant(expected ast.Type, got ast.Type) bool {
+	exp_sym := c.table.sym(expected)
+	if exp_sym.kind != .generic_inst {
+		return false
+	}
+	variants := c.concrete_sumtype_variants(expected)
+	if variants.len == 0 {
+		return false
+	}
+	for variant in variants {
+		if c.check_types(got, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
 	if generic_typ == 0 || concrete_typ == 0 {
 		return ast.void_type
 	}
@@ -1167,29 +1259,12 @@ fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Typ
 		else {}
 	}
 
-	// sumtype coercion: if expected is a generic sumtype and concrete_typ matches
-	// one of its variants, try to infer the generic type from the matching variant.
-	if param_sym.info is ast.SumType && generic_typ.has_flag(.generic) {
-		actual_sym := c.table.sym(concrete_typ)
-		actual_base_name := if actual_sym.ngname != '' {
-			actual_sym.ngname
-		} else {
-			ast.strip_generic_params(actual_sym.name)
-		}
-		for variant in param_sym.info.variants {
-			variant_sym := c.table.sym(variant)
-			variant_base_name := if variant_sym.ngname != '' {
-				variant_sym.ngname
-			} else {
-				ast.strip_generic_params(variant_sym.name)
-			}
-			if variant_base_name == actual_base_name {
-				inferred_type := c.infer_composite_generic_type(gt_name, variant, concrete_typ)
-				if inferred_type != ast.void_type {
-					return inferred_type
-				}
-			}
-		}
+	// Sumtype coercion: if the expected type is a generic sumtype or a concrete
+	// generic sumtype instantiation, try to infer the generic type from its variants.
+	inferred_sumtype_type := c.infer_sumtype_variant_generic_type(gt_name, generic_typ,
+		concrete_typ)
+	if inferred_sumtype_type != ast.void_type {
+		return inferred_sumtype_type
 	}
 
 	expected_type_args, expected_parent_idx := c.generic_type_args_and_parent_idx(generic_typ)
