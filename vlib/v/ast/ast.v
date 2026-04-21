@@ -1736,6 +1736,7 @@ pub mut:
 	len_expr          Expr   // len: expr
 	cap_expr          Expr   // cap: expr
 	init_expr         Expr   // init: expr
+	elem_type_expr    Expr = empty_expr // `typeof(expr).idx` in `[]typeof(expr).idx{}`
 	expr_types        []Type // [Dog, Cat] // also used for interface_types
 	elem_type         Type   // element type
 	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
