@@ -977,7 +977,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.stmts(mut node.stmts)
-	node_has_top_return := has_top_return(node.stmts)
+	node_has_top_return := c.has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
 	c.check_noreturn_fn_decl(mut node)
 	if node.language == .v && !node.no_body && node.return_type != ast.void_type && !node.has_return

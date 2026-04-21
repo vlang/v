@@ -48,3 +48,19 @@ fn test_option_void_with_return() {
 	}
 	assert true
 }
+
+fn must_error_for_generic_result() ! {
+	return error('boom')
+}
+
+fn never_returns_normally[T](value T) !T {
+	must_error_for_generic_result()!
+}
+
+fn test_generic_result_propagation_from_always_error_fn_does_not_need_placeholder_return() {
+	never_returns_normally(42) or {
+		assert err.msg() == 'boom'
+		return
+	}
+	assert false
+}

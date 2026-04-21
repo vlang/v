@@ -606,7 +606,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.returns = false
 		}
 	}
-	if !node.is_comptime && node.branches.len > 0 && has_top_return(node.branches[0].stmts)
+	if !node.is_comptime && node.branches.len > 0 && c.has_top_return(node.branches[0].stmts)
 		&& node.branches[0].scope != unsafe { nil }
 		&& node.branches[0].scope.parent != unsafe { nil } {
 		mut continuation_scope := node.branches[0].scope.parent
