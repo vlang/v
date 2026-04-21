@@ -238,23 +238,20 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		return ast.void_type
 	}
 
+	c.resolve_orm_table_expr_type(mut node.table_expr)
+
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
+
 	// Keep the SQL expression type aligned with the concretized ORM table type.
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len > 0 {
-		if c.needs_unwrap_generic_type(node.table_expr.typ) {
-			node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
-				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-		}
-		if c.needs_unwrap_generic_type(node.typ) {
-			node.typ = c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
-		}
+	resolved_node_typ := c.unwrap_generic(node.typ)
+	if resolved_node_typ != node.typ {
+		node.typ = resolved_node_typ
 	}
+
 	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
 
@@ -510,15 +507,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.inside_sql = false
 	}
 
+	c.resolve_orm_table_expr_type(mut node.table_expr)
+
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
-	}
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len > 0 && c.needs_unwrap_generic_type(node.table_expr.typ) {
-		node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
-			c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
@@ -546,11 +540,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
-		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_concrete_types.len > 0
-			&& c.needs_unwrap_generic_type(inserting_object_type) {
-			inserting_object_type = c.table.unwrap_generic_type(inserting_object_type,
-				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		resolved_object_type := c.unwrap_generic(inserting_object_type)
+		if resolved_object_type != inserting_object_type {
+			inserting_object_type = resolved_object_type
 		}
 
 		if inserting_object_type != node.table_expr.typ
@@ -1219,6 +1211,13 @@ fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 	return true
 }
 
+fn (mut c Checker) resolve_orm_table_expr_type(mut type_node ast.TypeNode) {
+	resolved_typ := c.unwrap_generic(type_node.typ)
+	if resolved_typ != type_node.typ {
+		type_node.typ = resolved_typ
+	}
+}
+
 fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
 	table_sym := c.table.sym(type_node.typ)
 
@@ -1333,6 +1332,8 @@ fn (mut c Checker) get_non_array_type(typ_ ast.Type) (ast.Type, &ast.TypeSymbol)
 // It checks that the joined table type exists and is a struct,
 // and validates the ON expression.
 fn (mut c Checker) check_orm_join_clause(mut join ast.JoinClause, main_table_sym &ast.TypeSymbol) bool {
+	c.resolve_orm_table_expr_type(mut join.table_expr)
+
 	// Check that the joined table type exists
 	if !c.ensure_type_exists(join.table_expr.typ, join.pos) {
 		return false
