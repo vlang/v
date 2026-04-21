@@ -452,14 +452,18 @@ fn get_value_from_optional[T](val ?T) T {
 }
 
 fn check_not_empty[T](val T) ?bool {
-	$if val is string {
+	$if T.indirections != 0 {
+		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is string {
 		if val == '' {
 			return false
 		}
-	} $else $if val is $int || val is $float {
+	} $else $if T.unaliased_typ is $int || T.unaliased_typ is $float {
 		if val == 0 {
 			return false
 		}
+	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
+		return val.len != 0
 	} $else $if val is ?string {
 		opt := ?string(val)
 		if sval := opt {
@@ -566,6 +570,24 @@ fn struct_field_is_nil[T](val T) bool {
 	return false
 }
 
+fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
+	if field_info.is_skip {
+		return false
+	}
+	if field_info.is_omitempty {
+		if !(check_not_empty(val) or { false }) {
+			return false
+		}
+	}
+	if !field_info.is_required && struct_field_is_none(val) {
+		return false
+	}
+	if struct_field_is_nil(val) {
+		return false
+	}
+	return true
+}
+
 @[unsafe]
 fn (mut encoder Encoder) encode_struct[T](val T) {
 	encoder.output << `{`
@@ -596,21 +618,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 			$if field.typ is $shared {
 				shared field_value := unsafe { val.$(field.name) }
 				rlock field_value {
-					if field_info.is_skip {
-						write_field = false
-					} else {
-						if field_info.is_omitempty {
-							write_field = check_not_empty(field_value) or { false }
-						}
-
-						if !field_info.is_required && struct_field_is_none(field_value) {
-							write_field = false
-						}
-					}
-
-					if struct_field_is_nil(field_value) {
-						write_field = false
-					}
+					write_field = struct_field_should_encode(field_info, field_value)
 
 					if write_field {
 						if is_first {
@@ -641,25 +649,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					}
 				}
 			} $else {
-				if field_info.is_skip {
-					write_field = false
-				} else {
-					if field_info.is_omitempty {
-						$if field.typ is $option {
-							write_field = check_not_empty(val.$(field.name)) or { false }
-						} $else {
-							write_field = check_not_empty(val.$(field.name)) or { false }
-						}
-					}
-
-					if !field_info.is_required && struct_field_is_none(val.$(field.name)) {
-						write_field = false
-					}
-				}
-
-				if struct_field_is_nil(val.$(field.name)) {
-					write_field = false
-				}
+				write_field = struct_field_should_encode(field_info, val.$(field.name))
 
 				if write_field {
 					if is_first {
