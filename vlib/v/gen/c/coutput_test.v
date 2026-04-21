@@ -199,6 +199,17 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
+	os.chdir(vroot) or {}
+	path := os.join_path(vroot,
+		'vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v')
+	symbol := '__v_array_to_interface_array__Array_interface_array_concat_from_another_module__mod__Value__to__Array_interface_array_concat_from_another_module__mod__Value'
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains(symbol)
+}
+
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
 	for cline in generated_c_lines {
 		if line == cline {
