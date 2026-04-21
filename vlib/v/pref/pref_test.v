@@ -197,6 +197,57 @@ fn test_musl_keeps_explicit_gc_selection() {
 	assert prefs.gc_mode == .boehm_full_opt
 }
 
+fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
+	mut prefs := pref.Preferences{
+		os:                  .windows
+		ccompiler_type:      .msvc
+		gc_mode:             .boehm_full_opt
+		gc_set_by_flag:      gc_set_by_flag
+		compile_defines:     ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_defines_all: ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_values:      map[string]string{}
+		build_options:       ['-prod', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+	}
+	prefs.compile_values['gcboehm'] = 'true'
+	prefs.compile_values['gcboehm_full'] = 'true'
+	prefs.compile_values['gcboehm_opt'] = 'true'
+	prefs.compile_values['custom'] = 'true'
+	return prefs
+}
+
+fn test_windows_msvc_gc_defaults_are_cleared_after_compiler_resolution() {
+	mut prefs := stale_windows_gc_prefs(false)
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .no_gc
+	assert prefs.build_options == ['-prod', '-gc', 'none']
+	assert prefs.compile_defines == ['custom']
+	assert prefs.compile_defines_all == ['custom']
+	assert prefs.compile_values == {
+		'custom': 'true'
+	}
+}
+
+fn test_windows_msvc_gc_defaults_keep_explicit_gc_selection() {
+	mut prefs := stale_windows_gc_prefs(true)
+	prefs.build_options = ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options == ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full',
+		'-d gcboehm_opt']
+	assert prefs.compile_defines == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_defines_all == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_values == {
+		'custom':       'true'
+		'gcboehm':      'true'
+		'gcboehm_full': 'true'
+		'gcboehm_opt':  'true'
+	}
+}
+
 fn test_m32_sets_i386_arch_when_not_explicitly_set() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-m32', target], false)

@@ -15,6 +15,9 @@ pub fn new_preferences() &Preferences {
 	return p
 }
 
+const windows_default_gc_defines = ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt',
+	'gcboehm_leak', 'vgc']
+
 fn (p &Preferences) default_thread_stack_size() int {
 	return match p.arch {
 		.arm32, .rv32, .i386, .ppc, .wasm32 { 2 * 1024 * 1024 }
@@ -244,6 +247,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.thread_stack_size = p.default_thread_stack_size()
 	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
+	p.normalize_gc_defaults_for_resolved_ccompiler()
 	p.disable_tcc_shared_backtraces()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
@@ -298,6 +302,40 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		}
 		p.no_parallel = true
 	}
+}
+
+// normalize_gc_defaults_for_resolved_ccompiler clears stale default GC state
+// after the effective C compiler has been resolved.
+pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
+	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
+		return
+	}
+	p.gc_mode = .no_gc
+	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
+	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
+	for define in windows_default_gc_defines {
+		p.compile_values.delete(define)
+	}
+	mut build_options := []string{cap: p.build_options.len + 2}
+	mut i := 0
+	for i < p.build_options.len {
+		option := p.build_options[i]
+		if option == '-gc' {
+			i += 2
+			continue
+		}
+		if option.starts_with('-d ') {
+			define := option[3..].all_before('=')
+			if define in windows_default_gc_defines {
+				i++
+				continue
+			}
+		}
+		build_options << option
+		i++
+	}
+	build_options << ['-gc', 'none']
+	p.build_options = build_options
 }
 
 fn (p &Preferences) default_output_name(rpath string) string {
