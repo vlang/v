@@ -1319,14 +1319,22 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 			return sym.language != .v || sym.name.starts_with('C.')
 		}
 		.array {
-			return t.known_type_idx((sym.info as Array).elem_type)
+			if sym.info is Array {
+				return t.known_type_idx(sym.info.elem_type)
+			}
+			return false
 		}
 		.array_fixed {
-			return t.known_type_idx((sym.info as ArrayFixed).elem_type)
+			if sym.info is ArrayFixed {
+				return t.known_type_idx(sym.info.elem_type)
+			}
+			return false
 		}
 		.map {
-			info := sym.info as Map
-			return t.known_type_idx(info.key_type) && t.known_type_idx(info.value_type)
+			if sym.info is Map {
+				return t.known_type_idx(sym.info.key_type) && t.known_type_idx(sym.info.value_type)
+			}
+			return false
 		}
 		else {}
 	}
