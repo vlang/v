@@ -974,7 +974,7 @@ pub fn real_path(fpath string) string {
 				return fpath.clone()
 			}
 			unsafe { res.free() }
-			res = unsafe { string_from_wide(pu16_fullpath) }
+			res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
 		}
 	} $else {
 		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
