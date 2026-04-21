@@ -728,11 +728,15 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			idx := x.typ.idx()
-			sname := if idx > 0 && idx < global_table.type_symbols.len {
-				global_table.type_symbols[idx].name
+			sname := if x.typ_expr !is EmptyExpr && x.typ == 0 {
+				x.typ_expr.str()
 			} else {
-				'unknown'
+				idx := x.typ.idx()
+				if idx > 0 && idx < global_table.type_symbols.len {
+					global_table.type_symbols[idx].name
+				} else {
+					'unknown'
+				}
 			}
 			return '${sname}{....}'
 		}

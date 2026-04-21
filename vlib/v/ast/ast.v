@@ -538,8 +538,9 @@ pub mut:
 	pre_comments         []Comment
 	typ_str              string // 'Foo'
 	typ                  Type   // the type of this struct
-	generic_typ          Type   // original generic struct type; reused for later concrete instantiations
-	update_expr          Expr   // `a` in `...a`
+	typ_expr             Expr = EmptyExpr{} // `typeof(x).idx` in `typeof(x).idx{}`
+	generic_typ          Type // original generic struct type; reused for later concrete instantiations
+	update_expr          Expr // `a` in `...a`
 	update_expr_type     Type
 	update_expr_pos      token.Pos
 	update_expr_comments []Comment

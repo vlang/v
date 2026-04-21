@@ -505,6 +505,31 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
+fn (mut c Checker) struct_init_selector_type_expr(expr ast.SelectorExpr) ast.Type {
+	if expr.expr is ast.TypeOf {
+		return c.type_resolver.typeof_field_type(c.type_resolver.typeof_type(expr.expr.expr,
+			expr.name_type), expr.field_name)
+	}
+	return ast.void_type
+}
+
+fn (mut c Checker) struct_init_type_expr(expr ast.Expr) ast.Type {
+	return match expr {
+		ast.TypeNode {
+			expr.typ
+		}
+		ast.ParExpr {
+			c.struct_init_type_expr(expr.expr)
+		}
+		ast.SelectorExpr {
+			c.struct_init_selector_type_expr(expr)
+		}
+		else {
+			ast.void_type
+		}
+	}
+}
+
 fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool, mut inited_fields []string) ast.Type {
 	util.timing_start(@METHOD)
 	old_expected_type := c.expected_type
@@ -517,6 +542,15 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& c.expected_type != ast.void_type && c.expected_type.has_flag(.generic)
 		&& short_syntax_expected_type_sym.kind == .any
 		&& !short_syntax_expected_type_sym.is_builtin()
+	if node.typ == ast.void_type && !node.is_short_syntax && node.typ_expr !is ast.EmptyExpr {
+		c.expr(mut node.typ_expr)
+		node.typ = c.struct_init_type_expr(node.typ_expr)
+		if node.typ == ast.void_type {
+			c.error('cannot use `${node.typ_expr}` as a struct init type', node.typ_expr.pos())
+			return ast.void_type
+		}
+		node.unresolved = node.typ.has_flag(.generic)
+	}
 	source_typ := if node.is_short_syntax && c.expected_type != ast.void_type
 		&& !short_syntax_infers_anon_from_generic_param {
 		c.expected_type

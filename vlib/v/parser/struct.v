@@ -600,6 +600,33 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	if is_option {
 		typ = typ.set_flag(.option)
 	}
+	return p.struct_init_from_parts(first_pos, typ_str, typ, ast.empty_expr,
+		struct_init_generic_types, kind)
+}
+
+fn (mut p Parser) struct_init_with_type_expr(type_expr ast.Expr, kind ast.StructInitKind) ast.StructInit {
+	p.init_generic_types = []ast.Type{}
+	mut typ := ast.void_type
+	mut typ_expr := type_expr
+	match type_expr {
+		ast.TypeNode {
+			typ = type_expr.typ
+			typ_expr = ast.empty_expr
+		}
+		ast.ParExpr {
+			if type_expr.expr is ast.TypeNode {
+				typ = type_expr.expr.typ
+				typ_expr = ast.empty_expr
+			}
+		}
+		else {}
+	}
+
+	return p.struct_init_from_parts(type_expr.pos(), type_expr.str(), typ, typ_expr, []ast.Type{},
+		kind)
+}
+
+fn (mut p Parser) struct_init_from_parts(first_pos token.Pos, typ_str string, typ ast.Type, typ_expr ast.Expr, struct_init_generic_types []ast.Type, kind ast.StructInitKind) ast.StructInit {
 	p.expr_mod = ''
 	if kind != .short_syntax {
 		p.check(.lcbr)
@@ -712,6 +739,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		unresolved:           typ.has_flag(.generic)
 		typ_str:              typ_str
 		typ:                  typ
+		typ_expr:             typ_expr
 		init_fields:          init_fields
 		update_expr:          update_expr
 		update_expr_pos:      update_expr_pos
