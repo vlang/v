@@ -808,6 +808,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .windows {
 		ccoptions.post_args << v.get_subsystem_flag()
 	}
+	ccoptions.env_cflags = os.getenv('CFLAGS').replace('\n', ' ')
+	ccoptions.env_ldflags = os.getenv('LDFLAGS').replace('\n', ' ')
+	// Set the cache salt before resolving cached thirdparty object paths,
+	// so object building and final compilation agree on the same cache entry.
+	v.pref.cache_manager.set_temporary_options(v.thirdparty_object_args(ccoptions, [
+		ccoptions.guessed_compiler,
+	], false))
 	cflags := v.get_os_cflags()
 
 	if v.pref.build_mode != .build_module {
@@ -839,8 +846,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.linker_flags << '-lelf'
 		}
 	}
-	ccoptions.env_cflags = os.getenv('CFLAGS').replace('\n', ' ')
-	ccoptions.env_ldflags = os.getenv('LDFLAGS').replace('\n', ' ')
 	if v.pref.os == .macos {
 		if v.pref.use_cache {
 			ccoptions.source_args << '-x none'
@@ -873,10 +878,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')
 	}
 	v.ccoptions = ccoptions
-	// setup the cache too, so that different compilers/options do not interfere:
-	v.pref.cache_manager.set_temporary_options(v.thirdparty_object_args(v.ccoptions, [
-		ccoptions.guessed_compiler,
-	], false))
 }
 
 fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
@@ -937,6 +938,53 @@ fn (v &Builder) only_linker_args(ccoptions CcompilerOptions) []string {
 	return all
 }
 
+struct ThirdpartyCrossCompileConfig {
+	target_args           []string
+	trailing_include_args []string
+	sysroot               string
+}
+
+fn (v &Builder) thirdparty_cross_compile_config() ThirdpartyCrossCompileConfig {
+	if v.pref.os == .linux && current_os != 'linux' {
+		sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
+		return ThirdpartyCrossCompileConfig{
+			target_args:           ['-target x86_64-linux-gnu']
+			trailing_include_args: [
+				'-I',
+				os.quoted_path('${sysroot}/include'),
+			]
+			sysroot:               sysroot
+		}
+	}
+	if v.pref.os == .freebsd && current_os != 'freebsd' {
+		sysroot := os.join_path(os.vmodules_dir(), 'freebsdroot')
+		return ThirdpartyCrossCompileConfig{
+			target_args:           ['-target x86_64-unknown-freebsd14.0']
+			trailing_include_args: [
+				'-I',
+				os.quoted_path('${sysroot}/include'),
+				'-I',
+				os.quoted_path('${sysroot}/usr/include'),
+			]
+			sysroot:               sysroot
+		}
+	}
+	return ThirdpartyCrossCompileConfig{}
+}
+
+fn (mut v Builder) ensure_thirdparty_cross_compile_sysroot(cfg ThirdpartyCrossCompileConfig) {
+	if cfg.sysroot == '' {
+		return
+	}
+	if v.pref.os == .linux {
+		v.ensure_linuxroot_exists(cfg.sysroot)
+		return
+	}
+	if v.pref.os == .freebsd {
+		v.ensure_freebsdroot_exists(cfg.sysroot)
+	}
+}
+
 fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
 	mut all := []string{}
 
@@ -949,17 +997,10 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 		all << '-D_DEFAULT_SOURCE'
 	}
 
-	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
-	mut cross_compiling_from_macos_to_linux := false
-	if v.pref.os == .linux && v.pref.arch == .amd64 {
-		$if macos {
-			cross_compiling_from_macos_to_linux = true
-		}
-	}
-
-	if cross_compiling_from_macos_to_linux {
-		v.ensure_linuxroot_exists(sysroot)
-		all << '-target x86_64-linux-gnu'
+	cross_cfg := v.thirdparty_cross_compile_config()
+	if cross_cfg.sysroot != '' {
+		v.ensure_thirdparty_cross_compile_sysroot(cross_cfg)
+		all << cross_cfg.target_args
 	}
 
 	all << ccoptions.env_cflags
@@ -969,12 +1010,11 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 	// compilers are inconsistent about how they handle:
 	// all << ccoptions.env_ldflags
 	// all << ccoptions.ldflags
-	if cross_compiling_from_macos_to_linux {
+	if cross_cfg.sysroot != '' {
 		// add the system include/ folder after everything else,
 		// so that local folders like thirdparty/mbedtls have a
 		// chance to supply their own headers
-		all << '-I'
-		all << os.quoted_path('${sysroot}/include')
+		all << cross_cfg.trailing_include_args
 	}
 	return all
 }
