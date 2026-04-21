@@ -107,3 +107,23 @@ fn test_fallback_tool_executable_path_keeps_current_single_file_tool_in_readonly
 
 	assert fallback == tool_exe
 }
+
+fn test_vlines_escape_path_does_not_restore_old_tcc_prefix_workaround() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'util_test_vlines_escape_path_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'probe.v')
+	os.write_file(source_path, 'fn main() {}') or { panic(err) }
+
+	expected := cescaped_path(os.real_path(source_path))
+	assert vlines_escape_path(source_path, 'gcc') == expected
+
+	escaped_tcc_path := vlines_escape_path(source_path, 'tcc')
+	assert escaped_tcc_path == expected
+	assert !escaped_tcc_path.starts_with('../../../../../..')
+	$if windows {
+		assert escaped_tcc_path.starts_with(os.windows_volume(source_path))
+	}
+}
