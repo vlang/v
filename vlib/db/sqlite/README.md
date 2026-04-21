@@ -21,6 +21,10 @@ If you need to install SQLite manually, use the SQLite
 Do not use the autoconf/source package here, and do not rename
 `sqlite3.c` to `sqlite3.cpp`.
 
+On **macOS**, V can also fall back to the system `libsqlite3`
+when `pkg-config` is not available, so an extra install is often
+not needed.
+
 On **Linux**, you can also install the system development package
 instead:
 
