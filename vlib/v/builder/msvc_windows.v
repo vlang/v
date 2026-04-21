@@ -427,7 +427,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	}
 	msvc := v.cached_msvc
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
-	path_without_o_postfix := path[..path.len - 2] // remove .o
+	path_without_o_postfix := path.all_before_last('.')
 	obj_path := v.msvc_thirdparty_obj_path(mod, path, '')
 	if os.exists(obj_path) {
 		// println('${obj_path} already built.')
@@ -734,7 +734,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			// Note: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
-		} else if flag.value.ends_with('.o') {
+		} else if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			other_flags << '"${v.msvc_thirdparty_obj_path(flag.mod, flag.value, flag.cached)}"'
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
