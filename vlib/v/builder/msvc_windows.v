@@ -389,20 +389,29 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	a = filtered_args.clone()
 	v.dump_c_options(a)
-	args := '\xEF\xBB\xBF' + a.join(' ') // write a BOM to indicate the utf8 encoding of the file
-	// write args to a file so that we dont smash createprocess
-	os.write_file(out_name_cmd_line, args) or {
-		verror('Unable to write response file to "${out_name_cmd_line}"')
+	raw_args := a.join(' ')
+	mut args := raw_args
+	mut response_file := ''
+	mut cmd := '"${r.full_cl_exe_path}" ${raw_args.replace('\n', ' ')}'
+	if v.msvc_should_use_rsp(a) {
+		args = '\xEF\xBB\xBF' + raw_args // write a BOM to indicate the utf8 encoding of the file
+		// write args to a file so that we dont smash createprocess
+		os.write_file(out_name_cmd_line, args) or {
+			verror('Unable to write response file to "${out_name_cmd_line}"')
+		}
+		response_file = out_name_cmd_line
+		cmd = '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	}
 	if !v.ccoptions.debug_mode {
-		v.pref.cleanup_files << out_name_cmd_line
+		if response_file != '' {
+			v.pref.cleanup_files << out_name_cmd_line
+		}
 		v.pref.cleanup_files << app_dir_out_name_c + '.obj'
 		v.pref.cleanup_files << app_dir_out_name + '.ilk'
 	}
-	cmd := '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	v.show_cc(cmd, out_name_cmd_line, args)
+	v.show_cc(cmd, response_file, args)
 	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
 		verror('cannot build with msvc on ${os.user_os()}')
 	}

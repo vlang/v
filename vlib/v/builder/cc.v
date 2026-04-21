@@ -391,7 +391,7 @@ You can also use #help on Discord: https://discord.gg/vlang .${more_suggestions}
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('> C compiler cmd: ${cmd}')
-		if v.pref.show_cc && !v.pref.no_rsp {
+		if v.pref.show_cc && !v.pref.no_rsp && response_file != '' {
 			println('> C compiler response file "${response_file}":')
 			println(response_file_content)
 		}
@@ -1128,6 +1128,20 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 	}
 	for arg in rsp_args {
 		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
+			return false
+		}
+	}
+	return true
+}
+
+fn (v &Builder) msvc_should_use_rsp(args []string) bool {
+	if !v.should_use_rsp(args) {
+		return false
+	}
+	// Keep Unicode paths on the direct CreateProcessW command line. MSVC response
+	// files still mis-handle non-ASCII file names on some Windows setups.
+	for arg in args {
+		if !arg.is_ascii() {
 			return false
 		}
 	}

@@ -222,6 +222,23 @@ fn test_linux_cross_target_for_arm64_errors() {
 	}
 }
 
+fn test_msvc_should_use_rsp_for_ascii_args() {
+	builder := new_builder_for_args(['-cc', 'msvc', hello_world_example()])
+	assert builder.msvc_should_use_rsp(['/OUT:"C:\\Users\\russo\\Desktop\\main.exe"'])
+}
+
+fn test_msvc_should_not_use_rsp_for_non_ascii_args() {
+	builder := new_builder_for_args(['-cc', 'msvc', hello_world_example()])
+	assert !builder.msvc_should_use_rsp([
+		'/OUT:"C:\\Users\\russo\\OneDrive\\Рабочий стол\\main.exe"',
+	])
+}
+
+fn test_msvc_should_not_use_rsp_when_no_rsp_is_requested() {
+	builder := new_builder_for_args(['-cc', 'msvc', '-no-rsp', hello_world_example()])
+	assert !builder.msvc_should_use_rsp(['/OUT:"C:\\Users\\russo\\Desktop\\main.exe"'])
+}
+
 fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 	linker_args := builder_linker_args([
 		'-os',
