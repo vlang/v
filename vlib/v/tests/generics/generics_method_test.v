@@ -68,3 +68,26 @@ fn test_generic_method_with_struct_type() {
 	a.name = 'a'
 	assert a.name == 'a'
 }
+
+struct MethodArrayPtrTest {
+	a string
+}
+
+struct MethodArrayPtrDecoder {}
+
+fn (mut d MethodArrayPtrDecoder) decode_array[T](mut val []T) {
+	val << T{}
+}
+
+fn (mut d MethodArrayPtrDecoder) decode_value[T](mut val T) {
+	$if T is $array {
+		d.decode_array(mut val)
+	}
+}
+
+fn test_generic_method_array_of_ptr_generic_inference() {
+	mut d := MethodArrayPtrDecoder{}
+	mut a := []&MethodArrayPtrTest{}
+	d.decode_value(mut a)
+	assert a.len == 1
+}
