@@ -175,6 +175,11 @@ fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast
 	}
 }
 
+fn (w &Walker) has_complete_generic_instantiation(concrete_types []ast.Type, generic_names []string) bool {
+	return generic_names.len > 0 && concrete_types.len == generic_names.len
+		&& !concrete_types.any(it.has_flag(.generic))
+}
+
 @[inline]
 pub fn (mut w Walker) mark_builtin_array_method_as_used(method_name string) {
 	w.mark_builtin_type_method_as_used('${ast.array_type_idx}.${method_name}',
@@ -1539,7 +1544,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	if mut stmt := w.all_fns[resolved_fn_name] {
 		if !stmt.should_be_skipped && stmt.name == node.name {
-			keep_all_generic_types := stmt.generic_names.len > 0 && (call_concrete_types.len == 0
+			stmt_generic_names := w.fn_generic_names(stmt)
+			has_complete_call_concrete_types := w.has_complete_generic_instantiation(call_concrete_types,
+				stmt_generic_names)
+			keep_all_generic_types := stmt_generic_names.len > 0 && (call_concrete_types.len == 0
 				|| w.inside_comptime > 0 || (w.cur_fn_concrete_types.len > 0
 				&& node.raw_concrete_types.len == 0))
 			if keep_all_generic_types {
@@ -1549,7 +1557,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				|| (node.receiver_type.has_flag(.generic) && stmt.receiver.typ.has_flag(.generic)
 				&& call_concrete_types.len > 0)
 			if can_walk_method {
-				if keep_all_generic_types {
+				if keep_all_generic_types && !has_complete_call_concrete_types {
 					for concrete_type_list in w.table.fn_generic_types[fn_name] {
 						w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
 					}
@@ -2346,12 +2354,9 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 	// Also walk already-walked methods that got new concrete types from Phase 2.
 	// Phase 2 may add new concrete type lists (from the receiver union) that
 	// were not walked during the initial traversal.
-	for nkey, used_concrete_types in w.used_fn_generic_types {
-		if w.keep_all_fn_generic_types[nkey] {
-			continue
-		}
+	for nkey, _ in w.used_fn_generic_types {
 		for concrete_type_list in w.table.fn_generic_types[nkey] {
-			if concrete_type_list !in used_concrete_types {
+			if concrete_type_list !in w.walked_fn_generic_types[nkey] {
 				unwalked_methods[nkey] = true
 			}
 		}
