@@ -217,6 +217,42 @@ fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 	assert linker_args.contains('-rdynamic')
 }
 
+fn test_thirdparty_cross_compile_config_for_linux_matches_target() {
+	builder := new_builder_for_args(['-os', 'linux', hello_world_example()])
+	cfg := builder.thirdparty_cross_compile_config()
+	if current_os == 'linux' {
+		assert cfg.sysroot == ''
+		assert cfg.target_args == []string{}
+		assert cfg.trailing_include_args == []string{}
+		return
+	}
+	assert cfg.target_args == ['-target x86_64-linux-gnu']
+	assert cfg.sysroot.ends_with('/linuxroot')
+	assert cfg.trailing_include_args == [
+		'-I',
+		os.quoted_path('${cfg.sysroot}/include'),
+	]
+}
+
+fn test_thirdparty_cross_compile_config_for_freebsd_matches_target() {
+	builder := new_builder_for_args(['-os', 'freebsd', hello_world_example()])
+	cfg := builder.thirdparty_cross_compile_config()
+	if current_os == 'freebsd' {
+		assert cfg.sysroot == ''
+		assert cfg.target_args == []string{}
+		assert cfg.trailing_include_args == []string{}
+		return
+	}
+	assert cfg.target_args == ['-target x86_64-unknown-freebsd14.0']
+	assert cfg.sysroot.ends_with('/freebsdroot')
+	assert cfg.trailing_include_args == [
+		'-I',
+		os.quoted_path('${cfg.sysroot}/include'),
+		'-I',
+		os.quoted_path('${cfg.sysroot}/usr/include'),
+	]
+}
+
 fn test_should_use_rsp_for_linux_by_default() {
 	builder := new_test_builder([hello_world_example()])
 	assert builder.should_use_rsp(['-o', builder.out_name_c])
