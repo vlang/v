@@ -4513,7 +4513,8 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	c.stmt_level++
 	for i, mut stmt in stmts {
 		c.is_last_stmt = i == stmts.len - 1
-		if c.scope_returns && unreachable.line_nr == -1 {
+		if c.scope_returns && unreachable.line_nr == -1 && stmt !is ast.SemicolonStmt
+			&& stmt !is ast.EmptyStmt {
 			unreachable = stmt.pos
 		}
 		prev_expected_or_type := c.expected_or_type
