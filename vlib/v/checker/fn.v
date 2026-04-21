@@ -1491,6 +1491,36 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	*/
 }
 
+fn (mut c Checker) try_resolve_c_type_cast_call(mut node ast.CallExpr) ?ast.Type {
+	if node.language != .c || !node.name.starts_with('C.') || node.args.len != 1 {
+		return none
+	}
+	c_name := node.name.all_after('C.')
+	if c_name.len == 0 || !c_name[0].is_capital() {
+		return none
+	}
+	to_type := c.table.find_type(node.name)
+	if to_type == 0 {
+		return none
+	}
+	to_sym := c.table.sym(to_type)
+	if to_sym.kind == .placeholder {
+		return none
+	}
+	mut cast_expr := ast.CastExpr{
+		typ:     to_type
+		typname: to_sym.name
+		expr:    node.args[0].expr
+		pos:     node.pos
+	}
+	typ := c.cast_expr(mut cast_expr)
+	node.is_c_type_cast = true
+	node.args[0].expr = cast_expr.expr
+	node.args[0].typ = cast_expr.expr_type
+	node.return_type = typ
+	return typ
+}
+
 fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 	if typ == 0 {
 		return false
@@ -2020,6 +2050,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 
 	if !found {
+		if typ := c.try_resolve_c_type_cast_call(mut node) {
+			return typ
+		}
 		if c.resolve_self_method_call(mut node) {
 			return c.method_call(mut node, mut continue_check)
 		}

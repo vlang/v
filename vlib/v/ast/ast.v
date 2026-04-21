@@ -913,6 +913,7 @@ pub mut:
 	is_static_method       bool // it is a static method call
 	is_variadic            bool
 	is_c_variadic          bool // it is a C variadic
+	is_c_type_cast         bool // unresolved `C.Type(x)` reclassified by checker after imports are parsed
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool

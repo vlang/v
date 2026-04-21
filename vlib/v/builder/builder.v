@@ -455,9 +455,21 @@ fn (mut b Builder) mark_imports_used_by_c_function_calls() {
 		if used_c_calls.len == 0 {
 			continue
 		}
-		for c_fn_name, _ in used_c_calls {
-			c_fn := b.table.find_fn(c_fn_name) or { continue }
-			alias := import_alias_for_mod(file, c_fn.mod) or { continue }
+		for c_name, _ in used_c_calls {
+			if c_fn := b.table.find_fn(c_name) {
+				alias := import_alias_for_mod(file, c_fn.mod) or { continue }
+				register_used_import(mut file, alias)
+				continue
+			}
+			c_typ := b.table.find_type(c_name)
+			if c_typ == 0 {
+				continue
+			}
+			c_sym := b.table.sym(c_typ)
+			if c_sym.kind == .placeholder {
+				continue
+			}
+			alias := import_alias_for_mod(file, c_sym.mod) or { continue }
 			register_used_import(mut file, alias)
 		}
 	}
