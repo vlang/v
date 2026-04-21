@@ -7625,8 +7625,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	// FIXME
 	// there are currently other issues to investigate if right_type
 	// is unwrapped directly as initialization, so do it here
-	if node.op == .minus && !right_sym.is_number() {
-		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
+	if node.op in [.plus, .minus] && !right_sym.is_number() {
+		c.type_error_for_operator(node.op.str(), 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
 		raw_right_sym := c.table.final_sym(right_type)

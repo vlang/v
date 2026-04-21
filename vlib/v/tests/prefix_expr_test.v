@@ -1,3 +1,5 @@
+import strconv
+
 fn value(n int) int {
 	return n
 }
@@ -26,4 +28,19 @@ fn test_negative() {
 	arr := [1, 2, 3]
 	assert -arr[0] == -1
 	assert -arr[1] == -2
+}
+
+fn test_positive() {
+	two := 2
+	assert +two == 2
+	assert +(two - 1) == 1
+}
+
+fn test_prefix_expr_in_assert_comparison() ! {
+	i := 2
+	assert strconv.atoi('1')! == 1
+	assert strconv.atoi('-2')! == -2
+	assert strconv.atoi('+2')! == i - 1 + 1
+	assert strconv.atoi('+2')! == -(-2)
+	assert strconv.atoi('+2')! == +2
 }

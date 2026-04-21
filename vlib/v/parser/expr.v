@@ -177,6 +177,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.power {
 			node = p.power_prefix_expr()
 		}
+		.plus {
+			// +1, +a
+			node = p.prefix_expr()
+		}
 		.minus {
 			// -1, -a
 			if p.peek_tok.kind == .number && !(p.peek_token(2).kind == .power
@@ -1057,11 +1061,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		right = p.expr(if op == .power { precedence - 1 } else { precedence })
 	}
 	p.inside_assign_rhs = old_assign_rhs
-	if op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
+	// Keep rejecting doubled operator forms like `5 - - -5`, but allow valid
+	// infix rhs expressions such as `a == -(-2)` and `a == +2`.
+	if op in [.plus, .minus, .mul] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
 		right_expr = right_expr.remove_par()
-		if right.op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq]
-			&& right_expr.is_pure_literal() {
+		if right.op == op && right_expr.is_pure_literal() {
 			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
 		}
 	}
