@@ -292,6 +292,36 @@ fn test_c_output_suggests_missing_typedef_for_c_struct_requires_matching_redecla
 	}) == ''
 }
 
+fn test_extract_quoted_identifier_supports_double_quotes() {
+	assert extract_quoted_identifier('error: \';\' expected (got "glfw__GLFWwindow")') == 'glfw__GLFWwindow'
+}
+
+fn test_c_output_suggests_missing_header_for_typedef_c_struct_with_issue_25384_tcc_output() {
+	c_output := 'C:/Users/si_z_/AppData/Local/Temp/v_0/TestV.tmp.c:904: error: \';\' expected (got "glfw__GLFWwindow")'
+	assert c_output_suggests_missing_header_for_typedef_c_struct(c_output, {
+		'GLFWwindow': true
+	}, {
+		'glfw__GLFWwindow': 'GLFWwindow'
+	}) == 'GLFWwindow'
+}
+
+fn test_c_output_suggests_missing_header_for_typedef_c_struct_with_issue_25384_gcc_output() {
+	c_output := [
+		"/tmp/v_502/issue25384_windows.exe.tmp.c:1198:9: error: unknown type name 'GLFWwindow'",
+		' 1198 | typedef GLFWwindow glfw__GLFWwindow;',
+	].join('\n')
+	assert c_output_suggests_missing_header_for_typedef_c_struct(c_output, {
+		'GLFWwindow': true
+	}, {
+		'glfw__GLFWwindow': 'GLFWwindow'
+	}) == 'GLFWwindow'
+}
+
+fn test_c_output_suggests_missing_header_for_typedef_c_struct_requires_known_type() {
+	c_output := 'C:/Users/si_z_/AppData/Local/Temp/v_0/TestV.tmp.c:904: error: \';\' expected (got "glfw__GLFWwindow")'
+	assert c_output_suggests_missing_header_for_typedef_c_struct(c_output, {}, {}) == ''
+}
+
 fn test_c_error_missing_library_name_detects_tcc_output() {
 	tcc_output := "tcc: error: library 'pq' not found"
 	lib_name := c_error_missing_library_name(tcc_output)

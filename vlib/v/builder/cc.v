@@ -41,7 +41,7 @@ fn extract_c_struct_name(line string) string {
 }
 
 fn extract_quoted_identifier(line string) string {
-	for quote in [u8(`'`), u8(96)] {
+	for quote in [u8(`"`), u8(`'`), u8(96)] {
 		start := line.index_u8(quote)
 		if start == -1 {
 			continue
@@ -51,6 +51,28 @@ fn extract_quoted_identifier(line string) string {
 			continue
 		}
 		return line[start + 1..start + 1 + end]
+	}
+	return ''
+}
+
+fn c_output_suggests_missing_header_for_typedef_c_struct(c_output string, known_typedef_c_structs map[string]bool, known_typedef_c_struct_aliases map[string]string) string {
+	if known_typedef_c_structs.len == 0 && known_typedef_c_struct_aliases.len == 0 {
+		return ''
+	}
+	for line in c_output.split_into_lines() {
+		lower_line := line.to_lower()
+		name := extract_quoted_identifier(line)
+		if name != '' {
+			if lower_line.contains('unknown type name') && name in known_typedef_c_structs {
+				return name
+			}
+			if name in known_typedef_c_struct_aliases
+				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
+				|| lower_line.contains('undeclared identifier')
+				|| lower_line.contains('does not name a type')) {
+				return known_typedef_c_struct_aliases[name]
+			}
+		}
 	}
 	return ''
 }
@@ -114,6 +136,42 @@ fn (v &Builder) known_non_typedef_c_structs() map[string]bool {
 		names[sym.cname[3..]] = true
 	}
 	return names
+}
+
+fn (v &Builder) known_typedef_c_structs() map[string]bool {
+	mut names := map[string]bool{}
+	for sym in v.table.type_symbols {
+		if sym.language != .c || sym.kind != .struct || !sym.cname.starts_with('C__') {
+			continue
+		}
+		info := sym.info as ast.Struct
+		if !info.is_typedef {
+			continue
+		}
+		names[sym.cname[3..]] = true
+	}
+	return names
+}
+
+fn (v &Builder) known_typedef_c_struct_aliases() map[string]string {
+	mut aliases := map[string]string{}
+	for sym in v.table.type_symbols {
+		if sym.kind != .alias {
+			continue
+		}
+		alias_info := sym.info as ast.Alias
+		parent_sym := v.table.final_sym(alias_info.parent_type)
+		if parent_sym.language != .c || parent_sym.kind != .struct
+			|| !parent_sym.cname.starts_with('C__') {
+			continue
+		}
+		parent_info := parent_sym.info as ast.Struct
+		if !parent_info.is_typedef {
+			continue
+		}
+		aliases[sym.cname] = parent_sym.cname[3..]
+	}
+	return aliases
 }
 
 fn c_error_looks_like_cpp_header(c_output string) bool {
@@ -285,6 +343,11 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 	if res.output.contains('o: unrecognized file type')
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
+	}
+	missing_typedef_header_name := c_output_suggests_missing_header_for_typedef_c_struct(res.output,
+		v.known_typedef_c_structs(), v.known_typedef_c_struct_aliases())
+	if missing_typedef_header_name != '' {
+		more_suggestions += '\n${highlight_word('Suggestion')}: the C typedef `${missing_typedef_header_name}` backing `@[typedef] struct C.${missing_typedef_header_name} {}` was not found by the C compiler. Make sure the header that defines it is included on this platform and that its `#flag -I` path is correct. If the C API actually declares `struct ${missing_typedef_header_name}` without a typedef, remove `@[typedef]` from the V redeclaration.'
 	}
 	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output,
 		v.known_non_typedef_c_structs())
