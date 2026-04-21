@@ -47,7 +47,7 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver.typ, node.name)
 	}
 	return node.name
 }
@@ -60,16 +60,24 @@ pub fn (node &StructField) sfkey() string {
 
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
+}
+
+fn fkey_from_receiver_type(receiver_type Type, name string) string {
+	mut builder := strings.new_builder(name.len + 24)
+	builder.write_string(int(receiver_type).str())
+	builder.write_u8(`.`)
+	builder.write_string(name)
+	return builder.str()
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
