@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assign_int_to_f32_err.vv:5:16: error: cannot assign to `my_float_32`: expected `f32`, not `int`
+    3 |     _ = my_float_32
+    4 |     my_int := int(2147483583)
+    5 |     my_float_32 = my_int
+      |                   ~~~~~~
+    6 | }
