@@ -2315,6 +2315,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		node.args[i].expr = call_arg.expr
 		node.args[i].typ = arg_typ
+		call_arg.typ = arg_typ
 		if c.comptime.comptime_for_field_var != '' {
 			if mut call_arg.expr is ast.Ident && call_arg.expr.obj is ast.Var {
 				node.args[i].typ = call_arg.expr.obj.typ
@@ -2362,7 +2363,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.args[i].typ = param.typ
 			arg_typ = param.typ
 		}
-		arg_typ_sym := c.table.sym(arg_typ)
+		mut arg_typ_sym := c.table.sym(arg_typ)
 		if param.typ.has_flag(.generic) {
 			if arg_typ_sym.kind == .none && !param.typ.has_flag(.option) {
 				c.error('cannot use `none` as generic argument', call_arg.pos)
@@ -2419,6 +2420,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
 		}
+		array_param_typ := if func.generic_names.len > 0 && concrete_types.len > 0 {
+			c.table.convert_generic_param_type(param, func.generic_names, concrete_types) or {
+				param.typ
+			}
+		} else {
+			param.typ
+		}
+		arg_typ = c.lower_fixed_array_call_arg_to_array(mut call_arg, array_param_typ,
+			node.language)
+		node.args[i] = call_arg
+		node.args[i].typ = arg_typ
+		arg_typ_sym = c.table.sym(arg_typ)
 		mut final_param_sym := unsafe { param_typ_sym }
 		mut final_param_typ := param.typ
 		if func.is_variadic && param_typ_sym.info is ast.Array {
@@ -2718,7 +2731,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expected_type = param.typ
 			}
 			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
-			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
+			mut typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
 				&& mut call_arg.expr is ast.CallExpr {
 				call_arg.expr.return_type
 			} else {
@@ -2729,6 +2742,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if unwrap_typ := c.table.convert_generic_param_type(param, func.generic_names,
 					concrete_types)
 				{
+					call_arg.typ = typ
+					typ = c.lower_fixed_array_call_arg_to_array(mut call_arg, unwrap_typ,
+						node.language)
+					node.args[i].expr = call_arg.expr
+					node.args[i].typ = typ
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
 					if unwrap_sym.kind == .interface {
@@ -2962,6 +2980,39 @@ fn (mut c Checker) is_optional_array_arg_compatible(got ast.Type, expected ast.T
 		return false
 	}
 	return c.check_types(got_value_type.clear_flag(.option), expected_value_type)
+}
+
+fn (mut c Checker) fixed_array_arg_as_array_type(got ast.Type, expected ast.Type) ast.Type {
+	if expected.has_flag(.variadic) {
+		return ast.no_type
+	}
+	got_sym := c.table.final_sym(c.unwrap_generic(got).clear_option_and_result())
+	expected_sym :=
+		c.table.final_sym(c.unwrap_generic(expected).clear_option_and_result().set_nr_muls(0))
+	if got_sym.kind != .array_fixed || expected_sym.kind != .array {
+		return ast.no_type
+	}
+	return ast.new_type(c.table.find_or_register_array(got_sym.array_fixed_info().elem_type))
+}
+
+fn (mut c Checker) lower_fixed_array_call_arg_to_array(mut arg ast.CallArg, expected ast.Type, language ast.Language) ast.Type {
+	array_typ := c.fixed_array_arg_as_array_type(arg.typ, expected)
+	if array_typ == ast.no_type {
+		return arg.typ
+	}
+	expected_array_typ := c.unwrap_generic(expected).clear_option_and_result().set_nr_muls(0)
+	c.check_expected_call_arg(array_typ, expected_array_typ, language, arg) or { return arg.typ }
+	original_expr := arg.expr
+	arg.expr = ast.IndexExpr{
+		pos:       original_expr.pos()
+		left:      original_expr
+		left_type: arg.typ
+		index:     ast.RangeExpr{
+			pos: original_expr.pos()
+		}
+	}
+	arg.typ = c.expr(mut arg.expr)
+	return arg.typ
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
@@ -3576,6 +3627,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 		mut got_arg_typ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 		node.args[i].typ = got_arg_typ
+		arg.typ = got_arg_typ
 		if no_type_promotion {
 			if got_arg_typ != exp_arg_typ {
 				c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `${method.name}` (`${exp_arg_sym.name}` expected)',
@@ -3694,6 +3746,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 		}
+		got_arg_typ = c.lower_fixed_array_call_arg_to_array(mut arg, exp_arg_typ, node.language)
+		node.args[i] = arg
+		node.args[i].typ = got_arg_typ
 		// Handle expected interface
 		if final_arg_sym.kind == .interface {
 			if c.type_implements_with_mut_receiver(got_arg_typ, final_arg_typ, arg.expr.pos(),
