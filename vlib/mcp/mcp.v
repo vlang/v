@@ -7,6 +7,30 @@ import time
 
 pub const jsonrpc_version = '2.0'
 pub const protocol_version = '2025-11-25'
+pub const parse_error = ResponseError{
+	code:    -32700
+	message: 'Invalid JSON.'
+}
+pub const invalid_request = ResponseError{
+	code:    -32600
+	message: 'Invalid request.'
+}
+pub const method_not_found = ResponseError{
+	code:    -32601
+	message: 'Method not found.'
+}
+pub const invalid_params = ResponseError{
+	code:    -32602
+	message: 'Invalid params.'
+}
+pub const internal_error = ResponseError{
+	code:    -32603
+	message: 'Internal error.'
+}
+pub const server_not_initialized = ResponseError{
+	code:    -32002
+	message: 'Server not initialized.'
+}
 
 const default_content_type = 'application/json'
 const streamable_http_accept = 'application/json, text/event-stream'
@@ -58,6 +82,16 @@ pub fn (e Empty) str() string {
 }
 
 pub const empty = Empty{}
+
+// EmptyObject encodes to an empty JSON object.
+pub struct EmptyObject {}
+
+// str returns the JSON empty object literal.
+pub fn (e EmptyObject) str() string {
+	return '{}'
+}
+
+pub const empty_object = EmptyObject{}
 
 // Implementation identifies an MCP client or server implementation.
 pub struct Implementation {
@@ -754,6 +788,8 @@ fn encode_id[I](id I) string {
 fn encode_value[T](value T) string {
 	return $if T is Empty {
 		value.str()
+	} $else $if T is EmptyObject {
+		value.str()
 	} $else $if T is Null {
 		value.str()
 	} $else $if T is string {
@@ -769,6 +805,11 @@ fn decode_value[T](value string) !T {
 			return Empty{}
 		}
 		return error('mcp: expected an empty payload, got `${value}`')
+	} $else $if T is EmptyObject {
+		if value == '{}' {
+			return EmptyObject{}
+		}
+		return error('mcp: expected an empty object payload, got `${value}`')
 	} $else $if T is Null {
 		if value == null.str() {
 			return null
