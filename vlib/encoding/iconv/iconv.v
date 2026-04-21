@@ -1,6 +1,7 @@
 module iconv
 
 // Module iconv provides functions to convert between vstring(UTF8) and other encodings.
+import encoding.windows1252
 import os
 
 @[inline]
@@ -27,6 +28,9 @@ pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
 			encoding_name = 'UTF-8'
 		}
 	}
+	if is_windows_1252_encoding(encoding_name) {
+		return windows1252.encode(str)
+	}
 	return conv(encoding_name, 'UTF-8', str.str, str.len)
 }
 
@@ -44,9 +48,17 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 			encoding_name = 'UTF-8'
 		}
 	}
+	if is_windows_1252_encoding(encoding_name) {
+		return windows1252.decode(bytes)
+	}
 	mut dst := conv('UTF-8', encoding_name, bytes.data, bytes.len)!
 	dst << 0 // add a tail zero, to build a vstring
 	return unsafe { cstring_to_vstring(dst.data) }
+}
+
+@[inline]
+fn is_windows_1252_encoding(encoding_name string) bool {
+	return encoding_name in ['CP1252', 'MS-ANSI', 'WINDOWS-1252', 'WINDOWS1252']!
 }
 
 // create_utf_string_with_bom will create a utf8/utf16/utf32 string with BOM header

@@ -78,6 +78,16 @@ fn test_encoding_to_vstring() {
 	}
 }
 
+fn test_windows_1252_encoding_support() ! {
+	pound := iconv.encoding_to_vstring([u8(0xa3)], 'WINDOWS-1252')!
+	assert pound == '£'
+	assert pound.runes() == [rune(0x00a3)]
+
+	smart_quotes := iconv.encoding_to_vstring([u8(0x93), 0x56, 0x94], 'CP1252')!
+	assert smart_quotes == '“V”'
+	assert iconv.vstring_to_encoding(smart_quotes, 'WINDOWS-1252')! == [u8(0x93), 0x56, 0x94]
+}
+
 fn test_create_utf_string_with_bom() {
 	// bug ? vfmt create strange format here
 	// vfmt off
