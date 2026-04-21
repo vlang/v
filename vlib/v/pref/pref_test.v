@@ -152,6 +152,18 @@ fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
 	assert prefs.ccompiler == 'x86_64-w64-mingw32-gcc'
 }
 
+fn test_cross_compile_windows_m32_uses_i386_arch_and_compiler() {
+	if pref.get_host_os() == .windows {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .i386
+	assert prefs.ccompiler == 'i686-w64-mingw32-gcc'
+	assert prefs.build_options.contains('-m32')
+}
+
 fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	old_cross_compiler := os.getenv('VCROSS_COMPILER_NAME')
