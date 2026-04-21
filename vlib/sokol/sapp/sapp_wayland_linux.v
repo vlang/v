@@ -956,6 +956,38 @@ $if sokol_wayland ? {
 	]!
 	// === Main Wayland run function ===
 
+	fn wl_set_resizable(resizable bool) {
+		if g_sapp_state.wl.xdg_toplevel == unsafe { nil }
+			|| g_sapp_state.wl.surface == unsafe { nil } {
+			return
+		}
+		if resizable {
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+		} else {
+			width := if g_sapp_state.window_width > 0 {
+				g_sapp_state.window_width
+			} else if g_sapp_state.wl.width > 0 {
+				g_sapp_state.wl.width
+			} else {
+				fallback_default_window_width
+			}
+			height := if g_sapp_state.window_height > 0 {
+				g_sapp_state.window_height
+			} else if g_sapp_state.wl.height > 0 {
+				g_sapp_state.wl.height
+			} else {
+				fallback_default_window_height
+			}
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+		}
+		C.wl_surface_commit(g_sapp_state.wl.surface)
+		if g_sapp_state.wl.display != unsafe { nil } {
+			C.wl_display_flush(g_sapp_state.wl.display)
+		}
+	}
+
 	pub fn wl_run(desc &Desc) {
 		sapp_init_state(desc)
 

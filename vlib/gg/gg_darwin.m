@@ -66,6 +66,20 @@ void gg_macos_resize_window(void *window_ptr, int width, int height) {
 	[window setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
 }
 
+void gg_macos_set_window_resizable(void *window_ptr, bool resizable) {
+	if (window_ptr == nil) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	NSWindowStyleMask style = [window styleMask];
+	if (resizable) {
+		style |= NSWindowStyleMaskResizable;
+	} else {
+		style &= ~NSWindowStyleMaskResizable;
+	}
+	[window setStyleMask:style];
+}
+
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];

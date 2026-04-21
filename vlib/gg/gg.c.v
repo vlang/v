@@ -53,6 +53,7 @@ $if windows {
 
 $if macos {
 	fn C.gg_macos_resize_window(window voidptr, width int, height int)
+	fn C.gg_macos_set_window_resizable(window voidptr, resizable bool)
 }
 
 $if windows {
@@ -65,6 +66,7 @@ $if windows {
 
 	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
 	fn C.GetWindowLongW(hwnd voidptr, index int) i32
+	fn C.SetWindowLongW(hwnd voidptr, index int, new_long i32) i32
 	fn C.AdjustWindowRectEx(rect &C.RECT, style u32, menu int, ex_style u32) int
 	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
 }
@@ -103,8 +105,8 @@ pub struct Config {
 pub:
 	width         int = 800 // desired start width of the window
 	height        int = 600 // desired start height of the window
-	retina        bool    // TODO: implement or deprecate
-	resizable     bool    // TODO: implement or deprecate
+	retina        bool // TODO: implement or deprecate
+	resizable     bool = true // prevent user-initiated resizing when supported by the platform backend
 	user_data     voidptr // a custom pointer to the application data/instance. When it is not set explicitly, it will default to a pointer to the current gg.Context instance.
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
@@ -270,6 +272,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 	ctx.set_scale()
+	if !ctx.config.resizable {
+		gg_apply_window_resizable()
+	}
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -633,6 +638,27 @@ fn (mut ctx Context) set_cached_window_size(width int, height int) {
 	ctx.height = height
 	ctx.window.width = width
 	ctx.window.height = height
+}
+
+fn gg_apply_window_resizable() {
+	$if macos {
+		window := sapp.macos_get_window()
+		if window != unsafe { nil } {
+			C.gg_macos_set_window_resizable(window, false)
+		}
+	} $else $if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut style := u32(C.GetWindowLongW(hwnd, C.GWL_STYLE))
+		style &= ~u32(C.WS_SIZEBOX | C.WS_MAXIMIZEBOX)
+		C.SetWindowLongW(hwnd, C.GWL_STYLE, i32(style))
+		C.SetWindowPos(hwnd, unsafe { nil }, 0, 0, 0, 0,
+			u32(C.SWP_NOMOVE | C.SWP_NOSIZE | C.SWP_NOZORDER | C.SWP_NOACTIVATE | C.SWP_FRAMECHANGED))
+	} $else $if linux {
+		sapp.set_resizable(false)
+	}
 }
 
 fn gg_resize_window(width int, height int) {
