@@ -177,6 +177,34 @@ fn test_msvc_thirdparty_obj_path_keeps_debug_objects_separate() {
 	assert release_obj != debug_obj
 }
 
+fn test_sqlite_thirdparty_validation_error_for_missing_amalgamation() {
+	obj_path := os.join_path(@VEXEROOT, 'thirdparty', 'sqlite', 'sqlite3.o')
+	msg := sqlite_thirdparty_validation_error('db.sqlite', obj_path, '', .unknown)
+	assert msg.contains('sqlite3.c')
+	assert msg.contains('sqlite3.h')
+	assert msg.contains('install_thirdparty_sqlite.vsh')
+}
+
+fn test_sqlite_thirdparty_validation_error_for_sqlite3_cpp() {
+	obj_path := os.join_path(@VEXEROOT, 'thirdparty', 'sqlite', 'sqlite3.o')
+	source_path := obj_path.all_before_last('.o') + '.cpp'
+	msg := sqlite_thirdparty_validation_error('db.sqlite', obj_path, source_path, .cpp)
+	assert msg.contains('Do not rename `sqlite3.c` to `sqlite3.cpp`')
+	assert msg.contains('SQLite amalgamation package')
+}
+
+fn test_sqlite_thirdparty_validation_error_ignores_sqlite3_c() {
+	obj_path := os.join_path(@VEXEROOT, 'thirdparty', 'sqlite', 'sqlite3.o')
+	source_path := obj_path.all_before_last('.o') + '.c'
+	assert sqlite_thirdparty_validation_error('db.sqlite', obj_path, source_path, .c) == ''
+}
+
+fn test_sqlite_thirdparty_validation_error_ignores_other_modules() {
+	obj_path := os.join_path(@VEXEROOT, 'thirdparty', 'sqlite', 'sqlite3.o')
+	source_path := obj_path.all_before_last('.o') + '.cpp'
+	assert sqlite_thirdparty_validation_error('json.cjson', obj_path, source_path, .cpp) == ''
+}
+
 fn test_live_termux_linker_args_include_rdynamic_without_debug() {
 	linker_args := builder_linker_args([
 		'-os',

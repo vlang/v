@@ -1861,6 +1861,22 @@ fn c_project_source_from_object_path(obj_path string) ?string {
 	return none
 }
 
+fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file string, source_kind SourceKind) string {
+	if mod != 'db.sqlite' || os.file_name(obj_path) != 'sqlite3.o'
+		|| os.base(os.dir(obj_path)) != 'sqlite'
+		|| os.base(os.dir(os.dir(obj_path))) != 'thirdparty' {
+		return ''
+	}
+	sqlite_dir := os.dir(obj_path)
+	if source_kind == .cpp && os.file_name(source_file) == 'sqlite3.cpp' {
+		return 'The `db.sqlite` module expects the SQLite amalgamation files `sqlite3.c` and `sqlite3.h` in `${sqlite_dir}`. Do not rename `sqlite3.c` to `sqlite3.cpp`; run `v vlib/db/sqlite/install_thirdparty_sqlite.vsh`, or download the SQLite amalgamation package and place those files there.'
+	}
+	if source_kind == .unknown {
+		return 'The `db.sqlite` module expects the SQLite amalgamation files `sqlite3.c` and `sqlite3.h` in `${sqlite_dir}`. Run `v vlib/db/sqlite/install_thirdparty_sqlite.vsh`, or download the SQLite amalgamation package and place those files there.'
+	}
+	return ''
+}
+
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {
 	if source_kind == .unknown {
 		return false
@@ -1886,6 +1902,11 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		SourceKind.asm
 	} else {
 		SourceKind.unknown
+	}
+	sqlite_validation_message := sqlite_thirdparty_validation_error(mod, obj_path, source_file,
+		source_kind)
+	if sqlite_validation_message != '' {
+		verror(sqlite_validation_message)
 	}
 	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path,
 		source_file, source_kind)

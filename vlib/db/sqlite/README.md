@@ -14,6 +14,13 @@ This downloads the SQLite amalgamation source and places it in
 `v/thirdparty/sqlite`. V will then compile it automatically
 during your build.
 
+If you need to install SQLite manually, use the SQLite
+**amalgamation** package. `v/thirdparty/sqlite` must contain
+`sqlite3.c` and `sqlite3.h` directly.
+
+Do not use the autoconf/source package here, and do not rename
+`sqlite3.c` to `sqlite3.cpp`.
+
 On **Linux**, you can also install the system development package
 instead:
 
