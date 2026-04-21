@@ -989,6 +989,21 @@ fn test_sort() {
 	assert users[2].name == 'Peter'
 }
 
+fn test_sort_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort(a.age > b.age)
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted(a.age > b.age)
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
+}
+
 fn test_sort_with_compare() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort_with_compare(fn (a &string, b &string) int {
@@ -1001,6 +1016,37 @@ fn test_sort_with_compare() {
 		return 0
 	})
 	assert a == ['1', '3', '5', 'hi']
+}
+
+fn test_sort_with_compare_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
 }
 
 fn test_rune_sort() {
