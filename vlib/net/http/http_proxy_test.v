@@ -235,7 +235,7 @@ fn test_http_proxy_do() {
 		res := proxy.http_do(urllib.parse('http://httpbin.org/headers')!, Method.get, '/headers', &Request{
 			proxy:  proxy
 			header: header
-		})!
+		}, '', header)!
 		println(res.status_code)
 		println('he4aders ${res.header}')
 		assert res.status_code == 200
