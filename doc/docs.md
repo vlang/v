@@ -3658,8 +3658,25 @@ fn main() {
 * Module names must use `snake_case`.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
-* You can create modules anywhere.
+* You can create modules anywhere under a valid V module lookup root.
 * All modules are compiled statically into a single executable.
+
+In normal projects, the nearest `v.mod` file is that lookup root.
+Besides package metadata, `v.mod` also acts as a relative module anchor:
+V prepends the folder containing `v.mod` to the module lookup path, so
+files beside or below it can import sibling modules under the same tree.
+
+For example, this layout works:
+
+```text
+myapp/
+├── v.mod
+├── main.v
+└── myapp/common/structs.v
+```
+
+`main.v` can use `import myapp.common`, and `structs.v` should still
+declare `module common`.
 
 ### Special considerations for project folders
 
@@ -6023,6 +6040,10 @@ fn main() {
 A V *module* is a single folder with .v files inside. A V *package* can
 contain one or more V modules. A V *package* should have a `v.mod` file
 at its top folder, describing the contents of the package.
+
+That `v.mod` file is also the package's relative module anchor. When V
+compiles a file beside or below it, imports are resolved relative to the
+folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
