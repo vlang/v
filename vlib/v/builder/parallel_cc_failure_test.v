@@ -10,6 +10,11 @@ fn run_parallel_cc_case(case_name string, files map[string]string) os.Result {
 }
 
 fn run_parallel_cc_case_with_env(case_name string, files map[string]string, env_overrides map[string]string) os.Result {
+	return run_parallel_cc_case_with_args(case_name, ['-parallel-cc', 'main.v'], files,
+		env_overrides)
+}
+
+fn run_parallel_cc_case_with_args(case_name string, args []string, files map[string]string, env_overrides map[string]string) os.Result {
 	case_dir := os.join_path(parallel_cc_test_path, case_name)
 	os.rmdir_all(case_dir) or {}
 	os.mkdir_all(case_dir) or { panic(err) }
@@ -27,7 +32,7 @@ fn run_parallel_cc_case_with_env(case_name string, files map[string]string, env_
 	}
 	mut p := os.new_process(parallel_cc_vexe)
 	p.set_work_folder(case_dir)
-	p.set_args(['-parallel-cc', 'main.v'])
+	p.set_args(args)
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.wait()

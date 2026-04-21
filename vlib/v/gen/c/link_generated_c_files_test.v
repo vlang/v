@@ -1,6 +1,8 @@
 module c
 
 import os
+import v.builder
+import v.pref
 
 const test_vexe = os.quoted_path(@VEXE)
 
@@ -52,4 +54,39 @@ int main(void) {
 	res := os.execute(os.quoted_path(prog))
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '1 2'
+}
+
+fn test_parallel_cc_windows_header_keeps_vv_loc_external() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'parallel_cc_windows_linkage_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(source_path, 'module main
+fn helper() string {
+	return "ok"
+}
+
+fn main() {
+	println(helper())
+}
+')!
+	mut prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-parallel-cc',
+		'-os',
+		'windows',
+		source_path,
+	], false)
+	mut b := builder.new_builder(prefs)
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	b.front_and_middle_stages(files)!
+	result := gen(b.parsed_files, mut b.table, b.pref)
+	header := result.header.replace('\r\n', '\n')
+	assert header.contains('#define _VPARALLELCC (1)'), header
+	assert header.contains('#ifdef _VPARALLELCC\n\t\t#define VV_LOC\n\t#else\n\t\t#define VV_LOC static\n\t#endif'), header
+	assert header.contains('VV_LOC string main__helper(void);'), header
 }

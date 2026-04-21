@@ -179,7 +179,11 @@ const c_common_macros = '
 #endif
 #if defined(_WIN32) || defined(__CYGWIN__)
 	#define VV_EXP extern __declspec(dllexport)
-	#define VV_LOC static
+	#ifdef _VPARALLELCC
+		#define VV_LOC
+	#else
+		#define VV_LOC static
+	#endif
 #else
 	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
 	// and does not support __has_attribute(visibility) ...

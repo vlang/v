@@ -1229,6 +1229,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.autofree {
 		g.comptime_definitions.writeln('#define _VAUTOFREE (1)')
 	}
+	if g.pref.parallel_cc {
+		g.comptime_definitions.writeln('#define _VPARALLELCC (1)')
+	}
 	if g.pref.prealloc {
 		g.comptime_definitions.writeln('#define _VPREALLOC (1)')
 	}
