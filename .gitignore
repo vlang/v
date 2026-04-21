@@ -4,6 +4,8 @@
 # unignore checker test files
 !vlib/v/checker/tests/*.vv
 !vlib/v/checker/tests/*.out
+!vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
+!vlib/v/gen/c/testdata/nested_unary_minus_regression.out
 
 # unignore vlib/x/markdown
 !vlib/x/markdown/**

@@ -5834,10 +5834,19 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if node.right.is_auto_deref_var() && node.op !in [.amp, .mul, .arrow] {
 					g.write('*')
 				}
+				// Keep nested unary +/- parenthesized so C does not collapse them into ++/--
+				// when the parser has preserved a nested prefix node or folded a signed literal.
+				needs_nested_prefix_parens := prefix_expr_operand_needs_parens(node)
+				if needs_nested_prefix_parens {
+					g.write('(')
+				}
 				if tmp_var == '' {
 					g.expr(node.right)
 				} else {
 					g.write(tmp_var)
+				}
+				if needs_nested_prefix_parens {
+					g.write(')')
 				}
 				if has_slice_call {
 					g.write(')')
@@ -5934,6 +5943,26 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 		}
 	}
 	g.write("'${node.val}'")
+}
+
+fn prefix_expr_operand_needs_parens(node ast.PrefixExpr) bool {
+	if node.op !in [.plus, .minus] {
+		return false
+	}
+	return match node.right {
+		ast.PrefixExpr {
+			true
+		}
+		ast.FloatLiteral {
+			node.right.val.starts_with(node.op.str())
+		}
+		ast.IntegerLiteral {
+			node.right.val.starts_with(node.op.str())
+		}
+		else {
+			false
+		}
+	}
 }
 
 // T.name, typeof(expr).name
