@@ -1,4 +1,5 @@
 CC ?= cc
+CPPFLAGS ?=
 CFLAGS ?=
 LDFLAGS ?=
 TMPDIR ?= /tmp
@@ -50,11 +51,11 @@ MAC := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
-CFLAGS += -I$(LEGACYLIBS)/include/LegacySupport
+CPPFLAGS += -I$(LEGACYLIBS)/include/LegacySupport
 LDFLAGS += -L$(LEGACYLIBS)/lib
 LDFLAGS += -lMacportsLegacySupport
 VFLAGS += -cc $(CC)
-VFLAGS += -cflags "$(CFLAGS)"
+VFLAGS += -cflags "$(strip $(CPPFLAGS) $(CFLAGS))"
 VFLAGS += -ldflags -L$(LEGACYLIBS)/lib
 VFLAGS += -cflags $(LEGACYLIBS)/lib/libMacportsLegacySupport.a
 endif
@@ -115,6 +116,7 @@ VFLAGS+=-prod
 endif
 
 # Keep bootstrap C compiler/linker flags aligned with the initial `v1` build.
+BOOTSTRAP_CFLAGS := $(strip $(CPPFLAGS) $(CFLAGS))
 BOOTSTRAP_LDFLAGS := $(strip $(LDFLAGS))
 ifeq ($(LINUX),1)
 ifeq ($(TCCARCH),arm)
@@ -133,23 +135,23 @@ endif
 endif
 endif
 endif
-BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
+BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS)),-cflags "$(BOOTSTRAP_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
 else
 ifdef LEGACY
-	$(MAKE) -C $(TMPLEGACY)
-	$(MAKE) -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CFLAGS=$(CFLAGS) LDFLAGS=$(LDFLAGS) install
+	$(MAKE) -C $(TMPLEGACY) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
+	$(MAKE) -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
