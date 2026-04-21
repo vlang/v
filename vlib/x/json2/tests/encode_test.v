@@ -96,6 +96,18 @@ struct OmitFields {
 
 type OmitFieldsAlias = OmitFields
 
+struct OmitemptyRegressionNumber {
+	min int
+	max int
+}
+
+struct OmitemptyRegressionResp {
+	options  []string                   @[omitempty]
+	metadata map[string]string          @[omitempty]
+	number   &OmitemptyRegressionNumber = unsafe { nil } @[omitempty]
+	config   ?OmitemptyRegressionNumber @[omitempty]
+}
+
 fn test_primitives() {
 	assert json.encode('hello') == '"hello"'
 	assert json.encode(StrAlias('hello')) == '"hello"'
@@ -281,6 +293,28 @@ fn test_skip_fields() {
 fn test_omit_fields() {
 	assert json.encode(OmitFields{}) == '{}'
 	assert json.encode(OmitFieldsAlias{}) == '{}'
+
+	r1 := OmitemptyRegressionResp{
+		options: ['first', 'second']
+	}
+	r2 := OmitemptyRegressionResp{
+		number: &OmitemptyRegressionNumber{0, 0}
+	}
+	r3 := OmitemptyRegressionResp{
+		metadata: {
+			'kind': 'test'
+		}
+	}
+	assert json.encode(r1) == '{"options":["first","second"]}'
+	assert json.encode(r2) == '{"number":{"min":0,"max":0}}'
+	assert json.encode(r3) == '{"metadata":{"kind":"test"}}'
+	assert json.encode(OmitemptyRegressionResp{}) == '{}'
+	assert json.encode(OmitemptyRegressionResp{
+		config: OmitemptyRegressionNumber{
+			min: 1
+			max: 2
+		}
+	}) == '{"config":{"min":1,"max":2}}'
 }
 
 fn test_pointer_fields() {
