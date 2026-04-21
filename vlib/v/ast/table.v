@@ -1959,6 +1959,13 @@ fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, i
 			return true
 		}
 	}
+	if !is_as {
+		for v in parent_info.variants {
+			if t.can_implicit_array_cast(variant, v) {
+				return true
+			}
+		}
+	}
 	return false
 }
 

@@ -4022,7 +4022,7 @@ fn (mut g Gen) fn_ptr_cast_typ(func ast.FnType) string {
 	return g.fn_ptr_decl_str(func, ptr_name).replace_once(ptr_name, '')
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, actual_got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut mutable_is_mut_arg_pos := 0
@@ -4036,7 +4036,11 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		expr
 	}
-	expr_is_lvalue := if is_interface_cast {
+	needs_got_cast := is_sumtype_cast && actual_got != 0
+		&& g.table.can_implicit_array_cast(actual_got, got)
+	expr_is_lvalue := if needs_got_cast {
+		false
+	} else if is_interface_cast {
 		interface_cast_source_expr.is_lvalue()
 	} else {
 		expr.is_lvalue()
@@ -4125,7 +4129,11 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		} else if is_stack_rooted_interface_expr && g.expr_root_ident_unwraps_option_or_result(expr) {
 			g.inside_assign_fn_var = true
 		}
-		g.expr(expr)
+		if needs_got_cast {
+			g.expr_with_cast(expr, actual_got, got)
+		} else {
+			g.expr(expr)
+		}
 		g.inside_assign_fn_var = old_inside_assign_fn_var
 		g.left_is_opt = old_left_is_opt
 		g.inside_sumtype_cast = old_inside_sumtype_cast
@@ -4182,6 +4190,11 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 	variants := (expected_sym.info as ast.SumType).variants
 	for variant in variants {
 		if g.is_exact_sumtype_variant_match(variant, got_type) {
+			return variant
+		}
+	}
+	for variant in variants {
+		if g.table.can_implicit_array_cast(got_type, variant) {
 			return variant
 		}
 	}
@@ -4434,8 +4447,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp, true,
-				false, got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type, exp_styp,
+				true, false, got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
@@ -4482,12 +4495,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if suppress_auto_heap_deref {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
 				g.inside_assign_fn_var = true
-				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-					effective_got_is_ptr, got_is_fn, got_styp)
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type,
+					exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
 			} else {
-				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
-					effective_got_is_ptr, got_is_fn, got_styp)
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type,
+					exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
 			}
 		}
 		return
@@ -4600,8 +4613,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				} else {
 					g.call_cfn_for_casting_expr(fname, expr, expected_type, sumtype_got_type,
-						unwrapped_exp_sym.cname, sumtype_cast_got_is_ptr, sumtype_got_is_fn,
-						sumtype_got_styp)
+						actual_sumtype_got_type, unwrapped_exp_sym.cname, sumtype_cast_got_is_ptr,
+						sumtype_got_is_fn, sumtype_got_styp)
 				}
 			}
 			return
