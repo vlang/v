@@ -504,6 +504,15 @@ fn parse_received_response(response_text string, info ReceivedResponseInfo) !Res
 	return parse_response(response_text)
 }
 
+fn validate_received_response_completion(has_content_length bool, expected_size u64, body_so_far u64, is_chunked_transfer bool, chunked_complete bool) ! {
+	if has_content_length && body_so_far < expected_size {
+		return error('http.request: response body ended early: received ${body_so_far} of ${expected_size} bytes')
+	}
+	if is_chunked_transfer && !chunked_complete {
+		return error('http.request: incomplete chunked response')
+	}
+}
+
 fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) !ReceivedResponseInfo {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
@@ -523,6 +532,13 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		readcounter++
 		len := receive_chunk_cb(con, bp, bufsize) or {
 			if err is io.Eof {
+				body_so_far := if headers_end >= 0 && old_len > body_pos {
+					old_len - body_pos
+				} else {
+					u64(0)
+				}
+				validate_received_response_completion(has_content_length, expected_size,
+					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
 				break
 			}
 			return err
@@ -534,6 +550,13 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			eprintln('-'.repeat(20))
 		}
 		if len <= 0 {
+			body_so_far := if headers_end >= 0 && old_len > body_pos {
+				old_len - body_pos
+			} else {
+				u64(0)
+			}
+			validate_received_response_completion(has_content_length, expected_size, body_so_far,
+				is_chunked_transfer, chunked_body_tracker.complete)!
 			break
 		}
 		new_len = old_len + u64(len)
