@@ -6,6 +6,7 @@
 !vlib/v/checker/tests/*.out
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.out
+!vlib/v/tests/interfaces/interface_pointer_method_value_issue_22237_test.v
 
 # unignore c codegen testdata files
 !vlib/v/gen/c/testdata/*.vv
