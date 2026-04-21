@@ -164,17 +164,21 @@ pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
+	mut method := req.method
+	mut data := req.data
+	mut header := req.header
 	mut nredirects := 0
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl)!
+		qresp := req.method_and_url_to_response(method, rurl, data, header)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
 		}
-		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+		status := resp.status()
+		if status !in [.moved_permanently, .found, .see_other, .temporary_redirect,
 			.permanent_redirect] {
 			break
 		}
@@ -192,13 +196,48 @@ pub fn (req &Request) do() !Response {
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
+		method, data, header = redirected_request_parts(method, status, data, header)
 		rurl = qrurl
 		nredirects++
 	}
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
+fn redirected_request_parts(method Method, status Status, data string, header Header) (Method, string, Header) {
+	next_method := redirected_method(method, status)
+	if next_method == method {
+		return method, data, header
+	}
+	mut next_header := header
+	next_header.delete(.content_length)
+	next_header.delete(.content_type)
+	next_header.delete(.transfer_encoding)
+	return next_method, '', next_header
+}
+
+fn redirected_method(method Method, status Status) Method {
+	return match status {
+		.see_other {
+			if method == Method.head {
+				Method.head
+			} else {
+				Method.get
+			}
+		}
+		.moved_permanently, .found {
+			if method == Method.post {
+				Method.get
+			} else {
+				method
+			}
+		}
+		else {
+			method
+		}
+	}
+}
+
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -216,7 +255,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
-			res := req.ssl_do(nport, method, host_name, path) or {
+			res := req.ssl_do(nport, method, host_name, path, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -227,7 +266,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
-			res := req.http_do('${host_name}:${nport}', method, path) or {
+			res := req.http_do('${host_name}:${nport}', method, path, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -237,7 +276,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	} else if req.proxy != unsafe { nil } {
 		for i in 0 .. req.max_retries {
-			res := req.proxy.http_do(url, method, path, req) or {
+			res := req.proxy.http_do(url, method, path, req, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -250,6 +289,10 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
+	return req.build_request_headers_with(method, host_name, port, path, req.data, req.header)
+}
+
+fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -258,7 +301,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 	sb.write_string(' ')
 	sb.write_string(version.str())
 	sb.write_string('\r\n')
-	if !req.header.contains(.host) {
+	if !header.contains(.host) {
 		sb.write_string('Host: ')
 		if port != 80 && port != 443 && port != 0 {
 			sb.write_string('${host_name}:${port}')
@@ -267,43 +310,47 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		}
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.user_agent) {
+	if !header.contains(.user_agent) {
 		ua := req.user_agent
 		sb.write_string('User-Agent: ')
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.content_length) {
+	if !header.contains(.content_length) {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
-		sb.write_string(req.data.len.str())
+		sb.write_string(data.len.str())
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
-	for key in req.header.keys() {
+	for key in header.keys() {
 		if key == chkey {
 			continue
 		}
-		val := req.header.custom_values(key).join('; ')
+		val := header.custom_values(key).join('; ')
 		sb.write_string(key)
 		sb.write_string(': ')
 		sb.write_string(val)
 		sb.write_string('\r\n')
 	}
-	sb.write_string(req.build_request_cookies_header())
+	sb.write_string(req.build_request_cookies_header_with_header(header))
 	sb.write_string('Connection: close\r\n')
 	sb.write_string('\r\n')
-	sb.write_string(req.data)
+	sb.write_string(data)
 	return sb.str()
 }
 
 fn (req &Request) build_request_cookies_header() string {
+	return req.build_request_cookies_header_with_header(req.header)
+}
+
+fn (req &Request) build_request_cookies_header_with_header(header Header) string {
 	if req.cookies.len < 1 {
 		return ''
 	}
 	mut sb_cookie := strings.new_builder(1024)
-	hvcookies := req.header.values(.cookie)
+	hvcookies := header.values(.cookie)
 	total_cookies := req.cookies.len + hvcookies.len
 	sb_cookie.write_string('Cookie: ')
 	mut idx := 0
@@ -327,9 +374,9 @@ fn (req &Request) build_request_cookies_header() string {
 	return sb_cookie.str()
 }
 
-fn (req &Request) http_do(host string, method Method, path string) !Response {
+fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers(method, host_name, port, path)
+	s := req.build_request_headers_with(method, host_name, port, path, data, header)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
