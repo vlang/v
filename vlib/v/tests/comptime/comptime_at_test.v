@@ -213,8 +213,8 @@ fn test_at_ccompiler() {
 
 fn test_at_backend() {
 	println('Current language backend is ${@BACKEND}')
-	assert @BACKEND in ['c', 'interpret', 'js_node', 'js_browser', 'js_freestanding',
-		'native', 'wasm']
+	assert @BACKEND in ['c', 'interpret', 'js_node', 'js_browser', 'js_freestanding', 'native',
+		'wasm']
 }
 
 fn test_at_platform() {
