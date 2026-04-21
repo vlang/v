@@ -22,6 +22,21 @@ fn test_remove_cached_image_remove_and_get() {
 	assert ctx.get_cached_image_by_idx(idx).ok == false
 }
 
+fn test_remove_cached_images_by_id_keeps_other_ids_valid() {
+	mut ctx := gg.new_context(width: 100)
+	background_bytes := os.read_bytes(background_path)!
+	prev := ctx.create_image_from_byte_array(background_bytes)!
+	curr := ctx.create_image_from_byte_array(background_bytes)!
+	assert prev.id == 0
+	assert curr.id == 1
+	assert ctx.get_cached_image_by_idx(prev.id).ok == true
+	assert ctx.get_cached_image_by_idx(curr.id).ok == true
+	ctx.remove_cached_image_by_idx(prev.id)
+	ctx.remove_cached_image_by_idx(curr.id)
+	assert ctx.get_cached_image_by_idx(prev.id).ok == false
+	assert ctx.get_cached_image_by_idx(curr.id).ok == false
+}
+
 fn test_new_context_sets_borderless_window_flag() {
 	ctx := gg.new_context(
 		width:             100
