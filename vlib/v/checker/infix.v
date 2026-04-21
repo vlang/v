@@ -728,6 +728,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
+			} else if left_sym.kind == .function || right_sym.kind == .function {
+				left_name := c.table.type_to_str(unwrapped_left_type)
+				right_name := c.table.type_to_str(unwrapped_right_type)
+				if left_sym.kind == .function && right_sym.kind == .function
+					&& left_name == right_name {
+					c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						left_right_pos)
+				} else {
+					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
+				}
 			} else if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 				node.promoted_type = ast.bool_type
 				return ast.bool_type
