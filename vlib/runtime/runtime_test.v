@@ -1,3 +1,4 @@
+import os
 import runtime
 
 fn test_physical_memory() {
@@ -24,6 +25,37 @@ fn test_nr_jobs() {
 	nr_jobs := runtime.nr_jobs()
 	println('     nr jobs: ${nr_jobs}')
 	assert nr_jobs > 0
+}
+
+fn test_nr_jobs_matches_nr_cpus_without_vjobs() {
+	env := os.environ()
+	had_vjobs := 'VJOBS' in env
+	saved_vjobs := env['VJOBS']
+	defer {
+		if had_vjobs {
+			os.setenv('VJOBS', saved_vjobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	os.unsetenv('VJOBS')
+	assert runtime.nr_jobs() == runtime.nr_cpus()
+}
+
+fn test_nr_jobs_uses_vjobs_override() {
+	env := os.environ()
+	had_vjobs := 'VJOBS' in env
+	saved_vjobs := env['VJOBS']
+	defer {
+		if had_vjobs {
+			os.setenv('VJOBS', saved_vjobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	expected_jobs := runtime.nr_cpus() + 1
+	os.setenv('VJOBS', expected_jobs.str(), true)
+	assert runtime.nr_jobs() == expected_jobs
 }
 
 fn test_is_32bit() {
