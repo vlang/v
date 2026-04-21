@@ -30,3 +30,20 @@ log.info('42')
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut prog)
 }
+
+fn test_parenthesized_function_can_be_called() {
+	source_text := '
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn main() {
+	assert (add)(2, 4) == 6
+}
+'
+	mut table := ast.new_table()
+	vpref := &pref.Preferences{}
+	mut prog := parse_text(source_text, '', mut table, .skip_comments, vpref)
+	mut checker_ := checker.new_checker(table, vpref)
+	checker_.check(mut prog)
+}
