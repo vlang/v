@@ -3247,16 +3247,10 @@ pub fn (expr Expr) is_reference() bool {
 }
 
 // remove_par removes all parenthesis and gets the innermost Expr
-pub fn (mut expr Expr) remove_par() Expr {
+pub fn (expr Expr) remove_par() Expr {
 	mut e := expr
-	for {
-		mut next_expr := Expr(EmptyExpr{})
-		if mut e is ParExpr {
-			next_expr = e.expr
-		} else {
-			break
-		}
-		e = next_expr
+	for e is ParExpr {
+		e = (e as ParExpr).expr
 	}
 	return e
 }
