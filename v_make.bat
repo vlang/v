@@ -250,6 +250,7 @@ if exist "%tcc_dir%" (
 	pushd "%tcc_dir%" && (
 		echo Updating TCC
 		echo  ^> Syncing TCC from !tcc_url!
+		if exist "lib\advapi32.def" git checkout -- lib\advapi32.def >nul 2>nul
 		git pull --quiet
 		popd
 	)
@@ -257,8 +258,19 @@ if exist "%tcc_dir%" (
 	call :bootstrap_tcc
 )
 
+call :patch_tcc_defs
+if %ERRORLEVEL% NEQ 0 goto :error
+
 if not exist "%tcc_exe%" echo  ^> TCC not found, even after cloning& goto :error
 echo.
+exit /b 0
+
+:patch_tcc_defs
+set "advapi32_def=%tcc_dir%\lib\advapi32.def"
+if not exist "%advapi32_def%" exit /b 0
+for %%G in (RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW) do (
+	findstr /x /c:"%%G" "%advapi32_def%" >nul || >>"%advapi32_def%" echo %%G
+)
 exit /b 0
 
 :compile_error

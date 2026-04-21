@@ -204,7 +204,19 @@ endif
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 ifeq ($(HAS_GIT),1)
+ifdef WIN32
+	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
+		cd "$(TMPTCC)" && $(GIT) checkout -- lib/advapi32.def > /dev/null 2> /dev/null || true; \
+	fi
+endif
 	cd $(TMPTCC) && $(GITCLEANPULL)
+ifdef WIN32
+	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
+		for sym in RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW; do \
+			grep -qx "$$sym" "$(TMPTCC)/lib/advapi32.def" || printf '%s\n' "$$sym" >> "$(TMPTCC)/lib/advapi32.def"; \
+		done; \
+	fi
+endif
 else
 	@echo "git not found; skipping update of $(TMPTCC)"
 endif
@@ -258,6 +270,11 @@ ifeq ($(HAS_GIT),1)
 		$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) "$(TMPTCC)"; \
 	else \
 		$(GITFASTCLONE) --branch "$$selected_branch" $(TCCREPO) "$(TMPTCC)"; \
+		if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
+			for sym in RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW; do \
+				grep -qx "$$sym" "$(TMPTCC)/lib/advapi32.def" || printf '%s\n' "$$sym" >> "$(TMPTCC)/lib/advapi32.def"; \
+			done; \
+		fi; \
 		if ! "$(TMPTCC)/tcc.exe" --version > /dev/null 2> /dev/null; then \
 			if [ "$$fallback_branch" != '' ] && [ "$$fallback_branch" != "$$selected_branch" ] \
 				&& printf '%s\n' "$$branches" | grep -Fx "$$fallback_branch" > /dev/null; then \
