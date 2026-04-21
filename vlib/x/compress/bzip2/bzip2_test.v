@@ -25,9 +25,7 @@ fn test_roundtrip_binary_data() {
 	for i in 0 .. src.len {
 		src[i] = u8((i * 17 + 13) & 0xff)
 	}
-	compressed := compress(src, CompressParams{
-		block_size: 1
-	}) or { panic(err) }
+	compressed := compress(src, block_size: 1) or { panic(err) }
 	decompressed := decompress(compressed) or { panic(err) }
 	assert decompressed == src
 }
