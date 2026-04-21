@@ -694,6 +694,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
+	mut branch_expr_types := []ast.Type{}
 	is_multi_allowed_enum_match := cond_type_sym.info is ast.Enum
 		&& cond_type_sym.info.is_multi_allowed
 	mut branch_enum_values := map[i64]bool{}
@@ -899,11 +900,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					}
 				} else if cond_match_sym.info is ast.SumType {
-					if expr_type !in cond_match_sym.info.variants {
+					if !c.table.sumtype_has_variant_recursive(cond_match_type, expr_type, true) {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
 						sumtype_variant_names :=
-							cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it, {}))
+							c.table.sumtype_matchable_variants(cond_match_type).map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -917,6 +918,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
+				}
+				if is_type_node {
+					branch_expr_types << if is_alias_to_matchable_type
+						&& expr_type == node.cond_type {
+						cond_match_type
+					} else {
+						expr_type
+					}
 				}
 			}
 			branch_exprs[key] = val + 1
@@ -983,12 +992,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	} else {
 		match cond_match_sym.info {
 			ast.SumType {
-				for v in cond_match_sym.info.variants {
-					v_str := c.table.type_to_str(v)
-					if v_str !in branch_exprs {
-						is_exhaustive = false
-						unhandled << '`${v_str}`'
-					}
+				for v in c.table.sumtype_missing_variants(cond_match_type, branch_expr_types) {
+					is_exhaustive = false
+					unhandled << '`${c.table.type_to_str(v)}`'
 				}
 			}
 			//

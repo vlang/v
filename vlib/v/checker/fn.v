@@ -2314,6 +2314,21 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
+		if param_type_sym.kind == .sum_type
+			&& !c.table.sumtype_has_variant(param.typ, arg_typ, false)
+			&& c.table.sumtype_has_variant_recursive(param.typ, arg_typ, false) {
+			call_arg.expr = ast.CastExpr{
+				expr:      call_arg.expr
+				typ:       param.typ
+				typname:   c.table.type_to_str(param.typ)
+				expr_type: arg_typ
+				pos:       call_arg.expr.pos()
+			}
+			call_arg.typ = param.typ
+			node.args[i].expr = call_arg.expr
+			node.args[i].typ = param.typ
+			arg_typ = param.typ
+		}
 		arg_typ_sym := c.table.sym(arg_typ)
 		if param.typ.has_flag(.generic) {
 			if arg_typ_sym.kind == .none && !param.typ.has_flag(.option) {

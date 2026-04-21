@@ -1936,6 +1936,107 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 	return false
 }
 
+pub fn (t &Table) sumtype_has_variant_recursive(parent Type, variant Type, is_as bool) bool {
+	if t.sumtype_has_variant(parent, variant, is_as) {
+		return true
+	}
+	parent_sym := t.sym(parent)
+	if parent_sym.kind != .sum_type || parent_sym.info !is SumType {
+		return false
+	}
+	parent_info := parent_sym.info as SumType
+	for parent_variant in parent_info.variants {
+		if nested_sumtype := t.sumtype_nested_variant_type(parent_variant) {
+			if t.sumtype_has_variant_recursive(nested_sumtype, variant, is_as) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+pub fn (t &Table) sumtype_matchable_variants(parent Type) []Type {
+	mut variants := []Type{}
+	mut seen := map[u32]bool{}
+	t.collect_sumtype_matchable_variants(parent, mut seen, mut variants)
+	return variants
+}
+
+pub fn (t &Table) sumtype_missing_variants(parent Type, handled []Type) []Type {
+	mut missing := []Type{}
+	mut seen := map[u32]bool{}
+	t.collect_sumtype_missing_variants(parent, handled, mut seen, mut missing)
+	return missing
+}
+
+fn (t &Table) collect_sumtype_matchable_variants(parent Type, mut seen map[u32]bool, mut variants []Type) {
+	parent_sym := t.sym(parent)
+	if parent_sym.kind != .sum_type || parent_sym.info !is SumType {
+		return
+	}
+	parent_info := parent_sym.info as SumType
+	for variant in parent_info.variants {
+		if u32(variant) !in seen {
+			seen[u32(variant)] = true
+			variants << variant
+		}
+		if nested_sumtype := t.sumtype_nested_variant_type(variant) {
+			t.collect_sumtype_matchable_variants(nested_sumtype, mut seen, mut variants)
+		}
+	}
+}
+
+fn (t &Table) collect_sumtype_missing_variants(parent Type, handled []Type, mut seen map[u32]bool, mut missing []Type) {
+	if t.sumtype_variant_is_handled(parent, handled) {
+		return
+	}
+	if nested_sumtype := t.sumtype_nested_variant_type(parent) {
+		nested_sym := t.sym(nested_sumtype)
+		if nested_sym.kind == .sum_type && nested_sym.info is SumType {
+			nested_info := nested_sym.info as SumType
+			for variant in nested_info.variants {
+				if t.sumtype_variant_is_handled(variant, handled) {
+					continue
+				}
+				if nested_variant := t.sumtype_nested_variant_type(variant) {
+					t.collect_sumtype_missing_variants(nested_variant, handled, mut seen, mut
+						missing)
+				} else if u32(variant) !in seen {
+					seen[u32(variant)] = true
+					missing << variant
+				}
+			}
+			return
+		}
+	}
+	if u32(parent) !in seen {
+		seen[u32(parent)] = true
+		missing << parent
+	}
+}
+
+fn (t &Table) sumtype_variant_is_handled(variant Type, handled []Type) bool {
+	for handled_variant in handled {
+		if t.same_sumtype_variant(variant, handled_variant, true) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Table) same_sumtype_variant(expected Type, got Type, is_as bool) bool {
+	return expected.idx() == got.idx() && expected.has_flag(.option) == got.has_flag(.option)
+		&& (!is_as || expected.nr_muls() == got.nr_muls())
+}
+
+fn (t &Table) sumtype_nested_variant_type(variant Type) ?Type {
+	nested_sumtype := t.fully_unaliased_type(variant)
+	if t.sym(nested_sumtype).kind == .sum_type {
+		return nested_sumtype
+	}
+	return none
+}
+
 fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
 	variant_fn := (t.sym(variant).info as FnType).func
 	variant_fn_sig := t.fn_type_source_signature(variant_fn)
@@ -1954,8 +2055,7 @@ fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, 
 
 fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if v.idx() == variant.idx() && variant.has_flag(.option) == v.has_flag(.option)
-			&& (!is_as || v.nr_muls() == variant.nr_muls()) {
+		if t.same_sumtype_variant(v, variant, is_as) {
 			return true
 		}
 	}
