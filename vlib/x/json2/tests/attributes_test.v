@@ -31,6 +31,10 @@ struct StruWithRawAttribute {
 	b      int
 }
 
+struct StruWithOptionalRawAttribute {
+	data ?string @[raw]
+}
+
 struct StruWithRequiredAttribute {
 	a                 int
 	name              string  @[required]
@@ -87,6 +91,14 @@ fn test_raw_attribute() {
 		object: '{"c": 4, "d": 5}'
 		b:      3
 	}, '`raw` attribute not working'
+}
+
+fn test_optional_raw_attribute_preserves_source_bytes() {
+	raw_json := '{
+        "data": { "test": 1 }
+    }'
+	dto := json.decode[StruWithOptionalRawAttribute](raw_json)!
+	assert dto.data? == '{ "test": 1 }'
 }
 
 fn test_required_attribute() {
