@@ -148,9 +148,9 @@ pub:
 }
 
 @[callconv: stdcall]
-type VectoredExceptionHandler = fn (&ExceptionPointers) int
+type TopLevelExceptionFilter = fn (&ExceptionPointers) int
 
-fn C.AddVectoredExceptionHandler(i32, VectoredExceptionHandler) voidptr
+fn C.SetUnhandledExceptionFilter(TopLevelExceptionFilter) voidptr
 
 @[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
@@ -170,7 +170,10 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 }
 
 fn add_unhandled_exception_handler() {
-	C.AddVectoredExceptionHandler(1, unhandled_exception_handler)
+	// A vectored handler also sees first-chance exceptions that Windows APIs may
+	// handle internally, which can lead to false-positive "Unhandled Exception"
+	// reports. Register a top-level filter instead.
+	C.SetUnhandledExceptionFilter(unhandled_exception_handler)
 }
 
 fn C.IsDebuggerPresent() bool
