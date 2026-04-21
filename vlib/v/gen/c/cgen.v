@@ -11632,10 +11632,12 @@ fn (mut g Gen) interface_table() string {
 			// msvc can not process `static struct x[0] = {};`
 			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
 		} else {
+			name_table_len := iname_table_length + 1
 			if g.pref.build_mode != .build_module {
-				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${iname_table_length}] = {')
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}] = {')
+				methods_struct.writeln('\t{0},')
 			} else {
-				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${iname_table_length}];')
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}];')
 			}
 		}
 		mut cast_functions := strings.new_builder(100)
@@ -11683,7 +11685,9 @@ fn (mut g Gen) interface_table() string {
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
-			// Speaker_Cat_index = 0
+			// Reserve interface type index 0 as an invalid/uninitialized sentinel.
+			// That keeps stray bytes from overlapping storage, like unions, from
+			// aliasing a valid concrete interface variant.
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
@@ -12021,7 +12025,7 @@ return ${cast_shared_struct_str};
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t},')
 			}
-			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
+			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base + 1
 			if g.pref.build_mode != .build_module {
 				sb.writeln('${g.static_modifier}const u32 ${interface_index_name} = ${iin_idx};')
 			} else {
