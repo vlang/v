@@ -693,7 +693,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	// Infix
 	for {
 		if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr
-			&& node in [ast.CallExpr, ast.IndexExpr, ast.SelectorExpr] {
+			&& node in [ast.CallExpr, ast.IndexExpr, ast.ParExpr, ast.SelectorExpr] {
 			p.promote_if_expr_to_value(mut node)
 			node = p.call_expr_with_left(node)
 			p.is_stmt_ident = is_stmt_ident
@@ -848,14 +848,45 @@ fn (mut p Parser) promote_if_expr_to_value(mut expr ast.Expr) {
 	}
 }
 
+fn unwrap_parenthesized_call_left(expr ast.Expr) ast.Expr {
+	return match expr {
+		ast.ParExpr { unwrap_parenthesized_call_left(expr.expr) }
+		else { expr }
+	}
+}
+
 fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
 	p.next()
 	pos := p.tok.pos()
 	args := p.call_args()
 	p.check(.rpar)
 	or_block := p.gen_or_block()
+	unwrapped_left := unwrap_parenthesized_call_left(left)
+	mut name := ''
+	mut name_pos := token.Pos{}
+	mut mod := ''
+	mut kind := ast.CallKind.unknown
+	if unwrapped_left is ast.Ident {
+		ident := unwrapped_left as ast.Ident
+		mut fn_name := ident.name
+		if p.is_imported_symbol(fn_name) {
+			check := !p.imported_symbols_used[fn_name]
+			fn_name = p.imported_symbols[fn_name]
+			if check {
+				p.register_used_import_for_symbol_name(fn_name)
+			}
+		}
+		name = fn_name
+		name_pos = ident.pos
+		mod = p.mod
+		kind = p.call_kind(fn_name)
+	}
 	return ast.CallExpr{
-		left:           left
+		name:           name
+		name_pos:       name_pos
+		mod:            mod
+		kind:           kind
+		left:           unwrapped_left
 		args:           args
 		pos:            pos
 		scope:          p.scope
