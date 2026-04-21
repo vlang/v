@@ -4,8 +4,57 @@
 
 module abi
 
+import os
+import v2.ast
 import v2.mir
+import v2.parser
+import v2.pref
 import v2.ssa
+import v2.token
+
+fn parse_code_for_test(code string) []ast.File {
+	tmp_file := '/tmp/v2_abi_parser_test_${os.getpid()}.v'
+	os.write_file(tmp_file, code) or { panic(err) }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	mut p := parser.Parser.new(prefs)
+	return p.parse_files([tmp_file], mut file_set)
+}
+
+fn first_fn_decl(file ast.File) ast.FnDecl {
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			return stmt
+		}
+	}
+	panic('expected function declaration in parsed file')
+}
+
+fn test_parser_sql_expr_allows_nested_braces_in_body() {
+	files := parse_code_for_test("
+module main
+
+fn main() {
+	req_status := true
+	sql db {
+		update User set
+		name = 'Jengro',
+		status = if req_status { 1 } else { 0 }
+		status = fn [req_status] () u8 { if req_status { return 1 } else { return 0 } }()
+		where id == '100'
+	}
+}
+")
+	assert files.len == 1
+	main_fn := first_fn_decl(files[0])
+	assert main_fn.stmts.len == 2
+	assert main_fn.stmts[1] is ast.ExprStmt
+	sql_stmt := main_fn.stmts[1] as ast.ExprStmt
+	assert sql_stmt.expr is ast.SqlExpr
+}
 
 fn test_arm64_large_struct_call_is_lowered_to_call_sret() {
 	mut ssa_mod := ssa.Module.new('abi_test')
