@@ -1337,6 +1337,26 @@ fn parse_integer_number[T](str string) !T {
 	}
 }
 
+fn parse_float_number[T](str string) !T {
+	$if js {
+		$if T.unaliased_typ is f32 {
+			return T(f32(strconv.atof64(str)!))
+		} $else $if T.unaliased_typ is f64 {
+			return T(strconv.atof64(str)!)
+		} $else {
+			return error('`parse_float_number` cannot decode ${T.name} type')
+		}
+	} $else {
+		$if T.unaliased_typ is f32 {
+			return T(f32(strconv.atof64(str, allow_extra_chars: false)!))
+		} $else $if T.unaliased_typ is f64 {
+			return T(strconv.atof64(str, allow_extra_chars: false)!)
+		} $else {
+			return error('`parse_float_number` cannot decode ${T.name} type')
+		}
+	}
+}
+
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
@@ -1355,8 +1375,8 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		int { *val = parse_integer_number[T](str)! }
 		isize { *val = parse_integer_number[T](str)! }
 		usize { *val = parse_integer_number[T](str)! }
-		f32 { *val = f32(strconv.atof_quick(str)) }
-		f64 { *val = strconv.atof_quick(str) }
+		f32 { *val = parse_float_number[T](str)! }
+		f64 { *val = parse_float_number[T](str)! }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
 	}
 }
@@ -1393,9 +1413,9 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	} $else $if T.unaliased_typ is usize {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is f32 {
-		return T(f32(strconv.atof_quick(str)))
+		return parse_float_number[T](str)!
 	} $else $if T.unaliased_typ is f64 {
-		return T(strconv.atof_quick(str))
+		return parse_float_number[T](str)!
 	} $else {
 		return error('`decode_number_from_string` cannot decode ${T.name} type')
 	}

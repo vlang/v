@@ -94,6 +94,10 @@ struct PointerFields {
 
 type PointerFieldsAlias = PointerFields
 
+struct F64ArrayRoundtripPayload {
+	arr []f64
+}
+
 struct OmitFields {
 	a ?bool   @[omitempty]
 	b string  @[omitempty]
@@ -127,6 +131,15 @@ fn test_primitives() {
 	assert json.encode(IntAlias(-12345)) == '-12345'
 	assert json.encode(123.323) == '123.323'
 	assert json.encode(FloatAlias(123.323)) == '123.323'
+}
+
+fn test_encode_decode_struct_with_f64_array_roundtrips() ! {
+	original := F64ArrayRoundtripPayload{
+		arr: [0.9716157205240175, 0.9336099585062241]
+	}
+	encoded := json.encode(original)
+	assert encoded == '{"arr":[0.9716157205240175,0.9336099585062241]}'
+	assert json.decode[F64ArrayRoundtripPayload](encoded)! == original
 }
 
 fn test_arrays() {
