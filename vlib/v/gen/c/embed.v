@@ -142,6 +142,8 @@ fn (mut g Gen) gen_embedded_data() {
 	// maybe we need to write to separate files or have an external tool for large files
 	// like the `rcc` tool in Qt?
 	*/
+	// Declare the index before any generated helper references it, to keep MSVC happy.
+	g.embedded_data.writeln('static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[];')
 	for i, emfile in g.embedded_files {
 		g.embedded_data.write_string('static const unsigned char _v_embed_blob_${i}[${emfile.bytes.len}] = {\n    ')
 		for j := 0; j < emfile.bytes.len; j++ {
@@ -158,7 +160,7 @@ fn (mut g Gen) gen_embedded_data() {
 		g.embedded_data.writeln('\n};')
 	}
 	g.embedded_data.writeln('')
-	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
+	g.embedded_data.writeln('static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
 		g.embedded_data.writeln('\t{${i}, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len}, .is_lit=1 }, { .str=(byteptr)("${cestring(emfile.compression_type)}"), .len=${emfile.compression_type.len}, .is_lit=1 }, (byteptr)_v_embed_blob_${i}},')
 	}

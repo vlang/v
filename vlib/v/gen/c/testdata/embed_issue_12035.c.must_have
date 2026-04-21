@@ -1,0 +1,3 @@
+static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[];
+static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {
+v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {
