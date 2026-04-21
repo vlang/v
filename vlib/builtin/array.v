@@ -22,12 +22,13 @@ pub:
 
 @[flag]
 pub enum ArrayFlags {
-	noslices // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
-	noshrink // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
-	nogrow   // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
-	nofree   // `.data` will never be freed
-	managed  // `.data` uses the builtin managed array allocation with a metadata header
-	is_slice // this array is a slice view into another array's managed buffer
+	noslices    // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
+	noshrink    // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
+	nogrow      // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
+	nofree      // `.data` will never be freed
+	managed     // `.data` uses the builtin managed array allocation with a metadata header
+	noscan_data // `.data` was allocated in a no-scan heap block and can stay atomic when cloned or resized
+	is_slice    // this array is a slice view into another array's managed buffer
 }
 
 @[_packed]
@@ -58,6 +59,31 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 		(&ArrayDataHeader(raw)).has_slices = false
 		return &u8(raw) + array_data_header_size
 	}
+}
+
+@[inline]
+fn (a array) uses_noscan_data() bool {
+	return a.flags.has(.noscan_data)
+}
+
+@[inline]
+fn (a array) alloc_array_data_like(total_size u64) voidptr {
+	$if gcboehm_opt ? {
+		if a.uses_noscan_data() {
+			return alloc_array_data_noscan(total_size)
+		}
+	}
+	return alloc_array_data(total_size)
+}
+
+@[inline]
+fn (a array) alloc_array_data_like_uninit(total_size u64) voidptr {
+	$if gcboehm_opt ? {
+		if a.uses_noscan_data() {
+			return alloc_array_data_noscan_uninit(total_size)
+		}
+	}
+	return alloc_array_data_uninit(total_size)
 }
 
 @[inline; unsafe]
@@ -109,14 +135,15 @@ fn (mut a array) set_managed_flags(is_slice bool) {
 @[inline]
 fn (mut a array) clone_shallow_to_cap(new_cap int) {
 	if new_cap <= 0 {
-		unsafe { a.flags.clear(.managed | .is_slice) }
+		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
 		a.data = unsafe { nil }
 		a.offset = 0
 		a.cap = 0
 		return
 	}
+	use_noscan_data := a.uses_noscan_data()
 	total_size := u64(new_cap) * u64(a.element_size)
-	new_data := alloc_array_data_uninit(total_size)
+	new_data := a.alloc_array_data_like_uninit(total_size)
 	copy_size := u64(a.len) * u64(a.element_size)
 	if a.data != unsafe { nil } && copy_size > 0 {
 		unsafe { vmemcpy(new_data, a.data, copy_size) }
@@ -124,6 +151,13 @@ fn (mut a array) clone_shallow_to_cap(new_cap int) {
 	a.data = new_data
 	a.offset = 0
 	a.cap = new_cap
+	unsafe {
+		if use_noscan_data {
+			a.flags.set(.noscan_data)
+		} else {
+			a.flags.clear(.noscan_data)
+		}
+	}
 	a.set_managed_flags(false)
 }
 
@@ -330,7 +364,8 @@ pub fn (mut a array) ensure_cap(required int) {
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
-	new_data := alloc_array_data_uninit(new_size)
+	use_noscan_data := a.uses_noscan_data()
+	new_data := a.alloc_array_data_like_uninit(new_size)
 	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
@@ -347,6 +382,13 @@ pub fn (mut a array) ensure_cap(required int) {
 	a.data = new_data
 	a.offset = 0
 	a.cap = int(cap)
+	unsafe {
+		if use_noscan_data {
+			a.flags.set(.noscan_data)
+		} else {
+			a.flags.clear(.noscan_data)
+		}
+	}
 	a.set_managed_flags(false)
 }
 
@@ -372,12 +414,19 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if size == 0 {
 		size = u64(a.element_size)
 	}
+	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	mut data := unsafe { nil }
+	if use_noscan_data {
+		data = a.alloc_array_data_like(size)
+	} else {
+		data = alloc_array_data(size)
+	}
 	arr := array{
 		element_size: a.element_size
-		data:         alloc_array_data(size)
+		data:         data
 		len:          count * a.len
 		cap:          count * a.len
-		flags:        .managed
+		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -565,7 +614,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 	old_data := a.data
 	new_size := a.len - size
 	if new_size == 0 {
-		unsafe { a.flags.clear(.managed | .is_slice) }
+		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
 		a.data = unsafe { nil }
 		a.offset = 0
 		a.len = 0
@@ -573,7 +622,8 @@ pub fn (mut a array) delete_many(i int, size int) {
 		return
 	}
 	new_cap := new_size
-	a.data = alloc_array_data(u64(new_cap) * u64(a.element_size))
+	use_noscan_data := a.uses_noscan_data()
+	a.data = a.alloc_array_data_like(u64(new_cap) * u64(a.element_size))
 	unsafe { vmemcpy(a.data, old_data, u64(i) * u64(a.element_size)) }
 	unsafe {
 		vmemcpy(&u8(a.data) + u64(i) * u64(a.element_size), &u8(old_data) + u64(i +
@@ -587,6 +637,13 @@ pub fn (mut a array) delete_many(i int, size int) {
 	a.len = new_size
 	a.cap = new_cap
 	a.offset = 0
+	unsafe {
+		if use_noscan_data {
+			a.flags.set(.noscan_data)
+		} else {
+			a.flags.clear(.noscan_data)
+		}
+	}
 	a.set_managed_flags(false)
 }
 
@@ -595,7 +652,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 // Example: mut a := [1,2]; a.clear(); assert a.len == 0
 pub fn (mut a array) clear() {
 	if a.needs_unique_shrink() {
-		unsafe { a.flags.clear(.managed | .is_slice) }
+		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
 		a.data = unsafe { nil }
 		a.offset = 0
 		a.cap = 0
@@ -835,13 +892,17 @@ fn (a array) slice(start int, _end int) array {
 	offset := u64(start) * u64(a.element_size)
 	data := unsafe { &u8(a.data) + offset }
 	l := end - start
+	mut flags := ArrayFlags.is_slice
+	if a.uses_noscan_data() {
+		unsafe { flags.set(.noscan_data) }
+	}
 	res := array{
 		element_size: a.element_size
 		data:         data
 		offset:       a.offset + int(offset) // TODO: offset should become 64bit
 		len:          l
 		cap:          l
-		flags:        .is_slice
+		flags:        flags
 	}
 	return res
 }
@@ -854,6 +915,10 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	unsafe { a.mark_buffer_has_slices() }
+	mut flags := ArrayFlags.is_slice
+	if a.uses_noscan_data() {
+		unsafe { flags.set(.noscan_data) }
+	}
 	// WARNNING: The is a temp solution for bootstrap!
 	mut end := if _end == max_i64 || _end == max_i32 { a.len } else { _end } // max_int
 	mut start := _start
@@ -882,6 +947,7 @@ fn (a array) slice_ni(_start int, _end int) array {
 			offset:       0
 			len:          0
 			cap:          0
+			flags:        flags
 		}
 		return res
 	}
@@ -895,7 +961,7 @@ fn (a array) slice_ni(_start int, _end int) array {
 		offset:       a.offset + int(offset) // TODO: offset should be 64bit
 		len:          l
 		cap:          l
-		flags:        .is_slice
+		flags:        flags
 	}
 	return res
 }
@@ -918,12 +984,19 @@ pub fn (a &array) clone() array {
 @[unsafe]
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
+	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	mut data := unsafe { nil }
+	if use_noscan_data {
+		data = a.alloc_array_data_like(source_capacity_in_bytes)
+	} else {
+		data = alloc_array_data(source_capacity_in_bytes)
+	}
 	mut arr := array{
 		element_size: a.element_size
-		data:         alloc_array_data(source_capacity_in_bytes)
+		data:         data
 		len:          a.len
 		cap:          a.cap
-		flags:        .managed
+		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
@@ -1047,12 +1120,13 @@ pub fn (a array) reverse() array {
 	if a.len < 2 {
 		return a
 	}
+	use_noscan_data := a.uses_noscan_data()
 	mut arr := array{
 		element_size: a.element_size
-		data:         alloc_array_data(u64(a.cap) * u64(a.element_size))
+		data:         a.alloc_array_data_like(u64(a.cap) * u64(a.element_size))
 		len:          a.len
 		cap:          a.cap
-		flags:        .managed
+		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
