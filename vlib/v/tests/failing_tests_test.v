@@ -98,3 +98,26 @@ fn test_run_only_reports_filtered_failures() {
 	assert res.output.contains('expected to fail'), res.output
 	assert !res.output.contains('fn test_ok'), res.output
 }
+
+fn test_windows_c_system_info_is_undefined_on_non_windows() {
+	$if windows {
+		return
+	}
+	source_path := os.join_path(os.vtmp_dir(), 'issue_25821_${os.getpid()}.v')
+	source := [
+		'module main',
+		'fn main() {',
+		'	x := C.SYSTEM_INFO{}',
+		'	dump(x)',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	res := os.execute('${os.quoted_path(@VEXE)} ${os.quoted_path(source_path)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('unknown type `C.SYSTEM_INFO`'), res.output
+	assert !res.output.contains('C compilation error'), res.output
+	assert !res.output.contains('builder error'), res.output
+}
