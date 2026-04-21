@@ -112,3 +112,14 @@ fn test_parse_response_with_chunked_and_gzip_content_encoding() {
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }
+
+fn test_vschannel_error_message_formats_non_wsa_errors() {
+	assert vschannel_error_message(-2146893052) == '0x80090304'
+	assert vschannel_error_message(42) == '42'
+}
+
+fn test_vschannel_error_message_formats_windows_wsa_errors() {
+	$if windows {
+		assert vschannel_error_message(11001) == '(11001) wsahost_not_found'
+	}
+}
