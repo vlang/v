@@ -370,7 +370,7 @@ type WindowsPathResolver = fn (string) string
 
 fn ccompiler_type_from_name_with_ok(ccompiler string) (pref.CompilerType, bool) {
 	cc_file_name := os.file_name(ccompiler).to_lower_ascii()
-	if cc_file_name.contains('tcc') || cc_file_name.contains('tinyc') {
+	if is_tinyc_compiler_label(cc_file_name) {
 		return pref.CompilerType.tinyc, true
 	}
 	if cc_file_name.contains('gcc') {
@@ -404,8 +404,7 @@ fn ccompiler_type_from_version_output_with_ok(output string) (pref.CompilerType,
 		return pref.CompilerType.tinyc, false
 	}
 	lower_output := output.to_lower_ascii()
-	if lower_output.contains('tiny c compiler') || lower_output.contains('tinycc')
-		|| lower_output.contains('\ntcc') || lower_output.starts_with('tcc') {
+	if is_tinyc_version_output(lower_output) {
 		return pref.CompilerType.tinyc, true
 	}
 	if lower_output.contains('clang') {
@@ -1934,9 +1933,20 @@ fn is_tcc_compilation_failure(ccompiler string, cc_kind CC, output string) bool 
 		|| is_tcc_error_output(output)
 }
 
+fn is_tinyc_compiler_label(label string) bool {
+	return label.contains('tcc') || label.contains('tinyc') || label.contains('tinygcc')
+		|| label.contains('tiny_gcc') || label.contains('tiny-gcc')
+}
+
+fn is_tinyc_version_output(output string) bool {
+	return output.contains('tiny c compiler') || output.contains('tinycc')
+		|| output.contains('tinygcc') || output.contains('tiny_gcc') || output.contains('tiny-gcc')
+		|| output.contains('\ntcc') || output.starts_with('tcc')
+}
+
 fn is_tcc_compiler_name(ccompiler string) bool {
 	name := os.file_name(ccompiler).to_lower()
-	return name.starts_with('tcc') || name.starts_with('tinyc')
+	return is_tinyc_compiler_label(name)
 }
 
 fn is_tcc_error_output(output string) bool {
@@ -1953,8 +1963,7 @@ fn is_tcc_alias_compiler(ccompiler string) bool {
 		return false
 	}
 	lcc_version := cc_version.output.to_lower()
-	return lcc_version.contains('tiny c compiler') || lcc_version.contains('tinycc')
-		|| lcc_version.contains('\ntcc') || lcc_version.starts_with('tcc')
+	return is_tinyc_version_output(lcc_version)
 }
 
 fn ccompiler_is_available(ccompiler string) bool {

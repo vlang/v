@@ -98,6 +98,11 @@ fn test_cc_from_string_detects_cl_as_msvc() {
 	assert pref.cc_from_string('C:/Program Files/Microsoft Visual Studio/cl.exe') == .msvc
 }
 
+fn test_cc_from_string_detects_tiny_gcc_as_tinyc() {
+	assert pref.cc_from_string('tiny_gcc') == .tinyc
+	assert pref.cc_from_string('/usr/local/bin/tiny_gcc') == .tinyc
+}
+
 fn test_ccompiler_type_from_version_output_detects_openbsd_clang() {
 	detected := ccompiler_type_from_version_output('OpenBSD clang version 16.0.6') or { panic(err) }
 	assert detected == .clang
@@ -108,6 +113,20 @@ fn test_ccompiler_type_from_version_output_detects_tcc() {
 		panic(err)
 	}
 	assert detected == .tinyc
+}
+
+fn test_ccompiler_type_from_name_detects_tiny_gcc() {
+	detected := ccompiler_type_from_name('/opt/tiny_gcc') or { panic(err) }
+	assert detected == .tinyc
+}
+
+fn test_ccompiler_type_from_version_output_detects_tiny_gcc() {
+	detected := ccompiler_type_from_version_output('tiny_gcc version 0.9.27') or { panic(err) }
+	assert detected == .tinyc
+}
+
+fn test_is_tcc_compilation_failure_detects_tiny_gcc_compiler_name() {
+	assert is_tcc_compilation_failure('/opt/bin/tiny_gcc', .unknown, '')
 }
 
 fn test_resolve_ccompiler_type_detects_cc_alias_path_as_clang() {
