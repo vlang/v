@@ -2772,7 +2772,11 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			}
 		}
 		if func.generic_names.len > 0 {
-			mut concrete_types := if node.raw_concrete_types.len > 0 {
+			mut concrete_types := if node.concrete_types.len == func.generic_names.len
+				&& node.concrete_types.all(it != 0 && !it.has_flag(.generic)
+				&& !g.type_has_unresolved_generic_parts(it)) {
+				node.concrete_types.map(g.unwrap_generic(it))
+			} else if node.raw_concrete_types.len > 0 {
 				node.raw_concrete_types.map(g.unwrap_generic(it))
 			} else {
 				node.concrete_types.map(g.unwrap_generic(it))
@@ -2834,7 +2838,7 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 							// may be stale (from a different instantiation). Re-resolve from
 							// g.cur_concrete_types and override if different.
 							if arg.expr is ast.Ident && arg.expr.obj is ast.Var
-								&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param {
+								&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param && g.table.sym(param.typ).name in func.generic_names {
 								mut resolved :=
 									g.resolve_current_fn_generic_param_type(arg.expr.name)
 								if (arg.is_mut || (arg.expr.obj as ast.Var).is_mut)
@@ -2892,22 +2896,31 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 					}
 				}
 			}
-			return_type_generic := if node.return_type_generic != ast.void_type
-				&& node.return_type_generic != 0 {
-				node.return_type_generic
-			} else if parent_method.params.len > 0 {
-				parent_method.return_type
-			} else {
-				func.return_type
+			// Prefer the resolved method declaration over the cached call metadata here.
+			// Generic rechecks can leave `node.return_type_generic` stale even when the
+			// method's concrete type arguments have since been corrected.
+			mut return_type_candidates := []ast.Type{}
+			if func.return_type != 0 {
+				return_type_candidates << func.return_type
 			}
-			if gen_type := g.table.convert_generic_type(return_type_generic, func.generic_names,
-				concrete_types)
-			{
-				if !gen_type.has_flag(.generic) {
-					return if node.or_block.kind == .absent {
-						gen_type
-					} else {
-						gen_type.clear_option_and_result()
+			if node.return_type_generic != ast.void_type && node.return_type_generic != 0
+				&& node.return_type_generic !in return_type_candidates {
+				return_type_candidates << node.return_type_generic
+			}
+			if parent_method.params.len > 0 && parent_method.return_type != 0
+				&& parent_method.return_type !in return_type_candidates {
+				return_type_candidates << parent_method.return_type
+			}
+			for return_type_generic in return_type_candidates {
+				if gen_type := g.table.convert_generic_type(return_type_generic,
+					func.generic_names, concrete_types)
+				{
+					if !gen_type.has_flag(.generic) {
+						return if node.or_block.kind == .absent {
+							gen_type
+						} else {
+							gen_type.clear_option_and_result()
+						}
 					}
 				}
 			}
