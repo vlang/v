@@ -170,8 +170,10 @@ pub:
 	compress_html        bool = true
 	active_cache_server  bool = true
 	max_size_data_in_mem int  = max_size_data_in_memory
-	test_cache_dir       string
-	test_template_dir    string
+	// Used by DTM internal tests to override the cache directory.
+	test_cache_dir string
+	// Used by DTM internal tests to override the templates directory.
+	test_template_dir string
 }
 
 // initialize create and init the 'DynamicTemplateManager' with the storage mode, cache/templates path folders.
@@ -182,22 +184,21 @@ pub:
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
 // - compress_html: 'type bool' Light compress of the HTML output. ( default is true )
 // - active_cache_server: 'type bool' Activate or not the template cache system. ( default is true )
-// - test_cache_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
-// - test_template_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
+// - test_cache_dir: 'type string' Used by DTM internal tests to override the cache directory.
+// - test_template_dir: 'type string' Used by DTM internal tests to override the templates directory.
 pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &DynamicTemplateManager {
-	mut dir_path := ''
-	mut dir_html_path := ''
+	mut dir_path := dtm_init_params.def_cache_path
+	mut dir_html_path := os.join_path('${os.dir(os.executable())}/templates')
 	mut max_size_memory := 0
 	mut active_cache_handler := dtm_init_params.active_cache_server
 	mut system_ready := true
 	mut cache_temporary_bool := false
-	$if test {
+
+	if dtm_init_params.test_cache_dir != '' {
 		dir_path = dtm_init_params.test_cache_dir
+	}
+	if dtm_init_params.test_template_dir != '' {
 		dir_html_path = dtm_init_params.test_template_dir
-	} $else {
-		//	dir_path = os.join_path('${os.dir(os.executable())}/vcache_dtm')
-		dir_path = dtm_init_params.def_cache_path
-		dir_html_path = os.join_path('${os.dir(os.executable())}/templates')
 	}
 	if active_cache_handler {
 		// Control if cache folder created by user exist
