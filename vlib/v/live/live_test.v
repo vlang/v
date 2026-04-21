@@ -188,6 +188,14 @@ fn run_in_background(cmd string) {
 	log.warn('the live program should be running in the background now')
 }
 
+fn must_exec_cmd(cmd string) {
+	res := os.execute(cmd)
+	if res.exit_code == 0 {
+		return
+	}
+	panic('command failed: ${cmd}\n${res.output}')
+}
+
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
@@ -225,4 +233,23 @@ fn test_live_program_can_be_changed_4() {
 	change_source('STOP')
 	change_source('STOP')
 	assert true
+}
+
+fn test_live_windows_sokol_sharedlive_build_uses_host_import_lib() {
+	$if !windows || !msvc {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'live_windows_sokol_compile')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source := os.join_path(@VEXEROOT, 'examples', 'sokol', 'drawing.v')
+	exe_path := os.join_path(tmp_dir, 'drawing_live.exe')
+	lib_path := exe_path[..exe_path.len - 4] + '.lib'
+	dll_path := os.join_path(tmp_dir, 'drawing_live_shared.dll')
+	must_exec_cmd('${os.quoted_path(vexe)} -nocolor -cc msvc -live -o ${os.quoted_path(exe_path)} ${os.quoted_path(source)}')
+	assert os.exists(lib_path)
+	must_exec_cmd('${os.quoted_path(vexe)} -nocolor -cc msvc -sharedlive -shared -ldflags ${os.quoted_path(lib_path)} -o ${os.quoted_path(dll_path)} ${os.quoted_path(source)}')
+	assert os.exists(dll_path)
 }

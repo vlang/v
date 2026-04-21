@@ -357,6 +357,9 @@ pub fn (mut v Builder) cc_msvc() {
 
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:${os.quoted_path(v.pref.out_name)}'
+	if v.pref.is_livemain {
+		a << '/IMPLIB:${os.quoted_path(v.pref.out_name[..v.pref.out_name.len - 4] + '.lib')}'
+	}
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
