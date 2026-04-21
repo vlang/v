@@ -118,3 +118,73 @@ fn test_dynamic_update_with_alias_set_block() {
 	assert rows[0].email == 'alice@example.com'
 	assert rows[0].status == next_status
 }
+
+fn test_dynamic_select_with_in_operator_and_additional_condition() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicMember
+	}!
+
+	members := [
+		DynamicMember{
+			name:   'Alice'
+			email:  'alice@example.com'
+			age:    31
+			status: 'active'
+		},
+		DynamicMember{
+			name:   'Bob'
+			email:  'bob@example.com'
+			age:    24
+			status: 'pending'
+		},
+		DynamicMember{
+			name:   'Charlie'
+			email:  'charlie@example.com'
+			age:    29
+			status: 'active'
+		},
+		DynamicMember{
+			name:   'Diana'
+			email:  'diana@example.com'
+			age:    35
+			status: 'inactive'
+		},
+		DynamicMember{
+			name:   'Eve'
+			email:  'eve@example.com'
+			age:    22
+			status: 'pending'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicMember
+		}!
+	}
+
+	valid_names := ['Alice', 'Charlie', 'Eve']
+	min_age := 25
+
+	rows := sql db {
+		dynamic select from DynamicMember where {
+				if valid_names.len > 0 {
+						name in valid_names
+				},
+				if min_age > 0 {
+						age >= min_age
+				}
+		} order by id
+	}!
+
+	assert rows.len == 2
+	assert rows[0].name == 'Alice'
+	assert rows[0].age == 31
+	assert rows[1].name == 'Charlie'
+	assert rows[1].age == 29
+}
