@@ -4,19 +4,21 @@ $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
 }
-#flag -I@VEXEROOT/thirdparty/sqlite
 $if tinyc {
 	#flag -DSQLITE_DISABLE_INTRINSIC
 }
 $if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
+	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
 } $else $if windows {
-	#flag windows -L@VEXEROOT/thirdparty/sqlite
-	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+	#include "sqlite3.c" # The SQLite amalgamation source file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 } $else {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 }
-#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation, or install its development package.
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
