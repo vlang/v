@@ -1974,6 +1974,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	if node.is_c_type_cast {
+		g.cast_expr(ast.CastExpr{
+			typ:       node.return_type
+			typname:   g.table.sym(g.unwrap_generic(node.return_type)).name
+			expr:      node.args[0].expr
+			expr_type: node.args[0].typ
+			pos:       node.pos
+		})
+		return
+	}
 	is_shared := g.is_shared
 	g.is_shared = false
 	defer {
