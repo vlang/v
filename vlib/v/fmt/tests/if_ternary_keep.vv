@@ -9,6 +9,8 @@ struct Foo {
 
 fn valid_single_line() {
 	// Variable initialization
+	number := if condition { 42 } else { 0 }
+	status := if code == 200 { 'OK' } else { 'Error' }
 	a, b := if true { 'a', 'b' } else { 'b', 'a' }
 	// Variable assignment
 	mut x := 'abc'
