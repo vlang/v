@@ -4209,6 +4209,37 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 	return got_type
 }
 
+fn (mut g Gen) sumtype_ptr_cast_payload_field(sumtype_typ ast.Type, target_ptr_typ ast.Type) string {
+	matched_variant := g.find_matching_sumtype_variant(sumtype_typ, target_ptr_typ.deref())
+	if g.table.sumtype_has_variant(sumtype_typ, matched_variant, false) {
+		matched_variant_sym := g.table.sym(matched_variant)
+		return g.get_sumtype_variant_name(matched_variant, matched_variant_sym)
+	}
+	sumtype_info := g.table.final_sym(sumtype_typ).info as ast.SumType
+	first_variant := g.unwrap_generic(sumtype_info.variants[0])
+	first_variant_sym := g.table.sym(first_variant)
+	return g.get_sumtype_variant_name(first_variant, first_variant_sym)
+}
+
+fn (mut g Gen) write_payload_pointer_from_ptr_wrapper(expr ast.Expr, wrapper_typ ast.Type,
+	target_ptr_typ ast.Type) {
+	wrapper_sym := g.table.final_sym(wrapper_typ)
+	g.write('((')
+	g.expr(expr)
+	match wrapper_sym.kind {
+		.interface {
+			g.write(')->_object')
+		}
+		.sum_type {
+			field_name := g.sumtype_ptr_cast_payload_field(wrapper_typ, target_ptr_typ)
+			g.write(')->_${field_name}')
+		}
+		else {}
+	}
+
+	g.write(')')
+}
+
 // use instead of expr() when you need a var to use as reference
 fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
@@ -8552,6 +8583,25 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			return
 		}
 		styp := g.styp(node_typ)
+		source_wrapper_typ := if expr_type.is_ptr() && expr_type.nr_muls() == 1 {
+			g.unwrap_generic(expr_type.deref())
+		} else {
+			ast.void_type
+		}
+		source_expr_is_wrapper_address := node.expr is ast.PrefixExpr
+			&& (node.expr as ast.PrefixExpr).op == .amp
+		source_wrapper_is_payload := source_wrapper_typ != ast.void_type
+			&& g.table.final_sym(source_wrapper_typ).kind in [.interface, .sum_type]
+		target_points_to_wrapper_layout := node_typ.is_ptr() && source_wrapper_typ != ast.void_type
+			&& g.styp(node_typ.deref()) == g.styp(source_wrapper_typ)
+		if node_typ.is_ptr() && expr_type.is_ptr() && source_wrapper_is_payload
+			&& !source_expr_is_wrapper_address && !target_points_to_wrapper_layout
+			&& final_sym.kind !in [.interface, .sum_type] {
+			g.write('((${styp})')
+			g.write_payload_pointer_from_ptr_wrapper(node.expr, source_wrapper_typ, node_typ)
+			g.write(')')
+			return
+		}
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO: handle the type in fn casts, not just exprs
 			/*
