@@ -4,6 +4,9 @@
 @[has_globals]
 module builtin
 
+#include <io.h>
+#include <fcntl.h>
+
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
 pub type C.BOOL = int
@@ -39,6 +42,18 @@ pub type C.LPTSTR = &C.TCHAR
 pub type C.LPCTSTR = &C.TCHAR
 
 fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
+
+fn C._fileno(&C.FILE) int
+
+fn C._setmode(int, int) int
+
+// set_stream_binary_mode disables CRT newline translation for redirected stdio streams.
+fn set_stream_binary_mode(stream &C.FILE) {
+	fd := C._fileno(stream)
+	if fd >= 0 {
+		C._setmode(fd, C._O_BINARY)
+	}
+}
 
 fn is_terminal(fd int) int {
 	mut mode := u32(0)
@@ -106,6 +121,8 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
+	set_stream_binary_mode(C.stdout)
+	set_stream_binary_mode(C.stderr)
 	if is_terminal(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(std_output_handle),
 			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
