@@ -6535,7 +6535,14 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				g.expr(arg.expr)
 			}
 		} else {
-			g.write('ADDR(${g.table.sym(expected_wrap_type).cname}, ')
+			if exp_sym.kind == .interface {
+				// A converted `mut` interface argument can escape the callee
+				// (for example into `[]&Interface`), so the wrapper must outlive
+				// the current block scope.
+				g.write('HEAP(${g.table.sym(expected_wrap_type).cname}, ')
+			} else {
+				g.write('ADDR(${g.table.sym(expected_wrap_type).cname}, ')
+			}
 			g.expr_with_cast(arg.expr, arg_typ, expected_wrap_type)
 			g.write(')')
 		}
