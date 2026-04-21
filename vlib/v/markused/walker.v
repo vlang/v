@@ -180,6 +180,17 @@ fn (w &Walker) has_complete_generic_instantiation(concrete_types []ast.Type, gen
 		&& !concrete_types.any(it.has_flag(.generic))
 }
 
+fn (w &Walker) queue_generic_fns_with_unwalked_instantiations(mut pending map[string]bool) {
+	for fkey, _ in w.used_fn_generic_types {
+		for concrete_type_list in w.table.fn_generic_types[fkey] {
+			if concrete_type_list !in w.walked_fn_generic_types[fkey] {
+				pending[fkey] = true
+				break
+			}
+		}
+	}
+}
+
 @[inline]
 pub fn (mut w Walker) mark_builtin_array_method_as_used(method_name string) {
 	w.mark_builtin_type_method_as_used('${ast.array_type_idx}.${method_name}',
@@ -2354,13 +2365,7 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 	// Also walk already-walked methods that got new concrete types from Phase 2.
 	// Phase 2 may add new concrete type lists (from the receiver union) that
 	// were not walked during the initial traversal.
-	for nkey, _ in w.used_fn_generic_types {
-		for concrete_type_list in w.table.fn_generic_types[nkey] {
-			if concrete_type_list !in w.walked_fn_generic_types[nkey] {
-				unwalked_methods[nkey] = true
-			}
-		}
-	}
+	w.queue_generic_fns_with_unwalked_instantiations(mut unwalked_methods)
 	for unwalked_methods.len > 0 {
 		mut next_unwalked := map[string]bool{}
 		for fkey, _ in unwalked_methods {
@@ -2406,6 +2411,7 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 				}
 			}
 		}
+		w.queue_generic_fns_with_unwalked_instantiations(mut next_unwalked)
 		unwalked_methods = next_unwalked.move()
 	}
 	// Phase 5: Propagate newly-discovered concrete types from walking
