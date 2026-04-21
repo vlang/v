@@ -499,6 +499,7 @@ struct EncoderFieldInfo {
 	is_skip      bool
 	is_omitempty bool
 	is_required  bool
+	is_json_null bool
 }
 
 fn get_value_from_optional[T](val ?T) T {
@@ -557,6 +558,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 			mut key_name := ''
 			mut is_omitempty := false
 			mut is_required := false
+			mut is_json_null := false
 			for attr in field.attrs {
 				match attr {
 					'skip' {
@@ -568,6 +570,9 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 					}
 					'required' {
 						is_required = true
+					}
+					'json_null' {
+						is_json_null = true
 					}
 					else {}
 				}
@@ -586,6 +591,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 				is_skip:      is_skip
 				is_omitempty: is_omitempty
 				is_required:  is_required
+				is_json_null: is_json_null
 			}
 		}
 	}
@@ -633,7 +639,7 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 			return false
 		}
 	}
-	if !field_info.is_required && struct_field_is_none(val) {
+	if !field_info.is_required && !field_info.is_json_null && struct_field_is_none(val) {
 		return false
 	}
 	if struct_field_is_nil(val) {
