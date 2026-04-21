@@ -1535,6 +1535,25 @@ mm := map[string]int{}
 val := mm['bad_key'] or { panic('key not found') }
 ```
 
+Modules can opt into stricter map indexing:
+
+```v
+@[strict_map_index]
+module main
+
+fn main() {
+	m := {
+		'abc': 'xyz'
+	}
+	value := m['abc'] or { panic('missing map key') }
+	if other := m['abc'] {
+		println(other)
+	}
+	// m['bad_key'] // compile error in `@[strict_map_index]` modules
+	println(value)
+}
+```
+
 You can also check, if a key is present, and get its value, if it was present, in one go:
 
 ```v

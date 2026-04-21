@@ -72,6 +72,7 @@ pub mut:
 	expected_expr_type          ast.Type // if/match is_expr: expected_type
 	mod                         string   // current module name
 	has_globals_in_module       bool     // true if the current module has @[has_globals] attribute
+	strict_map_index_in_module  bool     // true if the current module has @[strict_map_index] attribute
 	const_var                   &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                  []string
 	const_names                 []string
@@ -662,10 +663,16 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	}
 	// Check if the current module has has_globals attribute
 	c.has_globals_in_module = false
+	c.strict_map_index_in_module = false
 	for attr in file.mod.attrs {
-		if attr.name == 'has_globals' {
-			c.has_globals_in_module = true
-			break
+		match attr.name {
+			'has_globals' {
+				c.has_globals_in_module = true
+			}
+			'strict_map_index' {
+				c.strict_map_index_in_module = true
+			}
+			else {}
 		}
 	}
 }
@@ -7922,6 +7929,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			} else if !c.check_map_key_type(index_type, key_type) {
 				err := c.map_key_expected_msg(index_type, key_type, node.index, '${node.left}')
 				c.error('invalid key: ${err}', node.pos)
+			}
+			if c.strict_map_index_in_module && node.or_expr.kind == .absent && !node.is_setter
+				&& !c.inside_if_guard {
+				c.error('`@[strict_map_index]` requires handling missing map keys with `or {}` or `if value := map[key] {}`',
+					node.pos)
 			}
 			value_sym := c.table.sym(info.value_type)
 			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent

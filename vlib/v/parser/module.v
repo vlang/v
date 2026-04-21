@@ -182,6 +182,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				'has_globals' {
 					p.has_globals = true
 				}
+				'strict_map_index' {}
 				'translated' {
 					p.is_translated = true
 				}
