@@ -26,12 +26,8 @@ With params:
 import x.compress.bzip2
 
 data := 'hello'.bytes()
-compressed := bzip2.compress_with_params(data, bzip2.CompressParams{
-	block_size: 1
-})!
-plain := bzip2.decompress_with_params(compressed, bzip2.DecompressParams{
-	verify_crc: true
-})!
+compressed := bzip2.compress(data, block_size: 1)!
+plain := bzip2.decompress(compressed, verify_crc: true)!
 assert plain.bytestr() == 'hello'
 ```
 

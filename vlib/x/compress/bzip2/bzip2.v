@@ -23,13 +23,8 @@ pub:
 	verify_crc bool = true
 }
 
-// compress compresses `src` into a bzip2 byte stream with default parameters.
-pub fn compress(src []u8) ![]u8 {
-	return compress_with_params(src, CompressParams{})
-}
-
-// compress_with_params compresses `src` into a bzip2 byte stream.
-pub fn compress_with_params(src []u8, params CompressParams) ![]u8 {
+// compress compresses `src` into a bzip2 byte stream.
+pub fn compress(src []u8, params CompressParams) ![]u8 {
 	if params.block_size < 1 || params.block_size > 9 {
 		return error('bzip2: block_size must be in 1..9')
 	}
@@ -87,13 +82,8 @@ pub fn compress_with_params(src []u8, params CompressParams) ![]u8 {
 	return w.finish()
 }
 
-// decompress decompresses a bzip2 byte stream with default parameters.
-pub fn decompress(src []u8) ![]u8 {
-	return decompress_with_params(src, DecompressParams{})
-}
-
-// decompress_with_params decompresses a bzip2 byte stream.
-pub fn decompress_with_params(src []u8, params DecompressParams) ![]u8 {
+// decompress decompresses a bzip2 byte stream.
+pub fn decompress(src []u8, params DecompressParams) ![]u8 {
 	mut r := new_bit_reader(src)
 	if r.read_byte()! != `B` || r.read_byte()! != `Z` || r.read_byte()! != `h` {
 		return error('bzip2: invalid header')
