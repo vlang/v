@@ -66,6 +66,63 @@ fn (mut c Checker) check_comptime_method_string_auto_expand(mut node ast.Comptim
 	return true
 }
 
+fn (mut c Checker) check_comptime_method_call_args(mut node ast.ComptimeCall) {
+	if c.comptime.comptime_for_method == unsafe { nil } {
+		return
+	}
+	method := c.comptime.comptime_for_method
+	if method.params.len == 0 {
+		return
+	}
+	nr_method_args := method.params.len - 1
+	if !method.is_variadic && node.args.len > nr_method_args {
+		return
+	}
+	receiver_name := c.table.type_to_str(c.unwrap_generic(method.receiver_type).set_nr_muls(0))
+	for i in 0 .. node.args.len {
+		mut arg := node.args[i]
+		param := if method.is_variadic && i >= nr_method_args - 1 {
+			method.params.last()
+		} else if i + 1 < method.params.len {
+			method.params[i + 1]
+		} else {
+			break
+		}
+		arg = c.implicit_mut_call_arg(param, arg)
+		node.args[i] = arg
+		param_share := param.typ.share()
+		if arg.is_mut {
+			to_lock, pos := c.fail_if_immutable(mut arg.expr)
+			if !param.is_mut {
+				tok := arg.share.str()
+				c.error('`${method.name}` parameter `${param.name}` is not `${tok}`, `${tok}` is not needed`',
+					arg.expr.pos())
+				continue
+			}
+			if param_share != arg.share {
+				c.error('wrong shared type `${arg.share.str()}`, expected: `${param_share.str()}`',
+					arg.expr.pos())
+			}
+			if to_lock != '' && param_share != .shared_t {
+				c.error('${to_lock} is `shared` and must be `lock`ed to be passed as `mut`', pos)
+			}
+		} else if param.is_mut {
+			tok := param.specifier()
+			c.error('method `${method.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${arg.expr}` instead',
+				arg.expr.pos())
+			continue
+		} else {
+			c.fail_if_unreadable(arg.expr, arg.typ, 'argument')
+		}
+		c.check_expected_call_arg(arg.typ, c.unwrap_generic(param.typ), method.language, arg) or {
+			if arg.typ != ast.void_type {
+				c.error('${err.msg()} in argument ${i + 1} to `${receiver_name}.${method.name}`',
+					arg.pos)
+			}
+		}
+	}
+}
+
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(mut node.left)
@@ -261,6 +318,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		if c.check_comptime_method_string_auto_expand(mut node) {
 			return ast.void_type
 		}
+		c.check_comptime_method_call_args(mut node)
 		c.markused_comptimecall(mut node)
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.type_resolver.get_type(node)
