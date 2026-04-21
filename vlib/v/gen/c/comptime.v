@@ -903,7 +903,13 @@ fn (mut g Gen) pop_comptime_info() {
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	resolved_typ := if node.expr !is ast.EmptyExpr {
-		g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr, node.typ)))
+		mut expr_typ := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr,
+			node.typ)))
+		resolved_ct_typ := g.type_resolver.get_type(node.expr)
+		if resolved_ct_typ != ast.void_type {
+			expr_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_ct_typ))
+		}
+		expr_typ
 	} else if node.typ != g.field_data_type {
 		g.unwrap_generic(node.typ)
 	} else {

@@ -414,7 +414,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 }
 
 fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
-	typ := if node.expr !is ast.EmptyExpr {
+	mut typ := if node.expr !is ast.EmptyExpr {
 		node.typ = c.expr(mut node.expr)
 		c.unwrap_generic(node.typ)
 	} else if node.typ != ast.void_type {
@@ -422,6 +422,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	} else {
 		node.typ = c.expr(mut node.expr)
 		c.unwrap_generic(node.typ)
+	}
+	if node.expr !is ast.EmptyExpr {
+		resolved_typ := c.type_resolver.get_type(node.expr)
+		if resolved_typ != ast.void_type {
+			node.typ = resolved_typ
+			typ = c.unwrap_generic(node.typ)
+		}
 	}
 	sym := if node.typ != c.field_data_type {
 		c.table.final_sym(typ)
