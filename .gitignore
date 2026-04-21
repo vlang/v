@@ -10,6 +10,7 @@
 # unignore vlib/x/markdown
 !vlib/x/markdown/**
 
+!.github/show_manual_release_cmd_test.v
 !*/
 # Do not add !*.* here; it overrides local excludes from .git/info/exclude.
 *.exe
