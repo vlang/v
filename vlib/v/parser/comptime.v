@@ -11,9 +11,16 @@ import v.util
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
+const supported_comptime_for_kinds = ['methods', 'fields', 'values', 'variants', 'attributes',
+	'params']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
 	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'shared', 'string', 'pointer',
 	'voidptr']
+
+@[inline]
+fn is_supported_comptime_for_kind(name string) bool {
+	return name in supported_comptime_for_kinds
+}
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -538,6 +545,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// `$for field in App.fields {`
 	// `$for attr in App.attributes {`
 	// `$for variant in App.variants {`
+	// `$for variant in field.typ.variants {`
 	p.next()
 	p.check(.key_for)
 	var_pos := p.tok.pos()
@@ -555,8 +563,21 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
 		typ = p.parse_any_type(lang, false, true, false)
 	} else {
-		expr = p.ident(lang)
-		p.scope.mark_var_as_used((expr as ast.Ident).name)
+		mut selector_expr := ast.Expr(p.ident(lang))
+		p.scope.mark_var_as_used((selector_expr as ast.Ident).name)
+		for p.tok.kind == .dot && p.peek_tok.kind == .name
+			&& !is_supported_comptime_for_kind(p.peek_tok.lit) {
+			selector_expr = p.dot_expr(selector_expr)
+			if p.name_error {
+				return ast.ComptimeFor{}
+			}
+			if selector_expr !is ast.SelectorExpr {
+				p.error_with_pos('invalid expr, use a selector like `field.typ`',
+					selector_expr.pos())
+				return ast.ComptimeFor{}
+			}
+		}
+		expr = selector_expr
 	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
