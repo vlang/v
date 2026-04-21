@@ -172,23 +172,23 @@ call :move_updated_to_v
 goto :success
 
 :gcc_strap
-where /q gcc
+call :find_gcc_exe
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> GCC not found
 	if not [!compiler!] == [] goto :error
 	goto :msvc_strap
 )
 
-echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with GCC
-gcc -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with GCC "!gcc_exe!"
+"!gcc_exe!" -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
-	gcc --version
+	"!gcc_exe!" --version
 	goto :compile_error
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" -keepc -g -showcc -cc gcc -o "%V_UPDATED%" cmd/v
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 call :move_updated_to_v
 goto :success
@@ -367,6 +367,41 @@ echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
 git clone --filter=blob:none --quiet "%vc_url%"
 exit /b 0
+
+:find_gcc_exe
+REM Prefer MinGW target-prefixed drivers when present, so PATH conflicts do not pick an unrelated gcc.exe.
+set "gcc_exe="
+if "%PROCESSOR_ARCHITECTURE%" == "x86" (
+	call :resolve_executable i686-w64-mingw32-gcc
+	if not [!resolved_exe!] == [] (
+		set "gcc_exe=!resolved_exe!"
+		exit /b 0
+	)
+) else (
+	call :resolve_executable x86_64-w64-mingw32-gcc
+	if not [!resolved_exe!] == [] (
+		set "gcc_exe=!resolved_exe!"
+		exit /b 0
+	)
+)
+call :resolve_executable gcc
+if not [!resolved_exe!] == [] (
+	set "gcc_exe=!resolved_exe!"
+	exit /b 0
+)
+exit /b 1
+
+:resolve_executable
+set "resolved_exe="
+for %%i in ("%~1") do if exist "%%~fi" (
+	set "resolved_exe=%%~fi"
+	exit /b 0
+)
+for /f "usebackq delims=" %%i in (`where "%~1" 2^>nul`) do (
+	set "resolved_exe=%%~fi"
+	exit /b 0
+)
+exit /b 1
 
 :eof
 popd
