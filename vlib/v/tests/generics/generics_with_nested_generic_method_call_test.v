@@ -38,3 +38,44 @@ fn test_generics_with_nested_generic_method_call() {
 	}
 	println('OK!!')
 }
+
+struct Issue22494In[T] {
+	internal chan T
+}
+
+fn issue22494_init[T](value T) Issue22494In[T] {
+	mut ch := chan T{cap: 1}
+	ch <- value
+	return Issue22494In[T]{
+		internal: ch
+	}
+}
+
+type Issue22494MapFn[T, K] = fn (T) K
+
+fn issue22494_do_map[T, K](from chan T, to chan K, map_fn Issue22494MapFn[T, K]) {
+	to <- map_fn[T, K](<-from)
+}
+
+fn (i Issue22494In[T]) map[K](map_fn Issue22494MapFn[T, K]) Issue22494In[K] {
+	k_src := Issue22494In[K]{
+		internal: chan K{cap: 1}
+	}
+	issue22494_do_map[T, K](i.internal, k_src.internal, map_fn)
+	return k_src
+}
+
+fn (i Issue22494In[T]) get() T {
+	return <-i.internal
+}
+
+fn test_generic_method_chain_keeps_receiver_and_method_specializations() {
+	result := issue22494_init[int](1).map[string](fn (value int) string {
+		return match value {
+			1 { 'one' }
+			else { 'zero' }
+		}
+	}).get()
+
+	assert result == 'one'
+}

@@ -1308,7 +1308,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			w.mark_by_type(exp_type)
 		}
 	}
-	source_concrete_types := if node.raw_concrete_types.len > 0 {
+	source_concrete_types := if node.is_method
+		&& node.concrete_types.len > node.raw_concrete_types.len {
+		node.concrete_types
+	} else if node.raw_concrete_types.len > 0 {
 		node.raw_concrete_types
 	} else {
 		node.concrete_types
