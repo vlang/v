@@ -164,7 +164,10 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	mut ret := 0
 	if b.pref.use_os_system_to_run {
-		command_to_run := os.quoted_path(run_file) + ' ' + run_args.join(' ')
+		mut command_to_run := os.quoted_path(run_file)
+		if run_args.len > 0 {
+			command_to_run += ' ' + util.args_quote_paths(run_args)
+		}
 		ret = os.system(command_to_run)
 		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
 	} else {
