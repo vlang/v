@@ -663,6 +663,21 @@ fn (mut p Parser) parse_offsetof_expr(start_pos token.Pos) ast.Expr {
 	}
 }
 
+fn (p &Parser) can_use_expr_as_struct_init_type(expr ast.Expr) bool {
+	return match expr {
+		ast.ParExpr {
+			p.can_use_expr_as_struct_init_type(expr.expr)
+		}
+		ast.SelectorExpr {
+			expr.expr is ast.TypeOf
+				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type']
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
 	if p.inside_asm && p.prev_tok.pos().line_nr < p.tok.pos().line_nr {
@@ -677,6 +692,12 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			&& node in [ast.CallExpr, ast.IndexExpr, ast.SelectorExpr] {
 			p.promote_if_expr_to_value(mut node)
 			node = p.call_expr_with_left(node)
+			p.is_stmt_ident = is_stmt_ident
+			continue
+		}
+		if p.tok.kind == .lcbr && p.tok.is_next_to(p.prev_tok)
+			&& p.can_use_expr_as_struct_init_type(node) {
+			node = p.struct_init_with_type_expr(node, .normal)
 			p.is_stmt_ident = is_stmt_ident
 			continue
 		}
