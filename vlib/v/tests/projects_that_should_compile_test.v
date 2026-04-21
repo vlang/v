@@ -197,3 +197,24 @@ fn test_generic_recursive_self_method_call_should_compile() {
 	_ = vrun_ok('-o ${os.quoted_path(output_path)}', source_path)
 	assert os.exists(expected_output_path)
 }
+
+fn test_sync_waitgroup_should_check_for_windows() {
+	source_path := os.join_path(os.vtmp_dir(), 'sync_waitgroup_issue_14468_${os.getpid()}.v')
+	source := [
+		'module main',
+		'',
+		'import sync',
+		'',
+		'fn main() {',
+		'\tmut wg := sync.new_waitgroup()',
+		'\twg.add(1)',
+		'\twg.done()',
+		'\twg.wait()',
+		'}',
+	].join_lines()
+	write_file(source_path, source)
+	defer {
+		os.rm(source_path) or {}
+	}
+	_ = vrun_ok('-os windows -check', source_path)
+}
