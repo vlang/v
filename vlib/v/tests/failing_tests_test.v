@@ -2,6 +2,8 @@ import os
 
 const assert_failed_defer_cleanup_path = os.join_path(os.vtmp_dir(),
 	'v_assert_failed_defer_cleanup_test.txt')
+const assert_failed_deferred_file_close_path = os.join_path(os.vtmp_dir(),
+	'v_assert_failed_deferred_file_close_test.txt')
 
 fn vroot_path(relpath string) string {
 	return os.real_path(os.join_path(@VMODROOT, relpath))
@@ -11,6 +13,19 @@ fn vexecute(relpath string) os.Result {
 	vexe := @VEXE
 	return os.execute('${os.quoted_path(vexe)} -test-runner normal ' +
 		os.quoted_path(vroot_path(relpath)))
+}
+
+fn deferred_file_flush_line(i int) string {
+	return '第${i:03}: {"code":200,"msg":"数据请求成功","word":"possible","meaning":"可能的；合适的","url":"https://dict.example/api?word=possible"}'
+}
+
+fn deferred_file_flush_expected() string {
+	line_sep := $if windows { '\r\n' } $else { '\n' }
+	mut lines := []string{cap: 160}
+	for i in 0 .. 160 {
+		lines << deferred_file_flush_line(i)
+	}
+	return lines.join(line_sep) + line_sep
 }
 
 fn testsuite_begin() {
@@ -46,6 +61,19 @@ fn test_assert_failure_runs_scoped_defer_cleanup() {
 	assert res.output.contains('assert_with_scoped_defer_cleanup_failing_test.v')
 	assert res.output.contains('assert false')
 	assert !os.exists(assert_failed_defer_cleanup_path)
+}
+
+fn test_assert_failure_runs_deferred_file_close_flush() {
+	defer {
+		os.rm(assert_failed_deferred_file_close_path) or {}
+	}
+	os.rm(assert_failed_deferred_file_close_path) or {}
+	res := vexecute('vlib/v/tests/testdata/assert_with_scoped_defer_cleanup_failing_test.v')
+	assert res.exit_code == 1
+	assert res.output.contains('assert_with_scoped_defer_cleanup_failing_test.v')
+	assert res.output.contains('assert false')
+	content := os.read_file(assert_failed_deferred_file_close_path)!
+	assert content == deferred_file_flush_expected()
 }
 
 fn test_run_only_reports_filtered_failures() {
