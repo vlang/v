@@ -628,9 +628,29 @@ mut:
 	map_state int
 }
 
+pub struct C.XSizeHintsAspect {
+mut:
+	x int
+	y int
+}
+
 pub struct C.XSizeHints {
 mut:
 	flags       i64
+	x           int
+	y           int
+	width       int
+	height      int
+	min_width   int
+	min_height  int
+	max_width   int
+	max_height  int
+	width_inc   int
+	height_inc  int
+	min_aspect  C.XSizeHintsAspect
+	max_aspect  C.XSizeHintsAspect
+	base_width  int
+	base_height int
 	win_gravity int
 }
 
