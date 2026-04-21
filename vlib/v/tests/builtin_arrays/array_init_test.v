@@ -290,7 +290,7 @@ fn empty_array_from_generic_typ[T]() []T {
 
 fn test_array_init_from_typeof_idx() {
 	fixed := [1, 2, 3]!
-	dyn := []typeof(fixed[0]).idx{}{}
+	dyn := []typeof(fixed[0]).idx{}
 	assert typeof(dyn).name == '[]int'
 	assert dyn.len == 0
 }
