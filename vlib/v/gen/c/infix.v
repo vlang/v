@@ -1101,8 +1101,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	mut left_sym := g.table.final_sym(g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
 		node.left_type)))
 	is_aggregate := node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .aggregate
-	right_sym := g.table.sym(node.right_type)
-	mut right_type := g.unwrap_generic(node.right_type)
+	mut right_type := g.unwrap_generic(g.recheck_concrete_type(node.right_type))
+	if right_type.is_ptr() && g.table.final_sym(right_type.deref()).kind == .interface {
+		right_type = right_type.deref()
+	}
+	right_sym := g.table.final_sym(right_type)
 	// When the LHS is a smartcast variable whose original type is a sum type,
 	// use the original sum type so the `is` check works on the tag field.
 	// But only when the smartcast target is NOT itself a sum type — for nested
@@ -1188,15 +1191,25 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(node.left_type)
-	right_sym := g.table.sym(node.right_type)
+	mut left_type := g.unwrap_generic(g.recheck_concrete_type(node.left_type))
+	mut right_type := g.unwrap_generic(g.recheck_concrete_type(node.right_type))
+	if left_type.is_ptr() && g.table.final_sym(left_type.deref()).kind == .interface {
+		left_type = left_type.deref()
+	}
+	if right_type.is_ptr() && g.table.final_sym(right_type.deref()).kind == .interface {
+		right_type = right_type.deref()
+	}
+	mut left_sym := g.table.final_sym(left_type)
+	right_sym := g.table.final_sym(right_type)
 
 	mut info := left_sym.info as ast.Interface
 	right_info := right_sym.info as ast.Interface
+	left_variants := info.implementor_types(true)
+	right_variants := right_info.implementor_types(true)
 	lock info.conversions {
-		common_variants := info.conversions[node.right_type] or {
-			c := info.types.filter(it in right_info.types)
-			info.conversions[node.right_type] = c
+		common_variants := info.conversions[right_type] or {
+			c := g.interface_conversion_variants(left_variants, right_variants)
+			info.conversions[right_type] = c
 			c
 		}
 		left_sym.info = info

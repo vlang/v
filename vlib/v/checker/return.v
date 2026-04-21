@@ -125,6 +125,15 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 						typ = var.typ
 					}
 				}
+			} else if mut expr is ast.SelectorExpr {
+				if expr.expr_type != 0 {
+					scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+						expr.expr_type, expr.field_name)
+					if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+						typ = c.unwrap_generic(c.exposed_smartcast_type(scope_field.orig_type,
+							scope_field.smartcasts.last(), scope_field.is_mut))
+					}
+				}
 			}
 			got_types << typ
 			expr_idxs << i
@@ -318,6 +327,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
 			&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			if exprv.is_auto_deref_var() {
+				continue
+			}
+			if c.table.final_sym(exp_type).kind == .interface
+				&& c.table.final_sym(got_type).kind == .interface
+				&& exp_type.deref().idx() == got_type.idx() {
 				continue
 			}
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',

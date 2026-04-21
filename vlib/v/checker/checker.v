@@ -6983,7 +6983,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				} else {
 					to_type
 				}
-				smartcasts << sc_type
+				if smartcasts.len == 0 || smartcasts.last() != sc_type {
+					smartcasts << sc_type
+				}
 				scope_field_is_mut := expr.is_mut || (is_mut && (allow_mut_selector_smartcast
 					|| keep_original_mutability || c.implicit_mutability_enabled()))
 				scope.register_struct_field(expr_str, ast.ScopeStructField{
@@ -7037,7 +7039,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				} else {
 					to_type
 				}
-				smartcasts << sc_type
+				if smartcasts.len == 0 || smartcasts.last() != sc_type {
+					smartcasts << sc_type
+				}
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
 						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
@@ -7104,7 +7108,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			} else {
 				to_type
 			}
-			smartcasts << sc_type
+			if smartcasts.len == 0 || smartcasts.last() != sc_type {
+				smartcasts << sc_type
+			}
 			scope.register(ast.Var{
 				name:       expr_name
 				typ:        cur_type
