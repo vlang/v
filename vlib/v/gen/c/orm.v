@@ -53,6 +53,17 @@ fn (g &Gen) orm_primitive_field_name(typ ast.Type) string {
 	return vint2int(sym.cname)
 }
 
+fn (g &Gen) orm_non_array_fields(fields []ast.StructField) []ast.StructField {
+	mut non_array_fields := []ast.StructField{cap: fields.len}
+	for field in fields {
+		final_typ := g.table.final_type(field.typ.clear_flag(.option))
+		if g.table.sym(final_typ).kind != .array {
+			non_array_fields << field
+		}
+	}
+	return non_array_fields
+}
+
 fn (g &Gen) orm_primitive_variant_field_name(typ ast.Type) string {
 	final_typ := g.table.final_type(typ.clear_flag(.option))
 	sym := g.table.sym(final_typ)
@@ -864,7 +875,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		}
 	}
 
-	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
+	fields := g.orm_non_array_fields(node.fields)
 	auto_fields := get_auto_field_idxs(fields)
 
 	primary_field := g.get_orm_struct_primary_field(fields) or { ast.StructField{} }
@@ -1517,7 +1528,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('.primary = _S("${primary_field.name}"),')
 	}
 
-	mut select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
+	mut select_fields := g.orm_non_array_fields(fields)
 	if node.aggregate_kind != .none {
 		select_fields = fields.clone()
 	}
