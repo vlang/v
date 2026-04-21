@@ -23,7 +23,7 @@ fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
 @[inline]
 fn (mut a array) clone_shallow_to_cap_noscan(new_cap int) {
 	if new_cap <= 0 {
-		unsafe { a.flags.clear(.managed | .is_slice) }
+		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
 		a.data = unsafe { nil }
 		a.offset = 0
 		a.cap = 0
@@ -38,6 +38,7 @@ fn (mut a array) clone_shallow_to_cap_noscan(new_cap int) {
 	a.data = new_data
 	a.offset = 0
 	a.cap = new_cap
+	unsafe { a.flags.set(.noscan_data) }
 	a.set_managed_flags(false)
 }
 
@@ -57,7 +58,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 		data:         data
 		len:          mylen
 		cap:          cap_
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	return arr
 }
@@ -71,7 +72,7 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		if elm_size == 1 {
@@ -100,7 +101,7 @@ fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val v
 		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		for i in 0 .. arr.len {
@@ -119,7 +120,7 @@ fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val a
 		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	for i in 0 .. arr.len {
 		val_clone := val.clone()
@@ -138,7 +139,7 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          len
 		cap:          cap_
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	// TODO: Write all memory functions (like memcpy) in V
 	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
@@ -203,7 +204,7 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 		data:         data
 		len:          count * a.len
 		cap:          count * a.len
-		flags:        .managed
+		flags:        if depth == 0 { .managed | .noscan_data } else { .managed }
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -339,7 +340,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 		data:         data
 		len:          a.len
 		cap:          a.cap
-		flags:        .managed
+		flags:        if depth == 0 { .managed | .noscan_data } else { .managed }
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 {
@@ -420,7 +421,7 @@ fn (a array) reverse_noscan() array {
 		data:         alloc_array_data_noscan(u64(a.cap) * u64(a.element_size))
 		len:          a.len
 		cap:          a.cap
-		flags:        .managed
+		flags:        .managed | .noscan_data
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }

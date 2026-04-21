@@ -1311,6 +1311,17 @@ fn test_multi_array_index() {
 	assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
+fn test_multi_array_default_init_preserves_noscan_rows() {
+	$if gcboehm_opt ? {
+		mut matrix := [][]f64{len: 2, init: []f64{len: 3, init: 0.0}}
+		matrix[0][0] = 1.25
+		assert matrix[0].flags.has(.noscan_data)
+		assert matrix[1].flags.has(.noscan_data)
+		assert matrix[0].data != matrix[1].data
+		assert matrix[1][0] == 0.0
+	}
+}
+
 fn test_plus_assign_string() {
 	mut a := ['']
 	a[0] += 'abc'
