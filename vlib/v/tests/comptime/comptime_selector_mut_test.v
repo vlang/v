@@ -31,3 +31,29 @@ fn test_main() {
 		b: 123
 	}
 }
+
+struct OptionStruct {
+mut:
+	v ?int
+}
+
+fn decode_option_int[T](mut value T) {
+	$if T is int {
+		value = 42
+	}
+}
+
+fn decode_option[T]() T {
+	mut result := T{}
+	$for field in T.fields {
+		$if field.typ is $option {
+			decode_option_int(mut result.$(field.name) ?)
+		}
+	}
+	return result
+}
+
+fn test_comptime_option_payload_mut_generic() {
+	result := decode_option[OptionStruct]()
+	assert result.v? == 42
+}

@@ -6479,6 +6479,49 @@ fn (mut g Gen) write_multi_ref_arg(arg ast.CallArg, arg_typ ast.Type, expected_t
 	return true
 }
 
+fn (mut g Gen) write_mut_unwrapped_option_payload_arg(arg ast.CallArg, expected_type ast.Type) bool {
+	if !arg.is_mut || !expected_type.is_ptr() || expected_type.has_option_or_result() {
+		return false
+	}
+	if arg.expr !is ast.PostfixExpr {
+		return false
+	}
+	postfix_expr := arg.expr as ast.PostfixExpr
+	if postfix_expr.op != .question {
+		return false
+	}
+	option_expr := postfix_expr.expr
+	if option_expr !is ast.ComptimeSelector {
+		return false
+	}
+	mut option_type := g.resolved_expr_type(option_expr, ast.void_type)
+	if option_type == ast.void_type {
+		option_type = g.type_resolver.get_type_or_default(option_expr, ast.void_type)
+	}
+	option_type = g.unwrap_generic(g.recheck_concrete_type(option_type))
+	if !option_type.has_flag(.option) {
+		return false
+	}
+	payload_type := g.unwrap_generic(g.recheck_concrete_type(option_type.clear_option_and_result()))
+	payload_styp := g.base_type(option_type)
+	option_styp := g.styp(option_type)
+	default_value := g.type_default(payload_type)
+	stmt_str := g.go_before_last_stmt().trim_space()
+	option_ptr_var := g.new_tmp_var()
+	g.empty_line = true
+	g.write('${option_styp}* ${option_ptr_var} = &')
+	g.expr(option_expr)
+	g.writeln(';')
+	g.writeln('if (${option_ptr_var}->state == 2) {')
+	g.writeln('\tbuiltin___option_ok(&(${payload_styp}[]){ ${default_value} }, (${option_styp}*)${option_ptr_var}, sizeof(${payload_styp}));')
+	g.writeln('}')
+	if stmt_str != '' {
+		g.write2(stmt_str, ' ')
+	}
+	g.write('(${g.styp(expected_type)})${option_ptr_var}->data')
+	return true
+}
+
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type_ ast.Type, lang ast.Language, is_smartcast bool) {
 	g.ref_or_deref_arg_ex(arg, expected_type_, lang, is_smartcast, false)
@@ -6547,6 +6590,9 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		g.expected_arg_mut = old_expected_arg_mut
 	}
 	exp_sym := g.table.sym(expected_type)
+	if g.write_mut_unwrapped_option_payload_arg(arg, expected_type) {
+		return
+	}
 	// Cast function pointer arguments when the expected and actual types differ.
 	// V's checker allows coercing function types (e.g. Renderer* → voidptr in callbacks),
 	// but C compilers with -Werror=incompatible-pointer-types reject the mismatch.

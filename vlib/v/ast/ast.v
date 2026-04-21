@@ -2585,6 +2585,7 @@ pub fn (expr Expr) is_lvalue() bool {
 	return match expr {
 		Ident, CTempVar { true }
 		IndexExpr { !expr.is_index_operator && expr.left.is_lvalue() }
+		PostfixExpr { expr.op == .question && expr.expr is ComptimeSelector }
 		SelectorExpr { expr.expr.is_lvalue() }
 		ParExpr { expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
 		PrefixExpr { expr.right.is_lvalue() }
