@@ -494,6 +494,23 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
 // If there is less than one node, it will add an error to the error list.
+fn (p &Parser) has_follow_up_sum_type_pipe() bool {
+	mut line := p.prev_tok.line_nr + p.prev_tok.lit.count('\n')
+	if p.tok.kind != .comment || p.tok.line_nr > line + 1 {
+		return false
+	}
+	mut tok := p.tok
+	mut next_tok := p.peek_tok
+	mut peek_idx := 2
+	for tok.kind == .comment && tok.line_nr <= line + 1 {
+		line = tok.line_nr + tok.lit.count('\n')
+		tok = next_tok
+		next_tok = p.peek_token(peek_idx)
+		peek_idx++
+	}
+	return tok.kind == .pipe && tok.line_nr <= line + 1
+}
+
 fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	p.inside_sum_type = true
 	defer {
@@ -503,10 +520,12 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	for {
 		type_start_pos := p.tok.pos()
 		typ := p.parse_type()
-		end_comments := p.eat_comments(same_line: true)
-		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
-		prev_tok := p.prev_tok
-		type_end_pos := prev_tok.pos()
+		// Keep the type node position on the variant itself; trailing comments are stored separately.
+		type_end_pos := p.prev_tok.pos()
+		mut end_comments := p.eat_comments(same_line: true)
+		if p.has_follow_up_sum_type_pipe() {
+			end_comments << p.eat_comments(follow_up: true)
+		}
 		type_pos := type_start_pos.extend(type_end_pos)
 		types << ast.TypeNode{
 			typ:          typ

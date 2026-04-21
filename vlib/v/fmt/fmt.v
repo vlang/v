@@ -1847,6 +1847,28 @@ struct Variant {
 	id   int
 }
 
+fn (mut f Fmt) sum_type_variant_comments(variant ast.TypeNode) {
+	if variant.end_comments.len == 0 {
+		return
+	}
+	mut same_line_comments := []ast.Comment{}
+	mut follow_up_comments := []ast.Comment{}
+	for comment in variant.end_comments {
+		if comment.pos.line_nr == variant.pos.last_line {
+			same_line_comments << comment
+		} else {
+			follow_up_comments << comment
+		}
+	}
+	if same_line_comments.len > 0 {
+		f.comments(same_line_comments, has_nl: false)
+	}
+	if follow_up_comments.len > 0 {
+		f.writeln('')
+		f.comments(follow_up_comments, has_nl: false, level: .indent)
+	}
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1886,7 +1908,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		}
 		f.write(variant.name)
 		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
-			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+			f.sum_type_variant_comments(node.variants[variant.id])
 		}
 	}
 	if !is_multiline {
