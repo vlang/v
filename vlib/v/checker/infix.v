@@ -368,7 +368,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
-			c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+			c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 
 			// In SQL, `field == nil`/`field != nil` is lowered to NULL comparisons.
 			if !c.inside_sql {
@@ -802,7 +802,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else {
-				c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+				c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 			}
 			if node.left.is_nil() || node.right.is_nil() {
 				c.error('cannot use `${node.op.str()}` with `nil`', node.pos)
@@ -1085,7 +1085,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	if node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
 		|| node.op in [.eq, .ne] {
-		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+		c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 	}
 
 	left_is_result := left_type.has_flag(.result)
@@ -1417,7 +1417,15 @@ fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
 	return true
 }
 
-fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
+fn (c &Checker) option_payload_can_compare_to_nil(typ ast.Type, sym ast.TypeSymbol) bool {
+	mut option_type := typ
+	if sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+		option_type = sym.info.parent_type
+	}
+	return option_type.clear_option_and_result().is_any_kind_of_pointer()
+}
+
+fn (mut c Checker) check_option_infix_expr(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
 	// SQL expressions can compare optional values directly, but anon fn bodies in SQL
 	// should keep regular option checks.
 	if c.inside_sql && !c.inside_anon_fn {
@@ -1427,6 +1435,12 @@ fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Typ
 		|| (left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.has_flag(.option))
 	right_is_option := right_type.has_flag(.option)
 		|| (right_sym.kind == .alias && (right_sym.info as ast.Alias).parent_type.has_flag(.option))
+	if left_is_option && node.right.is_nil()
+		&& c.option_payload_can_compare_to_nil(left_type, left_sym) {
+		node.right = ast.None{}
+		node.right_type = ast.none_type
+		return
+	}
 	if (node.left is ast.None && right_is_option)
 		|| (node.right is ast.None && left_is_option)
 		|| (left_sym.kind == .none || right_sym.kind == .none) {

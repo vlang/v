@@ -112,3 +112,36 @@ fn test_generic_method_returning_option_reference_preserves_many_values() {
 	}
 	assert list.size == 0
 }
+
+struct Tag {
+	id     string
+	parent ?&Tag
+}
+
+fn is_nil_field[T](val T) bool {
+	$if T.indirections != 0 {
+		return val == unsafe { nil }
+	}
+	return false
+}
+
+fn is_not_nil_field[T](val T) bool {
+	$if T.indirections != 0 {
+		return val != unsafe { nil }
+	}
+	return false
+}
+
+fn test_option_pointer_can_compare_to_nil_in_comptime_indirection_branch() {
+	orphan := Tag{}
+	child := &Tag{
+		id: 'child'
+	}
+	parent := Tag{
+		parent: child
+	}
+	assert !is_nil_field(orphan.id)
+	assert is_nil_field(orphan.parent)
+	assert !is_nil_field(parent.parent)
+	assert is_not_nil_field(parent.parent)
+}
