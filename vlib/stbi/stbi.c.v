@@ -4,6 +4,8 @@
 
 module stbi
 
+import os
+
 @[if trace_stbi_allocations ?]
 fn trace_allocation(message string) {
 	eprintln(message)
@@ -129,6 +131,20 @@ pub:
 //    Converting/resizing it, should work fine though.
 pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
+	$if windows {
+		$if clang {
+			// stb's file-based loader crashes on Windows when compiled with clang.
+			// Read the file through V and decode the in-memory bytes instead.
+			file_bytes := os.read_bytes(path) or {
+				return error('stbi_image failed to load from "${path}"')
+			}
+			mut img := load_from_memory(file_bytes.data, file_bytes.len, params) or {
+				return error('stbi_image failed to load from "${path}"')
+			}
+			img.ext = ext
+			return img
+		}
+	}
 	mut res := Image{
 		ok:          true
 		ext:         ext

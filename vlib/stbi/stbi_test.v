@@ -101,3 +101,14 @@ fn test_load_image_from_memory_with_channels_different_than_4() {
 	assert img3.nr_channels == 3, 'load_from_memory should preserve the source channel count when desired_channels is 0'
 	assert img3.original_nr_channels == 3
 }
+
+fn test_load_from_file_matches_memory_decode() {
+	background_bytes := os.read_bytes(background_path)!
+	img_from_file := stbi.load(background_path)!
+	img_from_memory := stbi.load_from_memory(background_bytes.data, background_bytes.len)!
+	assert img_from_file.width == img_from_memory.width
+	assert img_from_file.height == img_from_memory.height
+	assert img_from_file.nr_channels == img_from_memory.nr_channels
+	assert img_from_file.original_nr_channels == img_from_memory.original_nr_channels
+	assert img_from_file.ext == 'png'
+}
