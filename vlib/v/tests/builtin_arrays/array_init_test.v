@@ -300,3 +300,21 @@ fn test_array_init_from_generic_typ() {
 	assert typeof(ints).name == '[]int'
 	assert ints.len == 0
 }
+
+fn test_nested_array_init_in_if_expr_with_index() {
+	map_test := [][][]int{len: 10, init: if index == 0 || index == 9 {
+		[][]int{len: 10, init: [1]}
+	} else {
+		[][]int{len: 10, init: if index == 0 || index == 9 { [1] } else { [] }}
+	}}
+
+	assert map_test.len == 10
+	assert map_test[0].len == 10
+	assert map_test[0][0] == [1]
+	assert map_test[0][9] == [1]
+	assert map_test[1].len == 10
+	assert map_test[1][0] == [1]
+	assert map_test[1][1] == []int{}
+	assert map_test[1][9] == [1]
+	assert map_test[9][5] == [1]
+}

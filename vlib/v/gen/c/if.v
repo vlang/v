@@ -81,6 +81,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	}
 	match expr {
 		ast.ArrayInit {
+			elem_type := g.unwrap_generic(expr.elem_type)
+			elem_kind := if elem_type != 0 {
+				g.table.final_sym(elem_type).kind
+			} else {
+				ast.Kind.placeholder
+			}
+			if expr.has_index || (expr.has_len && (g.struct_has_array_or_map_field(elem_type)
+				|| (elem_kind in [.array, .map] && !expr.has_init))) {
+				return true
+			}
 			if g.need_tmp_var_in_expr(expr.len_expr) {
 				return true
 			}
