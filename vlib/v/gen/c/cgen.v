@@ -10069,16 +10069,66 @@ fn (g &Gen) should_emit_private_c_struct(sym &ast.TypeSymbol, info ast.Struct) b
 	return !decl_path.ends_with('.c.v')
 }
 
+fn (g &Gen) c_struct_decl_path(info ast.Struct) ?string {
+	if info.name_pos.file_idx < 0 || int(info.name_pos.file_idx) >= g.table.filelist.len {
+		return none
+	}
+	return g.table.filelist[info.name_pos.file_idx]
+}
+
+fn c_source_looks_header_backed(path string) bool {
+	source := os.read_file(path) or { return false }
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.len == 0 || trimmed.starts_with('//') {
+			continue
+		}
+		if trimmed.starts_with('#include') {
+			return true
+		}
+		if trimmed.starts_with('#insert') {
+			lower_trimmed := trimmed.to_lower()
+			if lower_trimmed.contains('.h"') || lower_trimmed.contains(".h'")
+				|| lower_trimmed.contains('.h ') || lower_trimmed.contains('.hpp')
+				|| lower_trimmed.ends_with('.h') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) should_emit_plain_v_c_struct(sym &ast.TypeSymbol, info ast.Struct) bool {
+	if sym.language != .c || sym.kind != .struct || info.is_anon || info.is_typedef {
+		return false
+	}
+	if sym.name.all_after('C.').starts_with('_') {
+		return false
+	}
+	if info.fields.len == 0 && info.embeds.len == 0 {
+		return false
+	}
+	decl_path := g.c_struct_decl_path(info) or { return false }
+	if decl_path.ends_with('.c.v') {
+		return false
+	}
+	return !c_source_looks_header_backed(decl_path)
+}
+
+fn (g &Gen) should_emit_c_struct_definition(sym &ast.TypeSymbol, info ast.Struct) bool {
+	return g.should_emit_private_c_struct(sym, info) || g.should_emit_plain_v_c_struct(sym, info)
+}
+
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 	mut struct_names := map[string]bool{}
 	for sym in symbols {
 		if sym.name.starts_with('C.') {
 			if sym.info is ast.Struct && sym.info.is_anon {
 				// For `C___VAnonStruct`, we need to create a new struct to make auto_str work.
-			} else if sym.info is ast.Struct && g.should_emit_private_c_struct(sym, sym.info) {
+			} else if sym.info is ast.Struct && g.should_emit_c_struct_definition(sym, sym.info) {
 				// Private C tags like `C._gpgme_key` are often only forward-declared in headers.
-				// When they are defined in a plain `.v` file, cgen needs to emit the backing
-				// struct body instead of assuming the C headers will provide it.
+				// Also emit user-declared plain `C.` structs from ordinary `.v` files when there
+				// is no local C header import to provide the backing definition.
 			} else {
 				continue
 			}
@@ -10091,7 +10141,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		mut name := sym.scoped_cname()
 		if sym.name.starts_with('C.') && sym.info is ast.Struct
-			&& g.should_emit_private_c_struct(sym, sym.info) {
+			&& g.should_emit_c_struct_definition(sym, sym.info) {
 			name = sym.name.all_after('C.')
 		}
 		if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
