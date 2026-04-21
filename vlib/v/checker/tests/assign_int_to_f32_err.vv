@@ -1,0 +1,6 @@
+fn main() {
+	mut my_float_32 := f32(3.2)
+	_ = my_float_32
+	my_int := int(2147483583)
+	my_float_32 = my_int
+}

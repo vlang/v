@@ -120,6 +120,14 @@ fn (mut c Checker) update_option_assignment_smartcast(mut expr ast.Expr, left_ty
 	}
 }
 
+@[inline]
+fn (c &Checker) disallow_implicit_int_to_f32_assign(got ast.Type, expected ast.Type) bool {
+	got_type := c.table.unalias_num_type(got).clear_flags()
+	expected_type := c.table.unalias_num_type(expected).clear_flags()
+	return expected_type == ast.f32_type
+		&& got_type in [ast.i32_type, ast.int_type, ast.i64_type, ast.isize_type, ast.u32_type, ast.u64_type, ast.usize_type]
+}
+
 // TODO: 980 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
@@ -1131,6 +1139,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				left_type_unwrapped
 			} else {
 				right_type_unwrapped
+			}
+			if original_op == .assign
+				&& c.disallow_implicit_int_to_f32_assign(assign_right_type, left_type_unwrapped) {
+				c.error('cannot assign to `${left}`: ${c.expected_msg(assign_right_type,
+					left_type_unwrapped)}', right_pos)
 			}
 			c.check_expected(assign_right_type, left_type_unwrapped) or {
 				if left.is_auto_deref_arg() && left_type.is_ptr() {
