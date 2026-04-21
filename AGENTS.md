@@ -249,11 +249,11 @@ See Build & Rebuild for rebuild triggers and flags.
 
 ## Prerequisites
 * Toolchain: `make`, `git`, and a C compiler (`clang` or `gcc`).
-* Windows: use `make.bat` for the initial build.
+* Windows: use `v_make.bat` for the initial build.
 
 ## Build & Rebuild
 * Initial build (only if `./v` is missing): `make`
-  (Windows: `make.bat`).
+  (Windows: `v_make.bat`).
 * Build `./vnew` (debug-friendly, recommended for agent workflows):
   `./v -g -keepc -o ./vnew cmd/v`
 * Never run `./v self` directly; only build `./vnew` with the commands

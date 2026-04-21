@@ -14,7 +14,7 @@ struct App {
 	vexe       string
 	vroot      string
 
-	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `make.bat`
+	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `v_make.bat`
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 }
 
@@ -247,7 +247,7 @@ fn (app App) install_git() {
 
 fn get_make_cmd_name() string {
 	if os.user_os() == 'windows' {
-		return 'make.bat'
+		return 'v_make.bat'
 	}
 	cmd := 'make'
 	make_sure_cmd_is_available(cmd)
