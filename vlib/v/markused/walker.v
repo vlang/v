@@ -2013,7 +2013,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			for concrete_type in call_concrete_types {
 				w.mark_by_type(concrete_type)
 			}
-			keep_all_generic_types := stmt.generic_names.len > 0 && call_concrete_types.len == 0
+			generic_call_inside_generic_caller := w.fn_generic_names(stmt).len > 0
+				&& node.raw_concrete_types.len == 0 && caller_generic_names.len > 0
+			keep_all_generic_types := (stmt.generic_names.len > 0 && call_concrete_types.len == 0)
+				|| generic_call_inside_generic_caller
 			if keep_all_generic_types {
 				w.keep_all_fn_generic_types[fn_name] = true
 			}
