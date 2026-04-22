@@ -401,8 +401,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				mut total_bytes_read := 0
 				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
 				mut headers_complete := false
-				mut is_chunked := false
-				mut content_length := -1
+				mut header_too_large := false
 				mut header_end_pos := -1
 
 				for {
@@ -421,85 +420,42 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 						break
 					}
 
-					// For non-chunked requests, enforce the buffer size limit
-					if !is_chunked && total_bytes_read + bytes_read > server.max_request_buffer_size {
-						// Buffer size exceeded
-						break
-					}
 					unsafe {
 						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
 					}
 					total_bytes_read += bytes_read
 
-					// Check if headers are complete (\r\n\r\n)
+					// Enforce the configured limit on request headers, not on the whole body.
 					if !headers_complete && total_bytes_read >= 4 {
-						hi_start := if header_end_pos == -1 {
-							0
+						header_end_pos = find_header_end_in_buf(readed_request_buffer.data,
+							total_bytes_read)
+						if header_end_pos == -1 {
+							if total_bytes_read >= server.max_request_buffer_size {
+								header_too_large = true
+								break
+							}
 						} else {
-							header_end_pos
-						}
-						for hi := hi_start; hi <= total_bytes_read - 4; hi++ {
-							if readed_request_buffer[hi] == `\r`
-								&& readed_request_buffer[hi + 1] == `\n`
-								&& readed_request_buffer[hi + 2] == `\r`
-								&& readed_request_buffer[hi + 3] == `\n` {
-								headers_complete = true
-								header_end_pos = hi + 4
-								// Determine body handling strategy
-								is_chunked = has_chunked_transfer_encoding_in_buf(readed_request_buffer.data,
-									header_end_pos)
-								if !is_chunked {
-									content_length = parse_content_length_from_buf(readed_request_buffer.data,
-										header_end_pos)
-								}
+							headers_complete = true
+							if header_end_pos > server.max_request_buffer_size {
+								header_too_large = true
 								break
 							}
 						}
 					}
 
-					if headers_complete {
-						if is_chunked {
-							// For chunked: check for terminator \r\n0\r\n\r\n
-							if total_bytes_read >= 7
-								&& readed_request_buffer[total_bytes_read - 7] == `\r`
-								&& readed_request_buffer[total_bytes_read - 6] == `\n`
-								&& readed_request_buffer[total_bytes_read - 5] == `0`
-								&& readed_request_buffer[total_bytes_read - 4] == `\r`
-								&& readed_request_buffer[total_bytes_read - 3] == `\n`
-								&& readed_request_buffer[total_bytes_read - 2] == `\r`
-								&& readed_request_buffer[total_bytes_read - 1] == `\n` {
-								break
-							}
-							// Also check 0\r\n\r\n at header_end (empty body)
-							if total_bytes_read >= header_end_pos + 5
-								&& readed_request_buffer[header_end_pos] == `0`
-								&& readed_request_buffer[header_end_pos + 1] == `\r`
-								&& readed_request_buffer[header_end_pos + 2] == `\n`
-								&& readed_request_buffer[header_end_pos + 3] == `\r`
-								&& readed_request_buffer[header_end_pos + 4] == `\n` {
-								break
-							}
-						} else if content_length >= 0 {
-							// Content-Length body: done when enough bytes received
-							body_received := total_bytes_read - header_end_pos
-							if body_received >= content_length {
-								break
-							}
-						} else {
-							// No body expected (no Content-Length, not chunked)
-							break
-						}
+					if headers_complete
+						&& has_complete_body(readed_request_buffer.data, total_bytes_read) {
+						break
 					}
 				}
 
+				if header_too_large {
+					C.send(client_fd, status_413_response.data, status_413_response.len,
+						C.MSG_NOSIGNAL)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					continue
+				}
 				if total_bytes_read > 0 {
-					// Check if non-chunked request exceeds buffer size
-					if !is_chunked && total_bytes_read >= server.max_request_buffer_size - 1 {
-						C.send(client_fd, status_413_response.data, status_413_response.len,
-							C.MSG_NOSIGNAL)
-						handle_client_closure(epoll_fd, client_fd, mut client_fds)
-						continue
-					}
 					process_request(server, epoll_fd, client_fd, readed_request_buffer, mut
 						client_fds)
 				} else if total_bytes_read == 0 {

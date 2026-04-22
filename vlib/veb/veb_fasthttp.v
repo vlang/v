@@ -89,6 +89,9 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 			}
 		}
 	}
+	if invalid_resp := content_length_validation_response(req, req2) {
+		return invalid_resp
+	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
 
@@ -115,6 +118,33 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 		should_close: completed_context.client_wants_to_close
 	}
 } // handle_request_and_route is a unified function that creates the context,
+
+fn content_length_validation_response(req fasthttp.HttpRequest, parsed http.Request) ?fasthttp.HttpResponse {
+	if transfer_encoding_is_chunked(parsed.header) {
+		return none
+	}
+	content_length := parsed.header.get(.content_length) or { return none }
+	expected_length := content_length.int()
+	actual_length := req.body.len
+	if actual_length == expected_length {
+		return none
+	}
+	if actual_length < expected_length {
+		return fasthttp.HttpResponse{
+			content: http_408.bytes()
+		}
+	}
+	return fasthttp.HttpResponse{
+		content: http.new_response(
+			status: .bad_request
+			body:   'Mismatch of body length and Content-Length header'
+			header: http.new_header(
+				key:   .content_type
+				value: 'text/plain'
+			).join(headers_close)
+		).bytes()
+	}
+}
 
 // runs middleware, and finds the correct route for a request.
 fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, params RequestParams) &Context {

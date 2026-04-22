@@ -146,6 +146,27 @@ fn (slice Slice) to_string(buffer []u8) string {
 	return buffer[slice.start..slice.start + slice.len].bytestr()
 }
 
+@[direct_array_access]
+fn find_header_end_in_buf(buf &u8, buf_len int) int {
+	for i := 0; i < buf_len - 1; i++ {
+		unsafe {
+			if buf[i] == `\n` {
+				if i + 1 < buf_len && buf[i + 1] == `\n` {
+					return i + 2
+				}
+				if i + 2 < buf_len && buf[i + 1] == `\r` && buf[i + 2] == `\n` {
+					return i + 3
+				}
+			}
+			if i + 3 < buf_len && buf[i] == `\r` && buf[i + 1] == `\n` && buf[i + 2] == `\r`
+				&& buf[i + 3] == `\n` {
+				return i + 4
+			}
+		}
+	}
+	return -1
+}
+
 // has_chunked_transfer_encoding_in_buf scans the header bytes for a
 // "Transfer-Encoding:" header whose value contains "chunked" (case-insensitive).
 @[direct_array_access]
