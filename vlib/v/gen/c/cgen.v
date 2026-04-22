@@ -8489,6 +8489,18 @@ fn (mut g Gen) ident(node ast.Ident) {
 					return
 				}
 			}
+			if g.inside_selector_lhs && !node_info_is_option && has_resolved_var
+				&& !resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0
+				&& resolved_var.typ.has_flag(.option) && !g.is_assign_lhs {
+				g.unwrap_option_type(resolved_var.typ, name, is_auto_heap)
+				return
+			}
+			if g.inside_selector_lhs && has_resolved_var && resolved_var.is_unwrapped
+				&& resolved_var.smartcasts.len == 0 && resolved_var.orig_type.has_flag(.option)
+				&& !g.is_assign_lhs {
+				g.unwrap_option_type(resolved_var.orig_type, name, is_auto_heap)
+				return
+			}
 			if has_resolved_var && resolved_var.is_inherited {
 				g.write(closure_ctx + '->')
 			}
