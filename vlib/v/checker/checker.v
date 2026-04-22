@@ -4693,12 +4693,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if mut node.expr is ast.Ident {
 				if mut node.expr.obj is ast.Var {
-					ident_typ := if node.expr.obj.smartcasts.len > 0 {
-						c.exposed_smartcast_type(node.expr.obj.orig_type,
-							node.expr.obj.smartcasts.last(), node.expr.obj.is_mut)
-					} else {
-						node.expr.obj.typ
-					}
+					ident_typ := c.visible_var_type_for_read(node.expr.obj)
 					if !node.typ.has_flag(.option) && ident_typ.has_flag(.option)
 						&& node.expr.or_expr.kind == .absent {
 						c.error('variable `${node.expr.name}` is an Option, it must be unwrapped first',
@@ -4839,16 +4834,14 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				} else if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
-							var_obj.smartcasts.last(), var_obj.is_mut))
+						node.expr_type = c.unwrap_generic(c.visible_var_type_for_read(var_obj))
 					}
 				}
 			} else if mut node.expr is ast.Ident {
 				if node.expr.obj is ast.Var {
 					var_obj := node.expr.obj as ast.Var
 					if var_obj.smartcasts.len > 0 {
-						node.expr_type = c.unwrap_generic(c.exposed_smartcast_type(var_obj.orig_type,
-							var_obj.smartcasts.last(), var_obj.is_mut))
+						node.expr_type = c.unwrap_generic(c.visible_var_type_for_read(var_obj))
 					}
 				}
 			}
@@ -6289,8 +6282,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					info_typ = current_var.typ
 				}
 				if current_var.smartcasts.len > 0 && !c.prevent_sum_type_unwrapping_once {
-					info_typ = c.exposed_smartcast_type(current_var.orig_type,
-						current_var.smartcasts.last(), current_var.is_mut)
+					info_typ = c.visible_var_type_for_read(current_var)
 				}
 				c.prevent_sum_type_unwrapping_once = false
 				node.info = ast.IdentVar{
@@ -6372,7 +6364,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						&& !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast {
-						c.exposed_smartcast_type(obj.orig_type, obj.smartcasts.last(), obj.is_mut)
+						c.visible_var_type_for_read(obj)
 					} else {
 						obj.typ
 					}
@@ -7175,6 +7167,17 @@ fn (c &Checker) is_orig_sumtype(expr ast.Expr) bool {
 		}
 	}
 	return false
+}
+
+@[inline]
+fn (mut c Checker) visible_var_type_for_read(v ast.Var) ast.Type {
+	if v.smartcasts.len == 0 {
+		return v.typ
+	}
+	if v.is_assignment_smartcast && v.orig_type.has_flag(.option) {
+		return v.orig_type
+	}
+	return c.exposed_smartcast_type(v.orig_type, v.smartcasts.last(), v.is_mut)
 }
 
 @[inline]

@@ -85,11 +85,12 @@ fn (mut c Checker) reset_option_assignment_smartcast(mut expr ast.Ident, left_ty
 	if var := expr.scope.find_var(expr.name) {
 		expr.scope.objects[expr.name] = ast.Var{
 			...var
-			typ:          left_type
-			pos:          var.pos
-			orig_type:    ast.no_type
-			smartcasts:   []ast.Type{}
-			is_unwrapped: false
+			typ:                     left_type
+			pos:                     var.pos
+			orig_type:               ast.no_type
+			smartcasts:              []ast.Type{}
+			is_assignment_smartcast: false
+			is_unwrapped:            false
 		}
 	}
 }
@@ -113,6 +114,7 @@ fn (mut c Checker) update_option_assignment_smartcast(mut expr ast.Expr, left_ty
 			c.smartcast(mut expr, left_type, left_type.clear_flag(.option), mut expr.scope, false,
 				true, false, true)
 			if mut scope_var := expr.scope.find_var(expr.name) {
+				scope_var.is_assignment_smartcast = true
 				scope_var.pos = original_pos
 			}
 		}

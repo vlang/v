@@ -1196,12 +1196,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
-		ptyp := if parent_var.smartcasts.len > 0 {
-			c.exposed_smartcast_type(parent_var.orig_type, parent_var.smartcasts.last(),
-				parent_var.is_mut)
-		} else {
-			parent_var.typ
-		}
+		ptyp := c.visible_var_type_for_read(parent_var)
 		node.has_ct_var = node.has_ct_var
 			|| var.name in [c.comptime.comptime_for_field_var, c.comptime.comptime_for_method_var]
 		if declared_parent_typ != ast.no_type {

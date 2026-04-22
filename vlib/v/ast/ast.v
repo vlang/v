@@ -1003,15 +1003,16 @@ pub:
 	is_inherited    bool
 	has_inherited   bool
 pub mut:
-	is_arg        bool // fn args should not be autofreed
-	is_auto_deref bool
-	is_unwrapped  bool // ct type smartcast unwrapped
-	is_index_var  bool // index loop var
-	expr          Expr
-	typ           Type
-	generic_typ   Type   // original generic declaration type; reused for later concrete instantiations
-	orig_type     Type   // original sumtype type; 0 if it's not a sumtype
-	smartcasts    []Type // nested sum types require nested smart casting, for that a list of types is needed
+	is_arg                  bool // fn args should not be autofreed
+	is_auto_deref           bool
+	is_unwrapped            bool // ct type smartcast unwrapped
+	is_assignment_smartcast bool // smartcast introduced by assigning a non-option value to an option variable
+	is_index_var            bool // index loop var
+	expr                    Expr
+	typ                     Type
+	generic_typ             Type   // original generic declaration type; reused for later concrete instantiations
+	orig_type               Type   // original sumtype type; 0 if it's not a sumtype
+	smartcasts              []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
