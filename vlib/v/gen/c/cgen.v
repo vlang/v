@@ -6583,8 +6583,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						if field_sym.kind == .interface && cast_sym.kind == .interface
 							&& !is_option_unwrap {
 							ptr := '*'.repeat(field.typ.nr_muls())
-							dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.expr}${dot}${node.field_name}))')
+							// Emit the receiver via g.expr() so smartcasts on the
+							// receiver (e.g. `mut child is SubWindow` → `(child._SubWindow)`)
+							// are preserved. Use lhs_expr_type for the dot since it
+							// reflects the smartcast'd type, not the original interface.
+							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}')
+							g.expr(node.expr)
+							dot := if lhs_expr_type.is_ptr() { '->' } else { '.' }
+							g.write('${dot}${node.field_name}))')
 							return
 						} else if !is_option_unwrap {
 							if i != 0 {

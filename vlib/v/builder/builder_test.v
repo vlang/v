@@ -25,8 +25,7 @@ fn run_v_ok(command string) string {
 
 fn test_conditional_executable_removal() {
 	os.chdir(test_path)!
-	os.mkdir_all('src')!
-	os.write_file('src/main.v', 'fn main(){\n\tprintln("Hello World!")\n}\n')!
+	os.write_file('main.v', 'fn main(){\n\tprintln("Hello World!")\n}\n')!
 
 	mut executable := 'run_check'
 	$if windows {
@@ -91,57 +90,6 @@ pub struct BS{}
 	dump(after_compile_file_list)
 	assert executable in after_compile_file_list
 	assert os.execute('./${executable}').output.trim_space() == 'AS{}=>BS{}'
-}
-
-fn test_run_explicit_src_directory_uses_project_root_lookup() {
-	os.chdir(test_path)!
-	project_dir := os.join_path(test_path, 'run_src_project')
-	defer {
-		os.chdir(test_path) or {}
-	}
-	os.mkdir_all(os.join_path(project_dir, 'src'))!
-	os.mkdir_all(os.join_path(project_dir, 'modules', 'somemoduletwo'))!
-	os.write_file(os.join_path(project_dir, 'src', 'main.v'), 'module main
-import somemoduletwo
-
-fn main() {
-	println(somemoduletwo.name())
-}
-')!
-	os.write_file(os.join_path(project_dir, 'modules', 'somemoduletwo', 'somemoduletwo.v'), 'module somemoduletwo
-
-pub fn name() string {
-	return "somemoduletwo"
-}
-')!
-	os.chdir(project_dir)!
-	assert run_v_ok('${os.quoted_path(vexe)} run src').trim_space() == 'somemoduletwo'
-	assert run_v_ok('${os.quoted_path(vexe)} run ./src').trim_space() == 'somemoduletwo'
-}
-
-fn test_run_explicit_main_file_inside_src_resolves_nested_module_imports() {
-	os.chdir(test_path)!
-	project_dir := os.join_path(test_path, 'run_src_main_file_project')
-	os.mkdir_all(os.join_path(project_dir, 'src', 'infrastructure', 'database'))!
-	os.write_file(os.join_path(project_dir, 'src', 'infrastructure', 'database', 'database.v'), 'module database
-
-pub fn name() string {
-	return "database"
-}
-')!
-	os.write_file(os.join_path(project_dir, 'src', 'infrastructure', 'infrastructure.v'), 'module infrastructure
-')!
-	os.write_file(os.join_path(project_dir, 'src', 'main.v'), 'module main
-
-import infrastructure.database
-
-fn main() {
-	println(database.name())
-}
-')!
-
-	main_file := os.join_path('run_src_main_file_project', 'src', 'main.v')
-	assert run_v_ok('${os.quoted_path(vexe)} run ${os.quoted_path(main_file)}').trim_space() == 'database'
 }
 
 fn test_run_custom_base_url_uses_project_root_lookup() {

@@ -32,16 +32,16 @@ fn setup_module_resolution_workdir_fixture() string {
 		'v_module_resolution_independent_of_workdir_${os.getpid()}')
 	interp := r'${'
 	os.rmdir_all(workspace) or {}
-	os.mkdir_all(os.join_path(workspace, 'app', 'src')) or { panic(err) }
-	os.mkdir_all(os.join_path(workspace, 'lib', 'src')) or { panic(err) }
+	os.mkdir_all(os.join_path(workspace, 'app')) or { panic(err) }
+	os.mkdir_all(os.join_path(workspace, 'lib')) or { panic(err) }
 	write_file(os.join_path(workspace, '.v.mod.stop'), '')
 	write_file(os.join_path(workspace, 'app', 'v.mod'),
 		"Module {\n\tname: 'app'\n\tdescription: ''\n\tversion: ''\n\tlicense: ''\n\tdependencies: []\n}\n")
-	write_file(os.join_path(workspace, 'app', 'src', 'main.v'),
+	write_file(os.join_path(workspace, 'app', 'main.v'),
 		"module main\n\nimport lib\n\nfn main() {\n\tprintln('Hello ${interp}lib.square(4)}!')\n}\n")
 	write_file(os.join_path(workspace, 'lib', 'v.mod'),
 		"Module {\n\tname: 'lib'\n\tdescription: ''\n\tversion: ''\n\tlicense: ''\n\tdependencies: []\n}\n")
-	write_file(os.join_path(workspace, 'lib', 'src', 'lib.v'),
+	write_file(os.join_path(workspace, 'lib', 'lib.v'),
 		'module lib\n\npub fn square(x int) int {\n\treturn x * x\n}\n')
 	return workspace
 }
@@ -63,12 +63,6 @@ fn test_projects_should_run() {
 	}
 	res := vrun_ok('run', vroot_path('vlib/v/tests/testdata/enum_in_builtin') + os.path_separator)
 	assert res.trim_space() == 'v0'
-
-	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
-	assert res2.trim_space() == 'somemodule somemoduletwo'
-
-	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
-	assert res3.trim_space().ends_with('cache.a: 123')
 }
 
 fn test_running_subdir_project_with_parent_vmod_works() {
@@ -99,14 +93,14 @@ fn test_running_module_with_same_module_subdirs_setting_works() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.mkdir_all(os.join_path(root, 'app', 'foo', 'src', 'internal', 'nested'))!
+	os.mkdir_all(os.join_path(root, 'app', 'foo', 'internal', 'nested'))!
 	os.write_file(os.join_path(root, 'app', 'main.v'),
 		'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.answer())\n}\n')!
 	os.write_file(os.join_path(root, 'app', 'foo', 'v.mod'),
 		"Module {\n\tname: 'foo'\n\tsubdirs: ['internal']\n}\n")!
-	os.write_file(os.join_path(root, 'app', 'foo', 'src', 'foo.v'),
+	os.write_file(os.join_path(root, 'app', 'foo', 'foo.v'),
 		'module foo\n\npub fn answer() int {\n\treturn secret()\n}\n')!
-	os.write_file(os.join_path(root, 'app', 'foo', 'src', 'internal', 'nested', 'secret.v'),
+	os.write_file(os.join_path(root, 'app', 'foo', 'internal', 'nested', 'secret.v'),
 		'module foo\n\nfn secret() int {\n\treturn 42\n}\n')!
 	old_dir := os.getwd()
 	defer {

@@ -246,9 +246,6 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 		println('x: "${x}"')
 	}
 
-	if os.exists(os.join_path(lookup_root, 'src/modules')) {
-		v.module_search_paths << os.join_path(lookup_root, 'src/modules')
-	}
 	if source_root := source_root_from_vmod_root(lookup_root) {
 		source_modules := os.join_path(source_root, 'modules')
 		if source_modules !in v.module_search_paths && os.exists(source_modules) {
@@ -267,6 +264,8 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 }
 
 fn (v &Builder) module_lookup_root() string {
+	// If `compiled_dir` is the base_url-configured source folder, treat the
+	// enclosing module folder as the lookup root so sibling `modules/` resolves.
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(v.compiled_dir)
 	if vmod_file_location.vmod_file != '' && vmod_file_location.vmod_folder != v.compiled_dir {
@@ -275,22 +274,6 @@ fn (v &Builder) module_lookup_root() string {
 				return vmod_file_location.vmod_folder
 			}
 		}
-	}
-	if os.file_name(v.compiled_dir) != 'src' {
-		return v.compiled_dir
-	}
-	project_dir := os.dir(v.compiled_dir)
-	if project_dir == v.compiled_dir {
-		return v.compiled_dir
-	}
-	if vmod_file_location.vmod_folder == project_dir {
-		return project_dir
-	}
-	if os.real_path(os.getwd()) == project_dir {
-		return project_dir
-	}
-	if os.is_dir(os.join_path(project_dir, 'modules')) {
-		return project_dir
 	}
 	return v.compiled_dir
 }

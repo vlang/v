@@ -147,7 +147,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					path_part := path_parts[j]
 					// we reached a vmod folder
 					if path_part in vmod_folders {
-						mod_full_name := normalize_src_based_mod_name(try_path.split(os.path_separator)[
+						mod_full_name := normalize_base_url_mod_name(try_path.split(os.path_separator)[
 							j + 1..].join('.'), try_path)
 						return mod_full_name
 					}
@@ -172,7 +172,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := normalize_src_based_mod_name(try_path_parts[last_v_mod..].join('.'),
+					mod_full_name := normalize_base_url_mod_name(try_path_parts[last_v_mod..].join('.'),
 						try_path)
 					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
 				}
@@ -188,46 +188,17 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			full_mod_name :=
-				normalize_src_based_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
-			return full_mod_name
+			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 		}
 	}
 	return error('module not found')
 }
 
-fn pref_path_to_source_root(pref_ &pref.Preferences) string {
-	pref_path_dir := if os.is_dir(pref_.path) { pref_.path } else { os.dir(pref_.path) }
-	real_pref_path_dir := os.real_path(pref_path_dir)
-	files := os.ls(real_pref_path_dir) or { return real_pref_path_dir }
-	if pref_.should_compile_filtered_files(real_pref_path_dir, files).len == 0 {
-		source_root := source_root_from_vmod_root(real_pref_path_dir) or {
-			os.join_path(real_pref_path_dir, 'src')
-		}
-		if source_root != real_pref_path_dir && os.is_dir(source_root) {
-			return source_root
-		}
-	}
-	return real_pref_path_dir
-}
-
-fn source_root_from_vmod_root(vmod_root string) !string {
-	vmod_path := os.join_path(vmod_root, 'v.mod')
-	if !os.is_file(vmod_path) {
-		return error('module not found')
-	}
-	manifest := vmod.from_file(vmod_path) or { return error('module not found') }
-	return manifest.source_root(vmod_root)
-}
-
-fn configured_base_parts(manifest vmod.Manifest) []string {
-	if manifest.base_url == '' {
-		return []string{}
-	}
-	return os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0 && it != '.')
-}
-
-fn normalize_src_based_mod_name(mod_full_name string, path string) string {
+// normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`
+// when the module lives in a folder configured via v.mod's `base_url`. Without
+// this, a module rooted at `<pkg>/source/feature` would be named `pkg.source.feature`
+// instead of `pkg.feature`. The implicit `src/` fallback is intentionally gone.
+fn normalize_base_url_mod_name(mod_full_name string, path string) string {
 	real_path := os.real_path(path)
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(real_path)
@@ -238,17 +209,17 @@ fn normalize_src_based_mod_name(mod_full_name string, path string) string {
 	if !real_path.starts_with(vmod_prefix) {
 		return mod_full_name
 	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return mod_full_name }
+	if manifest.base_url == '' {
+		return mod_full_name
+	}
+	base_parts := os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0
+		&& it != '.')
+	if base_parts.len == 0 {
+		return mod_full_name
+	}
 	rel_path := real_path.all_after(vmod_prefix)
 	rel_parts := rel_path.split(os.path_separator)
-	mut base_parts := []string{}
-	manifest := vmod.from_file(vmod_file_location.vmod_file) or { vmod.Manifest{} }
-	base_parts = configured_base_parts(manifest)
-	if base_parts.len == 0 {
-		if rel_parts.len == 0 || rel_parts[0] != 'src' {
-			return mod_full_name
-		}
-		base_parts = ['src']
-	}
 	if rel_parts.len < base_parts.len || rel_parts[..base_parts.len] != base_parts {
 		return mod_full_name
 	}
