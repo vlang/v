@@ -64,7 +64,7 @@ fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
 		}
 	}
 	if typ == 0 && ident.obj is ast.Var {
-		if ident.obj.orig_type.has_flag(.option) {
+		if ident.obj.is_arg && ident.obj.orig_type.has_flag(.option) {
 			typ = ident.obj.orig_type
 		}
 	}
@@ -175,7 +175,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			typ = exp_typ
 		}
 		is_dump_expr := expr is ast.DumpExpr
-		is_var_mut := expr.is_auto_deref_var()
+		is_var_mut := expr.is_auto_deref_var() && !typ.has_flag(.option)
 		mut_arg_option_type := option_mut_param_surface_type(expr)
 		str_fn_name := if mut_arg_option_type != 0 {
 			g.get_str_fn(mut_arg_option_type)
@@ -294,7 +294,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('}, 0, 0, 0}}))')
 		}
 	} else {
-		is_var_mut := expr.is_auto_deref_var()
+		is_var_mut := expr.is_auto_deref_var() && !typ.has_flag(.option)
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {
