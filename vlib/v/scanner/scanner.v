@@ -1438,7 +1438,8 @@ fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int)
 			return ''
 		}
 		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
-		ss << [u8(strconv.parse_uint(sinput[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		octal_byte := u8(strconv.parse_uint(sinput[idx + 1..end_idx], 8, 8) or { 0 })
+		ss << [octal_byte].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << sinput[end_idx..escapes_pos[i + 1] - start]
 		} else {
