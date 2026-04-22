@@ -25,3 +25,10 @@ pub fn panic_lasterr(base string) {
 	// TODO: use strerror_r and errno
 	panic(base + ' unknown')
 }
+
+// write_buf_to_console is a Windows-only helper; on non-Windows platforms
+// it is a no-op stub so that callers guarded by `$if windows { ... }` still
+// type-check on other targets.
+fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
+	return false
+}

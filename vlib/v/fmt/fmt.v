@@ -2213,6 +2213,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			name := f.short_module(node.name)
 			if node.is_static_method {
 				f.write_static_method(node.name, name)
+			} else if node.is_paren_wrapped_call {
+				f.write('(${name})')
 			} else {
 				f.write(name)
 			}
