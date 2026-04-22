@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 var path = require("path");
-const { hello, sqlite_memory, appDataSource } = require("..");
+const { hello, sqlite_memory, appDataSource } = require(".");
 
 const host = "localhost";
 const port = 3000;

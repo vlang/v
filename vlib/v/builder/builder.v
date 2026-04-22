@@ -611,7 +611,7 @@ fn report_removed_src_layout_if_any(dir string) {
 	if !has_v_files {
 		return
 	}
-	verror('the virtual `src/` module directory is no longer supported.\nV found .v source files under ${src_dir}, but will not treat `src/` as a virtual module root anymore.\nPlease move the sources up from `src/` into ${dir}:\n\tmv ${src_dir}/*.v ${dir}/\n\trmdir ${src_dir}\n\nIf you really want the sources to live in a subfolder, set `base_url` in v.mod to point at it.')
+	verror('the virtual `src/` module directory is no longer supported.\nV found .v source files under ${src_dir}, but will not treat `src/` as a virtual module root anymore.\nPlease move the sources up from `src/` into ${dir}:\n\tmv ${src_dir}/*.v ${dir}/\n\trmdir ${src_dir}\n\nIf you want to split one module across subdirectories after moving the root files, add `subdirs` to v.mod, for example:\n\tsubdirs: [\'admin\', \'repo\', \'commit\', \'ci\', \'security\', \'ssh\', \'user\']')
 }
 
 fn (b &Builder) with_same_module_subdir_files(source_dir string, v_files []string) []string {

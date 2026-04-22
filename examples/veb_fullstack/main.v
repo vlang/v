@@ -29,8 +29,8 @@ fn main() {
 	db.close() or { panic(err) }
 
 	mut app := &App{}
-	app.serve_static('/favicon.ico', 'src/assets/favicon.ico')
-	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
+	app.serve_static('/favicon.ico', 'assets/favicon.ico') or { panic(err) }
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/') or { panic(err) }
 
 	veb.run[App, Context](mut app, port)
 }

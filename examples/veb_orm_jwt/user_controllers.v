@@ -5,8 +5,8 @@ import json
 import databases
 
 @['/user/:id/get'; get]
-pub fn (mut app App) controller_get_user_by_id(mut ctx Context, id int) veb.Result {
-	response := app.service_get_user_by_id(id) or {
+pub fn (mut app App) controller_get_user_by_id(mut ctx Context, id string) veb.Result {
+	response := app.service_get_user_by_id(id.int()) or {
 		ctx.res.set_status(.bad_request)
 		return ctx.text('${err}')
 	}
@@ -30,7 +30,7 @@ pub fn (mut app App) controller_create_user(mut ctx Context) veb.Result {
 
 @['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user(mut ctx Context) veb.Result {
-	token := ctx.get_header('token')
+	token := ctx.req.header.get_custom('token') or { '' }
 
 	if !auth_verify(token) {
 		ctx.res.set_status(.unauthorized)

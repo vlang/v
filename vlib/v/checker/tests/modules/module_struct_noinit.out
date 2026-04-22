@@ -1,10 +1,10 @@
-vlib/v/checker/tests/modules/module_struct_noinit/src/main.v:12:9: error: struct `module_struct_noinit.src.mod.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit.src.mod.Foo{}`
+vlib/v/checker/tests/modules/module_struct_noinit/main.v:12:9: error: struct `module_struct_noinit.mod.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit.mod.Foo{}`
    10 |
    11 | fn default_value[T]() T {
    12 |     return T{}
       |            ~~~
    13 | }
-vlib/v/checker/tests/modules/module_struct_noinit/src/main.v:12:9: error: struct `module_struct_noinit.src.mod.Foo2[int]` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit.src.mod.Foo2[int]{}`
+vlib/v/checker/tests/modules/module_struct_noinit/main.v:12:9: error: struct `module_struct_noinit.mod.Foo2[int]` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit.mod.Foo2[int]{}`
    10 |
    11 | fn default_value[T]() T {
    12 |     return T{}

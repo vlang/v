@@ -128,6 +128,27 @@ pub fn name() string {
 	assert run_v_ok('${os.quoted_path(vexe)} run ./source').trim_space() == 'foo+dep'
 }
 
+fn test_removed_src_layout_error_mentions_vmod_subdirs() {
+	os.chdir(test_path)!
+	project_dir := os.join_path(test_path, 'run_removed_src_project')
+	defer {
+		os.chdir(test_path) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'src'))!
+	os.write_file(os.join_path(project_dir, 'src', 'main.v'),
+		'fn main() {\n\tprintln("Hello from src")\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} run .')
+	normalized_output := res.output.replace('\r\n', '\n')
+
+	assert res.exit_code != 0
+	assert normalized_output.contains('the virtual `src/` module directory is no longer supported.')
+	assert !normalized_output.contains('base_url')
+	assert normalized_output.contains('add `subdirs` to v.mod')
+	assert normalized_output.contains("subdirs: ['admin', 'repo', 'commit', 'ci', 'security', 'ssh', 'user']")
+}
+
 fn test_thirdparty_object_build_with_multiline_cflags() {
 	mut env := os.environ()
 	existing_cflags := if 'CFLAGS' in env { env['CFLAGS'] } else { '' }

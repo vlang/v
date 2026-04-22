@@ -28,7 +28,7 @@ struct Response {
 
 fn main() {
 	mut app := &App{}
-	veb.run_at[App, Context](mut app, port: 4000)
+	veb.run_at[App, Context](mut app, port: 4000) or { panic(err) }
 }
 
 @['/hello-world']
@@ -37,7 +37,8 @@ pub fn (mut app App) hello_world(mut ctx Context) veb.Result {
 }
 
 @['/sqlite-memory/:count']
-pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
+pub fn (mut app App) sqlite_memory(mut ctx Context, count string) veb.Result {
+	count_int := count.int()
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
 	mut update_stopwatchs := []int{}
@@ -56,7 +57,7 @@ pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	}
 
 	// inserts
-	for i := 0; i < count; i++ {
+	for i := 0; i < count_int; i++ {
 		sw.start()
 		sql db {
 			insert task_model into Task
@@ -66,7 +67,7 @@ pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	}
 
 	// selects
-	for i := 0; i < count; i++ {
+	for i := 0; i < count_int; i++ {
 		sw.start()
 		result := sql db {
 			select from Task
@@ -77,7 +78,7 @@ pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	}
 
 	// updates
-	for i := 0; i < count; i++ {
+	for i := 0; i < count_int; i++ {
 		sw.start()
 		sql db {
 			update Task set title = 'b', status = 'finish' where id == i
@@ -99,7 +100,8 @@ pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 }
 
 @['/sqlite-file/:count']
-pub fn (mut app App) sqlite_file(mut ctx Context, count int) veb.Result {
+pub fn (mut app App) sqlite_file(mut ctx Context, count string) veb.Result {
+	_ := count
 	response := Response{
 		insert: []
 		select: []
@@ -109,7 +111,8 @@ pub fn (mut app App) sqlite_file(mut ctx Context, count int) veb.Result {
 }
 
 @['/postgres/:count']
-pub fn (mut app App) postgres(mut ctx Context, count int) veb.Result {
+pub fn (mut app App) postgres(mut ctx Context, count string) veb.Result {
+	_ := count
 	response := Response{
 		insert: []
 		select: []
@@ -119,7 +122,8 @@ pub fn (mut app App) postgres(mut ctx Context, count int) veb.Result {
 }
 
 @['/mysql/:count']
-pub fn (mut app App) mysql(mut ctx Context, count int) veb.Result {
+pub fn (mut app App) mysql(mut ctx Context, count string) veb.Result {
+	_ := count
 	response := Response{
 		insert: []
 		select: []
