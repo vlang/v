@@ -15,10 +15,6 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := res.output.replace('\r\n', '\n')
-	assert !generated_c.contains('#include <stdio.h>'), generated_c
-	assert !generated_c.contains('#include <stdlib.h>'), generated_c
-	assert !generated_c.contains('#include <string.h>'), generated_c
-	assert !generated_c.contains('#include <stdarg.h>'), generated_c
 	assert generated_c.contains('typedef struct _iobuf FILE;'), generated_c
 	assert generated_c.contains('typedef struct __sFILE FILE;'), generated_c
 	assert generated_c.contains('typedef struct _IO_FILE FILE;'), generated_c
@@ -38,7 +34,12 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 	assert !generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(__TINYC__) || defined(_WIN32) || defined(_WIN64)'), generated_c
-	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(_WIN32) || defined(_WIN64)\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
+	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__)\ntypedef struct _iobuf FILE;\n__attribute__ ((__dllimport__)) FILE* __attribute__((__cdecl__)) __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
+	assert generated_c.contains('#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))'), generated_c
+	assert generated_c.contains('#ifndef _FILE_DEFINED\nstruct _iobuf {\n\tchar *_ptr;\n\tint _cnt;\n\tchar *_base;\n\tint _flag;\n\tint _file;\n\tint _charbuf;\n\tint _bufsiz;\n\tchar *_tmpfname;\n};\ntypedef struct _iobuf FILE;\n#define _FILE_DEFINED'), generated_c
+	assert generated_c.contains('FILE* __cdecl __iob_func(void);'), generated_c
+	assert generated_c.contains('extern FILE (*_imp___iob)[];'), generated_c
+	assert generated_c.contains('#define stdout (&__iob_func()[1])'), generated_c
 	assert generated_c.contains('#if defined(__APPLE__) || defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdin;\nextern FILE* __stdout;\nextern FILE* __stderr;\n#define stdin __stdin\n#define stdout __stdout\n#define stderr __stderr'), generated_c

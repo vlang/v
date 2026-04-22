@@ -390,6 +390,42 @@ FILE* __cdecl __acrt_iob_func(unsigned index);
 #define stdin (__acrt_iob_func(0))
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+typedef struct _iobuf FILE;
+__attribute__ ((__dllimport__)) FILE* __attribute__((__cdecl__)) __acrt_iob_func(unsigned index);
+#define stdin  (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
+#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))
+#ifndef _FILE_DEFINED
+struct _iobuf {
+	char *_ptr;
+	int _cnt;
+	char *_base;
+	int _flag;
+	int _file;
+	int _charbuf;
+	int _bufsiz;
+	char *_tmpfname;
+};
+typedef struct _iobuf FILE;
+#define _FILE_DEFINED
+#endif
+	#if defined(_WIN64)
+FILE* __cdecl __iob_func(void);
+	#else
+		#ifdef _MSVCRT_
+extern FILE _iob[];
+			#define __iob_func() (_iob)
+		#else
+extern FILE (*_imp___iob)[];
+			#define __iob_func() (*_imp___iob)
+			#define _iob __iob_func()
+		#endif
+	#endif
+#define stdin (&__iob_func()[0])
+#define stdout (&__iob_func()[1])
+#define stderr (&__iob_func()[2])
 #else
 	#if defined(__APPLE__) || defined(__FreeBSD__)
 typedef struct __sFILE FILE;
@@ -415,12 +451,6 @@ extern FILE* __stderr;
 #define stdin __stdin
 #define stdout __stdout
 #define stderr __stderr
-	#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(_WIN32) || defined(_WIN64)
-typedef struct _iobuf FILE;
-FILE* __cdecl __acrt_iob_func(unsigned index);
-#define stdin  (__acrt_iob_func(0))
-#define stdout (__acrt_iob_func(1))
-#define stderr (__acrt_iob_func(2))
 	#else
 typedef struct _IO_FILE FILE;
 extern FILE* stdin;
