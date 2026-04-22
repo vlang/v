@@ -358,28 +358,25 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
+const c_windows_msvc_intsizeof_macro = '#ifndef _INTSIZEOF\n\t#define _INTSIZEOF(n) \\\n\t\t((sizeof(n) + \\\n\t\tsizeof(int) - 1) & \\\n\t\t~(sizeof(int) - 1))\n#endif\n'
+
+const c_windows_msvc_va_arg_macro = '#ifndef va_arg\n\t#define va_arg(ap, t) \\\n\t\t(*(t*)((ap += \\\n\t\t_INTSIZEOF(t)) - \\\n\t\t_INTSIZEOF(t)))\n#endif\n'
+
 const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 typedef struct _iobuf FILE;
 typedef char* va_list;
 #ifndef _ADDRESSOF
 	#define _ADDRESSOF(v) (&(v))
 #endif
-#ifndef _INTSIZEOF
-	#define _INTSIZEOF(n) ((sizeof(n) + sizeof(int) -
-	1) & ~(sizeof(int) -
-	1))
-#endif
+' + c_windows_msvc_intsizeof_macro + r'
 #ifndef va_start
 	#define va_start(ap, v) ((void)((ap) = (va_list)_ADDRESSOF(v) + _INTSIZEOF(v)))
 #endif
-#ifndef va_arg
-	#define va_arg(ap, t) (*(t*)((ap += _INTSIZEOF(t)) -
-	_INTSIZEOF(t)))
-#endif
+' + c_windows_msvc_va_arg_macro + r'
 #ifndef va_end
 	#define va_end(ap) ((void)((ap) = (va_list)0))
 #endif
@@ -390,9 +387,9 @@ FILE* __cdecl __acrt_iob_func(unsigned index);
 #define stdin (__acrt_iob_func(0))
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
-#elif defined(__MINGW32__) || defined(__MINGW64__)
+#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
 typedef struct _iobuf FILE;
-__attribute__ ((__dllimport__)) FILE* __attribute__((__cdecl__)) __acrt_iob_func(unsigned index);
+FILE* __cdecl __acrt_iob_func(unsigned index);
 #define stdin  (__acrt_iob_func(0))
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
@@ -569,7 +566,7 @@ isize getline(char **lineptr, size_t *n, FILE *stream);
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers
 #undef __attribute__
 #endif
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 // Ensure C99-like return semantics and NUL-termination for MSVC snprintf/vsnprintf.
 static int v__vsnprintf(char *s, size_t n, const char *fmt, va_list ap) {
 	va_list ap_copy;

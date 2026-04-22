@@ -1,3 +1,19 @@
+#if defined(_MSC_VER) && !defined(__clang__)
+#define _INTSIZEOF(n) \
+((sizeof(n) + \
+sizeof(int) - 1) & \
+~(sizeof(int) - 1))
+#define va_arg(ap, t) \
+(*(t*)((ap += \
+_INTSIZEOF(t)) - \
+_INTSIZEOF(t)))
+#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
+FILE* __cdecl __acrt_iob_func(unsigned index);
+#if defined(_MSC_VER) && !defined(__clang__)
+#define C__LONG LONG
+typedef C__LONG (VCALLCONV(stdcall) *TopLevelExceptionFilter)(ExceptionPointers*);
+VV_LOC C__LONG VCALLCONV(stdcall) builtin__unhandled_exception_handler(ExceptionPointers* e);
+SetUnhandledExceptionFilter(builtin__unhandled_exception_handler);
 u32 res = FormatMessageW(
 atomic_compare_exchange_weak_ptr(((voidptr)(&ch->adr_written)), ((voidptr)(&nulladr)), ((isize)(-1)))
 atomic_compare_exchange_strong_ptr(((voidptr)(&ch->write_adr)), ((voidptr)(&wradr)), ((isize)(0)))

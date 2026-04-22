@@ -10,6 +10,7 @@ module builtin
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
 pub type C.BOOL = int
+pub type C.LONG = int
 
 pub type C.HINSTANCE = voidptr
 
@@ -162,12 +163,12 @@ pub:
 }
 
 @[callconv: stdcall]
-type TopLevelExceptionFilter = fn (&ExceptionPointers) int
+type TopLevelExceptionFilter = fn (&ExceptionPointers) C.LONG
 
 fn C.SetUnhandledExceptionFilter(TopLevelExceptionFilter) voidptr
 
 @[callconv: stdcall]
-fn unhandled_exception_handler(e &ExceptionPointers) int {
+fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...

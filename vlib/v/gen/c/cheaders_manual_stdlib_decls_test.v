@@ -33,8 +33,8 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('double atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
-	assert !generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(__TINYC__) || defined(_WIN32) || defined(_WIN64)'), generated_c
-	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__)\ntypedef struct _iobuf FILE;\n__attribute__ ((__dllimport__)) FILE* __attribute__((__cdecl__)) __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;\ntypedef char* va_list;'), generated_c
+	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
 	assert generated_c.contains('#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))'), generated_c
 	assert generated_c.contains('#ifndef _FILE_DEFINED\nstruct _iobuf {\n\tchar *_ptr;\n\tint _cnt;\n\tchar *_base;\n\tint _flag;\n\tint _file;\n\tint _charbuf;\n\tint _bufsiz;\n\tchar *_tmpfname;\n};\ntypedef struct _iobuf FILE;\n#define _FILE_DEFINED'), generated_c
 	assert generated_c.contains('FILE* __cdecl __iob_func(void);'), generated_c

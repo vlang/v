@@ -1,5 +1,6 @@
 #define VCALLCONV(name) __##name
 #define VCALLCONV(name) __attribute__((name))
-typedef int (VCALLCONV(stdcall) *VectoredExceptionHandler)(ExceptionPointers*);
-VV_LOC int VCALLCONV(stdcall) builtin__unhandled_exception_handler(ExceptionPointers* e);
-AddVectoredExceptionHandler(1, builtin__unhandled_exception_handler);
+#define C__LONG LONG
+typedef C__LONG (VCALLCONV(stdcall) *TopLevelExceptionFilter)(ExceptionPointers*);
+VV_LOC C__LONG VCALLCONV(stdcall) builtin__unhandled_exception_handler(ExceptionPointers* e);
+SetUnhandledExceptionFilter(builtin__unhandled_exception_handler);
