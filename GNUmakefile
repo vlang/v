@@ -363,7 +363,7 @@ selfcompile:
 selfcompile-static:
 	$(VEXE)$(EXE_EXT) -cg -cflags '--static' -o v-static cmd/v
 
-### NB: Please keep this Makefile and v_make.bat simple.
+### NB: Please keep this Makefile and makev.bat simple.
 install:
 	@echo 'Please use `sudo ./v symlink` instead, or manually add the current directory to your PATH.'
 

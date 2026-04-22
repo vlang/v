@@ -41,7 +41,7 @@ cd v
 make
 ```
 
-Note: If you are on windows, outside of WSL, run `make.bat` instead of `make`, in a CMD shell.
+Note: If you are on windows, outside of WSL, run `makev.bat` instead of `make`, in a CMD shell.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 For more details, see the

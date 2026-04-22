@@ -299,7 +299,7 @@ goto :eof
 
 :usage
 echo Usage:
-echo     v_make.bat [target] [compiler] [options]
+echo     makev.bat [target] [compiler] [options]
 echo.
 echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
@@ -313,11 +313,11 @@ echo     help              Display help for the given target
 echo     rebuild           Fully clean/reset repository and rebuild V
 echo.
 echo Examples:
-echo     v_make.bat -msvc
-echo     v_make.bat -gcc --local
-echo     v_make.bat build -tcc --local
-echo     v_make.bat -tcc32
-echo     v_make.bat help clean
+echo     makev.bat -msvc
+echo     makev.bat -gcc --local
+echo     makev.bat build -tcc --local
+echo     makev.bat -tcc32
+echo     makev.bat help clean
 echo.
 echo Use "make help <target>" for more information about a target, for instance: "make help clean"
 echo.
@@ -326,7 +326,7 @@ exit /b 0
 
 :help_help
 echo Usage:
-echo     v_make.bat help [target]
+echo     makev.bat help [target]
 echo.
 echo Target:
 echo     build ^| clean ^| cleanall ^| help    Query given target
@@ -334,19 +334,19 @@ exit /b 0
 
 :help_clean
 echo Usage:
-echo     v_make.bat clean
+echo     makev.bat clean
 echo.
 exit /b 0
 
 :help_cleanall
 echo Usage:
-echo     v_make.bat cleanall
+echo     makev.bat cleanall
 echo.
 exit /b 0
 
 :help_build
 echo Usage:
-echo     v_make.bat build [compiler] [options]
+echo     makev.bat build [compiler] [options]
 echo.
 echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
@@ -358,7 +358,7 @@ exit /b 0
 
 :help_rebuild
 echo Usage:
-echo     v_make.bat rebuild [compiler] [options]
+echo     makev.bat rebuild [compiler] [options]
 echo.
 echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
@@ -423,7 +423,7 @@ endlocal
 exit /b 0
 
 :move_updated_to_v
-@REM del "%V_EXE%" &:: breaks if `v_make.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
+@REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
 REM sleep for at most 100ms
 ping 192.0.2.1 -n 1 -w 100 >nul

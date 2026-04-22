@@ -200,7 +200,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
           .\v.exe self
       - name: V doctor
         run: .\v.exe doctor

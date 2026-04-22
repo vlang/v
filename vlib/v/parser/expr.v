@@ -540,7 +540,7 @@ fn (mut p Parser) parse_typeof_expr(start_pos token.Pos) ast.Expr {
 	p.check(.lpar)
 	expr := p.expr(0)
 	p.check(.rpar)
-	if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+	if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr && !p.inside_array_init_type_expr {
 		if !p.inside_unsafe {
 			p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
 				start_pos)
@@ -699,7 +699,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			p.is_stmt_ident = is_stmt_ident
 			continue
 		}
-		if p.tok.kind == .lcbr && p.tok.is_next_to(p.prev_tok)
+		if !p.inside_array_init_type_expr && p.tok.kind == .lcbr && p.tok.is_next_to(p.prev_tok)
 			&& p.can_use_expr_as_struct_init_type(node) {
 			node = p.struct_init_with_type_expr(node, .normal)
 			p.is_stmt_ident = is_stmt_ident

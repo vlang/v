@@ -57,7 +57,7 @@ Be careful, if you introduce a breaking change and rebuild V, you will no longer
 be able to use V to build itself. So it's a good idea to make a backup copy of a
 working compiler executable.
 
-But don't worry, you can always simply run `make` (or `v_make.bat`), it will
+But don't worry, you can always simply run `make` (or `makev.bat`), it will
 download the C version of the compiler and rebuild it from scratch.
 
 The architecture of the compiler is very simple and has three distinct steps:

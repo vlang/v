@@ -35,6 +35,6 @@ jobs:
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+        run: ./makev.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Test
         run: ./v -d network -silent test-self vlib/net

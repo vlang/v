@@ -50,6 +50,7 @@ mut:
 	inside_unsafe_fn            bool
 	inside_str_interp           bool
 	inside_array_lit            bool
+	inside_array_init_type_expr bool // parsing `[]typeof(expr){}` element type expression
 	inside_in_array             bool
 	inside_infix                bool
 	inside_assign_rhs           bool // rhs assignment

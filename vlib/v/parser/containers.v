@@ -176,7 +176,10 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				|| is_elem_type_expr) && p.tok.line_nr == line_nr {
 				elem_type_pos = p.tok.pos()
 				if is_elem_type_expr {
+					old_inside_array_init_type_expr := p.inside_array_init_type_expr
+					p.inside_array_init_type_expr = true
 					elem_type_expr = p.expr(0)
+					p.inside_array_init_type_expr = old_inside_array_init_type_expr
 					has_type = true
 				} else {
 					elem_type = p.parse_type()

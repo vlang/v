@@ -246,8 +246,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 							// `vup.exe` has logic to workaround that, and duplicating it here, is hard to debug/diagnose.
 							eprintln('Failed compilation of the `vup` tool, using the new V source code.')
 							eprintln('The new source code, is likely to be unsupported, by your existing older V executable.')
-							eprintln('Try running `make` or `make.bat` manually.')
-							eprintln('If that fails, clone V from source in a new folder, and run `make` or `make.bat` manually again there.')
+							eprintln('Try running `make` or `makev.bat` manually.')
+							eprintln('If that fails, clone V from source in a new folder, and run `make` or `makev.bat` manually again there.')
 							l.release()
 							exit(1)
 						}

@@ -34,9 +34,9 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
-      - name: Build with make.bat -tcc
+      - name: Build with makev.bat -tcc
         run: |
-          .\make.bat -tcc
+          .\makev.bat -tcc
           .\v.exe symlink
       - name: All code is formatted
         run: v -silent test-cleancode

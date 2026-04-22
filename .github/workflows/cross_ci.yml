@@ -112,7 +112,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
       - name: TODO v_win.c can be compiled and run with -os windows
         run: |
           .\v.exe -os windows -cc msvc -showcc -o v2.exe cmd\v
