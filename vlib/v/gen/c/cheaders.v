@@ -415,7 +415,7 @@ extern FILE* __stderr;
 #define stdin __stdin
 #define stdout __stdout
 #define stderr __stderr
-	#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(__TINYC__) || defined(_WIN32) || defined(_WIN64)
+	#elif defined(__MINGW32__) || defined(__MINGW64__) || defined(_WIN32) || defined(_WIN64)
 typedef struct _iobuf FILE;
 FILE* __cdecl __acrt_iob_func(unsigned index);
 #define stdin  (__acrt_iob_func(0))
