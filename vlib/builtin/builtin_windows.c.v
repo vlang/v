@@ -43,8 +43,6 @@ pub type C.LPCTSTR = &C.TCHAR
 
 fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
 
-fn C._fileno(&C.FILE) int
-
 fn C._setmode(int, int) int
 
 // set_stream_binary_mode disables CRT newline translation for redirected stdio streams.
@@ -74,10 +72,9 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 	if buf_len <= 0 || is_terminal(fd) <= 0 {
 		return false
 	}
-	console_handle := if fd == 2 {
-		C.GetStdHandle(std_error_handle)
-	} else {
-		C.GetStdHandle(std_output_handle)
+	mut console_handle := C.GetStdHandle(std_output_handle)
+	if fd == 2 {
+		console_handle = C.GetStdHandle(std_error_handle)
 	}
 	if isnil(console_handle) {
 		return false

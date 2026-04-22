@@ -26,6 +26,8 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
 // See https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getshortpathnamew
 fn C.GetShortPathNameW(&u16, &u16, u32) u32
 
+fn C.AddVectoredExceptionHandler(u32, voidptr) voidptr
+
 fn C._getpid() i32
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']

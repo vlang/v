@@ -278,7 +278,7 @@ fn C.syscall(number i32, va ...voidptr) i32
 fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
 
 @[trusted]
-fn C._fileno(i32) i32
+fn C._fileno(&C.FILE) i32
 
 pub type C.intptr_t = voidptr
 
