@@ -882,16 +882,17 @@ fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
 		kind = p.call_kind(fn_name)
 	}
 	return ast.CallExpr{
-		name:           name
-		name_pos:       name_pos
-		mod:            mod
-		kind:           kind
-		left:           unwrapped_left
-		args:           args
-		pos:            pos
-		scope:          p.scope
-		or_block:       or_block
-		is_return_used: p.expecting_value
+		name:                  name
+		name_pos:              name_pos
+		mod:                   mod
+		kind:                  kind
+		left:                  unwrapped_left
+		args:                  args
+		pos:                   pos
+		scope:                 p.scope
+		or_block:              or_block
+		is_return_used:        p.expecting_value
+		is_paren_wrapped_call: left is ast.ParExpr
 	}
 }
 

@@ -8612,8 +8612,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			return
 		}
 		use_dynamic_ptr_payload := node_typ.is_ptr() && expr_type.is_ptr()
-			&& final_expr_sym.kind == .sum_type
-			&& final_sym.kind !in [.sum_type, .interface] && final_sym.language == .c
+			&& final_expr_sym.kind == .sum_type && final_sym.kind !in [.sum_type, .interface]
+			&& final_sym.language == .c
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO: handle the type in fn casts, not just exprs
 			/*

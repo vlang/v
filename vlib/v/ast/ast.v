@@ -940,6 +940,7 @@ pub mut:
 	//
 	is_expand_simple_interpolation bool // true, when the function/method is marked as @[expand_simple_interpolation]
 	is_unwrapped_fn_selector       bool // true, when the call is from an unwrapped selector (e.g. if t.foo != none { t.foo() })
+	is_paren_wrapped_call          bool // true, when the callee was wrapped in parentheses: `(f)(x)` — used by vfmt to preserve the parens
 	// Calls to it with an interpolation argument like `b.f('x ${y}')`, will be converted to `b.f('x ')` followed by `b.f(y)`.
 	// The same type, has to support also a .write_decimal(n i64) method.
 }
@@ -3247,16 +3248,10 @@ pub fn (expr Expr) is_reference() bool {
 }
 
 // remove_par removes all parenthesis and gets the innermost Expr
-pub fn (mut expr Expr) remove_par() Expr {
+pub fn (expr Expr) remove_par() Expr {
 	mut e := expr
-	for {
-		mut next_expr := Expr(EmptyExpr{})
-		if mut e is ParExpr {
-			next_expr = e.expr
-		} else {
-			break
-		}
-		e = next_expr
+	for e is ParExpr {
+		e = (e as ParExpr).expr
 	}
 	return e
 }
