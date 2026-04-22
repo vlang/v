@@ -20,6 +20,11 @@ fn infix_expr_is_nil_like(expr ast.Expr) bool {
 	return expr.is_nil() || (expr is ast.UnsafeExpr && expr.expr.is_nil())
 }
 
+fn (c &Checker) type_is_optionish(typ ast.Type, sym ast.TypeSymbol) bool {
+	return typ.has_flag(.option)
+		|| (sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option))
+}
+
 fn has_matching_reference_operator_overload(sym &ast.TypeSymbol, op string, receiver_type ast.Type, operand_type ast.Type) bool {
 	method := sym.find_method_with_generic_parent(op) or { return false }
 	return method.params.len == 2 && method.params[0].typ == receiver_type
@@ -219,6 +224,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	right_type = c.maybe_wrap_index_expr_smartcast(mut node.right, right_type)
+	if node.op in [.eq, .ne] {
+		left_type = c.maybe_wrap_option_compare_smartcast(mut node.left, left_type, node.right,
+			right_type)
+		node.left_type = left_type
+		left_sym = c.table.sym(left_type)
+		right_type = c.maybe_wrap_option_compare_smartcast(mut node.right, right_type, node.left,
+			left_type)
+	}
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
@@ -1300,6 +1313,67 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 		}
 	}
 	return expr_type
+}
+
+fn (c &Checker) smartcast_expr_original_option_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				var := expr.obj as ast.Var
+				if var.smartcasts.len > 0 && var.orig_type.has_flag(.option) {
+					return var.orig_type
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr_type != 0 {
+				expr_str := smartcast_selector_expr_str(expr)
+				scope_field := expr.scope.find_struct_field(expr_str, expr.expr_type,
+					expr.field_name)
+				if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+					&& scope_field.orig_type.has_flag(.option) {
+					return scope_field.orig_type
+				}
+			}
+		}
+		ast.IndexExpr {
+			if !isnil(c.fn_scope) {
+				scope := c.fn_scope.innermost(expr.pos.pos)
+				expr_key := smartcast_index_expr_scope_key(expr)
+				if var := scope.find_var(expr_key) {
+					if var.smartcasts.len > 0 && var.orig_type.has_flag(.option) {
+						return var.orig_type
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return ast.no_type
+}
+
+fn (mut c Checker) maybe_wrap_option_compare_smartcast(mut expr ast.Expr, expr_type ast.Type, other_expr ast.Expr, other_type ast.Type) ast.Type {
+	if expr_type.has_flag(.option) || expr_type.has_flag(.result) {
+		return expr_type
+	}
+	other_sym := c.table.sym(other_type)
+	other_is_optionish := c.type_is_optionish(other_type, other_sym) || other_expr is ast.None
+		|| other_sym.kind == .none
+	if !other_is_optionish {
+		return expr_type
+	}
+	orig_option_type := c.smartcast_expr_original_option_type(expr)
+	if orig_option_type == ast.no_type {
+		return expr_type
+	}
+	expr = ast.Expr(ast.AsCast{
+		expr:      expr
+		typ:       orig_option_type
+		expr_type: expr_type
+		pos:       expr.pos()
+	})
+	return orig_option_type
 }
 
 fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
