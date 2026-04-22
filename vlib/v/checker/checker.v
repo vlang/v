@@ -7659,8 +7659,8 @@ fn (mut c Checker) type_error_for_operator(op_label string, types_label string, 
 		pos)
 }
 
-fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos,
-	range_index bool, is_gated bool) {
+fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, range_index bool,
+	is_gated bool) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {
 		index_type_sym := c.table.sym(index_type)
 		if !(index_type.is_int() || index_type_sym.kind == .enum
@@ -7672,7 +7672,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			} else {
 				'non-integer index `${c.table.type_to_str(index_type)}` (array type `${typ_sym.name}`)'
 			}
-			c.error('${type_str}', pos)
+			c.error('${type_str}', index.pos())
 		}
 		if index is ast.IntegerLiteral && !is_gated {
 			if index.val[0] == `-` {
@@ -7691,7 +7691,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			} else {
 				'(array type `${typ_sym.name}`)'
 			}
-			c.error('cannot use Option or Result as index ${type_str}', pos)
+			c.error('cannot use Option or Result as index ${type_str}', index.pos())
 		}
 	}
 }
@@ -7870,11 +7870,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(mut node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos, true, node.is_gated)
+			c.check_index(typ_sym, node.index.low, index_type, true, node.is_gated)
 		}
 		if node.index.has_high {
 			index_type := c.expr(mut node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos, true, node.is_gated)
+			c.check_index(typ_sym, node.index.high, index_type, true, node.is_gated)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -7924,7 +7924,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				c.error('`#[]` negative indexing is only supported for arrays, fixed arrays, and strings',
 					node.pos)
 			}
-			c.check_index(typ_sym, node.index, index_type, node.pos, false, node.is_gated)
+			c.check_index(typ_sym, node.index, index_type, false, node.is_gated)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {

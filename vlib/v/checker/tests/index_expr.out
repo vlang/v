@@ -5,11 +5,11 @@ vlib/v/checker/tests/index_expr.vv:3:7: error: type `int` does not support index
       |          ~~~
     4 | 
     5 |     a := [2]
-vlib/v/checker/tests/index_expr.vv:6:7: error: non-integer index `[]int` (array type `[]int`)
+vlib/v/checker/tests/index_expr.vv:6:8: error: non-integer index `[]int` (array type `[]int`)
     4 | 
     5 |     a := [2]
     6 |     _ = a[a]
-      |          ~~~
+      |           ^
     7 |     _ = a[-1]
     8 | }
 vlib/v/checker/tests/index_expr.vv:7:8: error: negative index `-1`
@@ -33,18 +33,18 @@ vlib/v/checker/tests/index_expr.vv:13:7: error: type `int` does not support inde
       |          ~~~~~
    14 | 
    15 |     a := [2]
-vlib/v/checker/tests/index_expr.vv:16:7: error: non-integer index `[]int` (array type `[]int`)
+vlib/v/checker/tests/index_expr.vv:16:8: error: non-integer index `[]int` (array type `[]int`)
    14 | 
    15 |     a := [2]
    16 |     _ = a[a..]
-      |          ~~~~~
+      |           ^
    17 |     _ = a[..a]
    18 |     _ = a[-1..]
-vlib/v/checker/tests/index_expr.vv:17:7: error: non-integer index `[]int` (array type `[]int`)
+vlib/v/checker/tests/index_expr.vv:17:10: error: non-integer index `[]int` (array type `[]int`)
    15 |     a := [2]
    16 |     _ = a[a..]
    17 |     _ = a[..a]
-      |          ~~~~~
+      |             ^
    18 |     _ = a[-1..]
    19 |     _ = a[..-1]
 vlib/v/checker/tests/index_expr.vv:18:8: error: negative index `-1`
