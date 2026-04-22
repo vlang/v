@@ -365,10 +365,23 @@ pub fn (mut s Server) close() {
 
 // wait_till_running waits until the HTTP server transitions to the running state.
 pub fn (mut s Server) wait_till_running(params http.WaitTillRunningParams) !int {
+	mut retries := 0
+	for isnil(s.http_server) && retries < params.max_retries {
+		time.sleep(params.retry_period_ms * time.millisecond)
+		retries++
+	}
 	if isnil(s.http_server) {
 		return error('mcp.Server.wait_till_running: HTTP server is not running')
 	}
-	return s.http_server.wait_till_running(params)
+	remaining_retries := if params.max_retries > retries { params.max_retries - retries } else { 0 }
+	if remaining_retries == 0 {
+		return error('mcp.Server.wait_till_running: HTTP server is not running')
+	}
+	retry_count := s.http_server.wait_till_running(
+		max_retries:     remaining_retries
+		retry_period_ms: params.retry_period_ms
+	)!
+	return retries + retry_count
 }
 
 // text_content creates a raw MCP text content item.

@@ -157,10 +157,6 @@ fn test_server_http_sessions_and_delete() {
 	})!
 
 	server_thread := spawn server.serve_http('127.0.0.1:0')
-	defer {
-		server.close()
-		server_thread.wait() or {}
-	}
 	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
 	time.sleep(20 * time.millisecond)
 	addr := server.http_server.addr
@@ -241,4 +237,6 @@ fn test_server_http_sessions_and_delete() {
 		header: stale_header
 	)!
 	assert stale_response.status_code == 404
+	server.close()
+	server_thread.wait() or {}
 }
