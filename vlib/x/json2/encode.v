@@ -479,6 +479,7 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 	encoder.output << `}`
 }
 
+@[markused]
 fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name string) {
 	encoder.output << `{`
 	mut is_first := true
