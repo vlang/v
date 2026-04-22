@@ -192,7 +192,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
-		if expr_type.is_ptr() && expr_type.has_flag(.option) {
+		if (expr_type.is_ptr() || expr_type.has_flag(.option_mut_param_t))
+			&& expr_type.has_flag(.option) {
 			if scope_var := node.expr.scope.find_var(node.expr.name) {
 				if scope_var.typ.has_flag(.option_mut_param_t) {
 					expr_type = scope_var.typ
@@ -211,8 +212,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	}
-	dump_fn_name := '_v_dump_expr_${name}' +
-		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
+	dump_fn_name := '_v_dump_expr_${name}' + (if expr_type.is_ptr() && !expr_type.has_flag(.option_mut_param_t) {
+		'__ptr'.repeat(expr_type.nr_muls())
+	} else {
+		''
+	})
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')

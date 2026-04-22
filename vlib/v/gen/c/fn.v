@@ -1875,7 +1875,13 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
-		param_type_sym := g.table.sym(typ)
+		// `mut ?T` params are modeled as `?&T` internally, but the emitted C type
+		// must be pointer-to-option-of-T: `_option_T*`, not `_option_T_ptr*`.
+		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.option)
+			&& !param.orig_typ.has_flag(.generic) && !param.orig_typ.is_ptr()
+			&& typ.has_flag(.option) && typ.is_ptr() {
+			typ = g.unwrap_generic(param.orig_typ).set_flag(.option_mut_param_t)
+		}
 		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
 			&& param.typ.has_flag(.generic) {
 			mut surface_typ := g.unwrap_generic(param.orig_typ)
@@ -1894,6 +1900,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) {
 			typ = typ.set_flag(.option_mut_param_t).set_nr_muls(param.typ.nr_muls() - 1)
 		}
+		param_type_sym := g.table.sym(typ)
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
 			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)

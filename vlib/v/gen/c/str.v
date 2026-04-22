@@ -51,6 +51,33 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	return
 }
 
+fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
+	ident := match expr {
+		ast.Ident { expr }
+		else { return 0 }
+	}
+
+	mut typ := ast.Type(0)
+	if scope_var := ident.scope.find_var(ident.name) {
+		if scope_var.typ.has_flag(.option_mut_param_t) {
+			typ = scope_var.typ.clear_flag(.option_mut_param_t)
+		}
+	}
+	if typ == 0 && ident.obj is ast.Var {
+		if ident.obj.orig_type.has_flag(.option) {
+			typ = ident.obj.orig_type
+		}
+	}
+	if typ == 0 || !typ.has_flag(.option) {
+		return 0
+	}
+	inner := typ.clear_option_and_result()
+	if inner.is_ptr() {
+		return inner.deref().set_flag(.option)
+	}
+	return typ
+}
+
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	old_inside_opt_or_res := g.inside_opt_or_res
 	g.inside_opt_or_res = true
@@ -149,7 +176,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
-		str_fn_name := g.get_str_fn(exp_typ)
+		mut_arg_option_type := option_mut_param_surface_type(expr)
+		str_fn_name := if mut_arg_option_type != 0 {
+			g.get_str_fn(mut_arg_option_type)
+		} else {
+			g.get_str_fn(exp_typ)
+		}
 		temp_var_needed := expr is ast.CallExpr
 			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
 		mut tmp_var := ''
@@ -166,14 +198,23 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = builtin__isnil(')
-			if typ.has_flag(.option) {
-				g.write('*(${g.base_type(exp_typ)}*)&')
-				if temp_var_needed {
-					g.write(tmp_var)
+			if typ.has_flag(.option) || mut_arg_option_type != 0 {
+				if mut_arg_option_type != 0 {
+					if temp_var_needed {
+						g.write(tmp_var)
+					} else {
+						g.expr(expr)
+					}
+					g.write(') ? _S("nil") : ')
 				} else {
-					g.expr(expr)
+					g.write('*(${g.base_type(exp_typ)}*)&')
+					if temp_var_needed {
+						g.write(tmp_var)
+					} else {
+						g.expr(expr)
+					}
+					g.write('.data) ? _S("Option(&nil)") : ')
 				}
-				g.write('.data) ? _S("Option(&nil)") : ')
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false
@@ -203,6 +244,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				g.write('&')
 			}
+		} else if mut_arg_option_type != 0 {
+			g.write('*')
 		} else if is_ptr && typ.has_flag(.option) {
 			if typ.has_flag(.option_mut_param_t) {
 				g.write('*')
@@ -272,6 +315,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
 				g.write('&')
+			} else if typ.has_flag(.option_mut_param_t) {
+				g.write('*')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*'.repeat(typ.nr_muls()))
 			} else {
