@@ -585,7 +585,8 @@ pub fn (mut w Walker) mark_generic_fn_instances() {
 			mut fn_copy := ast.FnDecl{
 				...*generic_fn
 			}
-			w.fn_decl_with_fkey(mut fn_copy, specialized_fkey)
+			w.mark_fn_as_used(specialized_fkey)
+			w.fn_decl_with_concrete_types(mut fn_copy, concrete_types)
 		}
 	}
 }
