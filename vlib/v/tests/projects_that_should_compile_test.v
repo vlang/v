@@ -112,6 +112,65 @@ fn test_running_module_with_same_module_subdirs_setting_works() {
 	assert res.output.trim_space() == '42'
 }
 
+fn test_running_project_with_same_module_subdirs_can_find_templates_next_to_vmod() {
+	root := os.join_path(os.vtmp_dir(), 'v_same_module_subdirs_veb_templates_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'user'))!
+	os.mkdir_all(os.join_path(root, 'ci'))!
+	os.mkdir_all(os.join_path(root, 'templates'))!
+	os.write_file(os.join_path(root, 'v.mod'),
+		"Module {\n\tname: 'vebsubdirs'\n\tsubdirs: ['user', 'ci']\n}\n")!
+	os.write_file(os.join_path(root, 'main.v'), 'import veb
+
+pub struct App {}
+
+pub struct Context {
+	veb.Context
+}
+
+fn main() {}
+')!
+	os.write_file(os.join_path(root, 'user', 'register.v'), 'module main
+
+import veb
+
+@["/register"]
+pub fn (mut app App) register(mut ctx Context) veb.Result {
+	return $veb.html()
+}
+
+@["/settings"]
+pub fn (mut app App) settings(mut ctx Context) veb.Result {
+	return $veb.html("templates/settings.html")
+}
+')!
+	os.write_file(os.join_path(root, 'ci', 'ci_routes.v'), 'module main
+
+import veb
+
+@["/ci"]
+pub fn (mut app App) ci_runs(mut ctx Context) veb.Result {
+	return $veb.html()
+}
+')!
+	os.write_file(os.join_path(root, 'templates', 'register.html'),
+		'<html><body><p>Register</p></body></html>\n')!
+	os.write_file(os.join_path(root, 'templates', 'ci_runs.html'),
+		'<html><body><p>CI Runs</p></body></html>\n')!
+	os.write_file(os.join_path(root, 'templates', 'settings.html'),
+		'<html><body><p>Settings</p></body></html>\n')!
+	old_dir := os.getwd()
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	os.chdir(root)!
+	res := os.execute('${os.quoted_path(@VEXE)} .')
+	assert res.exit_code == 0, res.output
+}
+
 fn test_module_resolution_is_independent_of_working_directory() {
 	workspace := setup_module_resolution_workdir_fixture()
 	defer {

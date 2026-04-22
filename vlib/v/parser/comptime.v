@@ -8,6 +8,7 @@ import v.ast
 import v.token
 import v.errors
 import v.util
+import v.vmod
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
@@ -16,6 +17,28 @@ const supported_comptime_for_kinds = ['methods', 'fields', 'values', 'variants',
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
 	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'shared', 'string', 'pointer',
 	'voidptr']
+
+fn find_veb_template_relative_to_vmod(compiled_vfile_path string, relative_path string) ?string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_file(compiled_vfile_path)
+	if vmod_file_location.vmod_file == '' {
+		return none
+	}
+	vmod_template_path := os.join_path(vmod_file_location.vmod_folder, relative_path)
+	if !os.exists(vmod_template_path) {
+		return none
+	}
+	return os.real_path(vmod_template_path)
+}
+
+fn find_existing_veb_template_in_vmod(compiled_vfile_path string, relative_paths []string) ?string {
+	for relative_path in relative_paths {
+		if path := find_veb_template_relative_to_vmod(compiled_vfile_path, relative_path) {
+			return path
+		}
+	}
+	return none
+}
 
 @[inline]
 fn is_supported_comptime_for_kind(name string) bool {
@@ -438,6 +461,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
 	fn_path_joined := fn_path.join(os.path_separator)
+	fn_name_html := '${p.cur_fn_name}.html'
 	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
 	tmpl_path := if is_html && !has_string_arg {
 		'${fn_path.last()}.html'
@@ -452,7 +476,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	dir := os.dir(compiled_vfile_path)
 	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'
-	path = os.real_path(path)
 	if !is_html || has_string_arg {
 		if os.is_abs_path(tmpl_path) {
 			path = tmpl_path
@@ -462,9 +485,37 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	if !os.exists(path) {
 		if is_html {
-			// can be in `templates/`
-			path = os.join_path(dir, 'templates', fn_path_joined)
-			path += '.html'
+			if has_string_arg && !os.is_abs_path(tmpl_path) {
+				path = find_veb_template_relative_to_vmod(compiled_vfile_path, tmpl_path) or {
+					path
+				}
+			} else {
+				flat_path := os.join_path_single(dir, fn_name_html)
+				if os.exists(flat_path) {
+					path = flat_path
+				}
+				if !os.exists(path) {
+					// can be in `templates/`
+					path = os.join_path(dir, 'templates', fn_path_joined)
+					path += '.html'
+				}
+				if !os.exists(path) {
+					flat_template_path := os.join_path(dir, 'templates', fn_name_html)
+					if os.exists(flat_template_path) {
+						path = flat_template_path
+					}
+				}
+				if !os.exists(path) {
+					// Same-module subdirs and `base_url` can place route handlers below the module
+					// root while keeping `templates/` next to `v.mod`.
+					vmod_relative_paths := [
+						os.join_path('templates', fn_path_joined) + '.html',
+						os.join_path('templates', fn_name_html),
+					]
+					path = find_existing_veb_template_in_vmod(compiled_vfile_path,
+						vmod_relative_paths) or { path }
+				}
+			}
 		}
 		if !os.exists(path) {
 			if p.pref.is_fmt {
