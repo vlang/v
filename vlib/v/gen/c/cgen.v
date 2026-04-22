@@ -4248,6 +4248,55 @@ fn (mut g Gen) write_payload_pointer_from_ptr_wrapper(expr ast.Expr, wrapper_typ
 	g.write(')')
 }
 
+fn (mut g Gen) ptr_wrapper_expr_is_raw_alias(expr ast.Expr, wrapper_typ ast.Type) bool {
+	expected_wrapper_typ := g.table.unaliased_type(g.unwrap_generic(wrapper_typ))
+	return match expr {
+		ast.UnsafeExpr {
+			g.ptr_wrapper_expr_is_raw_alias(expr.expr, expected_wrapper_typ)
+		}
+		ast.ParExpr {
+			g.ptr_wrapper_expr_is_raw_alias(expr.expr, expected_wrapper_typ)
+		}
+		ast.CastExpr {
+			target_typ := g.unwrap_generic(expr.typ)
+			target_wrapper_typ := if target_typ.is_ptr() {
+				g.table.unaliased_type(g.unwrap_generic(target_typ.deref()))
+			} else {
+				ast.void_type
+			}
+			source_typ := g.unwrap_generic(expr.expr_type)
+			if target_wrapper_typ != expected_wrapper_typ
+				|| (!source_typ.is_any_kind_of_pointer() && source_typ != ast.voidptr_type) {
+				false
+			} else if source_typ.is_ptr() && source_typ.nr_muls() == 1 {
+				source_wrapper_typ := g.table.unaliased_type(g.unwrap_generic(source_typ.deref()))
+				source_wrapper_typ != expected_wrapper_typ
+			} else {
+				true
+			}
+		}
+		ast.Ident {
+			if expr.obj is ast.Var && expr.obj.expr !is ast.EmptyExpr
+				&& !(expr.obj.expr is ast.Ident && expr.obj.expr.name == expr.name) {
+				g.ptr_wrapper_expr_is_raw_alias(expr.obj.expr, expected_wrapper_typ)
+			} else if expr.scope != unsafe { nil } {
+				if v := expr.scope.find_var(expr.name) {
+					if v.expr !is ast.EmptyExpr && !(v.expr is ast.Ident
+						&& v.expr.name == expr.name) {
+						return g.ptr_wrapper_expr_is_raw_alias(v.expr, expected_wrapper_typ)
+					}
+				}
+				false
+			} else {
+				false
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 // use instead of expr() when you need a var to use as reference
 fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
@@ -8611,6 +8660,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& g.styp(node_typ.deref()) == g.styp(source_wrapper_typ)
 		if node_typ.is_ptr() && expr_type.is_ptr() && source_wrapper_is_payload
 			&& !source_expr_is_wrapper_address && !target_points_to_wrapper_layout
+			&& !g.ptr_wrapper_expr_is_raw_alias(node.expr, source_wrapper_typ)
 			&& final_sym.kind !in [.interface, .sum_type] {
 			g.write('((${styp})')
 			g.write_payload_pointer_from_ptr_wrapper(node.expr, source_wrapper_typ, node_typ)
