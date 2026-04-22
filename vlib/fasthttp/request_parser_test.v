@@ -86,3 +86,30 @@ fn test_decode_http_request_malformed_no_double_crlf() {
 	assert req.body.len == 0
 	assert req.header_fields.to_string(req.buffer) == 'Host: example.com'
 }
+
+fn test_has_complete_body_without_body() {
+	buffer := 'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_incomplete_content_length() {
+	buffer := 'POST /upload HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\n123'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_content_length() {
+	buffer := 'POST /upload HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\n12345'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_incomplete_chunked_body() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_chunked_body() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}

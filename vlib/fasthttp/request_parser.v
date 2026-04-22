@@ -167,6 +167,50 @@ fn find_header_end_in_buf(buf &u8, buf_len int) int {
 	return -1
 }
 
+// has_complete_body checks if a raw HTTP request buffer contains the full body
+// as indicated by the Content-Length or Transfer-Encoding headers. Returns true if:
+//   - there is no Content-Length header and no chunked encoding (body not expected)
+//   - Content-Length is 0
+//   - enough body bytes have been received
+//   - chunked encoding is complete (0\r\n\r\n terminator found)
+// Returns false only when more body data is expected.
+@[direct_array_access]
+fn has_complete_body(buf &u8, buf_len int) bool {
+	header_end := find_header_end_in_buf(buf, buf_len)
+	if header_end < 0 {
+		return false // headers not complete yet
+	}
+	// Check for Transfer-Encoding: chunked header (case-insensitive)
+	if has_chunked_transfer_encoding_in_buf(buf, header_end) {
+		// For chunked encoding, look for the terminating chunk: "\r\n0\r\n\r\n"
+		// (preceding chunk delimiter + zero-size chunk + empty trailer section)
+		// Also check for "0\r\n\r\n" right at the body start (degenerate empty-body case)
+		unsafe {
+			if buf_len >= header_end + 5 && buf[header_end] == `0` && buf[header_end + 1] == `\r`
+				&& buf[header_end + 2] == `\n` && buf[header_end + 3] == `\r`
+				&& buf[header_end + 4] == `\n` {
+				return true
+			}
+			if buf_len >= header_end + 7 {
+				for i := header_end; i <= buf_len - 7; i++ {
+					if buf[i] == `\r` && buf[i + 1] == `\n` && buf[i + 2] == `0`
+						&& buf[i + 3] == `\r` && buf[i + 4] == `\n` && buf[i + 5] == `\r`
+						&& buf[i + 6] == `\n` {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	content_length := parse_content_length_from_buf(buf, header_end)
+	if content_length <= 0 {
+		return true // no content-length or zero: body complete
+	}
+	body_received := buf_len - header_end
+	return body_received >= content_length
+}
+
 // has_chunked_transfer_encoding_in_buf scans the header bytes for a
 // "Transfer-Encoding:" header whose value contains "chunked" (case-insensitive).
 @[direct_array_access]
