@@ -600,6 +600,7 @@ fn (mut g Gen) method_name_concrete_types(full_fkey string, concrete_types []ast
 	}
 	normalized_concrete_types := concrete_types.map(g.unwrap_generic(it))
 	normalized_receiver_types := receiver_concrete_types.map(g.unwrap_generic(it))
+	mut matching_partial_candidate := []ast.Type{}
 	for candidate in g.table.fn_generic_types[full_fkey] {
 		if candidate.any(it.has_flag(.generic) || g.type_has_unresolved_generic_parts(it)) {
 			continue
@@ -616,6 +617,17 @@ fn (mut g Gen) method_name_concrete_types(full_fkey string, concrete_types []ast
 			// definition which always uses complete types.
 			return normalized_concrete_types
 		}
+		if normalized_candidate.len > normalized_concrete_types.len
+			&& normalized_candidate[..normalized_concrete_types.len] == normalized_concrete_types {
+			if matching_partial_candidate.len == 0 {
+				matching_partial_candidate = normalized_candidate.clone()
+			} else if matching_partial_candidate != normalized_candidate {
+				return normalized_concrete_types
+			}
+		}
+	}
+	if matching_partial_candidate.len > 0 {
+		return matching_partial_candidate
 	}
 	return normalized_concrete_types
 }
@@ -955,6 +967,77 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	//}
 }
 
+fn (mut g Gen) post_process_generic_fns_for_files(files []&ast.File) {
+	old_file := g.file
+	old_fid := g.fid
+	old_cur_concrete_types := g.cur_concrete_types.clone()
+	mut emitted_generic_specializations := map[string]bool{}
+	for {
+		mut emitted_this_round := false
+		for fid, file in files {
+			g.fid = fid
+			g.file = file
+			for generic_fn in file.generic_fns {
+				effective_generic_names := g.effective_fn_generic_names(*generic_fn)
+				if effective_generic_names.len == 0 {
+					continue
+				}
+				fkey := g.node_decl_fkey(*generic_fn)
+				generic_types_by_fn := g.table.fn_generic_types[fkey].clone()
+				if generic_types_by_fn.len == 0 {
+					continue
+				}
+				mut receiver_generic_names := []string{}
+				mut all_receiver_cts := [][]ast.Type{}
+				if generic_fn.is_method {
+					receiver_generic_names = g.table.generic_type_names(generic_fn.receiver.typ)
+					if receiver_generic_names.len > 0
+						&& receiver_generic_names.len < effective_generic_names.len {
+						all_receiver_cts = g.find_all_receiver_concrete_types(*generic_fn,
+							receiver_generic_names.len)
+					}
+				}
+				for concrete_types in generic_types_by_fn {
+					if concrete_types.any(it.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(it))
+					{
+						continue
+					}
+					mut pending_specializations := [][]ast.Type{}
+					if concrete_types.len == effective_generic_names.len {
+						pending_specializations << concrete_types.clone()
+					} else if concrete_types.len < effective_generic_names.len
+						&& all_receiver_cts.len > 0
+						&& concrete_types.len + receiver_generic_names.len == effective_generic_names.len {
+						for receiver_cts in all_receiver_cts {
+							mut merged := receiver_cts.clone()
+							merged << concrete_types
+							pending_specializations << merged
+						}
+					}
+					for concrete_specialization in pending_specializations {
+						specialization_key := g.generic_fn_name(concrete_specialization, fkey)
+						if specialization_key in emitted_generic_specializations {
+							continue
+						}
+						emitted_generic_specializations[specialization_key] = true
+						g.cur_concrete_types = concrete_specialization.clone()
+						g.fn_decl(*generic_fn)
+						emitted_this_round = true
+					}
+				}
+			}
+		}
+		if !emitted_this_round {
+			break
+		}
+		g.cur_concrete_types = []
+	}
+	g.cur_concrete_types = old_cur_concrete_types
+	g.file = old_file
+	g.fid = old_fid
+}
+
 fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	$if trace_cgen_gen_fn_decl ? {
 		eprintln('>   g.tid: ${g.tid} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | gen_fn_decl: ${node.name} | skip: ${skip}')
@@ -1010,72 +1093,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	effective_generic_names := g.effective_fn_generic_names(*node)
 	if effective_generic_names.len > 0 && g.cur_concrete_types.len == 0 {
-		// need the cur_concrete_type check to avoid inf. recursion
-		// loop thru each generic type and generate a function
-		nkey := g.node_decl_fkey(*node)
-		generic_types_by_fn := g.table.fn_generic_types[nkey]
-		$if trace_post_process_generic_fns ? {
-			eprintln('>> gen_fn_decl, nkey: ${nkey} | generic_types_by_fn: ${generic_types_by_fn}')
-		}
-		// For methods on generic structs that also have their own generic params
-		// (e.g. fn (f Foo[T]) method[U]()), the checker may register only the
-		// method's own concrete types (e.g. [U=f32]). We need to prepend the
-		// receiver's concrete types (e.g. [T=string]) to get the full set
-		// so that `unwrap_generic` can resolve both T and U in the function body.
-		// The receiver's concrete types come from the instantiation context stored
-		// in the fn_generic_types table for sibling methods that have complete sets,
-		// or from the type table's concrete instantiations.
-		// For methods on generic structs that also have their own generic params
-		// (e.g. fn (f Foo[T]) method[U]()), the checker may register only the
-		// method's own concrete types (e.g. [U=f32]). We need to prepend the
-		// receiver's concrete types (e.g. [T=string]) to get the full set
-		// so that `unwrap_generic` can resolve both T and U in the function body.
-		mut receiver_generic_names := []string{}
-		mut all_receiver_cts := [][]ast.Type{}
-		if node.is_method {
-			receiver_generic_names = g.table.generic_type_names(node.receiver.typ)
-			if receiver_generic_names.len > 0
-				&& receiver_generic_names.len < effective_generic_names.len {
-				all_receiver_cts = g.find_all_receiver_concrete_types(node,
-					receiver_generic_names.len)
-			}
-		}
-		mut generated_fn_names := map[string]bool{}
-		for concrete_types in generic_types_by_fn {
-			if g.pref.is_verbose {
-				syms := concrete_types.map(g.table.sym(it))
-				the_type := syms.map(it.name).join(', ')
-				println('gen fn `${node.name}` for type `${the_type}`')
-			}
-			if concrete_types.any(it.has_flag(.generic)) {
-				continue
-			}
-			if concrete_types.len == effective_generic_names.len {
-				// Already complete (includes both receiver and method generics)
-				fn_name := g.generic_fn_name(concrete_types, nkey)
-				if fn_name in generated_fn_names {
-					continue
-				}
-				generated_fn_names[fn_name] = true
-				g.cur_concrete_types = concrete_types.clone()
-				g.gen_fn_decl(node, skip)
-			} else if concrete_types.len < effective_generic_names.len && all_receiver_cts.len > 0
-				&& concrete_types.len + receiver_generic_names.len == effective_generic_names.len {
-				// Incomplete: only method generics, cross with all receiver instantiations
-				for receiver_cts in all_receiver_cts {
-					mut merged := receiver_cts.clone()
-					merged << concrete_types
-					fn_name := g.generic_fn_name(merged, nkey)
-					if fn_name in generated_fn_names {
-						continue
-					}
-					generated_fn_names[fn_name] = true
-					g.cur_concrete_types = merged
-					g.gen_fn_decl(node, skip)
-				}
-			}
-		}
-		g.cur_concrete_types = []
 		return
 	}
 	// For methods with their own generics (e.g. fn (c Calc[S]) next[T](input T))
@@ -4854,6 +4871,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if name_fkey == '' {
 				name_fkey = g.method_decl_fkey(full_method)
 			}
+			if name_fkey != '' && full_method_generic_names_len > 0
+				&& concrete_types.len == full_method_generic_names_len
+				&& concrete_types.all(!it.has_flag(.generic)
+				&& !g.type_has_unresolved_generic_parts(it)) {
+				g.table.register_fn_concrete_types(name_fkey, concrete_types)
+			}
 			raw_method_suffix := g.raw_method_name_suffix(raw_method_name, method_name,
 				full_method_generic_names)
 			mut name_concrete_types := []ast.Type{}
@@ -5314,6 +5337,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 				}
 				node_.concrete_types = concrete_types
+				if func.generic_names.len == concrete_types.len
+					&& concrete_types.all(!it.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(it)) {
+					g.table.register_fn_concrete_types(func.fkey(), concrete_types)
+				}
 				if !name_already_specialized {
 					name = g.generic_fn_name(concrete_types, name)
 					name = name.replace_each(c_fn_name_escape_seq)

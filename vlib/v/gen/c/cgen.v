@@ -538,7 +538,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			for k, v in g.no_eq_method_types {
 				global_g.no_eq_method_types[k] = v
 			}
-
 			unsafe { g.free_builders() } // free at the very end
 		}
 	} else {
@@ -557,6 +556,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		util.timing_start('cgen unification')
 	}
 
+	global_g.post_process_generic_fns_for_files(files)
 	global_g.gen_jsons()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
 	// Pre-register auto-str types for interface implementing types that need str()
