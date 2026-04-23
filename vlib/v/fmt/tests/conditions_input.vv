@@ -8,3 +8,14 @@ fn fn_with_if_else() {
 fn fn_with_if_else_oneline() {
 _ := if true { 1 } else { 2 }
 }
+
+fn short_if_stmts(a int) {
+	if a <= 10 {println('vfmt_0')}
+	if a > 10 {println('vfmt_1')}
+	if this_is_a_very_long_condition_name && this_is_another_really_long_condition_name && this_pushes_past_the_limit {println('wrapped')}
+}
+
+fn dynamic_where_expr(name_filter string, min_age int, status_filter string) {
+	dynamic_where := {if name_filter != '' {name == name_filter}, if min_age > 0 {age >= min_age}, if status_filter != '' {status == status_filter}}
+	_ = dynamic_where
+}

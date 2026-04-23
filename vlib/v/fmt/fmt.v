@@ -2527,11 +2527,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	f.inside_comptime_if = node.is_comptime
-	mut is_ternary := node.branches.len == 2 && node.has_else
-		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
-		|| f.single_line_fields)
-	f.single_line_if = is_ternary
+	mut keep_single_line := node.branches.len == 1 && branch_is_single_line(node.branches[0])
+	is_ternary := node.branches.len == 2 && node.has_else && branch_is_single_line(node.branches[0])
+		&& branch_is_single_line(node.branches[1]) && (node.is_expr || f.is_assign
+		|| f.inside_const || f.is_struct_init || f.single_line_fields)
+	keep_single_line = keep_single_line || is_ternary
+	f.single_line_if = keep_single_line
 	start_pos := f.out.len
 	start_len := f.line_len
 	for {
@@ -2578,20 +2579,18 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				}
 			}
 			f.write('{')
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			} else {
 				f.writeln('')
 			}
 			f.stmts(branch.stmts)
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			}
 		}
-		// When a single line if is really long, write it again as multiline,
-		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > max_len && !f.buffering {
-			is_ternary = false
+		if keep_single_line && f.line_len > max_len && !f.buffering {
+			keep_single_line = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
 			f.line_len = start_len
@@ -2604,11 +2603,19 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	f.inside_comptime_if = false
 	if node.post_comments.len > 0 {
-		f.writeln('')
-		f.comments(node.post_comments,
-			has_nl:    false
-			prev_line: node.branches.last().body_pos.last_line
-		)
+		if keep_single_line {
+			f.comments(node.post_comments,
+				has_nl:    false
+				same_line: true
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		} else {
+			f.writeln('')
+			f.comments(node.post_comments,
+				has_nl:    false
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		}
 	}
 }
 
@@ -2618,6 +2625,19 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 		return true
 	}
 	return false
+}
+
+fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pos.line_nr == item.pos.last_line
+				&& expr_is_single_line(item.expr) }
+		ast.SqlQueryDataIf { false }
+	}
+}
+
+fn sql_query_data_branch_is_single_line(branch ast.SqlQueryDataBranch) bool {
+	return branch.pos.line_nr == branch.pos.last_line && branch.items.len == 1
+		&& sql_query_data_item_is_single_line(branch.items[0])
 }
 
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
@@ -3426,7 +3446,8 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 					f.expr(branch.cond)
 					f.write(' ')
 				}
-				f.sql_query_data_branch_items(branch.items)
+				f.sql_query_data_branch_items(branch.items,
+					sql_query_data_branch_is_single_line(branch))
 				if idx < item.branches.len - 1 {
 					f.write(' ')
 				}
@@ -3435,10 +3456,23 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 	}
 }
 
-fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem) {
+fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, keep_single_line bool) {
 	if items.len == 0 {
 		f.write('{}')
 		return
+	}
+	if keep_single_line {
+		start_pos := f.out.len
+		start_len := f.line_len
+		f.write('{ ')
+		f.sql_query_data_item(items[0])
+		f.write(' }')
+		if !f.out.after(start_pos).contains('\n') && f.line_len <= max_len {
+			return
+		}
+		f.out.go_back_to(start_pos)
+		f.line_len = start_len
+		f.empty_line = start_len == 0
 	}
 	f.writeln('{')
 	f.indent++
