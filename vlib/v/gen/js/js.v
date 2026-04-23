@@ -3639,6 +3639,10 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 			continue
 		}
 		expr := it.exprs[i]
+		if expr is ast.AtExpr {
+			g.write(escape_template_literal_value(expr.val))
+			continue
+		}
 		// fmt := it.fmts[i]
 		// fwidth := it.fwidths[i]
 		// precision := it.precisions[i]
