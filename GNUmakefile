@@ -145,9 +145,11 @@ ifeq ($(LINUX),1)
 ifneq ($(filter $(TCCARCH),arm64 aarch64),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
-	# Bundled TCC can hang when bootstrapping V on Linux ARM64, so use the
-	# same system compiler as the initial `v1` build unless the user overrode it.
+	# Bundled TCC can hang or miscompile V while bootstrapping on Linux ARM64,
+	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
+	# unless the user overrode it explicitly.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+	BOOTSTRAP_VC_CCOMPILER_VFLAG := $(BOOTSTRAP_CCOMPILER_VFLAG)
 endif
 endif
 endif
