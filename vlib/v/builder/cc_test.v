@@ -460,6 +460,13 @@ fn test_c_output_suggests_missing_header_for_typedef_c_struct_requires_known_typ
 	assert c_output_suggests_missing_header_for_typedef_c_struct(c_output, {}, {}) == ''
 }
 
+fn test_c_output_suggests_missing_header_for_typedef_c_struct_with_issue_23648_tcc_output() {
+	c_output := 'D:/Temp/Temp/v_0/main.tmp.c:1028: error: \';\' expected (got "duarteroso__glfw__GLFWmonitor")'
+	assert c_output_suggests_missing_header_for_typedef_c_struct(c_output, {
+		'GLFWmonitor': true
+	}, {}) == 'GLFWmonitor'
+}
+
 fn test_c_error_missing_library_name_detects_tcc_output() {
 	tcc_output := "tcc: error: library 'pq' not found"
 	lib_name := c_error_missing_library_name(tcc_output)

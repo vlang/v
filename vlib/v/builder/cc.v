@@ -80,6 +80,15 @@ fn c_output_suggests_missing_header_for_typedef_c_struct(c_output string, known_
 				|| lower_line.contains('does not name a type')) {
 				return known_typedef_c_struct_aliases[name]
 			}
+			if name.contains('__')
+				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
+				|| lower_line.contains('undeclared identifier')
+				|| lower_line.contains('does not name a type')) {
+				suffix := name.all_after_last('__')
+				if suffix in known_typedef_c_structs {
+					return suffix
+				}
+			}
 		}
 	}
 	return ''
