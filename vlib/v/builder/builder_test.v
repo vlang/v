@@ -265,3 +265,15 @@ fn test_macos_2048_build_does_not_force_deployment_target() {
 	assert flags_output.contains('-fobjc-arc')
 	assert !flags_output.contains('-mmacosx-version-min=')
 }
+
+fn test_macos_arch_flag_is_forwarded_to_c_compiler() {
+	$if !macos {
+		return
+	}
+	src_file := os.join_path(test_path, 'macos_arch_forwarding.v')
+	out_file := os.join_path(test_path, 'macos_arch_forwarding')
+	os.write_file(src_file, 'fn main() {\n\tprintln("hello")\n}\n')!
+	flags_output :=
+		run_v_ok('${os.quoted_path(vexe)} -gc none -showcc -skip-running -arch amd64 -o ${os.quoted_path(out_file)} ${os.quoted_path(src_file)}')
+	assert flags_output.contains('-arch x86_64')
+}

@@ -525,6 +525,17 @@ fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.Com
 	return fallback
 }
 
+fn darwin_target_arch_name(arch pref.Arch) string {
+	return match arch {
+		.amd64 { 'x86_64' }
+		.arm64 { 'arm64' }
+		.i386 { 'i386' }
+		.ppc { 'ppc' }
+		.ppc64 { 'ppc64' }
+		else { '' }
+	}
+}
+
 fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
 	return match cc_type {
 		.tinyc { .tcc }
@@ -595,6 +606,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.cc == .unknown {
 		eprintln('Compilation with unknown C compiler `${cc_file_name}`')
+	}
+	if v.pref.os == .macos {
+		darwin_target_arch := darwin_target_arch_name(v.pref.arch)
+		if darwin_target_arch != '' {
+			ccoptions.args << ['-arch', darwin_target_arch]
+		}
 	}
 
 	// Add -fwrapv to handle UB overflows
