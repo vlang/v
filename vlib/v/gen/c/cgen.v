@@ -5503,7 +5503,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.error('g.expr(): unhandled EmptyExpr', token.Pos{})
 		}
 		ast.AnonFn {
+			save_cur_concrete_types := g.cur_concrete_types
+			call_concrete := g.active_call_generic_concrete_types(node.decl.generic_names)
+			if call_concrete.len > 0 && !call_concrete.any(it.has_flag(.generic)
+				|| g.type_has_unresolved_generic_parts(it)) {
+				g.cur_concrete_types = call_concrete
+			}
 			g.gen_anon_fn(mut node)
+			g.cur_concrete_types = save_cur_concrete_types
 		}
 		ast.ArrayDecompose {
 			g.expr(node.expr)

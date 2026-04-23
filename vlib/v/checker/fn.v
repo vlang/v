@@ -2767,6 +2767,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 							c.handle_generic_lambda_arg(node, func.generic_names, mut call_arg.expr)
 							continue
 						}
+						if mut call_arg.expr is ast.AnonFn {
+							c.handle_generic_anon_fn_arg(node, func.generic_names, mut
+								call_arg.expr)
+						}
 						if c.is_optional_array_arg_compatible(utyp, unwrap_typ) {
 							continue
 						}
@@ -2776,6 +2780,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					// still set call_ctx on lambda args for generic context in cgen:
 					if mut call_arg.expr is ast.LambdaExpr {
 						c.handle_generic_lambda_arg(node, func.generic_names, mut call_arg.expr)
+					} else if mut call_arg.expr is ast.AnonFn {
+						c.handle_generic_anon_fn_arg(node, func.generic_names, mut call_arg.expr)
 					}
 				}
 			}
@@ -3811,6 +3817,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if mut arg.expr is ast.LambdaExpr {
 			// Calling fn is generic and lambda arg also is generic
 			c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
+		} else if mut arg.expr is ast.AnonFn {
+			c.handle_generic_anon_fn_arg(node, method.generic_names, mut arg.expr)
 		}
 		param_typ_sym := c.table.sym(exp_arg_typ)
 		if param_typ_sym.kind == .struct && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
@@ -3869,8 +3877,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		for i, mut arg in node.args {
 			if mut arg.expr is ast.LambdaExpr {
 				c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
-				node.args[i] = arg
+			} else if mut arg.expr is ast.AnonFn {
+				c.handle_generic_anon_fn_arg(node, method.generic_names, mut arg.expr)
 			}
+			node.args[i] = arg
 		}
 	}
 	if concrete_types.len == method_generic_names_len && concrete_types.all(!it.has_flag(.generic)) {
@@ -3915,19 +3925,26 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 }
 
 fn (c &Checker) generic_lambda_concrete_types(lambda &ast.LambdaExpr, caller_generic_names []string, caller_concrete_types []ast.Type) []ast.Type {
-	if lambda == unsafe { nil } || lambda.func == unsafe { nil }
-		|| lambda.func.decl.generic_names.len == 0 {
+	if lambda == unsafe { nil } || lambda.func == unsafe { nil } {
 		return []ast.Type{}
 	}
-	if caller_concrete_types.len == lambda.func.decl.generic_names.len
+	return c.generic_callback_concrete_types(lambda.func.decl.generic_names, caller_generic_names,
+		caller_concrete_types)
+}
+
+fn (c &Checker) generic_callback_concrete_types(generic_names []string, caller_generic_names []string, caller_concrete_types []ast.Type) []ast.Type {
+	if generic_names.len == 0 {
+		return []ast.Type{}
+	}
+	if caller_concrete_types.len == generic_names.len
 		&& (caller_generic_names.len == 0 || caller_generic_names.len == caller_concrete_types.len) {
 		return caller_concrete_types.clone()
 	}
 	if caller_generic_names.len == 0 || caller_generic_names.len != caller_concrete_types.len {
 		return []ast.Type{}
 	}
-	mut concrete_types := []ast.Type{cap: lambda.func.decl.generic_names.len}
-	for generic_name in lambda.func.decl.generic_names {
+	mut concrete_types := []ast.Type{cap: generic_names.len}
+	for generic_name in generic_names {
 		idx := caller_generic_names.index(generic_name)
 		if idx < 0 || idx >= caller_concrete_types.len {
 			return []ast.Type{}
@@ -3956,6 +3973,23 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, generic_names [
 		if c.table.register_fn_concrete_types(lambda.func.decl.fkey(), lambda_concrete_types) {
 			lambda.func.decl.ninstances++
 		}
+	}
+}
+
+fn (mut c Checker) handle_generic_anon_fn_arg(node &ast.CallExpr, generic_names []string, mut anon ast.AnonFn) {
+	if node.concrete_types.len == 0 || anon.decl.generic_names.len == 0 {
+		return
+	}
+	anon_concrete_types := c.generic_callback_concrete_types(anon.decl.generic_names,
+		generic_names, node.concrete_types)
+	if anon_concrete_types.len == 0 {
+		return
+	}
+	if anon.decl.fkey() !in c.table.fn_generic_types {
+		c.table.register_fn_generic_types(anon.decl.fkey())
+	}
+	if c.table.register_fn_concrete_types(anon.decl.fkey(), anon_concrete_types) {
+		anon.decl.ninstances++
 	}
 }
 

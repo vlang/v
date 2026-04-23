@@ -3752,19 +3752,27 @@ fn (g &Gen) has_active_call_generic_context() bool {
 		&& g.active_call_generic_names.len == g.active_call_concrete_types.len
 }
 
+fn (g &Gen) active_call_generic_concrete_types(generic_names []string) []ast.Type {
+	if generic_names.len == 0 || !g.has_active_call_generic_context() {
+		return []ast.Type{}
+	}
+	mut concrete_types := []ast.Type{cap: generic_names.len}
+	for generic_name in generic_names {
+		idx := g.active_call_generic_names.index(generic_name)
+		if idx < 0 || idx >= g.active_call_concrete_types.len {
+			return []ast.Type{}
+		}
+		concrete_types << g.active_call_concrete_types[idx]
+	}
+	return concrete_types
+}
+
 fn (g &Gen) active_call_lambda_concrete_types(node ast.LambdaExpr) []ast.Type {
 	if node.func == unsafe { nil } || node.func.decl.generic_names.len == 0 {
 		return []ast.Type{}
 	}
-	if g.has_active_call_generic_context() {
-		mut concrete_types := []ast.Type{cap: node.func.decl.generic_names.len}
-		for generic_name in node.func.decl.generic_names {
-			idx := g.active_call_generic_names.index(generic_name)
-			if idx < 0 || idx >= g.active_call_concrete_types.len {
-				return []ast.Type{}
-			}
-			concrete_types << g.active_call_concrete_types[idx]
-		}
+	concrete_types := g.active_call_generic_concrete_types(node.func.decl.generic_names)
+	if concrete_types.len > 0 {
 		return concrete_types
 	}
 	if node.call_ctx != unsafe { nil }
