@@ -536,6 +536,17 @@ fn test_c_output_suggests_missing_typedef_for_c_struct_requires_matching_redecla
 	}) == ''
 }
 
+fn test_c_output_suggests_missing_typedef_for_c_struct_with_issue_17101_output() {
+	c_output := [
+		"C:\\Users\\USER\\AppData\\Local\\Temp\\v_0\\main2.3589850650208729523.tmp.c:12338:99: error: 'tilengine__TLN_Affine' {aka 'struct TLN_Affine'} has no member named 'angle'",
+		'12338 |         tilengine__TLN_Affine* affine = ((tilengine__TLN_Affine*)memdup(&(tilengine__TLN_Affine){.angle = 10,.dx = 1,.dy = 1,.sx = 1,.sy = 1,}, sizeof(tilengine__TLN_Affine)));',
+		'      |                                                                                                   ^~~~~',
+	].join('\n')
+	assert c_output_suggests_missing_typedef_for_c_struct(c_output, {
+		'TLN_Affine': true
+	}) == 'TLN_Affine'
+}
+
 fn test_extract_quoted_identifier_supports_double_quotes() {
 	assert extract_quoted_identifier('error: \';\' expected (got "glfw__GLFWwindow")') == 'glfw__GLFWwindow'
 }

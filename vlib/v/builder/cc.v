@@ -108,6 +108,11 @@ fn c_output_suggests_missing_typedef_for_c_struct(c_output string, known_non_typ
 			continue
 		}
 		lower_line := line.to_lower()
+		if lower_line.contains('has no member named') && (lower_line.contains("aka 'struct ")
+			|| lower_line.contains('aka `struct ')
+			|| lower_line.contains('aka "struct ')) {
+			return name
+		}
 		if lower_line.contains('forward declaration of') {
 			if name in incomplete {
 				return name
