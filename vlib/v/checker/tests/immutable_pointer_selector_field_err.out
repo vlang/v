@@ -1,0 +1,7 @@
+vlib/v/checker/tests/immutable_pointer_selector_field_err.vv:13:4: error: `x.str` aliases mutable data from an immutable value
+   11 | fn fn_test(args MyOptions) {
+   12 |     mut x := args.data
+   13 |     x.str = 'why is this possible?'
+      |       ~~~
+   14 | }
+   15 |
