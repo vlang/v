@@ -582,14 +582,14 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			if expr.is_farray {
 				if left is FixedArray {
 					if index is i64 {
-						return left.val[index]
+						return left.val[int(index)]
 					}
 				}
 			}
 			if expr.is_array {
 				if left is Array {
 					if index is i64 {
-						return left.val[index]
+						return left.val[int(index)]
 					}
 				}
 			}

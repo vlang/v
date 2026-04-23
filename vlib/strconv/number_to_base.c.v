@@ -55,7 +55,7 @@ pub fn format_uint(n u64, radix int) string {
 		uradix := u64(radix)
 		for n_copy != 0 {
 			tmp_0 := res
-			tmp_1 := base_digits[n_copy % uradix].ascii_str()
+			tmp_1 := base_digits[int(n_copy % uradix)].ascii_str()
 			res = tmp_1 + res
 			tmp_0.free()
 			tmp_1.free()

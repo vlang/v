@@ -426,7 +426,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	}
 	size := C.ZSTD_compress2(cctx.ctx, dst.data, dst.len, data.data, data.len)
 	check_error(size)!
-	return dst[..size]
+	return dst[..int(size)]
 }
 
 @[params]
@@ -450,7 +450,7 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	mut dst := []u8{len: int(dst_capacity)}
 	decompressed_size := C.ZSTD_decompress(dst.data, dst.len, data.data, data.len)
 	check_error(decompressed_size)!
-	return dst[..decompressed_size]
+	return dst[..int(decompressed_size)]
 }
 
 pub struct CCtx {

@@ -131,7 +131,7 @@ fn trailing_zeros_64_default(x u64) int {
 	// find by how many bits it was shifted by looking at which six bit
 	// substring ended up at the top of the word.
 	// (Knuth, volume 4, section 7.3.1)
-	return int(de_bruijn64tab[(x & -x) * de_bruijn64 >> (64 - 6)])
+	return int(de_bruijn64tab[int((x & -x) * de_bruijn64 >> (64 - 6))])
 }
 
 // --- OnesCount ---
@@ -325,7 +325,7 @@ pub fn len_16(x u16) int {
 		y >>= 8
 		n = 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(len_8_tab[int(y)])
 }
 
 // len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
@@ -341,7 +341,7 @@ pub fn len_32(x u32) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(len_8_tab[int(y)])
 }
 
 // len_64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
@@ -361,7 +361,7 @@ pub fn len_64(x u64) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(len_8_tab[int(y)])
 }
 
 // --- Add with carry ---

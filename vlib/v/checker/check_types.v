@@ -454,30 +454,30 @@ fn (mut c Checker) can_convert_array_elem_to_interface_array(got ast.Type, expec
 	return c.table.does_type_implement_interface(got_type, expected_type)
 }
 
-fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
+fn (c &Checker) integer_literal_outside_type_range(expected ast.Type, expr ast.Expr) bool {
 	if !expected.is_int() {
-		return
+		return false
 	}
 	if expr !is ast.IntegerLiteral {
-		return
+		return false
 	}
 	int_lit := expr as ast.IntegerLiteral
 	mut lit := int_lit.val.replace('_', '')
 	if lit.len == 0 {
-		return
+		return false
 	}
 	is_negative := lit.starts_with('-')
 	if is_negative || lit.starts_with('+') {
 		lit = lit[1..]
 	}
 	if lit.len == 0 {
-		return
+		return false
 	}
 	literal_value := lit.u64()
 	bits, _ := c.table.type_size(expected.idx_type())
 	bit_size := bits * 8
 	if bit_size == 0 {
-		return
+		return false
 	}
 	mut outside_type_range := false
 	if expected.is_signed() {
@@ -498,11 +498,17 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 			outside_type_range = literal_value > max_unsigned
 		}
 	}
-	if outside_type_range {
-		expected_type_str := c.table.type_to_str(expected.clear_flag(.variadic))
-		c.warn('value `${int_lit.val}` is outside the range of `${expected_type_str}` in argument, this will be considered hard error soon',
-			pos)
+	return outside_type_range
+}
+
+fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
+	if !c.integer_literal_outside_type_range(expected, expr) {
+		return
 	}
+	int_lit := expr as ast.IntegerLiteral
+	expected_type_str := c.table.type_to_str(expected.clear_flag(.variadic))
+	c.warn('value `${int_lit.val}` is outside the range of `${expected_type_str}` in argument, this will be considered hard error soon',
+		pos)
 }
 
 fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
