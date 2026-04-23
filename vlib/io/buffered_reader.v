@@ -26,7 +26,7 @@ pub:
 @[params]
 pub struct BufferedReadLineConfig {
 pub:
-	delim u8 = `\n` // line delimiter; `\n` also strips a preceding `\r`
+	delim u8 = `\n` // line delimiter; default `\n` mode strips both `\n` and `\r\n`
 }
 
 // new_buffered_reader creates a new BufferedReader.
@@ -122,8 +122,8 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // read_line attempts to read a line from the buffered reader.
 // It reads until it finds the specified delimiter or the end of stream.
 // The returned string does not include the delimiter.
-// When the delimiter is `\n`, a preceding `\r` is treated as part of CRLF
-// and is also omitted from the returned string.
+// With the default delimiter `\n`, both `\n` and `\r\n` line endings are
+// accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 	if r.end_of_stream {
 		return Eof{}
