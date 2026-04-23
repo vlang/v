@@ -20,6 +20,7 @@ fn json_attr_value(attr string) ?string {
 	return unquote_attr_value(attr[5..])
 }
 
+@[markused]
 fn json_attr_value_range(attr string) ?(int, int) {
 	if !attr.starts_with('json:') {
 		return none

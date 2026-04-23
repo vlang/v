@@ -36,17 +36,18 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	cur_fn                    string
-	cur_fn_concrete_types     []ast.Type
-	level                     int
-	is_builtin_mod            bool
-	is_direct_array_access    bool
-	inside_in_op              bool
-	inside_comptime           int
-	inside_comptime_if        int
-	used_fn_generic_types     map[string][][]ast.Type
-	walked_fn_generic_types   map[string][][]ast.Type
-	keep_all_fn_generic_types map[string]bool
+	cur_fn                     string
+	cur_fn_concrete_types      []ast.Type
+	level                      int
+	is_builtin_mod             bool
+	is_direct_array_access     bool
+	inside_in_op               bool
+	inside_comptime            int
+	inside_comptime_if         int
+	used_fn_generic_types      map[string][][]ast.Type
+	walked_fn_generic_types    map[string][][]ast.Type
+	keep_all_fn_generic_types  map[string]bool
+	json2_encode_field_helpers map[string]bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -269,6 +270,11 @@ fn (mut w Walker) mark_json2_optional_field_helpers(concrete_typ ast.Type) {
 }
 
 fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concrete_typ ast.Type) {
+	helper_key := '${int(receiver_typ)}:${int(concrete_typ)}'
+	if w.json2_encode_field_helpers[helper_key] {
+		return
+	}
+	w.json2_encode_field_helpers[helper_key] = true
 	concrete_sym := w.table.final_sym(w.table.unaliased_type(concrete_typ))
 	if concrete_sym.kind != .struct || concrete_sym.info !is ast.Struct {
 		return
@@ -1483,6 +1489,10 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 		return
 	}
 	w.mark_fn_as_used(fkey)
+	if node.mod == 'x.json2' {
+		w.mark_by_sym_name('EnumData')
+		w.mark_by_sym_name('time.Time')
+	}
 	last_is_direct_array_access := w.is_direct_array_access
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
 	defer { w.is_direct_array_access = last_is_direct_array_access }
@@ -1576,7 +1586,8 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 						continue
 					}
 					concrete_typ := w.table.unaliased_type(concrete_type_list[0])
-					if w.table.final_sym(concrete_typ).kind == .struct {
+					concrete_sym := w.table.final_sym(concrete_typ)
+					if concrete_sym.kind == .struct && concrete_sym.name != 'time.Time' {
 						w.fn_decl_with_concrete_types(mut check_struct_type_valid_fn,
 							concrete_type_list)
 					}
@@ -1597,7 +1608,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 				}
 			}
 		}
-		if concrete_sym.kind == .struct {
+		if concrete_sym.kind == .struct && concrete_sym.name != 'time.Time' {
 			if mut decode_struct_key_fn := w.all_fns['x.json2.decode_struct_key'] {
 				w.fn_decl_with_concrete_types(mut decode_struct_key_fn, resolved_concrete_types)
 			}
@@ -1611,6 +1622,10 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	if node.mod == 'x.json2' && node.name == 'decode_struct_key' && resolved_concrete_types.len == 1 {
 		w.mark_json2_optional_field_helpers(resolved_concrete_types[0])
 	}
+	if node.mod == 'x.json2' && node.name == 'decode_enum' {
+		w.uses_ct_values = true
+		w.mark_by_sym_name('EnumData')
+	}
 	if node.mod == 'x.json2' && node.name == 'encode_value' && node.is_method
 		&& resolved_concrete_types.len == 1 {
 		concrete_typ := w.table.unaliased_type(resolved_concrete_types[0])
@@ -1622,7 +1637,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 				}
 			}
 		}
-		if concrete_sym.kind in [.array, .array_fixed] {
+		if concrete_sym.kind == .array {
 			encode_array_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ,
 				'encode_array')
 			if encode_array_fkey != '' {
@@ -2030,7 +2045,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				w.mark_by_type(concrete_type)
 			}
 			generic_call_inside_generic_caller := w.fn_generic_names(stmt).len > 0
-				&& node.raw_concrete_types.len == 0 && caller_generic_names.len > 0
+				&& call_concrete_types.len == 0 && node.raw_concrete_types.len == 0
+				&& caller_generic_names.len > 0
 			keep_all_generic_types := (stmt.generic_names.len > 0 && call_concrete_types.len == 0)
 				|| generic_call_inside_generic_caller
 			if keep_all_generic_types {

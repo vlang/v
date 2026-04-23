@@ -35,6 +35,7 @@ pub const days_before = [
 ]!
 
 // Time contains various time units for a point in time.
+@[markused]
 pub struct Time {
 	unix i64
 pub:

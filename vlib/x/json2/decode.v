@@ -1,6 +1,7 @@
 module json2
 
 import strconv
+import time
 
 const null_in_string = 'null'
 
@@ -36,6 +37,7 @@ struct DecoderFieldInfo {
 	is_raw       bool
 }
 
+@[markused]
 struct StructFieldInfo {
 	json_name_ptr voidptr
 	json_name_len int
@@ -375,7 +377,7 @@ fn (mut decoder Decoder) cached_struct_field_infos[T]() []StructFieldInfo {
 	return *field_infos
 }
 
-@[inline]
+@[inline; markused]
 fn struct_field_is_decoded(decoded_mask u64, decoded_fields []bool, field_idx int) bool {
 	if field_idx < 64 {
 		return (decoded_mask & (u64(1) << u64(field_idx))) != 0
@@ -383,7 +385,7 @@ fn struct_field_is_decoded(decoded_mask u64, decoded_fields []bool, field_idx in
 	return decoded_fields[field_idx]
 }
 
-@[inline]
+@[inline; markused]
 fn mark_struct_field_decoded(decoded_mask u64, mut decoded_fields []bool, field_idx int) u64 {
 	if field_idx < 64 {
 		return decoded_mask | (u64(1) << u64(field_idx))
@@ -402,7 +404,7 @@ fn (decoder &Decoder) json_key_matches(key_info ValueInfo, key_name string) bool
 	}
 }
 
-@[inline]
+@[inline; markused]
 fn (decoder &Decoder) is_empty_value(value_info ValueInfo) bool {
 	match value_info.value_kind {
 		.null {
@@ -430,6 +432,7 @@ fn (decoder &Decoder) is_empty_value(value_info ValueInfo) bool {
 	return false
 }
 
+@[markused]
 fn (mut decoder Decoder) skip_current_value() {
 	if decoder.current_node == unsafe { nil } {
 		return
@@ -673,6 +676,23 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return
 	} $else $if T.unaliased_typ is string {
 		decoder.decode_string(mut val)!
+	} $else $if T.unaliased_typ is time.Time {
+		value_info := decoder.current_node.value
+		mut decoded_time := time.Time{}
+		if value_info.value_kind == .string {
+			decoded_time.from_json_string(decoder.json[value_info.position + 1..
+				value_info.position + value_info.length - 1]) or {
+				decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
+			}
+		} else if value_info.value_kind == .number {
+			decoded_time.from_json_number(decoder.json[value_info.position..value_info.position +
+				value_info.length]) or {
+				decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
+			}
+		} else {
+			decoder.decode_error('Expected string or number, but got ${value_info.value_kind}')!
+		}
+		val = T(decoded_time)
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
 		return
@@ -1173,6 +1193,7 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 
 const max_integer_number_digits = 20
 
+@[markused]
 fn has_exponent_number_syntax(str string) bool {
 	for c in str {
 		if c == `e` || c == `E` {
@@ -1182,6 +1203,7 @@ fn has_exponent_number_syntax(str string) bool {
 	return false
 }
 
+@[markused]
 fn scientific_number_to_integer_string(str string) !string {
 	if !has_exponent_number_syntax(str) {
 		// Handle plain decimal numbers with zero fractional part (e.g., "-123.0")
@@ -1326,8 +1348,10 @@ fn parse_integer_number[T](str string) !T {
 		return T(strconv.atou32(int_str)!)
 	} $else $if T.unaliased_typ is u64 {
 		return T(strconv.atou64(int_str)!)
+	} $else $if T is int {
+		return int(strconv.atoi64(int_str)!)
 	} $else $if T.unaliased_typ is int {
-		return T(strconv.atoi(int_str)!)
+		return T(int(strconv.atoi64(int_str)!))
 	} $else $if T.unaliased_typ is isize {
 		return T(isize(strconv.atoi64(int_str)!))
 	} $else $if T.unaliased_typ is usize {
@@ -1335,6 +1359,12 @@ fn parse_integer_number[T](str string) !T {
 	} $else {
 		return error('`parse_integer_number` cannot decode ${T.name} type')
 	}
+}
+
+@[markused]
+fn parse_int_number(str string) !int {
+	int_str := scientific_number_to_integer_string(str)!
+	return int(strconv.atoi64(int_str)!)
 }
 
 fn parse_float_number[T](str string) !T {
@@ -1372,7 +1402,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		u16 { *val = parse_integer_number[T](str)! }
 		u32 { *val = parse_integer_number[T](str)! }
 		u64 { *val = parse_integer_number[T](str)! }
-		int { *val = parse_integer_number[T](str)! }
+		int { *val = parse_int_number(str)! }
 		isize { *val = parse_integer_number[T](str)! }
 		usize { *val = parse_integer_number[T](str)! }
 		f32 { *val = parse_float_number[T](str)! }
@@ -1406,6 +1436,8 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is u64 {
 		return parse_integer_number[T](str)!
+	} $else $if T is int {
+		return parse_int_number(str)!
 	} $else $if T.unaliased_typ is int {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is isize {
