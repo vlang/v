@@ -246,8 +246,8 @@ fn (prefs &Preferences) bsd_specific_file_kind(file string) string {
 
 // TODO: Rework this using is_target_of()
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
-	if file.ends_with('.js.v') {
-		// Probably something like `a.js.v`.
+	if file.ends_with('.js.v') || file.ends_with('.wasm.v') {
+		// Probably something like `a.js.v` or `a.wasm.v`.
 		return false
 	}
 	if prefs.is_bare && file.ends_with('.freestanding.v') {

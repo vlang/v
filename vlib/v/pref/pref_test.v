@@ -119,6 +119,35 @@ fn new_wasm_preferences() pref.Preferences {
 	}
 }
 
+fn new_c_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .c
+		os:      .linux
+		arch:    .amd64
+	}
+}
+
+fn test_c_backend_filters_backend_specific_files() {
+	prefs := new_c_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'c_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'mod.c.v',
+		'mod.js.v',
+		'mod.v',
+		'mod.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'mod.c.v'),
+		os.join_path(dir, 'mod.v'),
+	]
+}
+
+fn test_c_backend_skips_modules_with_only_non_c_variants() {
+	prefs := new_c_preferences()
+	filtered := prefs.should_compile_filtered_files('sus', ['sus.js.v', 'sus.wasm.v'])
+	assert filtered.len == 0
+}
+
 fn test_wasm_backend_filters_backend_specific_files() {
 	prefs := new_wasm_preferences()
 	dir := os.join_path(os.vtmp_dir(), 'wasm_backend_filters')
