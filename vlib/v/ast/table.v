@@ -186,6 +186,12 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 			sig += '_'
 		}
 	}
+	if f.is_c_variadic {
+		if sig.len > 0 {
+			sig += '_'
+		}
+		sig += 'c_variadic'
+	}
 	if f.return_type != 0 && f.return_type != void_type {
 		sig += '__${util.no_dots(t.type_to_str(f.return_type)).replace_each(fn_type_escape_seq)}'
 	}
@@ -201,7 +207,7 @@ fn (t &Table) fn_type_signature_part(f &Fn, i int, arg Param) string {
 		}
 		sig += 'mut '
 	}
-	if i == f.params.len - 1 && f.is_variadic {
+	if i == f.params.len - 1 && f.is_variadic && !f.is_c_variadic {
 		sig += '...'
 	}
 	sig += t.type_to_str(typ)
@@ -224,13 +230,19 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		if t.is_fmt && arg.name != '' {
 			sig += '${arg.name} '
 		}
-		if i == f.params.len - 1 && f.is_variadic {
+		if i == f.params.len - 1 && f.is_variadic && !f.is_c_variadic {
 			sig += '...'
 		}
 		sig += t.type_to_str_using_aliases(typ, import_aliases)
 		if i < f.params.len - 1 {
 			sig += ', '
 		}
+	}
+	if f.is_c_variadic {
+		if f.params.len > 0 {
+			sig += ', '
+		}
+		sig += '...'
 	}
 	sig += ')'
 	if f.return_type == ovoid_type {

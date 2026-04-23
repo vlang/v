@@ -6139,7 +6139,8 @@ fn (mut c Checker) infer_fn_value_concrete_type(mut inferred map[string]ast.Type
 			template_fn := (template_final_sym.info as ast.FnType).func
 			actual_fn := (actual_final_sym.info as ast.FnType).func
 			if template_fn.params.len != actual_fn.params.len
-				|| template_fn.is_variadic != actual_fn.is_variadic {
+				|| template_fn.is_variadic != actual_fn.is_variadic
+				|| template_fn.is_c_variadic != actual_fn.is_c_variadic {
 				return false
 			}
 			for i, template_param in template_fn.params {
@@ -6170,7 +6171,8 @@ fn (mut c Checker) infer_fn_value_concrete_types(func &ast.Fn, expected_type ast
 		return none
 	}
 	expected_fn := (expected_sym.info as ast.FnType).func
-	if func.params.len != expected_fn.params.len || func.is_variadic != expected_fn.is_variadic {
+	if func.params.len != expected_fn.params.len || func.is_variadic != expected_fn.is_variadic
+		|| func.is_c_variadic != expected_fn.is_c_variadic {
 		return none
 	}
 	mut inferred := map[string]ast.Type{}

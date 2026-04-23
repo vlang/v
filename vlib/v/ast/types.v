@@ -1930,12 +1930,18 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 			sb.write_string(' ')
 		}
 		styp := t.type_to_str_using_aliases(typ, import_aliases)
-		if i == func.params.len - 1 && func.is_variadic {
+		if i == func.params.len - 1 && func.is_variadic && !func.is_c_variadic {
 			sb.write_string('...')
 			sb.write_string(styp)
 		} else {
 			sb.write_string(styp)
 		}
+	}
+	if func.is_c_variadic {
+		if func.params.len > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string('...')
 	}
 	sb.write_string(')')
 	if func.return_type != void_type {
