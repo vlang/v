@@ -7,6 +7,8 @@ import v.util.recompilation
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 const vroot = os.dir(vexe)
+const v_upstream_url = 'https://github.com/vlang/v'
+const v_upstream_branch = 'master'
 
 struct App {
 	is_verbose bool
@@ -77,18 +79,22 @@ fn (app App) update_from_master() {
 	if !os.exists('.git') {
 		// initialize the folder, as if it had been cloned:
 		app.git_command('git init')
-		app.git_command('git remote add origin https://github.com/vlang/v')
+		app.git_command('git remote add origin ${v_upstream_url}')
 		app.git_command('git fetch')
-		app.git_command('git remote set-head origin master')
-		app.git_command('git reset --hard origin/master')
+		app.git_command('git remote set-head origin ${v_upstream_branch}')
+		app.git_command('git reset --hard origin/${v_upstream_branch}')
 		// Note 1: patterns starting with /, will match only against the root;
 		//         `--exclude v` will match also vlib/v/ in addition to ./v; `--exclude /v` will only match ./v
 		// Note 2: patterns ending with / are treated as folders.
 		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /v_old --exclude /v_old.exe --exclude /${app.current_vexe_name()} --exclude /${app.current_vbackup_name()} --exclude /.bin/ --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
 	} else {
-		// pull latest
-		app.git_command('git pull https://github.com/vlang/v master')
+		// Rebase avoids merge failures when the local checkout has unrelated history.
+		app.git_command(v_upstream_pull_command())
 	}
+}
+
+fn v_upstream_pull_command() string {
+	return 'git pull --rebase ${v_upstream_url} ${v_upstream_branch}'
 }
 
 fn (app App) recompile_v() bool {

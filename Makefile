@@ -40,7 +40,7 @@ all: download_vc v
 download_vc:
 	if [ -f vc/v.c ] ; then \
 		if command -v git >/dev/null 2>&1 ; then \
-			git -C vc/ pull; \
+			git -C vc/ pull --rebase; \
 		else \
 			echo "git not found; using existing vc/v.c"; \
 		fi; \

@@ -18,7 +18,7 @@ TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
 HAS_GIT := $(shell command -v $(GIT) >/dev/null 2>&1 && echo 1 || echo 0)
-GITCLEANPULL := $(GIT) clean -xf && $(GIT) pull --quiet
+GITCLEANPULL := $(GIT) clean -xf && $(GIT) pull --rebase --quiet
 GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 #### Platform detections and overrides:

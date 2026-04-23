@@ -123,7 +123,7 @@ if !flag_local! NEQ 1 (
 			echo Updating vc...
 			echo  ^> Sync with remote !vc_url!
 			cd %vc_dir%
-			git pull --quiet
+			git pull --rebase --quiet
 			cd ..
 			popd
 		)
@@ -245,7 +245,7 @@ if exist "%tcc_dir%" (
 		echo Updating TCC
 		echo  ^> Syncing TCC from !tcc_url!
 		if exist "lib\advapi32.def" git checkout -- lib\advapi32.def >nul 2>nul
-		git pull --quiet
+		git pull --rebase --quiet
 		popd
 	)
 ) else (
