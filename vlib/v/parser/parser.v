@@ -120,6 +120,7 @@ mut:
 	left_comments               []ast.Comment
 	script_mode                 bool
 	script_mode_start_token     token.Token
+	pending_top_stmts           []ast.Stmt
 	generic_type_level          int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined        bool // TODO move to checker
 	is_vls                      bool
@@ -362,12 +363,18 @@ pub fn (mut p Parser) parse() &ast.File {
 		break
 	}
 	for {
-		if p.tok.kind == .eof {
+		if p.tok.kind == .eof && p.pending_top_stmts.len == 0 {
 			// Imported module files are discovered after the initial parse pass,
 			// so unused import warnings are emitted later by the builder.
 			break
 		}
-		stmt := p.top_stmt()
+		stmt := if p.pending_top_stmts.len > 0 {
+			pending := p.pending_top_stmts[0]
+			p.pending_top_stmts.delete(0)
+			pending
+		} else {
+			p.top_stmt()
+		}
 		// clear the attributes after each statement
 		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
 			p.attrs = []
@@ -921,6 +928,10 @@ fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 }
 
 fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
 	p.inside_fn = true
 	if p.pref.is_script && !p.pref.is_test {
 		p.script_mode = true
@@ -932,32 +943,132 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 
 		p.open_scope()
 		p.cur_fn_name = 'main.main'
-		mut stmts := []ast.Stmt{}
+		p.cur_fn_scope = p.scope
+		main_scope := p.scope
+		mut top_stmts := []ast.Stmt{}
+		mut main_stmts := []ast.Stmt{}
 		if cur_stmt != ast.empty_stmt {
-			stmts << cur_stmt
+			main_stmts << cur_stmt
 		}
 		for p.tok.kind != .eof {
-			stmts << p.stmt(false)
+			stmt := p.stmt(false)
+			if stmt is ast.FnDecl {
+				top_stmts << stmt
+				continue
+			}
+			main_stmts << stmt
 		}
+		main_label_names := p.label_names.clone()
 		p.close_scope()
 
 		p.script_mode = false
-		return ast.FnDecl{
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		main_fn := ast.FnDecl{
 			name:        'main.main'
 			short_name:  'main'
 			mod:         'main'
 			is_main:     true
-			stmts:       stmts
+			stmts:       main_stmts
 			file:        p.file_path
 			return_type: ast.void_type
-			scope:       p.scope
-			label_names: p.label_names
+			scope:       main_scope
+			label_names: main_label_names
 		}
+		if top_stmts.len == 0 {
+			return main_fn
+		}
+		p.pending_top_stmts << top_stmts
+		p.pending_top_stmts << ast.Stmt(main_fn)
+		first := p.pending_top_stmts[0]
+		p.pending_top_stmts.delete(0)
+		return first
 	} else if p.pref.is_fmt || p.pref.is_vet {
-		return p.stmt(false)
+		stmt := p.stmt(false)
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return stmt
 	} else {
-		return p.error('bad top level statement ' + p.tok.str())
+		err := p.error('bad top level statement ' + p.tok.str())
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return err
 	}
+}
+
+fn (p &Parser) relative_token(offset int) token.Token {
+	return match offset {
+		0 { p.tok }
+		1 { p.peek_tok }
+		else { p.peek_token(offset) }
+	}
+}
+
+fn (p &Parser) is_script_receiver_method_decl_start() bool {
+	mut fn_offset := 0
+	if p.tok.kind == .key_pub {
+		if p.peek_tok.kind != .key_fn {
+			return false
+		}
+		fn_offset = 1
+	} else if p.tok.kind != .key_fn {
+		return false
+	}
+	if p.relative_token(fn_offset + 1).kind != .lpar {
+		return false
+	}
+	mut offset := fn_offset + 2
+	mut paren_level := 1
+	for paren_level > 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.lpar {
+				paren_level++
+			}
+			.rpar {
+				paren_level--
+			}
+			.eof {
+				return false
+			}
+			else {}
+		}
+
+		offset++
+	}
+	name_tok := p.relative_token(offset)
+	next_after_name := p.relative_token(offset + 1)
+	return name_tok.kind == .name && next_after_name.kind in [.lpar, .lsbr]
+}
+
+fn (mut p Parser) script_fn_decl() ast.FnDecl {
+	main_scope := p.scope
+	file_scope := if main_scope.parent != unsafe { nil } { main_scope.parent } else { main_scope }
+	old_script_mode := p.script_mode
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
+	p.script_mode = false
+	p.inside_fn = false
+	p.cur_fn_name = ''
+	p.cur_fn_scope = unsafe { nil }
+	p.scope = file_scope
+	defer {
+		p.script_mode = old_script_mode
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		p.scope = main_scope
+	}
+	return p.fn_decl()
 }
 
 // TODO: [if vfmt]
@@ -1300,6 +1411,18 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				name: name
 				pos:  spos
 			}
+		}
+		.key_pub {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
+		}
+		.key_fn {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
 		}
 		.key_const {
 			return p.error_with_pos('const can only be defined at the top level (outside of functions)',
