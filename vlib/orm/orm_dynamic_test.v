@@ -236,3 +236,58 @@ fn test_dynamic_select_with_in_operator_and_additional_condition() {
 	assert rows[1].name == 'Charlie'
 	assert rows[1].age == 29
 }
+
+fn test_dynamic_select_with_explicit_order_by_asc() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicMember
+	}!
+
+	members := [
+		DynamicMember{
+			name:   'Alice'
+			email:  'alice@example.com'
+			age:    31
+			status: 'active'
+		},
+		DynamicMember{
+			name:   'Bob'
+			email:  'bob@example.com'
+			age:    19
+			status: 'pending'
+		},
+		DynamicMember{
+			name:   'Charlie'
+			email:  'charlie@example.com'
+			age:    44
+			status: 'inactive'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicMember
+		}!
+	}
+
+	min_age := 19
+	// vfmt off
+	rows := sql db {
+		dynamic select from DynamicMember where {
+				if min_age > 0 {
+						age >= min_age
+				}
+		} order by age asc limit 2
+	}!
+	// vfmt on
+
+	assert rows.len == 2
+	assert rows[0].name == 'Bob'
+	assert rows[0].age == 19
+	assert rows[1].name == 'Alice'
+	assert rows[1].age == 31
+}

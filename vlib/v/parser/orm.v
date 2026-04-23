@@ -212,9 +212,9 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 		}
 		has_order = true
 		order_expr = p.expr(0)
-		if p.tok.kind == .name && p.tok.lit == 'desc' {
-			p.check_name() // `desc`
-			has_desc = true
+		if p.tok.kind == .name && p.tok.lit in ['asc', 'desc'] {
+			has_desc = p.tok.lit == 'desc'
+			p.check_name() // `asc` or `desc`
 		}
 	}
 

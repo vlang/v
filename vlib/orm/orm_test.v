@@ -116,6 +116,10 @@ fn test_orm_select_specific_fields() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
+fn test_orm_order_by_explicit_asc() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
 	}
 
 	sql db {
@@ -153,6 +157,40 @@ fn test_orm_select_specific_fields() {
 	assert transformed.len == 1
 	assert transformed[0].name == 'ALICE'
 	assert transformed[0].id == 0
+	}!
+
+	users := [
+		User{
+			age:  31
+			name: 'Alice'
+		},
+		User{
+			age:  19
+			name: 'Bob'
+		},
+		User{
+			age:  44
+			name: 'Charlie'
+		},
+	]
+
+	for user in users {
+		sql db {
+			insert user into User
+		}!
+	}
+
+	// vfmt off
+	rows := sql db {
+		select from User order by age asc limit 2
+	}!
+	// vfmt on
+
+	assert rows.len == 2
+	assert rows[0].name == 'Bob'
+	assert rows[0].age == 19
+	assert rows[1].name == 'Alice'
+	assert rows[1].age == 31
 }
 
 fn test_orm() {
