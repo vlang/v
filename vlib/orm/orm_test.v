@@ -112,6 +112,49 @@ fn test_orm_sql_select_attribute() {
 	assert qb_rows[0].name == 'ALICE'
 }
 
+fn test_orm_select_specific_fields() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table User
+		create table SelectTransformUser
+	}!
+
+	sam := User{
+		age:  29
+		name: 'Sam'
+	}
+	alice := SelectTransformUser{
+		name: 'Alice'
+	}
+
+	sql db {
+		insert sam into User
+		insert alice into SelectTransformUser
+	}!
+
+	users := sql db {
+		select id, name from User where name == 'Sam'
+	}!
+
+	assert users.len == 1
+	assert users[0].id == 1
+	assert users[0].name == 'Sam'
+	assert users[0].age == 0
+	assert users[0].is_customer == false
+
+	transformed := sql db {
+		select name from SelectTransformUser where id == 1
+	}!
+
+	assert transformed.len == 1
+	assert transformed[0].name == 'ALICE'
+	assert transformed[0].id == 0
+}
+
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 

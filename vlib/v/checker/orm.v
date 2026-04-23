@@ -404,6 +404,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 
 	field_names := fields.map(it.name)
+	mut selected_fields := fields.clone()
+	if node.aggregate_kind == .none && node.requested_fields.len > 0 {
+		selected_fields = c.resolve_orm_selected_fields(node.requested_fields, fields, table_sym) or {
+			return ast.void_type
+		}
+		if has_primary {
+			selected_field_names := selected_fields.map(it.name)
+			for selected_field in selected_fields {
+				selected_field_type := c.table.final_type(selected_field.typ.clear_flag(.option))
+				if c.table.sym(selected_field_type).kind == .array
+					&& primary_field.name !in selected_field_names {
+					c.orm_error('selecting array field `${selected_field.name}` requires selecting primary field `${primary_field.name}` too',
+						node.pos)
+					return ast.void_type
+				}
+			}
+		}
+	}
 	if node.aggregate_kind != .none {
 		node.sub_structs = map[string]ast.SqlExpr{}
 		if node.aggregate_kind == .count {
@@ -425,7 +443,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
 		}
 	} else {
-		node.fields = fields
+		node.fields = selected_fields
 		node.sub_structs = sub_structs.move()
 	}
 
@@ -1275,6 +1293,33 @@ fn (mut c Checker) get_orm_field_by_column_name(fields []ast.StructField, column
 		}
 	}
 	return none
+}
+
+fn (mut c Checker) resolve_orm_selected_fields(requested_fields []ast.SqlSelectField, fields []ast.StructField, table_sym &ast.TypeSymbol) ?[]ast.StructField {
+	field_names := fields.map(it.name)
+	short_table_name := util.strip_mod_name(table_sym.name)
+	mut selected_field_names := map[string]bool{}
+	for requested_field in requested_fields {
+		mut field_name := requested_field.name
+		if field_name.starts_with('${table_sym.name}.') {
+			field_name = field_name.all_after('${table_sym.name}.')
+		} else if field_name.starts_with('${short_table_name}.') {
+			field_name = field_name.all_after('${short_table_name}.')
+		}
+		if field_name !in field_names {
+			c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
+				requested_field.pos)
+			return none
+		}
+		selected_field_names[field_name] = true
+	}
+	mut selected_fields := []ast.StructField{cap: requested_fields.len}
+	for field in fields {
+		if field.name in selected_field_names {
+			selected_fields << field
+		}
+	}
+	return selected_fields
 }
 
 // walkingdevel: Now I don't think it's a good solution

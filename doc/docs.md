@@ -5836,6 +5836,13 @@ for c in uk_customers {
 	println('customer: ${c.id}, ${c.name}, ${c.country}, ${c.nr_orders}')
 }
 
+// You can select just the fields you need. The result still has type `[]Customer`,
+// and non-selected fields keep their zero values.
+partial_customers := sql db {
+	select id, name from Customer where nr_orders > 0
+}!
+println(partial_customers)
+
 none_country_customers := sql db {
 	select from Customer where country is none
 }!

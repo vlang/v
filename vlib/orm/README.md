@@ -201,6 +201,17 @@ result := sql db {
 foo := result.first()
 ```
 
+You can also select a subset of struct fields. The result type stays `[]Foo`;
+the selected fields are populated and the rest keep their zero values. Use the
+V struct field names here; `@[sql: 'column_name']` and `@[sql_select: 'expr']`
+are still applied automatically.
+
+```v ignore
+partial := sql db {
+    select id, name from Foo where id > 1
+}!
+```
+
 ```v ignore
 result := sql db {
     select from Foo where id > 1 && name != 'lasanha' limit 5

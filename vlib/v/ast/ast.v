@@ -2396,6 +2396,12 @@ pub enum SqlAggregateKind {
 	max
 }
 
+pub struct SqlSelectField {
+pub:
+	name string
+	pos  token.Pos
+}
+
 pub struct SqlExpr {
 pub:
 	aggregate_kind  SqlAggregateKind
@@ -2423,6 +2429,7 @@ pub mut:
 	limit_expr           Expr
 	offset_expr          Expr
 	table_expr           TypeNode
+	requested_fields     []SqlSelectField
 	fields               []StructField
 	sub_structs          map[string]SqlExpr
 	or_expr              OrExpr

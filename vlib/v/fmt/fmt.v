@@ -3314,6 +3314,13 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			}
 			.none {}
 		}
+	} else if node.requested_fields.len > 0 {
+		for i, requested_field in node.requested_fields {
+			f.write(requested_field.name)
+			if i < node.requested_fields.len - 1 {
+				f.write(', ')
+			}
+		}
 	} else {
 		for i, fd in node.fields {
 			f.write(fd.name)
@@ -3321,6 +3328,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 				f.write(', ')
 			}
 		}
+	}
+	if node.aggregate_kind == .none && (node.requested_fields.len > 0 || node.fields.len > 0) {
+		f.write(' ')
 	}
 	if node.is_insert {
 		f.write('${node.inserted_var} into ${table_name}')
