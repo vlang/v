@@ -379,6 +379,31 @@ fn test_thirdparty_cross_compile_config_for_freebsd_matches_target() {
 	]
 }
 
+fn test_linux_tcc_arm64_stdatomic_does_not_add_atomic_s() {
+	$if !linux {
+		return
+	}
+	test_dir := os.join_path(os.vtmp_dir(), 'v_builder_stdatomic_tcc_arm64_${os.getpid()}')
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	src_file := os.join_path(test_dir, 'main.v')
+	os.write_file(src_file, 'import sync.stdatomic
+fn main() {
+	mut x := u64(0)
+	stdatomic.store_u64(&x, 1)
+}
+') or {
+		panic(err)
+	}
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -dump-c-flags - -cc tcc -arch arm64 ${os.quoted_path(src_file)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('thirdparty/stdatomic/nix/atomic.S')
+	assert res.output.contains('libatomic.so')
+}
+
 fn test_live_windows_main_linker_args_export_host_symbols() {
 	linker_args := builder_linker_args([
 		'-os',
