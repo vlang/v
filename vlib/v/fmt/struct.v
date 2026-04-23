@@ -198,6 +198,17 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 	return false
 }
 
+fn (mut f Fmt) write_anon_struct_type(typ ast.Type) bool {
+	sym := f.table.sym(typ)
+	if sym.info is ast.Struct && sym.info.is_anon {
+		f.struct_decl(ast.StructDecl{
+			fields: sym.info.fields
+		}, true)
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	struct_init_save := f.is_struct_init
 	f.is_struct_init = true
