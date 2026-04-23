@@ -300,7 +300,24 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
-	decoder.decode_value(mut result)!
+	$if T.unaliased_typ is $array_dynamic {
+		result.clear()
+		decoder.decode_array(mut result)!
+	} $else $if T.unaliased_typ is $map {
+		decoder.decode_map(mut result)!
+	} $else $if T.indirections == 1 {
+		if decoder.current_node.value.value_kind == .null {
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+		} else {
+			mut decoded_ptr := create_decoded_ptr(result)
+			decoder.decode_value(mut decoded_ptr)!
+			result = decoded_ptr
+		}
+	} $else {
+		decoder.decode_value(mut result)!
+	}
 	return result
 }
 
@@ -309,7 +326,11 @@ fn get_dynamic_from_element[T](_t T) []T {
 }
 
 fn create_decoded_ptr[T](_ &T) &T {
-	return &T{}
+	ptr := unsafe { &T(malloc(sizeof(T))) }
+	unsafe {
+		*ptr = T{}
+	}
+	return ptr
 }
 
 fn decoder_field_infos[T]() []DecoderFieldInfo {
@@ -532,6 +553,11 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_value(mut unwrapped_val)!
 							new_val.$(field.name) = unwrapped_val
 						}
+					} $else $if field.unaliased_typ is $array_dynamic {
+						new_val.$(field.name).clear()
+						decoder.decode_array(mut new_val.$(field.name))!
+					} $else $if field.unaliased_typ is $map {
+						decoder.decode_map(mut new_val.$(field.name))!
 					} $else $if field.indirections == 1 {
 						if decoder.current_node.value.value_kind == .null {
 							new_val.$(field.name) = unsafe { nil }
@@ -858,6 +884,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											decoder.decode_value(mut unwrapped_val)!
 											val.$(field.name) = unwrapped_val
 										}
+									} $else $if field.unaliased_typ is $array_dynamic {
+										val.$(field.name).clear()
+										decoder.decode_array(mut val.$(field.name))!
+									} $else $if field.unaliased_typ is $map {
+										decoder.decode_map(mut val.$(field.name))!
 									} $else $if field.indirections == 1 {
 										if decoder.current_node.value.value_kind == .null {
 											val.$(field.name) = unsafe { nil }
@@ -1071,8 +1102,16 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 
 			mut array_element := T{}
 
-			$if T.unaliased_typ is $struct {
-				decoder.decode_value(mut array_element)!
+			$if T.indirections == 1 {
+				if decoder.current_node.value.value_kind == .null {
+					if decoder.current_node != unsafe { nil } {
+						decoder.current_node = decoder.current_node.next
+					}
+				} else {
+					mut decoded_ptr := create_decoded_ptr(array_element)
+					decoder.decode_value(mut decoded_ptr)!
+					array_element = decoded_ptr
+				}
 			} $else {
 				decoder.decode_value(mut array_element)!
 			}
@@ -1116,7 +1155,19 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 
 			mut map_value := V{}
 
-			decoder.decode_value(mut map_value)!
+			$if V.indirections == 1 {
+				if decoder.current_node.value.value_kind == .null {
+					if decoder.current_node != unsafe { nil } {
+						decoder.current_node = decoder.current_node.next
+					}
+				} else {
+					mut decoded_ptr := create_decoded_ptr(map_value)
+					decoder.decode_value(mut decoded_ptr)!
+					map_value = decoded_ptr
+				}
+			} $else {
+				decoder.decode_value(mut map_value)!
+			}
 
 			$if K is string {
 				$if V is $map {
