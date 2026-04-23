@@ -516,4 +516,16 @@ fn test_pre_epoch_unix_calculation() {
 		day:   1
 	).unix() == -62135596800
 	assert time.parse_rfc3339('0001-01-01T00:00:00Z')!.unix() == -62135596800
+	assert t.is_zero()
+	// assert t.unix() == -62169984000
+	assert t.custom_format('MMMM YYYY') == 'January 0'
+}
+
+fn test_is_zero() {
+	assert time.Time{}.is_zero()
+	assert !time.unix(0).is_zero()
+	assert !time.new(year: 2024).is_zero()
+	assert !time.Time{
+		is_local: true
+	}.is_zero()
 }
