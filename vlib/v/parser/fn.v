@@ -912,7 +912,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.main_already_defined = true
 	}
 	is_test := (!is_method && params.len == 0) && p.inside_test_file
-		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
+		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+		|| short_fn_name in ['before_each', 'after_each'])
 	file_mode := p.file_backend_mode
 	if is_main {
 		if 'main.main' in p.table.fns {

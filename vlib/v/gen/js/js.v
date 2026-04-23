@@ -346,7 +346,25 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	}
 	g.writeln('function js_main() {  ')
 	g.inc_indent()
-	all_tfuncs := g.get_all_test_function_names()
+	mut before_each_fn := ''
+	mut after_each_fn := ''
+	for _, f in g.table.fns {
+		short_tname := if f.name.contains('.') { f.name.all_after_last('.') } else { f.name }
+		if !f.is_test {
+			continue
+		}
+		if short_tname == 'before_each' {
+			before_each_fn = g.js_name(f.name)
+			continue
+		}
+		if short_tname == 'after_each' {
+			after_each_fn = g.js_name(f.name)
+		}
+	}
+	mut all_tfuncs := []string{}
+	for tname in g.get_all_test_function_names() {
+		all_tfuncs << tname
+	}
 
 	g.writeln('')
 	g.writeln('globalThis.VTEST=1')
@@ -355,12 +373,20 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	}
 	for i, tname in all_tfuncs {
 		tcname := g.js_name(tname)
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
+		is_test_fn := short_tname.starts_with('test_')
 
 		if g.pref.is_stats {
 			g.writeln('main__BenchedTests_testing_step_start(bt,new string("${tcname}"))')
 			g.writeln('try {')
 		}
+		if is_test_fn && before_each_fn != '' {
+			g.writeln('let before_each_res_${i} = ${before_each_fn}(); if (before_each_res_${i} instanceof Promise) { await before_each_res_${i}; }')
+		}
 		g.writeln('let res_${i} = ${tcname}(); if (res_${i} instanceof Promise) { await res_${i}; }')
+		if is_test_fn && after_each_fn != '' {
+			g.writeln('let after_each_res_${i} = ${after_each_fn}(); if (after_each_res_${i} instanceof Promise) { await after_each_res_${i}; }')
+		}
 		if g.pref.is_stats {
 			g.writeln('} finally {')
 			g.writeln('main__BenchedTests_testing_step_end(bt);')

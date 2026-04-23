@@ -845,7 +845,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	// TODO: c.pref.is_vet
 	if c.file.is_test && (!node.is_method && (node.short_name.starts_with('test_')
-		|| node.short_name.starts_with('testsuite_'))) {
+		|| node.short_name.starts_with('testsuite_')
+		|| node.short_name in ['before_each', 'after_each'])) {
 		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {

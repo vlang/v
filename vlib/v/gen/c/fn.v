@@ -695,6 +695,9 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	if node.is_method && node.name in ['[]', '[]='] {
 		return true
 	}
+	if node.is_test && node.name.all_after_last('.') in ['before_each', 'after_each'] {
+		return true
+	}
 	if node.mod == 'builtin' && node.name in ['print', 'println', 'eprint', 'eprintln'] {
 		return true
 	}

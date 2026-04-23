@@ -316,7 +316,22 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	}
 	g.gen_c_main_profile_hook()
 
-	mut all_tfuncs := g.get_all_test_function_names()
+	mut before_each_fn := ''
+	mut after_each_fn := ''
+	for tname in g.test_function_names {
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
+		if short_tname == 'before_each' {
+			before_each_fn = util.no_dots(tname)
+			continue
+		}
+		if short_tname == 'after_each' {
+			after_each_fn = util.no_dots(tname)
+		}
+	}
+	mut all_tfuncs := []string{}
+	for tname in g.get_all_test_function_names() {
+		all_tfuncs << tname
+	}
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.show_asserts {
@@ -331,6 +346,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
 		testfn := unsafe { g.table.fns[tname] }
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
+		is_test_fn := short_tname.starts_with('test_')
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_${tnumber} = _S("${tcname}");')
@@ -338,18 +355,33 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\tstring tcfile_${tnumber} = ${ctoslit(testfn.file)};')
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
+		g.writeln('\tbool failed_${tnumber} = false;')
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
 		if g.pref.show_asserts {
 			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
 		}
+		if is_test_fn && before_each_fn != '' {
+			g.writeln('\t\t${before_each_fn}();')
+		}
 		g.writeln('\t\t${tcname}();')
-		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
 		//
 		g.writeln('\t}else{')
 		//
-		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		g.writeln('\t\tfailed_${tnumber} = true;')
 		//
+		g.writeln('\t}')
+		if is_test_fn && after_each_fn != '' {
+			g.writeln('\tif (!setjmp(g_jump_buffer)) {')
+			g.writeln('\t\t${after_each_fn}();')
+			g.writeln('\t}else{')
+			g.writeln('\t\tfailed_${tnumber} = true;')
+			g.writeln('\t}')
+		}
+		g.writeln('\tif (failed_${tnumber}) {')
+		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		g.writeln('\t}else{')
+		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
 		g.writeln('\t}')
 		if g.pref.show_asserts {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
