@@ -585,15 +585,80 @@ fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
 	}
 }
 
+fn (mut p Parser) parse_sql_query_data_if_guard_expr() ast.IfGuardExpr {
+	p.open_scope()
+	mut vars := []ast.IfGuardVar{}
+	mut var_names := []string{}
+	for {
+		mut var := ast.IfGuardVar{}
+		mut is_mut := false
+		if p.tok.kind == .key_mut {
+			is_mut = true
+			p.next()
+		}
+		var.is_mut = p.scope_var_is_mut(is_mut)
+		var.pos = p.tok.pos()
+		var.name = p.check_name()
+		var_names << var.name
+
+		if p.scope.known_var(var.name) {
+			p.error_with_pos('redefinition of `${var.name}`', var.pos)
+		}
+		vars << var
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	p.check(.decl_assign)
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	expr := p.expr(0)
+	p.inside_assign_rhs = old_assign_rhs
+	if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr, ast.Ident] {
+		p.error_with_pos('if guard condition expression is illegal, it should return an Option',
+			expr.pos())
+	}
+	p.check_undefined_variables(var_names, expr) or { p.error_with_pos(err.msg(), expr.pos()) }
+	cond := ast.IfGuardExpr{
+		vars: vars
+		expr: expr
+	}
+	for var in vars {
+		p.scope.register(ast.Var{
+			name:   var.name
+			is_mut: var.is_mut
+			expr:   cond
+			pos:    var.pos
+		})
+	}
+	return cond
+}
+
 fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 	start_pos := p.tok.pos()
 	mut branches := []ast.SqlQueryDataBranch{}
 	mut has_else := false
+	mut prev_guard := false
 	for {
 		branch_pos := p.tok.pos()
 		p.check(.key_if)
-		cond := p.expr(0)
+		mut cond := ast.empty_expr
+		mut has_guard_scope := false
+		if p.peek_token_after_var_list().kind == .decl_assign {
+			cond = p.parse_sql_query_data_if_guard_expr()
+			has_guard_scope = true
+			prev_guard = true
+		} else {
+			cond = p.expr(0)
+			prev_guard = false
+		}
+		p.open_scope()
 		items := p.parse_sql_query_data_items_block()
+		p.close_scope()
+		if has_guard_scope {
+			p.close_scope()
+		}
 		branches << ast.SqlQueryDataBranch{
 			pos:   branch_pos.extend(p.prev_tok.pos())
 			cond:  cond
@@ -609,7 +674,19 @@ fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 		if p.tok.kind == .key_if {
 			continue
 		}
+		p.open_scope()
+		if prev_guard {
+			p.scope.register(ast.Var{
+				name:         'err'
+				typ:          ast.error_type
+				pos:          p.tok.pos()
+				is_used:      false
+				is_stack_obj: true
+				is_special:   true
+			})
+		}
 		else_items := p.parse_sql_query_data_items_block()
+		p.close_scope()
 		branches << ast.SqlQueryDataBranch{
 			pos:   else_pos.extend(p.prev_tok.pos())
 			cond:  ast.empty_expr

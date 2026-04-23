@@ -141,3 +141,84 @@ fn test_orm_update_with_struct_field() {
 	assert rows[0].thing.id == second.id
 	assert rows[0].thing.value == 'goodbye'
 }
+
+struct DynamicOrmUser {
+	id              int @[primary; sql: serial]
+	simplified_name string
+	currency_code   string
+}
+
+struct DynamicOrmRequest {
+	simplified_name ?string
+	currency_code   ?string
+}
+
+fn test_dynamic_orm_select_and_update_with_if_guards() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicOrmUser
+	}!
+
+	first := DynamicOrmUser{
+		id:              1
+		simplified_name: 'usd'
+		currency_code:   'USD'
+	}
+	second := DynamicOrmUser{
+		id:              2
+		simplified_name: 'eur'
+		currency_code:   'EUR'
+	}
+
+	sql db {
+		insert first into DynamicOrmUser
+		insert second into DynamicOrmUser
+	}!
+
+	select_req := DynamicOrmRequest{
+		simplified_name: ?string('usd')
+	}
+	where_expr := {
+				if name := select_req.simplified_name {
+						simplified_name == name
+				},
+				if code := select_req.currency_code {
+						currency_code == code
+				}
+		}
+
+	rows := sql db {
+		dynamic select from DynamicOrmUser where where_expr
+	}!
+
+	assert rows.len == 1
+	assert rows[0].id == first.id
+
+	update_req := DynamicOrmRequest{
+		simplified_name: ?string('dollar')
+	}
+	set_expr := {
+				if name := update_req.simplified_name {
+						simplified_name == name
+				},
+				if code := update_req.currency_code {
+						currency_code == code
+				}
+		}
+
+	sql db {
+		dynamic update DynamicOrmUser set set_expr where id == first.id
+	}!
+
+	updated_rows := sql db {
+		select from DynamicOrmUser where id == first.id
+	}!
+
+	assert updated_rows.len == 1
+	assert updated_rows[0].simplified_name == 'dollar'
+	assert updated_rows[0].currency_code == 'USD'
+}

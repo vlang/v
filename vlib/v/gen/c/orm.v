@@ -205,6 +205,262 @@ fn (mut g Gen) emit_dynamic_sql_query_data(expr ast.Expr) string {
 	return g.emit_sql_query_data(node, true)
 }
 
+struct SqlQueryDataGuardState {
+	temp_var  string
+	expr_type ast.Type
+}
+
+fn (mut g Gen) sql_query_data_guard_expr_type(cond ast.IfGuardExpr) ast.Type {
+	mut expr_type := cond.expr_type
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		if cond.expr is ast.CallExpr {
+			resolved := g.resolve_return_type(cond.expr)
+			if resolved != ast.void_type && !resolved.has_flag(.generic) {
+				expr_type = if cond.expr_type.has_flag(.option) && !resolved.has_flag(.option) {
+					resolved.set_flag(.option)
+				} else if cond.expr_type.has_flag(.result) && !resolved.has_flag(.result) {
+					resolved.set_flag(.result)
+				} else {
+					resolved
+				}
+			}
+		} else {
+			resolved := g.unwrap_generic(g.recheck_concrete_type(expr_type))
+			if resolved != ast.void_type {
+				expr_type = resolved
+			}
+		}
+	}
+	return expr_type
+}
+
+fn (mut g Gen) emit_sql_query_data_guard_open(cond ast.IfGuardExpr) SqlQueryDataGuardState {
+	expr_type := g.sql_query_data_guard_expr_type(cond)
+	temp_var := g.new_tmp_var()
+	g.writeln('${g.styp(g.unwrap_generic(expr_type))} ${temp_var} = {0};')
+	g.write('if ((${temp_var} = ')
+	g.expr(cond.expr)
+	if expr_type.has_flag(.option) {
+		dot_or_ptr := if !expr_type.has_flag(.option_mut_param_t) {
+			'.'
+		} else {
+			'-> '
+		}
+		g.writeln('), ${temp_var}${dot_or_ptr}state == 0) {')
+	} else if expr_type.has_flag(.result) {
+		g.writeln('), !${temp_var}.is_error) {')
+	} else {
+		g.writeln(')) {')
+	}
+	g.indent++
+	return SqlQueryDataGuardState{
+		temp_var:  temp_var
+		expr_type: expr_type
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_guard_value_vars(cond ast.IfGuardExpr, state SqlQueryDataGuardState) {
+	if cond.vars.len == 0 || cond.vars.all(it.name == '_') {
+		return
+	}
+	base_type := g.base_type(state.expr_type)
+	if cond.vars.len == 1 {
+		if cond.vars[0].name == '_' {
+			return
+		}
+		left_var_name := c_name(cond.vars[0].name)
+		dot_or_ptr := if !state.expr_type.has_flag(.option_mut_param_t) {
+			'.'
+		} else {
+			'-> '
+		}
+		guard_typ := g.unwrap_generic(state.expr_type.clear_option_and_result())
+		guard_is_heap_obj := g.table.final_sym(guard_typ).is_heap() && !guard_typ.is_ptr()
+		if guard_is_heap_obj {
+			g.writeln('${base_type}* ${left_var_name} = (${base_type}*)${state.temp_var}${dot_or_ptr}data;')
+		} else if base_type.starts_with('Array_fixed') {
+			g.writeln('${base_type} ${left_var_name} = {0};')
+			g.writeln('memcpy(${left_var_name}, (${base_type}*)${state.temp_var}.data, sizeof(${base_type}));')
+		} else {
+			expr_sym := g.table.sym(state.expr_type)
+			if expr_sym.info is ast.FnType {
+				g.write_fntype_decl(left_var_name, expr_sym.info, state.expr_type.nr_muls())
+				if state.expr_type.nr_muls() == 0 {
+					g.writeln(' = *(${base_type}*)${state.temp_var}${dot_or_ptr}data;')
+				} else {
+					g.writeln(' = (${base_type}*)${state.temp_var}${dot_or_ptr}data;')
+				}
+			} else {
+				g.writeln('${base_type} ${left_var_name} = *(${base_type}*)${state.temp_var}${dot_or_ptr}data;')
+			}
+		}
+		return
+	}
+	sym := g.table.sym(state.expr_type)
+	if sym.info is ast.MultiReturn && sym.info.types.len == cond.vars.len {
+		for vi, var in cond.vars {
+			if var.name == '_' {
+				continue
+			}
+			var_typ := g.styp(sym.info.types[vi])
+			left_var_name := c_name(var.name)
+			g.writeln('${var_typ} ${left_var_name} = (*(${base_type}*)${state.temp_var}.data).arg${vi};')
+		}
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_guard_else_vars(state SqlQueryDataGuardState) {
+	if state.expr_type.has_flag(.result) {
+		g.writeln('IError err = ${state.temp_var}.err;')
+	}
+}
+
+fn (g &Gen) sql_query_data_guard_var_types(cond ast.IfGuardExpr, state SqlQueryDataGuardState) map[int]ast.Type {
+	mut guard_var_types := map[int]ast.Type{}
+	if state.expr_type == 0 {
+		return guard_var_types
+	}
+	sym := g.table.sym(state.expr_type)
+	if sym.kind == .multi_return {
+		mr_info := sym.info as ast.MultiReturn
+		if mr_info.types.len == cond.vars.len {
+			for vi, var in cond.vars {
+				if var.name == '_' {
+					continue
+				}
+				guard_var_types[int(var.pos.pos)] = mr_info.types[vi]
+			}
+		}
+	} else {
+		unwrapped_type := state.expr_type.clear_option_and_result()
+		for var in cond.vars {
+			if var.name == '_' {
+				continue
+			}
+			guard_var_types[int(var.pos.pos)] = unwrapped_type
+		}
+	}
+	return guard_var_types
+}
+
+fn (g &Gen) annotate_sql_query_data_guard_expr(mut expr ast.Expr, guard_var_types map[int]ast.Type) {
+	match mut expr {
+		ast.ArrayInit {
+			for mut item in expr.exprs {
+				g.annotate_sql_query_data_guard_expr(mut item, guard_var_types)
+			}
+			if expr.has_cap {
+				g.annotate_sql_query_data_guard_expr(mut expr.cap_expr, guard_var_types)
+			}
+			if expr.has_len {
+				g.annotate_sql_query_data_guard_expr(mut expr.len_expr, guard_var_types)
+			}
+			if expr.has_init {
+				g.annotate_sql_query_data_guard_expr(mut expr.init_expr, guard_var_types)
+			}
+		}
+		ast.CallExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.left, guard_var_types)
+			for mut arg in expr.args {
+				g.annotate_sql_query_data_guard_expr(mut arg.expr, guard_var_types)
+			}
+		}
+		ast.Ident {
+			if mut expr.info is ast.IdentVar {
+				if expr.obj is ast.Var {
+					if typ := guard_var_types[int(expr.obj.pos.pos)] {
+						expr.info.typ = typ
+						expr.obj.typ = typ
+					}
+				}
+			}
+		}
+		ast.IfExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.left, guard_var_types)
+			for mut branch in expr.branches {
+				g.annotate_sql_query_data_guard_expr(mut branch.cond, guard_var_types)
+				for mut stmt in branch.stmts {
+					if mut stmt is ast.ExprStmt {
+						g.annotate_sql_query_data_guard_expr(mut stmt.expr, guard_var_types)
+					}
+				}
+			}
+		}
+		ast.InfixExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.left, guard_var_types)
+			g.annotate_sql_query_data_guard_expr(mut expr.right, guard_var_types)
+		}
+		ast.ParExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.expr, guard_var_types)
+		}
+		ast.PrefixExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.right, guard_var_types)
+		}
+		ast.SelectorExpr {
+			g.annotate_sql_query_data_guard_expr(mut expr.expr, guard_var_types)
+		}
+		ast.StringInterLiteral {
+			for mut item in expr.exprs {
+				g.annotate_sql_query_data_guard_expr(mut item, guard_var_types)
+			}
+		}
+		ast.StructInit {
+			for mut init_field in expr.init_fields {
+				g.annotate_sql_query_data_guard_expr(mut init_field.expr, guard_var_types)
+			}
+		}
+		else {}
+	}
+}
+
+fn (g &Gen) annotate_sql_query_data_guard_items(mut items []ast.SqlQueryDataItem, cond ast.IfGuardExpr, state SqlQueryDataGuardState) {
+	guard_var_types := g.sql_query_data_guard_var_types(cond, state)
+	if guard_var_types.len == 0 {
+		return
+	}
+	for mut item in items {
+		match mut item {
+			ast.SqlQueryDataLeaf {
+				g.annotate_sql_query_data_guard_expr(mut item.expr, guard_var_types)
+			}
+			ast.SqlQueryDataIf {
+				for mut branch in item.branches {
+					if branch.cond !is ast.EmptyExpr {
+						g.annotate_sql_query_data_guard_expr(mut branch.cond, guard_var_types)
+					}
+					g.annotate_sql_query_data_guard_items(mut branch.items, cond, state)
+				}
+			}
+		}
+	}
+}
+
+fn (g &Gen) orm_if_guard_ident_type(node ast.Ident, typ ast.Type) ast.Type {
+	if typ != 0 {
+		return typ
+	}
+	if node.obj is ast.Var {
+		if node.obj.expr is ast.IfGuardExpr {
+			if node.obj.expr.expr_type != 0 {
+				sym := g.table.sym(node.obj.expr.expr_type)
+				if sym.kind == .multi_return {
+					mr_info := sym.info as ast.MultiReturn
+					if mr_info.types.len == node.obj.expr.vars.len {
+						for vi, var in node.obj.expr.vars {
+							if var.name == node.name {
+								return mr_info.types[vi]
+							}
+						}
+					}
+				} else {
+					return node.obj.expr.expr_type.clear_option_and_result()
+				}
+			}
+		}
+	}
+	return typ
+}
+
 fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryDataItem, resolve_columns bool) {
 	for item in items {
 		match item {
@@ -212,25 +468,56 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 				g.emit_sql_query_data_leaf(query_var, item, resolve_columns)
 			}
 			ast.SqlQueryDataIf {
+				mut prev_guard := SqlQueryDataGuardState{}
+				mut has_prev_guard := false
 				for idx, branch in item.branches {
 					is_else := branch.cond is ast.EmptyExpr
 					if idx == 0 {
 						if is_else {
-							g.writeln('else {')
+							g.writeln('{')
+							g.indent++
+							if has_prev_guard {
+								g.emit_sql_query_data_guard_else_vars(prev_guard)
+							}
 						} else {
-							g.write('if (')
+							if branch.cond is ast.IfGuardExpr {
+								prev_guard = g.emit_sql_query_data_guard_open(branch.cond)
+								has_prev_guard = true
+								g.emit_sql_query_data_guard_value_vars(branch.cond, prev_guard)
+							} else {
+								g.write('if (')
+								g.expr(branch.cond)
+								g.writeln(') {')
+								g.indent++
+								has_prev_guard = false
+							}
+						}
+					} else {
+						if is_else {
+							g.writeln('else {')
+							g.indent++
+							if has_prev_guard {
+								g.emit_sql_query_data_guard_else_vars(prev_guard)
+							}
+						} else if branch.cond is ast.IfGuardExpr {
+							g.write('else ')
+							prev_guard = g.emit_sql_query_data_guard_open(branch.cond)
+							has_prev_guard = true
+							g.emit_sql_query_data_guard_value_vars(branch.cond, prev_guard)
+						} else {
+							g.write('else if (')
 							g.expr(branch.cond)
 							g.writeln(') {')
+							g.indent++
+							has_prev_guard = false
 						}
-					} else if is_else {
-						g.writeln('else {')
-					} else {
-						g.write('else if (')
-						g.expr(branch.cond)
-						g.writeln(') {')
 					}
-					g.indent++
-					g.emit_sql_query_data_items(query_var, branch.items, resolve_columns)
+					mut branch_items := branch.items.clone()
+					if branch.cond is ast.IfGuardExpr {
+						g.annotate_sql_query_data_guard_items(mut branch_items, branch.cond,
+							prev_guard)
+					}
+					g.emit_sql_query_data_items(query_var, branch_items, resolve_columns)
 					g.indent--
 					g.writeln('}')
 				}
@@ -1086,7 +1373,8 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		}
 		ast.Ident {
 			info := expr.info as ast.IdentVar
-			g.write_orm_primitive(orm_expr_effective_type(expr, info.typ), expr)
+			typ := g.orm_if_guard_ident_type(expr, info.typ)
+			g.write_orm_primitive(orm_expr_effective_type(expr, typ), expr)
 		}
 		ast.SelectorExpr {
 			g.write_orm_primitive(orm_expr_effective_type(expr, expr.typ), expr)

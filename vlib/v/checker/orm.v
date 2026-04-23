@@ -31,14 +31,14 @@ fn (mut c Checker) check_sql_query_data_item(mut item ast.SqlQueryDataItem) {
 			c.check_sql_query_data_leaf(item)
 		}
 		ast.SqlQueryDataIf {
-			for branch in item.branches {
+			for mut branch in item.branches {
 				if branch.cond !is ast.EmptyExpr {
 					mut cond := branch.cond
 					c.expr(mut cond)
+					branch.cond = cond
 				}
-				for branch_item in branch.items {
-					mut item_copy := branch_item
-					c.check_sql_query_data_item(mut item_copy)
+				for mut branch_item in branch.items {
+					c.check_sql_query_data_item(mut branch_item)
 				}
 			}
 		}
@@ -132,19 +132,19 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 
 fn (mut c Checker) check_dynamic_sql_query_data(expr ast.Expr, table_sym &ast.TypeSymbol,
 	fields []ast.StructField, context SqlQueryDataContext) bool {
-	resolved := c.resolve_sql_query_data_expr(expr) or {
+	mut resolved := c.resolve_sql_query_data_expr(expr) or {
 		c.orm_error(err.msg(), expr.pos())
 		return false
 	}
 	field_names := fields.map(it.name)
-	return c.check_dynamic_sql_query_data_items(resolved.items, table_sym, fields, field_names,
+	return c.check_dynamic_sql_query_data_items(mut resolved.items, table_sym, fields, field_names,
 		context)
 }
 
-fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataItem, table_sym &ast.TypeSymbol,
+fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDataItem, table_sym &ast.TypeSymbol,
 	fields []ast.StructField, field_names []string, context SqlQueryDataContext) bool {
 	mut ok := true
-	for item in items {
+	for mut item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
 				mut expr := item.expr
@@ -184,6 +184,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 							c.check_expr_has_no_fn_calls_with_non_orm_return_type(&where_expr)
 							c.check_where_expr_has_no_pointless_exprs(table_sym, field_names,
 								&where_expr)
+							item.expr = where_expr
 						}
 						.set_ {
 							if expr_.op != .eq {
@@ -199,11 +200,12 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 									break
 								}
 							}
-							mut rhs_expr := expr_.right
+							mut set_expr := item.expr
 							old_expected_type := c.expected_type
 							c.expected_type = field.typ
-							c.expr(mut rhs_expr)
+							c.expr(mut set_expr)
 							c.expected_type = old_expected_type
+							item.expr = set_expr
 						}
 					}
 				} else {
@@ -212,12 +214,13 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 				}
 			}
 			ast.SqlQueryDataIf {
-				for branch in item.branches {
+				for mut branch in item.branches {
 					if branch.cond !is ast.EmptyExpr {
 						mut cond := branch.cond
 						c.expr(mut cond)
+						branch.cond = cond
 					}
-					if !c.check_dynamic_sql_query_data_items(branch.items, table_sym, fields,
+					if !c.check_dynamic_sql_query_data_items(mut branch.items, table_sym, fields,
 						field_names, context) {
 						ok = false
 					}
