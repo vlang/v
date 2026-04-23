@@ -123,3 +123,25 @@ fn test_vschannel_error_message_formats_windows_wsa_errors() {
 		assert vschannel_error_message(11001) == '(11001) wsahost_not_found'
 	}
 }
+
+fn test_vschannel_request_error_normalizes_connect_failures() {
+	err := vschannel_request_error(vschannel_sec_e_internal_error)
+	assert err.msg() == vschannel_connect_failed_msg
+	assert err.code() == vschannel_sec_e_internal_error
+}
+
+fn test_vschannel_request_error_keeps_other_codes() {
+	err := vschannel_request_error(42)
+	assert err.msg() == 'http: vschannel request failed: 42'
+	assert err.code() == 42
+}
+
+fn test_vschannel_parse_response_normalizes_connect_failure_output() {
+	vschannel_parse_response('Error 10057 sending data to server (1)\nError performing handshake',
+		0) or {
+		assert err.msg() == vschannel_connect_failed_msg
+		assert err.code() == 0
+		return
+	}
+	assert false
+}

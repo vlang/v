@@ -32,8 +32,7 @@ fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, pat
 	C.vschannel_cleanup(&ctx)
 	if length <= 0 {
 		if err_code != 0 {
-			return error_with_code('http: vschannel request failed: ${vschannel_error_message(err_code)}',
-				err_code)
+			return vschannel_request_error(err_code)
 		}
 		return error('http: vschannel request failed')
 	}
@@ -47,5 +46,5 @@ fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, pat
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return parse_response(response_text)
+	return vschannel_parse_response(response_text, err_code)
 }
