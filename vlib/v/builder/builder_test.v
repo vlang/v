@@ -53,6 +53,29 @@ fn test_conditional_executable_removal() {
 	assert executable in after_second_run___
 }
 
+fn test_run_from_workdir_with_spaces() {
+	project_dir := os.join_path(test_path, 'issue 16501 path with spaces')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir)!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		'fn main(){\n\tprintln("Hello from a spaced path")\n}\n')!
+	os.write_file(os.join_path(project_dir, 'Test.vsh'),
+		"println('Hello from a spaced script path')\n")!
+	os.chdir(project_dir)!
+
+	run_file_res := os.execute('${os.quoted_path(vexe)} run Test.vsh')
+	assert run_file_res.exit_code == 0, run_file_res.output
+	assert run_file_res.output.trim_space() == 'Hello from a spaced script path'
+
+	run_dir_res := os.execute('${os.quoted_path(vexe)} run .')
+	assert run_dir_res.exit_code == 0, run_dir_res.output
+	assert run_dir_res.output.trim_space() == 'Hello from a spaced path'
+}
+
 fn test_file_list() {
 	os.chdir(test_path)!
 	os.mkdir_all('filelist')!
