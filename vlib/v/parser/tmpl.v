@@ -519,23 +519,49 @@ fn (err IncludeError) col() u16 {
 	return err.col
 }
 
+struct TmplInclude {
+	path     string
+	position int
+}
+
+fn tmpl_include_path_error(calling_file string, line_nr int, position int) IError {
+	return &IncludeError{
+		calling_file: calling_file
+		line_nr:      line_nr
+		position:     position
+		col:          u16(position)
+		message:      'path for @include must be quoted with \' or "'
+	}
+}
+
+fn parse_tmpl_include_path(calling_file string, line_nr int, line string) !TmplInclude {
+	include_pos := line.index('@include ') or { 0 }
+	mut quote_pos := include_pos + '@include '.len
+	for quote_pos < line.len && line[quote_pos].is_space() {
+		quote_pos++
+	}
+	if quote_pos >= line.len || (line[quote_pos] != `'` && line[quote_pos] != `"`) {
+		return tmpl_include_path_error(calling_file, line_nr, quote_pos)
+	}
+	quote := line[quote_pos]
+	mut end_pos := quote_pos + 1
+	for end_pos < line.len && line[end_pos] != quote {
+		end_pos++
+	}
+	if end_pos >= line.len {
+		return tmpl_include_path_error(calling_file, line_nr, quote_pos)
+	}
+	return TmplInclude{
+		path:     line[quote_pos + 1..end_pos]
+		position: quote_pos
+	}
+}
+
 fn (mut p Parser) process_includes(calling_file string, line_number int, line string, mut dc DependencyCache) ![]string {
 	base_path := os.dir(calling_file)
 	mut tline_number := line_number
-	mut file_name := if line.contains('"') {
-		line.split('"')[1]
-	} else if line.contains("'") {
-		line.split("'")[1]
-	} else {
-		position := line.index('@include ') or { 0 }
-		return &IncludeError{
-			calling_file: calling_file
-			line_nr:      tline_number // line_number
-			position:     position + '@include '.len
-			col:          u16(position + '@include '.len)
-			message:      'path for @include must be quoted with \' or "'
-		}
-	}
+	include := parse_tmpl_include_path(calling_file, tline_number, line)!
+	mut file_name := include.path
 	mut file_ext := os.file_ext(file_name)
 	if file_ext == '' {
 		file_ext = '.html'
@@ -576,7 +602,7 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		file_content = dc.cache[file_path]
 	} else {
 		file_content = os.read_lines(file_path) or {
-			position := line.index('@include ') or { 0 } + '@include '.len
+			position := include.position
 			return &IncludeError{
 				calling_file: calling_file
 				line_nr:      tline_number // line_number
