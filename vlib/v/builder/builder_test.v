@@ -1,6 +1,8 @@
 module main
 
 import os
+import v.builder
+import v.pref
 
 const vexe = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'run_check')
@@ -224,6 +226,26 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.')
 	assert normalized_output.contains('Please install the corresponding development package/libraries')
 	assert !normalized_output.contains('This is a V compiler bug')
+}
+
+fn test_windows_host_c_compiler_probe_is_skipped_for_non_windows_targets() {
+	assert builder.should_find_windows_host_c_compiler(&pref.Preferences{
+		backend: .c
+		os:      .windows
+	})
+	assert !builder.should_find_windows_host_c_compiler(&pref.Preferences{
+		backend: .c
+		os:      .linux
+	})
+	assert !builder.should_find_windows_host_c_compiler(&pref.Preferences{
+		backend:        .c
+		os:             .windows
+		output_cross_c: true
+	})
+	assert !builder.should_find_windows_host_c_compiler(&pref.Preferences{
+		backend: .js_browser
+		os:      .windows
+	})
 }
 
 fn test_run_with_obscure_source_filenames() {

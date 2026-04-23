@@ -230,6 +230,7 @@ fn test_cross_compile_defaults_linux_to_amd64() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'linux', target], false)
 	assert prefs.arch == .amd64
+	assert prefs.ccompiler == 'clang'
 }
 
 fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {

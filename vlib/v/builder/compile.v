@@ -10,11 +10,16 @@ import v.vmod
 
 pub type FnBackend = fn (mut b Builder)
 
+// should_find_windows_host_c_compiler reports whether Windows host compiler probing is needed.
+pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
+	return pref_.backend == .c && pref_.os == .windows && !pref_.output_cross_c
+}
+
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	check_if_input_file_exists(pref_)
 	check_if_output_folder_is_writable(pref_)
 	$if windows {
-		if pref_.backend == .c {
+		if should_find_windows_host_c_compiler(pref_) {
 			// Resolve the effective Windows C compiler before builder initialization.
 			mut probe := Builder{
 				pref: unsafe { pref_ }
