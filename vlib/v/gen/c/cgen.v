@@ -593,6 +593,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	util.timing_start('cgen common')
 
 	// to make sure type idx's are the same in cached mods
+	// Some distinct type symbols can still share a C name, for example repeated
+	// C struct declarations. Emit one cache helper per cname to avoid duplicate
+	// definitions when `-usecache` builds the main module.
+	mut emitted_cache_type_idx_cnames := map[string]bool{}
 	if g.pref.build_mode == .build_module {
 		is_toml := g.pref.path.contains('/toml')
 		for idx, sym in g.table.type_symbols {
@@ -603,6 +607,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				// Temporary hack to make toml work with -usecache TODO remove
 				continue
 			}
+			if sym.cname in emitted_cache_type_idx_cnames {
+				continue
+			}
+			emitted_cache_type_idx_cnames[sym.cname] = true
 			g.definitions.writeln('u32 _v_type_idx_${sym.cname}(); // 1build module ${g.pref.path}')
 		}
 	} else if g.pref.use_cache {
@@ -614,6 +622,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			if is_toml && sym.cname.contains('map[string]') {
 				continue
 			}
+			if sym.cname in emitted_cache_type_idx_cnames {
+				continue
+			}
+			emitted_cache_type_idx_cnames[sym.cname] = true
 			g.definitions.writeln('u32 _v_type_idx_${sym.cname}() { return ${idx}; }; //lol ${g.pref.path}')
 		}
 	}
@@ -3853,14 +3865,14 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	if got_sym.info is ast.FnType {
 		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
 		got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
-		type_idx = g.table.type_idxs[got_name].str()
+		type_idx = g.type_sidx(ast.idx_to_type(g.table.type_idxs[got_name]))
 		for variant in g.sumtype_runtime_variants(exp) {
 			variant_sym := g.table.sym(variant)
 			if variant_sym.info is ast.FnType {
 				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
 					variant_name = g.get_sumtype_variant_name(variant, variant_sym)
 					got_cname = g.get_sumtype_variant_type_name(variant, variant_sym)
-					type_idx = u32(variant).str()
+					type_idx = g.type_sidx(variant)
 					break
 				}
 			}
@@ -8844,7 +8856,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					}
 					g.write('))')
 				}
-				g.write(', sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
+				g.write(', sizeof(${expr_styp})),._typ=${g.type_sidx(expr_typ)}})')
 			} else {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
 				g.inside_assign_fn_var = final_expr_sym.kind == .function
@@ -11179,9 +11191,9 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 		return '${fname}(HEAP(${first_styp}, (${first_default})), true)'
 	}
 	if default_str[0] == `{` {
-		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${u32(first_typ)}}'
+		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${g.type_sidx(first_typ)}}'
 	} else {
-		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${u32(first_typ)}}'
+		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${g.type_sidx(first_typ)}}'
 	}
 }
 
@@ -11566,7 +11578,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for variant in g.sumtype_runtime_variants(node.expr_type) {
-			idx := u32(variant).str()
+			idx := g.type_sidx(variant)
 			if idx in g.as_cast_type_names {
 				continue
 			}
@@ -11636,7 +11648,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		// fill as cast name table
 		for typ in expr_type_sym.info.types {
-			idx := u32(typ).str()
+			idx := g.type_sidx(typ)
 			if idx in g.as_cast_type_names {
 				continue
 			}

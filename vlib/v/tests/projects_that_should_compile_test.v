@@ -291,3 +291,45 @@ fn test_sync_waitgroup_should_check_for_windows() {
 	}
 	_ = vrun_ok('-os windows -check', source_path)
 }
+
+fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
+	root := os.join_path(os.vtmp_dir(), 'usecache_sumtype_cross_module_${os.getpid()}')
+	cache_dir := os.join_path(root, '.cache')
+	vtmp_dir := os.join_path(root, '.vtmp')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'payload'))!
+	os.mkdir_all(os.join_path(root, 'maker'))!
+	os.mkdir_all(vtmp_dir)!
+	write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'ucsmt'\n}\n")
+	write_file(os.join_path(root, 'payload', 'payload.v'),
+		'module payload\n\npub struct Foo {\n\tpub:\n\t\tn int\n}\n\npub struct Bar {\n\tpub:\n\t\ts string\n}\n\npub type Value = Foo | Bar\n')
+	write_file(os.join_path(root, 'maker', 'maker.v'),
+		'module maker\n\nimport payload\n\npub fn make() payload.Value {\n\treturn payload.Value(payload.Foo{n: 42})\n}\n')
+	old_vcache := os.getenv_opt('VCACHE') or { '' }
+	old_vtmp := os.getenv_opt('VTMP') or { '' }
+	os.setenv('VCACHE', cache_dir, true)
+	os.setenv('VTMP', vtmp_dir, true)
+	defer {
+		if old_vcache.len == 0 {
+			os.unsetenv('VCACHE')
+		} else {
+			os.setenv('VCACHE', old_vcache, true)
+		}
+		if old_vtmp.len == 0 {
+			os.unsetenv('VTMP')
+		} else {
+			os.setenv('VTMP', old_vtmp, true)
+		}
+	}
+	res :=
+		os.execute('cd ${os.quoted_path(root)} && ${os.quoted_path(@VEXE)} -keepc build-module maker')
+	assert res.exit_code == 0, res.output
+	generated_c_path := os.join_path(vtmp_dir, 'maker.tmp.c')
+	assert os.exists(generated_c_path)
+	generated_c := os.read_file(generated_c_path)!
+	assert generated_c.contains('payload__Foo_to_sumtype_payload__Value(payload__Foo* x, bool is_mut)')
+	assert generated_c.contains('._typ = _v_type_idx_payload__Foo()')
+}

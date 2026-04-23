@@ -501,7 +501,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x, bool is_mut);')
 
 		// ENCODING
-		enc.writeln('\tif (${var_data}${field_op}_typ == ${int(variant.idx())}) {')
+		enc.writeln('\tif (${var_data}${field_op}_typ == ${g.type_sidx(variant)}) {')
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ}));')
