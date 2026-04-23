@@ -39,17 +39,23 @@ mut:
 
 // Must be aligned to at least the maximum fundamental type alignment (pointer size)
 // so that the array data following the header is properly aligned.
-const array_data_header_size = int(sizeof(voidptr))
+//
+// Keep this as a function, not a const. When V bootstraps from generated C, a const
+// would bake in the snapshot generator's pointer size instead of the target C ABI.
+@[inline]
+fn array_data_header_size() int {
+	return int(sizeof(voidptr))
+}
 
 @[inline]
 fn array_data_allocation_size(total_size u64) u64 {
-	return u64(array_data_header_size) + __at_least_one(total_size)
+	return u64(array_data_header_size()) + __at_least_one(total_size)
 }
 
 @[inline]
 fn alloc_array_data(total_size u64) voidptr {
 	raw := vcalloc(array_data_allocation_size(total_size))
-	return unsafe { &u8(raw) + array_data_header_size }
+	return unsafe { &u8(raw) + array_data_header_size() }
 }
 
 @[inline]
@@ -57,7 +63,7 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
-		return &u8(raw) + array_data_header_size
+		return &u8(raw) + array_data_header_size()
 	}
 }
 
@@ -92,7 +98,7 @@ fn (a array) data_header() &ArrayDataHeader {
 		return unsafe { nil }
 	}
 	base_data := unsafe { &u8(a.data) - u64(a.offset) }
-	return unsafe { &ArrayDataHeader(base_data - array_data_header_size) }
+	return unsafe { &ArrayDataHeader(base_data - array_data_header_size()) }
 }
 
 @[inline]
@@ -372,7 +378,7 @@ pub fn (mut a array) ensure_cap(required int) {
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
 				if a.flags.has(.managed) {
-					free(&u8(a.data) - u64(array_data_header_size))
+					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
 					free(a.data)
 				}
@@ -1150,7 +1156,7 @@ pub fn (a &array) free() {
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
 			if a.flags.has(.managed) {
-				free(mblock_ptr - array_data_header_size)
+				free(mblock_ptr - array_data_header_size())
 			} else {
 				free(mblock_ptr)
 			}

@@ -8,7 +8,7 @@ module builtin
 @[inline]
 fn alloc_array_data_noscan(total_size u64) voidptr {
 	raw := vcalloc_noscan(array_data_allocation_size(total_size))
-	return unsafe { &u8(raw) + array_data_header_size }
+	return unsafe { &u8(raw) + array_data_header_size() }
 }
 
 @[inline]
@@ -16,7 +16,7 @@ fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_noscan_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
-		return &u8(raw) + array_data_header_size
+		return &u8(raw) + array_data_header_size()
 	}
 }
 
