@@ -246,6 +246,12 @@ fn test_encode_map() {
 	out := json.encode(numbers)
 	// println(out)
 	assert out == expected
+	assert json.encode_pretty(numbers) == '{
+	"one":	1,
+	"two":	2,
+	"three":	3,
+	"four":	4
+}'
 }
 
 fn test_parse_map() {

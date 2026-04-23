@@ -1297,6 +1297,8 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type) string {
 	styp := g.styp(key_type)
 	styp_v := g.styp(value_type)
+	key_array_type := ast.idx_to_type(g.table.find_or_register_array(key_type))
+	key_array_styp := g.styp(key_array_type)
 	fn_name_v := js_enc_name(styp_v)
 	zero := g.type_default(value_type)
 	keys_tmp := g.new_tmp_var()
@@ -1310,7 +1312,7 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 	if utyp.has_flag(.option) {
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = builtin__map_keys((map*)val.data);
+		${key_array_styp} ${keys_tmp} = builtin__map_keys((map*)val.data);
 		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
 			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get((map*)val.data, &key, &(${styp_v}[]) { ${zero} } ) ) );
@@ -1321,7 +1323,7 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 		ref := if utyp.is_ptr() { '' } else { '&' }
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = builtin__map_keys(${ref}val);
+		${key_array_styp} ${keys_tmp} = builtin__map_keys(${ref}val);
 		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
 			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(${ref}val, &key, &(${styp_v}[]) { ${zero} } ) ) );
