@@ -10,6 +10,21 @@ fn (c &Checker) can_be_embedded_in_struct(typ ast.Type) bool {
 	return c.table.final_sym(typ).kind in [.struct, .function]
 }
 
+fn (c &Checker) is_opaque_c_typedef_struct_alias(typ ast.Type) bool {
+	sym := c.table.sym(typ)
+	if sym.kind != .alias {
+		return false
+	}
+	final_sym := c.table.final_sym(typ)
+	if final_sym.language != .c || final_sym.kind != .struct {
+		return false
+	}
+	if final_sym.info is ast.Struct {
+		return final_sym.info.is_typedef && final_sym.info.is_empty_struct()
+	}
+	return false
+}
+
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {
@@ -193,6 +208,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
+				continue
+			}
+			if node.language == .v && !field.typ.is_ptr()
+				&& c.is_opaque_c_typedef_struct_alias(field.typ) {
+				field_typ := c.table.type_to_str(field.typ)
+				ref_typ := c.table.type_to_str(field.typ.clear_option_and_result().set_nr_muls(1))
+				c.error('cannot use opaque C struct `${field_typ}` as a non-reference struct field; use `${ref_typ}` instead',
+					field.type_pos)
 				continue
 			}
 			// gotodef for struct field types
