@@ -25,6 +25,17 @@ fn (p &Preferences) default_thread_stack_size() int {
 	}
 }
 
+fn (p &Preferences) is_linux_wayland_only_session() bool {
+	if p.os != .linux {
+		return false
+	}
+	if os.getenv('DISPLAY') != '' {
+		return false
+	}
+	return os.getenv('WAYLAND_DISPLAY') != ''
+		|| os.getenv('XDG_SESSION_TYPE').to_lower() == 'wayland'
+}
+
 fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
@@ -261,6 +272,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 
 	final_os := p.os.lower()
 	p.parse_define(final_os)
+	if p.is_linux_wayland_only_session() && 'linux_wayland_session' !in p.compile_defines_all {
+		p.parse_define('linux_wayland_session')
+	}
 
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.

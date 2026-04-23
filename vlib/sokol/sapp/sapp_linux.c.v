@@ -1,6 +1,12 @@
 @[has_globals]
 module sapp
 
+$if linux_wayland_session ? {
+	$if !sokol_wayland ? {
+		$compile_error('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
+	}
+}
+
 #preinclude <X11/Xlib.h>
 #preinclude <X11/Xatom.h>
 #preinclude <X11/Xutil.h>

@@ -554,4 +554,27 @@ fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
 
 	assert 'no_backtrace' in shared_prefs.compile_defines_all
 	assert shared_prefs.build_options.contains('-d no_backtrace')
+fn test_wayland_only_linux_session_surfaces_a_v_error_for_gg() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	pid := os.getpid()
+	test_dir := os.join_path(os.vtmp_dir(), 'v_issue_18030_gg_wayland_${pid}')
+	source_path := os.join_path(test_dir, 'main.v')
+	exe_path := os.join_path(test_dir, 'app')
+	source := 'import gg as _\n\nfn main() {}\n'
+	os.mkdir_all(test_dir) or { panic(err) }
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	cmd := 'DISPLAY= WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland ${os.quoted_path(vexe)} -os linux -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	output := res.output.replace('\r', '')
+	if res.exit_code == 0 {
+		eprintln('> failed command: ${cmd}')
+	}
+	assert res.exit_code != 0
+	assert output.contains('Wayland-only Linux session without `-d sokol_wayland`')
+	assert !output.contains('C error. This should never happen.')
 }
