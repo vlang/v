@@ -1382,6 +1382,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		ast.CallExpr {
 			g.write_orm_primitive(orm_expr_effective_type(expr, expr.return_type), expr)
 		}
+		ast.CastExpr {
+			g.write_orm_primitive(expr.typ, expr)
+		}
 		ast.Nil {
 			g.write_orm_primitive(ast.none_type, expr)
 		}

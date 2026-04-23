@@ -11,6 +11,14 @@ mut:
 	status string
 }
 
+@[table: 'dynamic_cast_members']
+struct DynamicCastMember {
+mut:
+	id          int @[primary; sql: serial]
+	name        string
+	is_required u8
+}
+
 fn test_dynamic_select_with_inline_where_block() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -117,6 +125,46 @@ fn test_dynamic_update_with_alias_set_block() {
 	assert rows[0].name == next_name
 	assert rows[0].email == 'alice@example.com'
 	assert rows[0].status == next_status
+}
+
+fn test_dynamic_update_with_alias_set_block_cast_expr() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicCastMember
+	}!
+
+	member := DynamicCastMember{
+		name:        'Alice'
+		is_required: 0
+	}
+
+	sql db {
+		insert member into DynamicCastMember
+	}!
+
+	id := db.last_id()
+	next_name := 'Alicia'
+	next_required := true
+	update_expr := {
+				name == next_name,
+				is_required == u8(if next_required { 1 } else { 0 })
+		}
+
+	sql db {
+		dynamic update DynamicCastMember set update_expr where id == id
+	}!
+
+	rows := sql db {
+		select from DynamicCastMember where id == id
+	}!
+
+	assert rows.len == 1
+	assert rows[0].name == next_name
+	assert rows[0].is_required == 1
 }
 
 fn test_dynamic_select_with_in_operator_and_additional_condition() {
