@@ -184,7 +184,13 @@ fn (mut s Server) attach_client(mut server_client ServerClient, handshake_respon
 		s.server_state.clients[server_client.client.id] = unsafe { server_client }
 	}
 	s.setup_callbacks(mut server_client)
-	s.send_attached_event(mut server_client)!
+	s.send_attached_event(mut server_client) or {
+		lock s.server_state {
+			s.server_state.clients.delete(server_client.client.id)
+		}
+		server_client.client.shutdown_socket() or {}
+		return err
+	}
 }
 
 // setup_callbacks initialize all callback functions
