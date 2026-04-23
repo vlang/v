@@ -61,6 +61,10 @@ fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
 	if scope_var := ident.scope.find_var(ident.name) {
 		if scope_var.typ.has_flag(.option_mut_param_t) {
 			typ = scope_var.typ.clear_flag(.option_mut_param_t)
+			inner := typ.clear_option_and_result()
+			if inner.is_ptr() {
+				typ = inner.deref().set_flag(.option)
+			}
 		}
 	}
 	if typ == 0 && ident.obj is ast.Var {

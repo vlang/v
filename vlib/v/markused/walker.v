@@ -2045,8 +2045,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				w.mark_by_type(concrete_type)
 			}
 			generic_call_inside_generic_caller := w.fn_generic_names(stmt).len > 0
-				&& call_concrete_types.len == 0 && node.raw_concrete_types.len == 0
-				&& caller_generic_names.len > 0
+				&& node.raw_concrete_types.len == 0 && caller_generic_names.len > 0
 			keep_all_generic_types := (stmt.generic_names.len > 0 && call_concrete_types.len == 0)
 				|| generic_call_inside_generic_caller
 			if keep_all_generic_types {
@@ -2286,7 +2285,14 @@ fn (w &Walker) resolve_current_specialized_type(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return ast.no_type
 	}
-	generic_names, concrete_types := w.specialized_generic_context_for(w.cur_fn)
+	mut generic_names, mut concrete_types := w.specialized_generic_context_for(w.cur_fn)
+	if (generic_names.len == 0 || generic_names.len != concrete_types.len) && w.cur_fn != ''
+		&& w.cur_fn_concrete_types.len > 0 {
+		if cur_fn_decl := w.all_fns[w.cur_fn] {
+			generic_names = w.fn_generic_names(cur_fn_decl)
+			concrete_types = w.cur_fn_concrete_types.clone()
+		}
+	}
 	if generic_names.len == 0 || generic_names.len != concrete_types.len {
 		return typ.clear_flag(.generic)
 	}
@@ -2991,6 +2997,21 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 		}
 		fn_decl := w.all_fns[fkey] or { continue }
 		if fn_decl.is_method {
+			if w.table.generic_type_names(fn_decl.receiver.typ).len > 0 {
+				continue
+			}
+			mut kept_types := [][]ast.Type{}
+			for concrete_type_list in w.used_fn_generic_types[fkey] {
+				if concrete_type_list !in kept_types {
+					kept_types << concrete_type_list.clone()
+				}
+			}
+			for concrete_type_list in w.walked_fn_generic_types[fkey] {
+				if concrete_type_list !in kept_types {
+					kept_types << concrete_type_list.clone()
+				}
+			}
+			w.table.fn_generic_types[fkey] = kept_types
 			continue
 		}
 		mut kept_types := [][]ast.Type{}
@@ -3005,6 +3026,161 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 			}
 		}
 		w.table.fn_generic_types[fkey] = kept_types
+	}
+}
+
+fn (mut w Walker) mark_emitted_generic_body_dependencies() {
+	for generic_fn in w.generic_fns {
+		w.mark_generic_body_dependencies_in_stmts(generic_fn.stmts)
+	}
+	for fkey, concrete_types in w.table.fn_generic_types {
+		if concrete_types.len == 0 {
+			continue
+		}
+		if fn_decl := w.all_fns[fkey] {
+			w.mark_generic_body_dependencies_in_stmts(fn_decl.stmts)
+		}
+	}
+}
+
+fn (mut w Walker) mark_comptime_resource_kind(kind ast.ComptimeForKind) {
+	match kind {
+		.attributes {
+			w.uses_ct_attribute = true
+		}
+		.variants {
+			w.uses_ct_variants = true
+		}
+		.params {
+			w.uses_ct_params = true
+		}
+		.values {
+			w.uses_ct_values = true
+		}
+		.fields {
+			w.uses_ct_fields = true
+		}
+		.methods {
+			w.uses_ct_methods = true
+		}
+	}
+}
+
+fn (mut w Walker) mark_generic_body_dependencies_in_stmts(stmts []ast.Stmt) {
+	for stmt_ in stmts {
+		stmt := unsafe { stmt_ }
+		match stmt {
+			ast.AssignStmt {
+				for expr in stmt.left {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+				for expr in stmt.right {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+			}
+			ast.Block {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ComptimeFor {
+				w.mark_comptime_resource_kind(stmt.kind)
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ExprStmt {
+				w.mark_generic_body_dependencies_in_expr(stmt.expr)
+			}
+			ast.ForCStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ForInStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ForStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.Return {
+				for expr in stmt.exprs {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn (mut w Walker) mark_generic_body_dependencies_in_expr(expr_ ast.Expr) {
+	expr := unsafe { expr_ }
+	match expr {
+		ast.CallExpr {
+			w.mark_direct_non_generic_call(expr)
+			w.mark_generic_body_dependencies_in_expr(expr.left)
+			for arg in expr.args {
+				w.mark_generic_body_dependencies_in_expr(arg.expr)
+			}
+		}
+		ast.IfExpr {
+			for branch in expr.branches {
+				w.mark_generic_body_dependencies_in_expr(branch.cond)
+				w.mark_generic_body_dependencies_in_stmts(branch.stmts)
+			}
+		}
+		ast.InfixExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.left)
+			w.mark_generic_body_dependencies_in_expr(expr.right)
+		}
+		ast.MatchExpr {
+			for branch in expr.branches {
+				w.mark_generic_body_dependencies_in_stmts(branch.stmts)
+			}
+		}
+		ast.ParExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.right)
+		}
+		ast.StringInterLiteral {
+			for sub_expr in expr.exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+			for sub_expr in expr.fwidth_exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+			for sub_expr in expr.precision_exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut w Walker) mark_direct_non_generic_call(node ast.CallExpr) {
+	if node.language == .c {
+		return
+	}
+	if node.is_method {
+		if node.left_type == 0 {
+			return
+		}
+		fkey, _ := w.resolve_method_fkey_for_type(node.left_type, node.name)
+		if fkey == '' {
+			return
+		}
+		fn_decl := w.all_fns[fkey] or { return }
+		if w.fn_generic_names(fn_decl).len == 0 {
+			w.fn_by_name(fkey)
+		}
+		return
+	}
+	mut fn_name := node.fkey()
+	if node.mod != '' {
+		qualified_name := '${node.mod}.${node.name}'
+		if qualified_name in w.all_fns {
+			fn_name = qualified_name
+		}
+	}
+	fn_decl := w.all_fns[fn_name] or { return }
+	if w.fn_generic_names(fn_decl).len == 0 {
+		w.fn_by_name(fn_name)
 	}
 }
 
@@ -3370,6 +3546,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
+	// Generic pruning can leave additional generic bodies to emit, which may
+	// need direct helper calls or resources like FieldData for `$for T.fields`.
+	w.mark_emitted_generic_body_dependencies()
+	w.mark_resource_dependencies()
 
 	if w.trace_enabled {
 		syms := w.used_syms.keys().map(w.table.type_to_str(it))

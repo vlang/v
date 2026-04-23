@@ -1421,7 +1421,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			left_name := c_name(left.str())
 			is_fn_param := left is ast.Ident && left.is_auto_deref_var()
 			if is_fn_param {
-				// Function params use _option_T_ptr* type, copy data through pointer
+				// Function params use _option_T* type, copy data through pointer
 				val_base_type := g.base_type(val_type)
 				g.writeln('${left_name}->state = ${tmp_var}.state;')
 				g.writeln('memcpy(&${left_name}->data, ${tmp_var}.data, sizeof(${val_base_type}));')

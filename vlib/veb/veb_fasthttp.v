@@ -108,14 +108,16 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 		return fasthttp.HttpResponse{
 			content:      completed_context.res.bytes()
 			file_path:    completed_context.return_file
-			should_close: completed_context.client_wants_to_close
+			should_close: should_close_connection(completed_context.req, completed_context.res,
+				completed_context.client_wants_to_close)
 		}
 	}
 
 	// The fasthttp server expects a complete response buffer to be returned.
 	return fasthttp.HttpResponse{
 		content:      completed_context.res.bytes()
-		should_close: completed_context.client_wants_to_close
+		should_close: should_close_connection(completed_context.req, completed_context.res,
+			completed_context.client_wants_to_close)
 	}
 } // handle_request_and_route is a unified function that creates the context,
 
@@ -172,7 +174,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		req:                   req
 		page_gen_start:        page_gen_start
 		client_fd:             _client_fd
-		client_wants_to_close: true // fasthttp always closes connections after response
+		client_wants_to_close: request_has_connection_close(req)
 		query:                 query
 		form:                  form
 		files:                 files

@@ -556,7 +556,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		util.timing_start('cgen unification')
 	}
 
-	global_g.post_process_generic_fns_for_files(files)
+	if !global_g.pref.new_generic_solver {
+		global_g.post_process_generic_fns_for_files(files)
+	}
 	global_g.gen_jsons()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
 	// Pre-register auto-str types for interface implementing types that need str()
@@ -1591,9 +1593,14 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 // all unified in one place so that it doesn't break
 // if one location changes
 fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
-	mut base := g.base_type(t)
+	option_typ := if t.has_flag(.option_mut_param_t) && t.is_ptr() {
+		t.deref().clear_flag(.option_mut_param_t)
+	} else {
+		t
+	}
+	mut base := g.base_type(option_typ)
 	mut styp := ''
-	sym := g.table.sym(t)
+	sym := g.table.sym(option_typ)
 	// If this is a type alias to an option type, use the parent type's option name
 	// This ensures that ?int and MaybeInt (where MaybeInt = ?int) generate the same C type
 	if sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
@@ -1607,7 +1614,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${option_name}_${base}'
 	}
-	if t.has_flag(.generic) || t.is_ptr() {
+	if option_typ.has_flag(.generic) || option_typ.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -4223,29 +4230,33 @@ fn (mut g Gen) sumtype_ptr_cast_payload_field(sumtype_typ ast.Type, target_ptr_t
 		matched_variant_sym := g.table.sym(matched_variant)
 		return g.get_sumtype_variant_name(matched_variant, matched_variant_sym)
 	}
-	sumtype_info := g.table.final_sym(sumtype_typ).info as ast.SumType
-	first_variant := g.unwrap_generic(sumtype_info.variants[0])
-	first_variant_sym := g.table.sym(first_variant)
-	return g.get_sumtype_variant_name(first_variant, first_variant_sym)
+	return ''
 }
 
 fn (mut g Gen) write_payload_pointer_from_ptr_wrapper(expr ast.Expr, wrapper_typ ast.Type,
 	target_ptr_typ ast.Type) {
 	wrapper_sym := g.table.final_sym(wrapper_typ)
-	g.write('((')
-	g.expr(expr)
 	match wrapper_sym.kind {
 		.interface {
+			g.write('((')
+			g.expr(expr)
 			g.write(')->_object')
+			g.write(')')
 		}
 		.sum_type {
 			field_name := g.sumtype_ptr_cast_payload_field(wrapper_typ, target_ptr_typ)
-			g.write(')->_${field_name}')
+			if field_name == '' {
+				g.write('((*((void**)(')
+				g.expr(expr)
+				g.write('))))')
+			} else {
+				g.write('((')
+				g.expr(expr)
+				g.write(')->_${field_name})')
+			}
 		}
 		else {}
 	}
-
-	g.write(')')
 }
 
 fn (mut g Gen) ptr_wrapper_expr_is_raw_alias(expr ast.Expr, wrapper_typ ast.Type) bool {

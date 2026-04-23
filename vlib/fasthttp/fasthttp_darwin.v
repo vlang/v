@@ -57,9 +57,10 @@ mut:
 	read_start     i64 // monotonic timestamp (in microseconds) when first data was received
 
 	// Sendfile state
-	file_fd  int = -1
-	file_len i64
-	file_pos i64
+	file_fd      int = -1
+	file_len     i64
+	file_pos     i64
+	should_close bool
 }
 
 pub struct Server {
@@ -153,6 +154,7 @@ fn send_pending(c_ptr voidptr) bool {
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 				return true
 			}
+			c.should_close = true
 			return false
 		}
 	}
@@ -170,6 +172,7 @@ fn send_pending(c_ptr voidptr) bool {
 			}
 			C.close(c.file_fd)
 			c.file_fd = -1
+			c.should_close = true
 			return false
 		}
 		if c.file_pos >= c.file_len {
@@ -222,12 +225,33 @@ fn chunked_body_complete(c &Conn) bool {
 }
 
 fn handle_write(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
-	mut c := unsafe { &Conn(c_ptr) }
 	if send_pending(c_ptr) {
 		return
 	}
-	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
-	close_conn(server, kq, c_ptr, mut clients)
+	complete_response(server, kq, c_ptr, mut clients, true)
+}
+
+fn complete_response(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr, remove_write_event bool) {
+	mut c := unsafe { &Conn(c_ptr) }
+	if remove_write_event {
+		delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+	}
+	if server.is_shutting_down() || c.should_close {
+		close_conn(server, kq, c_ptr, mut clients)
+		return
+	}
+	if c.request_active {
+		server.end_request()
+		c.request_active = false
+	}
+	c.write_buf.clear()
+	c.write_pos = 0
+	c.read_len = 0
+	if c.read_extra.len > 0 {
+		c.read_extra.clear()
+	}
+	c.read_start = 0
+	c.should_close = false
 }
 
 // process_request handles a complete HTTP request: decodes, calls the handler,
@@ -267,6 +291,7 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 		return
 	}
 
+	c.should_close = resp.should_close
 	c.write_buf = resp.content.clone()
 	if resp.file_path != '' {
 		fd := C.open(resp.file_path.str, C.O_RDONLY)
@@ -292,7 +317,7 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 		return
 	}
 
-	close_conn(server, kq, c_ptr, mut clients)
+	complete_response(server, kq, c_ptr, mut clients, false)
 }
 
 // total_read_len returns the total number of request bytes received so far,

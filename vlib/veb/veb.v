@@ -187,7 +187,7 @@ fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestP
 			return
 		}
 		if completed_context.takeover
-			|| should_close_ssl_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
+			|| should_close_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
 			return
 		}
 	}
@@ -286,11 +286,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		form:           form
 		files:          files
 	}
-	if connection_header := req.header.get(.connection) {
-		if connection_header.to_lower() == 'close' {
-			ctx.client_wants_to_close = true
-		}
-	}
+	ctx.client_wants_to_close = request_has_connection_close(req)
 	$if A is StaticApp {
 		ctx.custom_mime_types = global_app.static_mime_types.clone()
 		mut user_context := X{}
@@ -353,7 +349,11 @@ fn write_ssl_response(mut ssl_conn mbedtls.SSLConn, resp http.Response) ! {
 	ssl_conn.write(resp.bytes())!
 }
 
-fn should_close_ssl_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
+fn request_has_connection_close(req http.Request) bool {
+	return (req.header.get(.connection) or { '' }).to_lower() == 'close'
+}
+
+fn should_close_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
 	if client_wants_to_close {
 		return true
 	}

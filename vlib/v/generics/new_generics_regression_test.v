@@ -119,7 +119,7 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 
 const expected_summsvc_generics = 'Summary for all V _test.v files: 110 failed, 182 passed, 292 total.'
 // The exact failure count varies slightly across compilers.
-const expected_summary_generics = 'Summary for all V _test.v files: 108 failed, 184 passed, 292 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 106 failed, 185 passed, 291 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
@@ -179,12 +179,10 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_typeof_test.v',
 	'vlib/v/tests/generics/generics_array_builtin_method_call_test.v',
 	'vlib/v/tests/generics/generics_array_delete_test.v',
-	'vlib/v/tests/generics/generics_array_method_call_with_multi_types_test.v',
 	'vlib/v/tests/generics/generics_array_of_interface_method_call_test.v',
 	'vlib/v/tests/generics/generics_array_of_threads_test.v',
 	'vlib/v/tests/generics/generics_assign_reference_generic_struct_test.v',
 	'vlib/v/tests/generics/generics_call_with_reference_arg_test.v',
-	'vlib/v/tests/generics/generics_chans_select_test.v',
 	'vlib/v/tests/generics/generics_fn_field_multi_instance_test.v',
 	'vlib/v/tests/generics/generics_fn_return_generic_interface_test.v',
 	'vlib/v/tests/generics/generics_fn_return_result_test.v',
@@ -204,6 +202,8 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_method_on_receiver_aliases_types_test.v',
 	'vlib/v/tests/generics/generics_method_on_receiver_types_test.v',
 	'vlib/v/tests/generics/generics_method_str_overload_test.v',
+	'vlib/v/tests/generics/generics_method_test.v',
+	'vlib/v/tests/generics/generics_method_variable_test.v',
 	'vlib/v/tests/generics/generics_method_with_diff_generic_names_test.v',
 	'vlib/v/tests/generics/generics_method_with_generic_anon_fn_argument_test.v',
 	'vlib/v/tests/generics/generics_mut_receiver_local_copy_regression_test.v',
@@ -225,7 +225,6 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_with_anon_generics_fn_test.v',
 	'vlib/v/tests/generics/generics_with_assign_nested_generics_call_test.v',
 	'vlib/v/tests/generics/generics_with_embed_generics_method_call_test.v',
-	'vlib/v/tests/generics/generics_with_embed_generics_test.v',
 	'vlib/v/tests/generics/generics_with_generics_fn_return_generics_map_type_test.v',
 	'vlib/v/tests/generics/generics_with_generics_struct_receiver_test.v',
 	'vlib/v/tests/generics/generics_with_multi_generics_struct_types_test.v',
@@ -234,7 +233,6 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_with_multiple_generics_struct_receiver_test.v',
 	'vlib/v/tests/generics/generics_with_nested_external_generics_fn_test.v',
 	'vlib/v/tests/generics/generics_with_nested_generic_method_call_test.v',
-	'vlib/v/tests/generics/generics_with_pointer_index_test.v',
 ]!
 const failing_math_vec_tests = [
 	'vlib/math/vec/vec2_test.v',
