@@ -785,6 +785,19 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			return false
 		}
 	}
+	if g.inside_ternary > 0 {
+		for i, expr in node.exprs {
+			if i >= node.expr_types.len {
+				break
+			}
+			if g.should_materialize_windows_liveshared_string(expr, node.expr_types[i]) {
+				// The Windows live-shared temp lowering inserts standalone C statements.
+				// That is valid for normal statement contexts, but not inside ternary branches.
+				// Fall back to the regular `builtin__str_intp` path there instead.
+				return false
+			}
+		}
+	}
 	if node.exprs.len == 1 && node.vals.len == 2 && node.vals[0].len == 0 && node.vals[1].len == 0 {
 		if !g.gen_windows_liveshared_string_tmp(node.exprs[0], node.expr_types[0]) {
 			g.gen_expr_to_string(node.exprs[0], node.expr_types[0])

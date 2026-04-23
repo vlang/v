@@ -210,6 +210,25 @@ fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	assert !compilation.output.contains(symbol)
 }
 
+fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_ternary_str_intp.vv')
+	os.write_file(test_source,
+		"module main\n\n@[live]\nfn foo(ok bool, name string) string {\n\treturn if ok { 'Hello, \${name}!' } else { '\${u32(7)}' }\n}\n\nfn main() {\n\tprintln(foo(true, 'V'))\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -sharedlive ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
+	for normalized.contains('  ') {
+		normalized = normalized.replace('  ', ' ')
+	}
+	assert !normalized.contains('? ( string _t')
+	assert compilation.output.contains('builtin__str_intp')
+}
+
 fn test_no_main_exports_initialize_windows_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_no_main_export_windows_init.vv')
