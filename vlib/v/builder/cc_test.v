@@ -406,6 +406,20 @@ fn test_live_windows_shared_linker_args_include_host_import_lib() {
 	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
 }
 
+fn test_windows_cross_compile_args_match_shared_prod_args() {
+	$if windows {
+		return
+	}
+	mut builder := new_test_builder(['-os', 'windows', '-prod', hello_world_example()])
+	all_args := builder.windows_cross_compile_args('')
+	assert all_args == builder.all_args(builder.ccoptions)
+	assert all_args.contains('-O3')
+	assert all_args.contains('-fwrapv')
+	assert all_args.contains('-fno-strict-aliasing')
+	assert all_args.contains('-DNDEBUG')
+	assert all_args.contains('-DNO_DEBUGGING')
+}
+
 fn test_shared_windows_builds_do_not_add_subsystem_flags() {
 	mut builder := new_test_builder(['-os', 'windows', '-shared', hello_world_example()])
 	assert builder.get_subsystem_flag() == ''

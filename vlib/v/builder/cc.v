@@ -2026,93 +2026,15 @@ fn (mut c Builder) cc_windows_cross() {
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
 	icon_object := c.prepare_cross_windows_icon_resource() or { verror(err.msg()) }
-	mut args := []string{}
-	args << '${c.pref.cflags}'
-	args << '-o ${os.quoted_path(c.pref.out_name)}'
-	args << '-w -L.'
-
-	cflags := c.get_os_cflags()
-	// -I flags
-	if c.pref.ccompiler == 'msvc' {
-		args << cflags.c_options_before_target_msvc()
-	} else {
-		args << cflags.c_options_before_target()
-	}
-	mut optimization_options := []string{}
-	mut debug_options := []string{}
-	if c.pref.is_prod {
-		if c.pref.ccompiler != 'msvc' {
-			optimization_options = ['-O3']
-			mut have_flto := true
-			if c.pref.parallel_cc {
-				have_flto = false
-			}
-			if c.pref.is_shared {
-				// Keep shared libraries away from LTO to avoid runtime loader regressions.
-				have_flto = false
-			}
-			if have_flto {
-				optimization_options << '-flto'
-			}
-		}
-	}
-	if c.pref.is_debug {
-		if c.pref.ccompiler != 'msvc' {
-			debug_options = ['-O0', '-g', '-gdwarf-2']
-		}
-	}
-	mut libs := []string{}
-	if false && c.pref.build_mode == .default_mode {
-		builtin_o := '${pref.default_module_path}/vlib/builtin.o'
-		libs << os.quoted_path(builtin_o)
-		if !os.exists(builtin_o) {
-			verror('${builtin_o} not found')
-		}
-		for imp in c.table.imports {
-			libs << os.quoted_path('${pref.default_module_path}/vlib/${imp}.o')
-		}
-	}
-	// add the thirdparty .o files, produced by all the #flag directives:
-	args << cflags.c_options_only_object_files()
-	args << os.quoted_path(c.out_name_c)
-	if icon_object != '' {
-		args << os.quoted_path(icon_object)
-	}
-
-	mut c_options_after_target := []string{}
-	if c.pref.ccompiler == 'msvc' {
-		c_options_after_target << cflags.c_options_after_target_msvc()
-	} else {
-		c_options_after_target << cflags.c_options_after_target()
-	}
-	for lf in c.ccoptions.linker_flags {
-		if lf in c_options_after_target {
-			continue
-		}
-		c_options_after_target << lf
-	}
-	args << c_options_after_target
 
 	if current_os !in ['macos', 'linux', 'termux'] {
 		println(current_os)
 		panic('your platform is not supported yet')
 	}
 
-	mut all_args := []string{}
-	all_args << '-std=gnu11'
-	if !c.pref.no_prod_options {
-		all_args << optimization_options
-	}
-	all_args << debug_options
-
-	all_args << args
-	subsystem_flag := c.get_subsystem_flag()
-	if subsystem_flag != '' {
-		all_args << subsystem_flag
-	}
-	all_args << c.pref.ldflags
+	all_args := c.windows_cross_compile_args(icon_object)
 	c.dump_c_options(all_args)
-	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
+	mut cmd := '${c.quote_compiler_name(cross_compiler_name_path)} ${all_args.join(' ')}'
 	// cmd := 'clang -o ${obj_name} -w ${include} -m32 -c -target x86_64-win32 ${pref.default_module_path}/${c.out_name_c}'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -2128,6 +2050,16 @@ fn (mut c Builder) cc_windows_cross() {
 		exit(1)
 	}
 	println(c.pref.out_name + ' has been successfully cross compiled for windows.')
+}
+
+fn (c &Builder) windows_cross_compile_args(icon_object string) []string {
+	mut ccoptions := c.ccoptions
+	if icon_object != '' {
+		mut o_args := ccoptions.o_args.clone()
+		o_args << os.quoted_path(icon_object)
+		ccoptions.o_args = o_args
+	}
+	return c.all_args(ccoptions)
 }
 
 fn (mut b Builder) build_thirdparty_obj_files() {
