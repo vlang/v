@@ -18,6 +18,10 @@
 !vlib/v/gen/c/testdata/*.c
 !vlib/v/gen/c/testdata/*.c.must_have
 
+# unignore targeted js backend regression testdata files
+!vlib/v/gen/js/tests/testdata/comptime_if_expr_issue_24784.v
+!vlib/v/gen/js/tests/testdata/comptime_if_expr_issue_24784.out
+
 # unignore vlib/x/markdown
 !vlib/x/markdown/**
 !vlib/mcp/server.v
