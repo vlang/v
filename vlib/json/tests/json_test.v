@@ -167,6 +167,11 @@ fn test_encode_decode_time() {
 	// println(user2.reg_date)
 }
 
+fn test_decode_time_string_into_struct_field() {
+	user := json.decode(User2, '{"age": 25, "reg_date": "2001-01-01"}')!
+	assert user.reg_date.str() == '2001-01-01 00:00:00'
+}
+
 fn (mut u User) foo() string {
 	return json.encode(u)
 }

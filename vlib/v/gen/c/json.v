@@ -863,19 +863,24 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				dec.writeln('\t}')
 			} else if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
-				// it has to be decoded from a unix timestamp number
+				// it can be decoded from either a JSON string or number
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
+				tmp_time_res := g.new_tmp_var()
+				dec.writeln('\t\t${result_name}_time__Time ${tmp_time_res} = json__decode_time(jsonroot_${tmp});')
+				dec.writeln('\t\tif (${tmp_time_res}.is_error) {')
+				dec.writeln('\t\t\treturn (${result_name}_${styp}){ .is_error = true, .err = ${tmp_time_res}.err, .data = {0} };')
+				dec.writeln('\t\t}')
 				if field.typ.has_flag(.option) {
-					dec.writeln('\t\tif (!(cJSON_IsNull(jsonroot_${tmp}))) {\n')
-					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)}.state = 0;\n')
+					dec.writeln('\t\tif (!(cJSON_IsNull(jsonroot_${tmp}))) {')
+					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)}.state = 0;')
 					tmp_time_var := g.new_tmp_var()
-					dec.writeln('\t\t\t${g.base_type(field.typ)} ${tmp_time_var} = time__unix(json__decode_u64(jsonroot_${tmp}));\n')
+					dec.writeln('\t\t\t${g.base_type(field.typ)} ${tmp_time_var} = *(time__Time*)${tmp_time_res}.data;')
 					dec.writeln('\t\t\tbuiltin__vmemcpy(&${prefix}${op}${c_name(field.name)}.data, &${tmp_time_var}, sizeof(${g.base_type(field.typ)}));')
-					dec.writeln('\t\t}\n')
+					dec.writeln('\t\t}')
 				} else {
-					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_${tmp}));')
+					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(time__Time*)${tmp_time_res}.data;')
 					if field.has_default_expr {
 						dec.writeln('\t} else {')
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${g.expr_string_opt(field.typ,
