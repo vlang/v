@@ -60,6 +60,15 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		node.typ
 	}
 	mut sym := g.table.final_sym(unwrapped_typ)
+	old_cur_struct_init_typ := g.cur_struct_init_typ
+	if node.typ != 0 {
+		g.cur_struct_init_typ = node.typ
+	}
+	g.zero_struct_init_stack << g.zero_struct_init_type(struct_init_typ)
+	defer {
+		g.cur_struct_init_typ = old_cur_struct_init_typ
+		g.zero_struct_init_stack.delete_last()
+	}
 	if sym.kind == .sum_type {
 		if unwrapped_typ.is_ptr() {
 			// handle promotions to a sumtype for generic functions like this one: `fn (d Struct) a[T]() T { return d }`
@@ -655,6 +664,27 @@ fn (mut g Gen) init_shared_field(field ast.StructField) {
 	g.write('}, sizeof(${shared_styp}))')
 }
 
+fn (mut g Gen) zero_struct_init_type(typ ast.Type) ast.Type {
+	mut resolved_typ := g.unwrap_generic(g.recheck_concrete_type(typ))
+	if resolved_typ == 0 {
+		resolved_typ = typ
+	}
+	return resolved_typ.clear_option_and_result().clear_flag(.shared_f).clear_flag(.atomic_f)
+}
+
+fn (mut g Gen) zero_struct_init_would_recurse(typ ast.Type) bool {
+	resolved_typ := g.zero_struct_init_type(typ)
+	return resolved_typ in g.zero_struct_init_stack
+}
+
+fn (mut g Gen) write_zero_struct_init(default_init ast.StructInit) {
+	if g.zero_struct_init_would_recurse(default_init.typ) {
+		g.write(g.type_default(default_init.typ))
+		return
+	}
+	g.struct_init(default_init)
+}
+
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	old_inside_cast_in_heap := g.inside_cast_in_heap
 	g.inside_cast_in_heap = 0
@@ -700,7 +730,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var, true)
 					}
 				} else {
-					g.struct_init(default_init)
+					g.write_zero_struct_init(default_init)
 				}
 				return true
 			} else if sym.language == .v && !field.typ.is_ptr() && sym.mod != 'builtin'
@@ -709,7 +739,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					typ: field.typ
 				}
 				g.write('.${field_name} = ')
-				g.struct_init(default_init)
+				g.write_zero_struct_init(default_init)
 				return true
 			}
 		}

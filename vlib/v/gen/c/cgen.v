@@ -278,6 +278,7 @@ mut:
 	cur_fn                  &ast.FnDecl = unsafe { nil } // same here
 	cur_lock                ast.LockExpr
 	cur_struct_init_typ     ast.Type
+	zero_struct_init_stack  []ast.Type
 	autofree_methods        map[ast.Type]string
 	generated_free_methods  map[ast.Type]bool
 	generated_free_fn_names map[string]bool
