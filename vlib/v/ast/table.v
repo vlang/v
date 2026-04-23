@@ -2480,8 +2480,8 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		if sym.kind != .interface && typ != voidptr_type && typ != nil_type && typ != none_type
-			&& !inter_sym.info.types.contains(typ) {
+		if sym.kind !in [.interface, .aggregate] && typ != voidptr_type && typ != nil_type
+			&& typ != none_type && !inter_sym.info.types.contains(typ) {
 			inter_sym.info.types << typ
 		}
 		if !inter_sym.info.types.contains(voidptr_type) {

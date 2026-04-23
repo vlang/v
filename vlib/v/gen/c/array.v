@@ -316,7 +316,8 @@ fn (mut g Gen) array_interface_cast_expr(src_elem_expr string, got_type ast.Type
 		return '${inner_fn}(${src_elem_expr})'
 	}
 	if expected_sym.kind == .interface && !expected.is_ptr() {
-		got_styp := g.cc_type(got, true)
+		concrete_got := g.concrete_interface_cast_type(got)
+		got_styp := g.cc_type(concrete_got, true)
 		mut cast_fn := 'I_${got_styp}_to_Interface_${expected_sym.cname}'
 		if expected_sym.info is ast.Interface && expected_sym.info.is_generic {
 			cast_fn = g.generic_fn_name(expected_sym.info.concrete_types, cast_fn)
@@ -324,7 +325,7 @@ fn (mut g Gen) array_interface_cast_expr(src_elem_expr string, got_type ast.Type
 		lock g.referenced_fns {
 			g.referenced_fns[cast_fn] = true
 		}
-		if got.is_ptr() {
+		if concrete_got.is_ptr() {
 			return '${cast_fn}(${src_elem_expr})'
 		}
 		return '${cast_fn}(HEAP(${got_styp}, ${src_elem_expr}))'

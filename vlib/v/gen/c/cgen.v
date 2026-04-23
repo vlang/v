@@ -1411,7 +1411,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				continue
 			}
 			already_generated_ifaces[sym.cname] = true
-			impl_types := inter_info.implementor_types(true)
+			impl_types := g.runtime_interface_variants(inter_info)
 			g.definitions.writeln('${g.static_non_parallel}string v_typeof_interface_${sym.cname}(u32 sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern string v_typeof_interface_${sym.cname}(u32 sidx);')
@@ -2459,6 +2459,30 @@ fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Typ
 	return smartcast_type
 }
 
+fn (mut g Gen) concrete_interface_cast_type(typ ast.Type) ast.Type {
+	unwrapped_typ := g.unwrap_generic(typ)
+	sym := g.table.final_sym(unwrapped_typ)
+	if sym.kind != .aggregate {
+		return typ
+	}
+	variant_typ := sym.aggregate_variant_type(g.aggregate_type_idx)
+	if variant_typ == 0 {
+		return typ
+	}
+	return variant_typ.derive_add_muls(typ)
+}
+
+fn (g &Gen) runtime_interface_variants(info ast.Interface) []ast.Type {
+	mut variants := []ast.Type{cap: info.types.len + info.mut_types.len}
+	for typ in info.implementor_types(true) {
+		if g.table.sym(typ).kind == .aggregate {
+			continue
+		}
+		variants << typ
+	}
+	return variants
+}
+
 // ensure_array_typedef emits a `typedef array <cname>;` if the base type
 // name looks like an array type that might not have been typedef'd yet.
 // This is needed because option/result wrapper structs reference the base
@@ -2688,6 +2712,9 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 			continue
 		}
 		vsym := g.table.sym(mk_typ)
+		if vsym.kind == .aggregate {
+			continue
+		}
 		if g.pref.skip_unused && vsym.idx !in g.table.used_features.used_syms {
 			continue
 		}
@@ -4407,8 +4434,8 @@ fn (mut g Gen) gen_interface_to_interface_conversion(expr ast.Expr, expr_type as
 
 	mut info := expr_type_sym.info as ast.Interface
 	right_info := to_sym.info as ast.Interface
-	left_variants := info.implementor_types(true)
-	right_variants := right_info.implementor_types(true)
+	left_variants := g.runtime_interface_variants(info)
+	right_variants := g.runtime_interface_variants(right_info)
 	lock info.conversions {
 		if to_type !in info.conversions {
 			// For conversion into an empty interface, all of the left's variants
@@ -4460,14 +4487,16 @@ fn (mut g Gen) expr_with_array_element_upcast(expr ast.Expr, got_type ast.Type, 
 	g.indent++
 	if expected_elem_sym.kind == .interface {
 		expected_interface_info := expected_elem_sym.info as ast.Interface
-		mut fname := 'I_${g.cc_type(got_elem_type, true)}_to_Interface_${expected_elem_sym.cname}'
+		concrete_got_elem_type := g.concrete_interface_cast_type(got_elem_type)
+		concrete_got_elem_styp := g.styp(concrete_got_elem_type)
+		mut fname := 'I_${g.cc_type(concrete_got_elem_type, true)}_to_Interface_${expected_elem_sym.cname}'
 		lock g.referenced_fns {
 			g.referenced_fns[fname] = true
 		}
 		if expected_interface_info.is_generic {
 			fname = g.generic_fn_name(expected_interface_info.concrete_types, fname)
 		}
-		g.writeln('${expected_elem_styp} ${converted_tmp} = ${fname}(&(((${got_elem_styp}*)${source_tmp}_orig.data)[${index_tmp}]));')
+		g.writeln('${expected_elem_styp} ${converted_tmp} = ${fname}(&(((${concrete_got_elem_styp}*)${source_tmp}_orig.data)[${index_tmp}]));')
 	} else {
 		g.write_prepared_var(item_tmp, got_elem_type, got_elem_styp, source_tmp, index_tmp, true,
 			false)
@@ -4582,22 +4611,25 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
 		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
+		concrete_got_type := g.concrete_interface_cast_type(got_type)
+		concrete_got_sym := g.table.final_sym(concrete_got_type)
+		concrete_got_is_ptr := concrete_got_type.is_ptr()
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
-			got_styp := g.cc_type(got_type.ref(), true)
+			got_styp := g.cc_type(concrete_got_type.ref(), true)
 			// TODO: why does cc_type even add this in the first place?
 			exp_styp := exp_sym.cname
 			mut fname := 'I_${got_styp}_to_Interface_${exp_styp}'
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type, exp_styp,
-				true, false, got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, concrete_got_type,
+				concrete_got_type, exp_styp, true, false, got_styp)
 			g.inside_cast_in_heap--
 		} else {
-			got_styp := g.cc_type(got_type, true)
-			got_is_fn := got_sym.info is ast.FnType
-			got_is_shared := got_type.has_flag(.shared_f)
+			got_styp := g.cc_type(concrete_got_type, true)
+			got_is_fn := concrete_got_sym.info is ast.FnType
+			got_is_shared := concrete_got_type.has_flag(.shared_f)
 			exp_styp := if got_is_shared { '__shared__${exp_sym.cname}' } else { exp_sym.cname }
 			// If it's shared, we need to use the other caster:
 			mut fname := if got_is_shared {
@@ -4628,9 +4660,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			// pointer-backed only when interface semantics require aliasing the
 			// original storage. Plain value-to-interface conversions still need
 			// a detached copy, even when the value itself lives in auto-heap storage.
-			mut effective_got_is_ptr := got_is_ptr
+			mut effective_got_is_ptr := concrete_got_is_ptr
 			mut suppress_auto_heap_deref := false
-			if !got_is_ptr && expr is ast.Ident && g.resolved_ident_is_auto_heap(expr)
+			if !concrete_got_is_ptr && expr is ast.Ident && g.resolved_ident_is_auto_heap(expr)
 				&& (g.expected_arg_mut
 				|| g.interface_cast_requires_field_aliasing(expected_type, expr)) {
 				effective_got_is_ptr = true
@@ -4639,12 +4671,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if suppress_auto_heap_deref {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
 				g.inside_assign_fn_var = true
-				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type,
-					exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, concrete_got_type,
+					concrete_got_type, exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
 			} else {
-				g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, got_type,
-					exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
+				g.call_cfn_for_casting_expr(fname, expr, expected_type, concrete_got_type,
+					concrete_got_type, exp_styp, effective_got_is_ptr, got_is_fn, got_styp)
 			}
 		}
 		return
@@ -11605,8 +11637,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 		mut info := expr_type_sym.info as ast.Interface
 		right_info := sym.info as ast.Interface
-		left_variants := info.implementor_types(true)
-		right_variants := right_info.implementor_types(true)
+		left_variants := g.runtime_interface_variants(info)
+		right_variants := g.runtime_interface_variants(right_info)
 		lock info.conversions {
 			if node.typ !in info.conversions {
 				if right_info.methods.len == 0 && right_info.fields.len == 0 {
@@ -11783,7 +11815,7 @@ fn (mut g Gen) interface_field_ptr_expr(st ast.Type, cctype string, field ast.St
 	cname := c_name(field.name)
 	field_styp := g.styp(field.typ)
 	resolved_st_sym := g.table.final_sym(st)
-	if _ := resolved_st_sym.find_field(field.name) {
+	if _ := g.table.find_field(resolved_st_sym, field.name) {
 		return '(${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname}))'
 	}
 	if resolved_st_sym.kind == .array
@@ -11839,7 +11871,7 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		already_generated_ifaces[isym.cname] = true
-		impl_types := inter_info.implementor_types(true)
+		impl_types := g.runtime_interface_variants(inter_info)
 		// interface_name is for example Speaker
 		interface_name := isym.cname
 		shared_interface_mtx_helper_name := '__shared__${interface_name}_mtx'
@@ -11877,7 +11909,7 @@ fn (mut g Gen) interface_table() string {
 		//
 		// Exclude interface types from the table length — an interface can't
 		// be its own concrete implementor (happens with nested generic interfaces).
-		iname_table_length := impl_types.filter(g.table.sym(it).kind != .interface).len
+		iname_table_length := impl_types.filter(g.table.sym(it).kind !in [.interface, .aggregate]).len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
 			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
@@ -11907,7 +11939,7 @@ fn (mut g Gen) interface_table() string {
 			// An interface can't be its own concrete implementor; this happens
 			// with nested generic interface types where the interface type
 			// gets registered in its own types list during generic resolution.
-			if st_sym_info.kind == .interface {
+			if st_sym_info.kind in [.interface, .aggregate] {
 				continue
 			}
 			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
