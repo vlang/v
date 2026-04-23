@@ -4,6 +4,13 @@ import v.ast
 import v.util
 import strings
 
+fn (mut g Gen) dump_arg_needs_gc_pin(typ ast.Type) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	return typ.is_any_kind_of_pointer() || g.contains_ptr(typ)
+}
+
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
 	fpath := cestring(g.file.path)
@@ -418,6 +425,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
 		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		if g.dump_arg_needs_gc_pin(typ) {
+			if is_ptr {
+				dump_fns.writeln('\tGC_reachable_here(dump_arg);')
+			} else {
+				dump_fns.writeln('\tGC_reachable_here(&dump_arg);')
+			}
+		}
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret && !is_ptr {
 			tmp_var := g.new_tmp_var()
