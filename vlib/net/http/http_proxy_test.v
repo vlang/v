@@ -244,3 +244,138 @@ fn test_http_proxy_do() {
 		println('Proxy env vars (HTTP_PROXY or HTTPS_PROXY) not set. Skipping test.')
 	}
 }
+
+const multipart_https_payload_len = 20 * 1024 + 137
+
+fn test_https_multipart_form_preserves_large_binary_body() ! {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close()!
+
+	payload := multipart_https_test_payload()
+	form := {
+		'alpha': 'beta'
+	}
+	files := {
+		'file': [
+			FileData{
+				filename:     'payload.bin'
+				content_type: 'application/octet-stream'
+				data:         payload
+			},
+		]
+	}
+	body, boundary := multipart_form_body(form, files)
+
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     proxy_https_test_cert_path
+		cert_key: proxy_https_test_key_path
+		validate: false
+	})!
+	server := spawn multipart_https_serve_once(mut listener, body, boundary, form, files)
+
+	mut header := new_header()
+	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
+	resp := fetch(
+		method:   .post
+		url:      'https://127.0.0.1:${port}/upload'
+		header:   header
+		data:     body
+		validate: false
+	)!
+	server.wait()
+
+	assert resp.status_code == 200
+	assert resp.body == 'ok'
+}
+
+fn multipart_https_test_payload() string {
+	mut payload := []u8{len: multipart_https_payload_len, init: u8(((index * 17) % 250) + 1)}
+	payload[127] = 0
+	payload[4096] = 0
+	payload[16 * 1024] = 0
+	payload[payload.len - 1] = `!`
+	return payload.bytestr()
+}
+
+fn multipart_https_serve_once(mut listener mbedtls.SSLListener, expected_body string, boundary string, expected_form map[string]string, expected_files map[string][]FileData) {
+	defer {
+		listener.shutdown() or {}
+	}
+	mut conn := listener.accept() or { panic(err) }
+	conn.set_read_timeout(5 * time.second)
+	defer {
+		conn.shutdown() or {}
+	}
+
+	request_text := read_https_request(mut conn) or { panic(err) }
+	req := parse_request_str(request_text) or { panic(err) }
+
+	assert req.method == .post
+	assert req.url == '/upload'
+	assert req.data == expected_body
+	assert req.data.len == expected_body.len
+	assert req.header.get(.content_length) or { panic(err) } == expected_body.len.str()
+	assert req.header.get(.content_type) or { panic(err) } == 'multipart/form-data; boundary="${boundary}"'
+
+	form, files := parse_multipart_form(req.data, boundary)
+	assert form == expected_form
+	assert files == expected_files
+
+	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok') or {
+		panic(err)
+	}
+}
+
+fn read_https_request(mut conn mbedtls.SSLConn) !string {
+	mut request := []u8{}
+	mut buf := []u8{len: 1024}
+	mut content_length := -1
+	mut headers_end := -1
+
+	for {
+		n := conn.read(mut buf) or {
+			if err.code() == net.err_timed_out_code {
+				return error('timed out while reading HTTPS request')
+			}
+			return err
+		}
+		if n <= 0 {
+			break
+		}
+		request << buf[..n]
+
+		request_str := request.bytestr()
+		if headers_end == -1 {
+			headers_end = request_str.index('\r\n\r\n') or { -1 }
+			if headers_end != -1 {
+				headers := request_str[..headers_end]
+				for line in headers.split('\r\n') {
+					if line.to_lower().starts_with('content-length:') {
+						content_length = line.all_after(':').trim_space().int()
+						break
+					}
+				}
+			}
+		}
+
+		if headers_end != -1 && content_length >= 0 {
+			body_start := headers_end + 4
+			if request.len - body_start >= content_length {
+				break
+			}
+		}
+	}
+
+	if headers_end == -1 {
+		return error('HTTPS request did not include a full header block')
+	}
+	if content_length < 0 {
+		return error('HTTPS request did not include Content-Length')
+	}
+	body_start := headers_end + 4
+	if request.len - body_start < content_length {
+		return error('HTTPS request body was truncated: expected ${content_length} bytes, got ${request.len - body_start}')
+	}
+	return request.bytestr()
+}
