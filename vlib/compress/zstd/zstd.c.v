@@ -28,10 +28,10 @@ fn C.ZSTD_getErrorName(usize) charptr
 fn C.ZSTD_minCLevel() i32
 fn C.ZSTD_maxCLevel() i32
 fn C.ZSTD_defaultCLevel() i32
-fn C.ZSTD_createCCtx() &C.ZSTD_CCtx
+fn C.ZSTD_createCCtx() &C.ZSTD_CCtx_s
 fn C.ZSTD_freeCCtx(voidptr) usize
 fn C.ZSTD_compressCCtx(voidptr, voidptr, usize, voidptr, usize, i32) usize
-fn C.ZSTD_createDCtx() &C.ZSTD_DCtx
+fn C.ZSTD_createDCtx() &C.ZSTD_DCtx_s
 fn C.ZSTD_freeDCtx(voidptr) usize
 fn C.ZSTD_decompressDCtx(voidptr, voidptr, usize, voidptr, usize) usize
 
@@ -455,7 +455,7 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 
 pub struct CCtx {
 mut:
-	ctx &C.ZSTD_CCtx
+	ctx &C.ZSTD_CCtx_s
 }
 
 // new_cctx create a compression context.
@@ -497,13 +497,13 @@ pub fn (mut c CCtx) free_cctx() usize {
 	return C.ZSTD_freeCCtx(c.ctx)
 }
 
-struct C.ZSTD_CCtx {}
+struct C.ZSTD_CCtx_s {}
 
-struct C.ZSTD_DCtx {}
+struct C.ZSTD_DCtx_s {}
 
 pub struct DCtx {
 mut:
-	ctx &C.ZSTD_DCtx
+	ctx &C.ZSTD_DCtx_s
 }
 
 // new_dctx creates a decompression context.
