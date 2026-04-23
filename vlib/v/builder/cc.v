@@ -479,6 +479,21 @@ fn ccompiler_type_from_name(ccompiler string) ?pref.CompilerType {
 	return if ok { resolved } else { none }
 }
 
+fn ccompiler_type_from_resolved_path(ccompiler string) ?pref.CompilerType {
+	ccompiler_path := if os.exists(ccompiler) {
+		ccompiler
+	} else {
+		os.find_abs_path_of_executable(ccompiler) or { return none }
+	}
+	$if macos {
+		if ccompiler_path == '/usr/bin/cc' {
+			return pref.CompilerType.clang
+		}
+	}
+	resolved, ok := ccompiler_type_from_name_with_ok(os.real_path(ccompiler_path))
+	return if ok { resolved } else { none }
+}
+
 fn ccompiler_type_from_version_output_with_ok(output string) (pref.CompilerType, bool) {
 	if output == '' {
 		return pref.CompilerType.tinyc, false
@@ -513,6 +528,9 @@ fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.Com
 	resolved_by_name, name_ok := ccompiler_type_from_name_with_ok(ccompiler)
 	if name_ok {
 		return resolved_by_name
+	}
+	if resolved_by_path := ccompiler_type_from_resolved_path(ccompiler) {
+		return resolved_by_path
 	}
 	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {

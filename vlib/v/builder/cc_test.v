@@ -141,6 +141,33 @@ fn test_resolve_ccompiler_type_detects_cc_alias_path_as_clang() {
 	assert resolve_ccompiler_type(alias_cc, pref.cc_from_string(alias_cc)) == .clang
 }
 
+fn test_resolve_ccompiler_type_detects_real_path_without_running_alias() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_cc_symlink_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	clang_path := os.join_path(test_root, 'clang')
+	os.write_file(clang_path, '#!/bin/sh
+exit 1
+') or { panic(err) }
+	os.chmod(clang_path, 0o700) or { panic(err) }
+	link_path := os.join_path(test_root, 'cc')
+	os.symlink(clang_path, link_path) or { panic(err) }
+	assert resolve_ccompiler_type(link_path, pref.cc_from_string(link_path)) == .clang
+}
+
+fn test_ccompiler_type_from_resolved_path_detects_macos_cc_wrapper_as_clang() {
+	$if macos {
+		detected := ccompiler_type_from_resolved_path('/usr/bin/cc') or { panic(err) }
+		assert detected == .clang
+	}
+}
+
 fn test_setup_ccompiler_options_detects_cl_path_as_msvc() {
 	mut full_args := ['']
 	full_args << hello_world_example()
