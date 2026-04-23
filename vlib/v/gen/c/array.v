@@ -33,10 +33,29 @@ fn (g &Gen) can_keep_array_init_expr_inline(expr ast.Expr) bool {
 	}
 }
 
+fn (mut g Gen) array_init_expr_needs_gc_root(expr ast.Expr, expr_type ast.Type) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	if g.inside_const || g.inside_global_decl || g.inside_cinit {
+		return false
+	}
+	if expr is ast.CTempVar || g.can_keep_array_init_expr_inline(expr) || expr.is_lvalue() {
+		return false
+	}
+	resolved_expr_type := g.unwrap_generic(g.recheck_concrete_type(expr_type))
+	return resolved_expr_type != 0 && g.contains_ptr(resolved_expr_type)
+}
+
 fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type, default_type ast.Type) []ast.Expr {
 	mut needs_order_preserved := false
-	for expr in exprs {
-		if g.need_tmp_var_in_expr(expr) {
+	for i, expr in exprs {
+		expr_type := if expr_types.len > i && expr_types[i] != 0 {
+			expr_types[i]
+		} else {
+			default_type
+		}
+		if g.need_tmp_var_in_expr(expr) || g.array_init_expr_needs_gc_root(expr, expr_type) {
 			needs_order_preserved = true
 			break
 		}
@@ -46,14 +65,15 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 	}
 	mut prepared := []ast.Expr{cap: exprs.len}
 	for i, expr in exprs {
-		if g.can_keep_array_init_expr_inline(expr) {
-			prepared << expr
-			continue
-		}
 		expr_type := if expr_types.len > i && expr_types[i] != 0 {
 			expr_types[i]
 		} else {
 			default_type
+		}
+		if g.can_keep_array_init_expr_inline(expr)
+			&& !g.array_init_expr_needs_gc_root(expr, expr_type) {
+			prepared << expr
+			continue
 		}
 		prepared << ast.Expr(g.expr_to_ctemp_before_stmt(expr, expr_type))
 	}

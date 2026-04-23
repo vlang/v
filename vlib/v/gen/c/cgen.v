@@ -3603,6 +3603,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln(';')
 				}
 			}
+			if can_emit_standalone_expr_stmt && !needs_tmp_return_autofree
+				&& node.expr is ast.CallExpr {
+				g.write_scope_gc_pins(node.pos)
+			}
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
@@ -7246,6 +7250,59 @@ fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
 	}
 
 	return true
+}
+
+@[inline]
+fn (mut g Gen) scope_var_needs_gc_pin(obj ast.Var) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	if obj.name == '_' || obj.is_special {
+		return false
+	}
+	return obj.is_auto_heap || obj.typ.is_any_kind_of_pointer() || g.contains_ptr(obj.typ)
+}
+
+fn (mut g Gen) write_scope_gc_pins(pos token.Pos) {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return
+	}
+	scope := g.file.scope.innermost(pos.pos)
+	if scope == unsafe { nil } {
+		return
+	}
+	mut seen := map[string]bool{}
+	mut vars := []ast.Var{}
+	for obj in scope.objects.values() {
+		if obj !is ast.Var {
+			continue
+		}
+		var_obj := obj as ast.Var
+		if var_obj.name in seen || !g.check_var_scope(var_obj, pos.pos)
+			|| !g.scope_var_needs_gc_pin(var_obj) {
+			continue
+		}
+		seen[var_obj.name] = true
+		vars << var_obj
+	}
+	vars.sort_with_compare(fn (a &ast.Var, b &ast.Var) int {
+		if a.pos.pos < b.pos.pos {
+			return -1
+		}
+		if a.pos.pos > b.pos.pos {
+			return 1
+		}
+		if a.name < b.name {
+			return -1
+		}
+		if a.name > b.name {
+			return 1
+		}
+		return 0
+	})
+	for obj in vars {
+		g.writeln('GC_reachable_here(&${g.var_cname(obj)});')
+	}
 }
 
 @[inline]

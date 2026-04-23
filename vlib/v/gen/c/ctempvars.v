@@ -49,6 +49,10 @@ fn (mut g Gen) gen_ctemp_var(mut tvar ast.CTempVar) {
 			g.writeln(' , sizeof(${styp}));')
 		}
 	} else {
+		if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
+			&& g.contains_ptr(tvar.typ) {
+			g.write('volatile ')
+		}
 		g.write('${styp} ${tvar.name} = ')
 		g.expr(tvar.orig)
 		g.writeln(';')
