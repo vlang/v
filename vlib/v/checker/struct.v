@@ -1099,6 +1099,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							pos:     init_field.expr.pos()
 						}
 						init_field.typ = exp_type
+					} else if c.has_direct_numeric_alias_struct_init_mismatch(init_field.expr,
+						got_type, exp_type)
+					{
+						c.error('cannot assign to field `${field_info.name}`: ${c.expected_msg(got_type,
+							exp_type)}', init_field.pos)
 					} else {
 						c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
 							// For generic types, the same concrete type may have been
@@ -1311,6 +1316,22 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 	}
 	return node.typ
+}
+
+fn (c &Checker) has_direct_numeric_alias_struct_init_mismatch(expr ast.Expr, got ast.Type, expected ast.Type) bool {
+	if expr.remove_par() !is ast.Ident && expr.remove_par() !is ast.SelectorExpr {
+		return false
+	}
+	got_sym := c.table.sym(got)
+	if got_sym.kind != .alias || got_sym.info !is ast.Alias {
+		return false
+	}
+	got_num_type := c.table.unalias_num_type(got).clear_flags()
+	expected_num_type := c.table.unalias_num_type(expected).clear_flags()
+	if !got_num_type.is_number() || !expected_num_type.is_number() {
+		return false
+	}
+	return c.promote_num(expected_num_type, got_num_type) != expected_num_type
 }
 
 // Check uninitialized refs/sum types
