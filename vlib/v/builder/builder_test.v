@@ -246,6 +246,35 @@ fn test_windows_host_c_compiler_probe_is_skipped_for_non_windows_targets() {
 		backend: .js_browser
 		os:      .windows
 	})
+fn test_message_limit_notices_do_not_fail_build() {
+	os.chdir(test_path)!
+	src_file := os.join_path(test_path, 'message_limit_notices.v')
+	mut exe_file := os.join_path(test_path, 'message_limit_notices')
+	$if windows {
+		exe_file += '.exe'
+	}
+
+	mut lines := []string{}
+	for i in 0 .. 10 {
+		lines << '@[deprecated]'
+		lines << "@[deprecated_after: '3000-12-30']"
+		lines << 'fn future_${i}() {}'
+	}
+	lines << 'fn main() {'
+	for i in 0 .. 10 {
+		lines << '\tfuture_${i}()'
+	}
+	lines << '}'
+	os.write_file(src_file, lines.join('\n') + '\n')!
+
+	res :=
+		os.execute('${os.quoted_path(vexe)} -stats -message-limit 5 -o ${os.quoted_path(exe_file)} ${os.quoted_path(src_file)}')
+	normalized_output := res.output.replace('\r\n', '\n')
+
+	assert res.exit_code == 0, normalized_output
+	assert os.exists(exe_file), normalized_output
+	assert !normalized_output.contains('builder error: too many errors/warnings/notices')
+	assert normalized_output.contains('checker summary: 0 V errors, 0 V warnings, 10 V notices'), normalized_output
 }
 
 fn test_run_with_obscure_source_filenames() {

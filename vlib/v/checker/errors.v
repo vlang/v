@@ -81,10 +81,6 @@ fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) 
 }
 
 fn (mut c Checker) note(message string, pos token.Pos) {
-	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
-		c.should_abort = true
-		return
-	}
 	if c.is_generated {
 		return
 	}
@@ -101,6 +97,10 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	kpos := '${file_path}:${pos.line_nr}:${message}'
 	if kpos !in c.notice_lines {
 		c.notice_lines[kpos] = true
+		c.nr_notices++
+		if c.pref.message_limit >= 0 && c.notices.len >= c.pref.message_limit {
+			return
+		}
 		note := errors.Notice{
 			reporter:  errors.Reporter.checker
 			pos:       pos
@@ -110,7 +110,6 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 		}
 		c.file.notices << note
 		c.notices << note
-		c.nr_notices++
 	}
 }
 
@@ -133,8 +132,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool, optio
 	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
-		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
-			c.should_abort = true
+		if c.pref.message_limit >= 0 && c.warnings.len >= c.pref.message_limit {
 			return
 		}
 		// deduplicate warnings for the same line

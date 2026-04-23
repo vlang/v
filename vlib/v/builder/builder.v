@@ -890,9 +890,9 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		return
 	}
 	if b.pref.is_stats {
-		mut nr_errors := b.checker.errors.len
-		mut nr_warnings := b.checker.warnings.len
-		mut nr_notices := b.checker.notices.len
+		mut nr_errors := b.checker.nr_errors
+		mut nr_warnings := b.checker.nr_warnings
+		mut nr_notices := b.checker.nr_notices
 
 		if b.pref.check_only {
 			nr_errors = b.nr_errors
