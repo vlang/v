@@ -68,6 +68,13 @@ for row in rows {
 db.close()
 ```
 
+## Concurrent Usage
+
+Sharing one `mysql.DB` across threads now serializes connection-level queries safely.
+
+For concurrent servers, prefer `mysql.new_connection_pool(...)` so requests do not share the same
+session and transaction state on one connection.
+
 ## Transaction
 
 ```v oksyntax

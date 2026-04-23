@@ -35,6 +35,12 @@ pub struct C.MYSQL_FIELD {
 // C.mysql_init allocates or initializes a MYSQL object suitable for `mysql_real_connect()`.
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 
+// C.mysql_thread_init initializes thread-local client state for threads using the MySQL C API.
+fn C.mysql_thread_init() bool
+
+// C.mysql_thread_end finalizes thread-local client state for threads using the MySQL C API.
+fn C.mysql_thread_end()
+
 // C.mysql_real_connect attempts to establish a connection to a MySQL server running on `host`.
 fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char,
 	client_flag ConnectionFlag) &C.MYSQL
