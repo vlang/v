@@ -1896,6 +1896,11 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) {
 			typ = typ.set_flag(.option_mut_param_t).set_nr_muls(param.typ.nr_muls() - 1)
 		}
+		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.option)
+			&& typ.has_flag(.option_mut_param_t) && typ.nr_muls() == 1
+			&& !g.mut_option_param_assigned_directly(param.name) {
+			typ = typ.ref()
+		}
 		param_type_sym := g.table.sym(typ)
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
@@ -1962,6 +1967,22 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		g.definitions.write_string(', ... ')
 	}
 	return fparams, fparamtypes, heap_promoted
+}
+
+fn (g &Gen) mut_option_param_assigned_directly(name string) bool {
+	if g.cur_fn == unsafe { nil } {
+		return false
+	}
+	for stmt in g.cur_fn.stmts {
+		if stmt is ast.AssignStmt {
+			for left in stmt.left {
+				if left is ast.Ident && left.name == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) const_pointer_param_type_name(typ ast.Type, param_type_name string) string {

@@ -51,20 +51,20 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	return
 }
 
-fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
+fn (g &Gen) option_mut_param_surface_type(expr ast.Expr) ast.Type {
 	ident := match expr {
 		ast.Ident { expr }
 		else { return 0 }
 	}
 
 	mut typ := ast.Type(0)
+	if ident.obj is ast.Var {
+		typ = g.option_mut_param_surface_type_from_var(ident.name, ident.obj)
+	}
 	if scope_var := ident.scope.find_var(ident.name) {
-		if scope_var.typ.has_flag(.option_mut_param_t) {
-			typ = scope_var.typ.clear_flag(.option_mut_param_t)
-			inner := typ.clear_option_and_result()
-			if inner.is_ptr() {
-				typ = inner.deref().set_flag(.option)
-			}
+		scope_typ := g.option_mut_param_surface_type_from_var(ident.name, scope_var)
+		if scope_typ != 0 {
+			typ = scope_typ
 		}
 	}
 	if typ == 0 && ident.obj is ast.Var {
@@ -74,6 +74,20 @@ fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
 	}
 	if typ == 0 || !typ.has_flag(.option) {
 		return 0
+	}
+	return typ
+}
+
+fn (g &Gen) option_mut_param_surface_type_from_var(name string, var ast.Var) ast.Type {
+	if !var.is_arg || var.is_unwrapped || !var.typ.has_flag(.option_mut_param_t) {
+		return 0
+	}
+	mut typ := var.typ.clear_flag(.option_mut_param_t)
+	if g.mut_option_param_assigned_directly(name) {
+		inner := typ.clear_option_and_result()
+		if inner.is_ptr() {
+			typ = inner.deref().set_flag(.option)
+		}
 	}
 	return typ
 }
@@ -90,6 +104,39 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	mut typ := etype
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
+	}
+	if expr is ast.Ident && g.cur_fn != unsafe { nil }
+		&& g.mut_option_param_assigned_directly(expr.name) {
+		for param in g.cur_fn.params {
+			if param.name == expr.name && param.typ.has_flag(.option_mut_param_t) {
+				mut opt_typ := param.typ.clear_flag(.option_mut_param_t)
+				if opt_typ.is_ptr() {
+					opt_typ = opt_typ.deref()
+				}
+				g.write('${g.get_str_fn(opt_typ)}(*')
+				g.expr(expr)
+				g.write(')')
+				return
+			}
+		}
+	}
+	mut_arg_option_type := g.option_mut_param_surface_type(expr)
+	if mut_arg_option_type != 0 {
+		typ = mut_arg_option_type
+	}
+	if mut_arg_option_type != 0 && expr is ast.Ident
+		&& g.mut_option_param_assigned_directly(expr.name) {
+		g.write('${g.get_str_fn(mut_arg_option_type)}(*')
+		g.expr(expr)
+		g.write(')')
+		return
+	}
+	if mut_arg_option_type == 0 && expr is ast.Ident && expr.is_auto_deref_var()
+		&& typ.has_flag(.option) {
+		g.write('${g.get_str_fn(typ)}(*')
+		g.expr(expr)
+		g.write(')')
+		return
 	}
 	// `mut ?T` params are passed by pointer in C, but should still stringify as
 	// option values rather than as raw `&...` pointers.
@@ -177,7 +224,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var() && !typ.has_flag(.option)
-		mut_arg_option_type := option_mut_param_surface_type(expr)
 		str_fn_name := if mut_arg_option_type != 0 {
 			g.get_str_fn(mut_arg_option_type)
 		} else {
