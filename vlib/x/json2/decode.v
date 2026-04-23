@@ -333,6 +333,10 @@ fn create_decoded_ptr[T](_ &T) &T {
 	return ptr
 }
 
+fn create_decoded_option_ptr[U](_ ?&U) &U {
+	return &U{}
+}
+
 fn decoder_field_infos[T]() []DecoderFieldInfo {
 	mut field_infos := []DecoderFieldInfo{}
 	$for field in T.fields {
@@ -544,14 +548,20 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 								decoder.current_node = decoder.current_node.next
 							}
 						} else {
-							mut unwrapped_val := create_value_from_optional(new_val.$(field.name)) or {
-								return StructKeyDecodeResult[T]{
-									matched: false
-									value:   val
+							$if field.indirections == 1 {
+								mut decoded_ptr := create_decoded_option_ptr(new_val.$(field.name))
+								decoder.decode_value(mut decoded_ptr)!
+								new_val.$(field.name) = decoded_ptr
+							} $else {
+								mut unwrapped_val := create_value_from_optional(new_val.$(field.name)) or {
+									return StructKeyDecodeResult[T]{
+										matched: false
+										value:   val
+									}
 								}
+								decoder.decode_value(mut unwrapped_val)!
+								new_val.$(field.name) = unwrapped_val
 							}
-							decoder.decode_value(mut unwrapped_val)!
-							new_val.$(field.name) = unwrapped_val
 						}
 					} $else $if field.unaliased_typ is $array_dynamic {
 						new_val.$(field.name).clear()
@@ -878,11 +888,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												decoder.current_node = decoder.current_node.next
 											}
 										} else {
-											mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
-												return
+											$if field.indirections == 1 {
+												mut decoded_ptr :=
+													create_decoded_option_ptr(val.$(field.name))
+												decoder.decode_value(mut decoded_ptr)!
+												val.$(field.name) = decoded_ptr
+											} $else {
+												mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
+													return
+												}
+												decoder.decode_value(mut unwrapped_val)!
+												val.$(field.name) = unwrapped_val
 											}
-											decoder.decode_value(mut unwrapped_val)!
-											val.$(field.name) = unwrapped_val
 										}
 									} $else $if field.unaliased_typ is $array_dynamic {
 										val.$(field.name).clear()
