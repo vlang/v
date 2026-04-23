@@ -14,6 +14,40 @@ fn array_init_result_type(node ast.ArrayInit) ast.Type {
 	}
 }
 
+fn (mut c Checker) set_expected_array_literal_type(mut expr ast.Expr, expected_type ast.Type) {
+	if mut expr is ast.ArrayInit {
+		if expr.typ != ast.void_type || expr.elem_type != ast.void_type {
+			return
+		}
+		expected_array_type := expected_type.clear_option_and_result()
+		if expected_array_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(expected_array_type) {
+			return
+		}
+		mut concrete_array_type := expected_array_type
+		expected_sym := c.table.sym(expected_array_type)
+		if expected_sym.info is ast.Alias {
+			concrete_array_type = expected_sym.info.parent_type.clear_option_and_result()
+			if c.table.final_sym(concrete_array_type).kind !in [.array, .array_fixed] {
+				return
+			}
+			expr.alias_type = expected_array_type
+		} else if c.table.final_sym(expected_array_type).kind !in [.array, .array_fixed] {
+			return
+		}
+		expected_elem_type := c.table.value_type(concrete_array_type)
+		if expected_elem_type == ast.void_type {
+			return
+		}
+		expected_elem_sym := c.table.final_sym(expected_elem_type)
+		if expected_elem_sym.kind in [.interface, .sum_type] {
+			return
+		}
+		expr.typ = concrete_array_type
+		expr.elem_type = expected_elem_type
+	}
+}
+
 fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
 }
@@ -906,6 +940,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = map_key_type
 			key_type := c.expr(mut key)
 			c.expected_type = map_val_type
+			c.set_expected_array_literal_type(mut val, map_val_type)
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
