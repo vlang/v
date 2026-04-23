@@ -502,6 +502,18 @@ fn test_parse_weekday() {
 
 fn test_empty_time() {
 	t := time.Time{}
-	// assert t.unix() == -62169984000
+	assert t.unix() == -62167132800
+	assert t.format_rfc3339() == '0000-01-01T00:00:00.000Z'
+	assert t == time.parse_rfc3339(t.format_rfc3339())!
 	assert t.custom_format('MMMM YYYY') == 'January 0'
+}
+
+fn test_pre_epoch_unix_calculation() {
+	assert time.new(time.Time{}).unix() == -62167132800
+	assert time.new(
+		year:  1
+		month: 1
+		day:   1
+	).unix() == -62135596800
+	assert time.parse_rfc3339('0001-01-01T00:00:00Z')!.unix() == -62135596800
 }
