@@ -30,7 +30,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('int strcmp(const char *left, const char *right);'), generated_c
 	assert generated_c.contains('int rand(void);'), generated_c
 	assert generated_c.contains('void srand(unsigned int seed);'), generated_c
-	assert generated_c.contains('#define RAND_MAX'), generated_c
+	assert generated_c.contains('RAND_MAX = 2147483647'), generated_c
 	assert generated_c.contains('double atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
@@ -44,6 +44,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('#if defined(__APPLE__) || defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdin;\nextern FILE* __stdout;\nextern FILE* __stderr;\n#define stdin __stdin\n#define stdout __stdout\n#define stderr __stderr'), generated_c
+	assert generated_c.contains('#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)\ntypedef struct _IO_FILE FILE;\n// musl exposes the stdio streams as `FILE *const`, so match that to stay\n// compatible with later <stdio.h> includes from headers like miniz.h.\nextern FILE* const stdin;\nextern FILE* const stdout;\nextern FILE* const stderr'), generated_c
 }
 
 fn test_manual_stdio_decls_do_not_conflict_with_later_stdio_includes() {

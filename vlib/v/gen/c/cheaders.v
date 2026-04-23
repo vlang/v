@@ -448,6 +448,13 @@ extern FILE* __stderr;
 #define stdin __stdin
 #define stdout __stdout
 #define stderr __stderr
+	#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)
+typedef struct _IO_FILE FILE;
+// musl exposes the stdio streams as `FILE *const`, so match that to stay
+// compatible with later <stdio.h> includes from headers like miniz.h.
+extern FILE* const stdin;
+extern FILE* const stdout;
+extern FILE* const stderr;
 	#else
 typedef struct _IO_FILE FILE;
 extern FILE* stdin;
@@ -560,11 +567,13 @@ int _wremove(const unsigned short *path);
 	#define SEEK_END 2
 #endif
 #ifndef RAND_MAX
+enum {
 	#if defined(_MSC_VER)
-		#define RAND_MAX 0x7fff
+		RAND_MAX = 0x7fff
 	#else
-		#define RAND_MAX 2147483647
+		RAND_MAX = 2147483647
 	#endif
+};
 #endif
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
