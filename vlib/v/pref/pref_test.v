@@ -62,6 +62,14 @@ fn test_mac_is_alias_for_macos() {
 	assert !pref.OS.linux.is_target_of('mac')
 }
 
+fn test_bsd_target_matches_macos_and_bsd_systems() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert os_kind.is_target_of('bsd')
+	}
+	assert !pref.OS.linux.is_target_of('bsd')
+	assert !pref.OS.windows.is_target_of('bsd')
+}
+
 fn test_disable_explicit_mutability_flag() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target], false)
@@ -130,6 +138,57 @@ fn test_wasm_backend_skips_modules_with_only_c_and_js_variants() {
 	prefs := new_wasm_preferences()
 	filtered := prefs.should_compile_filtered_files('sus', ['sus.c.v', 'sus.js.v'])
 	assert filtered.len == 0
+}
+
+fn filtered_file_names_for_os(os_kind pref.OS, files []string) []string {
+	prefs := pref.Preferences{
+		os: os_kind
+	}
+	dir := os.join_path(os.vtmp_dir(), 'environment_specific_files')
+	mut res := []string{}
+	for file in prefs.should_compile_filtered_files(dir, files) {
+		res << os.base(file)
+	}
+	return res
+}
+
+fn test_bsd_specific_files_are_filtered_by_target_os() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert filtered_file_names_for_os(os_kind, ['mod_bsd.c.v', 'mod_bsd.v']) == [
+			'mod_bsd.c.v',
+			'mod_bsd.v',
+		]
+	}
+	assert filtered_file_names_for_os(.linux, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+	assert filtered_file_names_for_os(.windows, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+}
+
+fn test_bsd_specific_files_prefer_more_specific_variants() {
+	mut files := [
+		'main.v',
+		'something_default.c.v',
+		'something_windows.c.v',
+	]
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_default.c.v']
+
+	files << 'something_nix.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_nix.c.v']
+
+	files << 'something_bsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_bsd.c.v']
+
+	files << 'something_freebsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_freebsd.c.v']
+}
+
+fn test_bsd_specific_files_prefer_darwin_on_macos() {
+	files := [
+		'main.v',
+		'something_nix.c.v',
+		'something_bsd.v',
+		'something_darwin.v',
+	]
+	assert filtered_file_names_for_os(.macos, files) == ['main.v', 'something_darwin.v']
 }
 
 fn test_explicit_gc_mode_is_forwarded_to_build_module() {
