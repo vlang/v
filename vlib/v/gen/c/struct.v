@@ -289,34 +289,57 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				embed_sym := g.table.sym(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
-					embed_info := if embed_sym.info is ast.Struct {
-						embed_sym.info
+					mut embed_info := ast.Struct{}
+					mut has_embed_struct_info := false
+					if embed_sym.info is ast.Struct {
+						embed_info = embed_sym.info
+						has_embed_struct_info = true
 					} else {
-						g.table.final_sym(embed).info as ast.Struct
+						final_embed_sym := g.table.final_sym(embed)
+						if final_embed_sym.info is ast.Struct {
+							embed_info = final_embed_sym.info
+							has_embed_struct_info = true
+						}
 					}
-					embed_field_names := embed_info.fields.map(it.name)
-					fields_to_embed := init_fields_to_embed.filter(it.name !in used_embed_fields
-						&& it.name in embed_field_names)
-					used_embed_fields << fields_to_embed.map(it.name)
-					default_init := ast.StructInit{
-						...node
-						typ:             embed
-						is_update_embed: true
-						init_fields:     init_fields_to_embed
-					}
-					inside_cast_in_heap := g.inside_cast_in_heap
-					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
+					if has_embed_struct_info {
+						embed_field_names := embed_info.fields.map(it.name)
+						fields_to_embed := init_fields_to_embed.filter(
+							it.name !in used_embed_fields && it.name in embed_field_names)
+						used_embed_fields << fields_to_embed.map(it.name)
+						default_init := ast.StructInit{
+							...node
+							typ:             embed
+							is_update_embed: true
+							init_fields:     init_fields_to_embed
+						}
+						inside_cast_in_heap := g.inside_cast_in_heap
+						g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
-					g.write('.${embed_name} = ')
-					g.struct_init(default_init)
+						g.write('.${embed_name} = ')
+						g.struct_init(default_init)
 
-					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
-					if is_multiline {
-						g.writeln(',')
+						g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
+						if is_multiline {
+							g.writeln(',')
+						} else {
+							g.write(',')
+						}
+						initialized = true
 					} else {
-						g.write(',')
+						// Embedded fn/interface/alias fields do not have child fields to recurse into.
+						if g.zero_struct_field(ast.StructField{
+							name: embed_name
+							typ:  embed
+						})
+						{
+							if is_multiline {
+								g.writeln(',')
+							} else {
+								g.write(',')
+							}
+							initialized = true
+						}
 					}
-					initialized = true
 				}
 			}
 			g.is_shared = old_is_shared2
