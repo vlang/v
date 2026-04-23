@@ -330,8 +330,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 				mut is_cast_expr := peek_n_tok.kind == .lpar && sbr_level == 0
 					&& peek_n_tok.line_nr == line_nr
-				// `[](?Type){}` (and `[N](?Type){}`) is an array init, not a cast.
-				if is_cast_expr && prev_n_tok.kind == .rsbr {
+				// If the matching `)` is followed by `{`, this can still be an array init when
+				// the element type itself contains parentheses, e.g. `[](?Type){}` or
+				// `[]thread (T1, T2){}`.
+				if is_cast_expr && (prev_n_tok.kind == .rsbr || prev_n_tok.lit == 'thread') {
 					mut par_level := 0
 					for i := n; true; i++ {
 						tk := p.peek_token(i)
