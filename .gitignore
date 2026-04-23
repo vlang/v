@@ -15,6 +15,7 @@
 # unignore c codegen testdata files
 !vlib/v/gen/c/testdata/*.vv
 !vlib/v/gen/c/testdata/*.out
+!vlib/v/gen/c/testdata/*.c
 !vlib/v/gen/c/testdata/*.c.must_have
 
 # unignore vlib/x/markdown
