@@ -57,7 +57,11 @@ fn v_segmentation_fault_handler(signal_number i32) {
 		C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
 	}
 	$if use_libbacktrace ? {
-		eprint_libbacktrace(1)
+		$if openbsd {
+			print_backtrace()
+		} $else {
+			eprint_libbacktrace(1)
+		}
 	} $else {
 		print_backtrace()
 	}

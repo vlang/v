@@ -13,8 +13,12 @@ pub fn print_backtrace() {
 		} $else $if tinyc {
 			C.tcc_backtrace(c'Backtrace')
 		} $else $if use_libbacktrace ? {
-			// NOTE: TCC doesn't have the unwind library
-			print_libbacktrace(1)
+			$if openbsd {
+				print_backtrace_skipping_top_frames(2)
+			} $else {
+				// NOTE: TCC doesn't have the unwind library
+				print_libbacktrace(1)
+			}
 		} $else {
 			print_backtrace_skipping_top_frames(2)
 		}
