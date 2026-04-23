@@ -382,6 +382,10 @@ In this example we defined an endpoint with a parameter first. If we access our 
 on the url http://localhost:port/normal we will not see `from normal`, but
 `from with_parameter, path: "normal"`.
 
+Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
+them as fallbacks, so a later exact or non-variadic parameter route can still match
+before the variadic route handles the request.
+
 ### Custom not found page
 
 You can implement a `not_found` endpoint that is called when a request is made, and no
