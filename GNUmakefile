@@ -116,11 +116,26 @@ VFLAGS+=-prod
 endif
 
 # Keep bootstrap C compiler/linker flags aligned with the initial `v1` build.
+BOOTSTRAP_CC_CFLAGS := $(strip $(CFLAGS))
 BOOTSTRAP_CFLAGS := $(strip $(CPPFLAGS) $(CFLAGS))
+BOOTSTRAP_VC_CC_CFLAGS := $(BOOTSTRAP_CC_CFLAGS)
+BOOTSTRAP_VC_CFLAGS := $(BOOTSTRAP_CFLAGS)
 BOOTSTRAP_LDFLAGS := $(strip $(LDFLAGS))
 ifeq ($(LINUX),1)
 ifeq ($(TCCARCH),arm)
 BOOTSTRAP_LDFLAGS := $(strip $(BOOTSTRAP_LDFLAGS) -latomic)
+endif
+ifneq ($(filter $(TCCARCH),arm64 aarch64),)
+BOOTSTRAP_VC_UNSAFE_OPTFLAGS := $(filter-out -O -O0 -O1,$(filter -O%,$(BOOTSTRAP_CC_CFLAGS)))
+ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
+	# Some Linux ARM64 system compilers miscompile the external vc bootstrap
+	# snapshot at -O2/-O3, making `v1` segfault before it can build `v2`.
+	# Keep the bootstrap stages at -O1, but preserve the requested flags for
+	# the final `v` build.
+	BOOTSTRAP_VC_SAFE_CFLAGS := $(strip $(filter-out -O%,$(BOOTSTRAP_CC_CFLAGS)) -O1)
+	BOOTSTRAP_VC_CC_CFLAGS := $(BOOTSTRAP_VC_SAFE_CFLAGS)
+	BOOTSTRAP_VC_CFLAGS := $(strip $(CPPFLAGS) $(BOOTSTRAP_VC_SAFE_CFLAGS))
+endif
 endif
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
@@ -144,12 +159,12 @@ ifneq ($(CC),tcc)
 endif
 endif
 endif
-BOOTSTRAP_VC_VFLAGS := $(BOOTSTRAP_VC_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS)),-cflags "$(BOOTSTRAP_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
+BOOTSTRAP_VC_VFLAGS := $(BOOTSTRAP_VC_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_VC_CFLAGS)),-cflags "$(BOOTSTRAP_VC_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS)),-cflags "$(BOOTSTRAP_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
@@ -161,7 +176,7 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
