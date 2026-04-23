@@ -19,8 +19,8 @@ pub const result_name = '_result'
 pub const option_name = '_option'
 
 // V builtin types defined on .v files
-pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name,
-	result_name]
+pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'SliceIndex',
+	option_name, result_name]
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
@@ -1320,7 +1320,8 @@ pub struct IndexExpr {
 pub:
 	pos token.Pos
 pub mut:
-	index             Expr // [0], RangeExpr [start..end] or map[key]
+	index             Expr   // [0], RangeExpr [start..end] or map[key]
+	indices           []Expr // parsed index parts, e.g. [i], [i, j], [1..3, ..]
 	or_expr           OrExpr
 	left              Expr
 	left_type         Type // array, map, fixed array, or overloaded index receiver
@@ -2904,7 +2905,11 @@ pub fn (node Node) children() []Node {
 			IndexExpr {
 				index_expr := node
 				children << index_expr.left
-				children << index_expr.index
+				if index_expr.indices.len > 0 {
+					children << index_expr.indices.map(Node(it))
+				} else {
+					children << index_expr.index
+				}
 			}
 			IfExpr {
 				if_expr := node

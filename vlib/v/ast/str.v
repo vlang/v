@@ -603,7 +603,8 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '${x.left.str()}[${x.index.str()}]'
+			parts := if x.indices.len > 0 { x.indices } else { [x.index] }
+			return '${x.left.str()}[${parts.map(it.str()).join(', ')}]'
 		}
 		InfixExpr {
 			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'

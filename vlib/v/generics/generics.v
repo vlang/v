@@ -962,6 +962,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			node.expr = g.expr(mut node.expr)
 		}
 		ast.IndexExpr {
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << g.expr(mut index)
+			}
 			if g.cur_concrete_types.len > 0 {
 				return ast.Expr(ast.IndexExpr{
 					...node
@@ -969,11 +973,13 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					typ:       g.unwrap_generic(node.typ)
 					left:      g.expr(mut node.left)
 					index:     g.expr(mut node.index)
+					indices:   indices
 					or_expr:   g.expr(mut node.or_expr) as ast.OrExpr
 				})
 			}
 			node.left = g.expr(mut node.left)
 			node.index = g.expr(mut node.index)
+			node.indices = indices
 			node.or_expr = g.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {

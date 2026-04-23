@@ -336,9 +336,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					left.pos)
 			}
-		} else if mut left is ast.IndexExpr && left.index is ast.RangeExpr {
-			c.error('cannot reassign using range expression on the left side of an assignment',
-				left.pos)
 		} else if mut left is ast.Ident && node.op == .decl_assign {
 			if left.name in c.global_names {
 				c.note('the global variable named `${left.name}` already exists', left.pos)
@@ -356,6 +353,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.is_index_assign = true
 			}
 			left_type = c.expr(mut left)
+			if left is ast.IndexExpr && left.index is ast.RangeExpr && !left.is_index_operator {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
 			left_type = c.smartcasted_assign_lhs_type(left, left_type)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)

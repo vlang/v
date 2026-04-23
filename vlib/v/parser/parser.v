@@ -2067,157 +2067,55 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	return stmts, pos, or_scope
 }
 
+fn (mut p Parser) index_expr_part(is_gated bool) ast.Expr {
+	part_start_pos := p.tok.pos()
+	if p.tok.kind == .dotdot {
+		p.next()
+		mut high := ast.empty_expr
+		mut has_high := false
+		if p.tok.kind !in [.comma, .rsbr] {
+			high = p.expr(0)
+			has_high = true
+		}
+		return ast.RangeExpr{
+			low:      ast.empty_expr
+			high:     high
+			has_high: has_high
+			pos:      part_start_pos.extend(p.prev_tok.pos())
+			is_gated: is_gated
+		}
+	}
+	expr := p.expr(0)
+	if p.tok.kind != .dotdot {
+		return expr
+	}
+	p.next()
+	mut high := ast.empty_expr
+	mut has_high := false
+	if p.tok.kind !in [.comma, .rsbr] {
+		high = p.expr(0)
+		has_high = true
+	}
+	return ast.RangeExpr{
+		low:      expr
+		high:     high
+		has_low:  true
+		has_high: has_high
+		pos:      part_start_pos.extend(p.prev_tok.pos())
+		is_gated: is_gated
+	}
+}
+
 fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.pos()
 	p.next() // [
-	mut has_low := true
-	if p.tok.kind == .dotdot {
-		has_low = false
-		// [..end]
+	mut indices := []ast.Expr{}
+	indices << p.index_expr_part(is_gated)
+	for p.tok.kind == .comma && p.tok.pos().line_nr == start_pos.line_nr {
 		p.next()
-		mut high := ast.empty_expr
-		mut has_high := false
-		if p.tok.kind != .rsbr {
-			high = p.expr(0)
-			has_high = true
-		}
-
-		pos_high := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_high := ast.OrKind.absent
-		mut or_stmts_high := []ast.Stmt{}
-		mut or_pos_high := token.Pos{}
-		mut or_scope := ast.empty_scope
-
-		if !p.or_is_handled {
-			// a[..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_high, or_pos_high, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_high
-					index:    ast.RangeExpr{
-						low:      ast.empty_expr
-						high:     high
-						has_high: has_high
-						pos:      pos_high
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_high
-						pos:   or_pos_high
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_high
-			index:    ast.RangeExpr{
-				low:      ast.empty_expr
-				high:     high
-				has_high: has_high
-				pos:      pos_high
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_high
-				stmts: or_stmts_high
-				scope: or_scope
-				pos:   or_pos_high
-			}
-			is_gated: is_gated
-		}
+		indices << p.index_expr_part(is_gated)
 	}
-	expr := p.expr(0) // `[expr]` or  `[expr..`
-	mut has_high := false
-
-	if p.tok.kind == .dotdot {
-		// either [start..end] or [start..]
-		p.next()
-		mut high := ast.empty_expr
-		if p.tok.kind != .rsbr {
-			has_high = true
-			high = p.expr(0)
-		}
-		pos_low := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_low := ast.OrKind.absent
-		mut or_stmts_low := []ast.Stmt{}
-		mut or_pos_low := token.Pos{}
-		mut or_scope := ast.empty_scope
-		if !p.or_is_handled {
-			// a[start..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_low, or_pos_low, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_low
-					index:    ast.RangeExpr{
-						low:      expr
-						high:     high
-						has_high: has_high
-						has_low:  has_low
-						pos:      pos_low
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_low
-						pos:   or_pos_low
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_low
-			index:    ast.RangeExpr{
-				low:      expr
-				high:     high
-				has_high: has_high
-				has_low:  has_low
-				pos:      pos_low
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_low
-				stmts: or_stmts_low
-				scope: or_scope
-				pos:   or_pos_low
-			}
-			is_gated: is_gated
-		}
-	}
-	// [expr]
 	pos := start_pos.extend(p.tok.pos())
 	p.check(.rsbr)
 	mut or_kind := ast.OrKind.absent
@@ -2230,7 +2128,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_stmts, or_pos, or_scope = p.or_block(.no_err_var)
 			return ast.IndexExpr{
 				left:     left
-				index:    expr
+				index:    indices[0]
+				indices:  indices
 				pos:      pos
 				or_expr:  ast.OrExpr{
 					kind:  .block
@@ -2254,7 +2153,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	}
 	return ast.IndexExpr{
 		left:     left
-		index:    expr
+		index:    indices[0]
+		indices:  indices
 		pos:      pos
 		or_expr:  ast.OrExpr{
 			kind:  or_kind

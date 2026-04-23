@@ -2635,7 +2635,13 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	last_index_expr_state := f.is_index_expr
 	f.is_index_expr = true
 	f.write('[')
-	f.expr(node.index)
+	parts := if node.indices.len > 0 { node.indices } else { [node.index] }
+	for i, part in parts {
+		if i > 0 {
+			f.write(', ')
+		}
+		f.expr(part)
+	}
 	f.write(']')
 	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {

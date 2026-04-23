@@ -614,6 +614,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			t.check_safe_array(mut node)
 			node.left = t.expr(mut node.left)
 			node.index = t.expr(mut node.index)
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << t.expr(mut index)
+			}
+			node.indices = indices
 			node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {
