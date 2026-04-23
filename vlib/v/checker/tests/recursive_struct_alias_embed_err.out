@@ -1,0 +1,5 @@
+vlib/v/checker/tests/recursive_struct_alias_embed_err.vv:1:1: error: invalid recursive struct `PostKeys`
+    1 | struct PostKeys {
+      | ~~~~~~~~~~~~~~~
+    2 |     PostKeysType
+    3 | }

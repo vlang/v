@@ -49,6 +49,20 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		if node.language == .v && !c.is_builtin_mod && !struct_sym.info.is_anon {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
+		if node.language == .v {
+			for embed in node.embeds {
+				embed_typ := c.table.unaliased_type(embed.typ)
+				if embed_typ.is_ptr() || embed_typ.has_flag(.option) {
+					continue
+				}
+				embed_sym := c.table.sym(embed_typ)
+				if embed_sym.name == struct_sym.name
+					|| c.table.has_deep_child_no_ref(embed_sym, struct_sym.name) {
+					c.error('invalid recursive struct `${node.name}`', node.pos)
+					break
+				}
+			}
+		}
 		for embed in node.embeds {
 			// gotodef for embedded struct types
 			if c.pref.is_vls && c.pref.linfo.method == .definition {

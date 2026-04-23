@@ -2187,20 +2187,50 @@ pub fn (t &Table) known_type_names() []string {
 	return res
 }
 
-// has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
-// the given name consists of module and name (`mod.Name`)
-// it doesn't care about children that are references
+// has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name.
+// The given name consists of module and name (`mod.Name`).
+// It ignores children that are references, including aliases to references.
 pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
-	if ts.info is Struct {
-		for field in ts.info.fields {
-			sym := t.sym(field.typ)
-			if !field.typ.is_ptr() && !field.typ.has_flag(.option)
-				&& (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
-				return true
+	mut seen := map[string]bool{}
+	return t.has_deep_child_no_ref_in_sym(ts, name, mut seen)
+}
+
+fn (t &Table) has_deep_child_no_ref_in_sym(ts &TypeSymbol, name string, mut seen map[string]bool) bool {
+	if ts.kind == .placeholder || ts.name in seen {
+		return false
+	}
+	seen[ts.name] = true
+	match ts.info {
+		Struct {
+			for field in ts.info.fields {
+				sym := t.sym(field.typ)
+				if !field.typ.is_ptr() && !field.typ.has_flag(.option) && (sym.name == name
+					|| (sym.info is Struct && t.has_deep_child_no_ref_in_sym(sym, name, mut seen))) {
+					return true
+				}
+			}
+			for embed in ts.info.embeds {
+				if t.has_deep_child_no_ref_in_embed(embed, name, mut seen) {
+					return true
+				}
 			}
 		}
+		else {}
 	}
+
 	return false
+}
+
+fn (t &Table) has_deep_child_no_ref_in_embed(typ Type, name string, mut seen map[string]bool) bool {
+	unaliased_typ := t.unaliased_type(typ)
+	if unaliased_typ.is_ptr() || unaliased_typ.has_flag(.option) {
+		return false
+	}
+	sym := t.sym(unaliased_typ)
+	if sym.name == name {
+		return true
+	}
+	return t.has_deep_child_no_ref_in_sym(sym, name, mut seen)
 }
 
 // complete_interface_check does a MxN check for all M interfaces vs all N types, to determine what types implement what interfaces.

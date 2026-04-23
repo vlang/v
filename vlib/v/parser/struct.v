@@ -479,7 +479,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_pub:     is_pub
 		is_builtin: name in ast.builtins
 	}
-	if p.table.has_deep_child_no_ref(&sym, name) {
+	if language == .v && p.table.has_deep_child_no_ref(&sym, name) {
 		p.error_with_pos('invalid recursive struct `${orig_name}`', name_pos)
 		return ast.StructDecl{}
 	}
