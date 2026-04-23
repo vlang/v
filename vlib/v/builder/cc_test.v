@@ -429,6 +429,22 @@ fn test_shared_windows_builds_do_not_add_subsystem_flags() {
 	assert !compile_args.contains('-mconsole')
 }
 
+fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
+	mut full_args := ['']
+	full_args << ['-shared', hello_world_example()]
+	mut prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+	prefs.ccompiler = 'tcc'
+	prefs.ccompiler_type = .tinyc
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+	assert 'no_backtrace' in prefs.compile_defines_all
+
+	mut builder := new_builder(prefs)
+	builder.out_name_c = os.join_path(os.vtmp_dir(), 'builder_cc_test.tmp.c')
+	builder.setup_ccompiler_options(prefs.ccompiler)
+
+	assert !builder.get_compile_args().contains('-bt25')
+}
+
 fn test_should_use_rsp_for_linux_by_default() {
 	builder := new_test_builder([hello_world_example()])
 	assert builder.should_use_rsp(['-o', builder.out_name_c])

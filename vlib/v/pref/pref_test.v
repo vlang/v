@@ -539,3 +539,19 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	regular_prefs.fill_with_defaults()
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
 }
+
+fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
+	mut shared_prefs := &pref.Preferences{
+		path:      'libfoo.v'
+		is_shared: true
+		ccompiler: 'gcc'
+	}
+	shared_prefs.fill_with_defaults()
+	assert 'no_backtrace' !in shared_prefs.compile_defines_all
+
+	shared_prefs.ccompiler_type = .tinyc
+	shared_prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert 'no_backtrace' in shared_prefs.compile_defines_all
+	assert shared_prefs.build_options.contains('-d no_backtrace')
+}

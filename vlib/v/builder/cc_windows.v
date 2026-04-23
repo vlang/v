@@ -40,6 +40,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 				}
 				v.pref.ccompiler = thirdparty_tcc
 				v.pref.ccompiler_type = .tinyc
+				v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 				return
 			}
 			v.cached_msvc = msvc

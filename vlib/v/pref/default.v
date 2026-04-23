@@ -246,7 +246,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.normalize_gc_defaults_for_resolved_ccompiler()
-	p.disable_tcc_shared_backtraces()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
 	p.is_vsh = p.path.ends_with('.vsh') || p.raw_vsh_tmp_prefix != ''
@@ -302,9 +301,10 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 }
 
-// normalize_gc_defaults_for_resolved_ccompiler clears stale default GC state
-// after the effective C compiler has been resolved.
+// normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
+// defaults after the effective C compiler has been resolved.
 pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
+	p.disable_tcc_shared_backtraces()
 	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
 		return
 	}
