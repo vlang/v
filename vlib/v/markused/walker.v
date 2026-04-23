@@ -577,7 +577,22 @@ pub fn (mut w Walker) mark_generic_fn_instances() {
 			continue
 		}
 		base_fkey := generic_fn.fkey()
-		for concrete_types in w.table.fn_generic_types[base_fkey] {
+		mut concrete_type_sets := [][]ast.Type{}
+		if w.keep_all_fn_generic_types[base_fkey] {
+			concrete_type_sets = w.table.fn_generic_types[base_fkey].clone()
+		} else {
+			for concrete_types in w.used_fn_generic_types[base_fkey] {
+				if concrete_types !in concrete_type_sets {
+					concrete_type_sets << concrete_types.clone()
+				}
+			}
+			for concrete_types in w.walked_fn_generic_types[base_fkey] {
+				if concrete_types !in concrete_type_sets {
+					concrete_type_sets << concrete_types.clone()
+				}
+			}
+		}
+		for concrete_types in concrete_type_sets {
 			if concrete_types.any(it.has_flag(.generic)) {
 				continue
 			}
@@ -2951,6 +2966,29 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 				w.table.fn_generic_types[fkey] << ctl
 			}
 		}
+	}
+	// Phase 6: Prune non-method generic functions to the concrete type sets
+	// that were actually reached during the markused walk.
+	for fkey, _ in w.table.fn_generic_types {
+		if w.keep_all_fn_generic_types[fkey] {
+			continue
+		}
+		fn_decl := w.all_fns[fkey] or { continue }
+		if fn_decl.is_method {
+			continue
+		}
+		mut kept_types := [][]ast.Type{}
+		for concrete_type_list in w.used_fn_generic_types[fkey] {
+			if concrete_type_list !in kept_types {
+				kept_types << concrete_type_list.clone()
+			}
+		}
+		for concrete_type_list in w.walked_fn_generic_types[fkey] {
+			if concrete_type_list !in kept_types {
+				kept_types << concrete_type_list.clone()
+			}
+		}
+		w.table.fn_generic_types[fkey] = kept_types
 	}
 }
 

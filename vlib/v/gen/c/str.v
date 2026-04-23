@@ -71,10 +71,6 @@ fn option_mut_param_surface_type(expr ast.Expr) ast.Type {
 	if typ == 0 || !typ.has_flag(.option) {
 		return 0
 	}
-	inner := typ.clear_option_and_result()
-	if inner.is_ptr() {
-		return inner.deref().set_flag(.option)
-	}
 	return typ
 }
 
@@ -91,8 +87,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	// option_mut_param_t is pointer-like even when nr_muls == 0
-	is_ptr := typ.is_ptr() || typ.has_flag(.option_mut_param_t)
+	// `mut ?T` params are passed by pointer in C, but should still stringify as
+	// option values rather than as raw `&...` pointers.
+	is_ptr := typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {

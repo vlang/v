@@ -66,6 +66,8 @@ fn test_cast_map_literal_with_closure_value() {
 		return [tree.value + input]
 	}
 
-	assert belt['bar']('foo') == ['he hefoo']
-	assert belt2['bar']('fo') == ['he hefo']
+	bar := belt['bar'] or { panic('missing `bar` in belt') }
+	bar2 := belt2['bar'] or { panic('missing `bar` in belt2') }
+	assert bar('foo') == ['he hefoo']
+	assert bar2('fo') == ['he hefo']
 }

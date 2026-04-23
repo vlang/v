@@ -1267,6 +1267,7 @@ fn (mut c Checker) infer_composite_generic_type(gt_name string, generic_typ ast.
 	actual_type_args, actual_parent_idx := c.generic_type_args_and_parent_idx(concrete_typ)
 	if expected_parent_idx != 0 && actual_parent_idx != 0 && expected_type_args.len > 0
 		&& expected_type_args.len == actual_type_args.len {
+		mut parent_types_match := true
 		if expected_parent_idx != actual_parent_idx {
 			expected_parent_sym := c.table.sym(ast.idx_to_type(expected_parent_idx))
 			actual_parent_sym := c.table.sym(ast.idx_to_type(actual_parent_idx))
@@ -1283,14 +1284,16 @@ fn (mut c Checker) infer_composite_generic_type(gt_name string, generic_typ ast.
 			if expected_parent_name != actual_parent_name
 				&& expected_parent_sym.parent_idx != actual_parent_idx
 				&& actual_parent_sym.parent_idx != expected_parent_idx {
-				return ast.void_type
+				parent_types_match = false
 			}
 		}
-		for i, expected_type_arg in expected_type_args {
-			inferred_type := c.infer_composite_generic_type(gt_name, expected_type_arg,
-				actual_type_args[i])
-			if inferred_type != ast.void_type {
-				return inferred_type
+		if parent_types_match {
+			for i, expected_type_arg in expected_type_args {
+				inferred_type := c.infer_composite_generic_type(gt_name, expected_type_arg,
+					actual_type_args[i])
+				if inferred_type != ast.void_type {
+					return inferred_type
+				}
 			}
 		}
 	}

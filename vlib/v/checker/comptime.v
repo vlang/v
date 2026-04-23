@@ -70,6 +70,9 @@ fn (mut c Checker) check_comptime_method_call_args(mut node ast.ComptimeCall) {
 	if c.comptime.comptime_for_method == unsafe { nil } {
 		return
 	}
+	if node.args.any(it.expr is ast.ArrayDecompose) {
+		return
+	}
 	method := c.comptime.comptime_for_method
 	if method.params.len == 0 {
 		return

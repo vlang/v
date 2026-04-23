@@ -978,6 +978,9 @@ fn (mut g Gen) post_process_generic_fns_for_files(files []&ast.File) {
 			g.fid = fid
 			g.file = file
 			for generic_fn in file.generic_fns {
+				if generic_fn.is_anon {
+					continue
+				}
 				effective_generic_names := g.effective_fn_generic_names(*generic_fn)
 				if effective_generic_names.len == 0 {
 					continue
@@ -1515,7 +1518,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 			name = name.replace_each(c_fn_name_escape_seq)
 		}
 	}
-	if node.is_anon && g.anon_fn.has_ct_var {
+	if node.is_anon && g.anon_fn != unsafe { nil } && g.anon_fn.has_ct_var {
 		name = '${name}_${g.comptime.comptime_loop_id}'
 	}
 	if node.language == .c {
@@ -1874,13 +1877,6 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
-		}
-		// `mut ?T` params are modeled as `?&T` internally, but the emitted C type
-		// must be pointer-to-option-of-T: `_option_T*`, not `_option_T_ptr*`.
-		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.option)
-			&& !param.orig_typ.has_flag(.generic) && !param.orig_typ.is_ptr()
-			&& typ.has_flag(.option) && typ.is_ptr() {
-			typ = g.unwrap_generic(param.orig_typ).set_flag(.option_mut_param_t)
 		}
 		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
 			&& param.typ.has_flag(.generic) {
