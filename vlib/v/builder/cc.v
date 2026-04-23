@@ -27,6 +27,8 @@ const missing_libatomic_markers = [
 	'library not found for -latomic',
 	'cannot find libatomic',
 ]!
+const max_cross_sysroot_git_symlink_depth = 32
+const max_cross_sysroot_git_symlink_placeholder_size = 256
 
 fn live_windows_import_lib_path(source_path string) string {
 	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
@@ -1632,6 +1634,13 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 		}
 		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755) or { panic(err) }
 	}
+	repaired := repair_cross_sysroot_git_symlink_placeholders(sysroot) or {
+		verror('Failed to repair `${sysroot}` symlink placeholders: ${err}')
+		return
+	}
+	if repaired > 0 {
+		println('Materialized ${repaired} Git symlink placeholder files in ${os.quoted_path(sysroot)}.')
+	}
 }
 
 fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
@@ -1647,6 +1656,135 @@ fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
 		if !os.exists(sysroot_git_config_path) {
 			verror('Failed to clone `${crossrepo_url}` to `${sysroot}`')
 		}
+	}
+	repaired := repair_cross_sysroot_git_symlink_placeholders(sysroot) or {
+		verror('Failed to repair `${sysroot}` symlink placeholders: ${err}')
+		return
+	}
+	if repaired > 0 {
+		println('Materialized ${repaired} Git symlink placeholder files in ${os.quoted_path(sysroot)}.')
+	}
+}
+
+fn git_repo_tracked_symlink_paths(repo string) ![]string {
+	git_cmd := 'git -C ${os.quoted_path(repo)} ls-files -s'
+	res := os.execute(git_cmd)
+	if res.exit_code != 0 {
+		return error('`${git_cmd}` failed: ${res.output.trim_space()}')
+	}
+	mut paths := []string{}
+	for line in res.output.split_into_lines() {
+		if !line.starts_with('120000 ') || line.index_u8(`\t`) == -1 {
+			continue
+		}
+		paths << line.all_after('\t')
+	}
+	return paths
+}
+
+fn normalize_git_symlink_target_path(path string, raw_target string) ?string {
+	target := raw_target.trim_space()
+	if target == '' || target.index_u8(`\n`) != -1 || target.index_u8(`\r`) != -1
+		|| target.index_u8(`\t`) != -1 {
+		return none
+	}
+	resolved := if os.is_abs_path(target) {
+		os.norm_path(target)
+	} else {
+		os.norm_path(os.join_path(os.dir(path), target))
+	}
+	if !os.exists(resolved) || os.is_dir(resolved) {
+		return none
+	}
+	return resolved
+}
+
+fn git_symlink_target_path(path string) ?string {
+	if os.is_link(path) {
+		raw_target := os.readlink(path) or { return none }
+		return normalize_git_symlink_target_path(path, raw_target)
+	}
+	if !os.is_file(path) || os.file_size(path) > max_cross_sysroot_git_symlink_placeholder_size {
+		return none
+	}
+	raw_target := os.read_file(path) or { return none }
+	if raw_target.index_u8(0) != -1 {
+		return none
+	}
+	return normalize_git_symlink_target_path(path, raw_target)
+}
+
+fn git_symlink_materialization_source(path string) ?string {
+	mut current := path
+	mut seen := map[string]bool{}
+	for _ in 0 .. max_cross_sysroot_git_symlink_depth {
+		if current in seen {
+			return none
+		}
+		seen[current] = true
+		next := git_symlink_target_path(current) or {
+			if current != path && os.is_file(current) {
+				return current
+			}
+			return none
+		}
+		current = next
+	}
+	return none
+}
+
+fn materialize_git_symlink_placeholder(path string, source string) ! {
+	tmp_path := '${path}.v_symlink_fix_tmp'
+	os.rm(tmp_path) or {}
+	os.cp(source, tmp_path)!
+	os.rm(path)!
+	os.mv(tmp_path, path)!
+}
+
+fn repair_cross_sysroot_git_symlink_placeholders_in_paths(paths []string, strict bool) !int {
+	mut repaired := 0
+	for path in paths {
+		if os.is_link(path) || !os.is_file(path) {
+			continue
+		}
+		source := git_symlink_materialization_source(path) or {
+			if strict {
+				return error('`${path}` is tracked as a symlink in the cross-compilation sysroot, but its target could not be resolved')
+			}
+			continue
+		}
+		if source == path {
+			continue
+		}
+		materialize_git_symlink_placeholder(path, source)!
+		repaired++
+	}
+	return repaired
+}
+
+// Git on Windows can check symlinks out as tiny text files instead of real links.
+fn repair_cross_sysroot_git_symlink_placeholders(sysroot string) !int {
+	if !os.is_dir(sysroot) {
+		return 0
+	}
+	if tracked_paths := git_repo_tracked_symlink_paths(sysroot) {
+		mut candidates := []string{cap: tracked_paths.len}
+		for rel_path in tracked_paths {
+			candidates << os.join_path(sysroot, rel_path)
+		}
+		return repair_cross_sysroot_git_symlink_placeholders_in_paths(candidates, true)
+	} else {
+		mut fallback_candidates := []string{}
+		for path in os.walk_ext(sysroot, '', hidden: false) {
+			if !os.is_file(path) || os.is_link(path) {
+				continue
+			}
+			if os.file_size(path) > max_cross_sysroot_git_symlink_placeholder_size {
+				continue
+			}
+			fallback_candidates << path
+		}
+		return repair_cross_sysroot_git_symlink_placeholders_in_paths(fallback_candidates, false)
 	}
 }
 

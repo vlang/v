@@ -249,6 +249,71 @@ fn test_linux_cross_target_for_arm64_errors() {
 	}
 }
 
+fn test_git_symlink_target_path_detects_placeholder_file() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_git_symlink_target_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lib_dir := os.join_path(test_root, 'lib', 'x86_64-linux-gnu')
+	os.mkdir_all(lib_dir)!
+	target_file := os.join_path(lib_dir, 'libm-2.31.so')
+	placeholder := os.join_path(lib_dir, 'libm.so.6')
+	os.write_file(target_file, 'ELF PLACEHOLDER')!
+	os.write_file(placeholder, 'libm-2.31.so\n')!
+	assert git_symlink_target_path(placeholder) or { panic(err) } == target_file
+}
+
+fn test_git_symlink_target_path_ignores_linker_script() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_git_symlink_script_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lib_dir := os.join_path(test_root, 'lib', 'x86_64-linux-gnu')
+	os.mkdir_all(lib_dir)!
+	linker_script := os.join_path(lib_dir, 'libm.so')
+	os.write_file(linker_script, '/* GNU ld script */\nGROUP ( /lib/x86_64-linux-gnu/libm.so.6 )\n')!
+	assert git_symlink_target_path(linker_script) == none
+}
+
+fn test_git_symlink_materialization_source_follows_placeholder_chain() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_git_symlink_chain_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lib_dir := os.join_path(test_root, 'lib', 'x86_64-linux-gnu')
+	os.mkdir_all(lib_dir)!
+	final_target := os.join_path(lib_dir, 'libm-2.31.so')
+	first_link := os.join_path(lib_dir, 'libm.so.6')
+	second_link := os.join_path(lib_dir, 'libm.so')
+	os.write_file(final_target, 'ELF FINAL')!
+	os.write_file(first_link, 'libm-2.31.so\n')!
+	os.write_file(second_link, 'libm.so.6\n')!
+	assert git_symlink_materialization_source(second_link) or { panic(err) } == final_target
+}
+
+fn test_repair_cross_sysroot_git_symlink_placeholders_in_paths_materializes_target_copy() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_git_symlink_repair_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lib_dir := os.join_path(test_root, 'lib', 'x86_64-linux-gnu')
+	os.mkdir_all(lib_dir)!
+	final_target := os.join_path(lib_dir, 'libm-2.31.so')
+	placeholder := os.join_path(lib_dir, 'libm.so.6')
+	final_bytes := 'ELF DATA BINARY'
+	os.write_file(final_target, final_bytes)!
+	os.write_file(placeholder, 'libm-2.31.so\n')!
+	repaired := repair_cross_sysroot_git_symlink_placeholders_in_paths([placeholder], true) or {
+		panic(err)
+	}
+	assert repaired == 1
+	assert os.read_file(placeholder)! == final_bytes
+}
+
 fn test_msvc_should_use_rsp_for_ascii_args() {
 	builder := new_builder_for_args(['-cc', 'msvc', hello_world_example()])
 	assert builder.msvc_should_use_rsp(['/OUT:"C:\\Users\\russo\\Desktop\\main.exe"'])
