@@ -23,6 +23,11 @@ pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text('Hello V!')
 }
 
+@['/redirect_root']
+pub fn (mut app App) redirect_root(mut ctx Context) veb.Result {
+	return ctx.redirect('/root.txt')
+}
+
 @[post]
 pub fn (mut app App) post_request(mut ctx Context) veb.Result {
 	return ctx.text(ctx.req.data)
@@ -85,6 +90,13 @@ fn run_app_test() {
 
 fn test_static_root() {
 	x := http.get('${localserver}/root.txt')!
+
+	assert x.status() == .ok
+	assert x.body == 'root'
+}
+
+fn test_redirect_to_static_root() {
+	x := http.get('${localserver}/redirect_root')!
 
 	assert x.status() == .ok
 	assert x.body == 'root'

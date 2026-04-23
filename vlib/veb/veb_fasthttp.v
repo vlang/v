@@ -189,7 +189,11 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
 			url, host)
 		{
-			return &user_context.Context
+			// Preserve the handled context on the heap before the stack-local user context goes away.
+			unsafe {
+				*ctx = user_context.Context
+			}
+			return ctx
 		}
 	}
 	// Match controller paths first
@@ -202,7 +206,11 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	mut user_context := X{}
 	user_context.Context = ctx
 	handle_route[A, X](mut app, mut user_context, url, host, params.routes)
-	return &user_context.Context
+	// Preserve the handled context on the heap before the stack-local user context goes away.
+	unsafe {
+		*ctx = user_context.Context
+	}
+	return ctx
 }
 
 // decode_chunked_body decodes a chunked transfer-encoded body string

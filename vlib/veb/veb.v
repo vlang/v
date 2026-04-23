@@ -297,7 +297,11 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			global_app.static_compression_max_size, global_app.static_compression_mime_types,
 			global_app.enable_markdown_negotiation), mut user_context, url, host)
 		{
-			return &user_context.Context
+			// Preserve the handled context on the heap before the stack-local user context goes away.
+			unsafe {
+				*ctx = user_context.Context
+			}
+			return ctx
 		}
 	}
 	$if A is ControllerInterface {
@@ -308,7 +312,11 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	mut user_context := X{}
 	user_context.Context = ctx
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
-	return &user_context.Context
+	// Preserve the handled context on the heap before the stack-local user context goes away.
+	unsafe {
+		*ctx = user_context.Context
+	}
+	return ctx
 }
 
 fn write_ssl_context_response(mut ssl_conn mbedtls.SSLConn, completed_context &Context) ! {

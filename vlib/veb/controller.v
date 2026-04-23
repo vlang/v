@@ -58,8 +58,11 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 			user_context.Context = ctx
 
 			handle_route[A, X](mut global_app, mut user_context, url, host, &routes)
-			// we need to explicitly tell the V compiler to return a reference
-			return &user_context.Context
+			// Preserve the handled context on the heap before the stack-local user context goes away.
+			unsafe {
+				*ctx = user_context.Context
+			}
+			return ctx
 		}
 	}
 }
