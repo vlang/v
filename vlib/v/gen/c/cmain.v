@@ -176,6 +176,23 @@ fn (mut g Gen) gen_boehm_gc_init() {
 	g.writeln('#endif')
 }
 
+fn (mut g Gen) gen_windows_shared_library_boehm_init() {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		return
+	}
+	g.writeln('#if defined(_VGCBOEHM)')
+	g.writeln('\tGC_set_pages_executable(0);')
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		g.writeln('\tGC_set_free_space_divisor(2);')
+	}
+	g.writeln('\tGC_INIT();')
+	g.writeln('#endif')
+}
+
+fn (g &Gen) has_user_defined_windows_dll_main() bool {
+	return 'DllMain' in g.export_funcs
+}
+
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
@@ -438,18 +455,9 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 
 // gen_dll_main create DllMain() for windows .dll.
 pub fn (mut g Gen) gen_dll_main() {
-	opt_gc_setup := if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		'\t\t\tGC_set_free_space_divisor(2);\n'
-	} else {
-		''
-	}
 	g.writeln('VV_EXP BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
 	switch (fdwReason) {
 		case DLL_PROCESS_ATTACH : {
-#if defined(_VGCBOEHM)
-			GC_set_pages_executable(0);
-${opt_gc_setup}			GC_INIT();
-#endif
 			_vinit_caller();
 			break;
 		}

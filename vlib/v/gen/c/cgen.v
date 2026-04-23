@@ -1286,7 +1286,8 @@ pub fn (mut g Gen) finish() {
 	g.handle_embedded_files_finish()
 	if g.pref.is_test {
 		g.gen_c_main_for_tests()
-	} else if (g.pref.is_shared || g.pref.is_liveshared) && g.pref.os == .windows {
+	} else if (g.pref.is_shared || g.pref.is_liveshared) && g.pref.os == .windows
+		&& !g.has_user_defined_windows_dll_main() {
 		// create DllMain() for windows .dll
 		g.gen_dll_main()
 	} else {
@@ -10000,8 +10001,7 @@ fn (mut g Gen) write_init_function() {
 		util.timing_measure(@METHOD)
 	}
 
-	// Force generate _vinit_caller, _vcleanup_caller , these are needed under Windows,
-	// because dl.open() / dl.close() will call them when loading/unloading shared dll.
+	// Shared libraries need reusable entrypoints for the default V runtime startup/cleanup path.
 	if g.pref.is_liveshared && g.pref.os != .windows {
 		return
 	}
@@ -10173,7 +10173,7 @@ fn (mut g Gen) write_init_function() {
 
 	if g.pref.is_shared {
 		// shared libraries need a way to call _vinit/2. For that purpose,
-		// provide a constructor/destructor pair, ensuring that all constants
+		// provide reusable init/cleanup helpers, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
 		if g.pref.os != .windows {
@@ -10182,6 +10182,9 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.pref.os == .windows {
+			g.gen_windows_shared_library_boehm_init()
+		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 

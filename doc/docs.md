@@ -8538,6 +8538,37 @@ fn foo() {
 }
 ```
 
+When compiling a Windows DLL with `-shared`, V generates a default `DllMain`
+that calls `_vinit_caller()` on `DLL_PROCESS_ATTACH` and `_vcleanup_caller()`
+on `DLL_PROCESS_DETACH`.
+
+If you export your own `DllMain`, V will not generate the default one. Call
+`C._vinit_caller()` and `C._vcleanup_caller()` from your entry point to keep
+the standard V runtime setup and teardown:
+
+```v
+pub type C.DWORD = u32
+pub type C.LPVOID = voidptr
+
+fn C._vinit_caller()
+fn C._vcleanup_caller()
+
+@[export: 'DllMain']
+pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {
+	_ = hinst
+	_ = reserved
+	if reason == C.DWORD(1) {
+		C._vinit_caller()
+	} else if reason == C.DWORD(0) {
+		C._vcleanup_caller()
+	}
+	return 1
+}
+```
+
+In the example above, `C.DWORD(1)` is `DLL_PROCESS_ATTACH` and `C.DWORD(0)`
+is `DLL_PROCESS_DETACH`.
+
 ### Translating C to V
 
 V can translate your C code to human readable V code, and generating V wrappers

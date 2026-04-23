@@ -261,6 +261,28 @@ fn test_no_main_exports_initialize_windows_runtime() {
 	}
 }
 
+fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_user_defined_windows_dllmain.vv')
+	os.write_file(test_source,
+		['module test', '', 'pub type C.DWORD = u32', 'pub type C.LPVOID = voidptr', '', 'fn C._vinit_caller()', 'fn C._vcleanup_caller()', '', "@[export: 'library_answer']", 'pub fn library_answer() int {', '\treturn 42', '}', '', "@[export: 'DllMain']", 'pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {', '\t_ = hinst', '\t_ = reserved', '\tif reason == C.DWORD(1) {', '\t\tC._vinit_caller()', '\t} else if reason == C.DWORD(0) {', '\t\tC._vcleanup_caller()', '\t}', '\treturn 1', '}'].join('\n') +
+		'\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -shared -gc boehm ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('void _vinit_caller() {')
+	assert compilation.output.contains('GC_set_pages_executable(0);')
+	assert compilation.output.contains('GC_INIT();')
+	assert compilation.output.contains('DllMain(')
+	assert compilation.output.contains('_vinit_caller();')
+	assert compilation.output.contains('_vcleanup_caller();')
+	assert !compilation.output.contains('switch (fdwReason)')
+	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
+}
+
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
 	for cline in generated_c_lines {
 		if line == cline {
