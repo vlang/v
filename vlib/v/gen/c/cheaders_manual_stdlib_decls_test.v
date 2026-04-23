@@ -23,6 +23,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('int vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 
 	assert generated_c.contains('int vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nint _fileno(FILE *stream);\nFILE *_wfopen(const unsigned short *filename, const unsigned short *mode);\nint _wremove(const unsigned short *path);\n#endif'), generated_c
 
 	assert generated_c.contains('void perror(const char *str);'), generated_c
 	assert generated_c.contains('int mkstemp(char *stemplate);'), generated_c

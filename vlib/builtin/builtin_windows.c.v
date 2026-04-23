@@ -7,6 +7,10 @@ module builtin
 #include <io.h>
 #include <fcntl.h>
 
+// Cast the V callback to the Windows SDK callback type. Clang 20 treats the
+// otherwise-compatible struct pointer mismatch as a hard error for v_win.c.
+#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
+
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
 pub type C.BOOL = int
@@ -166,6 +170,7 @@ pub:
 type TopLevelExceptionFilter = fn (&ExceptionPointers) C.LONG
 
 fn C.SetUnhandledExceptionFilter(TopLevelExceptionFilter) voidptr
+fn C.v_set_unhandled_exception_filter(TopLevelExceptionFilter) voidptr
 
 @[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
@@ -188,7 +193,7 @@ fn add_unhandled_exception_handler() {
 	// A vectored handler also sees first-chance exceptions that Windows APIs may
 	// handle internally, which can lead to false-positive "Unhandled Exception"
 	// reports. Register a top-level filter instead.
-	C.SetUnhandledExceptionFilter(unhandled_exception_handler)
+	C.v_set_unhandled_exception_filter(unhandled_exception_handler)
 }
 
 fn C.IsDebuggerPresent() bool

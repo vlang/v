@@ -533,6 +533,11 @@ char *strchr(const char *str, int c);
 char *strrchr(const char *str, int c);
 int fseek(FILE *stream, long offset, int whence);
 isize getline(char **lineptr, size_t *n, FILE *stream);
+#if defined(_WIN32) || defined(_WIN64)
+int _fileno(FILE *stream);
+FILE *_wfopen(const unsigned short *filename, const unsigned short *mode);
+int _wremove(const unsigned short *path);
+#endif
 #ifndef _IOFBF
 	#define _IOFBF 0
 #endif

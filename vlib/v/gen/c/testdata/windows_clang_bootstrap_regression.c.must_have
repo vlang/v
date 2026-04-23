@@ -9,11 +9,15 @@ _INTSIZEOF(t)) - \
 _INTSIZEOF(t)))
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
 FILE* __cdecl __acrt_iob_func(unsigned index);
+int _fileno(FILE *stream);
+FILE *_wfopen(const unsigned short *filename, const unsigned short *mode);
+int _wremove(const unsigned short *path);
 #if defined(_MSC_VER) && !defined(__clang__)
 #define C__LONG LONG
+#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
 typedef C__LONG (VCALLCONV(stdcall) *TopLevelExceptionFilter)(ExceptionPointers*);
 VV_LOC C__LONG VCALLCONV(stdcall) builtin__unhandled_exception_handler(ExceptionPointers* e);
-SetUnhandledExceptionFilter(builtin__unhandled_exception_handler);
+v_set_unhandled_exception_filter(builtin__unhandled_exception_handler);
 u32 res = FormatMessageW(
 atomic_compare_exchange_weak_ptr(((voidptr)(&ch->adr_written)), ((voidptr)(&nulladr)), ((isize)(-1)))
 atomic_compare_exchange_strong_ptr(((voidptr)(&ch->write_adr)), ((voidptr)(&wradr)), ((isize)(0)))

@@ -164,6 +164,7 @@ clang -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
+	if [!compiler!] == [] goto :gcc_strap
 	goto :compile_error
 )
 
@@ -222,20 +223,13 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-if not exist "%tcc_exe%" call :download_tcc
-if exist "%tcc_exe%" (
-	echo  ^> Bootstrapping "%V_BOOTSTRAP%" from %V_C_FILE% with "!tcc_exe!" before compiling "%V_EXE%" with MSVC
-	"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
-	if %ERRORLEVEL% NEQ 0 goto :compile_error
-) else (
-	echo  ^> Attempting to build "%V_BOOTSTRAP%" from %V_C_FILE% with MSVC
-	cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP /F33554432 "%V_C_FILE%" user32.lib kernel32.lib advapi32.lib shell32.lib ws2_32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
-	if %ERRORLEVEL% NEQ 0 (
-		echo In some cases, compile errors happen because of the MSVC compiler version
-		cl.exe
-		if exist %ObjFile% del %ObjFile%
-		goto :compile_error
-	)
+echo  ^> Attempting to build "%V_BOOTSTRAP%" from %V_C_FILE% with MSVC
+cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP /F33554432 "%V_C_FILE%" user32.lib kernel32.lib advapi32.lib shell32.lib ws2_32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
+if %ERRORLEVEL% NEQ 0 (
+	echo In some cases, compile errors happen because of the MSVC compiler version
+	cl.exe
+	if exist %ObjFile% del %ObjFile%
+	goto :compile_error
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
