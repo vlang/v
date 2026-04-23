@@ -166,6 +166,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
 							last_v_mod = j
+							break
 						}
 						continue
 					}

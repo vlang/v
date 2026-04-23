@@ -183,6 +183,26 @@ fn test_module_resolution_is_independent_of_working_directory() {
 	assert res_app.trim_space() == 'Hello 16!'
 }
 
+fn test_running_project_from_its_own_vmod_with_parent_vmod_works_issue_26828() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_26828_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	project_root := os.join_path(root, 'outer')
+	module_root := os.join_path(project_root, 'cli004')
+	os.mkdir_all(os.join_path(module_root, 'sub'))!
+	os.write_file(os.join_path(project_root, 'v.mod'), "Module {\n\tname: 'outer'\n}\n")!
+	os.write_file(os.join_path(module_root, 'v.mod'), "Module {\n\tname: 'cli004'\n}\n")!
+	os.write_file(os.join_path(module_root, 'cli004.v'),
+		'module main\n\nimport sub\n\nfn main() {\n\tsub.greetings()\n}\n')!
+	os.write_file(os.join_path(module_root, 'sub', 'hey.v'),
+		"module sub\n\npub fn greetings() {\n\tprintln('greetings from sub')\n}\n")!
+
+	res := vrun_ok_in_dir(module_root, 'crun', '.')
+	assert res.trim_space() == 'greetings from sub'
+}
+
 fn test_custom_print_should_compile_with_no_builtin() {
 	source_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.v')
 	output_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.c')

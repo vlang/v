@@ -2,6 +2,7 @@ module util
 
 import os
 import time
+import v.pref
 
 fn test_tool_recompilation_args_force_system_cc_for_vdoc_on_freebsd() {
 	assert tool_recompilation_args('vdoc', 'freebsd') == ['-cc', 'cc']
@@ -126,4 +127,30 @@ fn test_vlines_escape_path_does_not_restore_old_tcc_prefix_workaround() {
 	$if windows {
 		assert escaped_tcc_path.starts_with(os.windows_volume(source_path))
 	}
+}
+
+fn test_qualify_import_stops_at_nearest_vmod_issue_26828() {
+	root := os.join_path(os.vtmp_dir(), 'v_qualify_import_issue_26828_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	project_root := os.join_path(root, 'outer')
+	module_root := os.join_path(project_root, 'cli004')
+	os.mkdir_all(os.join_path(module_root, 'sub'))!
+	os.write_file(os.join_path(project_root, 'v.mod'), "Module {\n\tname: 'outer'\n}\n")!
+	os.write_file(os.join_path(module_root, 'v.mod'), "Module {\n\tname: 'cli004'\n}\n")!
+	main_file := os.join_path(module_root, 'cli004.v')
+	os.write_file(main_file, 'module main\n\nimport sub\n\nfn main() {}\n')!
+
+	mut p := pref.new_preferences()
+	p.path = '.'
+	old_dir := os.getwd()
+	defer {
+		os.chdir(old_dir) or { panic(err) }
+	}
+	os.chdir(module_root)!
+
+	assert qualify_import(p, 'sub', main_file) == 'sub'
+	assert qualify_import(p, 'sub', 'cli004.v') == 'sub'
 }
