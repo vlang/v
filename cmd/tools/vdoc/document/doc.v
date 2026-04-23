@@ -358,6 +358,14 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 					preceding_comments << comment
 				}
 				continue
+			} else if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				comments := ast_comments_to_doc_comments(stmt.expr.post_comments)
+				if collect_post_module_comments {
+					post_module_comments << comments
+				} else {
+					preceding_comments << comments
+				}
+				continue
 			}
 		}
 		// TODO: Fetch head comment once
