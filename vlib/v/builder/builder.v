@@ -801,6 +801,10 @@ fn mod_tail_after_vmod_name(mod string, vmod_name string) !string {
 	return error('module not found')
 }
 
+fn (b &Builder) module_path_has_v_files(path string) bool {
+	return b.v_files_from_dir(path).len > 0
+}
+
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
@@ -826,16 +830,25 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			}
 		}
 	}
+	mut empty_module_path := ''
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
-			if b.pref.is_verbose {
-				println('  << found ${found_path} .')
+			if b.module_path_has_v_files(found_path) {
+				if b.pref.is_verbose {
+					println('  << found ${found_path} .')
+				}
+				return found_path
 			}
-			return found_path
+			if empty_module_path == '' {
+				empty_module_path = found_path
+			}
+			if b.pref.is_verbose {
+				println('  << skipped ${found_path} (no .v files) .')
+			}
 		}
 	}
 	// look up through parents
@@ -846,13 +859,27 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(current_dir, mod) {
-			return found_path
+			if b.module_path_has_v_files(found_path) {
+				if b.pref.is_verbose {
+					println('  << found ${found_path} .')
+				}
+				return found_path
+			}
+			if empty_module_path == '' {
+				empty_module_path = found_path
+			}
+			if b.pref.is_verbose {
+				println('  << skipped ${found_path} (no .v files) .')
+			}
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
 		}
 		current_dir = parent_dir
+	}
+	if empty_module_path != '' {
+		return empty_module_path
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "${mod}" not found in:\n${smodule_lookup_paths}')

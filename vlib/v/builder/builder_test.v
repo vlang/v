@@ -151,6 +151,23 @@ pub fn name() string {
 	assert run_v_ok('${os.quoted_path(vexe)} run ./source').trim_space() == 'foo+dep'
 }
 
+fn test_empty_local_dir_does_not_shadow_vlib_module() {
+	os.chdir(test_path)!
+	project_dir := os.join_path(test_path, 'run_empty_local_module_dir')
+	defer {
+		os.chdir(test_path) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'os'))!
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		"module main\n\nimport os\n\nfn main() {\n\tprintln(os.is_dir('.'))\n}\n")!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} run main.v')
+
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'true'
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')
