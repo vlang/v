@@ -175,12 +175,17 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
+	pref_copy := *pref_
+	comptime_pref := &pref.Preferences{
+		...pref_copy
+		output_mode: .silent
+	}
 	mut p := Parser{
 		content:   .comptime
 		file_path: tmpl_path
-		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
+		scanner:   scanner.new_scanner(text, .skip_comments, comptime_pref)
 		table:     table
-		pref:      pref_
+		pref:      comptime_pref
 		scope:     scope
 		errors:    []errors.Error{}
 		warnings:  []errors.Warning{}

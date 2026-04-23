@@ -566,16 +566,81 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
-	// Store call stack info for template errors
-	file.call_stack = [
+	template_call_stack := [
 		errors.CallStackItem{
 			file_path: p.file_path
 			pos:       start_pos
 		},
 	]
+	// Store call stack info for template errors
+	file.call_stack = template_call_stack
 	// Transfer template paths and line mapping from parser to file for error reporting
 	file.template_paths = p.template_paths
 	file.template_line_map = p.template_line_map
+	for i, err in file.errors {
+		mut file_path := err.file_path
+		mut line_nr := err.pos.line_nr
+		if err.pos.line_nr >= 0 && err.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[err.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.errors[i] = errors.Error{
+			message:    err.message
+			details:    err.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...err.pos
+				line_nr: line_nr
+			}
+			reporter:   err.reporter
+			call_stack: if err.call_stack.len > 0 { err.call_stack } else { template_call_stack }
+		}
+	}
+	for i, warn in file.warnings {
+		mut file_path := warn.file_path
+		mut line_nr := warn.pos.line_nr
+		if warn.pos.line_nr >= 0 && warn.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[warn.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.warnings[i] = errors.Warning{
+			message:    warn.message
+			details:    warn.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...warn.pos
+				line_nr: line_nr
+			}
+			reporter:   warn.reporter
+			call_stack: if warn.call_stack.len > 0 { warn.call_stack } else { template_call_stack }
+		}
+	}
+	for i, notice in file.notices {
+		mut file_path := notice.file_path
+		mut line_nr := notice.pos.line_nr
+		if notice.pos.line_nr >= 0 && notice.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[notice.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.notices[i] = errors.Notice{
+			message:    notice.message
+			details:    notice.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...notice.pos
+				line_nr: line_nr
+			}
+			reporter:   notice.reporter
+			call_stack: if notice.call_stack.len > 0 {
+				notice.call_stack
+			} else {
+				template_call_stack
+			}
+		}
+	}
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
 		is_template: true

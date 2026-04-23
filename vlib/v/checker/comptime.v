@@ -226,6 +226,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
+		template_parser_errors := node.veb_tmpl.errors.clone()
+		template_parser_warnings := node.veb_tmpl.warnings.clone()
+		template_parser_notices := node.veb_tmpl.notices.clone()
 		c2.check(mut node.veb_tmpl)
 
 		// Cache template file content for error display using the relative path
@@ -247,7 +250,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					c2.errors[i] = errors.Error{
 						message:    err.message
 						details:    err.details
-						file_path:  err.file_path
+						file_path:  line_info.tmpl_path
 						pos:        token.Pos{
 							...err.pos
 							line_nr: line_info.tmpl_line
@@ -263,7 +266,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					c2.warnings[i] = errors.Warning{
 						message:    warn.message
 						details:    warn.details
-						file_path:  warn.file_path
+						file_path:  line_info.tmpl_path
 						pos:        token.Pos{
 							...warn.pos
 							line_nr: line_info.tmpl_line
@@ -279,7 +282,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					c2.notices[i] = errors.Notice{
 						message:    notice.message
 						details:    notice.details
-						file_path:  notice.file_path
+						file_path:  line_info.tmpl_path
 						pos:        token.Pos{
 							...notice.pos
 							line_nr: line_info.tmpl_line
@@ -290,6 +293,13 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 				}
 			}
 		}
+
+		c.warnings << template_parser_warnings
+		c.errors << template_parser_errors
+		c.notices << template_parser_notices
+		c.nr_warnings += template_parser_warnings.len
+		c.nr_errors += template_parser_errors.len
+		c.nr_notices += template_parser_notices.len
 
 		c.warnings << c2.warnings
 		c.errors << c2.errors
