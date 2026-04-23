@@ -743,7 +743,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	} else if field.typ.has_flag(.option) {
 		g.gen_option_error(field.typ, ast.None{})
 		return true
-	} else if sym.info is ast.SumType {
+	} else if sym.info is ast.SumType && !field.typ.is_any_kind_of_pointer() {
 		g.write(g.type_default_sumtype(field.typ, sym))
 		return true
 	} else if sym.info is ast.ArrayFixed {
