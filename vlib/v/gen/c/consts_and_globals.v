@@ -426,6 +426,70 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 	}
 }
 
+fn (mut g Gen) global_const_expr_is_c_const(expr ast.Expr) bool {
+	match expr {
+		ast.BoolLiteral, ast.CharLiteral, ast.EnumVal, ast.FloatLiteral, ast.IntegerLiteral,
+		ast.Nil, ast.SizeOf, ast.StringLiteral {
+			return true
+		}
+		ast.ArrayInit {
+			if !expr.is_fixed || expr.has_len || expr.has_cap || expr.has_init || expr.has_index {
+				return false
+			}
+			for item in expr.exprs {
+				if !g.global_const_expr_is_c_const(item) {
+					return false
+				}
+			}
+			return true
+		}
+		ast.CastExpr {
+			return !expr.has_arg && g.global_const_expr_is_c_const(expr.expr)
+		}
+		ast.Ident {
+			return expr.kind == .function
+				|| (expr.obj is ast.ConstField && expr.obj.is_simple_define_const())
+		}
+		ast.InfixExpr {
+			if expr.left_type == ast.string_type || expr.right_type == ast.string_type
+				|| expr.promoted_type == ast.string_type {
+				return false
+			}
+			return g.global_const_expr_is_c_const(expr.left)
+				&& g.global_const_expr_is_c_const(expr.right)
+		}
+		ast.ParExpr {
+			return g.global_const_expr_is_c_const(expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return expr.right is ast.Ident || expr.right is ast.SelectorExpr
+			}
+			return g.global_const_expr_is_c_const(expr.right)
+		}
+		ast.SelectorExpr {
+			return expr.expr is ast.Ident && expr.expr.name == 'C'
+		}
+		ast.StructInit {
+			if expr.has_update_expr {
+				return false
+			}
+			for field in expr.init_fields {
+				if !g.global_const_expr_is_c_const(field.expr) {
+					return false
+				}
+			}
+			return true
+		}
+		ast.UnsafeExpr {
+			return g.global_const_expr_is_c_const(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	// was static used here to to make code optimizable? it was removed when
 	// 'extern' was used to fix the duplicate symbols with usecache && clang
@@ -475,6 +539,47 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 		}
 		styp := g.styp(field.typ)
+		mut def_builder := strings.new_builder(100)
+		mut init := ''
+		extern := if field.is_extern { 'extern ' } else { '' }
+		field_visibility_kw := if field.is_extern { '' } else { visibility_kw }
+		mut qualifiers := ''
+		if field.is_const {
+			qualifiers += 'const '
+		}
+		if field.is_volatile {
+			qualifiers += 'volatile '
+		}
+		final_c_name := field.name.all_after('C.')
+		if field.is_const {
+			if field.is_extern || field_visibility_kw == 'extern ' {
+				def_builder.writeln('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
+				g.global_const_defs[name] = GlobalConstDef{
+					mod:   node.mod
+					def:   def_builder.str()
+					order: -1
+				}
+				continue
+			}
+			if !field.has_expr {
+				g.error('const globals must have an explicit initializer', field.pos)
+				continue
+			}
+			if !g.global_const_expr_is_c_const(field.expr) {
+				g.error('const global `${field.name}` must be initialized with a C constant expression',
+					field.pos)
+				continue
+			}
+			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
+			def_builder.write_string(' = ${g.expr_string(field.expr)}')
+			def_builder.writeln('; // global 2')
+			g.global_const_defs[name] = GlobalConstDef{
+				mod:   node.mod
+				def:   def_builder.str()
+				order: -1
+			}
+			continue
+		}
 		mut anon_fn_expr := unsafe { field.expr }
 		if field.has_expr && mut anon_fn_expr is ast.AnonFn {
 			g.gen_anon_fn_decl(mut anon_fn_expr)
@@ -486,14 +591,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 			continue
 		}
-		mut def_builder := strings.new_builder(100)
-		mut init := ''
-		extern := if field.is_extern { 'extern ' } else { '' }
-		field_visibility_kw := if field.is_extern { '' } else { visibility_kw }
-		modifier := if field.is_volatile { ' volatile ' } else { '' }
-		final_c_name := field.name.all_after('C.')
 		if field.is_extern {
-			def_builder.writeln('${extern}${field_visibility_kw}${modifier}${styp} ${attributes}${final_c_name}; // global 2')
+			def_builder.writeln('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -503,7 +602,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			def_builder.write_string('${extern}${field_visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
+			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {

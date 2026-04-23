@@ -2863,8 +2863,19 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments()
-		is_volatile := p.tok.kind == .key_volatile
-		if is_volatile {
+		mut is_volatile := false
+		mut is_const := false
+		for p.tok.kind in [.key_const, .key_volatile] {
+			match p.tok.kind {
+				.key_const {
+					is_const = true
+				}
+				.key_volatile {
+					is_volatile = true
+				}
+				else {}
+			}
+
 			p.next()
 		}
 		if is_block && p.tok.kind == .eof {
@@ -2928,6 +2939,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments:    comments
 			is_markused: is_markused
 			is_volatile: is_volatile
+			is_const:    is_const
 			is_exported: is_exported
 			is_weak:     is_weak
 			is_hidden:   is_hidden

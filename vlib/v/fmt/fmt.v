@@ -1364,6 +1364,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	for field in node.fields {
 		f.comments(field.comments, same_line: true)
+		if field.is_const {
+			f.write('const ')
+		}
 		if field.is_volatile {
 			f.write('volatile ')
 		}

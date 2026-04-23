@@ -7942,6 +7942,9 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Use `const` after `__global` (or inside the `__global ( ... )` block) when the symbol
+must stay a true C-level constant. Non-extern const globals currently require an explicit
+initializer that can be emitted directly in C global scope.
 Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
 not with a value returned from a function call but with a method call by reference.
 A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
@@ -8204,9 +8207,10 @@ dump(f)
 ```
 
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
-when you want to redeclare an external symbol explicitly. When the type already comes
-from the V context, direct references like `buffer = C.buffer` and `[4]u8(C.buffer)`
-can be used as well.
+when you want to redeclare an external symbol explicitly, or
+`@[c_extern] __global const name C.Type` for an external `extern const` symbol.
+When the type already comes from the V context, direct references like
+`buffer = C.buffer` and `[4]u8(C.buffer)` can be used as well.
 
 **Example of using a C function from stdio, by redeclaring it on the V side**
 ```v

@@ -1782,6 +1782,10 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)
 				}
+			} else if expr.obj is ast.GlobalField && expr.obj.is_const {
+				if !c.pref.translated && c.mod != 'veb' {
+					c.error('cannot modify constant `${expr.name}`', expr.pos)
+				}
 			}
 		}
 		ast.IndexExpr {
@@ -4108,6 +4112,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			c.table.export_names[field.name] = check_name
 		}
 		c.ensure_type_exists(field.typ, field.typ_pos)
+		if field.is_const && !field.is_extern && !field.has_expr {
+			c.error('const globals must have an explicit initializer', field.pos)
+		}
 		if field.has_expr {
 			if field.expr is ast.AnonFn && field.name == 'main' {
 				c.error('the `main` function is the program entry point, cannot redefine it',

@@ -1057,6 +1057,7 @@ pub:
 	typ_pos     token.Pos
 	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
+	is_const    bool
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 	is_weak     bool
 	is_hidden   bool
@@ -1251,7 +1252,8 @@ pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var { return i.obj.is_mut }
 		ConstField, EmptyScopeObject { return false }
-		AsmRegister, GlobalField { return true }
+		AsmRegister { return true }
+		GlobalField { return !i.obj.is_const }
 	}
 }
 
