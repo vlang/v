@@ -26,6 +26,58 @@ fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
 	return base_type
 }
 
+fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol) {
+	mut val_sym := val_sym_
+	if mut val_sym.info is ast.FnType {
+		g.writeln('${g.fn_ptr_decl_str(val_sym.info, c_name(node.val_var))};')
+		return
+	}
+	if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed && !node.val_is_mut {
+		g.writeln('${styp} ${c_name(node.val_var)};')
+		return
+	}
+	needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
+		&& g.table.final_sym(node.val_type).kind == .array_fixed
+	if needs_memcpy {
+		g.writeln('${styp} ${c_name(node.val_var)} = {0};')
+	} else {
+		g.writeln('${styp} ${c_name(node.val_var)};')
+	}
+}
+
+fn (mut g Gen) write_for_in_array_value_assign(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol, cond_var string, op_field string, idx string, cond_is_option bool, opt_expr string) {
+	mut val_sym := val_sym_
+	if mut val_sym.info is ast.FnType {
+		g.writeln('\t${c_name(node.val_var)} = ((voidptr*)${cond_var}${op_field}data)[${idx}];')
+		return
+	}
+	if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed && !node.val_is_mut {
+		right := '((${styp}*)${cond_var}${op_field}data)[${idx}]'
+		g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
+		return
+	}
+	needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
+		&& g.table.final_sym(node.val_type).kind == .array_fixed
+	right := if cond_is_option {
+		'((${styp}*)${opt_expr}${op_field}data)[${idx}]'
+	} else if node.val_is_mut || node.val_is_ref {
+		if g.table.value_type(node.cond_type).is_ptr() {
+			'((${styp}*)${cond_var}${op_field}data)[${idx}]'
+		} else {
+			'((${styp})${cond_var}${op_field}data) + ${idx}'
+		}
+	} else if val_sym.kind == .array_fixed {
+		'((${styp}*)${cond_var}${op_field}data)[${idx}]'
+	} else {
+		'((${styp}*)${cond_var}${op_field}data)[${idx}]'
+	}
+	if !needs_memcpy {
+		g.writeln('\t${c_name(node.val_var)} = ${right};')
+	} else {
+		g.writeln('\tmemcpy(${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
+	}
+}
+
 // A labeled continue jumps back to this gate instead of forward over later
 // declarations in the loop body, which avoids gcc -Wjump-misses-init.
 fn (mut g Gen) write_labeled_continue_gate(label string, prefix string) {
@@ -466,6 +518,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
+	mut array_debug_value_scope_opened := false
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}: {}')
 	}
@@ -572,9 +625,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			'${cond_var}${op_field}len'
 		}
+		if g.pref.is_debug && node.val_var != '_' {
+			// Keep the user-visible loop variable alive for the full loop scope so
+			// debuggers observe the current iteration value instead of the previous
+			// one.
+			g.writeln('{')
+			g.indent++
+			array_debug_value_scope_opened = true
+			g.write_for_in_array_value_decl(node, styp, val_sym)
+		}
 		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
 		if node.val_var != '_' {
-			if mut val_sym.info is ast.FnType {
+			if array_debug_value_scope_opened {
+				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i,
+					cond_is_option, opt_expr)
+			} else if mut val_sym.info is ast.FnType {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
@@ -942,6 +1007,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 	g.write_defer_stmts(node.scope, false, node.pos)
 	g.writeln('}')
+	if array_debug_value_scope_opened {
+		g.indent--
+		g.writeln('}')
+	}
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
 	}
