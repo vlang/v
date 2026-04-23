@@ -105,6 +105,11 @@ pub fn (app &App) app_middleware(mut ctx Context) bool {
 	return true
 }
 
+pub fn (app &App) before_request(mut ctx Context) bool {
+	ctx.res.header.add_custom('X-BEFORE-REQUEST-MIDDLEWARE', 'true') or { panic(err) }
+	return true
+}
+
 // route_bound_middleware reads and mutates the bound app to exercise stateful middleware.
 pub fn (mut app App) route_bound_middleware(mut ctx Context) bool {
 	app.bound_middleware_hits++
@@ -164,6 +169,7 @@ fn testsuite_begin() {
 	// global middleware
 	app.Middleware.use(handler: middleware_handler)
 	app.Middleware.use(handler: app.app_middleware)
+	app.Middleware.use(handler: app.before_request)
 
 	// should match only one slash
 	app.Middleware.route_use('/bar/:foo', handler: middleware_handler)
@@ -208,6 +214,16 @@ fn testsuite_begin() {
 fn test_index() {
 	x := http.get(localserver)!
 	assert x.body == 'from index, 2'
+}
+
+fn test_bound_before_request_named_middleware_does_not_timeout() {
+	x := http.fetch(http.FetchConfig{
+		url:           localserver
+		read_timeout:  1500 * time.millisecond
+		write_timeout: 1500 * time.millisecond
+	})!
+	assert x.body == 'from index, 2'
+	assert x.header.get_custom('X-BEFORE-REQUEST-MIDDLEWARE')! == 'true'
 }
 
 fn test_unreachable_order() {
