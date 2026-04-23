@@ -699,7 +699,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			}
 
 			if right_type != ast.no_type {
-				right_sym := c.table.sym(right_type)
+				resolved_right_type := c.unwrap_generic(right_type)
+				right_sym := c.table.final_sym(resolved_right_type)
 				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)
 				left_final_sym := c.table.final_sym(expr_type)
