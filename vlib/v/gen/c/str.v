@@ -100,8 +100,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.expected_fixed_arr = false
 	}
-	is_shared := etype.has_flag(.shared_f)
-	mut typ := etype
+	mut expr_type := etype
+	if expr is ast.Ident && g.resolved_ident_is_by_value_auto_deref_capture(expr) {
+		resolved_scope_type := g.resolved_scope_var_type(expr)
+		if resolved_scope_type != 0 {
+			expr_type = resolved_scope_type
+		}
+	}
+	is_shared := expr_type.has_flag(.shared_f)
+	mut typ := expr_type
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
@@ -131,7 +138,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write(')')
 		return
 	}
-	if mut_arg_option_type == 0 && expr is ast.Ident && expr.is_auto_deref_var()
+	if mut_arg_option_type == 0 && expr is ast.Ident && g.expr_is_auto_deref_var(expr)
 		&& typ.has_flag(.option) {
 		g.write('${g.get_str_fn(typ)}(*')
 		g.expr(expr)
@@ -143,7 +150,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	is_ptr := typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
-	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
+	if mut sym.info is ast.Alias && !sym.has_method('str') && !expr_type.has_flag(.option) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
@@ -170,7 +177,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 		g.write(')')
 	} else if typ == ast.string_type {
-		if etype.is_ptr() {
+		if expr_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(expr)
@@ -223,7 +230,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			typ = exp_typ
 		}
 		is_dump_expr := expr is ast.DumpExpr
-		is_var_mut := expr.is_auto_deref_var() && !typ.has_flag(.option)
+		is_var_mut := g.expr_is_auto_deref_var(expr) && !typ.has_flag(.option)
 		str_fn_name := if mut_arg_option_type != 0 {
 			g.get_str_fn(mut_arg_option_type)
 		} else {
@@ -303,7 +310,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
-				g.write('*'.repeat(etype.nr_muls()))
+				g.write('*'.repeat(expr_type.nr_muls()))
 			}
 		} else if !str_method_expects_ptr && is_interface_smartcast_to_nonptr {
 			g.write('*')
@@ -341,7 +348,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('}, 0, 0, 0}}))')
 		}
 	} else {
-		is_var_mut := expr.is_auto_deref_var() && !typ.has_flag(.option)
+		is_var_mut := g.expr_is_auto_deref_var(expr) && !typ.has_flag(.option)
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {

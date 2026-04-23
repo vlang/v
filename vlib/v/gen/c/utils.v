@@ -444,42 +444,46 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 		}
 		if v.is_inherited && scope.parent != unsafe { nil } {
 			if mut parent_v := scope.parent.find_var(expr.name) {
-				if parent_v.generic_typ != 0 {
-					refreshed_parent_type :=
-						g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
-					if refreshed_parent_type != 0 {
-						parent_v.typ = refreshed_parent_type
-					}
-				}
-				if parent_v.smartcasts.len > 0 {
-					smartcast_type := if parent_v.ct_type_var == .smartcast {
-						g.type_resolver.get_type(expr)
-					} else {
-						g.exposed_smartcast_type(parent_v.orig_type, parent_v.smartcasts.last(),
-							parent_v.is_mut)
-					}
-					return g.unwrap_generic(g.recheck_concrete_type(smartcast_type))
-				}
-				if parent_v.expr !is ast.EmptyExpr
-					&& ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
-					|| parent_v.typ.has_flag(.generic)
-					|| g.type_has_unresolved_generic_parts(parent_v.typ)) {
-					resolved_parent_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
-					if resolved_parent_type != 0 {
-						resolved_parent :=
-							g.unwrap_generic(g.recheck_concrete_type(resolved_parent_type))
-						if g.type_has_unresolved_generic_parts(resolved_parent) {
-							call_like_type := g.resolved_call_like_expr_type(parent_v.expr)
-							if call_like_type != 0 && !call_like_type.has_flag(.generic)
-								&& !g.type_has_unresolved_generic_parts(call_like_type) {
-								return call_like_type
-							}
+				by_value_auto_deref_capture := !v.is_auto_deref && parent_v.is_auto_deref
+					&& parent_v.typ.is_ptr()
+				if !by_value_auto_deref_capture {
+					if parent_v.generic_typ != 0 {
+						refreshed_parent_type :=
+							g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+						if refreshed_parent_type != 0 {
+							parent_v.typ = refreshed_parent_type
 						}
-						return resolved_parent
 					}
-				}
-				if parent_v.typ != 0 {
-					return g.unwrap_generic(g.recheck_concrete_type(parent_v.typ))
+					if parent_v.smartcasts.len > 0 {
+						smartcast_type := if parent_v.ct_type_var == .smartcast {
+							g.type_resolver.get_type(expr)
+						} else {
+							g.exposed_smartcast_type(parent_v.orig_type,
+								parent_v.smartcasts.last(), parent_v.is_mut)
+						}
+						return g.unwrap_generic(g.recheck_concrete_type(smartcast_type))
+					}
+					if parent_v.expr !is ast.EmptyExpr
+						&& ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+						|| parent_v.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(parent_v.typ)) {
+						resolved_parent_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
+						if resolved_parent_type != 0 {
+							resolved_parent :=
+								g.unwrap_generic(g.recheck_concrete_type(resolved_parent_type))
+							if g.type_has_unresolved_generic_parts(resolved_parent) {
+								call_like_type := g.resolved_call_like_expr_type(parent_v.expr)
+								if call_like_type != 0 && !call_like_type.has_flag(.generic)
+									&& !g.type_has_unresolved_generic_parts(call_like_type) {
+									return call_like_type
+								}
+							}
+							return resolved_parent
+						}
+					}
+					if parent_v.typ != 0 {
+						return g.unwrap_generic(g.recheck_concrete_type(parent_v.typ))
+					}
 				}
 			}
 		}
@@ -552,6 +556,37 @@ fn (mut g Gen) resolved_ident_is_auto_heap(expr ast.Ident) bool {
 		}
 	}
 	return false
+}
+
+fn (g &Gen) resolved_ident_is_auto_deref(expr ast.Ident) bool {
+	if expr.scope != unsafe { nil } {
+		if v := expr.scope.find_var(expr.name) {
+			return v.is_auto_deref
+		}
+	}
+	if expr.obj is ast.Var {
+		return expr.obj.is_auto_deref
+	}
+	return false
+}
+
+fn (g &Gen) resolved_ident_is_by_value_auto_deref_capture(expr ast.Ident) bool {
+	if expr.scope == unsafe { nil } || expr.scope.parent == unsafe { nil } {
+		return false
+	}
+	scope_var := expr.scope.find_var(expr.name) or { return false }
+	if !scope_var.is_inherited || scope_var.is_auto_deref {
+		return false
+	}
+	parent_var := expr.scope.parent.find_var(expr.name) or { return false }
+	return parent_var.is_auto_deref && parent_var.typ.is_ptr()
+}
+
+fn (g &Gen) expr_is_auto_deref_var(expr ast.Expr) bool {
+	return match expr {
+		ast.Ident { g.resolved_ident_is_auto_deref(expr) }
+		else { expr.is_auto_deref_var() }
+	}
 }
 
 // scope_ident_is_auto_heap reports whether `expr`'s scope variable has

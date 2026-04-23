@@ -1180,6 +1180,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
 			panic('unexpected checker error: cannot find parent of inherited variable `${var.name}`')
 		}
+		captures_auto_deref_by_value := parent_var.is_auto_deref && !var.is_mut
 		mut declared_parent_typ := parent_var.typ
 		if keep_fn != unsafe { nil } {
 			if keep_fn.is_method && keep_fn.receiver.name == var.name {
@@ -1232,6 +1233,9 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		} else {
 			var.typ = ptyp
 		}
+		if captures_auto_deref_by_value && var.typ.is_ptr() {
+			var.typ = var.typ.deref()
+		}
 		if c.is_nocopy_struct(var.typ) {
 			c.error('cannot capture @[nocopy] struct by value: use a reference instead', var.pos)
 		}
@@ -1239,6 +1243,22 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			has_generic = true
 		}
 		node.decl.scope.update_var_type(var.name, var.typ)
+		if captures_auto_deref_by_value {
+			if mut captured_var := node.decl.scope.find_var(var.name) {
+				captured_var.is_auto_deref = false
+				captured_var.typ = var.typ
+				if captured_var.orig_type.is_ptr() {
+					captured_var.orig_type = captured_var.orig_type.deref()
+				}
+				if captured_var.smartcasts.len > 0 {
+					captured_var.smartcasts = captured_var.smartcasts.map(if it.is_ptr() {
+						it.deref()
+					} else {
+						it
+					})
+				}
+			}
+		}
 	}
 	c.anon_fn_generic_names = []string{}
 	c.anon_fn_concrete_types = []ast.Type{}

@@ -75,11 +75,11 @@ fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
 	return false
 }
 
-fn int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
+fn (g &Gen) int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
 	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
 		return false
 	}
-	if expr.is_auto_deref_var() {
+	if g.expr_is_auto_deref_var(expr) {
 		return true
 	}
 	return match expr {
@@ -171,32 +171,40 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	}
 	if g.is_type_name_string_expr(expr) {
 		typ = ast.string_type
-	} else if expr is ast.Ident && expr.obj is ast.Var {
-		if expr.obj.smartcasts.len > 0 {
-			if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
-				&& i < node.expr_types.len && node.expr_types[i] != ast.void_type {
-				typ = g.unwrap_generic(node.expr_types[i])
-			} else {
-				typ = g.unwrap_generic(expr.obj.smartcasts.last())
-				cast_sym := *g.table.sym(typ)
-				smartcast_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
-				if smartcast_variant_typ != 0 {
-					typ = smartcast_variant_typ
-				} else if expr.obj.ct_type_var == .smartcast {
-					typ = g.unwrap_generic(g.type_resolver.get_type(expr))
-				}
+	} else if expr is ast.Ident {
+		if g.resolved_ident_is_by_value_auto_deref_capture(expr) {
+			resolved_scope_type := g.resolved_scope_var_type(expr)
+			if resolved_scope_type != 0 {
+				typ = g.unwrap_generic(resolved_scope_type)
 			}
-		} else if expr.obj.ct_type_var == .smartcast {
-			resolved_typ := g.unwrap_generic(g.type_resolver.get_type(expr))
-			if resolved_typ != ast.void_type {
-				typ = resolved_typ
+		}
+		if expr.obj is ast.Var {
+			if expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
+					&& i < node.expr_types.len && node.expr_types[i] != ast.void_type {
+					typ = g.unwrap_generic(node.expr_types[i])
+				} else {
+					typ = g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := *g.table.sym(typ)
+					smartcast_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if smartcast_variant_typ != 0 {
+						typ = smartcast_variant_typ
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+				}
+			} else if expr.obj.ct_type_var == .smartcast {
+				resolved_typ := g.unwrap_generic(g.type_resolver.get_type(expr))
+				if resolved_typ != ast.void_type {
+					typ = resolved_typ
+				}
 			}
 		}
 	}
-	if node.exprs[i].is_auto_deref_var() && typ.nr_muls() > 0 {
+	if g.expr_is_auto_deref_var(node.exprs[i]) && typ.nr_muls() > 0 {
 		typ = typ.deref()
 	}
-	if int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
+	if g.int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
@@ -367,7 +375,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	if orig_variant_typ != 0 {
 		orig_typ = orig_variant_typ
 	}
-	is_int_valptr := int_ref_interpolates_as_value(expr, orig_typ, fmt)
+	is_int_valptr := g.int_ref_interpolates_as_value(expr, orig_typ, fmt)
 	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
 	typ_sym := g.table.sym(typ)
 	if g.is_type_name_string_expr(expr) {
@@ -377,7 +385,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	if typ == ast.string_type && g.comptime.comptime_for_method == unsafe { nil } {
 		if g.inside_veb_tmpl {
 			g.write('${g.veb_filter_fn_name}(')
-			if expr.is_auto_deref_var() && fmt != `p` {
+			if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -400,7 +408,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 					pos:             tmp_pos
 				})
 				pos_before := g.out.len
-				if expr.is_auto_deref_var() && fmt != `p` {
+				if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 					g.write('*')
 				}
 				g.expr(expr)
@@ -409,7 +417,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				g.write(tmp)
 				return
 			}
-			if expr.is_auto_deref_var() && fmt != `p` {
+			if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -477,7 +485,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else {
 				g.write('(u64)(')
 			}
-			if expr.is_auto_deref_var() || is_int_valptr {
+			if g.expr_is_auto_deref_var(expr) || is_int_valptr {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -486,7 +494,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.write(')')
 		} else {
-			if (expr.is_auto_deref_var() || is_int_valptr) && fmt != `p` {
+			if (g.expr_is_auto_deref_var(expr) || is_int_valptr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -495,7 +503,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 		}
 	} else {
-		if expr.is_auto_deref_var() && fmt != `p` {
+		if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 			g.write('*')
 		}
 		g.expr(expr)
