@@ -703,6 +703,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		mut expr_types := []ast.TypeNode{}
 		for k, mut expr in branch.exprs {
 			mut key := ''
+			mut resolved_type_node := ast.no_type
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal && !(node.is_comptime && expr is ast.ComptimeType) {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
@@ -787,12 +788,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
-					expr_typ := c.recheck_concrete_type(expr.typ)
-					key = c.table.type_to_str(expr_typ)
-					expr.typ = expr_typ
+					resolved_type_node = c.recheck_concrete_type(expr.typ)
+					key = c.table.type_to_str(resolved_type_node)
 					expr_types << ast.TypeNode{
 						...expr
-						typ: expr_typ
+						typ: resolved_type_node
 					}
 				}
 				ast.EnumVal {
@@ -875,7 +875,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					}
 				}
 			} else {
-				expr_type := c.expr(mut expr)
+				expr_type := if expr is ast.TypeNode {
+					resolved_type_node
+				} else {
+					c.expr(mut expr)
+				}
 				if expr_type.idx() == 0 {
 					// parser failed, stop checking
 					return
