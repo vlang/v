@@ -995,26 +995,27 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
+fn (c &Checker) type_args_from_generic_name(name string) []ast.Type {
+	if !name.contains('[') || !name.ends_with(']') {
+		return []ast.Type{}
+	}
+	mut parsed := []ast.Type{}
+	for arg_name in ast.split_generic_args(name.all_after_last('[').trim_right(']')) {
+		idx := c.table.find_type_idx(arg_name.trim_space())
+		if idx <= 0 {
+			return []ast.Type{}
+		}
+		parsed << ast.idx_to_type(idx)
+	}
+	return parsed
+}
+
 fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int) {
 	mut base_typ := c.table.fully_unaliased_type(typ.clear_flags().clear_option_and_result())
 	if base_typ.nr_muls() > 0 {
 		base_typ = base_typ.deref()
 	}
 	sym := c.table.sym(base_typ)
-	parse_type_args_from_name := fn [c] (name string) []ast.Type {
-		if !name.contains('[') || !name.ends_with(']') {
-			return []ast.Type{}
-		}
-		mut parsed := []ast.Type{}
-		for arg_name in ast.split_generic_args(name.all_after_last('[').trim_right(']')) {
-			idx := c.table.find_type_idx(arg_name.trim_space())
-			if idx <= 0 {
-				return []ast.Type{}
-			}
-			parsed << ast.idx_to_type(idx)
-		}
-		return parsed
-	}
 	match sym.info {
 		ast.Struct {
 			mut type_args := sym.info.concrete_types.clone()
@@ -1025,7 +1026,7 @@ fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int)
 				type_args = sym.info.generic_types.clone()
 			}
 			if type_args.len == 0 {
-				type_args = parse_type_args_from_name(sym.name)
+				type_args = c.type_args_from_generic_name(sym.name)
 			}
 			parent_idx := if sym.parent_idx > 0 {
 				sym.parent_idx
@@ -1045,7 +1046,7 @@ fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int)
 				type_args = sym.info.generic_types.clone()
 			}
 			if type_args.len == 0 {
-				type_args = parse_type_args_from_name(sym.name)
+				type_args = c.type_args_from_generic_name(sym.name)
 			}
 			parent_idx := if sym.parent_idx > 0 {
 				sym.parent_idx
@@ -1065,7 +1066,7 @@ fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int)
 				type_args = sym.info.generic_types.clone()
 			}
 			if type_args.len == 0 {
-				type_args = parse_type_args_from_name(sym.name)
+				type_args = c.type_args_from_generic_name(sym.name)
 			}
 			parent_idx := if sym.parent_idx > 0 {
 				sym.parent_idx
