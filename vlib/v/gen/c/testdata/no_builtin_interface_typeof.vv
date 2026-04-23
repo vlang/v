@@ -1,0 +1,9 @@
+// vtest vflags: -no-builtin
+interface Thing {}
+
+struct Item {}
+
+fn main() {
+	h := Thing(Item{})
+	_ = h
+}
