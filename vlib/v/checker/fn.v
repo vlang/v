@@ -1421,13 +1421,29 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 
 	if node.or_block.kind == .block {
-		old_inside_or_block_value := c.inside_or_block_value
-		c.inside_or_block_value = true
-		last_cur_or_expr := c.cur_or_expr
-		c.cur_or_expr = &node.or_block
-		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
-		c.cur_or_expr = last_cur_or_expr
-		c.inside_or_block_value = old_inside_or_block_value
+		mut return_context_type := ast.no_type
+		if c.inside_return && c.table.cur_fn != unsafe { nil } && node.or_block.stmts.len > 0 {
+			last_stmt := node.or_block.stmts.last()
+			if last_stmt is ast.ExprStmt {
+				if last_stmt.typ == ast.none_type && c.table.cur_fn.return_type.has_flag(.option) {
+					return_context_type = c.table.cur_fn.return_type
+				} else if last_stmt.typ == ast.error_type
+					&& c.table.cur_fn.return_type.has_flag(.result) {
+					return_context_type = c.table.cur_fn.return_type
+				}
+			}
+		}
+		if return_context_type != ast.no_type {
+			typ = return_context_type
+		} else {
+			old_inside_or_block_value := c.inside_or_block_value
+			c.inside_or_block_value = true
+			last_cur_or_expr := c.cur_or_expr
+			c.cur_or_expr = &node.or_block
+			c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
+			c.inside_or_block_value = old_inside_or_block_value
+		}
 	}
 	c.expected_or_type = old_expected_or_type
 	c.markused_call_expr(left_type, mut node)
