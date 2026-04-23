@@ -332,4 +332,25 @@ fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
 	generated_c := os.read_file(generated_c_path)!
 	assert generated_c.contains('payload__Foo_to_sumtype_payload__Value(payload__Foo* x, bool is_mut)')
 	assert generated_c.contains('._typ = _v_type_idx_payload__Foo()')
+fn test_readline_raw_mode_methods_should_check_for_windows() {
+	source_path := os.join_path(os.vtmp_dir(), 'readline_raw_mode_issue_24686_${os.getpid()}.v')
+	source := [
+		'module main',
+		'',
+		'import readline',
+		'',
+		'fn main() {',
+		'\tmut r := readline.Readline{}',
+		'\tr.enable_raw_mode()',
+		'\tr.disable_raw_mode()',
+		'\tr.enable_raw_mode_nosig()',
+		'\tprintln(r.read_char()!)',
+		'\tr.disable_raw_mode()',
+		'}',
+	].join_lines()
+	write_file(source_path, source)
+	defer {
+		os.rm(source_path) or {}
+	}
+	_ = vrun_ok('-os windows -check', source_path)
 }
