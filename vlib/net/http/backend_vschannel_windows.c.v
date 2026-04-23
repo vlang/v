@@ -6,16 +6,20 @@ module http
 #flag windows -I @VEXEROOT/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"
+// Win7 needs TLS 1.2 selected before Schannel credentials are acquired.
+#define vschannel_use_tls12_client_protocol() (protocol = SP_PROT_TLS1_2_CLIENT)
 
 pub struct C.TlsContext {}
 
 const C.vsc_init_resp_buff_size int
 
 fn C.new_tls_context() C.TlsContext
+fn C.vschannel_use_tls12_client_protocol()
 fn C.vschannel_last_error(tls_ctx &C.TlsContext) int
 
 fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	mut ctx := C.new_tls_context()
+	C.vschannel_use_tls12_client_protocol()
 	C.vschannel_init(&ctx)
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
 	addr := host_name
