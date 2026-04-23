@@ -411,9 +411,9 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
-	bundled_tcc := usable_bundled_tcc_compiler(os.dir(vexe_path()))
+	preferred_tcc := default_tcc_compiler()
 	if p.ccompiler == 'tcc' {
-		p.ccompiler = if bundled_tcc != '' { bundled_tcc } else { 'tcc' }
+		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}
 	if p.ccompiler == '' {
@@ -426,9 +426,21 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		if p.is_prod {
 			return
 		}
-		p.ccompiler = bundled_tcc
+		p.ccompiler = preferred_tcc
 		return
 	}
+}
+
+fn usable_system_tcc_compiler() string {
+	if get_host_os() != .termux {
+		return ''
+	}
+	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
+	tcc_probe := os.execute('${os.quoted_path(system_tcc)} -v')
+	if tcc_probe.exit_code != 0 {
+		return ''
+	}
+	return system_tcc
 }
 
 fn usable_bundled_tcc_compiler(vroot string) string {
@@ -444,11 +456,15 @@ fn usable_bundled_tcc_compiler(vroot string) string {
 	return vtccexe
 }
 
-// default_tcc_compiler returns the bundled TinyCC path when it exists and works on the host.
+// default_tcc_compiler returns the preferred TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	return usable_bundled_tcc_compiler(vroot)
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
+	}
+	return usable_system_tcc_compiler()
 }
 
 pub fn (mut p Preferences) default_c_compiler() {

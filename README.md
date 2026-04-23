@@ -188,7 +188,7 @@ On Termux, V needs some packages preinstalled - a working C compiler, also `libe
 Linux/macos:
 
 ```bash
-pkg install clang libexecinfo libgc libgc-static make git
+pkg install clang libexecinfo libgc libgc-static tcc make git
 pkg update
 git clone --depth=1 https://github.com/vlang/v
 cd v
@@ -196,6 +196,8 @@ make
 ./v symlink
 ```
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
+For faster development builds, keep the Termux `tcc` package installed; V will use it by default
+when no compatible bundled `thirdparty/tcc` binary is available on the host.
 
 ### C compiler
 
