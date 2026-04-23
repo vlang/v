@@ -7,6 +7,7 @@
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
 !vlib/v/gen/c/testdata/nested_unary_minus_regression.out
 !vlib/v/tests/interfaces/interface_pointer_method_value_issue_22237_test.v
+!vlib/v/tests/net_http_request_proxy_interpolation_test.v
 !vlib/v/checker/tests/modules/c_type_cast_imported_from_module/**
 !vlib/v/checker/tests/modules/c_type_cast_imported_from_module.out
 

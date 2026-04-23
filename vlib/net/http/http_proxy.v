@@ -75,6 +75,14 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	}
 }
 
+// str returns the configured proxy URL for logging and debugging.
+pub fn (pr &HttpProxy) str() string {
+	if isnil(pr) {
+		return 'nil'
+	}
+	return pr.url
+}
+
 // host format - ip:port
 fn (pr &HttpProxy) build_proxy_headers(host string) string {
 	mut uheaders := []string{}
