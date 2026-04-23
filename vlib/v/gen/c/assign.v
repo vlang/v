@@ -1600,11 +1600,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				&& left.is_auto_deref_arg() {
 				is_mut_arg_pointer_rebind = true
 			}
-			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
+			if node.op == .plus_assign && g.is_string_type(var_type)
+				&& g.is_string_concat_type(val_type) {
 				if g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp
-					&& val !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+					&& (!g.is_string_type(val_type)
+					|| val !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
 					str_add_rhs_tmp = '_str_add_rhs_${node.pos.pos}_${i}'
-					g.writeln(g.autofree_tmp_arg_init_stmt('string ${str_add_rhs_tmp} = ', val))
+					if g.is_string_type(val_type) {
+						g.writeln(g.autofree_tmp_arg_init_stmt('string ${str_add_rhs_tmp} = ', val))
+					} else {
+						g.writeln('string ${str_add_rhs_tmp} = ${g.expr_string_with_cast(val,
+							val_type, ast.string_type)};')
+						val_type = ast.string_type
+					}
 					val = ast.Expr(ast.Ident{
 						mod:  g.cur_mod.name
 						name: str_add_rhs_tmp

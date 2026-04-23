@@ -25,6 +25,23 @@ fn (c &Checker) type_is_optionish(typ ast.Type, sym ast.TypeSymbol) bool {
 		|| (sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option))
 }
 
+fn (c &Checker) is_string_like_type(typ ast.Type) bool {
+	return !typ.has_option_or_result() && typ.clear_flags() == ast.string_type
+}
+
+fn (c &Checker) is_char_or_rune_like_type(typ ast.Type) bool {
+	return !typ.has_option_or_result() && typ.clear_flags() in [ast.char_type, ast.rune_type]
+}
+
+fn (c &Checker) is_string_concat_type(typ ast.Type) bool {
+	return c.is_string_like_type(typ) || c.is_char_or_rune_like_type(typ)
+}
+
+fn (c &Checker) is_string_concat_pair(left ast.Type, right ast.Type) bool {
+	return c.is_string_concat_type(left) && c.is_string_concat_type(right)
+		&& (c.is_string_like_type(left) || c.is_string_like_type(right))
+}
+
 fn has_matching_reference_operator_overload(sym &ast.TypeSymbol, op string, receiver_type ast.Type, operand_type ast.Type) bool {
 	method := sym.find_method_with_generic_parent(op) or { return false }
 	return method.params.len == 2 && method.params[0].typ == receiver_type
@@ -311,6 +328,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
+	if node.op == .plus && c.is_string_concat_pair(left_type, right_type) {
+		return_type = ast.string_type
+	}
 	left_is_explicit_ptr := left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
 		&& left_final_sym.kind != .voidptr
 	right_is_explicit_ptr := right_type.is_any_kind_of_pointer() && !node.right.is_auto_deref_var()
@@ -653,46 +673,57 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(unwrapped_left_type)
 				unalias_right_type := c.table.unalias_num_type(unwrapped_right_type)
-				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type,
-					unalias_right_type, left_sym.kind, right_sym.kind)
-				promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
-					unaliased_left_type, unalias_right_type, promoted_type)
-				// subtract pointers is allowed in unsafe block
-				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
-					&& right_type.is_any_kind_of_pointer() && node.op == .minus
-				if is_allowed_pointer_arithmetic {
-					promoted_type = ast.int_type
-				}
-				if promoted_type.idx() == ast.void_type_idx {
-					left_name := c.table.type_to_str(unwrapped_left_type)
-					right_name := c.table.type_to_str(unwrapped_right_type)
-					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_option_or_result() {
-					s := c.table.type_to_str(promoted_type)
-					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
-				} else if promoted_type.is_float() {
-					if node.op in [.mod, .xor, .amp, .pipe] {
-						side := if unwrapped_left_type == promoted_type { 'left' } else { 'right' }
-						pos := if unwrapped_left_type == promoted_type {
-							left_pos
-						} else {
-							right_pos
-						}
-						name := if unwrapped_left_type == promoted_type {
-							left_sym.name
-						} else {
-							right_sym.name
-						}
-						if node.op == .mod {
-							c.error('float modulo not allowed, use math.fmod() instead', pos)
-						} else {
-							c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
-								pos)
+				mut promoted_type := ast.void_type
+				if node.op == .plus
+					&& c.is_string_concat_pair(unaliased_left_type, unalias_right_type) {
+					promoted_type = ast.string_type
+				} else {
+					promoted_type = c.promote_keeping_aliases(unaliased_left_type,
+						unalias_right_type, left_sym.kind, right_sym.kind)
+					promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
+						unaliased_left_type, unalias_right_type, promoted_type)
+					// subtract pointers is allowed in unsafe block
+					is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
+						&& right_type.is_any_kind_of_pointer() && node.op == .minus
+					if is_allowed_pointer_arithmetic {
+						promoted_type = ast.int_type
+					}
+					if promoted_type.idx() == ast.void_type_idx {
+						left_name := c.table.type_to_str(unwrapped_left_type)
+						right_name := c.table.type_to_str(unwrapped_right_type)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
+					} else if promoted_type.has_option_or_result() {
+						s := c.table.type_to_str(promoted_type)
+						c.error('`${node.op}` cannot be used with `${s}`', node.pos)
+					} else if promoted_type.is_float() {
+						if node.op in [.mod, .xor, .amp, .pipe] {
+							side := if unwrapped_left_type == promoted_type {
+								'left'
+							} else {
+								'right'
+							}
+							pos := if unwrapped_left_type == promoted_type {
+								left_pos
+							} else {
+								right_pos
+							}
+							name := if unwrapped_left_type == promoted_type {
+								left_sym.name
+							} else {
+								right_sym.name
+							}
+							if node.op == .mod {
+								c.error('float modulo not allowed, use math.fmod() instead', pos)
+							} else {
+								c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
+									pos)
+							}
 						}
 					}
-				}
-				if node.op in [.div, .mod] {
-					c.check_div_mod_by_zero(node.right, node.op)
+					if node.op in [.div, .mod] {
+						c.check_div_mod_by_zero(node.right, node.op)
+					}
 				}
 
 				left_sym = c.table.sym(unwrapped_left_type)
@@ -1122,8 +1153,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_type = c.unwrap_generic(right_type)
 			right_sym = c.table.sym(right_type)
 		}
-		types_match := c.symmetric_check(left_type, right_type)
-			&& c.symmetric_check(right_type, left_type)
+		is_string_concat := node.op == .plus && c.is_string_concat_pair(left_type, right_type)
+		types_match := is_string_concat || (c.symmetric_check(left_type, right_type)
+			&& c.symmetric_check(right_type, left_type))
 		left_allows_auto_deref := infix_expr_allows_auto_deref(node.left)
 		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
 		unalias_left_type := c.table.unaliased_type(left_type)
@@ -1220,8 +1252,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .plus && c.pref.warn_about_allocs && left_type == ast.string_type_idx
-		&& right_type == ast.string_type_idx {
+	if node.op == .plus && c.pref.warn_about_allocs
+		&& c.is_string_concat_pair(left_type, right_type) {
 		c.warn_alloc('string concatenation', node.pos)
 	}
 	/*

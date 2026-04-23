@@ -4519,12 +4519,31 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	got_sym := g.table.sym(got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
+	unaliased_expected_type := g.table.unaliased_type(g.unwrap_generic(expected_type)).clear_flags()
+	unaliased_got_type := g.table.unaliased_type(g.unwrap_generic(got_type)).clear_flags()
 	if g.can_convert_array_to_interface_array(got_type, expected_type) {
 		fn_name := g.register_array_interface_cast_fn(got_type, expected_type)
 		g.write('${fn_name}(')
 		g.expr(expr)
 		g.write(')')
 		return
+	}
+	if unaliased_expected_type == ast.string_type {
+		match unaliased_got_type {
+			ast.char_type {
+				g.write('builtin__u8_ascii_str((u8)(')
+				g.expr(expr)
+				g.write('))')
+				return
+			}
+			ast.rune_type {
+				g.write('builtin__rune_str((rune)(')
+				g.expr(expr)
+				g.write('))')
+				return
+			}
+			else {}
+		}
 	}
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon

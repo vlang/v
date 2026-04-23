@@ -947,12 +947,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				} else {
 					left_type
 				}
-				if left_deref == ast.string_type {
+				if c.is_string_like_type(left_deref) {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 							left.pos())
 					}
-					if right_type != ast.string_type {
+					if node.op == .plus_assign && !c.is_string_concat_type(right_type) {
+						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
+							right.pos())
+					} else if node.op != .plus_assign && !c.is_string_like_type(right_type) {
 						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
 							right.pos())
 					}
@@ -1136,8 +1139,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					right.pos())
 			}
 			// Dual sides check (compatibility check)
-			assign_right_type := if original_op in [.left_shift_assign, .right_shift_assign,
-				.unsigned_right_shift_assign] {
+			is_string_plus_assign := original_op == .plus_assign
+				&& c.is_string_like_type(left_type_unwrapped)
+				&& c.is_string_concat_type(right_type_unwrapped)
+			assign_right_type := if
+				original_op in [.left_shift_assign, .right_shift_assign, .unsigned_right_shift_assign]
+				|| is_string_plus_assign {
 				left_type_unwrapped
 			} else {
 				right_type_unwrapped
