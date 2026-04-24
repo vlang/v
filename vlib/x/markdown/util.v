@@ -5,6 +5,57 @@ module markdown
 
 import strings
 
+// unicode_space lists Unicode code points considered whitespace
+// vfmt off
+const unicode_space = [
+	` `, // space
+	`\t`, // tab
+	0x0a, // LF
+	0x0b, // Vertical Tab
+	0x0c, // FF
+	0x0d, // CR
+	0x0085, // next line
+	0x00A0, // no-break space
+	0x1680, // ogham space mark
+	0x180E, // mongolian vowel separator
+	0x2000, // en quad
+	0x2001, // em quad
+	0x2002, // en space
+	0x2003, // em space
+	0x2004, // three-per-em space
+	0x2005, // four-per-em space
+	0x2006, // six-per-em space
+	0x2007, // figure space
+	0x2008, // punctuation space
+	0x2009, // thin space
+	0x200A, // hair space
+	0x200B, // zero width space
+	0x200C, // zero width non-joiner
+	0x200D, // zero width joiner
+	0x2028, // line separator
+	0x2029, // paragraph separator
+	0x202F, // narrow no-break space
+	0x205F, // medium mathematical space
+	0x2060, // word joiner
+	0x3000, // ideographic space
+	0xFEFF, // zero width non-breaking space
+]!
+
+// ascii_punct lists ASCII punctuation characters
+const ascii_punct = [
+	`!`, `"`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `/`, `:`,
+	`;`, `<`, `=`, `>`, `?`, `@`, `[`, `\\`, `]`, `^`, `_`, `\``, `{`, `|`, `}`, `~`,
+]!
+
+// alpha lists ASCII letters a-z and A-Z
+const alpha = [
+	`a`, `b`, `c`, `d`, `e`, `f`, `g`, `h`, `i`, `j`, `k`, `l`, `m`,
+	`n`, `o`, `p`, `q`, `r`, `s`, `t`, `u`, `v`, `w`, `x`, `y`, `z`,
+	`A`, `B`, `C`, `D`, `E`, `F`, `G`, `H`, `I`, `J`, `K`, `L`, `M`,
+	`N`, `O`, `P`, `Q`, `R`, `S`, `T`, `U`, `V`, `W`, `X`, `Y`, `Z`,
+]!
+// vfmt on
+
 // html_escape replaces HTML special characters in s with their entity equivalents.
 fn html_escape(s string) string {
 	if s.index_any('&<>"') == -1 {
@@ -79,26 +130,26 @@ fn ascii_lower(c u8) u8 {
 // is_unicode_space returns true for CommonMark Unicode whitespace.
 @[inline]
 fn is_unicode_space(c u8) bool {
-	return c == ` ` || c == `\t` || c == `\n` || c == `\r` || c == 0x0c || c == 0x0b
+	return c in unicode_space
 }
 
 // is_ascii_punct returns true if c is an ASCII punctuation character.
 @[inline]
 fn is_ascii_punct(c u8) bool {
-	return (c >= `!` && c <= `/`) || (c >= `:` && c <= `@`) || (c >= `[` && c <= 96)
-		|| (c >= `{` && c <= `~`)
+	return c in ascii_punct
 }
 
+const digits = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]!
 // is_digit returns true if c is an ASCII decimal digit.
 @[inline]
 fn is_digit(c u8) bool {
-	return c >= `0` && c <= `9`
+	return c in digits
 }
 
 // is_alpha returns true if c is an ASCII letter.
 @[inline]
 fn is_alpha(c u8) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+	return c in alpha
 }
 
 // is_alnum returns true if c is an ASCII letter or digit.

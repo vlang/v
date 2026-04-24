@@ -93,9 +93,9 @@ pub mut:
 	ref_map map[string]LinkRef
 }
 
-// new creates a Markdown processor with the given options.
+// Markdown.new creates a Markdown processor with the given options.
 // All extensions in opts.extensions are applied immediately.
-pub fn new(opts Options) Markdown {
+pub fn Markdown.new(opts Options) Markdown {
 	mut m := Markdown{
 		opts:    opts
 		ref_map: map[string]LinkRef{}
@@ -106,16 +106,9 @@ pub fn new(opts Options) Markdown {
 	return m
 }
 
-// to_html converts the markdown source to HTML using default settings
-// (CommonMark only, no extensions, raw HTML stripped).
-pub fn to_html(src string) string {
-	mut md := new(Options{})
-	return md.convert(src)
-}
-
-// to_html_opts converts the markdown source to HTML with the given options.
-pub fn to_html_opts(src string, opts Options) string {
-	mut md := new(opts)
+// to_html converts the markdown source to HTML with the given options.
+pub fn to_html(src string, opts Options) string {
+	mut md := Markdown.new(opts)
 	return md.convert(src)
 }
 
@@ -133,7 +126,7 @@ pub fn (mut m Markdown) convert(src string) string {
 // Link reference definitions collected during parsing are cached so that
 // subsequent parse/convert calls on the same Markdown instance share them.
 pub fn (mut m Markdown) parse(src string) &Node {
-	mut p := new_block_parser(src, m.opts, m.ref_map)
+	mut p := BlockParser.new(src, m.opts, m.ref_map)
 	doc := p.parse()
 	for k, v in p.ref_map {
 		m.ref_map[k] = v

@@ -5,6 +5,19 @@ module markdown
 
 import strings
 
+// block_level_tags lists HTML tags that start an HTML block (type 6).
+// vfmt off
+const block_level_tags = [
+	'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption',	'center',
+	'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset',
+	'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5',
+	'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu',
+	'menuitem', 'meta', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
+	'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track',
+	'ul'
+]
+// vfmt on
+
 // BlockParser parses markdown block structure line by line into an AST.
 // After block parsing, inline content is parsed for every leaf node.
 struct BlockParser {
@@ -16,8 +29,8 @@ mut:
 	fn_defs map[string]&Node
 }
 
-// new_block_parser creates a BlockParser for the given source.
-fn new_block_parser(src string, opts Options, ref_map map[string]LinkRef) BlockParser {
+// BlockParser.new creates a BlockParser for the given source.
+fn BlockParser.new(src string, opts Options, ref_map map[string]LinkRef) BlockParser {
 	normalized := src.replace('\r\n', '\n').replace('\r', '\n')
 	lines := normalized.split('\n')
 	mut refs := map[string]LinkRef{}
@@ -179,8 +192,6 @@ fn (mut p BlockParser) parse_blocks(mut parent Node, indent int) {
 	}
 }
 
-// ---- Thematic break ----
-
 // is_thematic_break returns true if line is a valid thematic break
 // (three or more -, *, or _ with optional spaces).
 fn is_thematic_break(line string) bool {
@@ -203,8 +214,6 @@ fn is_thematic_break(line string) bool {
 	}
 	return count >= 3
 }
-
-// ---- ATX headings ----
 
 // try_atx_heading attempts to parse an ATX heading from line.
 // Returns the heading node on success.
@@ -240,8 +249,6 @@ fn (mut p BlockParser) try_atx_heading(line string) ?&Node {
 	}
 	return node
 }
-
-// ---- Fenced code blocks ----
 
 // try_fenced_code attempts to parse a fenced code block starting at p.pos.
 fn (mut p BlockParser) try_fenced_code(line string, indent int) ?&Node {
@@ -297,8 +304,6 @@ fn detect_fence(line string) (u8, int) {
 	return 0, 0
 }
 
-// ---- Indented code block ----
-
 // parse_indented_code collects lines that are indented by at least (indent+4)
 // spaces (or blank) into an indented code block.
 fn (mut p BlockParser) parse_indented_code(indent int) &Node {
@@ -327,17 +332,6 @@ fn (mut p BlockParser) parse_indented_code(indent int) &Node {
 	node.literal = lines.join('\n') + '\n'
 	return node
 }
-
-// ---- HTML blocks ----
-
-// block_level_tags lists HTML tags that start an HTML block (type 6).
-const block_level_tags = ['address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body',
-	'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt',
-	'fieldset', 'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3',
-	'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main',
-	'menu', 'menuitem', 'meta', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
-	'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track',
-	'ul']
 
 // try_html_block attempts to parse an HTML block starting at p.pos.
 fn (mut p BlockParser) try_html_block(line string, indent int) ?&Node {
@@ -478,8 +472,6 @@ fn is_complete_html_tag(s string) bool {
 	return end == s.len - 1 || s[end + 1..].trim_space().len == 0
 }
 
-// ---- Link reference definitions ----
-
 // try_link_ref_def attempts to parse a link reference definition at p.pos.
 // CommonMark allows the title to appear on the next line when the destination
 // is alone on the first line.  Returns true and advances p.pos if successful.
@@ -537,9 +529,6 @@ fn (mut p BlockParser) try_link_ref_def(line string) bool {
 					title = parsed_title
 					extra_lines = 1
 				}
-				// If the next line starts with something that is not a title
-				// delimiter, we simply leave `title` empty and do not consume
-				// that line (it will be parsed as the next block).
 			}
 		}
 	}
@@ -626,8 +615,6 @@ fn parse_link_title(s string) (string, string) {
 	return '', s
 }
 
-// ---- Blockquote ----
-
 // parse_blockquote parses a blockquote block and returns a blockquote node.
 fn (mut p BlockParser) parse_blockquote(indent int) &Node {
 	mut bq_lines := []string{}
@@ -658,8 +645,6 @@ fn (mut p BlockParser) parse_blockquote(indent int) &Node {
 	p.merge_nested_state(inner)
 	return node
 }
-
-// ---- Lists ----
 
 // ListMarker holds parsed list marker information.
 struct ListMarker {
@@ -926,8 +911,6 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 	return item
 }
 
-// ---- Tables (GFM) ----
-
 // try_table attempts to parse a GFM table starting at p.pos.
 // A table requires a header row, an alignment row (|---|), then data rows.
 fn (mut p BlockParser) try_table(indent int) ?&Node {
@@ -1082,8 +1065,6 @@ fn split_table_cells(line string) []string {
 	return cells
 }
 
-// ---- Definition list ----
-
 // try_definition_list attempts to parse a definition list starting at p.pos.
 fn (mut p BlockParser) try_definition_list(indent int) ?&Node {
 	if p.pos + 1 >= p.lines.len {
@@ -1127,8 +1108,6 @@ fn (mut p BlockParser) try_definition_list(indent int) ?&Node {
 	return dl
 }
 
-// ---- Footnote definitions ----
-
 // try_footnote_def attempts to parse a footnote definition starting at p.pos.
 fn (mut p BlockParser) try_footnote_def(line string, indent int) bool {
 	if !line.starts_with('[^') {
@@ -1163,8 +1142,6 @@ fn (mut p BlockParser) try_footnote_def(line string, indent int) bool {
 	}
 	return true
 }
-
-// ---- Paragraph / Setext heading ----
 
 // parse_paragraph parses a paragraph block, upgrading it to a setext heading
 // if the immediately following line is a setext underline (=== or ---).
@@ -1236,10 +1213,6 @@ fn is_setext_underline(line string) bool {
 	}
 	return true
 }
-
-// ---- Inline parsing kick-off ----
-// After block parsing, leaf node .literal fields contain raw inline text.
-// The inline parser is invoked lazily by the HTML renderer.
 
 // unescape_string decodes CommonMark backslash escapes in s.
 fn unescape_string(s string) string {

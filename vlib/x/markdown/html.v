@@ -60,7 +60,6 @@ fn (mut r HTMLRenderer) render_node(node &Node) {
 		.definition_term { r.render_definition_term(node) }
 		.definition_desc { r.render_definition_desc(node) }
 		.footnote_def {} // rendered in the footnote section
-		// Inline nodes.
 		.text { r.render_text(node) }
 		.emphasis { r.render_emphasis(node) }
 		.strong { r.render_strong(node) }
@@ -91,8 +90,6 @@ fn (mut r HTMLRenderer) render_inline(src string) {
 		r.render_node(node)
 	}
 }
-
-// ---- Block elements ----
 
 fn (mut r HTMLRenderer) render_heading(node &Node) {
 	tag := 'h${node.level}'
@@ -203,8 +200,6 @@ fn (mut r HTMLRenderer) render_html_block(node &Node) {
 	}
 }
 
-// ---- Table ----
-
 fn (mut r HTMLRenderer) render_table(node &Node) {
 	r.sb.write_string('<table>\n')
 	r.render_children(node)
@@ -249,8 +244,6 @@ fn (mut r HTMLRenderer) render_table_cell(node &Node) {
 	r.sb.write_string('</${cell_tag}>\n')
 }
 
-// ---- Definition list ----
-
 fn (mut r HTMLRenderer) render_definition_list(node &Node) {
 	r.sb.write_string('<dl>\n')
 	r.render_children(node)
@@ -271,8 +264,6 @@ fn (mut r HTMLRenderer) render_definition_desc(node &Node) {
 	r.render_inline(node.literal)
 	r.sb.write_string('</dd>\n')
 }
-
-// ---- Footnotes ----
 
 fn (mut r HTMLRenderer) render_footnote_ref(node &Node) {
 	label := node.fn_label
@@ -301,8 +292,6 @@ fn (mut r HTMLRenderer) render_footnotes_section() {
 	}
 	r.sb.write_string('</ol>\n</section>\n')
 }
-
-// ---- Inline elements ----
 
 fn (mut r HTMLRenderer) render_text(node &Node) {
 	content := if r.opts.typographer {
