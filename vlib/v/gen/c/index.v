@@ -12,6 +12,32 @@ struct IndexOperatorMethodInfo {
 	receiver_type ast.Type
 }
 
+enum CWideIndexKind {
+	plain
+	signed_64
+	unsigned_64
+}
+
+fn (mut g Gen) c_wide_index_kind(index_type ast.Type) CWideIndexKind {
+	if g.pref.backend != .c || index_type == 0 {
+		return .plain
+	}
+	mut internal_index_type := g.table.unaliased_type(index_type.clear_flag(.variadic))
+	internal_index_sym := g.table.final_sym(internal_index_type)
+	if internal_index_sym.kind == .enum {
+		internal_index_type = internal_index_sym.enum_info().typ
+	}
+	if internal_index_type == ast.int_literal_type || !internal_index_type.is_int() {
+		return .plain
+	}
+	int_size, _ := g.table.type_size(ast.int_type_idx)
+	internal_index_size, _ := g.table.type_size(internal_index_type.idx_type())
+	if internal_index_type.is_signed() {
+		return if internal_index_size <= int_size { .plain } else { .signed_64 }
+	}
+	return if internal_index_size < int_size { .plain } else { .unsigned_64 }
+}
+
 fn (mut g Gen) resolved_index_operator_receiver_type(receiver ast.Expr, receiver_type ast.Type) ast.Type {
 	mut resolved_type := g.recheck_concrete_type(g.resolved_expr_type(receiver, receiver_type))
 	if resolved_type == 0 {
@@ -113,15 +139,24 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			gen_or := node.or_expr.kind != .absent || node.is_option
+			wide_index_kind := g.c_wide_index_kind(node.index_type)
 			string_at_fn := if node.is_gated {
 				'builtin__string_at_ni'
 			} else {
-				'builtin__string_at'
+				match wide_index_kind {
+					.signed_64 { 'builtin__string_at_i64' }
+					.unsigned_64 { 'builtin__string_at_u64' }
+					else { 'builtin__string_at' }
+				}
 			}
 			string_at_with_check_fn := if node.is_gated {
 				'builtin__string_at_with_check_ni'
 			} else {
-				'builtin__string_at_with_check'
+				match wide_index_kind {
+					.signed_64 { 'builtin__string_at_with_check_i64' }
+					.unsigned_64 { 'builtin__string_at_with_check_u64' }
+					else { 'builtin__string_at_with_check' }
+				}
 			}
 			if gen_or {
 				tmp_opt := g.new_tmp_var()
@@ -138,7 +173,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 				g.write('\n${cur_line}*(byte*)&${tmp_opt}.data')
 			} else {
-				is_direct_array_access := !node.is_gated
+				is_direct_array_access := !node.is_gated && wide_index_kind == .plain
 					&& (g.is_direct_array_access || node.is_direct)
 				if is_direct_array_access {
 					g.expr(ast.Expr(node.left))
@@ -336,17 +371,39 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_type_str := if elem_sym.kind == .function { 'voidptr' } else { g.styp(elem_type) }
 	result_type_str := if result_sym.kind == .function { 'voidptr' } else { g.styp(result_type) }
 	left_is_shared := array_left_type.has_flag(.shared_f)
-	array_get_fn := if node.is_gated { 'builtin__array_get_ni' } else { 'builtin__array_get' }
+	wide_index_kind := g.c_wide_index_kind(node.index_type)
+	array_get_fn := if node.is_gated {
+		'builtin__array_get_ni'
+	} else {
+		match wide_index_kind {
+			.signed_64 { 'builtin__array_get_i64' }
+			.unsigned_64 { 'builtin__array_get_u64' }
+			else { 'builtin__array_get' }
+		}
+	}
 	array_get_with_check_fn := if node.is_gated {
 		'builtin__array_get_with_check_ni'
 	} else {
-		'builtin__array_get_with_check'
+		match wide_index_kind {
+			.signed_64 { 'builtin__array_get_with_check_i64' }
+			.unsigned_64 { 'builtin__array_get_with_check_u64' }
+			else { 'builtin__array_get_with_check' }
+		}
 	}
-	array_set_fn := if node.is_gated { 'builtin__array_set_ni' } else { 'builtin__array_set' }
+	array_set_fn := if node.is_gated {
+		'builtin__array_set_ni'
+	} else {
+		match wide_index_kind {
+			.signed_64 { 'builtin__array_set_i64' }
+			.unsigned_64 { 'builtin__array_set_u64' }
+			else { 'builtin__array_set' }
+		}
+	}
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
-		is_direct_array_access := !node.is_gated && (g.is_direct_array_access || node.is_direct)
+		is_direct_array_access := !node.is_gated && wide_index_kind == .plain
+			&& (g.is_direct_array_access || node.is_direct)
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {
 			g.write('((${elem_type_str}*)')
@@ -415,7 +472,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := !node.is_gated && (g.is_direct_array_access || node.is_direct)
+		is_direct_array_access := !node.is_gated && wide_index_kind == .plain
+			&& (g.is_direct_array_access || node.is_direct)
 		is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
@@ -539,6 +597,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_type := info.elem_type
 	elem_sym := g.table.sym(elem_type)
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
+	wide_index_kind := g.c_wide_index_kind(node.index_type)
 
 	if node.left is ast.ArrayInit {
 		past := g.past_tmp_var_new()
@@ -577,6 +636,14 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	g.write('[')
 	if node.is_gated {
 		g.write('builtin__v_fixed_index_ni(')
+		g.expr(node.index)
+		g.write(', ${info.size})')
+	} else if wide_index_kind == .signed_64 {
+		g.write('builtin__v_fixed_index_i64(')
+		g.expr(node.index)
+		g.write(', ${info.size})')
+	} else if wide_index_kind == .unsigned_64 {
+		g.write('builtin__v_fixed_index_u64(')
 		g.expr(node.index)
 		g.write(', ${info.size})')
 	} else if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {

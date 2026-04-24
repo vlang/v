@@ -3281,6 +3281,15 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(array_idx_str + '.slice')
 		w.fn_by_name(array_idx_str + '.get')
 	}
+	if w.pref.backend == .c
+		&& (w.uses_arr_getter || w.uses_arr_setter || w.uses_guard || w.uses_index_check) {
+		w.mark_builtin_array_method_as_used('get_i64')
+		w.mark_builtin_array_method_as_used('get_u64')
+		w.mark_builtin_array_method_as_used('get_with_check_i64')
+		w.mark_builtin_array_method_as_used('get_with_check_u64')
+		w.mark_builtin_array_method_as_used('set_i64')
+		w.mark_builtin_array_method_as_used('set_u64')
+	}
 	if w.uses_str_index {
 		w.fn_by_name(string_idx_str + '.at')
 		if w.uses_str_index_check {
@@ -3289,6 +3298,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 		if w.uses_str_range {
 			w.fn_by_name(string_idx_str + '.substr')
 		}
+	}
+	if w.pref.backend == .c && w.uses_str_index {
+		w.fn_by_name(string_idx_str + '.at_i64')
+		w.fn_by_name(string_idx_str + '.at_u64')
+		w.fn_by_name(string_idx_str + '.at_with_check_i64')
+		w.fn_by_name(string_idx_str + '.at_with_check_u64')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -3408,6 +3423,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
+	}
+	if w.pref.backend == .c && w.uses_fixed_arr_int {
+		w.fn_by_name('v_fixed_index_i64')
+		w.fn_by_name('v_fixed_index_u64')
 	}
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')

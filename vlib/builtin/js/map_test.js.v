@@ -923,7 +923,7 @@ fn test_i64_keys() {
 	assert m.len == end
 	keys := m.keys()
 	for i in i64(0) .. end {
-		assert keys[i] == i
+		assert keys[int(i)] == i
 	}
 	for i in i64(0) .. end {
 		m.delete(i)
@@ -949,7 +949,7 @@ fn test_u64_keys() {
 	assert u64(m.len) == end
 	keys := m.keys()
 	for i in u64(0) .. end {
-		assert keys[i] == i
+		assert keys[int(i)] == i
 	}
 	for i in u64(0) .. end {
 		m.delete(i)

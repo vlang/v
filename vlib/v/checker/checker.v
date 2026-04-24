@@ -7707,7 +7707,7 @@ fn (c &Checker) internal_index_type(index_type ast.Type) ast.Type {
 	return internal_index_type
 }
 
-fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type, typ_sym &ast.TypeSymbol) bool {
+fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type, typ_sym &ast.TypeSymbol, range_index bool, is_gated bool) bool {
 	if c.pref.translated || c.file.is_translated {
 		return true
 	}
@@ -7718,6 +7718,9 @@ fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type
 				index.pos())
 			return false
 		}
+		return true
+	}
+	if c.pref.backend == .c && !range_index && !is_gated {
 		return true
 	}
 	int_size, _ := c.table.type_size(ast.int_type_idx)
@@ -7758,7 +7761,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			c.error('cannot use Option or Result as index ${type_str}', index.pos())
 			return
 		}
-		if !c.check_internal_index_type(index, index_type, typ_sym) {
+		if !c.check_internal_index_type(index, index_type, typ_sym, range_index, is_gated) {
 			return
 		}
 		if index is ast.IntegerLiteral && !is_gated {
