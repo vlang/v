@@ -160,7 +160,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-clang -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
+clang -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
@@ -224,7 +224,7 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build "%V_BOOTSTRAP%" from %V_C_FILE% with MSVC
-cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP /F33554432 "%V_C_FILE%" user32.lib kernel32.lib advapi32.lib shell32.lib ws2_32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
+cl.exe /volatile:ms /Fo%ObjFile% /W0 /MT /D_VBOOTSTRAP /F33554432 "%V_C_FILE%" user32.lib kernel32.lib advapi32.lib shell32.lib ws2_32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
 if %ERRORLEVEL% NEQ 0 (
 	echo In some cases, compile errors happen because of the MSVC compiler version
 	cl.exe
