@@ -154,7 +154,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 			output.size = buf_out_size
 			output.pos = 0
 			remaining := cctx.compress_stream2(output, input, mode)!
-			fout.write(buf_out[..output.pos])!
+			fout.write(buf_out[..int(output.pos)])!
 			finished = if last_chunk { remaining == 0 } else { input.pos == input.size }
 		}
 
@@ -202,7 +202,7 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 			output.size = buf_out_size
 			output.pos = 0
 			ret := dctx.decompress_stream(output, input)!
-			fout.write(buf_out[..output.pos])!
+			fout.write(buf_out[..int(output.pos)])!
 			last_ret = ret
 		}
 		if read_len < buf_in.len {

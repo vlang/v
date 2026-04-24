@@ -446,7 +446,36 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 			if mut parent_v := scope.parent.find_var(expr.name) {
 				by_value_auto_deref_capture := !v.is_auto_deref && parent_v.is_auto_deref
 					&& parent_v.typ.is_ptr()
-				if !by_value_auto_deref_capture {
+				if by_value_auto_deref_capture {
+					if parent_v.generic_typ != 0 {
+						refreshed_parent_type :=
+							g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))
+						if refreshed_parent_type != 0 {
+							parent_v.typ = refreshed_parent_type
+						}
+					}
+					if parent_v.expr !is ast.EmptyExpr
+						&& ((g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+						|| parent_v.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(parent_v.typ)) {
+						resolved_parent_type := g.resolved_expr_type(parent_v.expr, parent_v.typ)
+						if resolved_parent_type != 0 {
+							parent_v.typ =
+								g.unwrap_generic(g.recheck_concrete_type(resolved_parent_type))
+						}
+					}
+					if parent_v.typ != 0 {
+						resolved_parent_type :=
+							g.unwrap_generic(g.recheck_concrete_type(parent_v.typ))
+						if resolved_parent_type != 0 {
+							return if resolved_parent_type.is_ptr() {
+								resolved_parent_type.deref()
+							} else {
+								resolved_parent_type
+							}
+						}
+					}
+				} else {
 					if parent_v.generic_typ != 0 {
 						refreshed_parent_type :=
 							g.unwrap_generic(g.recheck_concrete_type(parent_v.generic_typ))

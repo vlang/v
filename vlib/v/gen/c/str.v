@@ -145,6 +145,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write(')')
 		return
 	}
+	if expr is ast.Ident && expr.obj is ast.Var && expr.obj.is_inherited {
+		inherited_typ := g.resolved_scope_var_type(expr)
+		if inherited_typ != 0 {
+			typ = inherited_typ
+		}
+	}
 	// `mut ?T` params are passed by pointer in C, but should still stringify as
 	// option values rather than as raw `&...` pointers.
 	is_ptr := typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))

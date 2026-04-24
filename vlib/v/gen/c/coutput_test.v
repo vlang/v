@@ -407,6 +407,14 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
+	if user_os == 'macos' {
+		$if arm64 {
+			if relpath.ends_with('spawn_stack_nix.vv') {
+				eprintln('> skipping ${relpath} on macOS arm64, since i386 linking is unavailable')
+				return true
+			}
+		}
+	}
 	return false
 }
 

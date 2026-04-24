@@ -1426,12 +1426,6 @@ fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool
 						return c.expr_is_immutable_source(expr.obj.expr)
 							|| c.expr_is_mutable_alias_of_immutable_source(expr.obj.expr)
 					}
-					ast.SelectorExpr {
-						if expr.obj.typ.is_ptr() {
-							return c.expr_is_immutable_source(expr.obj.expr)
-								|| c.expr_is_mutable_alias_of_immutable_source(expr.obj.expr)
-						}
-					}
 					else {}
 				}
 			}
@@ -2759,6 +2753,13 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
+	if !node.err_used && c.cur_or_expr != unsafe { nil } {
+		if last_stmt is ast.ExprStmt {
+			if last_stmt.expr is ast.Ident && last_stmt.expr.name == 'err' {
+				c.cur_or_expr.err_used = true
+			}
+		}
+	}
 	allow_none_as_option_value := expr is ast.IndexExpr && ret_type.has_flag(.option)
 	default_or_type := if expr is ast.IndexExpr && ret_type.has_flag(.option) {
 		ret_type
@@ -7707,7 +7708,7 @@ fn (c &Checker) internal_index_type(index_type ast.Type) ast.Type {
 	return internal_index_type
 }
 
-fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type, typ_sym &ast.TypeSymbol, range_index bool, is_gated bool) bool {
+fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type) bool {
 	if c.pref.translated || c.file.is_translated {
 		return true
 	}
@@ -7719,18 +7720,6 @@ fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type
 			return false
 		}
 		return true
-	}
-	if c.pref.backend == .c && !range_index && !is_gated {
-		return true
-	}
-	int_size, _ := c.table.type_size(ast.int_type_idx)
-	internal_index_size, _ := c.table.type_size(internal_index_type.idx_type())
-	if internal_index_size > int_size {
-		index_type_str := if typ_sym.kind == .string { 'string index' } else { 'index' }
-		got_type_str := c.table.type_to_str(index_type)
-		c.error('cannot use `${got_type_str}` as ${index_type_str} type `int`, use an explicit cast like `int(expr)`',
-			index.pos())
-		return false
 	}
 	return true
 }
@@ -7761,7 +7750,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			c.error('cannot use Option or Result as index ${type_str}', index.pos())
 			return
 		}
-		if !c.check_internal_index_type(index, index_type, typ_sym, range_index, is_gated) {
+		if !c.check_internal_index_type(index, index_type) {
 			return
 		}
 		if index is ast.IntegerLiteral && !is_gated {

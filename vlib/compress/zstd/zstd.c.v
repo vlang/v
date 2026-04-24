@@ -574,7 +574,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	output.size = buf_out_size
 	output.pos = 0
 	mut remaining := cctx.compress_stream2(output, input, .flush)!
-	fout.write(buf_out[..output.pos])!
+	fout.write(buf_out[..int(output.pos)])!
 	// then, write the array.data to file
 	input.src = array.data
 	input.size = usize(array.len * int(sizeof(T)))
@@ -587,7 +587,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 		output.size = buf_out_size
 		output.pos = 0
 		remaining = cctx.compress_stream2(output, input, .end)!
-		fout.write(buf_out[..output.pos])!
+		fout.write(buf_out[..int(output.pos)])!
 		if remaining == 0 {
 			break
 		}

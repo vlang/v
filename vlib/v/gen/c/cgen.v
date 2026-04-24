@@ -7337,8 +7337,8 @@ fn (mut g Gen) write_scope_gc_pins(pos token.Pos) {
 			continue
 		}
 		var_obj := obj as ast.Var
-		if var_obj.name in seen || !g.check_var_scope(var_obj, pos.pos)
-			|| !g.scope_var_needs_gc_pin(var_obj) {
+		if var_obj.name in seen || var_obj.name in g.curr_var_name
+			|| !g.check_var_scope(var_obj, pos.pos) || !g.scope_var_needs_gc_pin(var_obj) {
 			continue
 		}
 		seen[var_obj.name] = true
@@ -7383,9 +7383,17 @@ fn gc_pin_has_named_storage(name string) bool {
 }
 
 @[inline]
+fn (g &Gen) closure_field_cname(obj ast.Var) string {
+	if obj.name.starts_with('_v_') || obj.name.starts_with('__v_') {
+		return obj.name
+	}
+	return c_name(obj.name)
+}
+
+@[inline]
 fn (g &Gen) scope_gc_pin_expr(obj ast.Var) ?string {
 	if obj.is_inherited {
-		return '${closure_ctx}->${g.var_cname(obj)}'
+		return '${closure_ctx}->${g.closure_field_cname(obj)}'
 	}
 	// Scope smartcasts can synthesize expression-shaped names that are not backed
 	// by a standalone C local, so they cannot be pinned by address here.
@@ -7397,7 +7405,13 @@ fn (g &Gen) scope_gc_pin_expr(obj ast.Var) ?string {
 
 @[inline]
 fn (g &Gen) var_cname(obj ast.Var) string {
-	base_name := c_name(obj.name)
+	base_name := if obj.name.starts_with('_v_') || obj.name.starts_with('__v_') {
+		obj.name
+	} else if obj.typ != 0 && g.table.final_sym(obj.typ).kind == .function {
+		c_fn_name(obj.name)
+	} else {
+		c_name(obj.name)
+	}
 	if c_global := g.table.global_scope.find_global('C.${obj.name}') {
 		if c_global.pos.file_idx >= 0 && int(c_global.pos.file_idx) < g.table.filelist.len
 			&& g.table.filelist[c_global.pos.file_idx] == g.file.path {
@@ -7418,7 +7432,7 @@ fn (g &Gen) ident_cname(node ast.Ident) string {
 @[inline]
 fn (g &Gen) debugger_var_cname(obj ast.Var) string {
 	if obj.is_inherited {
-		return '${closure_ctx}->${g.var_cname(obj)}'
+		return '${closure_ctx}->${g.closure_field_cname(obj)}'
 	}
 	return g.var_cname(obj)
 }
@@ -10972,6 +10986,17 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 	g.indent--
 }
 
+fn or_block_last_stmt_is_err(stmts []ast.Stmt) bool {
+	mut valid_stmts := stmts.filter(it !is ast.SemicolonStmt)
+	last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { stmts.last() }
+	if last_stmt is ast.ExprStmt {
+		if last_stmt.expr is ast.Ident {
+			return last_stmt.expr.name == 'err'
+		}
+	}
+	return false
+}
+
 // or_block_on_value handles `or {}` blocks where the temp already stores the final value,
 // including optional values like `map[K]?T` lookups.
 fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_type ast.Type) {
@@ -10996,7 +11021,7 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 		g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
 	}
 	g.or_expr_return_type = return_type
-	if or_block.err_used
+	if or_block.err_used || or_block_last_stmt_is_err(or_block.stmts)
 		|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
 		g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
 	}
@@ -11092,7 +11117,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	g.write_v_source_line_info_pos(or_block.pos)
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
-		if or_block.err_used
+		if or_block.err_used || or_block_last_stmt_is_err(or_block.stmts)
 			|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
 			g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
 		}

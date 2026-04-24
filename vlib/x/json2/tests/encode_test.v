@@ -293,8 +293,8 @@ fn test_custom_encoders() {
 	assert json.encode(json.Null{}) == 'null'
 	assert json.encode(NullAlias{}) == 'null'
 
-	assert json.encode(time.Time{}) == '"0000-00-00T00:00:00.000Z"'
-	assert json.encode(TimeAlias{}) == '"0000-00-00T00:00:00.000Z"'
+	assert json.encode(time.Time{}) == '"0000-01-01T00:00:00.000Z"'
+	assert json.encode(TimeAlias{}) == '"0000-01-01T00:00:00.000Z"'
 
 	assert json.encode(big.integer_from_i64(1234567890)) == '1234567890'
 	assert json.encode(BigAlias(big.integer_from_i64(1234567890))) == '1234567890'

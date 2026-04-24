@@ -426,7 +426,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
 		dump_fns.writeln('\tbuiltin__flush_stderr();')
 		if g.dump_arg_needs_gc_pin(typ) {
-			if is_ptr {
+			if is_ptr && !typ.has_flag(.option) {
 				dump_fns.writeln('\tGC_reachable_here(dump_arg);')
 			} else {
 				dump_fns.writeln('\tGC_reachable_here(&dump_arg);')

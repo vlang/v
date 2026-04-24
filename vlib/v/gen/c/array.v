@@ -63,6 +63,12 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 	if !needs_order_preserved {
 		return exprs
 	}
+	stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
+	g.empty_line = true
 	mut prepared := []ast.Expr{cap: exprs.len}
 	for i, expr in exprs {
 		expr_type := if expr_types.len > i && expr_types[i] != 0 {
@@ -75,7 +81,15 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 			prepared << expr
 			continue
 		}
-		prepared << ast.Expr(g.expr_to_ctemp_before_stmt(expr, expr_type))
+		mut tmp := g.new_ctemp_var(expr, expr_type)
+		g.gen_ctemp_var(mut tmp)
+		prepared << ast.Expr(tmp)
+	}
+	if stmt_str.ends_with('return') {
+		g.write(stmt_str)
+		g.write(' ')
+	} else {
+		g.write(stmt_str)
 	}
 	return prepared
 }

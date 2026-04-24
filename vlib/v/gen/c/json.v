@@ -449,13 +449,35 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		// This way the user can easily check if the sum type was not provided in json ("key":null):
 		// `if node.expr is InvalidExpr { ... }`
 		// (Do this only for structs)
+		mut null_option_variant_typ := ''
+		mut null_option_variant_count := 0
+		for variant in info.variants {
+			if variant.has_flag(.option) {
+				null_option_variant_typ = g.styp(variant)
+				null_option_variant_count++
+			}
+		}
 		type_tmp := g.new_tmp_var()
 		first_variant := info.variants[0]
 		variant_typ := g.styp(first_variant)
 		fv_sym := g.table.sym(first_variant)
 		first_variant_name := fv_sym.cname
 		// println('KIND=${fv_sym.kind}')
-		if fv_sym.kind == .struct && !is_option && field_op != '->' {
+		if null_option_variant_count == 1 {
+			null_option_tmp := g.new_tmp_var()
+			dec.writeln('\tif (root->type == cJSON_NULL) {')
+			dec.writeln('\t\t${result_name}_${null_option_variant_typ} ${null_option_tmp} = ${js_dec_name(null_option_variant_typ)}(root);')
+			dec.writeln('\t\tif (${null_option_tmp}.is_error) {')
+			dec.writeln('\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${null_option_tmp}.err, .data = {0} };')
+			dec.writeln('\t\t}')
+			if is_option {
+				dec.writeln('\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${null_option_variant_typ}_to_sumtype_${sym.cname}((${null_option_variant_typ}*)${null_option_tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
+			} else {
+				dec.writeln('\t\tres = ${null_option_variant_typ}_to_sumtype_${ret_styp}((${null_option_variant_typ}*)${null_option_tmp}.data, false);')
+			}
+			dec.writeln('\t\t${decoded_var} = true;')
+			dec.writeln('\t} \n else ')
+		} else if fv_sym.kind == .struct && !is_option && field_op != '->' {
 			dec.writeln('\tif (root->type == cJSON_NULL) { ')
 			dec.writeln('\t\tstruct ${first_variant_name} empty = {0};')
 			dec.writeln('\t\t${decoded_var} = true;')
@@ -531,14 +553,30 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(time__Time_unix(*${var_data}${field_op}_${variant_typ})));')
 			} else {
-				enc.writeln('\t\tcJSON_free(o);')
-				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
-				if variant_sym.kind == .array {
-					enc.writeln('\t\tif (cJSON_IsObject(o->child)) {')
-					enc.writeln('\t\t\tcJSON_AddItemToObject(o->child, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+				encoded_variant := g.new_tmp_var()
+				enc.writeln('\t\tcJSON* ${encoded_variant} = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
+				if variant.has_flag(.option) {
+					enc.writeln('\t\tif (${encoded_variant} != NULL) {')
+					enc.writeln('\t\t\tcJSON_free(o);')
+					enc.writeln('\t\t\to = ${encoded_variant};')
+					if variant_sym.kind == .array {
+						enc.writeln('\t\t\tif (cJSON_IsObject(o->child)) {')
+						enc.writeln('\t\t\t\tcJSON_AddItemToObject(o->child, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+						enc.writeln('\t\t\t}')
+					} else {
+						enc.writeln('\t\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+					}
 					enc.writeln('\t\t}')
 				} else {
-					enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+					enc.writeln('\t\tcJSON_free(o);')
+					enc.writeln('\t\to = ${encoded_variant};')
+					if variant_sym.kind == .array {
+						enc.writeln('\t\tif (cJSON_IsObject(o->child)) {')
+						enc.writeln('\t\t\tcJSON_AddItemToObject(o->child, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+						enc.writeln('\t\t}')
+					} else {
+						enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+					}
 				}
 			}
 		}

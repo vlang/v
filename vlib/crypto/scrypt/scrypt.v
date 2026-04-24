@@ -142,7 +142,7 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 		v_start := i * (128 * r)
 		v_stop := v_start + (128 * r)
 
-		blkcpy(mut v_block[v_start..v_stop], temp_block, 128 * r)
+		blkcpy(mut v_block[int(v_start)..int(v_stop)], temp_block, 128 * r)
 		block_mix(mut temp_block, mut temp_block[y_start..], r)
 	}
 
@@ -152,7 +152,7 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 		v_start := j * (128 * r)
 		v_stop := v_start + (128 * r)
 
-		blkxor(mut temp_block, v_block[v_start..v_stop], 128 * r)
+		blkxor(mut temp_block, v_block[int(v_start)..int(v_stop)], 128 * r)
 		block_mix(mut temp_block, mut temp_block[y_start..], r)
 	}
 
@@ -240,5 +240,5 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 
 	result := pbkdf2.key(password, b, 1, int(128 * r * p), sha256.new())!
 
-	return result[..dk_len]
+	return result[..int(dk_len)]
 }

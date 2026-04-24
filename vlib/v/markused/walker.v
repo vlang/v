@@ -269,6 +269,15 @@ fn (mut w Walker) mark_json2_optional_field_helpers(concrete_typ ast.Type) {
 	}
 }
 
+fn (mut w Walker) remember_generic_fn_instance(fkey string, concrete_types []ast.Type) {
+	resolved_concrete_types := w.resolve_current_concrete_types(concrete_types)
+	if resolved_concrete_types.len == 0 || resolved_concrete_types.any(it.has_flag(.generic)) {
+		return
+	}
+	w.record_used_fn_generic_types(fkey, resolved_concrete_types)
+	w.mark_fn_as_used(fkey)
+}
+
 fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concrete_typ ast.Type) {
 	helper_key := '${int(receiver_typ)}:${int(concrete_typ)}'
 	if w.json2_encode_field_helpers[helper_key] {
@@ -295,16 +304,16 @@ fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concret
 			continue
 		}
 		if encode_struct_field_value_fn.name != '' {
-			w.fn_decl_with_concrete_types(mut encode_struct_field_value_fn, [field.typ])
+			w.remember_generic_fn_instance(encode_struct_field_value_fn.fkey(), [field.typ])
 		}
 		if struct_field_is_none_fn.name != '' && field.typ.has_flag(.option) {
-			w.fn_decl_with_concrete_types(mut struct_field_is_none_fn, [field.typ])
+			w.remember_generic_fn_instance(struct_field_is_none_fn.fkey(), [field.typ])
 		}
 		if struct_field_is_nil_fn.name != '' && field.typ.nr_muls() > 0 {
-			w.fn_decl_with_concrete_types(mut struct_field_is_nil_fn, [field.typ])
+			w.remember_generic_fn_instance(struct_field_is_nil_fn.fkey(), [field.typ])
 		}
 		if check_not_empty_fn.name != '' {
-			w.fn_decl_with_concrete_types(mut check_not_empty_fn, [field.typ])
+			w.remember_generic_fn_instance(check_not_empty_fn.fkey(), [field.typ])
 		}
 	}
 }
@@ -1633,7 +1642,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 		if concrete_sym.kind == .sum_type {
 			for concrete_type_list in w.sumtype_variant_concrete_types([concrete_typ]) {
 				if concrete_type_list != resolved_concrete_types {
-					w.fn_decl_with_concrete_types(mut node, concrete_type_list)
+					w.remember_generic_fn_instance(node.fkey(), concrete_type_list)
 				}
 			}
 		}
@@ -1642,7 +1651,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 				'encode_array')
 			if encode_array_fkey != '' {
 				if mut encode_array_fn := w.all_fns[encode_array_fkey] {
-					w.fn_decl_with_concrete_types(mut encode_array_fn, resolved_concrete_types)
+					w.remember_generic_fn_instance(encode_array_fn.fkey(), resolved_concrete_types)
 				}
 			}
 		}
@@ -1650,7 +1659,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 			encode_map_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ, 'encode_map')
 			if encode_map_fkey != '' {
 				if mut encode_map_fn := w.all_fns[encode_map_fkey] {
-					w.fn_decl_with_concrete_types(mut encode_map_fn, resolved_concrete_types)
+					w.remember_generic_fn_instance(encode_map_fn.fkey(), resolved_concrete_types)
 				}
 			}
 		}

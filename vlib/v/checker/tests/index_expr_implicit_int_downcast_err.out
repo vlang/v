@@ -1,6 +1,0 @@
-vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv:4:12: error: cannot use `usize` as index type `int`, use an explicit cast like `int(expr)`
-    2 |     a := [1, 2, 3]
-    3 |     idx_usize := usize(1)
-    4 |     println(a[idx_usize..])
-      |               ~~~~~~~~~
-    5 | }

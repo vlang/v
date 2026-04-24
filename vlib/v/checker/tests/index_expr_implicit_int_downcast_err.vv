@@ -1,5 +1,0 @@
-fn main() {
-	a := [1, 2, 3]
-	idx_usize := usize(1)
-	println(a[idx_usize..])
-}

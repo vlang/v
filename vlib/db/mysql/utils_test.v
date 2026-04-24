@@ -1,3 +1,4 @@
+// vtest build: started_mysqld?
 module mysql
 
 import json
