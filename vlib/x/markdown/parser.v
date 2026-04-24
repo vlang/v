@@ -5,6 +5,19 @@ module markdown
 
 import strings
 
+// block_level_tags lists HTML tags that start an HTML block (type 6).
+// vfmt off
+const block_level_tags = [
+	'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption',	'center',
+	'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset',
+	'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5',
+	'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu',
+	'menuitem', 'meta', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
+	'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track',
+	'ul'
+]
+// vfmt on
+
 // BlockParser parses markdown block structure line by line into an AST.
 // After block parsing, inline content is parsed for every leaf node.
 struct BlockParser {
@@ -319,73 +332,6 @@ fn (mut p BlockParser) parse_indented_code(indent int) &Node {
 	node.literal = lines.join('\n') + '\n'
 	return node
 }
-
-// block_level_tags lists HTML tags that start an HTML block (type 6).
-const block_level_tags = [
-	'address',
-	'article',
-	'aside',
-	'base',
-	'basefont',
-	'blockquote',
-	'body',
-	'caption',
-	'center',
-	'col',
-	'colgroup',
-	'dd',
-	'details',
-	'dialog',
-	'dir',
-	'div',
-	'dl',
-	'dt',
-	'fieldset',
-	'figcaption',
-	'figure',
-	'footer',
-	'form',
-	'frame',
-	'frameset',
-	'h1',
-	'h2',
-	'h3',
-	'h4',
-	'h5',
-	'h6',
-	'head',
-	'header',
-	'hr',
-	'html',
-	'iframe',
-	'legend',
-	'li',
-	'link',
-	'main',
-	'menu',
-	'menuitem',
-	'meta',
-	'nav',
-	'noframes',
-	'ol',
-	'optgroup',
-	'option',
-	'p',
-	'param',
-	'search',
-	'section',
-	'summary',
-	'table',
-	'tbody',
-	'td',
-	'tfoot',
-	'th',
-	'thead',
-	'title',
-	'tr',
-	'track',
-	'ul',
-]
 
 // try_html_block attempts to parse an HTML block starting at p.pos.
 fn (mut p BlockParser) try_html_block(line string, indent int) ?&Node {

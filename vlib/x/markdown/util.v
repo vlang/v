@@ -5,97 +5,56 @@ module markdown
 
 import strings
 
-const unicode_space = [` `, `\t`, 0x0a, 0x0d, 0x0c, 0x0b] // space, tab, LF, CR, FF, VT
+// unicode_space lists Unicode code points considered whitespace
+// vfmt off
+const unicode_space = [
+	` `, // space
+	`\t`, // tab
+	0x0a, // LF
+	0x0b, // Vertical Tab
+	0x0c, // FF
+	0x0d, // CR
+	0x0085, // next line
+	0x00A0, // no-break space
+	0x1680, // ogham space mark
+	0x180E, // mongolian vowel separator
+	0x2000, // en quad
+	0x2001, // em quad
+	0x2002, // en space
+	0x2003, // em space
+	0x2004, // three-per-em space
+	0x2005, // four-per-em space
+	0x2006, // six-per-em space
+	0x2007, // figure space
+	0x2008, // punctuation space
+	0x2009, // thin space
+	0x200A, // hair space
+	0x200B, // zero width space
+	0x200C, // zero width non-joiner
+	0x200D, // zero width joiner
+	0x2028, // line separator
+	0x2029, // paragraph separator
+	0x202F, // narrow no-break space
+	0x205F, // medium mathematical space
+	0x2060, // word joiner
+	0x3000, // ideographic space
+	0xFEFF, // zero width non-breaking space
+]!
 
+// ascii_punct lists ASCII punctuation characters
 const ascii_punct = [
-	`!`,
-	`"`,
-	`#`,
-	`$`,
-	`%`,
-	`&`,
-	`'`,
-	`(`,
-	`)`,
-	`*`,
-	`+`,
-	`,`,
-	`-`,
-	`.`,
-	`/`,
-	`:`,
-	`;`,
-	`<`,
-	`=`,
-	`>`,
-	`?`,
-	`@`,
-	`[`,
-	`\\`,
-	`]`,
-	`^`,
-	`_`,
-	`\``,
-	`{`,
-	`|`,
-	`}`,
-	`~`,
+	`!`, `"`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `/`, `:`,
+	`;`, `<`, `=`, `>`, `?`, `@`, `[`, `\\`, `]`, `^`, `_`, `\``, `{`, `|`, `}`, `~`,
 ]!
 
+// alpha lists ASCII letters a-z and A-Z
 const alpha = [
-	`a`,
-	`b`,
-	`c`,
-	`d`,
-	`e`,
-	`f`,
-	`g`,
-	`h`,
-	`i`,
-	`j`,
-	`k`,
-	`l`,
-	`m`,
-	`n`,
-	`o`,
-	`p`,
-	`q`,
-	`r`,
-	`s`,
-	`t`,
-	`u`,
-	`v`,
-	`w`,
-	`x`,
-	`y`,
-	`z`,
-	`A`,
-	`B`,
-	`C`,
-	`D`,
-	`E`,
-	`F`,
-	`G`,
-	`H`,
-	`I`,
-	`J`,
-	`K`,
-	`L`,
-	`M`,
-	`N`,
-	`O`,
-	`P`,
-	`Q`,
-	`R`,
-	`S`,
-	`T`,
-	`U`,
-	`V`,
-	`W`,
-	`X`,
-	`Y`,
-	`Z`,
+	`a`, `b`, `c`, `d`, `e`, `f`, `g`, `h`, `i`, `j`, `k`, `l`, `m`,
+	`n`, `o`, `p`, `q`, `r`, `s`, `t`, `u`, `v`, `w`, `x`, `y`, `z`,
+	`A`, `B`, `C`, `D`, `E`, `F`, `G`, `H`, `I`, `J`, `K`, `L`, `M`,
+	`N`, `O`, `P`, `Q`, `R`, `S`, `T`, `U`, `V`, `W`, `X`, `Y`, `Z`,
 ]!
+// vfmt on
 
 // html_escape replaces HTML special characters in s with their entity equivalents.
 fn html_escape(s string) string {
