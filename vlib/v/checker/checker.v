@@ -7142,6 +7142,12 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	if typ.idx() <= ast.nil_type_idx {
+		return false
+	}
 	sym := c.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
@@ -7171,31 +7177,34 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 			return sym.info.types.any(c.type_has_unresolved_generic_parts(it))
 		}
 		ast.Struct {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.generic_types.len > 0
 		}
 		ast.Interface {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.SumType {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))

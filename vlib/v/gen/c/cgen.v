@@ -1645,6 +1645,12 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	if typ.idx() <= ast.nil_type_idx {
+		return false
+	}
 	sym := g.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
@@ -1674,40 +1680,34 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 			return sym.info.types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.Struct {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.generic_types.len > 0
 		}
 		ast.Interface {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.SumType {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
