@@ -5,6 +5,98 @@ module markdown
 
 import strings
 
+const unicode_space = [` `, `\t`, 0x0a, 0x0d, 0x0c, 0x0b] // space, tab, LF, CR, FF, VT
+
+const ascii_punct = [
+	`!`,
+	`"`,
+	`#`,
+	`$`,
+	`%`,
+	`&`,
+	`'`,
+	`(`,
+	`)`,
+	`*`,
+	`+`,
+	`,`,
+	`-`,
+	`.`,
+	`/`,
+	`:`,
+	`;`,
+	`<`,
+	`=`,
+	`>`,
+	`?`,
+	`@`,
+	`[`,
+	`\\`,
+	`]`,
+	`^`,
+	`_`,
+	`\``,
+	`{`,
+	`|`,
+	`}`,
+	`~`,
+]!
+
+const alpha = [
+	`a`,
+	`b`,
+	`c`,
+	`d`,
+	`e`,
+	`f`,
+	`g`,
+	`h`,
+	`i`,
+	`j`,
+	`k`,
+	`l`,
+	`m`,
+	`n`,
+	`o`,
+	`p`,
+	`q`,
+	`r`,
+	`s`,
+	`t`,
+	`u`,
+	`v`,
+	`w`,
+	`x`,
+	`y`,
+	`z`,
+	`A`,
+	`B`,
+	`C`,
+	`D`,
+	`E`,
+	`F`,
+	`G`,
+	`H`,
+	`I`,
+	`J`,
+	`K`,
+	`L`,
+	`M`,
+	`N`,
+	`O`,
+	`P`,
+	`Q`,
+	`R`,
+	`S`,
+	`T`,
+	`U`,
+	`V`,
+	`W`,
+	`X`,
+	`Y`,
+	`Z`,
+]!
+
 // html_escape replaces HTML special characters in s with their entity equivalents.
 fn html_escape(s string) string {
 	if s.index_any('&<>"') == -1 {
@@ -79,26 +171,26 @@ fn ascii_lower(c u8) u8 {
 // is_unicode_space returns true for CommonMark Unicode whitespace.
 @[inline]
 fn is_unicode_space(c u8) bool {
-	return c == ` ` || c == `\t` || c == `\n` || c == `\r` || c == 0x0c || c == 0x0b
+	return c in unicode_space
 }
 
 // is_ascii_punct returns true if c is an ASCII punctuation character.
 @[inline]
 fn is_ascii_punct(c u8) bool {
-	return (c >= `!` && c <= `/`) || (c >= `:` && c <= `@`) || (c >= `[` && c <= 96)
-		|| (c >= `{` && c <= `~`)
+	return c in ascii_punct
 }
 
+const digits = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]!
 // is_digit returns true if c is an ASCII decimal digit.
 @[inline]
 fn is_digit(c u8) bool {
-	return c >= `0` && c <= `9`
+	return c in digits
 }
 
 // is_alpha returns true if c is an ASCII letter.
 @[inline]
 fn is_alpha(c u8) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+	return c in alpha
 }
 
 // is_alnum returns true if c is an ASCII letter or digit.

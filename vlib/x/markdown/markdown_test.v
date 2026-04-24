@@ -137,9 +137,7 @@ fn test_shortcut_reference_still_resolves_normally() {
 
 fn test_gfm_table_header_uses_th_cells() {
 	src := '| a | b |\n| --- | --- |\n| 1 | 2 |'
-	html := to_html_opts(src, Options{
-		extensions: gfm()
-	})
+	html := to_html(src, extensions: gfm())
 	assert html.contains('<thead>')
 	assert html.contains('<th>a</th>')
 	assert html.contains('<th>b</th>')
@@ -225,9 +223,7 @@ fn test_setext_heading_multiline_text() {
 
 fn test_task_list() {
 	src := '- [ ] unchecked\n- [x] checked\n- [X] also checked'
-	html := to_html_opts(src, Options{
-		task_list: true
-	})
+	html := to_html(src, task_list: true)
 	assert html.contains('<input type="checkbox" disabled="">')
 	assert html.contains('<input type="checkbox" disabled="" checked="">')
 	assert html.contains('unchecked')
@@ -244,29 +240,25 @@ fn test_task_list_not_applied_without_extension() {
 fn test_task_list_marker_requires_space_after_closing_bracket() {
 	// GFM task markers are [ ]/[x]/[X] followed by whitespace or end of item.
 	src := '- [x]ok\n- [ ]todo'
-	html := to_html_opts(src, Options{
-		task_list: true
-	})
+	html := to_html(src, task_list: true)
 	assert !html.contains('<input')
 	assert html.contains('[x]ok')
 	assert html.contains('[ ]todo')
 }
 
 fn test_task_list_xhtml_checkbox_self_closing() {
-	html := to_html_opts('- [x] done', Options{
+	html := to_html('- [x] done',
 		task_list:     true
 		renderer_opts: RendererOptions{
 			xhtml: true
 		}
-	})
+	)
 	assert html.contains('<input type="checkbox" disabled="" checked="" />')
 }
 
 fn test_footnote_definition_inside_list_item_is_preserved() {
 	src := '- item[^note]\n\n  [^note]: footnote in list\n\noutside[^note]'
-	html := to_html_opts(src, Options{
-		footnotes: true
-	})
+	html := to_html(src, footnotes: true)
 	assert html.contains('item<sup><a href="#fn-note" id="fnref-note">1</a></sup>')
 	assert html.contains('outside<sup><a href="#fn-note" id="fnref-note">1</a></sup>')
 	assert html.contains('<li id="fn-note">footnote in list')
@@ -275,9 +267,7 @@ fn test_footnote_definition_inside_list_item_is_preserved() {
 
 fn test_footnote_definition_inside_blockquote_is_preserved() {
 	src := '> quote[^q]\n>\n> [^q]: footnote in quote'
-	html := to_html_opts(src, Options{
-		footnotes: true
-	})
+	html := to_html(src, footnotes: true)
 	assert html.contains('quote<sup><a href="#fn-q" id="fnref-q">1</a></sup>')
 	assert html.contains('<li id="fn-q">footnote in quote')
 	assert html.contains('<a href="#fnref-q">&#x21A9;</a></li>')
@@ -308,9 +298,7 @@ fn test_link_ref_def_multiline_no_title_next_line_is_content() {
 }
 
 fn test_gfm_helper_sets_core_extension_flags() {
-	md := new(Options{
-		extensions: gfm()
-	})
+	md := Markdown.new(extensions: gfm())
 	assert md.opts.tables
 	assert md.opts.strikethrough
 	assert md.opts.linkify
@@ -318,19 +306,13 @@ fn test_gfm_helper_sets_core_extension_flags() {
 }
 
 fn test_individual_extension_helpers_set_flags() {
-	md_footnote := new(Options{
-		extensions: [Extension(footnote())]
-	})
+	md_footnote := Markdown.new(extensions: [Extension(footnote())])
 	assert md_footnote.opts.footnotes
 
-	md_typographer := new(Options{
-		extensions: [Extension(typographer())]
-	})
+	md_typographer := Markdown.new(extensions: [Extension(typographer())])
 	assert md_typographer.opts.typographer
 
-	md_definition_list := new(Options{
-		extensions: [Extension(definition_list())]
-	})
+	md_definition_list := Markdown.new(extensions: [Extension(definition_list())])
 	assert md_definition_list.opts.definition_list
 }
 
