@@ -75,6 +75,7 @@ $if dynamic_boehm ? {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
+		#flag -DALL_INTERIOR_POINTERS=1
 		$if !tinyc {
 			#flag -DUSE_MMAP
 			#flag -I @VEXEROOT/thirdparty/libgc/include
