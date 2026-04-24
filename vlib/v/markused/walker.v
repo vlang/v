@@ -36,18 +36,21 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	cur_fn                     string
-	cur_fn_concrete_types      []ast.Type
-	level                      int
-	is_builtin_mod             bool
-	is_direct_array_access     bool
-	inside_in_op               bool
-	inside_comptime            int
-	inside_comptime_if         int
-	used_fn_generic_types      map[string][][]ast.Type
-	walked_fn_generic_types    map[string][][]ast.Type
-	keep_all_fn_generic_types  map[string]bool
-	json2_encode_field_helpers map[string]bool
+	cur_fn                      string
+	cur_fn_concrete_types       []ast.Type
+	level                       int
+	is_builtin_mod              bool
+	is_direct_array_access      bool
+	inside_in_op                bool
+	inside_comptime             int
+	inside_comptime_if          int
+	used_fn_generic_types       map[string][][]ast.Type
+	used_fn_generic_type_keys   map[string]bool
+	walked_fn_generic_types     map[string][][]ast.Type
+	walked_fn_generic_type_keys map[string]bool
+	expanding_fn_generic_types  map[string]bool
+	keep_all_fn_generic_types   map[string]bool
+	json2_encode_field_helpers  map[string]bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -477,9 +480,30 @@ fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast
 	if concrete_types.len == 0 || concrete_types.any(it.has_flag(.generic)) {
 		return
 	}
-	if concrete_types !in w.used_fn_generic_types[fkey] {
-		w.used_fn_generic_types[fkey] << concrete_types.clone()
+	key := w.fn_generic_types_key(fkey, concrete_types)
+	if w.used_fn_generic_type_keys[key] {
+		return
 	}
+	w.used_fn_generic_type_keys[key] = true
+	w.used_fn_generic_types[fkey] << concrete_types.clone()
+}
+
+fn (w &Walker) fn_generic_types_key(fkey string, concrete_types []ast.Type) string {
+	mut parts := []string{cap: concrete_types.len}
+	for typ in concrete_types {
+		parts << w.table.type_to_str(typ)
+	}
+	return '${fkey}:${parts.join('|')}'
+}
+
+fn (mut w Walker) record_walked_fn_generic_types(fkey string, concrete_types []ast.Type) bool {
+	key := w.fn_generic_types_key(fkey, concrete_types)
+	if w.walked_fn_generic_type_keys[key] {
+		return false
+	}
+	w.walked_fn_generic_type_keys[key] = true
+	w.walked_fn_generic_types[fkey] << concrete_types.clone()
+	return true
 }
 
 @[inline]
@@ -1489,11 +1513,10 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	resolved_concrete_types := w.resolve_current_concrete_types(concrete_types)
 	if resolved_concrete_types.len > 0 {
 		w.record_used_fn_generic_types(fkey, resolved_concrete_types)
-		if resolved_concrete_types in w.walked_fn_generic_types[fkey] {
+		if !w.record_walked_fn_generic_types(fkey, resolved_concrete_types) {
 			w.mark_fn_as_used(fkey)
 			return
 		}
-		w.walked_fn_generic_types[fkey] << resolved_concrete_types.clone()
 	} else if w.used_fns[fkey] {
 		return
 	}
@@ -2065,8 +2088,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				&& call_concrete_types.len > 0)
 			if can_walk_method {
 				if keep_all_generic_types {
-					for concrete_type_list in w.table.fn_generic_types[fn_name] {
-						w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
+					if !w.expanding_fn_generic_types[fn_name] {
+						w.expanding_fn_generic_types[fn_name] = true
+						for concrete_type_list in w.table.fn_generic_types[fn_name] {
+							w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
+						}
+						w.expanding_fn_generic_types.delete(fn_name)
 					}
 				} else {
 					w.fn_decl_with_concrete_types(mut stmt, call_concrete_types)
