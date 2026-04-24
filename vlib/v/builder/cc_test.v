@@ -454,6 +454,12 @@ fn test_shared_windows_builds_do_not_add_subsystem_flags() {
 	assert !compile_args.contains('-mconsole')
 }
 
+fn test_windows_gcc_compile_args_force_generated_source_to_c_mode() {
+	compile_args := builder_compile_args(['-os', 'windows', '-cc', 'gcc', hello_world_example()])
+	assert compile_args.contains('-x c')
+	assert compile_args.contains('-x none')
+}
+
 fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
 	mut full_args := ['']
 	full_args << ['-shared', hello_world_example()]

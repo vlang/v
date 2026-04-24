@@ -859,9 +859,19 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
+	// Newer Windows runner images can surface short paths with an uppercase `.C` suffix,
+	// which makes GCC/Clang compile the generated V C file as C++ unless we force C mode.
+	force_generated_c_language := v.pref.os == .windows && !v.pref.parallel_cc
+		&& ccoptions.cc in [.gcc, .clang, .emcc]
+	if force_generated_c_language {
+		ccoptions.source_args << '-x c'
+	}
 	// The C file we are compiling
 	if !v.pref.parallel_cc { // parallel_cc uses its own split up c files
 		ccoptions.source_args << v.tcc_quoted_path(v.out_name_c)
+	}
+	if force_generated_c_language {
+		ccoptions.source_args << '-x none'
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
