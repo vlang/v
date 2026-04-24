@@ -7382,6 +7382,52 @@ fn gc_pin_has_named_storage(name string) bool {
 	return true
 }
 
+// has_veb_context reports whether `typ` is `veb.Context` or embeds it.
+@[inline]
+fn (g &Gen) has_veb_context(typ ast.Type) bool {
+	sym := g.table.final_sym(typ)
+	if sym.name == 'veb.Context' {
+		return true
+	}
+	if sym.info is ast.Struct {
+		for embed in sym.info.embeds {
+			if g.table.final_sym(embed).name == 'veb.Context' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// implicit_veb_ctx_alias_target maps the checker-injected `ctx` alias back
+// to the user-declared veb context parameter, when their names differ.
+@[inline]
+fn (g &Gen) implicit_veb_ctx_alias_target(obj ast.Var) ?ast.Param {
+	if g.fn_decl == unsafe { nil } || obj.name != 'ctx' || obj.is_arg
+		|| obj.pos.pos != g.fn_decl.pos.pos {
+		return none
+	}
+	mut target := ast.Param{}
+	mut found := 0
+	for i, param in g.fn_decl.params {
+		if g.fn_decl.is_method && i == 0 {
+			continue
+		}
+		if !g.has_veb_context(param.typ) {
+			continue
+		}
+		target = param
+		found++
+		if found > 1 {
+			return none
+		}
+	}
+	if found == 1 && target.name != obj.name {
+		return target
+	}
+	return none
+}
+
 @[inline]
 fn (g &Gen) closure_field_cname(obj ast.Var) string {
 	if obj.name.starts_with('_v_') || obj.name.starts_with('__v_') {
@@ -7395,6 +7441,9 @@ fn (g &Gen) scope_gc_pin_expr(obj ast.Var) ?string {
 	if obj.is_inherited {
 		return '${closure_ctx}->${g.closure_field_cname(obj)}'
 	}
+	if g.implicit_veb_ctx_alias_target(obj) != none {
+		return none
+	}
 	// Scope smartcasts can synthesize expression-shaped names that are not backed
 	// by a standalone C local, so they cannot be pinned by address here.
 	if !gc_pin_has_named_storage(obj.name) {
@@ -7407,6 +7456,8 @@ fn (g &Gen) scope_gc_pin_expr(obj ast.Var) ?string {
 fn (g &Gen) var_cname(obj ast.Var) string {
 	base_name := if obj.name.starts_with('_v_') || obj.name.starts_with('__v_') {
 		obj.name
+	} else if target := g.implicit_veb_ctx_alias_target(obj) {
+		c_name(target.name)
 	} else if obj.typ != 0 && g.table.final_sym(obj.typ).kind == .function {
 		c_fn_name(obj.name)
 	} else {

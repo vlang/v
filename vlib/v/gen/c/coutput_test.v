@@ -283,6 +283,25 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
 }
 
+fn test_veb_implicit_ctx_alias_uses_user_context_name() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_veb_implicit_ctx_alias.vv')
+	os.write_file(test_source,
+		['module main', '', 'import veb', '', 'struct App {}', '', 'struct Context {', '\tveb.Context', '}', '', 'fn (app App) nested(mut ctx Context) veb.Result {', "\treturn ctx.text('nested')", '}', '', 'fn (app App) log(_ Context) {', "\tprintln('hi')", '}', '', 'fn (app App) index(mut c Context) veb.Result {', '\tapp.log(c)', '\treturn app.nested()', '}', '', 'fn main() {', '\tmut app := App{}', '\tmut ctx := Context{}', '\t_ = app.index(mut ctx)', '}'].join('\n') +
+		'\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
+	for normalized.contains('  ') {
+		normalized = normalized.replace('  ', ' ')
+	}
+	assert normalized.contains('veb__Result main__App_index(main__App app, main__Context* c) { main__App_log(app, *c); GC_reachable_here(&c); return main__App_nested(app, c); }')
+}
+
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
 	for cline in generated_c_lines {
 		if line == cline {
