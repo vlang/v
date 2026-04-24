@@ -159,8 +159,10 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :gcc_strap
 )
 
+if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set clang_target=i686-w64-mingw32 ) else ( set clang_target=x86_64-w64-mingw32 )
+
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-clang -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
+clang --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -Wl,-stack=33554432
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
@@ -169,7 +171,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" -keepc -g -showcc -cc clang -o "%V_UPDATED%" cmd/v
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc clang -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 call :move_updated_to_v
 goto :success
@@ -419,6 +421,14 @@ exit /b 0
 :move_updated_to_v
 @REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
+REM sleep for at most 100ms
+ping 192.0.2.1 -n 1 -w 100 >nul
+move "%V_UPDATED%" "%V_EXE%" >nul
+exit /b 0
+1 -n 1 -w 100 >nul
+move "%V_UPDATED%" "%V_EXE%" >nul
+exit /b 0
+%" >nul
 REM sleep for at most 100ms
 ping 192.0.2.1 -n 1 -w 100 >nul
 move "%V_UPDATED%" "%V_EXE%" >nul
