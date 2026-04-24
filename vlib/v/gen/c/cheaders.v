@@ -442,12 +442,16 @@ extern FILE* __stderrp;
 #define stderr __stderrp
 	#elif defined(__OpenBSD__)
 typedef struct __sFILE FILE;
-extern FILE* __stdin;
-extern FILE* __stdout;
-extern FILE* __stderr;
-#define stdin __stdin
-#define stdout __stdout
-#define stderr __stderr
+#ifndef _STDFILES_DECLARED
+	#define _STDFILES_DECLARED
+struct __sFstub { long _stub; };
+extern struct __sFstub __stdin[];
+extern struct __sFstub __stdout[];
+extern struct __sFstub __stderr[];
+#endif
+#define stdin ((struct __sFILE *)__stdin)
+#define stdout ((struct __sFILE *)__stdout)
+#define stderr ((struct __sFILE *)__stderr)
 	#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)
 typedef struct _IO_FILE FILE;
 // musl exposes the stdio streams as `FILE *const`, so match that to stay
