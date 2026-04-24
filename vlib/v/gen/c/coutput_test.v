@@ -283,6 +283,48 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
 }
 
+fn test_array_sort_with_compare_uses_qsort_adapters() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_sort_with_compare_qsort_adapter.vv')
+	source_lines := [
+		'module main',
+		'',
+		'struct Foo {',
+		'\tx int',
+		'}',
+		'',
+		'fn by_x(a &Foo, b &Foo) int {',
+		'\treturn a.x - b.x',
+		'}',
+		'',
+		'fn main() {',
+		'\tmut xs := [Foo{ x: 2 }, Foo{ x: 1 }]',
+		'\txs.sort_with_compare(by_x)',
+		'\tmut ys := [Foo{ x: 2 }, Foo{ x: 1 }]!',
+		'\tys.sort_with_compare(by_x)',
+		'\tmut zs := [Foo{ x: 2 }, Foo{ x: 1 }]',
+		'\tzs.sort(a.x < b.x)',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
+	for normalized.contains('  ') {
+		normalized = normalized.replace('  ', ' ')
+	}
+	assert normalized.contains('int main__by_x_qsort_adapter(const void* a, const void* b) { return main__by_x((main__Foo*)a, (main__Foo*)b); }')
+	assert normalized.contains('if (xs.len > 0) { qsort(xs.data, xs.len, xs.element_size, main__by_x_qsort_adapter); }')
+	assert normalized.contains('qsort(&ys, 2, sizeof(main__Foo), main__by_x_qsort_adapter);')
+	assert normalized.contains('_qsort_adapter(const void* a, const void* b) { return compare_')
+	assert normalized.contains('qsort(zs.data, zs.len, zs.element_size, compare_')
+	assert normalized.contains('_qsort_adapter);')
+}
+
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_veb_implicit_ctx_alias.vv')

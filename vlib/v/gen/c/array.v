@@ -1184,7 +1184,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		comparison_type = g.unwrap(elem_type.set_nr_muls(0))
 		rlock g.array_sort_fn {
 			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node, compare_fn, left_is_array)
+				g.gen_array_sort_call(node,
+					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
 				return
 			}
 		}
@@ -1212,7 +1213,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		rlock g.array_sort_fn {
 			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node, compare_fn, left_is_array)
+				g.gen_array_sort_call(node,
+					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
 				return
 			}
 		}
@@ -1246,8 +1248,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	stype_arg := g.styp(elem_type)
 	// In -parallel-cc these bodies are seen by every split C translation unit via `out.h`,
 	// so they need internal linkage to avoid duplicate symbols at link time.
-	sort_fn_visibility := if g.static_modifier != '' { g.static_modifier } else { 'VV_LOC ' }
-	g.sort_fn_definitions.writeln('${sort_fn_visibility}int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
+	g.sort_fn_definitions.writeln('${g.array_sort_fn_visibility()}int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := g.array_sort_lt_condition(comparison_type, use_lambda, lambda_fn_name,
 		left_expr, right_expr, 'a', 'b')
 	reverse_condition := g.array_sort_lt_condition(comparison_type, use_lambda, lambda_fn_name,
@@ -1258,7 +1259,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.sort_fn_definitions.writeln('}\n')
 
 	// write call to the generated function
-	g.gen_array_sort_call(node, compare_fn, left_is_array)
+	g.gen_array_sort_call(node, g.ensure_array_sort_qsort_adapter(compare_fn, elem_type),
+		left_is_array)
 }
 
 fn (mut g Gen) array_sort_lt_condition(comparison_type Type, use_lambda bool, lambda_fn_name string, left_expr string, right_expr string, left_arg string, right_arg string) string {
@@ -1284,7 +1286,83 @@ fn (mut g Gen) array_sort_lt_condition(comparison_type Type, use_lambda bool, la
 	return '${left_expr} < ${right_expr}'
 }
 
-fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_array bool) {
+@[inline]
+fn (g &Gen) array_sort_fn_visibility() string {
+	return if g.static_modifier != '' { g.static_modifier } else { 'VV_LOC ' }
+}
+
+fn (mut g Gen) ensure_array_sort_qsort_adapter(compare_fn string, elem_type ast.Type) string {
+	qsort_compare_fn := '${compare_fn}_qsort_adapter'
+	rlock g.array_sort_wrappers {
+		if qsort_compare_fn in g.array_sort_wrappers {
+			return qsort_compare_fn
+		}
+	}
+	lock g.array_sort_wrappers {
+		g.array_sort_wrappers << qsort_compare_fn
+	}
+	elem_stype := g.styp(elem_type)
+	g.sort_fn_definitions.writeln('${g.array_sort_fn_visibility()}int ${qsort_compare_fn}(const void* a, const void* b) {')
+	g.sort_fn_definitions.writeln('\treturn ${compare_fn}((${elem_stype}*)a, (${elem_stype}*)b);')
+	g.sort_fn_definitions.writeln('}\n')
+	return qsort_compare_fn
+}
+
+@[inline]
+fn (g &Gen) qsort_callback_cast(compare_expr string) string {
+	return '((int (*)(const void*, const void*))(${compare_expr}))'
+}
+
+@[inline]
+fn (mut g Gen) plain_array_sort_callback_cname(expr ast.Expr) ?string {
+	if expr is ast.CastExpr {
+		return g.plain_array_sort_callback_cname(expr.expr)
+	}
+	if expr is ast.ParExpr {
+		return g.plain_array_sort_callback_cname(expr.expr)
+	}
+	if expr is ast.UnsafeExpr {
+		return g.plain_array_sort_callback_cname(expr.expr)
+	}
+	if expr is ast.Ident && expr.kind == .function {
+		return g.expr_string(expr)
+	}
+	return none
+}
+
+@[inline]
+fn (mut g Gen) can_generate_array_sort_qsort_adapter(expr ast.Expr) bool {
+	return g.plain_array_sort_callback_cname(expr) != none
+}
+
+fn (mut g Gen) array_sort_qsort_callback_expr(expr ast.Expr, elem_type ast.Type) (string, bool) {
+	if expr is ast.CastExpr {
+		return g.array_sort_qsort_callback_expr(expr.expr, elem_type)
+	}
+	if expr is ast.ParExpr {
+		return g.array_sort_qsort_callback_expr(expr.expr, elem_type)
+	}
+	if expr is ast.UnsafeExpr {
+		return g.array_sort_qsort_callback_expr(expr.expr, elem_type)
+	}
+	if expr is ast.LambdaExpr {
+		lambda_fn_name := expr.func.decl.name
+		mut lambda_node := unsafe { expr }
+		g.gen_anon_fn_decl(mut lambda_node.func)
+		return g.ensure_array_sort_qsort_adapter('${lambda_fn_name}_lambda_wrapper', elem_type), true
+	}
+	if expr is ast.AnonFn {
+		mut fn_expr := unsafe { expr }
+		g.gen_anon_fn_decl(mut fn_expr)
+		return g.ensure_array_sort_qsort_adapter(expr.decl.name, elem_type), true
+	}
+	if expr is ast.Ident && expr.kind == .function {
+		return g.ensure_array_sort_qsort_adapter(g.expr_string(expr), elem_type), true
+	}
+	return g.qsort_callback_cast(g.expr_string(expr)), false
+}
+
+fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, qsort_compare_fn string, is_array bool) {
 	resolved_left_type := g.resolved_array_receiver_type(node)
 	deref_field := g.array_receiver_field_access(node.left, resolved_left_type)
 	// eprintln('> qsort: pointer ${node.left_type} | deref_field: `${deref_field}`')
@@ -1298,58 +1376,110 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 		g.write_array_receiver(node.left)
 		g.write('${deref_field}len, ')
 		g.write_array_receiver(node.left)
-		g.write2('${deref_field}element_size, (voidptr)${compare_fn});', ' }')
+		g.write2('${deref_field}element_size, ${qsort_compare_fn});', ' }')
 	} else {
 		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
 		elem_styp := g.styp(info.elem_type)
 		g.write('qsort(&')
 		g.write_array_receiver(node.left)
-		g.write(', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
+		g.write(', ${info.size}, sizeof(${elem_styp}), ${qsort_compare_fn});')
 	}
 	g.writeln('')
 }
 
-fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
+fn (mut g Gen) gen_array_sorted_with_compare(node ast.CallExpr) bool {
+	mut resolved_return_type := g.resolve_return_type(node)
+	mut sym := g.table.final_sym(resolved_return_type)
+	if sym.kind !in [.array, .array_fixed] {
+		resolved_return_type = node.return_type
+		sym = g.table.final_sym(resolved_return_type)
+	}
+	left_is_array := sym.kind == .array
+	elem_type := if left_is_array {
+		(sym.info as ast.Array).elem_type
+	} else {
+		(sym.info as ast.ArrayFixed).elem_type
+	}
+	if left_is_array && !g.can_generate_array_sort_qsort_adapter(node.args[0].expr) {
+		return false
+	}
 	past := g.past_tmp_var_new()
 	defer {
 		g.past_tmp_var_done(past)
 	}
-	atype := g.styp(node.return_type)
-	g.writeln('${atype} ${past.tmp_var};')
-	g.write('memcpy(&${past.tmp_var}, &')
-	if node.left is ast.ArrayInit {
-		g.fixed_array_init_with_cast(node.left, node.left_type)
+	atype := g.styp(resolved_return_type)
+	if left_is_array {
+		depth := g.get_array_depth(elem_type)
+		resolved_left_type := g.resolved_array_receiver_type(node)
+		left_is_indirect := g.array_receiver_is_indirect(node.left, resolved_left_type)
+		if !left_is_indirect {
+			g.write('${atype} ${past.tmp_var} = builtin__array_clone_to_depth(ADDR(${atype},')
+			g.write_array_receiver(node.left)
+			g.writeln('), ${depth});')
+		} else {
+			g.write('${atype} ${past.tmp_var} = builtin__array_clone_to_depth(')
+			g.write_array_receiver(node.left)
+			g.writeln(', ${depth});')
+		}
 	} else {
-		g.expr(node.left)
+		g.writeln('${atype} ${past.tmp_var};')
+		g.write('memcpy(&${past.tmp_var}, &')
+		if node.left is ast.ArrayInit {
+			g.fixed_array_init_with_cast(node.left, node.left_type)
+		} else {
+			g.expr(node.left)
+		}
+		g.writeln(', sizeof(${atype}));')
 	}
-	g.writeln(', sizeof(${atype}));')
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
 			name: past.tmp_var
 		})
+		if left_is_array {
+			node.left_type = resolved_return_type
+		}
 	}
-	g.gen_fixed_array_sort_with_compare(node)
+	return g.gen_array_sort_with_compare(node)
+}
+
+fn (mut g Gen) gen_array_sort_with_compare(node ast.CallExpr) bool {
+	resolved_left_type := g.resolved_array_receiver_type(node)
+	rec_sym := g.table.final_sym(resolved_left_type)
+	if rec_sym.kind !in [.array, .array_fixed] {
+		verror('.sort_with_compare() is an array method or a fixed array method')
+	}
+	if g.pref.is_bare {
+		g.writeln('bare_panic(_S("sort_with_compare does not work with -freestanding"))')
+		return true
+	}
+	left_is_array := rec_sym.kind == .array
+	elem_type := if left_is_array {
+		(rec_sym.info as ast.Array).elem_type
+	} else {
+		(rec_sym.info as ast.ArrayFixed).elem_type
+	}
+	if left_is_array {
+		if compare_fn := g.plain_array_sort_callback_cname(node.args[0].expr) {
+			g.gen_array_sort_call(node, g.ensure_array_sort_qsort_adapter(compare_fn, elem_type),
+				true)
+			return true
+		}
+		return false
+	}
+	qsort_compare_fn, has_qsort_adapter := g.array_sort_qsort_callback_expr(node.args[0].expr,
+		elem_type)
+	_ = has_qsort_adapter
+	g.gen_array_sort_call(node, qsort_compare_fn, left_is_array)
+	return true
+}
+
+fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
+	_ = g.gen_array_sorted_with_compare(node)
 }
 
 fn (mut g Gen) gen_fixed_array_sort_with_compare(node ast.CallExpr) {
-	mut compare_fn := ''
-	if node.args[0].expr is ast.LambdaExpr {
-		lambda_fn_name := node.args[0].expr.func.decl.name
-		compare_fn = '${lambda_fn_name}_lambda_wrapper'
-		mut lambda_node := unsafe { node.args[0].expr }
-		g.gen_anon_fn_decl(mut lambda_node.func)
-	} else if node.args[0].expr is ast.AnonFn {
-		mut fn_expr := unsafe { node.args[0].expr }
-		g.gen_anon_fn_decl(mut fn_expr)
-		compare_fn = node.args[0].expr.decl.name
-	} else if node.args[0].expr is ast.Ident {
-		compare_fn = node.args[0].expr.name
-	} else {
-		compare_fn = node.args[0].expr.str()
-	}
-	// write call to the generated function
-	g.gen_array_sort_call(node, compare_fn, false)
+	_ = g.gen_array_sort_with_compare(node)
 }
 
 fn (mut g Gen) gen_fixed_array_reverse(node ast.CallExpr) {

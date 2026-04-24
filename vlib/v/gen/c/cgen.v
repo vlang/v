@@ -207,6 +207,7 @@ mut:
 	generated_array_interface_cast_fns   shared map[string]bool
 	generated_array_interface_repeat_fns shared map[string]bool
 	array_sort_fn                        shared []string
+	array_sort_wrappers                  shared []string
 	array_contains_types                 []ast.Type
 	array_index_types                    []ast.Type
 	array_last_index_types               []ast.Type
@@ -1012,6 +1013,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		enum_data_type:                     global_g.table.find_type('EnumData')
 		variant_data_type:                  global_g.table.find_type('VariantData')
 		array_sort_fn:                      global_g.array_sort_fn
+		array_sort_wrappers:                global_g.array_sort_wrappers
 		generated_array_interface_cast_fns: global_g.generated_array_interface_cast_fns
 		waiter_fns:                         global_g.waiter_fns
 		threaded_fns:                       global_g.threaded_fns

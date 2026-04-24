@@ -2482,6 +2482,16 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 		.sorted {
 			g.gen_array_sorted(node)
 		}
+		.sort_with_compare {
+			if !g.gen_array_sort_with_compare(node) {
+				return false
+			}
+		}
+		.sorted_with_compare {
+			if !g.gen_array_sorted_with_compare(node) {
+				return false
+			}
+		}
 		.insert {
 			g.gen_array_insert(node)
 		}
@@ -2647,10 +2657,14 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 			g.gen_array_sorted(node)
 		}
 		.sort_with_compare {
-			g.gen_fixed_array_sort_with_compare(node)
+			if !g.gen_array_sort_with_compare(node) {
+				return false
+			}
 		}
 		.sorted_with_compare {
-			g.gen_fixed_array_sorted_with_compare(node)
+			if !g.gen_array_sorted_with_compare(node) {
+				return false
+			}
 		}
 		.reverse {
 			g.gen_fixed_array_reverse(node)
@@ -4369,6 +4383,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if method := left_sym.find_method(method_name) {
 			use_builtin_array_sort = method.params.len == 1
 		}
+	} else if final_left_sym.kind == .array
+		&& node.kind in [.sort_with_compare, .sorted_with_compare] && node.args.len == 1 {
+		use_builtin_array_sort = true
 	}
 	if final_left_sym.kind == .array && (!(left_sym.has_method(method_name)
 		|| left_sym.has_method_with_generic_parent(method_name))
