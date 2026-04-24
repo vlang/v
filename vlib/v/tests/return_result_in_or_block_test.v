@@ -10,6 +10,14 @@ fn unwrap_function2() ?int {
 	return unwrap_int() or { none }
 }
 
+fn unwrap_error() !int {
+	return error('original error')
+}
+
+fn wrap_error_in_return_or_block() !int {
+	return unwrap_error() or { error('wrapped error: ${err}') }
+}
+
 fn test_return_result_in_or_block() {
 	x1 := unwrap_function1() or { panic(err) }
 	println(x1)
@@ -18,4 +26,12 @@ fn test_return_result_in_or_block() {
 	x2 := unwrap_function2() or { panic(err) }
 	println(x2)
 	assert x2 == 1
+}
+
+fn test_err_interpolation_in_return_or_block() {
+	wrap_error_in_return_or_block() or {
+		assert err.msg() == 'wrapped error: original error'
+		return
+	}
+	assert false
 }

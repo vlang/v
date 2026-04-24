@@ -1439,6 +1439,11 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	old_expected_or_type := c.expected_or_type
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
+	if node.or_block.kind == .block && !node.or_block.err_used {
+		if err_var := node.or_block.scope.find_var('err') {
+			node.or_block.err_used = err_var.is_used
+		}
+	}
 
 	if node.or_block.kind == .block {
 		mut return_context_type := ast.no_type
