@@ -19,7 +19,7 @@ pub struct Server {
 mut:
 	logger                  &log.Logger      = default_logger
 	ls                      &net.TcpListener = unsafe { nil } // listener used to get incoming connection to socket
-	accept_client_callbacks []AcceptClientFn      // accept client callback functions
+	accept_client_callbacks []AcceptClientFn // accept client callback functions
 	attached_callbacks      []AttachedEventHandler
 	message_callbacks       []MessageEventHandler // new message callback functions
 	close_callbacks         []CloseEventHandler   // close message callback functions

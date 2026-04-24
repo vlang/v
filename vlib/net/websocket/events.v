@@ -40,7 +40,9 @@ struct AttachedEventHandler {
 }
 
 pub type AcceptClientFn = fn (mut c ServerClient) !bool
+
 pub type ServerAttachedFn = fn (mut c ServerClient) !
+
 pub type ServerAttachedFn2 = fn (mut c ServerClient, v voidptr) !
 
 pub type SocketMessageFn = fn (mut c Client, msg &Message) !
