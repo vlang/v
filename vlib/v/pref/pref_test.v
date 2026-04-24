@@ -554,6 +554,8 @@ fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
 
 	assert 'no_backtrace' in shared_prefs.compile_defines_all
 	assert shared_prefs.build_options.contains('-d no_backtrace')
+}
+
 fn test_wayland_only_linux_session_surfaces_a_v_error_for_gg() {
 	if os.user_os() == 'windows' {
 		return

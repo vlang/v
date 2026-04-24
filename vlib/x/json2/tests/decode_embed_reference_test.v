@@ -21,6 +21,8 @@ struct Issue25614Node {
 mut:
 	value    int
 	children []&Issue25614Node
+}
+
 struct OptionalPointerRegressionMessage {
 mut:
 	id       int
@@ -79,6 +81,8 @@ fn test_decode_struct_with_array_of_references() {
 	assert decoded.children[1] != unsafe { nil }
 	assert decoded.children[0].value == 1
 	assert decoded.children[1].value == 2
+}
+
 fn test_decode_optional_reference_field() {
 	message :=
 		json2.decode[OptionalPointerRegressionMessage]('{"id":1,"text":"Hello","reply_to":{"id":2,"text":"Hi","reply_to":null}}')!

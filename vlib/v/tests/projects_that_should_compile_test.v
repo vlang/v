@@ -332,6 +332,8 @@ fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
 	generated_c := os.read_file(generated_c_path)!
 	assert generated_c.contains('payload__Foo_to_sumtype_payload__Value(payload__Foo* x, bool is_mut)')
 	assert generated_c.contains('._typ = _v_type_idx_payload__Foo()')
+}
+
 fn test_readline_raw_mode_methods_should_check_for_windows() {
 	source_path := os.join_path(os.vtmp_dir(), 'readline_raw_mode_issue_24686_${os.getpid()}.v')
 	source := [

@@ -246,6 +246,8 @@ fn test_windows_host_c_compiler_probe_is_skipped_for_non_windows_targets() {
 		backend: .js_browser
 		os:      .windows
 	})
+}
+
 fn test_message_limit_notices_do_not_fail_build() {
 	os.chdir(test_path)!
 	src_file := os.join_path(test_path, 'message_limit_notices.v')

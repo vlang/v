@@ -2629,9 +2629,12 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 
 fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
 	return match item {
-		ast.SqlQueryDataLeaf { item.pos.line_nr == item.pos.last_line
-				&& expr_is_single_line(item.expr) }
-		ast.SqlQueryDataIf { false }
+		ast.SqlQueryDataLeaf {
+			item.pos.line_nr == item.pos.last_line && expr_is_single_line(item.expr)
+		}
+		ast.SqlQueryDataIf {
+			false
+		}
 	}
 }
 

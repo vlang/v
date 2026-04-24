@@ -7320,7 +7320,13 @@ fn (mut g Gen) write_scope_gc_pins(pos token.Pos) {
 	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 		return
 	}
-	scope := g.file.scope.innermost(pos.pos)
+	if g.fn_decl == unsafe { nil } || g.fn_decl.scope == unsafe { nil } {
+		return
+	}
+	if !g.fn_decl.scope.contains(pos.pos) {
+		return
+	}
+	scope := g.fn_decl.scope.innermost(pos.pos)
 	if scope == unsafe { nil } {
 		return
 	}

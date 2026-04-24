@@ -116,10 +116,6 @@ fn test_orm_select_specific_fields() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or {}
-fn test_orm_order_by_explicit_asc() {
-	mut db := sqlite.connect(':memory:')!
-	defer {
-		db.close() or { panic(err) }
 	}
 
 	sql db {
@@ -157,6 +153,16 @@ fn test_orm_order_by_explicit_asc() {
 	assert transformed.len == 1
 	assert transformed[0].name == 'ALICE'
 	assert transformed[0].id == 0
+}
+
+fn test_orm_order_by_explicit_asc() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table User
 	}!
 
 	users := [
