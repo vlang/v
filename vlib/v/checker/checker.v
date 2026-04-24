@@ -7708,7 +7708,7 @@ fn (c &Checker) internal_index_type(index_type ast.Type) ast.Type {
 	return internal_index_type
 }
 
-fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type) bool {
+fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type, typ_sym &ast.TypeSymbol, is_gated bool) bool {
 	if c.pref.translated || c.file.is_translated {
 		return true
 	}
@@ -7720,6 +7720,18 @@ fn (mut c Checker) check_internal_index_type(index ast.Expr, index_type ast.Type
 			return false
 		}
 		return true
+	}
+	if c.pref.backend == .c && !is_gated {
+		return true
+	}
+	int_size, _ := c.table.type_size(ast.int_type_idx)
+	internal_index_size, _ := c.table.type_size(internal_index_type.idx_type())
+	if internal_index_size > int_size {
+		index_type_str := if typ_sym.kind == .string { 'string index' } else { 'index' }
+		got_type_str := c.table.type_to_str(index_type)
+		c.error('cannot use `${got_type_str}` as ${index_type_str} type `int`, use an explicit cast like `int(expr)`',
+			index.pos())
+		return false
 	}
 	return true
 }
@@ -7750,7 +7762,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			c.error('cannot use Option or Result as index ${type_str}', index.pos())
 			return
 		}
-		if !c.check_internal_index_type(index, index_type) {
+		if !c.check_internal_index_type(index, index_type, typ_sym, is_gated) {
 			return
 		}
 		if index is ast.IntegerLiteral && !is_gated {

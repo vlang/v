@@ -94,7 +94,8 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
-	js_checker_tests := ['js_number_requires_explicit_cast.vv']
+	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
+		'js_number_requires_explicit_cast.vv']
 	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')

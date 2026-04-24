@@ -38,6 +38,25 @@ fn (mut g Gen) c_wide_index_kind(index_type ast.Type) CWideIndexKind {
 	return if internal_index_size < int_size { .plain } else { .unsigned_64 }
 }
 
+fn (mut g Gen) write_c_range_bound(expr ast.Expr) {
+	bound_type := g.resolved_expr_type(expr, 0)
+	match g.c_wide_index_kind(bound_type) {
+		.signed_64 {
+			g.write('builtin__v_slice_index_i64(')
+			g.expr(expr)
+			g.write(')')
+		}
+		.unsigned_64 {
+			g.write('builtin__v_slice_index_u64(')
+			g.expr(expr)
+			g.write(')')
+		}
+		else {
+			g.expr(expr)
+		}
+	}
+}
+
 fn (mut g Gen) resolved_index_operator_receiver_type(receiver ast.Expr, receiver_type ast.Type) ast.Type {
 	mut resolved_type := g.recheck_concrete_type(g.resolved_expr_type(receiver, receiver_type))
 	if resolved_type == 0 {
@@ -298,13 +317,13 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	}
 	g.write(', ')
 	if range.has_low {
-		g.expr(range.low)
+		g.write_c_range_bound(range.low)
 	} else {
 		g.write('0')
 	}
 	g.write(', ')
 	if range.has_high {
-		g.expr(range.high)
+		g.write_c_range_bound(range.high)
 	} else if sym.info is ast.ArrayFixed {
 		g.write('${sym.info.size}')
 	} else {

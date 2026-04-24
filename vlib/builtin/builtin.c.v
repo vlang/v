@@ -106,6 +106,22 @@ fn v_fixed_index_ni(i int, len int) int {
 	return v_fixed_index(v_ni_index(i, len), len)
 }
 
+@[inline; markused]
+fn v_slice_index_i64(i i64) int {
+	if i < i64(min_int) || i > i64(max_int) {
+		panic('slice index out of range for int: ' + i.str())
+	}
+	return int(i)
+}
+
+@[inline; markused]
+fn v_slice_index_u64(i u64) int {
+	if i > u64(max_int) {
+		panic('slice index out of range for int: ' + i.str())
+	}
+	return int(i)
+}
+
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.
 // The first string in the array (index 0), is the name of the program, used for invoking the program.
 // The second string in the array (index 1), if it exists, is the first argument to the program, etc.

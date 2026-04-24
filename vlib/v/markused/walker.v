@@ -3437,6 +3437,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('v_fixed_index_i64')
 		w.fn_by_name('v_fixed_index_u64')
 	}
+	if w.pref.backend == .c
+		&& (w.uses_arr_range_index || w.uses_str_range_index || w.uses_range_index_check) {
+		w.fn_by_name('v_slice_index_i64')
+		w.fn_by_name('v_slice_index_u64')
+	}
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
 	}
