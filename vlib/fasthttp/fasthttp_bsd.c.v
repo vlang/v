@@ -18,30 +18,63 @@ const kqueue_max_events = 128
 const backlog = max_connection_size
 const kqueue_wait_timeout_ms = 100
 
+// send_flags is OR'd into every C.send() call in this file.  On OpenBSD,
+// which lacks the per-socket SO_NOSIGPIPE option, we pass MSG_NOSIGNAL
+// instead so writes to a disconnected peer return EPIPE rather than
+// killing the process with SIGPIPE.  Other BSDs use SO_NOSIGPIPE set on
+// the socket at accept time (see accept_clients).
+const send_flags = $if openbsd { int(C.MSG_NOSIGNAL) } $else { 0 }
+
 fn C.kevent(kq i32, changelist &C.kevent, nchanges i32, eventlist &C.kevent, nevents i32, timeout &C.timespec) i32
 fn C.kqueue() i32
 fn C.fstat(fd i32, buf &C.stat) i32
 
-// sendfile has different signatures on macOS vs FreeBSD/DragonFly:
+// send_file_bytes has three implementations across BSD-family OSes:
 //   macOS:    int sendfile(int fd, int s, off_t offset, off_t *len, sf_hdtr *hdtr, int flags);
 //             (len is in/out: caller sets bytes-to-send, kernel writes bytes-actually-sent)
-//   FreeBSD:  int sendfile(int fd, int s, off_t offset, size_t nbytes, sf_hdtr *hdtr, off_t *sbytes, int flags);
+//   FreeBSD/NetBSD/DragonFly:
+//             int sendfile(int fd, int s, off_t offset, size_t nbytes, sf_hdtr *hdtr, off_t *sbytes, int flags);
 //             (nbytes is input, sbytes is the separate out-param for bytes actually sent)
-// We wrap the call in `send_file_bytes/4` below.
+//   OpenBSD:  no sendfile(2) syscall at all.  We fall back to a single
+//             pread(2) + send(2) pair per call, using a bounded stack
+//             buffer.  The outer send_pending() loop will call us again
+//             until the file is drained or the socket blocks.
+
+const sendfile_fallback_buf_size = 16384
 
 // send_file_bytes asks the kernel to send up to `nbytes` bytes from `file_fd` at
-// `offset` into socket `sock_fd`, in a single non-blocking syscall.
-// Returns (ret, sent) where `ret` is the raw sendfile return (0 or -1; -1 sets errno),
+// `offset` into socket `sock_fd`, in a single non-blocking operation.
+// Returns (ret, sent) where `ret` is 0 on success or -1 on error (errno set),
 // and `sent` is the number of bytes transferred this call (may be >0 even when ret==-1).
 fn send_file_bytes(file_fd i32, sock_fd i32, offset i64, nbytes i64) (int, i64) {
 	$if macos {
 		mut len := nbytes
 		ret := C.sendfile(file_fd, sock_fd, offset, &len, unsafe { nil }, 0)
 		return int(ret), len
+	} $else $if openbsd {
+		// No sendfile(2) on OpenBSD; pread into a stack buffer, then send.
+		// Cap one call at sendfile_fallback_buf_size so we don't starve
+		// other connections in the kqueue loop.
+		mut buf := [sendfile_fallback_buf_size]u8{}
+		mut want := nbytes
+		if want > sendfile_fallback_buf_size {
+			want = sendfile_fallback_buf_size
+		}
+		nread := C.pread(file_fd, &buf[0], usize(want), offset)
+		if nread <= 0 {
+			// nread == 0 is EOF (shouldn't happen given write_pos < file_len
+			// guards in send_pending, but treat it as an error to close the
+			// connection); nread < 0 propagates errno for EAGAIN handling.
+			return -1, i64(0)
+		}
+		nsent := C.send(sock_fd, &buf[0], usize(nread), send_flags)
+		if nsent < 0 {
+			return -1, i64(0)
+		}
+		return 0, i64(nsent)
 	} $else {
 		mut sbytes := i64(0)
-		ret := C.sendfile(file_fd, sock_fd, offset, usize(nbytes), unsafe { nil }, &sbytes,
-			0)
+		ret := C.sendfile(file_fd, sock_fd, offset, usize(nbytes), unsafe { nil }, &sbytes, 0)
 		return int(ret), sbytes
 	}
 }
@@ -49,6 +82,9 @@ fn send_file_bytes(file_fd i32, sock_fd i32, offset i64, nbytes i64) (int, i64) 
 $if macos {
 	// int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
 	fn C.sendfile(fd i32, s i32, offset i64, len &i64, hdtr voidptr, flags i32) i32
+} $else $if openbsd {
+	// ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset);
+	fn C.pread(fd i32, buf voidptr, nbyte usize, offset i64) isize
 } $else {
 	// int sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags);
 	fn C.sendfile(fd i32, s i32, offset i64, nbytes usize, hdtr voidptr, sbytes &i64, flags i32) i32
@@ -175,7 +211,7 @@ fn send_pending(c_ptr voidptr) bool {
 	if c.write_pos < c.write_buf.len {
 		remaining := c.write_buf.len - c.write_pos
 		write_ptr := unsafe { &c.write_buf[0] + c.write_pos }
-		sent := C.send(c.fd, write_ptr, remaining, 0)
+		sent := C.send(c.fd, write_ptr, remaining, send_flags)
 		if sent > 0 {
 			c.write_pos += int(sent)
 		}
@@ -218,11 +254,11 @@ fn send_pending(c_ptr voidptr) bool {
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
 fn send_bad_request(fd int) {
-	C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len, 0)
+	C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len, send_flags)
 }
 
 fn send_request_timeout(fd int) {
-	C.send(fd, status_408_response.data, status_408_response.len, 0)
+	C.send(fd, status_408_response.data, status_408_response.len, send_flags)
 }
 
 // chunked_body_complete checks whether the combined read_buf + read_extra
@@ -380,7 +416,7 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 				if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 					break
 				}
-				C.send(c.fd, status_444_response.data, status_444_response.len, 0)
+				C.send(c.fd, status_444_response.data, status_444_response.len, send_flags)
 				close_conn(server, kq, c_ptr, mut clients)
 				return
 			}
@@ -400,7 +436,7 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 				if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 					break
 				}
-				C.send(c.fd, status_444_response.data, status_444_response.len, 0)
+				C.send(c.fd, status_444_response.data, status_444_response.len, send_flags)
 				close_conn(server, kq, c_ptr, mut clients)
 				return
 			}
@@ -430,7 +466,7 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 	}
 	if (header_end == -1 && total >= server.max_request_buffer_size)
 		|| header_end > server.max_request_buffer_size {
-		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
+		C.send(c.fd, status_413_response.data, status_413_response.len, send_flags)
 		close_conn(server, kq, c_ptr, mut clients)
 		return
 	}
@@ -501,10 +537,14 @@ fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 			break
 		}
 		set_nonblocking(client_fd)
-		// Prevent SIGPIPE on writes to disconnected clients (macOS-specific).
-		// Without this, writing to a closed connection kills the entire server process.
-		nosigpipe_opt := 1
-		C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
+		// Prevent SIGPIPE on writes to disconnected clients.  macOS and
+		// FreeBSD/NetBSD/DragonFly expose the per-socket SO_NOSIGPIPE
+		// option; OpenBSD does not, and instead expects MSG_NOSIGNAL on
+		// each send(2) call (handled via the `send_flags` const above).
+		$if !openbsd {
+			nosigpipe_opt := 1
+			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
+		}
 		mut c := &Conn{
 			fd:        client_fd
 			user_data: unsafe { nil }
@@ -535,10 +575,12 @@ fn (mut s Server) stop_accepting() {
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
-	// Ignore SIGPIPE process-wide. On macOS, writing to a disconnected socket
-	// sends SIGPIPE which terminates the process by default. SO_NOSIGPIPE is set
-	// per-socket on accept, but this is a safety net for any code path that might
-	// miss it (e.g. spawned SSE/WebSocket threads using TcpConn.write).
+	// Ignore SIGPIPE process-wide.  Writing to a disconnected socket raises
+	// SIGPIPE by default, which kills the process.  We suppress it per-send
+	// (SO_NOSIGPIPE on macos/freebsd/netbsd/dragonfly, MSG_NOSIGNAL on
+	// openbsd), but this signal handler is a safety net for any code path
+	// that might miss it (e.g. spawned SSE/WebSocket threads using
+	// TcpConn.write).
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 
 	s.socket_fd = C.socket(s.family, net.SocketType.tcp, 0)
