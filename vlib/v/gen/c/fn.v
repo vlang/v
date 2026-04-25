@@ -3316,7 +3316,7 @@ fn (mut g Gen) resolved_generic_call_arg_type(arg ast.CallArg) ast.Type {
 	return g.unwrap_generic(g.recheck_concrete_type(arg_type))
 }
 
-fn (g &Gen) generic_param_infer_type(param ast.Param) ast.Type {
+fn (mut g Gen) generic_param_infer_type(param ast.Param) ast.Type {
 	if param.orig_typ != 0 && (param.orig_typ.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(param.orig_typ)) {
 		return param.orig_typ
@@ -3803,11 +3803,11 @@ fn (mut g Gen) resolve_active_call_concrete_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) call_args_with_context(node ast.CallExpr, generic_names []string, concrete_types []ast.Type) {
-	old_generic_names := g.active_call_generic_names.clone()
-	old_concrete_types := g.active_call_concrete_types.clone()
+	old_generic_names := g.active_call_generic_names
+	old_concrete_types := g.active_call_concrete_types
 	if generic_names.len > 0 && generic_names.len == concrete_types.len {
-		g.active_call_generic_names = generic_names.clone()
-		g.active_call_concrete_types = concrete_types.clone()
+		g.active_call_generic_names = generic_names
+		g.active_call_concrete_types = concrete_types
 	} else {
 		g.active_call_generic_names = []string{}
 		g.active_call_concrete_types = []ast.Type{}
@@ -6245,26 +6245,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		}
 		if i < expected_types.len {
 			if param := g.call_arg_param(node, i) {
-				concrete_param_type :=
-					g.resolve_active_call_concrete_type(param.typ.set_flag(.generic))
-				if concrete_param_type != 0 && concrete_param_type != expected_types[i]
-					&& !concrete_param_type.has_flag(.generic)
-					&& !g.type_has_unresolved_generic_parts(concrete_param_type)
-					&& ((expected_types[i] == 0 || expected_types[i].has_flag(.generic)
-					|| g.type_has_unresolved_generic_parts(expected_types[i]))
-					|| node.concrete_types.len > 0 || g.cur_concrete_types.len > 0) {
-					expected_types[i] = concrete_param_type
-				}
-				should_refresh_expected_type :=
-					(param.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(param.typ))
-					&& ((expected_types[i] == 0 || expected_types[i].has_flag(.generic)
-					|| g.type_has_unresolved_generic_parts(expected_types[i]))
-					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0))
-				if should_refresh_expected_type {
+				param_needs_generic_resolution := g.type_needs_generic_resolution(param.typ)
+					|| g.has_active_call_generic_context()
+				expected_needs_generic_resolution := expected_types[i] == 0
+					|| g.type_needs_generic_resolution(expected_types[i])
+				if param_needs_generic_resolution || expected_needs_generic_resolution
+					|| node.concrete_types.len > 0 || g.cur_concrete_types.len > 0 {
 					resolved_expected_type :=
 						g.resolve_active_call_concrete_type(param.typ.set_flag(.generic))
-					if resolved_expected_type != 0 && !resolved_expected_type.has_flag(.generic)
-						&& !g.type_has_unresolved_generic_parts(resolved_expected_type) {
+					if resolved_expected_type != 0 && resolved_expected_type != expected_types[i]
+						&& !g.type_needs_generic_resolution(resolved_expected_type)
+						&& (expected_needs_generic_resolution
+						|| node.concrete_types.len > 0
+						|| g.cur_concrete_types.len > 0) {
 						expected_types[i] =
 							g.unwrap_generic(g.recheck_concrete_type(resolved_expected_type))
 					}
@@ -6626,10 +6619,10 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	} else {
 		g.unwrap_generic(arg.typ)
 	}
+	in_generic_context := g.has_current_generic_context()
 	if arg.expr is ast.Ident {
-		needs_resolved_ident_type := arg_typ == 0 || arg_typ.has_flag(.generic)
-			|| g.type_has_unresolved_generic_parts(arg_typ)
-			|| (arg.expr.obj is ast.Var
+		needs_resolved_ident_type := arg_typ == 0
+			|| g.type_needs_generic_resolution(arg_typ) || (arg.expr.obj is ast.Var
 			&& (arg.expr.obj.ct_type_var in [.generic_param, .generic_var]
 			|| arg.expr.obj.is_inherited))
 		if needs_resolved_ident_type {
@@ -6654,12 +6647,15 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	}
 	needs_resolved_expr_type := arg.expr is ast.SelectorExpr
 		|| arg.expr is ast.IndexExpr || arg.expr is ast.ComptimeSelector
-		|| (arg.expr is ast.Ident && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+		|| (arg.expr is ast.Ident && in_generic_context && (arg_typ == 0
+		|| g.type_needs_generic_resolution(arg_typ) || (arg.expr.obj is ast.Var
+		&& (arg.expr.obj.ct_type_var != .no_comptime || arg.expr.obj.generic_typ != 0
+		|| arg.expr.obj.is_inherited || arg.expr.obj.smartcasts.len > 0
+		|| arg.expr.obj.is_unwrapped))))
 	if needs_resolved_expr_type {
 		resolved_arg_typ := g.resolved_expr_type(arg.expr, arg_typ)
-		if resolved_arg_typ != 0 && (arg_typ == 0 || arg_typ.has_flag(.generic)
-			|| g.type_has_unresolved_generic_parts(arg_typ)
-			|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0)
+		if resolved_arg_typ != 0 && (arg_typ == 0 || g.type_needs_generic_resolution(arg_typ)
+			|| in_generic_context
 			|| g.unwrap_generic(resolved_arg_typ) != g.unwrap_generic(arg_typ)) {
 			arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
 		}

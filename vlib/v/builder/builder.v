@@ -441,6 +441,18 @@ fn register_used_import(mut file ast.File, alias string) {
 	}
 }
 
+fn file_needs_c_function_call_import_scan(file &ast.File) bool {
+	for import_m in file.imports {
+		alias := import_m.alias
+		if (alias.len == 1 && alias[0] == `_`) || alias in file.used_imports
+			|| alias in file.auto_imports {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool {
 	mut collector := CFunctionCallCollector{
 		names: map[string]bool{}
@@ -451,6 +463,9 @@ fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool
 
 fn (mut b Builder) mark_imports_used_by_c_function_calls() {
 	for mut file in b.parsed_files {
+		if !file_needs_c_function_call_import_scan(file) {
+			continue
+		}
 		used_c_calls := b.collect_used_c_function_calls(file)
 		if used_c_calls.len == 0 {
 			continue

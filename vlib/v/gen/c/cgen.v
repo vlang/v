@@ -84,6 +84,7 @@ mut:
 	table                                &ast.Table = unsafe { nil }
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
+	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
 	unique_file_path_hash                u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                              &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name                       string
@@ -400,6 +401,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:          'v.debug' in table.modules
 		reflection_strings:    &reflection_strings
 		generated_map_key_fns: map[ast.Type]bool{}
+		generic_parts_cache:   []i8{len: table.type_symbols.len}
 	}
 
 	global_g.type_resolver = type_resolver.TypeResolver.new(table, global_g)
@@ -1037,6 +1039,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
+		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 	}
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info
@@ -1534,7 +1537,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	return styp
 }
 
-fn (g &Gen) can_write_interface_typesymbol_declaration(sym ast.TypeSymbol) bool {
+fn (mut g Gen) can_write_interface_typesymbol_declaration(sym ast.TypeSymbol) bool {
 	if sym.info !is ast.Interface {
 		return false
 	}
@@ -1642,16 +1645,33 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
-fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
+fn (mut g Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
 	if typ.has_flag(.generic) {
 		return true
 	}
-	if typ.idx() <= ast.nil_type_idx {
+	idx := typ.idx()
+	if idx <= ast.nil_type_idx {
 		return false
 	}
+	if idx < g.generic_parts_cache.len {
+		cached := g.generic_parts_cache[idx]
+		if cached != 0 {
+			return cached == 2
+		}
+	} else if idx < g.table.type_symbols.len {
+		g.generic_parts_cache << []i8{len: idx - g.generic_parts_cache.len + 1}
+	}
+	resolved := g.type_has_unresolved_generic_parts_uncached(typ)
+	if idx < g.generic_parts_cache.len {
+		g.generic_parts_cache[idx] = if resolved { i8(2) } else { i8(1) }
+	}
+	return resolved
+}
+
+fn (mut g Gen) type_has_unresolved_generic_parts_uncached(typ ast.Type) bool {
 	sym := g.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true

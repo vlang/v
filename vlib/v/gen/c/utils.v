@@ -10,44 +10,33 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if resolved_typ == 0 {
 		resolved_typ = typ
 	}
-	if resolved_typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(resolved_typ) {
-		// NOTE: `convert_generic_type` should not mutate the table.
-		//
-		// It mutates if the generic type is for example `[]T` and the concrete
-		// type is an array type that has not been registered yet.
-		//
-		// This should have already happened in the checker, since it also calls
-		// `convert_generic_type`. `g.table` is made non-mut to make sure
-		// no one else can accidentally mutates the table.
-		current_generic_names := g.current_fn_generic_names()
-		if current_generic_names.len > 0 && current_generic_names.len == g.cur_concrete_types.len {
-			if t_typ := g.table.convert_generic_type(resolved_typ, current_generic_names,
-				g.cur_concrete_types)
-			{
-				return t_typ
-			}
-		} else if g.inside_struct_init {
-			if g.cur_struct_init_typ != 0 {
-				sym := g.table.sym(g.cur_struct_init_typ)
-				if sym.info is ast.Struct {
-					if sym.info.generic_types.len > 0 {
-						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						mut concrete_types := sym.info.concrete_types.clone()
-						if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
-							&& sym.generic_types != sym.info.generic_types {
-							concrete_types = sym.generic_types.clone()
-						}
-						if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
-							concrete_types)
-						{
-							return t_typ
-						}
-					}
-				}
-			}
-		} else if resolved_typ != 0 && g.table.sym(resolved_typ).kind == .struct {
-			// resolve selector `a.foo` where `a` is struct[T] on non generic function
-			sym := g.table.sym(resolved_typ)
+	if !resolved_typ.has_flag(.generic) {
+		resolved_idx := resolved_typ.idx()
+		if resolved_idx <= ast.nil_type_idx
+			|| (resolved_idx < g.generic_parts_cache.len
+			&& g.generic_parts_cache[resolved_idx] == 1)
+			|| !g.type_has_unresolved_generic_parts(resolved_typ) {
+			return resolved_typ
+		}
+	}
+	// NOTE: `convert_generic_type` should not mutate the table.
+	//
+	// It mutates if the generic type is for example `[]T` and the concrete
+	// type is an array type that has not been registered yet.
+	//
+	// This should have already happened in the checker, since it also calls
+	// `convert_generic_type`. `g.table` is made non-mut to make sure
+	// no one else can accidentally mutates the table.
+	current_generic_names := g.current_fn_generic_names()
+	if current_generic_names.len > 0 && current_generic_names.len == g.cur_concrete_types.len {
+		if t_typ := g.table.convert_generic_type(resolved_typ, current_generic_names,
+			g.cur_concrete_types)
+		{
+			return t_typ
+		}
+	} else if g.inside_struct_init {
+		if g.cur_struct_init_typ != 0 {
+			sym := g.table.sym(g.cur_struct_init_typ)
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
@@ -61,15 +50,35 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 					{
 						return t_typ
 					}
-
-					if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
-						g.cur_concrete_types)
-					{
-						return t_typ
-					}
 				}
 			}
 		}
+	} else if resolved_typ != 0 && g.table.sym(resolved_typ).kind == .struct {
+		// resolve selector `a.foo` where `a` is struct[T] on non generic function
+		sym := g.table.sym(resolved_typ)
+		if sym.info is ast.Struct {
+			if sym.info.generic_types.len > 0 {
+				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
+				mut concrete_types := sym.info.concrete_types.clone()
+				if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
+					&& sym.generic_types != sym.info.generic_types {
+					concrete_types = sym.generic_types.clone()
+				}
+				if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
+					concrete_types)
+				{
+					return t_typ
+				}
+
+				if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
+					g.cur_concrete_types)
+				{
+					return t_typ
+				}
+			}
+		}
+	}
+	if typ.has_flag(.generic) {
 		if t_typ := g.type_resolver.resolve_bound_generic_type(typ) {
 			return t_typ
 		}
@@ -204,6 +213,14 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return typ
 	}
+	if g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0 {
+		return typ
+	}
+	idx := typ.idx()
+	if idx <= ast.nil_type_idx || (!typ.has_flag(.generic) && idx < g.generic_parts_cache.len
+		&& g.generic_parts_cache[idx] == 1) {
+		return typ
+	}
 	sym := g.table.sym(typ)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -231,7 +248,7 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 	if generic_names.len == 0 || generic_names.len != g.cur_concrete_types.len {
 		return typ
 	}
-	concrete_types := g.cur_concrete_types.clone()
+	concrete_types := g.cur_concrete_types
 	if resolved_typ := g.table.convert_generic_type(typ, generic_names, concrete_types) {
 		return resolved_typ
 	}
@@ -241,6 +258,34 @@ fn (mut g Gen) recheck_concrete_type(typ ast.Type) ast.Type {
 		return unwrapped_typ
 	}
 	return typ
+}
+
+@[inline]
+fn (g &Gen) has_current_generic_context() bool {
+	return g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+}
+
+@[inline]
+fn (mut g Gen) type_needs_generic_resolution(typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	if typ.idx() <= ast.nil_type_idx {
+		return false
+	}
+	if (g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0)
+		&& !g.has_active_call_generic_context() {
+		return false
+	}
+	idx := typ.idx()
+	if idx <= ast.nil_type_idx
+		|| (idx < g.generic_parts_cache.len && g.generic_parts_cache[idx] == 1) {
+		return false
+	}
+	return g.type_has_unresolved_generic_parts(typ)
 }
 
 // is_expr_smartcast_to_sumtype checks if expr is a smartcast variable/field
