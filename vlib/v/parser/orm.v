@@ -835,7 +835,7 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 			return left_check_result
 		}
 
-		variable_names := if expr.left is ast.Ident { [expr.left.str()] } else { []string{} }
+		variable_names := if expr.left is ast.Ident { [expr.left.name] } else { []string{} }
 		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.right,
 			variable_names)
 
