@@ -1,10 +1,9 @@
 #if defined(_MSC_VER) && !defined(__clang__)
-typedef struct _iobuf FILE;
-typedef char* va_list;
-FILE* __cdecl __acrt_iob_func(unsigned index);
-#define stdout (__acrt_iob_func(1))
+#include <stdio.h>
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
 FILE* __cdecl __acrt_iob_func(unsigned index);
+#define stdout (__acrt_iob_func(1))
+#if !defined(_MSC_VER) || defined(__clang__)
 int V_CRT_CALL _fileno(FILE *stream);
 FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
 int V_CRT_CALL _vscprintf(const char *format, va_list ap);
