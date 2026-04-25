@@ -5,6 +5,47 @@ module c
 
 import v.ast
 
+const cgen_resolution_hash_prime = u64(1099511628211)
+const cgen_resolution_hash_seed = u64(14695981039346656037)
+const cgen_unwrap_generic_cache_salt = u64(0x9e3779b185ebca87)
+const cgen_scope_var_type_cache_salt = u64(0xc2b2ae3d27d4eb4f)
+
+@[inline]
+fn cgen_resolution_hash_mix(key u64, value u64) u64 {
+	return (key ^ value) * cgen_resolution_hash_prime
+}
+
+fn (mut g Gen) clear_type_resolution_caches() {
+	g.unwrap_generic_cache.clear()
+	g.resolved_scope_var_type_cache.clear()
+}
+
+fn (g &Gen) type_resolution_context_key() u64 {
+	mut key := cgen_resolution_hash_seed
+	if g.inside_struct_init {
+		key = cgen_resolution_hash_mix(key, 1)
+	}
+	key = cgen_resolution_hash_mix(key, u64(g.cur_struct_init_typ))
+	return key
+}
+
+@[inline]
+fn (g &Gen) type_resolution_cache_key(typ ast.Type, salt u64) u64 {
+	return cgen_resolution_hash_mix(g.type_resolution_context_key(), u64(typ)) ^ salt
+}
+
+@[inline]
+fn (g &Gen) expr_resolution_cache_key(pos int, default_typ ast.Type, salt u64) u64 {
+	if pos <= 0 {
+		return 0
+	}
+	mut key := g.type_resolution_context_key()
+	key = cgen_resolution_hash_mix(key, u64(g.fid + 2))
+	key = cgen_resolution_hash_mix(key, u64(pos))
+	key = cgen_resolution_hash_mix(key, u64(default_typ))
+	return key ^ salt
+}
+
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return typ
@@ -16,6 +57,10 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			return typ
 		}
 	}
+	cache_key := g.type_resolution_cache_key(typ, cgen_unwrap_generic_cache_salt)
+	if cached := g.unwrap_generic_cache[cache_key] {
+		return cached
+	}
 	mut resolved_typ := g.recheck_concrete_type(typ)
 	if resolved_typ == 0 {
 		resolved_typ = typ
@@ -26,6 +71,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			|| (resolved_idx < g.generic_parts_cache.len
 			&& g.generic_parts_cache[resolved_idx] == 1)
 			|| !g.type_has_unresolved_generic_parts(resolved_typ) {
+			g.unwrap_generic_cache[cache_key] = resolved_typ
 			return resolved_typ
 		}
 	}
@@ -42,6 +88,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		if t_typ := g.table.convert_generic_type(resolved_typ, current_generic_names,
 			g.cur_concrete_types)
 		{
+			g.unwrap_generic_cache[cache_key] = t_typ
 			return t_typ
 		}
 	} else if g.inside_struct_init {
@@ -58,6 +105,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 					if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
 						concrete_types)
 					{
+						g.unwrap_generic_cache[cache_key] = t_typ
 						return t_typ
 					}
 				}
@@ -77,12 +125,14 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
 					concrete_types)
 				{
+					g.unwrap_generic_cache[cache_key] = t_typ
 					return t_typ
 				}
 
 				if t_typ := g.table.convert_generic_type(resolved_typ, generic_names,
 					g.cur_concrete_types)
 				{
+					g.unwrap_generic_cache[cache_key] = t_typ
 					return t_typ
 				}
 			}
@@ -90,9 +140,11 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	}
 	if typ.has_flag(.generic) {
 		if t_typ := g.type_resolver.resolve_bound_generic_type(typ) {
+			g.unwrap_generic_cache[cache_key] = t_typ
 			return t_typ
 		}
 	}
+	g.unwrap_generic_cache[cache_key] = resolved_typ
 	return resolved_typ
 }
 
@@ -363,6 +415,23 @@ fn (g &Gen) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
+	if g.has_active_call_generic_context() {
+		return g.resolved_scope_var_type_uncached(expr)
+	}
+	cache_key := g.expr_resolution_cache_key(expr.pos.pos, 0, cgen_scope_var_type_cache_salt)
+	if cache_key != 0 {
+		if cached := g.resolved_scope_var_type_cache[cache_key] {
+			return cached
+		}
+	}
+	resolved := g.resolved_scope_var_type_uncached(expr)
+	if cache_key != 0 && resolved != 0 {
+		g.resolved_scope_var_type_cache[cache_key] = resolved
+	}
+	return resolved
+}
+
+fn (mut g Gen) resolved_scope_var_type_uncached(expr ast.Ident) ast.Type {
 	mut scope := if expr.scope != unsafe { nil } {
 		expr.scope.innermost(expr.pos.pos)
 	} else {
@@ -872,6 +941,58 @@ fn (mut g Gen) resolved_or_block_value_type(or_expr ast.OrExpr) ast.Type {
 	return 0
 }
 
+fn (mut g Gen) direct_concrete_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
+	if g.has_current_generic_context() || g.has_active_call_generic_context()
+		|| g.inside_struct_init {
+		return 0
+	}
+	match expr {
+		ast.Ident {
+			if expr.or_expr.kind != .absent {
+				return 0
+			}
+			if expr.obj is ast.Var {
+				if expr.obj.is_unwrapped || expr.obj.orig_type != 0 || expr.obj.smartcasts.len > 0
+					|| expr.obj.ct_type_var != .no_comptime || expr.obj.is_auto_deref {
+					return 0
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind != .absent {
+				return 0
+			}
+		}
+		ast.IndexExpr {
+			if expr.or_expr.kind != .absent {
+				return 0
+			}
+		}
+		ast.InfixExpr {}
+		ast.PostfixExpr {
+			if expr.op == .question {
+				return 0
+			}
+		}
+		ast.ArrayInit, ast.AsCast, ast.BoolLiteral, ast.CastExpr, ast.CharLiteral, ast.EnumVal,
+		ast.FloatLiteral, ast.IntegerLiteral, ast.MapInit, ast.Nil, ast.None, ast.StringLiteral,
+		ast.StructInit {}
+		else {
+			return 0
+		}
+	}
+
+	mut direct_typ := expr.type()
+	if direct_typ == 0 || direct_typ == ast.void_type {
+		direct_typ = default_typ
+	}
+	if direct_typ == 0 || direct_typ == ast.void_type || direct_typ.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(direct_typ) {
+		return 0
+	}
+	return direct_typ
+}
+
 // resolve_selector_smartcast_type resolves the final smartcast type for a
 // selector expression in generic contexts. When a field like `val.field` has
 // nested smartcasts (e.g., option unwrap then sumtype variant), the scope
@@ -892,6 +1013,10 @@ fn (mut g Gen) resolve_selector_smartcast_type(node ast.SelectorExpr) ast.Type {
 }
 
 fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
+	direct_typ := g.direct_concrete_expr_type(expr, default_typ)
+	if direct_typ != 0 {
+		return direct_typ
+	}
 	match expr {
 		ast.ParExpr {
 			return g.resolved_expr_type(expr.expr, default_typ)

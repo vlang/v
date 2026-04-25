@@ -1093,6 +1093,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.cur_fn = cur_fn_save
 		g.cur_concrete_types = cur_concrete_types_save
+		g.clear_type_resolution_caches()
 	}
 	mut effective_cur_fn := *node
 	if g.cur_concrete_types.len > 0 && effective_generic_names.len == g.cur_concrete_types.len
@@ -1120,6 +1121,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// TODO: remove unsafe
 		g.cur_fn = &effective_cur_fn
 	}
+	g.clear_type_resolution_caches()
 	g.refresh_current_generic_fn_scope_vars(g.cur_fn)
 	fn_start_pos := g.out.len
 	is_closure := node.scope.has_inherited_vars()

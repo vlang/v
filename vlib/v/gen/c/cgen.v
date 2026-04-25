@@ -85,7 +85,9 @@ mut:
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
 	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
-	unique_file_path_hash                u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
+	unwrap_generic_cache                 map[u64]ast.Type
+	resolved_scope_var_type_cache        map[u64]ast.Type
+	unique_file_path_hash                u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                              &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name                       string
 	tmp_count                            int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
@@ -345,63 +347,65 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
-		fid:                   -1
-		tid:                   v_gettid().hex()
-		file:                  unsafe { nil }
-		out:                   strings.new_builder(512000)
-		cheaders:              strings.new_builder(15000)
-		includes:              strings.new_builder(100)
-		preincludes:           strings.new_builder(100)
-		postincludes:          strings.new_builder(100)
-		typedefs:              strings.new_builder(100)
-		enum_typedefs:         strings.new_builder(100)
-		type_definitions:      strings.new_builder(100)
-		sort_fn_definitions:   strings.new_builder(100)
-		alias_definitions:     strings.new_builder(100)
-		hotcode_definitions:   strings.new_builder(100)
-		channel_definitions:   strings.new_builder(100)
-		thread_definitions:    strings.new_builder(100)
-		comptime_definitions:  strings.new_builder(100)
-		definitions:           strings.new_builder(100)
-		gowrappers:            strings.new_builder(100)
-		auto_str_funcs:        strings.new_builder(100)
-		dump_funcs:            strings.new_builder(100)
-		pcs_declarations:      strings.new_builder(100)
-		cov_declarations:      strings.new_builder(100)
-		embedded_data:         strings.new_builder(1000)
-		out_options_forward:   strings.new_builder(100)
-		out_options:           strings.new_builder(100)
-		out_results_forward:   strings.new_builder(100)
-		out_results:           strings.new_builder(100)
-		shared_types:          strings.new_builder(100)
-		shared_functions:      strings.new_builder(100)
-		json_forward_decls:    strings.new_builder(100)
-		sql_buf:               strings.new_builder(100)
-		table:                 table
-		pref:                  pref_
-		fn_decl:               unsafe { nil }
-		anon_fn:               unsafe { nil }
-		is_autofree:           pref_.autofree
-		indent:                -1
-		module_built:          module_built
-		timers_should_print:   timers_should_print
-		timers:                util.new_timers(
+		fid:                           -1
+		tid:                           v_gettid().hex()
+		file:                          unsafe { nil }
+		out:                           strings.new_builder(512000)
+		cheaders:                      strings.new_builder(15000)
+		includes:                      strings.new_builder(100)
+		preincludes:                   strings.new_builder(100)
+		postincludes:                  strings.new_builder(100)
+		typedefs:                      strings.new_builder(100)
+		enum_typedefs:                 strings.new_builder(100)
+		type_definitions:              strings.new_builder(100)
+		sort_fn_definitions:           strings.new_builder(100)
+		alias_definitions:             strings.new_builder(100)
+		hotcode_definitions:           strings.new_builder(100)
+		channel_definitions:           strings.new_builder(100)
+		thread_definitions:            strings.new_builder(100)
+		comptime_definitions:          strings.new_builder(100)
+		definitions:                   strings.new_builder(100)
+		gowrappers:                    strings.new_builder(100)
+		auto_str_funcs:                strings.new_builder(100)
+		dump_funcs:                    strings.new_builder(100)
+		pcs_declarations:              strings.new_builder(100)
+		cov_declarations:              strings.new_builder(100)
+		embedded_data:                 strings.new_builder(1000)
+		out_options_forward:           strings.new_builder(100)
+		out_options:                   strings.new_builder(100)
+		out_results_forward:           strings.new_builder(100)
+		out_results:                   strings.new_builder(100)
+		shared_types:                  strings.new_builder(100)
+		shared_functions:              strings.new_builder(100)
+		json_forward_decls:            strings.new_builder(100)
+		sql_buf:                       strings.new_builder(100)
+		table:                         table
+		pref:                          pref_
+		fn_decl:                       unsafe { nil }
+		anon_fn:                       unsafe { nil }
+		is_autofree:                   pref_.autofree
+		indent:                        -1
+		module_built:                  module_built
+		timers_should_print:           timers_should_print
+		timers:                        util.new_timers(
 			should_print: timers_should_print
 			label:        'global_cgen'
 		)
-		inner_loop:            unsafe { &ast.empty_stmt }
-		field_data_type:       table.find_type('FieldData')
-		enum_data_type:        table.find_type('EnumData')
-		variant_data_type:     table.find_type('VariantData')
-		is_cc_msvc:            pref_.ccompiler == 'msvc'
-		use_segfault_handler:  pref_.should_use_segfault_handler()
-		static_modifier:       if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
-		static_non_parallel:   if !pref_.parallel_cc { 'static ' } else { '' }
-		has_reflection:        'v.reflection' in table.modules
-		has_debugger:          'v.debug' in table.modules
-		reflection_strings:    &reflection_strings
-		generated_map_key_fns: map[ast.Type]bool{}
-		generic_parts_cache:   []i8{len: table.type_symbols.len}
+		inner_loop:                    unsafe { &ast.empty_stmt }
+		field_data_type:               table.find_type('FieldData')
+		enum_data_type:                table.find_type('EnumData')
+		variant_data_type:             table.find_type('VariantData')
+		is_cc_msvc:                    pref_.ccompiler == 'msvc'
+		use_segfault_handler:          pref_.should_use_segfault_handler()
+		static_modifier:               if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
+		static_non_parallel:           if !pref_.parallel_cc { 'static ' } else { '' }
+		has_reflection:                'v.reflection' in table.modules
+		has_debugger:                  'v.debug' in table.modules
+		reflection_strings:            &reflection_strings
+		generated_map_key_fns:         map[ast.Type]bool{}
+		generic_parts_cache:           []i8{len: table.type_symbols.len}
+		unwrap_generic_cache:          map[u64]ast.Type{}
+		resolved_scope_var_type_cache: map[u64]ast.Type{}
 	}
 
 	global_g.type_resolver = type_resolver.TypeResolver.new(table, global_g)
@@ -1040,6 +1044,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
+		unwrap_generic_cache:               map[u64]ast.Type{}
+		resolved_scope_var_type_cache:      map[u64]ast.Type{}
 	}
 	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
 	g.comptime = &g.type_resolver.info
@@ -3326,8 +3332,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 							if struct_info is ast.Struct && struct_info.concrete_types.len > 0 {
 								save_cur_concrete_types := g.cur_concrete_types
 								g.cur_concrete_types = struct_info.concrete_types
+								g.clear_type_resolution_caches()
 								defer {
 									g.cur_concrete_types = save_cur_concrete_types
+									g.clear_type_resolution_caches()
 								}
 							}
 						}
@@ -5641,9 +5649,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if call_concrete.len > 0 && !call_concrete.any(it.has_flag(.generic)
 				|| g.type_has_unresolved_generic_parts(it)) {
 				g.cur_concrete_types = call_concrete
+				g.clear_type_resolution_caches()
 			}
 			g.gen_anon_fn(mut node)
 			g.cur_concrete_types = save_cur_concrete_types
+			g.clear_type_resolution_caches()
 		}
 		ast.ArrayDecompose {
 			g.expr(node.expr)
@@ -5861,9 +5871,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if call_concrete.len > 0 && !call_concrete.any(it.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(it)) {
 					g.cur_concrete_types = call_concrete
+					g.clear_type_resolution_caches()
 				}
 				g.gen_anon_fn(mut node.func)
 				g.cur_concrete_types = save_cur_concrete_types
+				g.clear_type_resolution_caches()
 			} else {
 				g.gen_anon_fn(mut node.func)
 			}
