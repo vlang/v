@@ -100,11 +100,12 @@ pub fn (req &Request) do() !Response {
 	mut rurl := url
 	mut resp := Response{}
 	mut nredirects := 0
+	mut method := req.method
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl)!
+		qresp := req.method_and_url_to_response(method, rurl)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -113,6 +114,18 @@ pub fn (req &Request) do() !Response {
 			.permanent_redirect] {
 			break
 		}
+		// Per HTTP spec, 303 See Other requires switching to GET and dropping the body.
+		// 301/302 historically also switch to GET in practice (browser behavior).
+		if resp.status() in [.moved_permanently, .found, .see_other] {
+			method = .get
+			// Drop the request body for GET redirects by temporarily clearing req.data.
+			// build_request_headers reads req.data for Content-Length and body content.
+			unsafe {
+				mut mreq := req
+				mreq.data = ''
+			}
+		}
+		// 307/308 preserve the original method and body (no change needed)
 		// follow any redirects
 		mut redirect_url := resp.header.get(.location) or { '' }
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
@@ -615,7 +628,7 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	method := method_from_str_known(method_str) or {
 		return error('unsupported method')
 	}
-	target := urllib.parse(target_str)!
+	target := urllib.parse_request_uri(target_str)!
 	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)
 	// println('VERSION="${version}"')

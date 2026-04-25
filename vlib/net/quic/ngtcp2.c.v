@@ -383,16 +383,32 @@ pub mut:
 	remote_addrlen u32
 }
 
+// Constants for receive data buffer sizing.
+// Must match QUIC_MAX_RECV_DATA_EVENTS and QUIC_RECV_DATA_BUF_SIZE in quic_stubs.c.
+pub const quic_max_recv_data_events = 64
+pub const quic_recv_data_buf_size = 65536
+
 // QuicStreamEvents holds pending stream events from C callbacks.
-// The C-side callbacks write FIN/close events here via user_data,
+// The C-side callbacks write FIN/close/data events here via user_data,
 // and the V-side drains them after conn_read_pkt.
+// NOTE: Layout must match the C struct in quic_stubs.c exactly.
+// All int-mapped fields use i32 to guarantee 4-byte width matching C's int,
+// regardless of platform (V's int may be 4 or 8 bytes depending on target).
 pub struct QuicStreamEvents {
 pub mut:
-	fin_stream_ids    [64]i64
-	fin_count         int
-	closed_stream_ids [64]i64
-	closed_count      int
-	overflow          int
+	fin_stream_ids     [64]i64
+	fin_count          i32
+	closed_stream_ids  [64]i64
+	closed_count       i32
+	overflow           i32
+	// Per-chunk metadata for received stream data
+	recv_stream_ids    [64]i64
+	recv_offsets       [64]i32
+	recv_lengths       [64]i32
+	recv_count         i32
+	// Shared flat buffer holding received data bytes
+	recv_data_buf      [65536]u8
+	recv_data_buf_used i32
 }
 
 // Custom C callbacks (defined in quic_stubs.c)

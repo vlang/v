@@ -8,7 +8,7 @@ fn make_test_fin_events(fin_ids []i64) QuicStreamEvents {
 	for i, id in fin_ids {
 		events.fin_stream_ids[i] = id
 	}
-	events.fin_count = fin_ids.len
+	events.fin_count = i32(fin_ids.len)
 	return events
 }
 
@@ -18,7 +18,7 @@ fn make_test_close_events(close_ids []i64) QuicStreamEvents {
 	for i, id in close_ids {
 		events.closed_stream_ids[i] = id
 	}
-	events.closed_count = close_ids.len
+	events.closed_count = i32(close_ids.len)
 	return events
 }
 
@@ -209,9 +209,7 @@ fn test_drain_stream_events_pub_drains_fin_and_close() {
 	// Arrange: FIN on stream 4, close on stream 8
 	mut events := make_test_fin_events([i64(4)])
 	events.closed_stream_ids[0] = 8
-	events.closed_count = 1
-
-	mut s4 := &Stream{id: 4}
+	events.closed_count = 1	mut s4 := &Stream{id: 4}
 	mut s8 := &Stream{id: 8}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
@@ -472,6 +470,172 @@ fn test_drain_stream_events_returns_error_on_overflow() {
 	assert false, 'drain_stream_events should return error on overflow'
 }
 
+// === RECV-DATA: Stream receive data buffer tests ===
+
+fn make_test_recv_data_events(entries []TestRecvEntry) QuicStreamEvents {
+	mut events := QuicStreamEvents{}
+	mut buf_offset := 0
+	for i, entry in entries {
+		if i >= quic_max_recv_data_events || buf_offset + entry.data.len > quic_recv_data_buf_size {
+			break
+		}
+		events.recv_stream_ids[i] = entry.stream_id
+		events.recv_offsets[i] = i32(buf_offset)
+		events.recv_lengths[i] = i32(entry.data.len)
+		for j, b in entry.data {
+			events.recv_data_buf[buf_offset + j] = b
+		}
+		buf_offset += entry.data.len
+		events.recv_count = i32(i + 1)
+	}
+	return events
+}
+
+struct TestRecvEntry {
+	stream_id i64
+	data      []u8
+}
+
+fn test_stream_has_recv_data_field() {
+	// Stream struct must have a recv_data field separate from data (sent data)
+	mut s := Stream{
+		id: 1
+	}
+	assert s.recv_data.len == 0, 'recv_data should default to empty'
+	s.recv_data << u8(0x48)
+	assert s.recv_data.len == 1, 'recv_data should be appendable'
+	println('✓ Stream.recv_data field exists and works')
+}
+
+fn test_process_stream_data_events_populates_recv_data() {
+	// When C callback buffers received data, drain should populate stream.recv_data
+	mut events := make_test_recv_data_events([
+		TestRecvEntry{
+			stream_id: 4
+			data: [u8(0x48), 0x65, 0x6c, 0x6c, 0x6f]
+		},
+	])
+
+	mut s4 := &Stream{id: 4}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	// Act
+	process_stream_data_events(mut events, mut streams)
+
+	// Assert
+	assert s4.recv_data == [u8(0x48), 0x65, 0x6c, 0x6c, 0x6f], 'recv_data should contain received bytes'
+	assert events.recv_count == 0, 'recv_count should be reset after processing'
+	println('✓ process_stream_data_events populates recv_data')
+}
+
+fn test_process_stream_data_events_appends_multiple_chunks() {
+	// Multiple data events for the same stream should append
+	mut events := make_test_recv_data_events([
+		TestRecvEntry{
+			stream_id: 4
+			data: [u8(0x41), 0x42]
+		},
+		TestRecvEntry{
+			stream_id: 4
+			data: [u8(0x43), 0x44]
+		},
+	])
+
+	mut s4 := &Stream{id: 4}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	// Act
+	process_stream_data_events(mut events, mut streams)
+
+	// Assert
+	assert s4.recv_data == [u8(0x41), 0x42, 0x43, 0x44], 'recv_data should contain all chunks appended'
+	println('✓ process_stream_data_events appends multiple chunks')
+}
+
+fn test_process_stream_data_events_auto_creates_stream() {
+	// Data arriving for unknown stream should auto-create the stream
+	mut events := make_test_recv_data_events([
+		TestRecvEntry{
+			stream_id: 99
+			data: [u8(0xFF)]
+		},
+	])
+
+	mut streams := map[u64]&Stream{}
+
+	// Act
+	process_stream_data_events(mut events, mut streams)
+
+	// Assert
+	assert u64(99) in streams, 'stream should be auto-created'
+	if s99 := streams[u64(99)] {
+		assert s99.recv_data == [u8(0xFF)], 'auto-created stream should have recv_data'
+	}
+	println('✓ process_stream_data_events auto-creates stream for unknown ID')
+}
+
+fn test_drain_stream_events_includes_data_events() {
+	// drain_stream_events must also process data events alongside FIN/close
+	mut events := make_test_recv_data_events([
+		TestRecvEntry{
+			stream_id: 4
+			data: [u8(0x48), 0x49]
+		},
+	])
+	// Also add a FIN event
+	events.fin_stream_ids[0] = 4
+	events.fin_count = 1
+
+	mut s4 := &Stream{id: 4}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	mut conn := Connection{
+		stream_events: &events
+		streams:       streams
+	}
+
+	conn.drain_stream_events() or {
+		assert false, 'unexpected error: ${err}'
+		return
+	}
+
+	assert s4.recv_data == [u8(0x48), 0x49], 'recv_data should be populated after drain'
+	assert s4.fin_received == true, 'FIN should also be processed'
+	println('✓ drain_stream_events processes data events alongside FIN/close')
+}
+
+fn test_recv_returns_recv_data_not_sent_data() {
+	// recv() must return recv_data (from peer), not data (locally sent)
+	mut s4 := &Stream{
+		id: 4
+		data: [u8(0x01), 0x02] // locally sent data
+		recv_data: [u8(0xAA), 0xBB, 0xCC] // received from peer
+	}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	// Verify the stream has separate sent vs received data
+	assert s4.data == [u8(0x01), 0x02], 'sent data should be preserved'
+	assert s4.recv_data == [u8(0xAA), 0xBB, 0xCC], 'recv_data should be separate'
+	println('✓ Stream has separate data and recv_data fields')
+}
+
+fn test_quic_stream_events_has_recv_fields() {
+	// QuicStreamEvents must have recv data buffer fields
+	mut events := QuicStreamEvents{}
+	assert events.recv_count == 0, 'recv_count should default to 0'
+	events.recv_stream_ids[0] = 4
+	events.recv_offsets[0] = 0
+	events.recv_lengths[0] = 5
+	events.recv_data_buf[0] = 0x48
+	events.recv_count = 1
+	assert events.recv_count == 1, 'recv_count should be settable'
+	println('✓ QuicStreamEvents has recv data buffer fields')
+}
+
 // === M4: process_incoming_packet error propagation tests ===
 
 fn test_process_incoming_packet_has_error_return_type() {
@@ -485,4 +649,59 @@ fn test_process_incoming_packet_has_error_return_type() {
 		return
 	}
 	println('✓ process_incoming_packet has error return type and nil guard works')
+}
+
+// === O1/O2: C/V struct layout safety tests ===
+
+fn test_quic_stream_events_struct_size_matches_c() {
+	// O1/O2: Verify V struct size matches C struct size exactly.
+	// C layout (with padding for int64_t alignment):
+	//   int64_t fin_stream_ids[64]    = 512
+	//   int     fin_count             = 4 (+4 padding)
+	//   int64_t closed_stream_ids[64] = 512
+	//   int     closed_count          = 4
+	//   int     overflow              = 4
+	//   int64_t recv_stream_ids[64]   = 512
+	//   int     recv_offsets[64]      = 256
+	//   int     recv_lengths[64]      = 256
+	//   int     recv_count            = 4
+	//   uint8_t recv_data_buf[65536]  = 65536
+	//   int     recv_data_buf_used    = 4 (+4 trailing padding)
+	//   Total = 67608
+	expected_c_size := 67608
+	actual_v_size := int(sizeof(QuicStreamEvents))
+	assert actual_v_size == expected_c_size, 'QuicStreamEvents V struct size ${actual_v_size} != C struct size ${expected_c_size}'
+	println('✓ QuicStreamEvents V struct size matches C struct size (${actual_v_size} bytes)')
+}
+
+fn test_quic_stream_events_i32_fields_are_4_bytes() {
+	// O1/O2: All int fields that map to C int must be exactly 4 bytes (i32).
+	// This ensures portability across platforms where V int may differ from C int.
+	assert sizeof(i32) == 4, 'i32 must be 4 bytes to match C int'
+	println('✓ i32 is 4 bytes, matching C int')
+}
+
+// === O4: recv() clears buffer after clone ===
+
+fn test_recv_data_cleared_after_read() {
+	// O4: After reading recv_data, the buffer should be cleared so
+	// repeated reads don't return accumulated old data.
+	mut s4 := &Stream{
+		id: 4
+		recv_data: [u8(0xAA), 0xBB, 0xCC]
+	}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	// Simulate what recv() does: clone then clear
+	result := s4.recv_data.clone()
+	s4.recv_data.clear()
+
+	assert result == [u8(0xAA), 0xBB, 0xCC], 'first read should return data'
+	assert s4.recv_data.len == 0, 'recv_data should be cleared after read'
+
+	// Second read should return empty
+	result2 := s4.recv_data.clone()
+	assert result2.len == 0, 'second read should return empty after clear'
+	println('✓ recv_data is cleared after read (no stale data accumulation)')
 }

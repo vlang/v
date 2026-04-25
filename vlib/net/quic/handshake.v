@@ -179,6 +179,8 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 		return error('failed to read packet: ${err}')
 	}
 
+	c.drain_stream_events()!
+
 	stream := c.streams[stream_id] or { return error('stream not found') }
-	return stream.data.clone()
+	return stream.recv_data.clone()
 }

@@ -38,5 +38,10 @@ pub mut:
 // ClientConfig holds configuration options for the HTTP/2 client.
 pub struct ClientConfig {
 pub:
-	response_timeout time.Duration
+	response_timeout       time.Duration
+	verify                 string // path to rootca.pem with trusted CA certificate(s)
+	cert                   string // path to cert.pem with client certificate(s)
+	cert_key               string // path to key.pem with private keys for client cert(s)
+	validate               bool   // when true, certificate failures stop processing
+	in_memory_verification bool   // when true, verify/cert/cert_key are read from memory
 }

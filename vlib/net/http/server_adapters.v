@@ -92,15 +92,19 @@ pub fn server_response_to_response(sresp ServerResponse, req_version common.Vers
 // set_server_only_header replaces any existing header with the given name,
 // then sets it to value. Used for server-injected headers like Remote-Addr.
 fn set_server_only_header(mut header Header, name string, value string) {
+	lower_name := name.to_lower()
 	for key in header.keys() {
-		if key.to_lower() == name.to_lower() {
+		if key.to_lower() == lower_name {
 			header.delete_custom(key)
 		}
 	}
 	header.add_custom(name, value) or {}
 }
 
-// DebugHandler implements the unified ServerHandler interface by echoing the request.
+// DebugHandler implements the unified ServerHandler interface by logging
+// the request and returning safe metadata. It never echoes the request body
+// or headers in the response to avoid leaking sensitive data (Authorization,
+// Cookie, etc.).
 struct DebugHandler {}
 
 fn (d DebugHandler) handle(req ServerRequest) ServerResponse {
@@ -109,9 +113,9 @@ fn (d DebugHandler) handle(req ServerRequest) ServerResponse {
 	} $else {
 		eprintln('[${time.now()}] ${req.method} ${req.path} - 200')
 	}
+	body_str := 'Method: ${req.method}\nPath: ${req.path}\nContent-Length: ${req.body.len}\nTimestamp: ${time.now().format_rfc3339()}'
 	return ServerResponse{
 		status_code: 200
-		body:        req.body
-		header:      req.header
+		body:        body_str.bytes()
 	}
 }

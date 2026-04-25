@@ -72,3 +72,30 @@ fn test_allowed_cipher_empty_string() {
 	// Empty string should not match any forbidden cipher.
 	assert is_forbidden_cipher('') == false
 }
+
+fn test_client_config_accepts_tls_fields() {
+	// ClientConfig must accept TLS settings so callers can forward
+	// verify/cert/cert_key/validate/in_memory_verification to the SSL layer.
+	config := ClientConfig{
+		verify:                 '/path/to/ca.pem'
+		cert:                   '/path/to/cert.pem'
+		cert_key:               '/path/to/key.pem'
+		validate:               true
+		in_memory_verification: false
+	}
+	assert config.verify == '/path/to/ca.pem'
+	assert config.cert == '/path/to/cert.pem'
+	assert config.cert_key == '/path/to/key.pem'
+	assert config.validate == true
+	assert config.in_memory_verification == false
+}
+
+fn test_client_config_tls_fields_default_empty() {
+	// Default ClientConfig should have empty/false TLS fields.
+	config := ClientConfig{}
+	assert config.verify == ''
+	assert config.cert == ''
+	assert config.cert_key == ''
+	assert config.validate == false
+	assert config.in_memory_verification == false
+}

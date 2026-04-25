@@ -24,3 +24,21 @@ fn test_build_request_headers_respects_case_insensitive_existing_headers() {
 	assert lower.contains('user-agent: already-present')
 	assert lower.contains('content-length: 999')
 }
+
+fn test_build_request_headers_method_override_for_redirect() {
+	// Verifies that build_request_headers uses the method parameter (not req.method).
+	// This is critical for 303 redirect handling where do() passes .get
+	// even though req.method is .post.
+	req := Request{
+		method:     .post
+		url:        'http://example.com'
+		data:       'post_body'
+		user_agent: 'v.http'
+	}
+	// When method parameter is GET (simulating 303 redirect), headers should show GET
+	headers_get := req.build_request_headers(.get, 'example.com', 80, '/redirected')
+	assert headers_get.starts_with('GET /redirected HTTP/1.1\r\n')
+	// When method parameter is POST (original or 307/308), headers should show POST
+	headers_post := req.build_request_headers(.post, 'example.com', 80, '/original')
+	assert headers_post.starts_with('POST /original HTTP/1.1\r\n')
+}

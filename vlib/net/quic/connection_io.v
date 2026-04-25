@@ -1,3 +1,4 @@
+// NOTE: HTTP/3 support is experimental
 module quic
 
 // QUIC connection I/O operations: send, recv, and stream management.
@@ -5,7 +6,7 @@ module quic
 // process_stream_fin_events drains pending FIN events from QuicStreamEvents
 // and sets fin_received on matching streams.
 fn process_stream_fin_events(mut events QuicStreamEvents, mut streams map[u64]&Stream) {
-	for i in 0 .. events.fin_count {
+	for i in 0 .. int(events.fin_count) {
 		sid := u64(events.fin_stream_ids[i])
 		if mut s := streams[sid] {
 			s.fin_received = true
@@ -22,7 +23,7 @@ fn process_stream_fin_events(mut events QuicStreamEvents, mut streams map[u64]&S
 // process_stream_close_events drains pending close events from QuicStreamEvents
 // and sets closed on matching streams.
 fn process_stream_close_events(mut events QuicStreamEvents, mut streams map[u64]&Stream) {
-	for i in 0 .. events.closed_count {
+	for i in 0 .. int(events.closed_count) {
 		sid := u64(events.closed_stream_ids[i])
 		if mut s := streams[sid] {
 			s.closed = true
@@ -36,6 +37,31 @@ fn process_stream_close_events(mut events QuicStreamEvents, mut streams map[u64]
 	events.closed_count = 0
 }
 
+// process_stream_data_events drains pending received-data events from
+// QuicStreamEvents and appends the payload to each stream's recv_data buffer.
+fn process_stream_data_events(mut events QuicStreamEvents, mut streams map[u64]&Stream) {
+	for i in 0 .. int(events.recv_count) {
+		sid := u64(events.recv_stream_ids[i])
+		offset := int(events.recv_offsets[i])
+		length := int(events.recv_lengths[i])
+		if offset + length > 65536 {
+			continue
+		}
+		chunk := unsafe { events.recv_data_buf[offset..offset + length] }
+		if mut s := streams[sid] {
+			s.recv_data << chunk
+		} else {
+			mut new_stream := &Stream{
+				id: sid
+			}
+			new_stream.recv_data << chunk
+			streams[sid] = new_stream
+		}
+	}
+	events.recv_count = 0
+	events.recv_data_buf_used = 0
+}
+
 // drain_stream_events processes pending FIN and close events recorded by
 // ngtcp2 C callbacks. Call this after conn_read_pkt to propagate stream
 // state changes to the V-side Stream objects.
@@ -46,9 +72,10 @@ pub fn (mut c Connection) drain_stream_events() ! {
 	if c.stream_events != unsafe { nil } {
 		// Capture FIN stream IDs before process_stream_fin_events clears fin_count.
 		// Callers use pending_fin_streams for targeted completion checks.
-		for i in 0 .. c.stream_events.fin_count {
+		for i in 0 .. int(c.stream_events.fin_count) {
 			c.pending_fin_streams << u64(c.stream_events.fin_stream_ids[i])
 		}
+		process_stream_data_events(mut c.stream_events, mut c.streams)
 		process_stream_fin_events(mut c.stream_events, mut c.streams)
 		process_stream_close_events(mut c.stream_events, mut c.streams)
 		if c.stream_events.overflow != 0 {
@@ -160,6 +187,7 @@ fn (mut c Connection) send_with_flags(stream_id u64, data []u8, flags u32) !int 
 pub fn (mut c Connection) send_fin(stream_id u64) ![]u8 {
 	return c.send_with_fin(stream_id, []u8{})
 }
+
 pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 	c.ensure_open()!
 	c.ensure_conn()!
@@ -186,8 +214,10 @@ pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 
 	c.drain_stream_events()!
 
-	stream := c.streams[stream_id] or { return error('stream not found') }
-	return stream.data.clone()
+	mut stream := c.streams[stream_id] or { return error('stream not found') }
+	result := stream.recv_data.clone()
+	stream.recv_data.clear()
+	return result
 }
 
 // open_stream opens a new bidirectional QUIC stream and returns its ID.

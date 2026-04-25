@@ -1,3 +1,4 @@
+// NOTE: HTTP/3 support is experimental
 // C helper functions for QUIC/ngtcp2 integration
 // Provides callback implementations and crypto setup
 
@@ -106,17 +107,27 @@ static int quic_get_new_connection_id_cb(ngtcp2_conn *conn, ngtcp2_cid *cid,
 // QuicStreamEvents holds pending stream events for V-side processing.
 // Must match the QuicStreamEvents struct in ngtcp2.c.v exactly.
 #define QUIC_MAX_PENDING_EVENTS 64
+#define QUIC_MAX_RECV_DATA_EVENTS 64
+#define QUIC_RECV_DATA_BUF_SIZE 65536
 typedef struct {
   int64_t fin_stream_ids[QUIC_MAX_PENDING_EVENTS];
   int     fin_count;
   int64_t closed_stream_ids[QUIC_MAX_PENDING_EVENTS];
   int     closed_count;
   int     overflow;
+  // Per-chunk metadata for received stream data
+  int64_t recv_stream_ids[QUIC_MAX_RECV_DATA_EVENTS];
+  int     recv_offsets[QUIC_MAX_RECV_DATA_EVENTS];
+  int     recv_lengths[QUIC_MAX_RECV_DATA_EVENTS];
+  int     recv_count;
+  // Shared flat buffer holding received data bytes
+  uint8_t recv_data_buf[QUIC_RECV_DATA_BUF_SIZE];
+  int     recv_data_buf_used;
 } QuicStreamEvents;
 
 // ngtcp2 recv_stream_data callback: called when stream data is received.
-// When FIN is signaled (flags & 0x01), records the event in QuicStreamEvents
-// so the V layer can set Stream.fin_received after conn_read_pkt returns.
+// Buffers received data into QuicStreamEvents for V-side processing.
+// When FIN is signaled (flags & 0x01), records the FIN event separately.
 static int quic_recv_stream_data_cb(ngtcp2_conn *conn, uint32_t flags,
     int64_t stream_id, uint64_t offset,
     const uint8_t *data, size_t datalen,
@@ -124,10 +135,31 @@ static int quic_recv_stream_data_cb(ngtcp2_conn *conn, uint32_t flags,
   (void)conn;
   (void)offset;
   (void)stream_user_data;
-  (void)data;
-  (void)datalen;
-  if ((flags & NGTCP2_STREAM_DATA_FLAG_FIN) && user_data != NULL) {
-    QuicStreamEvents *events = (QuicStreamEvents *)user_data;
+
+  if (user_data == NULL) {
+    return 0;
+  }
+
+  QuicStreamEvents *events = (QuicStreamEvents *)user_data;
+
+  // Buffer received data if there is any
+  if (data != NULL && datalen > 0) {
+    if (events->recv_count < QUIC_MAX_RECV_DATA_EVENTS &&
+        events->recv_data_buf_used + (int)datalen <= QUIC_RECV_DATA_BUF_SIZE) {
+      int idx = events->recv_count;
+      events->recv_stream_ids[idx] = stream_id;
+      events->recv_offsets[idx] = events->recv_data_buf_used;
+      events->recv_lengths[idx] = (int)datalen;
+      memcpy(&events->recv_data_buf[events->recv_data_buf_used], data, datalen);
+      events->recv_data_buf_used += (int)datalen;
+      events->recv_count++;
+    } else {
+      events->overflow = 1;
+    }
+  }
+
+  // Record FIN event
+  if (flags & NGTCP2_STREAM_DATA_FLAG_FIN) {
     if (events->fin_count < QUIC_MAX_PENDING_EVENTS) {
       events->fin_stream_ids[events->fin_count++] = stream_id;
     } else {

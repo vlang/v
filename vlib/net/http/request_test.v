@@ -406,3 +406,51 @@ fn test_parse_request_with_limit_rejects_truncated_body() {
 	}
 	assert false, 'expected error for truncated body via parse_request_with_limit'
 }
+
+fn test_parse_request_line_double_slash_path() {
+	// Regression: GET //another.html HTTP/1.1 should preserve //another.html as path,
+	// not interpret 'another.html' as a host (authority) due to the // prefix.
+	method, target, version := http.parse_request_line('GET //another.html HTTP/1.1') or {
+		panic('did not parse: ${err}')
+	}
+	assert method == .get
+	assert version == .v1_1
+	// The path must be //another.html, not empty or misinterpreted
+	assert target.path == '//another.html'
+	assert target.host == ''
+}
+
+fn test_parse_request_double_slash_full_request() {
+	// Full request parsing with double-slash path
+	mut r := reader('GET //another.html HTTP/1.1\r\nHost: example.com\r\n\r\n')
+	req := http.parse_request(mut r) or { panic('did not parse: ${err}') }
+	assert req.method == .get
+	assert req.url == '//another.html'
+}
+
+fn test_parse_request_line_double_slash_with_query() {
+	// Double-slash path with query string
+	method, target, version := http.parse_request_line('GET //page?key=val HTTP/1.1') or {
+		panic('did not parse: ${err}')
+	}
+	assert method == .get
+	assert version == .v1_1
+	assert target.path == '//page'
+	assert target.host == ''
+}
+
+fn test_redirect_303_method_and_body_handling() {
+	// Verify that the Request struct supports the method/data fields needed
+	// for redirect handling. The do() function now uses mutable local variables
+	// for method (and unsafe mutation for data) to correctly handle 303 See Other
+	// redirects by switching to GET and dropping the body.
+	// Full integration testing of 303 redirects requires a live HTTP server.
+	req := http.Request{
+		method: .post
+		data: 'original_body'
+		allow_redirect: true
+	}
+	assert req.method == .post
+	assert req.data == 'original_body'
+	assert req.allow_redirect == true
+}

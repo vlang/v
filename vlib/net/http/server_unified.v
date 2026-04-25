@@ -3,13 +3,15 @@
 // that can be found in the LICENSE file.
 module http
 
+// Unified server entry points for multi-protocol serving.
+// v3 (QUIC) support lives in server_unified_d_use_ngtcp2.v and is only
+// compiled when `-d use_ngtcp2` is passed.
 import net.http.common
 import net.http.v2
-import net.http.v3
 
 // listen_and_serve_tls starts the shared HTTPS entry point for the unified server.
-// Serves HTTP/2 over TLS and can also start HTTP/3 over UDP.
-// The same handler is reused across protocols.
+// Serves HTTP/2 over TLS and can also start HTTP/3 over UDP when compiled
+// with `-d use_ngtcp2`.
 //
 // Note: The v2 TLS listener advertises only ALPN `h2`, so pure HTTPS
 // HTTP/1.1 clients cannot connect on this port. Use listen_and_serve_all()
@@ -19,21 +21,13 @@ pub fn (mut s Server) listen_and_serve_tls() ! {
 		return error('cert_file and key_file are required for TLS')
 	}
 	tls_addr := if s.tls_addr != '' { s.tls_addr } else { s.addr }
-	h3_addr := if s.h3_addr != '' { s.h3_addr } else { tls_addr }
 
 	handler_fn := fn [s] (req common.ServerRequest) common.ServerResponse {
 		mut h := s.handler
 		return h.handle(req)
 	}
 
-	if s.enable_h3 {
-		spawn start_h3_server(v3.ServerConfig{
-			addr:      h3_addr
-			cert_file: s.cert_file
-			key_file:  s.key_file
-			handler:   handler_fn
-		})
-	}
+	maybe_start_h3(s, tls_addr, handler_fn)
 
 	v2_config := v2.ServerConfig{
 		addr:      tls_addr
@@ -62,15 +56,8 @@ pub fn (mut s Server) listen_and_serve_all() ! {
 
 	if s.cert_file != '' && s.key_file != '' {
 		tls_addr := s.tls_addr
-		h3_addr := if s.h3_addr != '' { s.h3_addr } else { tls_addr }
-		if s.enable_h3 {
-			spawn start_h3_server(v3.ServerConfig{
-				addr:      h3_addr
-				cert_file: s.cert_file
-				key_file:  s.key_file
-				handler:   handler_fn
-			})
-		}
+
+		maybe_start_h3(s, tls_addr, handler_fn)
 
 		spawn start_h2_server(v2.ServerConfig{
 			addr:      tls_addr
@@ -89,15 +76,5 @@ fn start_h2_server(config v2.ServerConfig, handler v2.Handler) {
 	}
 	server.listen_and_serve() or {
 		eprintln('[HTTP/2] server error: ${err}')
-	}
-}
-
-fn start_h3_server(config v3.ServerConfig) {
-	mut server := v3.new_server(config) or {
-		eprintln('[HTTP/3] failed to start: ${err}')
-		return
-	}
-	server.listen_and_serve() or {
-		eprintln('[HTTP/3] server error: ${err}')
 	}
 }

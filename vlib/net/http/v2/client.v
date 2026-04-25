@@ -28,7 +28,12 @@ pub fn new_client_with_config(address string, config ClientConfig) !Client {
 	// so we cannot verify the server actually chose 'h2'. If the server doesn't
 	// support h2, the connection preface or SETTINGS exchange will fail instead.
 	mut ssl_conn := ssl.new_ssl_conn(
-		alpn_protocols: ['h2']
+		verify:                 config.verify
+		cert:                   config.cert
+		cert_key:               config.cert_key
+		validate:               config.validate
+		in_memory_verification: config.in_memory_verification
+		alpn_protocols:         ['h2']
 	)!
 	ssl_conn.dial(host, port)!
 

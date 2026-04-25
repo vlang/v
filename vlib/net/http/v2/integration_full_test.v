@@ -1,5 +1,6 @@
 // HTTP/2 integration test for server and client together.
 import net.http.v2
+import net.http.common
 import time
 import os
 
@@ -56,9 +57,9 @@ fn request_handler(req v2.ServerRequest) v2.ServerResponse {
 		'/' {
 			return v2.ServerResponse{
 				status_code: 200
-				headers:     {
+				header:      common.from_map({
 					'content-type': 'text/plain'
-				}
+				})
 				body:        'Hello HTTP/2!'.bytes()
 			}
 		}
@@ -69,27 +70,27 @@ fn request_handler(req v2.ServerRequest) v2.ServerResponse {
 			}
 			return v2.ServerResponse{
 				status_code: 200
-				headers:     {
+				header:      common.from_map({
 					'content-type': 'application/octet-stream'
-				}
+				})
 				body:        large_body
 			}
 		}
 		'/echo' {
 			return v2.ServerResponse{
 				status_code: 200
-				headers:     {
+				header:      common.from_map({
 					'content-type': 'text/plain'
-				}
+				})
 				body:        'Method: ${req.method}\nPath: ${req.path}'.bytes()
 			}
 		}
 		'/echo-body' {
 			return v2.ServerResponse{
 				status_code: 200
-				headers:     {
+				header:      common.from_map({
 					'content-type': 'application/octet-stream'
-				}
+				})
 				body:        req.body
 			}
 		}

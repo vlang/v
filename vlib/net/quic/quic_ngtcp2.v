@@ -1,3 +1,4 @@
+// NOTE: HTTP/3 support is experimental
 module quic
 
 // QUIC connection management and configuration using ngtcp2.
@@ -35,7 +36,8 @@ pub mut:
 pub struct Stream {
 pub mut:
 	id           u64
-	data         []u8
+	data         []u8 // locally-sent data
+	recv_data    []u8 // data received from peer
 	closed       bool
 	fin_received bool
 }
