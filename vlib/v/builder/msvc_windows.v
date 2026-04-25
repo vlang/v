@@ -319,6 +319,7 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.sanitize {
 		eprintln('Sanitize not supported on msvc.')
 	}
+	a << '/TC'
 	// The C file we are compiling
 	// a << '"$TmpPath/${v.out_name_c}"'
 	a << '"' + os.real_path(v.out_name_c) + '"'
