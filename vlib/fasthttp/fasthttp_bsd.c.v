@@ -22,8 +22,37 @@ fn C.kevent(kq i32, changelist &C.kevent, nchanges i32, eventlist &C.kevent, nev
 fn C.kqueue() i32
 fn C.fstat(fd i32, buf &C.stat) i32
 
-// int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
-fn C.sendfile(fd i32, s i32, offset i64, len &i64, hdtr voidptr, flags i32) i32
+// sendfile has different signatures on macOS vs FreeBSD/DragonFly:
+//   macOS:    int sendfile(int fd, int s, off_t offset, off_t *len, sf_hdtr *hdtr, int flags);
+//             (len is in/out: caller sets bytes-to-send, kernel writes bytes-actually-sent)
+//   FreeBSD:  int sendfile(int fd, int s, off_t offset, size_t nbytes, sf_hdtr *hdtr, off_t *sbytes, int flags);
+//             (nbytes is input, sbytes is the separate out-param for bytes actually sent)
+// We wrap the call in `send_file_bytes/4` below.
+
+// send_file_bytes asks the kernel to send up to `nbytes` bytes from `file_fd` at
+// `offset` into socket `sock_fd`, in a single non-blocking syscall.
+// Returns (ret, sent) where `ret` is the raw sendfile return (0 or -1; -1 sets errno),
+// and `sent` is the number of bytes transferred this call (may be >0 even when ret==-1).
+fn send_file_bytes(file_fd i32, sock_fd i32, offset i64, nbytes i64) (int, i64) {
+	$if macos {
+		mut len := nbytes
+		ret := C.sendfile(file_fd, sock_fd, offset, &len, unsafe { nil }, 0)
+		return int(ret), len
+	} $else {
+		mut sbytes := i64(0)
+		ret := C.sendfile(file_fd, sock_fd, offset, usize(nbytes), unsafe { nil }, &sbytes,
+			0)
+		return int(ret), sbytes
+	}
+}
+
+$if macos {
+	// int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
+	fn C.sendfile(fd i32, s i32, offset i64, len &i64, hdtr voidptr, flags i32) i32
+} $else {
+	// int sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags);
+	fn C.sendfile(fd i32, s i32, offset i64, nbytes usize, hdtr voidptr, sbytes &i64, flags i32) i32
+}
 
 struct C.kevent {
 	ident  u64
@@ -161,10 +190,10 @@ fn send_pending(c_ptr voidptr) bool {
 
 	// 2. Send file if buffer is fully sent
 	if c.write_pos >= c.write_buf.len && c.file_fd != -1 {
-		mut len := i64(0)
-		ret := C.sendfile(c.file_fd, c.fd, c.file_pos, &len, unsafe { nil }, 0)
-		if len > 0 {
-			c.file_pos += len
+		remaining := c.file_len - c.file_pos
+		ret, sent := send_file_bytes(c.file_fd, c.fd, c.file_pos, remaining)
+		if sent > 0 {
+			c.file_pos += sent
 		}
 		if ret == -1 {
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
@@ -565,6 +594,11 @@ pub fn (mut s Server) run() ! {
 		}
 		nev := C.kevent(s.poll_fd, unsafe { nil }, 0, &events[0], kqueue_max_events, &timeout)
 		if nev < 0 {
+			if C.errno == C.EINTR {
+				// kevent may return EINTR when the process receives a signal
+				// (e.g. SIGCHLD from an exec'd subprocess). Treat like a timeout.
+				continue
+			}
 			if s.is_shutting_down() {
 				continue
 			}
