@@ -32,6 +32,7 @@ const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 const result_name = ast.result_name
 const option_name = ast.option_name
+const max_c_string_literal_segment_len = 12000
 
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
@@ -4914,7 +4915,78 @@ fn cestring(s string) string {
 
 // ctoslit returns a '_S("${s}")' call, where s is properly escaped.
 fn ctoslit(s string) string {
-	return '_S("' + cescape_nonascii(cestring(s)) + '")'
+	return '_S(' + cescaped_string_literal(cescape_nonascii(cestring(s))) + ')'
+}
+
+fn cescaped_string_literal(s string) string {
+	if s.len <= max_c_string_literal_segment_len {
+		return '"${s}"'
+	}
+	mut b := strings.new_builder(s.len + (s.len / max_c_string_literal_segment_len + 1) * 3)
+	mut start := 0
+	for start < s.len {
+		end := cescaped_string_literal_segment_end(s, start, max_c_string_literal_segment_len)
+		if start > 0 {
+			b.write_u8(` `)
+		}
+		b.write_u8(`"`)
+		b.write_string(s[start..end])
+		b.write_u8(`"`)
+		start = end
+	}
+	return b.str()
+}
+
+fn cescaped_string_literal_segment_end(s string, start int, max_len int) int {
+	limit := if start + max_len < s.len { start + max_len } else { s.len }
+	mut i := start
+	mut last_safe := start
+	for i < limit {
+		if s[i] == `\\` {
+			escape_end := cescaped_string_escape_end(s, i)
+			if escape_end > limit {
+				break
+			}
+			i = escape_end
+			last_safe = i
+			continue
+		}
+		i++
+		last_safe = i
+	}
+	if last_safe > start {
+		return last_safe
+	}
+	return limit
+}
+
+fn cescaped_string_escape_end(s string, start int) int {
+	if start + 1 >= s.len {
+		return s.len
+	}
+	next := s[start + 1]
+	if next >= `0` && next <= `7` {
+		mut end := start + 2
+		for end < s.len && end < start + 4 && s[end] >= `0` && s[end] <= `7` {
+			end++
+		}
+		return end
+	}
+	if next == `x` {
+		mut end := start + 2
+		for end < s.len && end < start + 4 && ((s[end] >= `0` && s[end] <= `9`)
+			|| (s[end] >= `a` && s[end] <= `f`) || (s[end] >= `A` && s[end] <= `F`)) {
+			end++
+		}
+		return end
+	}
+	if next == `u` {
+		return if start + 6 < s.len { start + 6 } else { s.len }
+	}
+	if next == `U` {
+		return if start + 10 < s.len { start + 10 } else { s.len }
+	}
+	return start + 2
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {

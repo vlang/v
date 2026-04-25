@@ -235,9 +235,9 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
 			init := if typ == ast.string_type {
-				'_S("${escaped_val}")'
+				'_S(${cescaped_string_literal(escaped_val)})'
 			} else {
-				'(${styp})"${escaped_val}"'
+				'(${styp})${cescaped_string_literal(escaped_val)}'
 			}
 			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 				mod:   mod

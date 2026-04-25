@@ -8,11 +8,9 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write2('"', escaped_val)
-		g.write('"')
+		g.write(cescaped_string_literal(escaped_val))
 	} else {
-		g.write2('_S("', escaped_val)
-		g.write('")')
+		g.write('_S(${cescaped_string_literal(escaped_val)})')
 	}
 }
 
