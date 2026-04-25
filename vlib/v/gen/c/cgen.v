@@ -1228,6 +1228,11 @@ pub fn (mut g Gen) init() {
 	if g.table.gostmts > 0 {
 		g.comptime_definitions.writeln('#define __VTHREADS__ (1)')
 	}
+	if g.pref.os in [.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		// `#include bsd <...>` and any other code path that emits `defined(__BSD__)`
+		// needs this; individual BSD/Darwin compilers do not predefine __BSD__.
+		g.comptime_definitions.writeln('#define __BSD__ (1)')
+	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
 	}
