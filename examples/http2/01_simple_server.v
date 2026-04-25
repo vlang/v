@@ -4,7 +4,7 @@
 //
 // To generate test certificates:
 //   openssl req -x509 -newkey rsa:2048 -nodes \
-//     -keyout cert.pem -out cert.pem -days 365 \
+//     -keyout key.pem -out cert.pem -days 365 \
 //     -subj "/CN=localhost"
 //
 // Test with: curl -k --http2 https://localhost:8080/

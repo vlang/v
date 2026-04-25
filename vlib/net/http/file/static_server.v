@@ -68,7 +68,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		log.warn('bad request; url: ${req.url} ')
 		res.set_status(.bad_request)
 		res.body = '<!DOCTYPE html><h1>url decode fail</h1>'
-		res.header.add(.content_type, 'text/html; charset=utf-8')
+		res.header.add(.content_type, 'text/html; charset=utf-8') or {}
 		return res
 	}
 	defer {
@@ -81,13 +81,13 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${requested_file_path}, ')
 		res.set_status(.forbidden)
 		res.body = '<h1>forbidden</h1>'
-		res.header.add(.content_type, 'text/html; charset=utf-8')
+		res.header.add(.content_type, 'text/html; charset=utf-8') or {}
 		return res
 	}
 	if !os.exists(requested_file_path) {
 		res.set_status(.not_found)
 		res.body = no_such_file_doc
-		res.header.add(.content_type, 'text/html; charset=utf-8')
+		res.header.add(.content_type, 'text/html; charset=utf-8') or {}
 		return res
 	}
 
@@ -118,6 +118,6 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		content_type = mime.get_content_type(mt)
 	}
 	res.body = body
-	res.header.add(.content_type, content_type)
+	res.header.add(.content_type, content_type) or {}
 	return res
 }

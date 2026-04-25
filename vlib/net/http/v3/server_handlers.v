@@ -146,7 +146,7 @@ fn (mut s Server) process_request(mut conn ServerConnection, stream &ServerStrea
 		}
 	}
 	if host != '' && !header.contains(.host) {
-		header.set(.host, host)
+		header.set(.host, host) or {}
 	}
 
 	request := common.ServerRequest{

@@ -47,8 +47,8 @@ fn test_bench_body_round_trip_by_size() {
 fn test_bench_server_request_construction() {
 	body_data := []u8{len: 16384, init: u8(index % 256)}
 	mut header := common.new_header()
-	header.add(.content_type, 'application/octet-stream')
-	header.add(.host, 'localhost:8080')
+	header.add(.content_type, 'application/octet-stream') or {}
+	header.add(.host, 'localhost:8080') or {}
 
 	mut sw_old := time.new_stopwatch()
 	for _ in 0 .. bench_iterations {

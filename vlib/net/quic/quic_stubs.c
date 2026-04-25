@@ -85,7 +85,14 @@ static int quic_resolve_and_set_path(ngtcp2_path *path,
 static void quic_rand_cb(uint8_t *dest, size_t destlen,
                          const ngtcp2_rand_ctx *rand_ctx) {
   (void)rand_ctx;
-  RAND_bytes(dest, (int)destlen);
+  if (RAND_bytes(dest, (int)destlen) != 1) {
+    /* OpenSSL CSPRNG failed — use platform fallback */
+    #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    arc4random_buf(dest, destlen);
+    #else
+    memset(dest, 0, destlen);
+    #endif
+  }
 }
 
 // ngtcp2 get_new_connection_id callback: generates new connection IDs

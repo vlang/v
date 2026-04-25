@@ -229,7 +229,7 @@ fn extract_pseudo_headers(decoded []HeaderField) (string, string, string, common
 fn build_request(stream_id u32, stream ServerStreamState) ServerRequest {
 	mut header := stream.header
 	if stream.host != '' && !header.contains(.host) {
-		header.set(.host, stream.host)
+		header.set(.host, stream.host) or {}
 	}
 	return ServerRequest{
 		method:    common.method_from_str(stream.method)

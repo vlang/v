@@ -20,7 +20,7 @@ fn test_debug_handler_does_not_echo_request_body() {
 	// as it could contain sensitive data (credentials, tokens, PII).
 	handler := DebugHandler{}
 	mut req_header := new_header(key: .authorization, value: 'Bearer secret-token')
-	req_header.add(.cookie, 'session=abc123')
+	req_header.add(.cookie, 'session=abc123') or { assert false, err.msg() }
 	req := ServerRequest{
 		method: .post
 		path:   '/test'

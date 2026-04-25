@@ -7,6 +7,13 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 	mut offset := 0
 
 	for header in headers {
+		// RFC 7541 §6.2.3: Sensitive headers must use never-indexed encoding
+		is_sensitive := header.sensitive || header.name.to_lower() in e.never_index_names
+		if is_sensitive {
+			offset = encode_optimized_never_indexed(header, mut buf, offset)
+			continue
+		}
+
 		mut found_exact_idx := 0
 		mut found_name_idx := 0
 
@@ -41,6 +48,30 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 	}
 
 	return offset
+}
+
+fn encode_optimized_never_indexed(field HeaderField, mut buf []u8, start_offset int) int {
+	mut pos := start_offset
+	// RFC 7541 §6.2.3: Never-indexed literal uses 0x10 prefix with 4-bit name index
+	// Look up name index in static table
+	mut name_idx := 0
+	if field.name in static_table_name_map {
+		name_idx = static_table_name_map[field.name][0]
+	}
+	if name_idx > 0 {
+		encoded_len := encode_integer(u64(name_idx), 4, mut buf, pos)
+		buf[pos] |= 0x10
+		pos += encoded_len
+	} else {
+		if pos >= buf.len {
+			return pos
+		}
+		buf[pos] = 0x10
+		pos++
+		pos = encode_optimized_string(field.name, mut buf, pos)
+	}
+	pos = encode_optimized_string(field.value, mut buf, pos)
+	return pos
 }
 
 fn encode_optimized_indexed(idx int, mut buf []u8, offset int) int {

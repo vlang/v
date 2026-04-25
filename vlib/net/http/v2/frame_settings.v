@@ -37,8 +37,9 @@ pub fn validate_setting_value(id SettingId, value u32) ! {
 	}
 }
 
-// setting_id_from_u16 validates and converts a u16 to a SettingId enum value.
-pub fn setting_id_from_u16(id u16) !SettingId {
+// setting_id_from_u16 converts a u16 to a SettingId enum value.
+// Returns none for unknown settings per RFC 7540 §6.5.2 (unknown settings MUST be ignored).
+pub fn setting_id_from_u16(id u16) ?SettingId {
 	return match id {
 		0x1 { .header_table_size }
 		0x2 { .enable_push }
@@ -46,6 +47,6 @@ pub fn setting_id_from_u16(id u16) !SettingId {
 		0x4 { .initial_window_size }
 		0x5 { .max_frame_size }
 		0x6 { .max_header_list_size }
-		else { error('unknown settings id: 0x${id:04x}') }
+		else { none }
 	}
 }

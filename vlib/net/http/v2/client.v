@@ -66,6 +66,9 @@ pub fn new_client_with_config(address string, config ClientConfig) !Client {
 pub fn (mut c Client) request(req Request) !Response {
 	enforce_max_concurrent_streams(&c.conn)!
 
+	if c.conn.next_stream_id > 0x7FFFFFFF {
+		return error('stream ID space exhausted; open a new connection')
+	}
 	stream_id := c.conn.next_stream_id
 	c.conn.next_stream_id += 2
 	c.conn.last_stream_id = stream_id

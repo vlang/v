@@ -153,6 +153,7 @@ fn test_validate_missing_scheme() {
 }
 
 fn test_validate_unknown_method() {
+	// RFC 7540 does not restrict HTTP methods — extension methods like BREW should be allowed.
 	headers := [
 		HeaderField{
 			name:  ':method'
@@ -168,10 +169,9 @@ fn test_validate_unknown_method() {
 		},
 	]
 	validate_request_headers(headers) or {
-		assert err.msg().contains('unsupported :method')
+		assert false, 'extension method BREW should be allowed, got: ${err}'
 		return
 	}
-	assert false, 'should reject unsupported :method'
 }
 
 fn test_validate_unknown_pseudo_header() {
@@ -639,4 +639,119 @@ fn (mut m MockServerConn) close() ! {
 
 fn create_mock_client() Client {
 	return Client{}
+}
+
+// --- Fix B1: Stream state violations enforced as errors ---
+
+fn test_stream_state_violation_returns_error() {
+	// Receiving DATA in half_closed_remote state is a PROTOCOL_ERROR per RFC 7540 §5.1.
+	mut c := create_mock_client()
+	data_frame := Frame{
+		header:  FrameHeader{
+			length:     5
+			frame_type: .data
+			flags:      0
+			stream_id:  1
+		}
+		payload: []u8{len: 5}
+	}
+	mut stream := Stream{
+		id:    1
+		state: .half_closed_remote
+	}
+	c.handle_response_frame(data_frame, mut stream, 1) or {
+		assert err.msg().contains('PROTOCOL_ERROR')
+		return
+	}
+	assert false, 'should return PROTOCOL_ERROR for DATA in half_closed_remote state'
+}
+
+fn test_stream_state_valid_recv_no_error() {
+	// Receiving DATA in open state should not error.
+	mut c := create_mock_client()
+	data_frame := Frame{
+		header:  FrameHeader{
+			length:     5
+			frame_type: .data
+			flags:      u8(FrameFlags.end_stream)
+			stream_id:  1
+		}
+		payload: []u8{len: 5}
+	}
+	mut stream := Stream{
+		id:    1
+		state: .open
+	}
+	c.handle_response_frame(data_frame, mut stream, 1) or {
+		assert false, 'DATA in open state should be allowed, got: ${err}'
+		return
+	}
+}
+
+// --- Fix B22: Extension HTTP methods allowed ---
+
+fn test_validate_extension_method_propfind() {
+	// WebDAV PROPFIND method should be allowed per RFC 7540.
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'PROPFIND'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+	]
+	validate_request_headers(headers) or {
+		assert false, 'PROPFIND should be allowed, got: ${err}'
+		return
+	}
+}
+
+fn test_validate_extension_method_patch() {
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: 'PATCH'
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/resource'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+	]
+	validate_request_headers(headers) or {
+		assert false, 'PATCH should be allowed, got: ${err}'
+		return
+	}
+}
+
+fn test_validate_empty_method_rejected() {
+	// Empty :method MUST be rejected.
+	headers := [
+		HeaderField{
+			name:  ':method'
+			value: ''
+		},
+		HeaderField{
+			name:  ':path'
+			value: '/'
+		},
+		HeaderField{
+			name:  ':scheme'
+			value: 'https'
+		},
+	]
+	validate_request_headers(headers) or {
+		assert err.msg().contains('empty :method')
+		return
+	}
+	assert false, 'should reject empty :method'
 }

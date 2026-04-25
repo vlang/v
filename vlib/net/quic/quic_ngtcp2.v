@@ -73,18 +73,37 @@ fn (c &Connection) ensure_conn() ! {
 }
 
 // ngtcp2_timestamp returns the current time as an ngtcp2 nanosecond timestamp.
+// Uses monotonic clock to avoid jumps from wall-clock adjustments (NTP, DST).
 fn ngtcp2_timestamp() u64 {
-	return u64(time.now().unix_milli()) * 1000000
+	return u64(time.sys_mono_now())
+}
+
+// parse_host_port splits an address string into host and port components.
+// Supports IPv4 ("host:port"), IPv6 bracket notation ("[::1]:port"),
+// and hostnames ("example.com:port").
+fn parse_host_port(addr string) !(string, string) {
+	if addr.starts_with('[') {
+		// IPv6 bracket notation: [::1]:4433
+		bracket_end := addr.index_u8(`]`)
+		if bracket_end < 0 {
+			return error('invalid IPv6 address: missing closing bracket')
+		}
+		host := addr[1..bracket_end]
+		if bracket_end + 1 >= addr.len || addr[bracket_end + 1] != `:` {
+			return error('invalid address format: expected :port after ]')
+		}
+		port := addr[bracket_end + 2..]
+		return host, port
+	}
+	// IPv4 or hostname: use last colon
+	last_colon := addr.last_index(':') or { return error('invalid address: no port separator') }
+	return addr[..last_colon], addr[last_colon + 1..]
 }
 
 // new_connection creates a new QUIC client connection using ngtcp2.
 pub fn new_connection(config ConnectionConfig) !Connection {
-	addr_parts := config.remote_addr.split(':')
-	if addr_parts.len != 2 {
-		return error('invalid remote address format, expected host:port')
-	}
-	host := addr_parts[0]
-	port := addr_parts[1].int()
+	host, port_str := parse_host_port(config.remote_addr)!
+	port := port_str.int()
 
 	stream_events := &QuicStreamEvents{}
 	mut ngtcp2_setup := setup_ngtcp2(host, port, config, stream_events)!

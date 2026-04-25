@@ -9,10 +9,10 @@ fn test_pool_size() {
 
 fn test_pool_get_or_create_reuses() {
 	mut pool := new_connection_pool(10)
-	// Insert a mock client directly (conn.closed=true prevents close() from using nil ssl_conn)
+	// Insert a mock client directly (conn.closed=false so it's treated as alive)
 	mock := &Client{
 		conn: Connection{
-			closed: true
+			closed: false
 		}
 	}
 	pool.connections['localhost:443'] = mock
@@ -65,4 +65,63 @@ fn test_pool_close_all() {
 
 	pool.close_all()
 	assert pool.size() == 0, 'pool should be empty after close_all'
+}
+
+// --- Fix B5: Stale/closed connection eviction ---
+
+fn test_pool_get_or_create_evicts_stale() {
+	mut pool := new_connection_pool(10)
+	// Insert a closed (stale) client
+	pool.connections['127.0.0.1:1'] = &Client{
+		conn: Connection{
+			closed: true
+		}
+	}
+	assert pool.size() == 1, 'pool should have 1 connection before eviction'
+
+	// get_or_create should detect the stale connection, remove it, and try to create new.
+	// Since 127.0.0.1:1 has no server, creation will fail.
+	pool.get_or_create('127.0.0.1:1') or {
+		// Stale connection should have been removed
+		assert pool.size() == 0, 'stale connection should be evicted from pool'
+		return
+	}
+	// If somehow it succeeds, that's also fine
+	assert pool.size() == 1
+}
+
+fn test_pool_get_or_create_returns_alive() {
+	mut pool := new_connection_pool(10)
+	// Insert a non-closed (alive) client
+	mock := &Client{
+		conn: Connection{
+			closed: false
+		}
+	}
+	pool.connections['localhost:443'] = mock
+
+	client := pool.get_or_create('localhost:443') or {
+		assert false, 'should return alive connection, got: ${err}'
+		return
+	}
+	assert voidptr(client) == voidptr(mock), 'should return the same alive client'
+}
+
+// --- Fix B19: Thread-safe size() ---
+
+fn test_pool_size_returns_correct_count() {
+	mut pool := new_connection_pool(10)
+	assert pool.size() == 0
+	pool.connections['a:443'] = &Client{
+		conn: Connection{
+			closed: true
+		}
+	}
+	assert pool.size() == 1
+	pool.connections['b:443'] = &Client{
+		conn: Connection{
+			closed: true
+		}
+	}
+	assert pool.size() == 2
 }

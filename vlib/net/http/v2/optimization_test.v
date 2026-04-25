@@ -128,6 +128,94 @@ fn test_encode_optimized_static_name_only_match() {
 	assert decoded[0].value == 'PATCH'
 }
 
+// --- Fix B18: encode_optimized never-indexed/sensitive header check ---
+
+fn test_encode_optimized_never_indexed_authorization() {
+	// Authorization is in never_index_names — encode_optimized must use never-indexed encoding.
+	mut encoder := new_encoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [HeaderField{
+		name:  'authorization'
+		value: 'Bearer secret-token'
+	}]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0, 'must produce output'
+	// First byte must have never-indexed prefix 0001xxxx (§6.2.3)
+	assert (buf[0] & 0xf0) == 0x10, 'expected never-indexed prefix 0001xxxx for authorization, got 0x${buf[0]:02x}'
+}
+
+fn test_encode_optimized_never_indexed_cookie() {
+	mut encoder := new_encoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [HeaderField{
+		name:  'cookie'
+		value: 'session=abc123'
+	}]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0
+	assert (buf[0] & 0xf0) == 0x10, 'expected never-indexed prefix for cookie, got 0x${buf[0]:02x}'
+}
+
+fn test_encode_optimized_never_indexed_sensitive_flag() {
+	mut encoder := new_encoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [HeaderField{
+		name:      'x-custom-secret'
+		value:     'secret-value'
+		sensitive: true
+	}]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0
+	assert (buf[0] & 0xf0) == 0x10, 'expected never-indexed prefix for sensitive header, got 0x${buf[0]:02x}'
+}
+
+fn test_encode_optimized_never_indexed_not_in_dynamic_table() {
+	mut encoder := new_encoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [HeaderField{
+		name:  'authorization'
+		value: 'Bearer token123'
+	}]
+	encoder.encode_optimized(headers, mut buf)
+	// Never-indexed headers must NOT be added to the dynamic table
+	assert encoder.dynamic_table.entries.len == 0, 'never-indexed header should not be in dynamic table'
+}
+
+fn test_encode_optimized_never_indexed_roundtrip() {
+	// Verify never-indexed encoded output can be decoded correctly.
+	mut encoder := new_encoder()
+	mut decoder := new_decoder()
+	mut buf := []u8{len: 4096}
+
+	headers := [
+		HeaderField{
+			name:  'authorization'
+			value: 'Bearer token123'
+		},
+		HeaderField{
+			name:  'x-normal'
+			value: 'normal-value'
+		},
+	]
+	n := encoder.encode_optimized(headers, mut buf)
+	assert n > 0
+
+	encoded := buf[..n].clone()
+	decoded := decoder.decode(encoded) or {
+		assert false, 'HPACK decode failed on never-indexed output: ${err}'
+		return
+	}
+	assert decoded.len == headers.len
+	for i, h in headers {
+		assert decoded[i].name == h.name, 'name mismatch at ${i}'
+		assert decoded[i].value == h.value, 'value mismatch at ${i}'
+	}
+}
+
 fn test_encode_optimized_mixed_match_types() {
 	mut encoder := new_encoder()
 	mut decoder := new_decoder()

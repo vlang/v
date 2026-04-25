@@ -47,7 +47,7 @@ pub mut:
 // new_request creates a new Request given the request `method`, `url_`, and
 // `data`.
 pub fn new_request(method Method, url_ string, data string) Request {
-	url := if method == .get && !url_.contains('?') { url_ + '?' + data } else { url_ }
+	url := if method == .get && data.len > 0 && !url_.contains('?') { url_ + '?' + data } else { url_ }
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method
@@ -120,7 +120,7 @@ pub mut:
 pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
 	mut header := conf.header
-	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
+	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"') or {}
 	return fetch(
 		method: .post
 		url:    url
@@ -263,7 +263,7 @@ fn build_url_from_fetch(config FetchConfig) !string {
 	}
 	mut pieces := []string{cap: config.params.len}
 	for key, val in config.params {
-		pieces << '${key}=${val}'
+		pieces << '${urllib.query_escape(key)}=${urllib.query_escape(val)}'
 	}
 	mut query := pieces.join('&')
 	if url.raw_query.len > 1 {

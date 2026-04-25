@@ -4,9 +4,11 @@ module v2
 
 fn (mut c Client) handle_response_frame(frame Frame, mut stream Stream, stream_id u32) ! {
 	if frame.header.stream_id == stream_id {
-		if !stream.state.can_recv(frame.header.frame_type) {
-			$if trace_http2 ? {
-				eprintln('[HTTP/2] WARNING: received ${frame.header.frame_type} in state ${stream.state} on stream ${stream_id}')
+		// RFC 7540 §5.1: enforce stream state only for known frame types.
+		// Unknown frame types are silently ignored per RFC 7540 §5.5.
+		if frame_type_from_byte(u8(frame.header.frame_type)) != none {
+			if !stream.state.can_recv(frame.header.frame_type) {
+				return error('PROTOCOL_ERROR: received ${frame.header.frame_type} in state ${stream.state}')
 			}
 		}
 	}

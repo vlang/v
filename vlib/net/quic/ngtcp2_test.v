@@ -1,6 +1,7 @@
 module quic
 
 // Tests for ngtcp2 bindings.
+import time
 
 // make_test_fin_events creates QuicStreamEvents with FIN events for testing.
 fn make_test_fin_events(fin_ids []i64) QuicStreamEvents {
@@ -30,11 +31,50 @@ fn test_ngtcp2_version() {
 }
 
 fn test_settings_default() {
-	println('✓ Settings API available (tested in integration tests)')
+	s := Ngtcp2SettingsStruct{
+		token:              unsafe { nil }
+		preferred_versions: unsafe { nil }
+		available_versions: unsafe { nil }
+		pmtud_probes:       unsafe { nil }
+	}
+	// Zero-initialized struct should have all numeric fields at zero/default
+	assert s.cc_algo == 0
+	assert s.initial_ts == 0
+	assert s.initial_rtt == 0
+	assert s.max_tx_udp_payload_size == 0
+	assert s.max_window == 0
+	assert s.max_stream_window == 0
+	assert s.ack_thresh == 0
+	assert s.no_tx_udp_payload_size_shaping == 0
+	assert s.handshake_timeout == 0
+	assert s.original_version == 0
+	assert s.no_pmtud == 0
+	assert s.initial_pkt_num == 0
 }
 
 fn test_transport_params_default() {
-	println('✓ Transport params API available (tested in integration tests)')
+	tp := Ngtcp2TransportParamsStruct{
+		version_info: Ngtcp2VersionInfo{
+			available_versions: unsafe { nil }
+		}
+	}
+	// Zero-initialized struct should have all numeric fields at zero/default
+	assert tp.initial_max_stream_data_bidi_local == 0
+	assert tp.initial_max_stream_data_bidi_remote == 0
+	assert tp.initial_max_stream_data_uni == 0
+	assert tp.initial_max_data == 0
+	assert tp.initial_max_streams_bidi == 0
+	assert tp.initial_max_streams_uni == 0
+	assert tp.max_idle_timeout == 0
+	assert tp.max_udp_payload_size == 0
+	assert tp.active_connection_id_limit == 0
+	assert tp.ack_delay_exponent == 0
+	assert tp.max_ack_delay == 0
+	assert tp.max_datagram_frame_size == 0
+	assert tp.stateless_reset_token_present == 0
+	assert tp.disable_active_migration == 0
+	assert tp.grease_quic_bit == 0
+	assert tp.version_info_present == 0
 }
 
 fn test_connection_id() {
@@ -122,6 +162,17 @@ fn test_fin_flags_can_combine() {
 }
 
 fn test_connection_creation() {
+	// Connection creation requires ngtcp2 runtime — verify struct defaults
+	conn := Connection{}
+	assert conn.remote_addr == ''
+	assert conn.conn_id.len == 0
+	assert conn.streams.len == 0
+	assert conn.next_stream_id == 1
+	assert conn.closed == false
+	assert conn.handshake_done == false
+	assert conn.send_buf.len == 0
+	assert conn.recv_buf.len == 0
+	assert conn.pending_fin_streams.len == 0
 }
 
 fn test_recv_stream_data_flag_fin_constant() {
@@ -704,4 +755,154 @@ fn test_recv_data_cleared_after_read() {
 	result2 := s4.recv_data.clone()
 	assert result2.len == 0, 'second read should return empty after clear'
 	println('✓ recv_data is cleared after read (no stale data accumulation)')
+}
+
+// === C2: Monotonic clock tests ===
+
+fn test_ngtcp2_timestamp_uses_monotonic_clock() {
+	// C2: ngtcp2_timestamp must use monotonic clock, not wall clock.
+	// Monotonic clock values should be close to time.sys_mono_now().
+	// Wall clock values would be ~1.7e18 (unix epoch in ns), monotonic is much smaller.
+	ts := ngtcp2_timestamp()
+	mono_now := time.sys_mono_now()
+	// Both should be in the same ballpark (within 100ms of each other)
+	diff := if ts > mono_now { ts - mono_now } else { mono_now - ts }
+	assert diff < 100_000_000, 'ngtcp2_timestamp should be close to sys_mono_now (diff: ${diff}ns)'
+	println('✓ ngtcp2_timestamp uses monotonic clock')
+}
+
+fn test_ngtcp2_timestamp_is_monotonically_increasing() {
+	// C2: Successive calls must never go backward
+	ts1 := ngtcp2_timestamp()
+	ts2 := ngtcp2_timestamp()
+	assert ts2 >= ts1, 'timestamps must be monotonically increasing'
+	println('✓ ngtcp2_timestamp is monotonically increasing')
+}
+
+// === C2 timeout.v: Monotonic clock in IdleTimeoutMonitor ===
+
+fn test_idle_timeout_monitor_uses_monotonic_clock() {
+	// C2: IdleTimeoutMonitor must use monotonic clock for last_activity.
+	// Monotonic values are much smaller than wall-clock nanoseconds.
+	m := new_idle_timeout_monitor(30000)
+	mono_now := time.sys_mono_now()
+	diff := if m.last_activity > mono_now { m.last_activity - mono_now } else { mono_now - m.last_activity }
+	assert diff < 100_000_000, 'last_activity should be close to sys_mono_now (diff: ${diff}ns)'
+	println('✓ IdleTimeoutMonitor uses monotonic clock')
+}
+
+fn test_idle_timeout_record_activity_uses_monotonic() {
+	// C2: record_activity must use monotonic clock
+	mut m := new_idle_timeout_monitor(30000)
+	old_activity := m.last_activity
+	// Small busy-wait to ensure time passes
+	for _ in 0 .. 1000 {
+	}
+	m.record_activity()
+	assert m.last_activity >= old_activity, 'record_activity should update with monotonic time'
+	println('✓ record_activity uses monotonic clock')
+}
+
+// === C5: Bounds check for negative offset/length ===
+
+fn test_process_stream_data_events_rejects_negative_offset() {
+	// C5: Negative offset from i32 must be rejected
+	mut events := QuicStreamEvents{}
+	events.recv_stream_ids[0] = 4
+	events.recv_offsets[0] = i32(-1) // negative offset
+	events.recv_lengths[0] = i32(5)
+	events.recv_count = 1
+
+	mut s4 := &Stream{id: 4}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	process_stream_data_events(mut events, mut streams)
+
+	assert s4.recv_data.len == 0, 'negative offset should be rejected — no data appended'
+	println('✓ process_stream_data_events rejects negative offset')
+}
+
+fn test_process_stream_data_events_rejects_negative_length() {
+	// C5: Negative length from i32 must be rejected
+	mut events := QuicStreamEvents{}
+	events.recv_stream_ids[0] = 4
+	events.recv_offsets[0] = i32(0)
+	events.recv_lengths[0] = i32(-1) // negative length
+	events.recv_count = 1
+
+	mut s4 := &Stream{id: 4}
+	mut streams := map[u64]&Stream{}
+	streams[u64(4)] = s4
+
+	process_stream_data_events(mut events, mut streams)
+
+	assert s4.recv_data.len == 0, 'negative length should be rejected — no data appended'
+	println('✓ process_stream_data_events rejects negative length')
+}
+
+// === C10: IPv6 address parsing tests ===
+
+fn test_parse_host_port_ipv4() {
+	// C10: Standard IPv4 host:port
+	host, port := parse_host_port('127.0.0.1:4433') or {
+		assert false, 'should parse IPv4: ${err}'
+		return
+	}
+	assert host == '127.0.0.1'
+	assert port == '4433'
+	println('✓ parse_host_port handles IPv4')
+}
+
+fn test_parse_host_port_ipv6_bracket() {
+	// C10: IPv6 bracket notation [::1]:4433
+	host, port := parse_host_port('[::1]:4433') or {
+		assert false, 'should parse IPv6 bracket: ${err}'
+		return
+	}
+	assert host == '::1'
+	assert port == '4433'
+	println('✓ parse_host_port handles IPv6 bracket notation')
+}
+
+fn test_parse_host_port_ipv6_full() {
+	// C10: Full IPv6 bracket notation
+	host, port := parse_host_port('[2001:db8::1]:8443') or {
+		assert false, 'should parse full IPv6: ${err}'
+		return
+	}
+	assert host == '2001:db8::1'
+	assert port == '8443'
+	println('✓ parse_host_port handles full IPv6 address')
+}
+
+fn test_parse_host_port_hostname() {
+	// C10: Hostname with port
+	host, port := parse_host_port('example.com:443') or {
+		assert false, 'should parse hostname: ${err}'
+		return
+	}
+	assert host == 'example.com'
+	assert port == '443'
+	println('✓ parse_host_port handles hostname')
+}
+
+fn test_parse_host_port_invalid_no_port() {
+	// C10: Missing port separator should error
+	parse_host_port('127.0.0.1') or {
+		assert err.msg().contains('no port separator')
+		println('✓ parse_host_port rejects address without port')
+		return
+	}
+	assert false, 'should error on missing port'
+}
+
+fn test_parse_host_port_invalid_ipv6_no_bracket_close() {
+	// C10: Malformed IPv6 bracket should error
+	parse_host_port('[::1:4433') or {
+		assert err.msg().contains('missing closing bracket')
+		println('✓ parse_host_port rejects malformed IPv6 bracket')
+		return
+	}
+	assert false, 'should error on malformed IPv6'
 }

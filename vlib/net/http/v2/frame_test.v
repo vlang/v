@@ -819,3 +819,48 @@ fn test_headersframe_padding_invalid() {
 	}
 	assert false, 'Should have rejected invalid HEADERS padding'
 }
+
+// --- Fix B12: setting_id_from_u16 returns none for unknown settings ---
+
+fn test_setting_id_from_u16_known() {
+	id := setting_id_from_u16(0x1) or {
+		assert false, 'should return header_table_size for 0x1'
+		return
+	}
+	assert id == .header_table_size
+}
+
+fn test_setting_id_from_u16_unknown_returns_none() {
+	// RFC 7540 §6.5.2: unknown settings MUST be ignored (return none, not error).
+	result := setting_id_from_u16(0xFF)
+	assert result == none, 'unknown setting 0xFF should return none'
+}
+
+fn test_setting_id_from_u16_all_known() {
+	// Verify all 6 known settings are recognized.
+	known := [u16(0x1), 0x2, 0x3, 0x4, 0x5, 0x6]
+	for k in known {
+		result := setting_id_from_u16(k)
+		assert result != none, 'setting 0x${k:04x} should be recognized'
+	}
+}
+
+// --- Fix B2: Stream ID overflow check ---
+
+fn test_stream_id_overflow_detected() {
+	// When next_stream_id exceeds 0x7FFFFFFF, request() should return an error.
+	mut c := Client{
+		conn: Connection{
+			next_stream_id: 0x7FFFFFFF + 2
+		}
+	}
+	c.request(Request{
+		method: .get
+		url:    '/'
+		host:   'example.com'
+	}) or {
+		assert err.msg().contains('stream ID space exhausted')
+		return
+	}
+	assert false, 'should reject when stream ID space is exhausted'
+}

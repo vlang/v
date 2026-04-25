@@ -65,7 +65,7 @@ fn (mut req Request) free() {
 // add_header adds the key and value of an HTTP request header
 // To add a custom header, use add_custom_header
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
-	req.header.add(key, val)
+	req.header.add(key, val) or {}
 }
 
 // add_custom_header adds the key and value of an HTTP request header
@@ -101,11 +101,12 @@ pub fn (req &Request) do() !Response {
 	mut resp := Response{}
 	mut nredirects := 0
 	mut method := req.method
+	mut effective_data := req.data
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(method, rurl)!
+		qresp := req.method_and_url_to_response(method, rurl, effective_data)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -118,12 +119,7 @@ pub fn (req &Request) do() !Response {
 		// 301/302 historically also switch to GET in practice (browser behavior).
 		if resp.status() in [.moved_permanently, .found, .see_other] {
 			method = .get
-			// Drop the request body for GET redirects by temporarily clearing req.data.
-			// build_request_headers reads req.data for Content-Length and body content.
-			unsafe {
-				mut mreq := req
-				mreq.data = ''
-			}
+			effective_data = ''
 		}
 		// 307/308 preserve the original method and body (no change needed)
 		// follow any redirects
@@ -146,7 +142,7 @@ pub fn (req &Request) do() !Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, effective_data string) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -174,7 +170,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 					// Fallback to HTTP/2
 					req.do_http2(url) or {
 						// Fallback to HTTP/1.1
-						return req.ssl_do_with_retry(nport, method, host_name, path)!
+						return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
 					}
 				}
 				return res
@@ -183,19 +179,19 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 				// Try HTTP/2
 				res := req.do_http2(url) or {
 					// Fallback to HTTP/1.1
-					return req.ssl_do_with_retry(nport, method, host_name, path)!
+					return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
 				}
 				return res
 			}
 			else {
 				// Use HTTP/1.1
-				return req.ssl_do_with_retry(nport, method, host_name, path)!
+				return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
 			}
 		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// HTTP only supports HTTP/1.1
 		for i in 0 .. req.max_retries {
-			res := req.http_do('${host_name}:${nport}', method, path) or {
+			res := req.http_do('${host_name}:${nport}', method, path, effective_data) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -203,6 +199,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			}
 			return res
 		}
+		return error('http request: max retries (${req.max_retries}) exceeded for ${scheme}://${host_name}')
 	} else if req.proxy != unsafe { nil } {
 		for i in 0 .. req.max_retries {
 			res := req.proxy.http_do(url, method, path, req) or {
@@ -213,14 +210,15 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			}
 			return res
 		}
+		return error('http request: max retries (${req.max_retries}) exceeded for ${scheme}://${host_name}')
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
 // ssl_do_with_retry performs SSL request with retry logic
-fn (req &Request) ssl_do_with_retry(nport int, method Method, host_name string, path string) !Response {
+fn (req &Request) ssl_do_with_retry(nport int, method Method, host_name string, path string, effective_data string) !Response {
 	for i in 0 .. req.max_retries {
-		res := req.ssl_do(nport, method, host_name, path) or {
+		res := req.ssl_do(nport, method, host_name, path, effective_data) or {
 			if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 				return err
 			}
@@ -231,7 +229,7 @@ fn (req &Request) ssl_do_with_retry(nport int, method Method, host_name string, 
 	return error('http.request.ssl_do_with_retry: max retries exceeded')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string, effective_data string) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -259,7 +257,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
-		sb.write_string(req.data.len.str())
+		sb.write_string(effective_data.len.str())
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
@@ -276,7 +274,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 	sb.write_string(req.build_request_cookies_header())
 	sb.write_string('Connection: close\r\n')
 	sb.write_string('\r\n')
-	sb.write_string(req.data)
+	sb.write_string(effective_data)
 	return sb.str()
 }
 
@@ -309,9 +307,9 @@ fn (req &Request) build_request_cookies_header() string {
 	return sb_cookie.str()
 }
 
-fn (req &Request) http_do(host string, method Method, path string) !Response {
+fn (req &Request) http_do(host string, method Method, path string, effective_data string) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers(method, host_name, port, path)
+	s := req.build_request_headers(method, host_name, port, path, effective_data)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
@@ -373,7 +371,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		}
 		if body_pos == 0 {
 			bidx := schunk.index_(headers_body_boundary)
-			if bidx > 0 {
+			if bidx >= 0 {
 				body_buffer_offset := bidx + 4
 				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
 				body_pos = u64(old_len) + u64(body_buffer_offset)

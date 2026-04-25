@@ -15,7 +15,7 @@ mut:
 pub fn new_idle_timeout_monitor(timeout_ms u64) IdleTimeoutMonitor {
 	return IdleTimeoutMonitor{
 		idle_timeout_ms: timeout_ms
-		last_activity:   u64(time.now().unix_milli()) * 1000000
+		last_activity:   u64(time.sys_mono_now())
 		expired:         false
 	}
 }
@@ -23,7 +23,7 @@ pub fn new_idle_timeout_monitor(timeout_ms u64) IdleTimeoutMonitor {
 // record_activity updates the last_activity timestamp to the current time.
 // Per RFC 9000 §10.1, the idle timer restarts when a peer packet is processed.
 pub fn (mut m IdleTimeoutMonitor) record_activity() {
-	m.last_activity = u64(time.now().unix_milli()) * 1000000
+	m.last_activity = u64(time.sys_mono_now())
 }
 
 // check_expired checks whether the idle timeout has elapsed since last activity.
@@ -35,7 +35,7 @@ pub fn (mut m IdleTimeoutMonitor) check_expired(mut conn Connection) bool {
 	if m.expired {
 		return true
 	}
-	now := u64(time.now().unix_milli()) * 1000000
+	now := u64(time.sys_mono_now())
 	deadline := m.last_activity + m.idle_timeout_ms * 1000000
 	if now >= deadline {
 		m.expired = true
@@ -57,7 +57,7 @@ pub fn (mut m IdleTimeoutMonitor) time_until_expiry(mut conn Connection) u64 {
 	if conn.ngtcp2_conn == unsafe { nil } {
 		return 0
 	}
-	now := u64(time.now().unix_milli()) * 1000000
+	now := u64(time.sys_mono_now())
 	deadline := m.last_activity + m.idle_timeout_ms * 1000000
 	if now >= deadline {
 		return 0

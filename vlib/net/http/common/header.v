@@ -368,7 +368,7 @@ pub fn new_header(kvs ...HeaderConfig) Header {
 
 pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 	mut h := new_header()
-	h.add_map(kvs)
+	h.add_map(kvs) or {}
 	return h
 }
 
@@ -416,10 +416,10 @@ pub fn from_map(m map[string]string) Header {
 	return h
 }
 
-pub fn (mut h Header) add(key CommonHeader, value string) {
+pub fn (mut h Header) add(key CommonHeader, value string) ! {
 	k := key.str()
 	if !h.has_capacity() {
-		return
+		return error('maximum number of headers reached')
 	}
 	h.data[h.cur_pos] = HeaderKV{k, value}
 	h.cur_pos++
@@ -434,9 +434,9 @@ pub fn (mut h Header) add_custom(key string, value string) ! {
 	h.cur_pos++
 }
 
-pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
+pub fn (mut h Header) add_map(kvs map[CommonHeader]string) ! {
 	for k, v in kvs {
-		h.add(k, v)
+		h.add(k, v)!
 	}
 }
 
@@ -446,7 +446,7 @@ pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 	}
 }
 
-pub fn (mut h Header) set(key CommonHeader, value string) {
+pub fn (mut h Header) set(key CommonHeader, value string) ! {
 	key_str := key.str()
 	for i := 0; i < h.cur_pos; i++ {
 		if h.data[i].key == key_str && h.data[i].value != '' {
@@ -455,7 +455,7 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 		}
 	}
 	if !h.has_capacity() {
-		return
+		return error('maximum number of headers reached')
 	}
 	h.data[h.cur_pos] = HeaderKV{key_str, value}
 	h.cur_pos++
@@ -464,7 +464,8 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
 	mut set := false
-	for i, kv in h.data {
+	for i := 0; i < h.cur_pos; i++ {
+		kv := h.data[i]
 		if kv.key == key {
 			if !set {
 				h.data[i] = HeaderKV{key, value}
@@ -620,7 +621,7 @@ pub:
 
 @[manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
-	mut sb := strings.new_builder(h.data.len * 48)
+	mut sb := strings.new_builder(h.cur_pos * 48)
 	h.render_into_sb(mut sb, flags)
 	res := sb.str()
 	unsafe { sb.free() }

@@ -11,12 +11,12 @@ pub struct C.TlsContext {}
 
 fn C.new_tls_context() C.TlsContext
 
-fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
+fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, effective_data string) !Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
 	addr := host_name
-	sdata := req.build_request_headers(method, host_name, port, path)
+	sdata := req.build_request_headers(method, host_name, port, path, effective_data)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}

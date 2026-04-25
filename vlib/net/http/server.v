@@ -95,6 +95,7 @@ pub fn (mut s Server) listen_and_serve() {
 		conn.set_write_timeout(s.write_timeout)
 		ch <- conn
 	}
+	ch.close()
 	if s.state == .stopped {
 		s.close()
 	}
@@ -203,7 +204,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		mut resp := server_response_to_response(server_resp, req.version)
 
 		if !resp.header.contains(.content_length) {
-			resp.header.set(.content_length, '${resp.body.len}')
+			resp.header.set(.content_length, '${resp.body.len}') or {}
 		}
 
 		max_reached := w.max_keep_alive_requests > 0 && request_count >= w.max_keep_alive_requests
@@ -226,9 +227,9 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 
 		if max_reached || !resp.header.contains(.connection) {
 			if keep_alive {
-				resp.header.set(.connection, 'keep-alive')
+				resp.header.set(.connection, 'keep-alive') or {}
 			} else {
-				resp.header.set(.connection, 'close')
+				resp.header.set(.connection, 'close') or {}
 			}
 		}
 

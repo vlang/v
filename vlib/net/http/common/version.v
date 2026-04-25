@@ -13,7 +13,7 @@ pub fn (v Version) str() string {
 	return match v {
 		.v1_1 { 'HTTP/1.1' }
 		.v2_0 { 'HTTP/2.0' }
-		.v3_0 { 'HTTP/3.0' }
+		.v3_0 { 'HTTP/3' }
 		.v1_0 { 'HTTP/1.0' }
 		.unknown { 'unknown' }
 	}

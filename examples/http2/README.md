@@ -18,7 +18,7 @@ A simple HTTP/2 server demonstrating basic usage.
 v run examples/http2/01_simple_server.v
 ```
 
-Then visit: `http://localhost:8080`
+Then visit: `https://localhost:8080`
 
 ---
 
@@ -66,32 +66,50 @@ Benchmark 4: Multiple Streams Simulation
 ### Basic HTTP/2 Server
 
 ```v
-import net.http.v2
+import net.http
+
+struct MyHandler {}
+
+fn (h MyHandler) handle(req http.ServerRequest) http.ServerResponse {
+    return http.ServerResponse{
+        status_code: 200
+        header:      http.new_header_from_map({
+            .content_type: 'text/html; charset=utf-8'
+        })
+        body:        '<h1>Hello from HTTP/2!</h1>'.bytes()
+    }
+}
 
 fn main() {
-    mut server := v2.new_server(port: 8080)
-    
-    server.on('/', fn (req v2.Request) v2.Response {
-        return v2.Response{
-            status_code: 200
-            body: 'Hello HTTP/2!'
-        }
-    })
-    
-    server.listen()!
+    mut server := http.Server{
+        addr:      '0.0.0.0:8080'
+        handler:   MyHandler{}
+        cert_file: 'cert.pem'
+        key_file:  'key.pem'
+    }
+    // HTTP/2 is enabled automatically over TLS (ALPN h2)
+    server.listen_and_serve_tls() or { eprintln('Server error: ${err}') }
 }
 ```
 
 ### Basic HTTP/2 Client
 
 ```v
-import net.http.v2
+import net.http
 
 fn main() {
-    mut client := v2.new_client()
-    
-    resp := client.get('https://example.com')!
-    println(resp.body)
+    response := http.fetch(
+        url:    'https://nghttp2.org/'
+        method: .get
+        header: http.new_header_from_map({
+            .user_agent: 'V-HTTP2-Client/1.0'
+        })
+    ) or {
+        eprintln('Request failed: ${err}')
+        return
+    }
+    println('Status: ${response.status_code}')
+    println('Body: ${response.body[..200]}...')
 }
 ```
 

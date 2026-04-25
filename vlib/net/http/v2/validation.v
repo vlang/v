@@ -1,7 +1,6 @@
 module v2
 
 // Header validation for HTTP/2 requests per RFC 7540 §8.1.2.
-import net.http.common
 
 // known_pseudo_headers lists the valid HTTP/2 request pseudo-headers per RFC 7540 §8.1.2.3.
 const known_pseudo_headers = [':method', ':path', ':scheme', ':authority']
@@ -32,8 +31,8 @@ pub fn validate_request_headers(headers []HeaderField) ! {
 				return error('PROTOCOL_ERROR: unknown pseudo-header ${h.name}')
 			}
 			if h.name == ':method' {
-				if common.method_from_str_known(h.value) == none {
-					return error('PROTOCOL_ERROR: unsupported :method ${h.value}')
+				if h.value.len == 0 {
+					return error('PROTOCOL_ERROR: empty :method')
 				}
 				has_method = true
 				is_connect = h.value == 'CONNECT'

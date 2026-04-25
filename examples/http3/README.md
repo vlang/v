@@ -121,36 +121,56 @@ v run examples/http3/04_standalone_tests.v
 ### Basic HTTP/3 Server
 
 ```v
-import net.http.v3
+import net.http
+
+struct MyHandler {}
+
+fn (h MyHandler) handle(req http.ServerRequest) http.ServerResponse {
+    return http.ServerResponse{
+        status_code: 200
+        header:      http.new_header_from_map({
+            .content_type: 'text/html; charset=utf-8'
+        })
+        body:        '<h1>Hello from HTTP/3!</h1>'.bytes()
+    }
+}
 
 fn main() {
-    mut server := v3.new_server(
-        port: 4433
-        cert_file: 'cert.pem'
-        key_file: 'key.pem'
-    )
-    
-    server.on('/', fn (req v3.Request) v3.Response {
-        return v3.Response{
-            status_code: 200
-            body: 'Hello HTTP/3!'
-        }
-    })
-    
-    server.listen()!
+    mut server := http.Server{
+        addr:      '0.0.0.0:8080'
+        tls_addr:  ':4433'
+        h3_addr:   ':4433'
+        handler:   MyHandler{}
+        cert_file: 'server.crt'
+        key_file:  'server.key'
+        enable_h3: true
+    }
+    // Starts HTTP/1.1 + HTTP/2 + HTTP/3 with the same handler
+    server.listen_and_serve_all() or { eprintln('Server error: ${err}') }
 }
 ```
 
 ### Basic HTTP/3 Client
 
 ```v
-import net.http.v3
+import net.http
 
 fn main() {
-    mut client := v3.new_client()
-    
-    resp := client.get('https://example.com')!
-    println(resp.body)
+    // Protocol is negotiated automatically over TLS.
+    // If the server advertises HTTP/3 via Alt-Svc, subsequent
+    // requests can upgrade when using an Alt-Svc cache.
+    response := http.fetch(
+        url:    'https://cloudflare-quic.com/'
+        method: .get
+        header: http.new_header_from_map({
+            .user_agent: 'V-HTTP3-Client/1.0'
+        })
+    ) or {
+        eprintln('Request failed: ${err}')
+        return
+    }
+    println('Status: ${response.status_code}')
+    println('Body: ${response.body[..200]}...')
 }
 ```
 
@@ -165,8 +185,8 @@ import net.http.v3
 
 mut encoder := v3.new_qpack_encoder(4096, 100)
 headers := [
-    v3.HeaderField{':method', 'GET'},
-    v3.HeaderField{':path', '/'},
+    v3.HeaderField{ name: ':method', value: 'GET' },
+    v3.HeaderField{ name: ':path', value: '/' },
 ]
 encoded := encoder.encode(headers)
 // Achieves 2-30x compression ratio
@@ -177,24 +197,35 @@ encoded := encoder.encode(headers)
 ```v
 import net.quic
 
+// Create a shared session cache for ticket storage
 mut cache := quic.new_session_cache()
+
+// Store a session ticket after the first connection
 cache.store('example.com', ticket)
 
-// Next connection uses 0-RTT
+// Subsequent connections can use 0-RTT with the cached ticket
 mut conn := quic.new_connection(
-    server_name: 'example.com'
+    remote_addr:   'example.com:4433'
+    enable_0rtt:   true
     session_cache: cache
-)
-// 50-70% latency reduction
+)!
+// 50-70% latency reduction on resumed connections
 ```
 
 ### Connection Migration
 
 ```v
 import net.quic
+import net
 
-mut migration := quic.new_connection_migration(local, remote)
-migration.handle_network_change(new_local_addr)!
+// Create a migration manager for the current path
+local_addr := net.Addr{}
+remote_addr := net.Addr{}
+mut migration := quic.new_connection_migration(local_addr, remote_addr)
+
+// Probe a new path when the network changes
+new_local := net.Addr{}
+migration.probe_path(new_local, remote_addr)!
 // Seamless WiFi ↔ Cellular switching
 ```
 

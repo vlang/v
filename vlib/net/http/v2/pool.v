@@ -25,8 +25,12 @@ pub fn new_connection_pool(max_idle int) &ConnectionPool {
 pub fn (mut p ConnectionPool) get_or_create(address string) !&Client {
 	p.mu.lock()
 	if client := p.connections[address] {
-		p.mu.unlock()
-		return client
+		if !client.conn.closed {
+			p.mu.unlock()
+			return client
+		}
+		// Connection is stale, remove it and fall through to create new
+		p.connections.delete(address)
 	}
 
 	c := new_client(address) or {
@@ -71,6 +75,10 @@ pub fn (mut p ConnectionPool) remove(address string) {
 }
 
 // size returns the number of pooled connections.
-pub fn (p &ConnectionPool) size() int {
+pub fn (mut p ConnectionPool) size() int {
+	p.mu.lock()
+	defer {
+		p.mu.unlock()
+	}
 	return p.connections.len
 }

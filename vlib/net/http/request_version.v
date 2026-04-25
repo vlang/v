@@ -18,7 +18,7 @@ fn (req &Request) build_client_header() Header {
 		h.add_custom('user-agent', req.user_agent) or {}
 	}
 	if req.data.len > 0 && !h.contains(.content_length) {
-		h.add(.content_length, req.data.len.str())
+		h.add(.content_length, req.data.len.str()) or {}
 	}
 	return h
 }

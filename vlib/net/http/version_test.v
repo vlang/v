@@ -41,7 +41,7 @@ fn test_version_str() {
 	// Test version string representation
 	assert Version.v1_1.str() == 'HTTP/1.1'
 	assert Version.v2_0.str() == 'HTTP/2.0'
-	assert Version.v3_0.str() == 'HTTP/3.0'
+	assert Version.v3_0.str() == 'HTTP/3'
 	assert Version.unknown.str() == 'unknown'
 }
 

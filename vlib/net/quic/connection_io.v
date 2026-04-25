@@ -44,7 +44,7 @@ fn process_stream_data_events(mut events QuicStreamEvents, mut streams map[u64]&
 		sid := u64(events.recv_stream_ids[i])
 		offset := int(events.recv_offsets[i])
 		length := int(events.recv_lengths[i])
-		if offset + length > 65536 {
+		if offset < 0 || length < 0 || offset + length > quic_recv_data_buf_size {
 			continue
 		}
 		chunk := unsafe { events.recv_data_buf[offset..offset + length] }

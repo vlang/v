@@ -129,6 +129,9 @@ fn parse_authority(authority string) (string, int) {
 	colon := authority.last_index(':') or { return authority, 0 }
 	host := authority[..colon]
 	port := authority[colon + 1..].int()
+	if port < 1 || port > 65535 {
+		return host, 0
+	}
 	return host, port
 }
 

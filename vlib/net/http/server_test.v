@@ -288,7 +288,7 @@ fn (mut handler KeepAliveHandler) handle(req http.ServerRequest) http.ServerResp
 	handler.request_count++
 	mut header := http.new_header()
 	if conn := req.header.get(.connection) {
-		header.set(.connection, conn)
+		header.set(.connection, conn) or {}
 	}
 	return http.ServerResponse{
 		status_code: 200
