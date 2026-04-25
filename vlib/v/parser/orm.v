@@ -13,6 +13,11 @@ struct SqlPrefix {
 	is_dynamic       bool
 }
 
+struct SqlQueryDataItemsBlock {
+	items        []ast.SqlQueryDataItem
+	end_comments []ast.Comment
+}
+
 fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
 	return match name {
 		'count' { .count }
@@ -580,18 +585,19 @@ fn is_sql_query_data_operator(kind token.Kind) bool {
 
 fn (mut p Parser) sql_query_data_expr() ast.Expr {
 	start_pos := p.tok.pos()
-	items := p.parse_sql_query_data_items_block()
+	block := p.parse_sql_query_data_items_block()
 	return ast.SqlQueryDataExpr{
-		pos:   start_pos.extend(p.prev_tok.pos())
-		items: items
+		pos:          start_pos.extend(p.prev_tok.pos())
+		items:        block.items
+		end_comments: block.end_comments
 	}
 }
 
-fn (mut p Parser) parse_sql_query_data_items_block() []ast.SqlQueryDataItem {
+fn (mut p Parser) parse_sql_query_data_items_block() SqlQueryDataItemsBlock {
 	p.check(.lcbr)
 	mut items := []ast.SqlQueryDataItem{}
+	mut pending_comments := p.eat_comments()
 	for {
-		p.eat_comments()
 		if p.tok.kind == .rcbr {
 			break
 		}
@@ -599,19 +605,29 @@ fn (mut p Parser) parse_sql_query_data_items_block() []ast.SqlQueryDataItem {
 			p.unexpected(got: 'eof, while parsing a dynamic ORM expression')
 			break
 		}
-		items << p.parse_sql_query_data_item()
-		p.eat_comments()
+		mut item := p.parse_sql_query_data_item()
+		item = sql_query_data_item_with_pre_comments(item, pending_comments)
+		pending_comments = []
+		item = sql_query_data_item_with_end_comments(item, p.eat_comments(same_line: true))
 		if p.tok.kind == .comma {
 			p.next()
+			item = sql_query_data_item_with_end_comments(item, p.eat_comments(same_line: true))
+			items << item
+			pending_comments = p.eat_comments()
 			continue
 		}
+		items << item
+		pending_comments = p.eat_comments()
 		if p.tok.kind != .rcbr {
 			p.error('expected `,` or `}` in a dynamic ORM expression')
 			break
 		}
 	}
 	p.check(.rcbr)
-	return items
+	return SqlQueryDataItemsBlock{
+		items:        items
+		end_comments: pending_comments
+	}
 }
 
 fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
@@ -622,6 +638,42 @@ fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
 	return ast.SqlQueryDataLeaf{
 		pos:  expr.pos()
 		expr: expr
+	}
+}
+
+fn sql_query_data_item_with_pre_comments(item ast.SqlQueryDataItem, comments []ast.Comment) ast.SqlQueryDataItem {
+	if comments.len == 0 {
+		return item
+	}
+	return match item {
+		ast.SqlQueryDataLeaf {
+			mut leaf := item
+			leaf.pre_comments << comments
+			leaf
+		}
+		ast.SqlQueryDataIf {
+			mut if_item := item
+			if_item.pre_comments << comments
+			if_item
+		}
+	}
+}
+
+fn sql_query_data_item_with_end_comments(item ast.SqlQueryDataItem, comments []ast.Comment) ast.SqlQueryDataItem {
+	if comments.len == 0 {
+		return item
+	}
+	return match item {
+		ast.SqlQueryDataLeaf {
+			mut leaf := item
+			leaf.end_comments << comments
+			leaf
+		}
+		ast.SqlQueryDataIf {
+			mut if_item := item
+			if_item.end_comments << comments
+			if_item
+		}
 	}
 }
 
@@ -694,19 +746,29 @@ fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 			prev_guard = false
 		}
 		p.open_scope()
-		items := p.parse_sql_query_data_items_block()
+		block := p.parse_sql_query_data_items_block()
 		p.close_scope()
 		if has_guard_scope {
 			p.close_scope()
 		}
 		branches << ast.SqlQueryDataBranch{
-			pos:   branch_pos.extend(p.prev_tok.pos())
-			cond:  cond
-			items: items
+			pos:          branch_pos.extend(p.prev_tok.pos())
+			cond:         cond
+			items:        block.items
+			end_comments: block.end_comments
 		}
-		p.eat_comments()
+		comments_before_else := p.eat_comments()
 		if p.tok.kind != .key_else {
-			break
+			return ast.SqlQueryDataIf{
+				pos:          start_pos.extend(p.prev_tok.pos())
+				branches:     branches
+				has_else:     has_else
+				end_comments: comments_before_else
+			}
+		}
+		if comments_before_else.len > 0 {
+			last_idx := branches.len - 1
+			branches[last_idx].end_comments << comments_before_else
 		}
 		has_else = true
 		else_pos := p.tok.pos()
@@ -725,12 +787,13 @@ fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 				is_special:   true
 			})
 		}
-		else_items := p.parse_sql_query_data_items_block()
+		else_block := p.parse_sql_query_data_items_block()
 		p.close_scope()
 		branches << ast.SqlQueryDataBranch{
-			pos:   else_pos.extend(p.prev_tok.pos())
-			cond:  ast.empty_expr
-			items: else_items
+			pos:          else_pos.extend(p.prev_tok.pos())
+			cond:         ast.empty_expr
+			items:        else_block.items
+			end_comments: else_block.end_comments
 		}
 		break
 	}

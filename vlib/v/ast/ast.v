@@ -2318,31 +2318,37 @@ pub struct SqlQueryDataLeaf {
 pub:
 	pos token.Pos
 pub mut:
-	expr Expr
+	expr         Expr
+	pre_comments []Comment
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataBranch {
 pub:
 	pos token.Pos
 pub mut:
-	cond  Expr
-	items []SqlQueryDataItem
+	cond         Expr
+	items        []SqlQueryDataItem
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataIf {
 pub:
 	pos token.Pos
 pub mut:
-	branches []SqlQueryDataBranch
-	has_else bool
+	branches     []SqlQueryDataBranch
+	has_else     bool
+	pre_comments []Comment
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataExpr {
 pub:
 	pos token.Pos
 pub mut:
-	items []SqlQueryDataItem
-	typ   Type
+	items        []SqlQueryDataItem
+	typ          Type
+	end_comments []Comment
 }
 
 pub struct SqlStmt {

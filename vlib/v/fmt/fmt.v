@@ -2635,7 +2635,8 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
 	return match item {
 		ast.SqlQueryDataLeaf {
-			item.pos.line_nr == item.pos.last_line && expr_is_single_line(item.expr)
+			item.pre_comments.len == 0 && item.end_comments.len == 0
+				&& item.pos.line_nr == item.pos.last_line && expr_is_single_line(item.expr)
 		}
 		ast.SqlQueryDataIf {
 			false
@@ -2644,8 +2645,29 @@ fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
 }
 
 fn sql_query_data_branch_is_single_line(branch ast.SqlQueryDataBranch) bool {
-	return branch.pos.line_nr == branch.pos.last_line && branch.items.len == 1
-		&& sql_query_data_item_is_single_line(branch.items[0])
+	return branch.end_comments.len == 0 && branch.pos.line_nr == branch.pos.last_line
+		&& branch.items.len == 1 && sql_query_data_item_is_single_line(branch.items[0])
+}
+
+fn sql_query_data_item_pre_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pre_comments }
+		ast.SqlQueryDataIf { item.pre_comments }
+	}
+}
+
+fn sql_query_data_item_end_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.end_comments }
+		ast.SqlQueryDataIf { item.end_comments }
+	}
+}
+
+fn sql_query_data_item_last_line(item ast.SqlQueryDataItem) int {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pos.last_line }
+		ast.SqlQueryDataIf { item.pos.last_line }
+	}
 }
 
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
@@ -3416,24 +3438,44 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 }
 
 pub fn (mut f Fmt) sql_query_data_expr(node ast.SqlQueryDataExpr) {
-	if node.items.len == 0 {
+	if node.items.len == 0 && node.end_comments.len == 0 {
 		f.write('{}')
 		return
 	}
 	f.writeln('{')
 	f.indent++
-	for idx, item in node.items {
-		f.write_indent()
+	f.sql_query_data_items(node.items, node.end_comments)
+	f.indent--
+	f.write('}')
+}
+
+fn (mut f Fmt) sql_query_data_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment) {
+	for idx, item in items {
+		f.sql_query_data_comment_lines(sql_query_data_item_pre_comments(item))
 		f.sql_query_data_item(item)
-		if idx < node.items.len - 1 {
-			f.writeln(',')
+		if idx < items.len - 1 || end_comments.len > 0 {
+			f.write(',')
+		}
+		item_end_comments := sql_query_data_item_end_comments(item)
+		if item_end_comments.len > 0 {
+			if item_end_comments[0].pos.line_nr == sql_query_data_item_last_line(item) {
+				f.comments(item_end_comments, same_line: true, has_nl: true, level: .keep)
+			} else {
+				f.writeln('')
+				f.sql_query_data_comment_lines(item_end_comments)
+			}
 		} else {
 			f.writeln('')
 		}
 	}
-	f.indent--
-	f.write_indent()
-	f.write('}')
+	f.sql_query_data_comment_lines(end_comments)
+}
+
+fn (mut f Fmt) sql_query_data_comment_lines(comments []ast.Comment) {
+	for comment in comments {
+		f.comment(comment)
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
@@ -3454,7 +3496,7 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 					f.expr(branch.cond)
 					f.write(' ')
 				}
-				f.sql_query_data_branch_items(branch.items,
+				f.sql_query_data_branch_items(branch.items, branch.end_comments,
 					sql_query_data_branch_is_single_line(branch))
 				if idx < item.branches.len - 1 {
 					f.write(' ')
@@ -3464,8 +3506,8 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 	}
 }
 
-fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, keep_single_line bool) {
-	if items.len == 0 {
+fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment, keep_single_line bool) {
+	if items.len == 0 && end_comments.len == 0 {
 		f.write('{}')
 		return
 	}
@@ -3484,17 +3526,8 @@ fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, keep_si
 	}
 	f.writeln('{')
 	f.indent++
-	for idx, item in items {
-		f.write_indent()
-		f.sql_query_data_item(item)
-		if idx < items.len - 1 {
-			f.writeln(',')
-		} else {
-			f.writeln('')
-		}
-	}
+	f.sql_query_data_items(items, end_comments)
 	f.indent--
-	f.write_indent()
 	f.write('}')
 }
 
