@@ -1424,7 +1424,10 @@ fn (mut c Checker) expr_is_mutable_alias_of_immutable_source(expr ast.Expr) bool
 		ast.Ident {
 			if expr.obj is ast.Var && expr.obj.is_mut && c.type_has_mutable_aliasing(expr.obj.typ) {
 				match expr.obj.expr {
-					ast.Ident, ast.CallExpr, ast.CastExpr, ast.AsCast, ast.ParExpr, ast.UnsafeExpr {
+					ast.UnsafeExpr {
+						return false
+					}
+					ast.Ident, ast.CallExpr, ast.CastExpr, ast.AsCast, ast.ParExpr {
 						return c.expr_is_immutable_source(expr.obj.expr)
 							|| c.expr_is_mutable_alias_of_immutable_source(expr.obj.expr)
 					}

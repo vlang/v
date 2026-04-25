@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module transformer
 
+import math
 import v.pref
 import v.ast
 import v.token
@@ -119,6 +120,10 @@ fn folded_power_i64(base i64, exponent i64) i64 {
 		exp >>= 1
 	}
 	return value
+}
+
+fn folded_power_f64(base f64, exponent f64) f64 {
+	return math.pow(base, exponent)
 }
 
 pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {

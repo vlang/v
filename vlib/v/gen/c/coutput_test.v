@@ -261,6 +261,35 @@ fn test_no_main_exports_initialize_windows_runtime() {
 	}
 }
 
+fn test_c_fallback_decl_uses_module_wide_c_includes() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_module_c_include')
+	os.rmdir_all(test_source) or {}
+	os.mkdir_all(test_source)!
+	defer {
+		os.rmdir_all(test_source) or {}
+	}
+	header_path := os.join_path(test_source, 'c_header_decl.h')
+	os.write_file(header_path, 'int c_header_decl(const char* input);\n')!
+	header_include_path := header_path.replace('\\', '/')
+	os.write_file(os.join_path(test_source, 'include.v'), 'module main
+
+#include "${header_include_path}"
+')!
+	os.write_file(os.join_path(test_source, 'decl.v'), "module main
+
+fn C.c_header_decl(input &char) int
+
+fn main() {
+	C.c_header_decl(c'text')
+}
+")!
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains('extern int c_header_decl(')
+}
+
 fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_user_defined_windows_dllmain.vv')
@@ -283,9 +312,9 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
 }
 
-fn test_array_sort_with_compare_uses_qsort_adapters() {
+fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	os.chdir(vroot) or {}
-	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_sort_with_compare_qsort_adapter.vv')
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_sort_with_compare_stable_sort.vv')
 	source_lines := [
 		'module main',
 		'',
@@ -318,10 +347,10 @@ fn test_array_sort_with_compare_uses_qsort_adapters() {
 		normalized = normalized.replace('  ', ' ')
 	}
 	assert normalized.contains('int main__by_x_qsort_adapter(const void* a, const void* b) { return main__by_x((main__Foo*)a, (main__Foo*)b); }')
-	assert normalized.contains('if (xs.len > 0) { qsort(xs.data, xs.len, xs.element_size, main__by_x_qsort_adapter); }')
-	assert normalized.contains('qsort(&ys, 2, sizeof(main__Foo), main__by_x_qsort_adapter);')
+	assert normalized.contains('if (xs.len > 0) { v_stable_sort(xs.data, xs.len, xs.element_size, main__by_x_qsort_adapter); }')
+	assert normalized.contains('v_stable_sort(&ys, 2, sizeof(main__Foo), main__by_x_qsort_adapter);')
 	assert normalized.contains('_qsort_adapter(const void* a, const void* b) { return compare_')
-	assert normalized.contains('qsort(zs.data, zs.len, zs.element_size, compare_')
+	assert normalized.contains('v_stable_sort(zs.data, zs.len, zs.element_size, compare_')
 	assert normalized.contains('_qsort_adapter);')
 }
 

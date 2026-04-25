@@ -84,7 +84,7 @@ pub fn (mut wg WaitGroup) wait() {
 		if nrjobs == 0 {
 			return
 		}
-		if C.atomic_compare_exchange_weak_u64(voidptr(&wg.state), &state, state + 1) {
+		if C.atomic_compare_exchange_weak_u64(voidptr(&wg.state), voidptr(&state), state + 1) {
 			wg.sem.wait() // blocks until task_count becomes 0
 			if C.atomic_load_u64(voidptr(&wg.state)) != 0 {
 				panic('WaitGroup misuse: reused before previous wait() returned')

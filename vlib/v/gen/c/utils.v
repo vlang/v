@@ -26,6 +26,19 @@ fn (g &Gen) type_resolution_context_key() u64 {
 		key = cgen_resolution_hash_mix(key, 1)
 	}
 	key = cgen_resolution_hash_mix(key, u64(g.cur_struct_init_typ))
+	key = cgen_resolution_hash_mix(key, u64(g.cur_concrete_types.len))
+	for concrete_type in g.cur_concrete_types {
+		key = cgen_resolution_hash_mix(key, u64(concrete_type))
+	}
+	key = cgen_resolution_hash_mix(key, u64(g.active_call_concrete_types.len))
+	for concrete_type in g.active_call_concrete_types {
+		key = cgen_resolution_hash_mix(key, u64(concrete_type))
+	}
+	if g.comptime != unsafe { nil } {
+		key = cgen_resolution_hash_mix(key, u64(g.comptime.comptime_loop_id))
+		key = cgen_resolution_hash_mix(key, u64(g.comptime.comptime_for_field_type))
+		key = cgen_resolution_hash_mix(key, u64(g.comptime.comptime_for_method_ret_type))
+	}
 	return key
 }
 
@@ -941,58 +954,6 @@ fn (mut g Gen) resolved_or_block_value_type(or_expr ast.OrExpr) ast.Type {
 	return 0
 }
 
-fn (mut g Gen) direct_concrete_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
-	if g.has_current_generic_context() || g.has_active_call_generic_context()
-		|| g.inside_struct_init {
-		return 0
-	}
-	match expr {
-		ast.Ident {
-			if expr.or_expr.kind != .absent {
-				return 0
-			}
-			if expr.obj is ast.Var {
-				if expr.obj.is_unwrapped || expr.obj.orig_type != 0 || expr.obj.smartcasts.len > 0
-					|| expr.obj.ct_type_var != .no_comptime || expr.obj.is_auto_deref {
-					return 0
-				}
-			}
-		}
-		ast.SelectorExpr {
-			if expr.or_block.kind != .absent {
-				return 0
-			}
-		}
-		ast.IndexExpr {
-			if expr.or_expr.kind != .absent {
-				return 0
-			}
-		}
-		ast.InfixExpr {}
-		ast.PostfixExpr {
-			if expr.op == .question {
-				return 0
-			}
-		}
-		ast.ArrayInit, ast.AsCast, ast.BoolLiteral, ast.CastExpr, ast.CharLiteral, ast.EnumVal,
-		ast.FloatLiteral, ast.IntegerLiteral, ast.MapInit, ast.Nil, ast.None, ast.StringLiteral,
-		ast.StructInit {}
-		else {
-			return 0
-		}
-	}
-
-	mut direct_typ := expr.type()
-	if direct_typ == 0 || direct_typ == ast.void_type {
-		direct_typ = default_typ
-	}
-	if direct_typ == 0 || direct_typ == ast.void_type || direct_typ.has_flag(.generic)
-		|| g.type_has_unresolved_generic_parts(direct_typ) {
-		return 0
-	}
-	return direct_typ
-}
-
 // resolve_selector_smartcast_type resolves the final smartcast type for a
 // selector expression in generic contexts. When a field like `val.field` has
 // nested smartcasts (e.g., option unwrap then sumtype variant), the scope
@@ -1013,10 +974,6 @@ fn (mut g Gen) resolve_selector_smartcast_type(node ast.SelectorExpr) ast.Type {
 }
 
 fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type {
-	direct_typ := g.direct_concrete_expr_type(expr, default_typ)
-	if direct_typ != 0 {
-		return direct_typ
-	}
 	match expr {
 		ast.ParExpr {
 			return g.resolved_expr_type(expr.expr, default_typ)

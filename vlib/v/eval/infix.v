@@ -1165,6 +1165,12 @@ fn (e &Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.
 						}
 					}
 				}
+				string {
+					match right {
+						string { return left + right }
+						else { e.error('invalid operands to +: string and ${right.type_name()}') }
+					}
+				}
 				else {
 					e.error('invalid operands to +: ${left.type_name()} and ${right.type_name()}')
 				}

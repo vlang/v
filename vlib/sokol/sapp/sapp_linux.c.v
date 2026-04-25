@@ -640,6 +640,7 @@ mut:
 	y int
 }
 
+@[typedef]
 pub struct C.XSizeHints {
 mut:
 	flags       i64

@@ -774,6 +774,16 @@ fn file_has_c_includes(file &ast.File) bool {
 	return false
 }
 
+fn modules_with_c_includes(files []&ast.File) map[string]bool {
+	mut mods := map[string]bool{}
+	for file in files {
+		if file_has_c_includes(file) {
+			mods[file.mod.name] = true
+		}
+	}
+	return mods
+}
+
 fn file_imports_c_header_module(file &ast.File) bool {
 	if file == unsafe { nil } {
 		return false
@@ -809,7 +819,8 @@ fn (g &Gen) c_prelude_provides_decl(c_sym_name string) bool {
 fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
 	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
 	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file)
-		|| g.module_has_c_header_module(node.source_file) || g.c_prelude_provides_decl(c_sym_name) {
+		|| node.mod in g.mods_with_c_includes || g.module_has_c_header_module(node.source_file)
+		|| g.c_prelude_provides_decl(c_sym_name) {
 		return false
 	}
 	if node.source_file == unsafe { nil } {

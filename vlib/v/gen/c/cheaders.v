@@ -589,6 +589,88 @@ enum {
 #endif
 #undef V_CRT_LINKAGE
 #undef V_CRT_CALL
+static void v_stable_sort(void *base, size_t items, size_t item_size, qsort_callback_func cb) {
+	if (items < 2 || item_size == 0) {
+		return;
+	}
+	if (items > ((size_t)-1) / item_size) {
+		qsort(base, items, item_size, cb);
+		return;
+	}
+	const size_t bytes = items * item_size;
+	char *base_bytes = (char*)base;
+	char *tmp = (char*)malloc(bytes);
+	if (tmp == 0) {
+		qsort(base, items, item_size, cb);
+		return;
+	}
+	char *src = base_bytes;
+	char *dst = tmp;
+	for (size_t width = 1; width < items;) {
+		for (size_t left = 0; left < items;) {
+			size_t mid = left;
+			mid += width;
+			if (mid > items) {
+				mid = items;
+			}
+			size_t right = mid;
+			right += width;
+			if (right > items || right < mid) {
+				right = items;
+			}
+			size_t i = left;
+			size_t j = mid;
+			size_t k = left;
+			while (i < mid && j < right) {
+				char *leftp = src;
+				leftp += i * item_size;
+				char *rightp = src;
+				rightp += j * item_size;
+				char *dstp = dst;
+				dstp += k * item_size;
+				if (cb(leftp, rightp) <= 0) {
+					memcpy(dstp, leftp, item_size);
+					i++;
+				} else {
+					memcpy(dstp, rightp, item_size);
+					j++;
+				}
+				k++;
+			}
+			while (i < mid) {
+				char *dstp = dst;
+				dstp += k * item_size;
+				char *srcp = src;
+				srcp += i * item_size;
+				memcpy(dstp, srcp, item_size);
+				i++;
+				k++;
+			}
+			while (j < right) {
+				char *dstp = dst;
+				dstp += k * item_size;
+				char *srcp = src;
+				srcp += j * item_size;
+				memcpy(dstp, srcp, item_size);
+				j++;
+				k++;
+			}
+			left = right;
+		}
+		char *next_src = dst;
+		dst = src;
+		src = next_src;
+		if (width > items / 2) {
+			width = items;
+		} else {
+			width *= 2;
+		}
+	}
+	if (src != base_bytes) {
+		memcpy(base_bytes, src, bytes);
+	}
+	free(tmp);
+}
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers

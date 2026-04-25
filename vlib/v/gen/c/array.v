@@ -1370,7 +1370,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, qsort_compare_fn string, i
 	if is_array {
 		g.write('if (')
 		g.write_array_receiver(node.left)
-		g.write2('${deref_field}len > 0) { ', 'qsort(')
+		g.write2('${deref_field}len > 0) { ', 'v_stable_sort(')
 		g.write_array_receiver(node.left)
 		g.write('${deref_field}data, ')
 		g.write_array_receiver(node.left)
@@ -1380,7 +1380,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, qsort_compare_fn string, i
 	} else {
 		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
 		elem_styp := g.styp(info.elem_type)
-		g.write('qsort(&')
+		g.write('v_stable_sort(&')
 		g.write_array_receiver(node.left)
 		g.write(', ${info.size}, sizeof(${elem_styp}), ${qsort_compare_fn});')
 	}
@@ -2751,6 +2751,7 @@ fn (mut g Gen) refresh_array_expr_param_type(expr ast.Expr, var_name string, ele
 		v.orig_type = ast.no_type
 		v.smartcasts = []
 		v.is_unwrapped = false
+		g.clear_type_resolution_caches()
 	}
 }
 

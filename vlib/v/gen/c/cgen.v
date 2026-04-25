@@ -82,6 +82,7 @@ mut:
 	sorted_global_const_names            []string
 	file                                 &ast.File  = unsafe { nil }
 	table                                &ast.Table = unsafe { nil }
+	mods_with_c_includes                 map[string]bool
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
 	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
@@ -380,6 +381,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		json_forward_decls:            strings.new_builder(100)
 		sql_buf:                       strings.new_builder(100)
 		table:                         table
+		mods_with_c_includes:          modules_with_c_includes(files)
 		pref:                          pref_
 		fn_decl:                       unsafe { nil }
 		anon_fn:                       unsafe { nil }
@@ -1004,6 +1006,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		sql_buf:                            strings.new_builder(100)
 		cleanup:                            strings.new_builder(100)
 		table:                              global_g.table
+		mods_with_c_includes:               global_g.mods_with_c_includes
 		pref:                               global_g.pref
 		fn_decl:                            unsafe { nil }
 		anon_fn:                            unsafe { nil }

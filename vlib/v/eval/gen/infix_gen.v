@@ -127,6 +127,9 @@ fn main() {
 			b.write_string(if lt == 'i64' { 'int' } else { 'float' })
 			b.write_string(" literal and \$right.type_name()')}}}")
 		}
+		if op == '+' {
+			b.write_string("string{match right{string{return left + right}else{e.error('invalid operands to +: string and \$right.type_name()')}}}")
+		}
 		b.write_string("else {e.error('invalid operands to ${op}: \$left.type_name() and \$right.type_name()')}}}")
 	}
 

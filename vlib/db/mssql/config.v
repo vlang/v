@@ -46,7 +46,7 @@ fn format_odbc_value(value string) string {
 		return ''
 	}
 	if needs_odbc_braces(value) {
-		return '{${value.replace('}', '}}')}'
+		return '{' + value.replace('}', '}}') + '}'
 	}
 	return value
 }

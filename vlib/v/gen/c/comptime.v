@@ -893,6 +893,7 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 
 // push_new_comptime_info saves the current comptime information
 fn (mut g Gen) push_new_comptime_info() {
+	g.clear_type_resolution_caches()
 	g.type_resolver.info_stack << type_resolver.ResolverInfo{
 		saved_type_map:               g.type_resolver.type_map.clone()
 		inside_comptime_for:          g.comptime.inside_comptime_for
@@ -927,6 +928,7 @@ fn (mut g Gen) pop_comptime_info() {
 	g.comptime.comptime_for_method_var = old.comptime_for_method_var
 	g.comptime.comptime_for_method = old.comptime_for_method
 	g.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
+	g.clear_type_resolution_caches()
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
