@@ -31,13 +31,13 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL rand(void);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);'), generated_c
 	assert generated_c.contains('RAND_MAX = 2147483647'), generated_c
-	assert generated_c.contains('V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);'), generated_c
+	assert generated_c.contains('V_CRT_IMPORT double V_CRT_CALL atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;\ntypedef char* va_list;'), generated_c
 	assert generated_c.contains('#define _INTSIZEOF(n) \\'), generated_c
 	assert generated_c.contains('#define va_arg(ap, t) \\'), generated_c
-	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_IMPORT __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_IMPORT\n\t#define V_CRT_CALL\n#endif\n#define V_CRT_LINKAGE'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);'), generated_c
@@ -72,8 +72,8 @@ fn test_msvc_windows_prelude_keeps_manual_crt_decls() {
 	assert !generated_c.contains('#include <stdlib.h>'), generated_c
 	assert !generated_c.contains('#include <string.h>'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;\ntypedef char* va_list;'), generated_c
-	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\nV_CRT_LINKAGE FILE* V_CRT_CALL __acrt_iob_func(unsigned index);'), generated_c
-	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\nV_CRT_IMPORT FILE* V_CRT_CALL __acrt_iob_func(unsigned index);'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_IMPORT __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_IMPORT\n\t#define V_CRT_CALL\n#endif\n#define V_CRT_LINKAGE'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('#include <windows.h>'), generated_c

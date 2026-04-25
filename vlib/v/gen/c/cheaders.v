@@ -367,12 +367,13 @@ const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
 #if defined(_MSC_VER) && !defined(__clang__)
-	#define V_CRT_LINKAGE __declspec(dllimport)
+	#define V_CRT_IMPORT __declspec(dllimport)
 	#define V_CRT_CALL VCALLCONV(cdecl)
 #else
-	#define V_CRT_LINKAGE
+	#define V_CRT_IMPORT
 	#define V_CRT_CALL
 #endif
+#define V_CRT_LINKAGE
 #if defined(_MSC_VER) && !defined(__clang__)
 typedef struct _iobuf FILE;
 typedef char* va_list;
@@ -390,7 +391,7 @@ typedef char* va_list;
 #ifndef va_copy
 	#define va_copy(dest, src) ((dest) = (src))
 #endif
-V_CRT_LINKAGE FILE* V_CRT_CALL __acrt_iob_func(unsigned index);
+V_CRT_IMPORT FILE* V_CRT_CALL __acrt_iob_func(unsigned index);
 #define stdin (__acrt_iob_func(0))
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
@@ -519,29 +520,29 @@ V_CRT_LINKAGE char * V_CRT_CALL fgets(char *str, int size, FILE *stream);
 V_CRT_LINKAGE int V_CRT_CALL fclose(FILE *stream);
 V_CRT_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);
 V_CRT_LINKAGE int V_CRT_CALL pclose(FILE *stream);
-V_CRT_LINKAGE void * V_CRT_CALL malloc(size_t size);
-V_CRT_LINKAGE void * V_CRT_CALL calloc(size_t nitems, size_t size);
-V_CRT_LINKAGE void * V_CRT_CALL realloc(void *ptr, size_t size);
+V_CRT_IMPORT void * V_CRT_CALL malloc(size_t size);
+V_CRT_IMPORT void * V_CRT_CALL calloc(size_t nitems, size_t size);
+V_CRT_IMPORT void * V_CRT_CALL realloc(void *ptr, size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);
-V_CRT_LINKAGE void V_CRT_CALL free(void *ptr);
+V_CRT_IMPORT void V_CRT_CALL free(void *ptr);
 V_CRT_LINKAGE int V_CRT_CALL rand(void);
 V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);
 V_CRT_LINKAGE int V_CRT_CALL atexit(void (*cb)(void));
-V_CRT_LINKAGE void V_CRT_CALL exit(int status);
+V_CRT_IMPORT void V_CRT_CALL exit(int status);
 V_CRT_LINKAGE int V_CRT_CALL atoi(const char *str);
-V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);
+V_CRT_IMPORT double V_CRT_CALL atof(const char *str);
 V_CRT_LINKAGE char * V_CRT_CALL getenv(const char *name);
 V_CRT_LINKAGE int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);
 V_CRT_LINKAGE int V_CRT_CALL unsetenv(const char *name);
-V_CRT_LINKAGE int V_CRT_CALL system(const char *command);
-V_CRT_LINKAGE int V_CRT_CALL remove(const char *path);
-V_CRT_LINKAGE int V_CRT_CALL rename(const char *old_path, const char *new_path);
+V_CRT_IMPORT int V_CRT_CALL system(const char *command);
+V_CRT_IMPORT int V_CRT_CALL remove(const char *path);
+V_CRT_IMPORT int V_CRT_CALL rename(const char *old_path, const char *new_path);
 V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);
 V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);
 V_CRT_LINKAGE void V_CRT_CALL qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
 V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);
 V_CRT_LINKAGE size_t V_CRT_CALL strlen(const char *str);
-V_CRT_LINKAGE char * V_CRT_CALL strerror(int errnum);
+V_CRT_IMPORT char * V_CRT_CALL strerror(int errnum);
 V_CRT_LINKAGE void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memmove(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memset(void *dest, int ch, size_t n);
@@ -595,6 +596,7 @@ enum {
 	#endif
 };
 #endif
+#undef V_CRT_IMPORT
 #undef V_CRT_LINKAGE
 #undef V_CRT_CALL
 #if defined(__TINYC__)
