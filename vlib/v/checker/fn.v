@@ -2204,7 +2204,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	if node.kind == .free && func.mod == 'builtin' && args_len == 1
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method && !c.is_builtin_mod
-		&& !c.inside_recheck {
+		&& c.table.cur_fn.name.all_after_last('.') != 'free' && !c.inside_recheck {
 		if node.args[0].expr is ast.Ident {
 			if node.args[0].expr.name == c.table.cur_fn.receiver.name {
 				receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)

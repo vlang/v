@@ -1856,7 +1856,6 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	for i, param in params {
-		mut caname := if param.name in ['', '_'] { '_d${i + 1}' } else { c_name(param.name) }
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
@@ -1885,6 +1884,13 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = typ.ref()
 		}
 		param_type_sym := g.table.sym(typ)
+		mut caname := if param.name in ['', '_'] {
+			'_d${i + 1}'
+		} else if param_type_sym.kind == .function && !typ.has_flag(.option) {
+			c_fn_name(param.name)
+		} else {
+			c_name(param.name)
+		}
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
 			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)

@@ -177,6 +177,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 		for ty in iface_types {
 			sym := g.table.sym(ty)
 			for method in iface.methods {
+				if method.name == 'toString' {
+					continue
+				}
 				p_sym := g.table.sym(ty)
 
 				mname := if p_sym.has_method(method.name) {
