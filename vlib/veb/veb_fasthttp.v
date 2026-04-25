@@ -74,12 +74,16 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 
 	client_fd := req.client_conn_fd
 
-	s := req.buffer.bytestr()
-	// Parse the raw request bytes into a standard `http.Request`.
-	mut req2 := http.parse_request_str(s.clone()) or {
+	head_end := if req.body.start > 0 { req.body.start } else { req.buffer.len }
+	head := req.buffer[..head_end].bytestr()
+	// Parse the request head into a standard `http.Request`, then copy just the body.
+	mut req2 := http.parse_request_head_str(head) or {
 		return fasthttp.HttpResponse{
 			content: 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 		}
+	}
+	if req.body.len > 0 {
+		req2.data = req.buffer[req.body.start..req.body.start + req.body.len].bytestr()
 	}
 	// If the request uses chunked transfer encoding, decode the chunked body
 	if transfer_encoding_is_chunked(req2.header) {

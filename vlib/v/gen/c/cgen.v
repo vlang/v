@@ -1645,6 +1645,12 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	if typ.idx() <= ast.nil_type_idx {
+		return false
+	}
 	sym := g.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
@@ -1674,40 +1680,34 @@ fn (g &Gen) type_has_unresolved_generic_parts(typ ast.Type) bool {
 			return sym.info.types.any(g.type_has_unresolved_generic_parts(it))
 		}
 		ast.Struct {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.generic_types.len > 0
 		}
 		ast.Interface {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.SumType {
-			concrete_types := if sym.info.concrete_types.len > 0 {
-				sym.info.concrete_types
-			} else if sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				sym.generic_types
-			} else {
-				[]ast.Type{}
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(g.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(g.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(g.type_has_unresolved_generic_parts(it))
@@ -6414,12 +6414,52 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						g.write(int(g.unwrap_generic(name_type)).str())
 					}
 					return
-				} else if node.field_name in ['key_type', 'value_type', 'element_type'] {
+				} else if node.field_name in ['key_type', 'value_type', 'element_type',
+					'pointee_type', 'payload_type'] {
 					// `T.<field_name>`, `typeof(expr).<field_name>`
 					mut name_type := node.name_type
-					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr, g.resolve_typeof_expr_type(node.expr,
-						name_type)), node.field_name)
+					if node.expr is ast.TypeOf {
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else if name_type == 0 {
+						name_type = g.type_resolver.typeof_type(node.expr, g.resolve_typeof_expr_type(node.expr,
+							name_type))
+					}
+					name_type = g.type_resolver.typeof_field_type(name_type, node.field_name)
 					g.write(int(name_type).str())
+					return
+				} else if node.field_name == 'variant_types' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+									name_type))
+							}
+						} else {
+							name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+								name_type))
+						}
+					} else {
+						name_type = g.unwrap_generic(name_type)
+					}
+					sym := g.table.final_sym(name_type)
+					if sym.info is ast.SumType {
+						g.write(g.gen_type_array(sym.info.variants))
+					} else {
+						g.write(g.gen_type_array([]ast.Type{}))
+					}
 					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type

@@ -7556,7 +7556,7 @@ fn (mut b Builder) add_edge(from BlockID, to BlockID) {
 	b.mod.block_add_pred(to, from)
 }
 
-fn (mut b Builder) get_or_create_fn_ref(name string, typ TypeID) ValueID {
+fn (mut b Builder) get_or_create_fn_ref(name string, _typ TypeID) ValueID {
 	if name in b.fn_refs {
 		return b.fn_refs[name]
 	}

@@ -2414,6 +2414,11 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 					f.write('\$res()')
 				}
 			}
+			node.kind in [.zero, .new] {
+				f.write('\$${node.method_name}(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			}
 			else {
 				inner_args := if node.args_var != '' {
 					node.args_var

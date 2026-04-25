@@ -319,10 +319,10 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.sanitize {
 		eprintln('Sanitize not supported on msvc.')
 	}
-	a << '/TC'
 	// The C file we are compiling
-	// a << '"$TmpPath/${v.out_name_c}"'
-	a << '"' + os.real_path(v.out_name_c) + '"'
+	// Use /Tc<file> instead of /TC, otherwise .lib/.obj linker inputs are also
+	// treated as C sources.
+	a << '/Tc' + os.quoted_path(os.real_path(v.out_name_c))
 	if !v.ccoptions.debug_mode {
 		v.pref.cleanup_files << os.real_path(v.out_name_c)
 	}

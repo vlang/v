@@ -2968,14 +2968,29 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				if node.field_name == 'name' {
 					return ast.string_type
 				} else if node.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type',
-					'element_type'] {
+					'element_type', 'pointee_type', 'payload_type'] {
 					return ast.int_type
+				} else if node.field_name == 'variant_types' {
+					return ast.new_type(c.table.find_or_register_array(ast.int_type))
 				} else if node.field_name == 'indirections' {
 					return ast.int_type
 				}
 				c.error('invalid field `.${node.field_name}` for type `${node.expr}`', node.pos)
 				return ast.string_type
 			}
+		}
+	}
+	if is_array_init_type_expr_field(node.field_name) && c.is_comptime_type_expr(node.expr) {
+		mut type_expr := node.expr
+		base_type := c.comptime_call_type_expr_type(mut type_expr)
+		node.expr = type_expr
+		resolved := c.type_resolver.typeof_field_type(base_type, node.field_name)
+		if resolved != ast.no_type {
+			node.name_type = base_type
+			if node.field_name == 'variant_types' {
+				return ast.new_type(c.table.find_or_register_array(ast.int_type))
+			}
+			return ast.int_type
 		}
 	}
 	// evaluates comptime field.<name> (from T.fields)
@@ -7127,6 +7142,12 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	if typ.idx() <= ast.nil_type_idx {
+		return false
+	}
 	sym := c.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true
@@ -7156,31 +7177,34 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 			return sym.info.types.any(c.type_has_unresolved_generic_parts(it))
 		}
 		ast.Struct {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.generic_types.len > 0 && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.generic_types.len > 0
 		}
 		ast.Interface {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.SumType {
-			mut concrete_types := sym.info.concrete_types.clone()
-			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
-				&& sym.generic_types != sym.info.generic_types {
-				concrete_types = sym.generic_types.clone()
+			if sym.info.concrete_types.len > 0 {
+				return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))
 			}
-			return (sym.info.is_generic && concrete_types.len == 0)
-				|| concrete_types.any(c.type_has_unresolved_generic_parts(it))
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				return sym.generic_types.any(c.type_has_unresolved_generic_parts(it))
+			}
+			return sym.info.is_generic
 		}
 		ast.GenericInst {
 			return sym.info.concrete_types.any(c.type_has_unresolved_generic_parts(it))

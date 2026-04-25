@@ -84,33 +84,13 @@ const c_manual_prelude_decl_names = [
 ]
 
 fn collect_function_defer_stmts(node &ast.FnDecl) []ast.DeferStmt {
-	mut defer_stmts := []ast.DeferStmt{}
-	mut seen_idxs := []int{}
-	root := ast.Node(ast.Stmt(*node))
-	collect_defers_walk(&root, mut defer_stmts, mut seen_idxs)
+	mut defer_stmts := []ast.DeferStmt{cap: node.defer_stmts.len}
+	for defer_stmt in node.defer_stmts {
+		if defer_stmt.mode == .function {
+			defer_stmts << defer_stmt
+		}
+	}
 	return defer_stmts
-}
-
-fn collect_defers_walk(node &ast.Node, mut defer_stmts []ast.DeferStmt, mut seen_idxs []int) {
-	if node is ast.Expr {
-		if node is ast.AnonFn || node is ast.LambdaExpr {
-			return
-		}
-	}
-	if node is ast.Stmt {
-		if node is ast.DeferStmt {
-			defer_stmt := node as ast.DeferStmt
-			if defer_stmt.mode == .function && defer_stmt.idx_in_fn !in seen_idxs {
-				defer_stmts << defer_stmt
-				seen_idxs << defer_stmt.idx_in_fn
-			}
-			return
-		}
-	}
-	children := node.children()
-	for child_node in children {
-		collect_defers_walk(&child_node, mut defer_stmts, mut seen_idxs)
-	}
 }
 
 fn (g &Gen) method_decl_fkey(method ast.Fn) string {
@@ -1876,7 +1856,6 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	for i, param in params {
-		mut caname := if param.name in ['', '_'] { '_d${i + 1}' } else { c_name(param.name) }
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
@@ -1905,6 +1884,13 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = typ.ref()
 		}
 		param_type_sym := g.table.sym(typ)
+		mut caname := if param.name in ['', '_'] {
+			'_d${i + 1}'
+		} else if param_type_sym.kind == .function && !typ.has_flag(.option) {
+			c_fn_name(param.name)
+		} else {
+			c_name(param.name)
+		}
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
 			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)

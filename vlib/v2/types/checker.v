@@ -1006,6 +1006,17 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	return false
 }
 
+fn (c &Checker) resolve_stale_alias(name string) Type {
+	if obj := c.scope.lookup_parent(name, 0) {
+		typ := obj.typ()
+		if typ is Alias {
+			return typ.base_type
+		}
+		return typ
+	}
+	return Type(Alias{})
+}
+
 fn (c &Checker) is_string_struct(typ Type) bool {
 	if typ is Struct {
 		return typ.name == 'string' || typ.name.ends_with('__string')

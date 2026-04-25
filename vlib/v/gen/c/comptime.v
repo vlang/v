@@ -53,6 +53,16 @@ fn (mut g Gen) comptime_call_expands_string_args(m &ast.Fn, node ast.ComptimeCal
 	return !g.is_string_array_type(m.params[node.args.len].typ)
 }
 
+fn (mut g Gen) comptime_zero_value(typ ast.Type) string {
+	resolved_type := g.unwrap_generic(g.recheck_concrete_type(typ))
+	styp := g.styp(resolved_type)
+	mut default_value := g.type_default(resolved_type)
+	if default_value.len > 0 && default_value[0] == `{` {
+		default_value = '(${styp})${default_value}'
+	}
+	return default_value
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	left_type := g.resolved_expr_type(node.left, node.left_type)
 	if node.is_method && g.comptime.comptime_for_method != unsafe { nil } {
@@ -159,6 +169,20 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.write("'${val}'")
 		} else {
 			g.write('${val}')
+		}
+		return
+	}
+	if node.kind in [.zero, .new] {
+		resolved_type := if node.kind == .new {
+			g.unwrap_generic(g.recheck_concrete_type(node.result_type.deref()))
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(node.result_type))
+		}
+		default_value := g.comptime_zero_value(resolved_type)
+		if node.kind == .new {
+			g.write('HEAP(${g.styp(resolved_type)}, (${default_value}))')
+		} else {
+			g.write(default_value)
 		}
 		return
 	}
@@ -823,6 +847,10 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 			return g.unwrap_generic(cond.typ)
 		}
 		ast.SelectorExpr {
+			if cond.name_type != 0
+				&& cond.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type', 'variant_types'] {
+				return g.type_resolver.typeof_field_type(cond.name_type, cond.field_name)
+			}
 			if cond.gkind_field == .typ {
 				return g.unwrap_generic(cond.name_type)
 			} else if cond.gkind_field == .unaliased_typ {

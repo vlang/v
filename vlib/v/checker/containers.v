@@ -54,7 +54,7 @@ fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 
 fn is_array_init_type_expr_field(name string) bool {
 	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
-		'indirections']
+		'pointee_type', 'payload_type', 'variant_types', 'indirections']
 }
 
 fn (mut c Checker) fixed_array_contains_inferred_size(typ ast.Type) bool {

@@ -1146,6 +1146,12 @@ fn (mut g Gen) find_struct_decl_info_by_c_name(c_name string) ?StructDeclInfo {
 	if c_name == '' {
 		return none
 	}
+	if cached := g.struct_decl_info_cache[c_name] {
+		return cached
+	}
+	if c_name in g.struct_decl_info_miss {
+		return none
+	}
 	saved_module := g.cur_module
 	defer {
 		g.cur_module = saved_module
@@ -1159,14 +1165,17 @@ fn (mut g Gen) find_struct_decl_info_by_c_name(c_name string) ?StructDeclInfo {
 				}
 				struct_name := g.get_struct_name(stmt)
 				if struct_name == c_name || short_type_name(struct_name) == c_name {
-					return StructDeclInfo{
+					info := StructDeclInfo{
 						decl: stmt
 						mod:  g.cur_module
 					}
+					g.struct_decl_info_cache[c_name] = info
+					return info
 				}
 			}
 		}
 	}
+	g.struct_decl_info_miss[c_name] = true
 	return none
 }
 
@@ -2789,6 +2798,8 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 		def.writeln('\t${field_type} ${field_name};')
 		g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
 	}
+	g.struct_field_lookup_cache = map[string]string{}
+	g.struct_field_lookup_miss = map[string]bool{}
 	if struct_node.fields.len == 0 {
 		def.writeln('\tu8 _dummy;')
 	}
@@ -3580,6 +3591,16 @@ fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name s
 	if struct_name == '' || field_name == '' {
 		return none
 	}
+	use_cache := g.active_generic_types.len == 0
+	cache_key := if use_cache { '${g.cur_module}|${struct_name}.${field_name}' } else { '' }
+	if use_cache {
+		if cached := g.struct_field_lookup_cache[cache_key] {
+			return cached
+		}
+		if cache_key in g.struct_field_lookup_miss {
+			return none
+		}
+	}
 	mut candidates := []string{}
 	candidates << struct_name
 	base_name := strip_pointer_type_name(struct_name)
@@ -3590,6 +3611,9 @@ fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name s
 		full_key := '${candidate}.${field_name}'
 		if field_type := g.struct_field_types[full_key] {
 			if field_type != '' {
+				if use_cache {
+					g.struct_field_lookup_cache[cache_key] = field_type
+				}
 				return field_type
 			}
 		}
@@ -3598,15 +3622,24 @@ fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name s
 			short_key := '${short_name}.${field_name}'
 			if field_type := g.struct_field_types[short_key] {
 				if field_type != '' {
+					if use_cache {
+						g.struct_field_lookup_cache[cache_key] = field_type
+					}
 					return field_type
 				}
 			}
 		}
 		if info := g.lookup_embedded_field_info(candidate, field_name) {
 			if info.field_type != '' {
+				if use_cache {
+					g.struct_field_lookup_cache[cache_key] = info.field_type
+				}
 				return info.field_type
 			}
 		}
+	}
+	if use_cache {
+		g.struct_field_lookup_miss[cache_key] = true
 	}
 	return none
 }

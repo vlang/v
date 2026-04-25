@@ -87,7 +87,7 @@ fn (mut c Checker) eval_comptime_type_meta_value(typ ast.Type, field_name string
 		'indirections' {
 			return i64(base_type.nr_muls())
 		}
-		'key_type', 'value_type', 'element_type' {
+		'key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type' {
 			resolved_type := c.type_resolver.typeof_field_type(base_type, field_name)
 			if resolved_type != ast.no_type {
 				return i64(int(c.unwrap_generic(resolved_type)))
@@ -97,6 +97,85 @@ fn (mut c Checker) eval_comptime_type_meta_value(typ ast.Type, field_name string
 	}
 
 	return none
+}
+
+fn (c &Checker) is_generic_type_expr_ident(name string) bool {
+	return util.is_generic_type_name(name) && c.table.cur_fn != unsafe { nil }
+		&& name in c.table.cur_fn.generic_names
+}
+
+fn (c &Checker) is_comptime_type_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.ParExpr {
+			c.is_comptime_type_expr(expr.expr)
+		}
+		ast.TypeNode {
+			true
+		}
+		ast.TypeOf {
+			true
+		}
+		ast.Ident {
+			c.is_generic_type_expr_ident(expr.name)
+		}
+		ast.SelectorExpr {
+			is_array_init_type_expr_field(expr.field_name) && c.is_comptime_type_expr(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut c Checker) comptime_call_type_expr_type(mut expr ast.Expr) ast.Type {
+	match mut expr {
+		ast.ParExpr {
+			return c.comptime_call_type_expr_type(mut expr.expr)
+		}
+		ast.TypeNode {
+			return c.recheck_concrete_type(expr.typ)
+		}
+		ast.TypeOf {
+			if expr.is_type {
+				return c.recheck_concrete_type(expr.typ)
+			}
+			if expr.typ == 0 || expr.typ == ast.void_type || expr.typ == ast.no_type {
+				expr.typ = c.expr(mut expr.expr)
+			}
+			resolved_type := c.recheck_concrete_type(expr.typ)
+			if resolved_type != 0 && resolved_type != ast.void_type && resolved_type != ast.no_type {
+				return resolved_type
+			}
+			return c.recheck_concrete_type(c.type_resolver.typeof_type(expr.expr, expr.typ))
+		}
+		ast.ArrayInit {
+			if expr.elem_type_expr !is ast.EmptyExpr {
+				c.resolve_array_init_elem_type_expr(mut expr)
+				return expr.typ
+			}
+			return c.expr(mut expr)
+		}
+		ast.SelectorExpr {
+			if is_array_init_type_expr_field(expr.field_name) {
+				base_type := c.comptime_call_type_expr_type(mut expr.expr)
+				resolved := c.type_resolver.typeof_field_type(base_type, expr.field_name)
+				if resolved != ast.no_type {
+					return c.recheck_concrete_type(resolved)
+				}
+			}
+			c.expr(mut expr)
+			return c.recheck_concrete_type(c.get_expr_type(expr))
+		}
+		ast.Ident {
+			if c.is_generic_type_expr_ident(expr.name) {
+				return c.table.find_type(expr.name).set_flag(.generic)
+			}
+			return c.recheck_concrete_type(c.get_expr_type(expr))
+		}
+		else {
+			return c.recheck_concrete_type(c.expr(mut expr))
+		}
+	}
 }
 
 fn (mut c Checker) eval_comptime_type_selector_value(expr ast.SelectorExpr) ?ast.ComptTimeConstValue {
@@ -315,6 +394,22 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			c.error(err.msg(), node.pos)
 			return ast.void_type
 		}
+		return node.result_type
+	}
+	if node.kind in [.zero, .new] {
+		if node.args.len != 1 {
+			c.error('`\$${node.method_name}()` expects 1 type argument', node.pos)
+			return ast.void_type
+		}
+		mut type_expr := node.args[0].expr
+		resolved_type := c.comptime_call_type_expr_type(mut type_expr)
+		node.args[0].expr = type_expr
+		if resolved_type == ast.void_type || resolved_type == ast.no_type {
+			c.error('`\$${node.method_name}()` expects a valid type expression', node.args[0].pos)
+			return ast.void_type
+		}
+		node.args[0].typ = resolved_type
+		node.result_type = if node.kind == .new { resolved_type.ref() } else { resolved_type }
 		return node.result_type
 	}
 	if node.kind == .embed_file {
@@ -1410,16 +1505,22 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 		}
 		ast.SelectorExpr {
 			if c.comptime.inside_comptime_for
-				&& cond.field_name in ['typ', 'unaliased_typ', 'indirections']
+				&& cond.field_name in ['typ', 'unaliased_typ', 'indirections', 'pointee_type', 'payload_type', 'variant_types']
 				&& cond.expr is ast.Ident && (cond.expr.name == c.comptime.comptime_for_variant_var
 				|| cond.expr.name == c.comptime.comptime_for_method_param_var
 				|| cond.expr.name == c.comptime.comptime_for_field_var) {
 				typ := c.type_resolver.get_type_from_comptime_var(cond.expr as ast.Ident)
 				if cond.field_name == 'unaliased_typ' {
 					return c.table.unaliased_type(typ)
+				} else if cond.field_name in ['pointee_type', 'payload_type', 'variant_types'] {
+					return c.type_resolver.typeof_field_type(typ, cond.field_name)
 				}
 				// for `indirections` we also return the `typ`
 				return typ
+			}
+			if cond.name_type != 0
+				&& cond.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type', 'variant_types'] {
+				return c.type_resolver.typeof_field_type(cond.name_type, cond.field_name)
 			}
 			if cond.gkind_field in [.typ, .indirections, .unaliased_typ] {
 				if cond.expr is ast.Ident {

@@ -16,25 +16,32 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := res.output.replace('\r\n', '\n')
 	assert generated_c.contains('typedef struct _iobuf FILE;'), generated_c
+	assert generated_c.contains('typedef char* va_list;'), generated_c
 	assert generated_c.contains('typedef struct __sFILE FILE;'), generated_c
 	assert generated_c.contains('typedef struct _IO_FILE FILE;'), generated_c
 	assert generated_c.contains('typedef __builtin_va_list va_list;'), generated_c
-	assert generated_c.contains('typedef char* va_list;'), generated_c
-	assert generated_c.contains('int vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 
-	assert generated_c.contains('int vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
-	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nint _fileno(FILE *stream);\nFILE *_wfopen(const unsigned short *filename, const unsigned short *mode);\nint _wremove(const unsigned short *path);\n#endif'), generated_c
+	assert generated_c.contains('int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nint V_CRT_CALL _fileno(FILE *stream);\nFILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nint V_CRT_CALL _wremove(const unsigned short *path);\n#endif'), generated_c
 
-	assert generated_c.contains('void perror(const char *str);'), generated_c
-	assert generated_c.contains('int mkstemp(char *stemplate);'), generated_c
-	assert generated_c.contains('int strcmp(const char *left, const char *right);'), generated_c
-	assert generated_c.contains('int rand(void);'), generated_c
-	assert generated_c.contains('void srand(unsigned int seed);'), generated_c
+	assert generated_c.contains('void V_CRT_CALL perror(const char *str);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL mkstemp(char *stemplate);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL strcmp(const char *left, const char *right);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL rand(void);'), generated_c
+	assert generated_c.contains('void V_CRT_CALL srand(unsigned int seed);'), generated_c
 	assert generated_c.contains('RAND_MAX = 2147483647'), generated_c
-	assert generated_c.contains('double atof(const char *str);'), generated_c
+	assert generated_c.contains('double V_CRT_CALL atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;\ntypedef char* va_list;'), generated_c
+	assert generated_c.contains('#define _INTSIZEOF(n) \\'), generated_c
+	assert generated_c.contains('#define va_arg(ap, t) \\'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL _wputenv(const unsigned short *envstring);'), generated_c
 	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
 	assert generated_c.contains('#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))'), generated_c
 	assert generated_c.contains('#ifndef _FILE_DEFINED\nstruct _iobuf {\n\tchar *_ptr;\n\tint _cnt;\n\tchar *_base;\n\tint _flag;\n\tint _file;\n\tint _charbuf;\n\tint _bufsiz;\n\tchar *_tmpfname;\n};\ntypedef struct _iobuf FILE;\n#define _FILE_DEFINED'), generated_c
@@ -45,6 +52,31 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('#elif defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\n#ifndef _STDFILES_DECLARED\n\t#define _STDFILES_DECLARED\nstruct __sFstub { long _stub; };\nextern struct __sFstub __stdin[];\nextern struct __sFstub __stdout[];\nextern struct __sFstub __stderr[];\n#endif\n#define stdin ((struct __sFILE *)__stdin)\n#define stdout ((struct __sFILE *)__stdout)\n#define stderr ((struct __sFILE *)__stderr)'), generated_c
 	assert generated_c.contains('#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)\ntypedef struct _IO_FILE FILE;\n// musl exposes the stdio streams as `FILE *const`, so match that to stay\n// compatible with later <stdio.h> includes from headers like miniz.h.\nextern FILE* const stdin;\nextern FILE* const stdout;\nextern FILE* const stderr'), generated_c
+}
+
+fn test_msvc_windows_prelude_keeps_manual_crt_decls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_msvc_windows_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'hello.v')
+	output_path := os.join_path(tmp_dir, 'hello.c')
+	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc msvc -os windows -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	assert !generated_c.contains('#include <stdarg.h>'), generated_c
+	assert !generated_c.contains('#include <stdio.h>'), generated_c
+	assert !generated_c.contains('#include <stdlib.h>'), generated_c
+	assert !generated_c.contains('#include <string.h>'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;\ntypedef char* va_list;'), generated_c
+	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\nFILE* __cdecl __acrt_iob_func(unsigned index);'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#include <windows.h>'), generated_c
 }
 
 fn test_manual_stdio_decls_do_not_conflict_with_later_stdio_includes() {

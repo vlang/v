@@ -479,75 +479,89 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-int vfprintf(FILE *stream, const char *format, va_list ap);
-int vsnprintf(char *str, size_t size, const char *format, va_list ap);
-int fprintf(FILE *stream, const char *format, ...);
-int printf(const char *format, ...);
-int snprintf(char *str, size_t size, const char *format, ...);
-int sprintf(char *str, const char *format, ...);
-int sscanf(const char *str, const char *format, ...);
-int scanf(const char *format, ...);
-int puts(const char *str);
-void perror(const char *str);
-int fputs(const char *str, FILE *stream);
-int getchar(void);
-int putchar(int ch);
-int getc(FILE *stream);
-int fgetc(FILE *stream);
-int ungetc(int ch, FILE *stream);
-int fflush(FILE *stream);
-int feof(FILE *stream);
-int ferror(FILE *stream);
-void clearerr(FILE *stream);
-int setvbuf(FILE *stream, char *buf, int mode, size_t size);
-long ftell(FILE *stream);
-void rewind(FILE *stream);
-FILE *fopen(const char *filename, const char *mode);
-FILE *fdopen(int fd, const char *mode);
-FILE *freopen(const char *filename, const char *mode, FILE *stream);
-int fileno(FILE *stream);
-size_t fread(void *ptr, size_t size, size_t items, FILE *stream);
-size_t fwrite(const void *ptr, size_t size, size_t items, FILE *stream);
-char *fgets(char *str, int size, FILE *stream);
-int fclose(FILE *stream);
-FILE *popen(const char *command, const char *mode);
-int pclose(FILE *stream);
-void *malloc(size_t size);
-void *calloc(size_t nitems, size_t size);
-void *realloc(void *ptr, size_t size);
-void *aligned_alloc(size_t alignment, size_t size);
-void free(void *ptr);
-int rand(void);
-void srand(unsigned int seed);
-int atexit(void (*cb)(void));
-void exit(int status);
-int atoi(const char *str);
-double atof(const char *str);
-char *getenv(const char *name);
-int setenv(const char *name, const char *value, int overwrite);
-int unsetenv(const char *name);
-int system(const char *command);
-int remove(const char *path);
-int rename(const char *old_path, const char *new_path);
-char *realpath(const char *path, char *resolved_path);
-int mkstemp(char *stemplate);
-void qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
-int strcmp(const char *left, const char *right);
-size_t strlen(const char *str);
-char *strerror(int errnum);
-void *memcpy(void *dest, const void *src, size_t n);
-void *memmove(void *dest, const void *src, size_t n);
-void *memset(void *dest, int ch, size_t n);
-int memcmp(const void *left, const void *right, size_t n);
-void *memchr(const void *str, int c, size_t n);
-char *strchr(const char *str, int c);
-char *strrchr(const char *str, int c);
-int fseek(FILE *stream, long offset, int whence);
-isize getline(char **lineptr, size_t *n, FILE *stream);
+#if defined(_MSC_VER) && !defined(__clang__)
+	#define V_CRT_CALL VCALLCONV(cdecl)
+#else
+	#define V_CRT_CALL
+#endif
+int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
+int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
+int V_CRT_CALL fprintf(FILE *stream, const char *format, ...);
+int V_CRT_CALL printf(const char *format, ...);
+int V_CRT_CALL snprintf(char *str, size_t size, const char *format, ...);
+int V_CRT_CALL sprintf(char *str, const char *format, ...);
+int V_CRT_CALL sscanf(const char *str, const char *format, ...);
+int V_CRT_CALL scanf(const char *format, ...);
+int V_CRT_CALL puts(const char *str);
+void V_CRT_CALL perror(const char *str);
+int V_CRT_CALL fputs(const char *str, FILE *stream);
+int V_CRT_CALL getchar(void);
+int V_CRT_CALL putchar(int ch);
+int V_CRT_CALL getc(FILE *stream);
+int V_CRT_CALL fgetc(FILE *stream);
+int V_CRT_CALL ungetc(int ch, FILE *stream);
+int V_CRT_CALL fflush(FILE *stream);
+int V_CRT_CALL feof(FILE *stream);
+int V_CRT_CALL ferror(FILE *stream);
+void V_CRT_CALL clearerr(FILE *stream);
+int V_CRT_CALL setvbuf(FILE *stream, char *buf, int mode, size_t size);
+long V_CRT_CALL ftell(FILE *stream);
+void V_CRT_CALL rewind(FILE *stream);
+FILE * V_CRT_CALL fopen(const char *filename, const char *mode);
+FILE * V_CRT_CALL fdopen(int fd, const char *mode);
+FILE * V_CRT_CALL freopen(const char *filename, const char *mode, FILE *stream);
+int V_CRT_CALL fileno(FILE *stream);
+size_t V_CRT_CALL fread(void *ptr, size_t size, size_t items, FILE *stream);
+size_t V_CRT_CALL fwrite(const void *ptr, size_t size, size_t items, FILE *stream);
+char * V_CRT_CALL fgets(char *str, int size, FILE *stream);
+int V_CRT_CALL fclose(FILE *stream);
+FILE * V_CRT_CALL popen(const char *command, const char *mode);
+int V_CRT_CALL pclose(FILE *stream);
+void * V_CRT_CALL malloc(size_t size);
+void * V_CRT_CALL calloc(size_t nitems, size_t size);
+void * V_CRT_CALL realloc(void *ptr, size_t size);
+void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);
+void V_CRT_CALL free(void *ptr);
+int V_CRT_CALL rand(void);
+void V_CRT_CALL srand(unsigned int seed);
+int V_CRT_CALL atexit(void (*cb)(void));
+void V_CRT_CALL exit(int status);
+int V_CRT_CALL atoi(const char *str);
+double V_CRT_CALL atof(const char *str);
+char * V_CRT_CALL getenv(const char *name);
+int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);
+int V_CRT_CALL unsetenv(const char *name);
+int V_CRT_CALL system(const char *command);
+int V_CRT_CALL remove(const char *path);
+int V_CRT_CALL rename(const char *old_path, const char *new_path);
+char * V_CRT_CALL realpath(const char *path, char *resolved_path);
+int V_CRT_CALL mkstemp(char *stemplate);
+void V_CRT_CALL qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
+int V_CRT_CALL strcmp(const char *left, const char *right);
+size_t V_CRT_CALL strlen(const char *str);
+char * V_CRT_CALL strerror(int errnum);
+void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
+void * V_CRT_CALL memmove(void *dest, const void *src, size_t n);
+void * V_CRT_CALL memset(void *dest, int ch, size_t n);
+int V_CRT_CALL memcmp(const void *left, const void *right, size_t n);
+void * V_CRT_CALL memchr(const void *str, int c, size_t n);
+char * V_CRT_CALL strchr(const char *str, int c);
+char * V_CRT_CALL strrchr(const char *str, int c);
+int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
+isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)
-int _fileno(FILE *stream);
-FILE *_wfopen(const unsigned short *filename, const unsigned short *mode);
-int _wremove(const unsigned short *path);
+int V_CRT_CALL _fileno(FILE *stream);
+FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
+int V_CRT_CALL _wremove(const unsigned short *path);
+#endif
+#if defined(_MSC_VER) && !defined(__clang__)
+#ifndef _TRUNCATE
+	#define _TRUNCATE ((size_t)-1)
+#endif
+int V_CRT_CALL _vscprintf(const char *format, va_list ap);
+int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
+unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);
+int V_CRT_CALL _wputenv(const unsigned short *envstring);
 #endif
 #ifndef _IOFBF
 	#define _IOFBF 0
@@ -579,6 +593,7 @@ enum {
 	#endif
 };
 #endif
+#undef V_CRT_CALL
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers

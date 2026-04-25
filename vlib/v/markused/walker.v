@@ -1003,6 +1003,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.kind == .embed_file {
 				w.features.used_maps++
 			}
+			if node.kind == .new {
+				w.uses_memdup = true
+			}
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)

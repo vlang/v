@@ -676,7 +676,7 @@ fn (p &Parser) can_use_expr_as_struct_init_type(expr ast.Expr) bool {
 		}
 		ast.SelectorExpr {
 			expr.expr is ast.TypeOf
-				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type']
+				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type']
 		}
 		else {
 			false

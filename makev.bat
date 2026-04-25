@@ -15,6 +15,7 @@ set V_EXE=./v.exe
 set V_BOOTSTRAP=./v_win_bootstrap.exe
 set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
+set V_STAGE=./v_stage.exe
 set V_C_FILE=./vc/v_win.c
 set where_exe=where.exe
 if not ["%SystemRoot%"] == [""] if exist "%SystemRoot%\System32\where.exe" set where_exe=%SystemRoot%\System32\where.exe
@@ -221,19 +222,39 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
+set stage_vflags=
 call :build_bootstrap_with_clang
-if %ERRORLEVEL% NEQ 0 call :build_bootstrap_with_gcc
-if %ERRORLEVEL% NEQ 0 call :build_bootstrap_with_tcc
-if %ERRORLEVEL% NEQ 0 (
+if %ERRORLEVEL% EQU 0 (
+	set stage_vflags=-cc clang -cflags "--target=!clang_target!"
+) else (
+	call :build_bootstrap_with_gcc
+	if %ERRORLEVEL% EQU 0 (
+		set stage_vflags=-cc "!gcc_exe!"
+	) else (
+		call :build_bootstrap_with_tcc
+		if %ERRORLEVEL% EQU 0 set stage_vflags=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc
+	)
+)
+if not defined stage_vflags (
 	echo Could not build a bootstrap compiler before compiling with MSVC
 	if exist %ObjFile% del %ObjFile%
 	goto :compile_error
 )
 
-echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
+echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
+if %ERRORLEVEL% NEQ 0 (
+	if exist %ObjFile% del %ObjFile%
+	if exist "%V_STAGE%" del "%V_STAGE%"
+	goto :compile_error
+)
+
+echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
+"%V_STAGE%" -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
+set msvc_error=%ERRORLEVEL%
 if exist %ObjFile% del %ObjFile%
-if %ERRORLEVEL% NEQ 0 goto :compile_error
+if exist "%V_STAGE%" del "%V_STAGE%"
+if %msvc_error% NEQ 0 goto :compile_error
 call :move_updated_to_v
 goto :success
 

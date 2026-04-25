@@ -11,7 +11,7 @@ import v.util
 import v.vmod
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-	'compile_warn', 'd', 'res']
+	'compile_warn', 'd', 'res', 'zero', 'new']
 const supported_comptime_for_kinds = ['methods', 'fields', 'values', 'variants', 'attributes',
 	'params']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
@@ -170,7 +170,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
+const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()`, `\$res()`, `\$zero()` and `\$new()` comptime functions are supported right now'
 
 fn (p &Parser) resolve_tmpl_path_expr(expr ast.Expr) ?string {
 	return p.resolve_tmpl_path_expr_with_depth(expr, 0)
@@ -299,6 +299,49 @@ fn (mut p Parser) resolve_tmpl_pseudo_variables(path string, pos token.Pos) ?str
 	return resolved
 }
 
+fn (p &Parser) is_comptime_type_selector_at(offset int) bool {
+	if p.peek_token(offset).kind == .key_typeof {
+		return true
+	}
+	if p.peek_token(offset).kind != .name {
+		return false
+	}
+	mut n := offset + 1
+	for p.peek_token(n).kind == .dot && p.peek_token(n + 1).kind == .name {
+		if is_array_init_type_expr_field(p.peek_token(n + 1).lit) {
+			return true
+		}
+		n += 2
+	}
+	return false
+}
+
+fn (p &Parser) is_comptime_type_expr_arg() bool {
+	if p.tok.kind in [.key_typeof, .dollar] {
+		return true
+	}
+	if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr {
+		return p.is_comptime_type_selector_at(2)
+	}
+	return p.is_comptime_type_selector_at(0)
+}
+
+fn (mut p Parser) comptime_call_type_arg() ast.Expr {
+	arg_pos := p.tok.pos()
+	if p.is_comptime_type_expr_arg() {
+		old_inside_array_init_type_expr := p.inside_array_init_type_expr
+		p.inside_array_init_type_expr = true
+		expr := p.expr(0)
+		p.inside_array_init_type_expr = old_inside_array_init_type_expr
+		return expr
+	}
+	typ := p.parse_type()
+	return ast.TypeNode{
+		typ: typ
+		pos: arg_pos.extend(p.prev_tok.pos())
+	}
+}
+
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -411,6 +454,21 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			kind:        .d
 			args_var:    const_string
 			args:        args
+			pos:         start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name in ['zero', 'new'] {
+		arg_expr := p.comptime_call_type_arg()
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        if method_name == 'zero' { .zero } else { .new }
+			args:        [
+				ast.CallArg{
+					expr: arg_expr
+					pos:  arg_pos
+				},
+			]
 			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
