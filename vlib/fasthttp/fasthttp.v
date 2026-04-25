@@ -115,11 +115,11 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if linux || macos {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		return server.wait_till_running_impl(params)!
 	} $else {
-		return error('fasthttp server lifecycle control is only supported on linux and macos')
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
@@ -128,15 +128,15 @@ pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if linux || macos {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		server.shutdown_impl(params)!
 	} $else {
-		return error('fasthttp server lifecycle control is only supported on linux and macos')
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
-$if linux || macos {
+$if linux || bsd {
 	fn normalized_retry_period_ms(retry_period_ms int) int {
 		return if retry_period_ms > 0 { retry_period_ms } else { 1 }
 	}
