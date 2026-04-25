@@ -1063,7 +1063,7 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 	return false
 }
 
-fn (t &Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
+fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
 	base := t.unwrap_alias_and_pointer_type(expected)
 	match expr {
 		ast.ArrayInitExpr {
@@ -1145,7 +1145,7 @@ fn (t &Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected type
 	return expr
 }
 
-fn (t &Transformer) resolve_expr_with_inferred_enum_type(expr ast.Expr) ast.Expr {
+fn (mut t Transformer) resolve_expr_with_inferred_enum_type(expr ast.Expr) ast.Expr {
 	if typ := t.get_expr_type(expr) {
 		base := t.unwrap_alias_and_pointer_type(typ)
 		if base is types.Enum {

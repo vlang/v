@@ -2158,6 +2158,10 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 			return arg.op == .amp
 		}
 		ast.SelectorExpr {
+			if arg.lhs is ast.Ident && arg.lhs.name == 'C'
+				&& arg.rhs.name in ['stdin', 'stdout', 'stderr', 'environ'] {
+				return true
+			}
 			if arg.rhs.name == 'data' {
 				lhs_type := g.get_expr_type(arg.lhs)
 				if lhs_type == 'array' || lhs_type.starts_with('Array_') || lhs_type == 'map'
@@ -4142,6 +4146,15 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	// array__repeat → array__repeat_to_depth with automatic depth for deep clone
 	if name == 'array__repeat' && call_args.len == 2 {
+		elem_type := g.infer_array_elem_type_from_expr(call_args[0]).trim_right('*')
+		if elem_type != '' && g.is_interface_type(elem_type) {
+			g.sb.write_string('${array_interface_repeat_fn_name(elem_type)}(')
+			g.gen_call_arg(name, 0, call_args[0])
+			g.sb.write_string(', ')
+			g.gen_call_arg(name, 1, call_args[1])
+			g.sb.write_string(')')
+			return
+		}
 		g.sb.write_string('array__repeat_to_depth(')
 		g.gen_call_arg(name, 0, call_args[0])
 		g.sb.write_string(', ')

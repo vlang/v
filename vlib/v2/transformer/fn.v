@@ -1052,6 +1052,23 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Check if this is a flag enum method call: receiver.has(arg) or receiver.all(arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
+		if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
+				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
+				mut native_args := []ast.Expr{cap: call_args.len + 1}
+				native_args << t.transform_expr(sel.lhs)
+				for arg in call_args {
+					native_args << t.transform_expr(arg)
+				}
+				return ast.CallExpr{
+					lhs:  ast.Ident{
+						name: '${concrete}__${sel.rhs.name}'
+					}
+					args: native_args
+					pos:  expr.pos
+				}
+			}
+		}
 		// Skip calls to conditionally compiled functions (e.g., @[if verbose ?])
 		if sel.rhs.name in t.elided_fns {
 			return ast.Expr(ast.BasicLiteral{
@@ -1210,19 +1227,31 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			// Native backends (arm64/x64): resolve to direct concrete method call.
 			// `iface.method(args...)` → `ConcreteType__method(iface, args...)`
 			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
-				if sel.lhs is ast.Ident {
-					if concrete := t.get_interface_concrete_type(sel.lhs.name) {
-						resolved_method := '${concrete}__${sel.rhs.name}'
-						mut native_args := []ast.Expr{cap: transformed_iface_args.len + 1}
-						native_args << t.transform_expr(sel.lhs)
-						native_args << transformed_iface_args
-						return ast.CallExpr{
-							lhs:  ast.Ident{
-								name: resolved_method
-							}
-							args: native_args
-							pos:  expr.pos
+				if concrete := t.get_interface_concrete_type_for_expr(sel.lhs) {
+					resolved_method := '${concrete}__${sel.rhs.name}'
+					mut native_args := []ast.Expr{cap: transformed_iface_args.len + 1}
+					native_receiver := t.native_interface_receiver_arg(sel.lhs, concrete)
+					native_args << t.transform_expr(native_receiver)
+					native_args << transformed_iface_args
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved_method
 						}
+						args: native_args
+						pos:  expr.pos
+					}
+				}
+				if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
+					resolved_method := '${concrete}__${sel.rhs.name}'
+					mut native_args := []ast.Expr{cap: transformed_iface_args.len + 1}
+					native_args << t.transform_expr(sel.lhs)
+					native_args << transformed_iface_args
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved_method
+						}
+						args: native_args
+						pos:  expr.pos
 					}
 				}
 			}
@@ -1294,10 +1323,9 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 					}
 				}
 				if resolved_name != '' {
-					mut args := []ast.Expr{cap: expr.args.len}
-					for arg in expr.args {
-						args << t.transform_expr(arg)
-					}
+					args := t.transform_call_args_for_lhs(ast.Expr(ast.Ident{
+						name: resolved_name
+					}), expr.args)
 					return ast.CallExpr{
 						lhs:  ast.Ident{
 							name: resolved_name
@@ -1308,8 +1336,40 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 			}
 		}
-		is_module_call := sel.lhs is ast.Ident && t.lookup_var_type(sel.lhs.name) == none
-			&& (t.is_module_ident(sel.lhs.name) || t.get_module_scope(sel.lhs.name) != none)
+		mut resolved_module_call_name := ''
+		if sel.lhs is ast.Ident {
+			lhs_name := (sel.lhs as ast.Ident).name
+			resolved_mod := t.resolve_module_name(lhs_name) or { lhs_name }
+			mut module_names := []string{cap: 2}
+			module_names << resolved_mod
+			if lhs_name != resolved_mod {
+				module_names << lhs_name
+			}
+			for mod_name in module_names {
+				if _ := t.lookup_fn_cached(mod_name, sel.rhs.name) {
+					call_mod := if mod_name.contains('.') {
+						mod_name.all_after_last('.')
+					} else if mod_name.contains('__') {
+						mod_name.all_after_last('__')
+					} else {
+						mod_name
+					}
+					resolved_module_call_name = '${call_mod}__${sel.rhs.name}'
+					break
+				}
+			}
+		}
+		is_module_call := resolved_module_call_name != ''
+		if is_module_call {
+			args := t.transform_call_args_for_lhs(expr.lhs, expr.args)
+			return ast.CallExpr{
+				lhs:  ast.Ident{
+					name: resolved_module_call_name
+				}
+				args: args
+				pos:  expr.pos
+			}
+		}
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				// Guard against misresolution: if the receiver is known to be a string
@@ -1530,6 +1590,16 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		args: args
 		pos:  expr.pos
 	}
+}
+
+fn (mut t Transformer) transform_call_args_for_lhs(lhs ast.Expr, raw_args []ast.Expr) []ast.Expr {
+	call_args := t.lower_missing_call_args(lhs, raw_args)
+	fn_info := t.lookup_call_fn_info(lhs)
+	mut args := []ast.Expr{cap: call_args.len}
+	for i, arg in call_args {
+		args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
+	}
+	return t.lower_variadic_args(lhs, args)
 }
 
 struct CallFnInfo {
@@ -2078,6 +2148,31 @@ fn (mut t Transformer) empty_struct_arg_expr(param_type types.Type) ast.Expr {
 			name: 'nil'
 		})
 	}
+	base_name := t.type_to_c_name(base)
+	if base_name.ends_with('PRNGConfigStruct') {
+		init_pos := t.next_synth_pos()
+		t.register_synth_type(init_pos, param_type)
+		return ast.Expr(ast.InitExpr{
+			typ:    t.type_to_ast_type_expr(param_type)
+			fields: [
+				ast.FieldInit{
+					name:  'seed_'
+					value: ast.Expr(ast.CallExpr{
+						lhs:  ast.Ident{
+							name: 'seed__time_seed_array'
+						}
+						args: [
+							ast.Expr(ast.BasicLiteral{
+								kind:  .number
+								value: '2'
+							}),
+						]
+					})
+				},
+			]
+			pos:    init_pos
+		})
+	}
 	init_pos := t.next_synth_pos()
 	t.register_synth_type(init_pos, param_type)
 	return ast.Expr(ast.InitExpr{
@@ -2374,6 +2469,27 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	// Check if this is a flag enum method call: receiver.has(arg) or receiver.all(arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
+		if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
+				mut call_args := []ast.Expr{}
+				if expr.expr !is ast.EmptyExpr {
+					call_args << expr.expr
+				}
+				call_args = t.lower_missing_call_args(expr.lhs, call_args)
+				mut native_args := []ast.Expr{cap: call_args.len + 1}
+				native_args << t.transform_expr(sel.lhs)
+				for arg in call_args {
+					native_args << t.transform_expr(arg)
+				}
+				return ast.CallExpr{
+					lhs:  ast.Ident{
+						name: '${concrete}__${sel.rhs.name}'
+					}
+					args: native_args
+					pos:  expr.pos
+				}
+			}
+		}
 		// Skip calls to conditionally compiled functions (e.g., @[if verbose ?])
 		if sel.rhs.name in t.elided_fns {
 			return ast.Expr(ast.BasicLiteral{
@@ -2501,19 +2617,31 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			transformed_iface_args = t.lower_variadic_args(expr.lhs, transformed_iface_args)
 			// Native backends (arm64/x64): resolve to direct concrete method call.
 			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
-				if sel.lhs is ast.Ident {
-					if concrete := t.get_interface_concrete_type(sel.lhs.name) {
-						resolved_iface_method := '${concrete}__${sel.rhs.name}'
-						mut native_iface_args := []ast.Expr{cap: transformed_iface_args.len + 1}
-						native_iface_args << t.transform_expr(sel.lhs)
-						native_iface_args << transformed_iface_args
-						return ast.CallExpr{
-							lhs:  ast.Ident{
-								name: resolved_iface_method
-							}
-							args: native_iface_args
-							pos:  expr.pos
+				if concrete := t.get_interface_concrete_type_for_expr(sel.lhs) {
+					resolved_iface_method := '${concrete}__${sel.rhs.name}'
+					mut native_iface_args := []ast.Expr{cap: transformed_iface_args.len + 1}
+					native_receiver := t.native_interface_receiver_arg(sel.lhs, concrete)
+					native_iface_args << t.transform_expr(native_receiver)
+					native_iface_args << transformed_iface_args
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved_iface_method
 						}
+						args: native_iface_args
+						pos:  expr.pos
+					}
+				}
+				if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
+					resolved_iface_method := '${concrete}__${sel.rhs.name}'
+					mut native_iface_args := []ast.Expr{cap: transformed_iface_args.len + 1}
+					native_iface_args << t.transform_expr(sel.lhs)
+					native_iface_args << transformed_iface_args
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved_iface_method
+						}
+						args: native_iface_args
+						pos:  expr.pos
 					}
 				}
 			}

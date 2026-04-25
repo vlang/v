@@ -420,10 +420,10 @@ pub:
 
 // merge_worker_module merges a worker's SSA arenas into the main module.
 // Workers are seeded with the main module's values/instrs/blocks from Phases 1-3.
-// seed_values/seed_instrs/seed_blocks are the lengths of the seed data.
+// seed_values/seed_instrs/seed_blocks/seed_funcs are the lengths of the seed data.
 // Only data beyond the seed is new and needs to be merged with ID remapping.
 // func_data contains (func_idx, blocks, params) for updating main funcs[].
-pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, seed_values int, seed_instrs int, seed_blocks int, seed_types int) {
+pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, seed_values int, seed_instrs int, seed_blocks int, seed_types int, seed_funcs int) {
 	// Build type remapping: worker type IDs >= seed_types may differ from main.
 	// For each new worker type, find or create equivalent in main.
 	mut type_remap := []TypeID{len: w.type_store.types.len, init: 0}
@@ -641,8 +641,18 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 	}
 
 	// Also add any new functions created by workers (stubs like wyhash, array_eq).
-	for fi := m.funcs.len; fi < w.funcs.len; fi++ {
+	for fi := seed_funcs; fi < w.funcs.len; fi++ {
 		wfunc := w.funcs[fi]
+		mut already_added := false
+		for existing in m.funcs {
+			if existing.name == wfunc.name {
+				already_added = true
+				break
+			}
+		}
+		if already_added {
+			continue
+		}
 		mut new_blocks := []BlockID{cap: wfunc.blocks.len}
 		for blk_id in wfunc.blocks {
 			new_blocks << if blk_id >= seed_blocks { blk_id + block_off } else { blk_id }

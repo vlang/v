@@ -2079,6 +2079,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			} else {
 				mut store_size := g.mem_access_size_bytes(val_val.typ, ptr_id)
+				// The destination slot controls memory width for pointer fields. A nil
+				// constant can be typed as a narrow integer, but storing it into a pointer
+				// field must clear all 64 bits, otherwise stale upper address bits remain.
+				if store_size < 8 && dst_elem_is_ptrlike {
+					store_size = 8
+				}
 				// Sumtype payload pointers can flow through i64-typed SSA values.
 				// Do not narrow these stores based on imprecise pointer element widths.
 				if store_size < 8 && g.scalar_value_is_pointer_payload(src_id, 0) {

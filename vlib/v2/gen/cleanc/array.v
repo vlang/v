@@ -87,6 +87,59 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 	]
 }
 
+fn array_interface_repeat_fn_name(iface_name string) string {
+	return '__v_array_repeat_interface__' + mangle_alias_component(iface_name)
+}
+
+fn (g &Gen) array_clone_depth_for_c_type(type_name string) int {
+	elem_type := array_alias_elem_type(type_name)
+	if elem_type == '' {
+		return 0
+	}
+	if elem_type == 'string' || elem_type == 'builtin__string' || elem_type == 'map'
+		|| elem_type.starts_with('Map_') {
+		return 1
+	}
+	if elem_type == 'array' || elem_type.starts_with('Array_') {
+		return 1 + g.array_clone_depth_for_c_type(elem_type)
+	}
+	return 0
+}
+
+fn (mut g Gen) emit_array_interface_repeat_decls() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.sb.writeln('static inline array ${array_interface_repeat_fn_name(name)}(array a, int count);')
+	}
+	if names.len > 0 {
+		g.sb.writeln('')
+	}
+}
+
+fn (mut g Gen) emit_array_interface_repeat_body(iface_name string) {
+	repeat_fn := array_interface_repeat_fn_name(iface_name)
+	clone_fn := interface_clone_fn_name(iface_name)
+	g.sb.writeln('static inline array ${repeat_fn}(array a, int count) {')
+	g.sb.writeln('\tarray res = array__repeat_to_depth(a, count, 0);')
+	g.sb.writeln('\tif (a.len > 0) {')
+	g.sb.writeln('\t\tfor (int i = 0; i < res.len; ++i) {')
+	g.sb.writeln('\t\t\t((${iface_name}*)res.data)[i] = ${clone_fn}(((${iface_name}*)a.data)[i % a.len]);')
+	g.sb.writeln('\t\t}')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn res;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) emit_array_interface_repeat_helpers() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.emit_array_interface_repeat_body(name)
+	}
+}
+
 fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 	mut fn_names := g.fn_param_types.keys()
 	fn_names.sort()

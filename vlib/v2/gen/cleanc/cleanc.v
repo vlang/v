@@ -1014,6 +1014,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.emit_ierror_wrapper_decls()
 	g.collect_interface_wrapper_specs()
 	g.emit_interface_method_wrapper_decls()
+	g.emit_interface_clone_decls()
+	g.emit_array_interface_repeat_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
@@ -1247,6 +1249,8 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 pub fn (mut g Gen) gen_pass5_post() {
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
+	g.emit_interface_clone_helpers()
+	g.emit_array_interface_repeat_helpers()
 	g.emit_live_reload_infrastructure()
 	if g.cache_bundle_name.len == 0 {
 		g.emit_map_str_functions()

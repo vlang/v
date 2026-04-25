@@ -4749,7 +4749,8 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				c.log('found ${name}')
 				if field_or_method_type is FnType {
 					fn_type := field_or_method_type as FnType
-					if name in ['clone', 'map', 'filter', 'repeat', 'reverse', 'sorted'] {
+					if name in ['clone', 'map', 'filter', 'repeat', 'reverse', 'sorted',
+						'sorted_with_compare'] {
 						// c.log('SNEAKY: ${t.name()}')
 						// return t
 						return fn_with_return_type(fn_type, Type(arr_type))
@@ -5150,6 +5151,25 @@ fn (c &Checker) lookup_type_by_name(name string) ?Type {
 		}
 	}
 	return none
+}
+
+fn (c &Checker) resolve_stale_alias(name string) Type {
+	if name == '' {
+		return Type(Alias{})
+	}
+	if live_type := c.lookup_type_by_name(name) {
+		if live_type is Alias {
+			live_alias := live_type as Alias
+			if live_alias.base_type.name() != '' {
+				return resolve_alias(live_alias.base_type)
+			}
+			return Type(Alias{})
+		}
+		if live_type.name() != '' {
+			return live_type
+		}
+	}
+	return Type(Alias{})
 }
 
 fn (c &Checker) lookup_method_direct(t Type, name string) ?Type {

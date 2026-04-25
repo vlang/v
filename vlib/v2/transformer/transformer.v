@@ -1136,6 +1136,13 @@ fn runtime_const_init_call_name(mod string, fn_name string) string {
 	return fn_name
 }
 
+fn module_init_call_name(mod string) string {
+	if mod != '' && mod != 'main' && mod != 'builtin' {
+		return '${mod}__init'
+	}
+	return 'init'
+}
+
 fn (mut t Transformer) record_runtime_const_init(mod string, name string, expr ast.Expr, mut known map[string]map[string]bool) {
 	if name == '' {
 		return
@@ -1710,10 +1717,26 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 }
 
 fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File) {
-	if t.runtime_const_modules.len == 0 {
-		return
-	}
 	mut init_calls := []ast.Stmt{}
+	mut seen_init_mods := map[string]bool{}
+	for file in files {
+		if file.mod in seen_init_mods {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && !stmt.is_method && stmt.name == 'init' {
+				seen_init_mods[file.mod] = true
+				init_calls << ast.ExprStmt{
+					expr: ast.CallExpr{
+						lhs: ast.Ident{
+							name: module_init_call_name(file.mod)
+						}
+					}
+				}
+				break
+			}
+		}
+	}
 	for mod in t.runtime_const_modules {
 		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
 		call_name := runtime_const_init_call_name(mod, fn_name)
@@ -1940,6 +1963,16 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 							}))
 							continue
 						}
+					}
+				}
+			}
+			if is_native_be && stmt.rhs.len == 1 && stmt.lhs.len == 1 {
+				lhs_name := t.get_var_name(stmt.lhs[0])
+				if lhs_name != '' {
+					if concrete := t.get_interface_assignment_concrete_type(stmt.rhs[0]) {
+						t.interface_concrete_types[lhs_name] = concrete
+					} else if stmt.op in [.assign, .decl_assign] {
+						t.interface_concrete_types.delete(lhs_name)
 					}
 				}
 			}
@@ -7876,11 +7909,14 @@ fn (mut t Transformer) make_flag_enum_assign(receiver ast.Expr, method string, a
 }
 
 // resolve_enum_shorthand resolves .member → EnumType.member
-fn (t &Transformer) resolve_enum_shorthand(expr ast.Expr, enum_type string) ast.Expr {
+fn (mut t Transformer) resolve_enum_shorthand(expr ast.Expr, enum_type string) ast.Expr {
 	if expr is ast.SelectorExpr {
 		sel := expr as ast.SelectorExpr
 		// Check if it's a shorthand: .member (lhs is EmptyExpr or missing)
 		if sel.lhs is ast.EmptyExpr {
+			if typ := t.lookup_type(enum_type) {
+				t.register_synth_type(sel.pos, typ)
+			}
 			// Resolve to EnumType__member as an Ident (C-mangled name)
 			return ast.Ident{
 				name: enum_member_ident(enum_type, sel.rhs.name)
@@ -9638,11 +9674,22 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 	}
 
 	// Create parameter: a Array_fixed_T_N
+	param_type := if t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Ident{
+				name: type_name
+			}
+		})
+	} else {
+		ast.Expr(ast.Ident{
+			name: type_name
+		})
+	}
 	param_a := ast.Parameter{
 		name: 'a'
-		typ:  ast.Ident{
-			name: type_name
-		}
+		typ:  param_type
 	}
 	t.register_generated_fn_scope(fn_name, 'builtin', [param_a])
 
@@ -10749,7 +10796,25 @@ fn (mut t Transformer) generate_sort_comparator_fn(fn_name string, info SortComp
 		cond_expr = t.make_infix_expr(.lt, lhs_expr, rhs_expr)
 	}
 
-	// Body: if (cond) { return -1 } return 1
+	mut reverse_cond_expr := ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: '0'
+	})
+	if info.is_string_cmp {
+		reverse_cond_expr = ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'string__lt'
+			})
+			args: [rhs_expr, lhs_expr]
+		})
+	} else {
+		reverse_cond_expr = t.make_infix_expr(.lt, rhs_expr, lhs_expr)
+	}
+
+	// Body:
+	// if (lhs < rhs) return -1
+	// if (rhs < lhs) return 1
+	// return 0
 	mut body_stmts := []ast.Stmt{}
 	body_stmts << ast.ExprStmt{
 		expr: ast.IfExpr{
@@ -10769,10 +10834,25 @@ fn (mut t Transformer) generate_sort_comparator_fn(fn_name string, info SortComp
 			]
 		}
 	}
+	body_stmts << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  reverse_cond_expr
+			stmts: [
+				ast.Stmt(ast.ReturnStmt{
+					exprs: [
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '1'
+						}),
+					]
+				}),
+			]
+		}
+	}
 	body_stmts << ast.ReturnStmt{
 		exprs: [ast.Expr(ast.BasicLiteral{
 			kind:  .number
-			value: '1'
+			value: '0'
 		})]
 	}
 

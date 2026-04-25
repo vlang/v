@@ -441,6 +441,26 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		if typ.starts_with('Array_fixed_') {
+			g.fixed_array_globals[name] = true
+			g.global_var_types[name] = typ
+			g.sb.write_string('${typ} ${name}')
+			if field.value !is ast.EmptyExpr {
+				g.sb.write_string(' = ')
+				if field.value is ast.ArrayInitExpr {
+					array_init := field.value as ast.ArrayInitExpr
+					if array_init.exprs.len == 0 && array_init.init is ast.EmptyExpr {
+						g.sb.write_string('{0}')
+					} else {
+						g.expr(field.value)
+					}
+				} else {
+					g.expr(field.value)
+				}
+			}
+			g.sb.writeln(';')
+			continue
+		}
 		g.global_var_types[name] = typ
 		// With prealloc, g_memory_block must be thread-local so each thread
 		// gets its own arena and the bump allocator is safe without locks.

@@ -226,9 +226,22 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 }
 
 fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	native_interface_elem_type := if is_native_backend {
+		t.get_interface_array_init_concrete_type(expr) or { '' }
+	} else {
+		''
+	}
 	// Transform value expressions
 	mut exprs := []ast.Expr{cap: expr.exprs.len}
 	for e in expr.exprs {
+		if native_interface_elem_type != '' {
+			if inner := t.get_interface_cast_inner_expr(e) {
+				exprs << t.transform_expr(inner)
+				continue
+			}
+		}
 		exprs << t.transform_expr(e)
 	}
 
@@ -261,6 +274,14 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 				else {}
 			}
 		}
+	}
+	if native_interface_elem_type != '' {
+		elem_type_expr = ast.Expr(ast.Ident{
+			name: native_interface_elem_type
+		})
+		array_typ = ast.Expr(ast.Type(ast.ArrayType{
+			elem_type: elem_type_expr
+		}))
 	}
 	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
 	if expr.len is ast.PostfixExpr {

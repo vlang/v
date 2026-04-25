@@ -700,6 +700,7 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			qualified := '${module_name}__${type_name}'
 			if typ := t.lookup_type(qualified) {
 				if typ is types.Enum {
+					t.register_synth_type(expr.pos, typ)
 					return ast.Ident{
 						name: enum_member_ident(qualified, expr.rhs.name)
 						pos:  expr.pos
@@ -742,6 +743,7 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 		}
 		if typ := t.lookup_type(qualified) {
 			if typ is types.Enum {
+				t.register_synth_type(expr.pos, typ)
 				return ast.Ident{
 					name: enum_member_ident(qualified, expr.rhs.name)
 					pos:  expr.pos
@@ -2804,11 +2806,10 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 						}
 					}
 					map_type_name := lhs_map_type or { rhs_map_type or { 'map' } }
-					// For native backends, use generic map_map_eq (no type-specific wrappers)
-					eq_fn := if t.pref.backend == .arm64 || t.pref.backend == .x64 {
-						'map_map_eq'
-					} else {
+					eq_fn := if map_type_name.starts_with('Map_') {
 						'${map_type_name}_map_eq'
+					} else {
+						'map_map_eq'
 					}
 					map_eq_call := ast.CallExpr{
 						lhs:  ast.Ident{
