@@ -518,18 +518,26 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
 pub fn ast_to_any(value ast.Value) Any {
+	gc_disable()
+	defer {
+		gc_enable()
+	}
+	return ast_to_any_(value)
+}
+
+fn ast_to_any_(value ast.Value) Any {
 	match value {
 		ast.Date {
-			return Any(Date{value.text})
+			return Any(Date{value.text.clone()})
 		}
 		ast.Time {
-			return Any(Time{value.text})
+			return Any(Time{value.text.clone()})
 		}
 		ast.DateTime {
-			return Any(DateTime{value.text})
+			return Any(DateTime{value.text.clone()})
 		}
 		ast.Quoted {
-			return Any(value.text)
+			return Any(value.text.clone())
 		}
 		ast.Number {
 			val_text := value.text
@@ -563,16 +571,18 @@ pub fn ast_to_any(value ast.Value) Any {
 			m := (value as map[string]ast.Value)
 			mut am := map[string]Any{}
 			for k, v in m {
-				am[k] = ast_to_any(v)
+				converted := ast_to_any_(v)
+				am[k] = converted
 			}
 			return am
 			// return d.get_map_value(m, key_split[1..].join('.'))
 		}
 		[]ast.Value {
 			a := (value as []ast.Value)
-			mut aa := []Any{}
+			mut aa := []Any{cap: a.len}
 			for val in a {
-				aa << ast_to_any(val)
+				converted := ast_to_any_(val)
+				aa << converted
 			}
 			return aa
 		}

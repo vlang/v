@@ -12,7 +12,7 @@ type DocOrAny = toml.Any | toml.Doc
 pub fn json(doa DocOrAny) string {
 	match doa {
 		toml.Doc {
-			return any_to_json(toml.ast_to_any(doa.ast.table))
+			return doa.ast.table.str()
 		}
 		toml.Any {
 			return any_to_json(doa)
@@ -27,34 +27,34 @@ fn any_to_json(a toml.Any) string {
 			return 'null'
 		}
 		toml.DateTime {
-			return json2.Any(a.str()).json_str()
+			return json2.Any(toml.Any(a).string()).json_str()
 		}
 		toml.Date {
-			return json2.Any(a.str()).json_str()
+			return json2.Any(toml.Any(a).string()).json_str()
 		}
 		toml.Time {
-			return json2.Any(a.str()).json_str()
+			return json2.Any(toml.Any(a).string()).json_str()
 		}
 		string {
-			return json2.Any(a.str()).json_str()
+			return json2.Any(toml.Any(a).string()).json_str()
 		}
 		bool {
-			return json2.Any(bool(a)).json_str()
+			return json2.Any(toml.Any(a).bool()).json_str()
 		}
 		f32 {
-			return json2.Any(f32(a)).json_str()
+			return json2.Any(toml.Any(a).f32()).json_str()
 		}
 		f64 {
-			return json2.Any(f64(a)).json_str()
+			return json2.Any(toml.Any(a).f64()).json_str()
 		}
 		i64 {
-			return json2.Any(i64(a)).json_str()
+			return json2.Any(toml.Any(a).i64()).json_str()
 		}
 		int {
-			return json2.Any(int(a)).json_str()
+			return json2.Any(toml.Any(a).int()).json_str()
 		}
 		u64 {
-			return json2.Any(u64(a)).json_str()
+			return json2.Any(toml.Any(a).u64()).json_str()
 		}
 		map[string]toml.Any {
 			mut str := '{'
