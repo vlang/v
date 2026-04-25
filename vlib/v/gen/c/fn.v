@@ -3719,33 +3719,31 @@ fn (mut g Gen) current_fn_generic_params() ([]ast.Param, []string) {
 		|| g.cur_concrete_types.len == 0 {
 		return []ast.Param{}, []string{}
 	}
-	mut params := g.cur_fn.params.clone()
-	mut generic_names := g.cur_fn.generic_names.clone()
 	if g.cur_fn.name.contains('_T_') {
 		for generic_fn in g.file.generic_fns {
 			if generic_fn.generic_names.len == 0 {
 				continue
 			}
 			if g.generic_fn_name(g.cur_concrete_types, generic_fn.name) == g.cur_fn.name {
-				return generic_fn.params.clone(), generic_fn.generic_names.clone()
+				return generic_fn.params, generic_fn.generic_names
 			}
 		}
-		return params, generic_names
+		return g.cur_fn.params, g.cur_fn.generic_names
 	}
 	if func := g.table.find_fn(g.cur_fn.name) {
-		params = func.params.clone()
 		if func.generic_names.len > 0 {
-			generic_names = func.generic_names.clone()
+			return func.params, func.generic_names
 		}
+		return func.params, g.cur_fn.generic_names
 	} else if g.cur_fn.mod != '' && !g.cur_fn.name.contains('.') {
 		if func := g.table.find_fn('${g.cur_fn.mod}.${g.cur_fn.name}') {
-			params = func.params.clone()
 			if func.generic_names.len > 0 {
-				generic_names = func.generic_names.clone()
+				return func.params, func.generic_names
 			}
+			return func.params, g.cur_fn.generic_names
 		}
 	}
-	return params, generic_names
+	return g.cur_fn.params, g.cur_fn.generic_names
 }
 
 fn (mut g Gen) current_fn_generic_names() []string {
@@ -3930,8 +3928,7 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 	}
 }
 
-fn (mut g Gen) resolve_current_fn_generic_param_type(name string) ast.Type {
-	params, generic_names := g.current_fn_generic_params()
+fn (mut g Gen) resolve_generic_param_type_from_params(name string, params []ast.Param, generic_names []string) ast.Type {
 	if params.len == 0 || generic_names.len == 0 {
 		return 0
 	}
@@ -3945,6 +3942,42 @@ fn (mut g Gen) resolve_current_fn_generic_param_type(name string) ast.Type {
 		}
 	}
 	return 0
+}
+
+fn (mut g Gen) resolve_current_fn_generic_param_type(name string) ast.Type {
+	if g.cur_fn == unsafe { nil } || g.cur_fn.generic_names.len == 0
+		|| g.cur_concrete_types.len == 0 {
+		return 0
+	}
+	if g.cur_fn.name.contains('_T_') {
+		for generic_fn in g.file.generic_fns {
+			if generic_fn.generic_names.len == 0 {
+				continue
+			}
+			if g.generic_fn_name(g.cur_concrete_types, generic_fn.name) == g.cur_fn.name {
+				return g.resolve_generic_param_type_from_params(name, generic_fn.params,
+					generic_fn.generic_names)
+			}
+		}
+		return g.resolve_generic_param_type_from_params(name, g.cur_fn.params,
+			g.cur_fn.generic_names)
+	}
+	if func := g.table.find_fn(g.cur_fn.name) {
+		if func.generic_names.len > 0 {
+			return g.resolve_generic_param_type_from_params(name, func.params, func.generic_names)
+		}
+		return g.resolve_generic_param_type_from_params(name, func.params, g.cur_fn.generic_names)
+	} else if g.cur_fn.mod != '' && !g.cur_fn.name.contains('.') {
+		if func := g.table.find_fn('${g.cur_fn.mod}.${g.cur_fn.name}') {
+			if func.generic_names.len > 0 {
+				return g.resolve_generic_param_type_from_params(name, func.params,
+					func.generic_names)
+			}
+			return g.resolve_generic_param_type_from_params(name, func.params,
+				g.cur_fn.generic_names)
+		}
+	}
+	return g.resolve_generic_param_type_from_params(name, g.cur_fn.params, g.cur_fn.generic_names)
 }
 
 fn (mut g Gen) resolve_current_fn_generic_param_value_type(name string) ast.Type {
@@ -6644,7 +6677,7 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 			}
 		}
 		if arg.expr.obj is ast.Var && arg.expr.obj.is_arg && arg.expr.obj.is_mut && !arg.is_mut
-			&& arg_typ.is_ptr() && !expected_type.is_any_kind_of_pointer() {
+			&& arg_typ.is_ptr() && !expected_type.is_any_kind_of_pointer() && in_generic_context {
 			resolved_param_type := g.resolve_current_fn_generic_param_type(arg.expr.name)
 			if resolved_param_type != 0 && !resolved_param_type.is_ptr() {
 				arg_typ = resolved_param_type

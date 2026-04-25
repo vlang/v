@@ -165,6 +165,7 @@ mut:
 	immutable_alias_analysis_in_progress map[string]bool
 	always_error_fn_cache                map[string]bool
 	always_error_fn_in_progress          map[string]bool
+	generic_parts_cache                  []i8 // type idx -> 0 unknown, 1 false, 2 true
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -198,6 +199,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		immutable_alias_analysis_in_progress: map[string]bool{}
 		always_error_fn_cache:                map[string]bool{}
 		always_error_fn_in_progress:          map[string]bool{}
+		generic_parts_cache:                  []i8{len: table.type_symbols.len}
 	}
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
@@ -7145,9 +7147,28 @@ fn (c &Checker) type_has_unresolved_generic_parts(typ ast.Type) bool {
 	if typ.has_flag(.generic) {
 		return true
 	}
-	if typ.idx() <= ast.nil_type_idx {
+	idx := typ.idx()
+	if idx <= ast.nil_type_idx {
 		return false
 	}
+	if idx < c.generic_parts_cache.len {
+		cached := c.generic_parts_cache[idx]
+		if cached != 0 {
+			return cached == 2
+		}
+	} else if idx < c.table.type_symbols.len {
+		mut checker := unsafe { &Checker(c) }
+		checker.generic_parts_cache << []i8{len: idx - checker.generic_parts_cache.len + 1}
+	}
+	resolved := c.type_has_unresolved_generic_parts_uncached(typ)
+	if idx < c.generic_parts_cache.len {
+		mut checker := unsafe { &Checker(c) }
+		checker.generic_parts_cache[idx] = if resolved { i8(2) } else { i8(1) }
+	}
+	return resolved
+}
+
+fn (c &Checker) type_has_unresolved_generic_parts_uncached(typ ast.Type) bool {
 	sym := c.table.sym(typ)
 	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
 		return true

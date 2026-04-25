@@ -1,6 +1,5 @@
 module builder
 
-import encoding.binary
 import os
 
 const windows_icon_group_resource_id = 1
@@ -131,10 +130,10 @@ fn parse_ico_bytes(data []u8) ![]WindowsIconImage {
 	if data.len < 6 {
 		return error('invalid icon file: missing ICO header')
 	}
-	if binary.little_endian_u16(data[0..2]) != 0 || binary.little_endian_u16(data[2..4]) != 1 {
+	if read_le_u16(data, 0) != 0 || read_le_u16(data, 2) != 1 {
 		return error('invalid icon file: expected an ICO header')
 	}
-	image_count := int(binary.little_endian_u16(data[4..6]))
+	image_count := int(read_le_u16(data, 4))
 	if image_count <= 0 {
 		return error('invalid icon file: no icon images were found')
 	}
@@ -144,8 +143,8 @@ fn parse_ico_bytes(data []u8) ![]WindowsIconImage {
 	mut images := []WindowsIconImage{cap: image_count}
 	for i := 0; i < image_count; i++ {
 		entry_offset := 6 + (i * 16)
-		image_size := int(binary.little_endian_u32(data[entry_offset + 8..entry_offset + 12]))
-		image_offset := int(binary.little_endian_u32(data[entry_offset + 12..entry_offset + 16]))
+		image_size := int(read_le_u32(data, entry_offset + 8))
+		image_offset := int(read_le_u32(data, entry_offset + 12))
 		image_end := image_offset + image_size
 		if image_offset < 0 || image_size <= 0 || image_offset > data.len || image_end > data.len {
 			return error('invalid icon file: icon image ${i + 1} points outside the file')
@@ -154,8 +153,8 @@ fn parse_ico_bytes(data []u8) ![]WindowsIconImage {
 			width:        data[entry_offset]
 			height:       data[entry_offset + 1]
 			color_count:  data[entry_offset + 2]
-			planes:       binary.little_endian_u16(data[entry_offset + 4..entry_offset + 6])
-			bit_count:    binary.little_endian_u16(data[entry_offset + 6..entry_offset + 8])
+			planes:       read_le_u16(data, entry_offset + 4)
+			bit_count:    read_le_u16(data, entry_offset + 6)
 			bytes_in_res: u32(image_size)
 			image_data:   data[image_offset..image_end].clone()
 		}
@@ -192,8 +191,8 @@ fn png_dimensions(png []u8) !WindowsIconSize {
 	if png[12] != `I` || png[13] != `H` || png[14] != `D` || png[15] != `R` {
 		return error('invalid PNG icon file: missing IHDR chunk')
 	}
-	width := int(binary.big_endian_u32(png[16..20]))
-	height := int(binary.big_endian_u32(png[20..24]))
+	width := int(read_be_u32(png, 16))
+	height := int(read_be_u32(png, 20))
 	if width <= 0 || height <= 0 || width > max_windows_icon_dimension
 		|| height > max_windows_icon_dimension {
 		return error('PNG icons must be between 1x1 and 256x256 pixels')
@@ -223,13 +222,36 @@ fn build_group_icon_resource(images []WindowsIconImage) []u8 {
 }
 
 fn append_le_u16(mut data []u8, value u16) {
-	mut buf := []u8{len: 2}
-	binary.little_endian_put_u16(mut buf, value)
-	data << buf
+	data << u8(value & 0xff)
+	data << u8(value >> 8)
 }
 
 fn append_le_u32(mut data []u8, value u32) {
-	mut buf := []u8{len: 4}
-	binary.little_endian_put_u32(mut buf, value)
-	data << buf
+	data << u8(value & 0xff)
+	data << u8((value >> 8) & 0xff)
+	data << u8((value >> 16) & 0xff)
+	data << u8(value >> 24)
+}
+
+@[direct_array_access; inline]
+fn read_le_u16(data []u8, offset int) u16 {
+	return u16(data[offset]) | (u16(data[offset + 1]) << 8)
+}
+
+@[direct_array_access; inline]
+fn read_le_u32(data []u8, offset int) u32 {
+	b0 := u32(data[offset])
+	b1 := u32(data[offset + 1])
+	b2 := u32(data[offset + 2])
+	b3 := u32(data[offset + 3])
+	return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+}
+
+@[direct_array_access; inline]
+fn read_be_u32(data []u8, offset int) u32 {
+	b0 := u32(data[offset])
+	b1 := u32(data[offset + 1])
+	b2 := u32(data[offset + 2])
+	b3 := u32(data[offset + 3])
+	return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 }

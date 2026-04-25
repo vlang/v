@@ -6,6 +6,16 @@ module c
 import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
+	if typ == 0 {
+		return typ
+	}
+	if !typ.has_flag(.generic) {
+		idx := typ.idx()
+		if idx <= ast.nil_type_idx
+			|| (idx < g.generic_parts_cache.len && g.generic_parts_cache[idx] == 1) {
+			return typ
+		}
+	}
 	mut resolved_typ := g.recheck_concrete_type(typ)
 	if resolved_typ == 0 {
 		resolved_typ = typ
@@ -1020,9 +1030,12 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 					}
 				}
 			}
-			resolved := g.resolve_current_fn_generic_param_type(expr.name)
-			if resolved != 0 {
-				return g.unwrap_generic(g.recheck_concrete_type(resolved))
+			if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+				&& g.cur_concrete_types.len > 0 {
+				resolved := g.resolve_current_fn_generic_param_type(expr.name)
+				if resolved != 0 {
+					return g.unwrap_generic(g.recheck_concrete_type(resolved))
+				}
 			}
 			if expr.obj is ast.Var && expr.obj.typ != 0 {
 				resolved_obj_type := g.unwrap_generic(g.recheck_concrete_type(expr.obj.typ))

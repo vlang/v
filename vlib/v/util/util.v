@@ -540,7 +540,12 @@ pub fn strip_main_name(name string) string {
 
 @[inline]
 pub fn no_dots(s string) string {
-	return s.replace_each(['.', '__', '-', '_'])
+	for ch in s {
+		if ch == `.` || ch == `-` {
+			return s.replace_each(['.', '__', '-', '_'])
+		}
+	}
+	return s
 }
 
 const map_prefix = 'map[string]'
