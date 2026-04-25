@@ -32,7 +32,7 @@ cp -R "${v2_src}" "${v2_bak}"
 
 # Build v2 with v1.
 rm -f "${v2_bin}" "${v3_bin}" "${v3_bin}.c" "${v4_bin}" "${v4_bin}.c" "${v5_bin}" "${v5_bin}.c"
-"${v1_compiler}" -cc cc -o "${v2_bin}" "${v2_source}"
+"${v1_compiler}" -gc none -cc cc -o "${v2_bin}" "${v2_source}"
 
 # Restore v2 sources after V1 build.
 rsync -a --delete "${v2_bak}/" "${v2_src}/"

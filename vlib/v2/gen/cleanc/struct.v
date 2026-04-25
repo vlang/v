@@ -750,6 +750,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 				// Register field types for this instantiation
 				g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
 			}
+			g.struct_field_lookup_cache = map[string]string{}
+			g.struct_field_lookup_miss = map[string]bool{}
 			if node.fields.len == 0 {
 				g.sb.writeln('\tu8 _dummy;')
 			}

@@ -31,7 +31,7 @@ rm -rf /tmp/v2_cleanc_obj_cache
 
 echo "=== 1/14: ARM64 self-host hello world ==="
 backup_v2_src
-"${v1_compiler}" -cc cc -o v2 v2.v
+"${v1_compiler}" -gc none -cc cc -o v2 v2.v
 restore_v2_src
 ./v2 --no-parallel -backend arm64 -gc none -nocache -o v3 v2.v
 ./v3 --no-parallel -backend arm64 -o hello_arm hello.v

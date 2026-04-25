@@ -857,6 +857,13 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 	if g.env == unsafe { nil } {
 		return types.Struct{}
 	}
+	cache_key := '${g.cur_module}|${c_name}'
+	if cached := g.struct_type_lookup_cache[cache_key] {
+		return cached
+	}
+	if cache_key in g.struct_type_lookup_miss {
+		return types.Struct{}
+	}
 	// Try extracting module from mangled name (e.g. "os__File" -> module "os", name "File")
 	mut mod_name := ''
 	mut struct_name := c_name
@@ -870,9 +877,11 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 				typ := obj.typ()
 				// Skip sum types - their merged fields aren't safe for direct access
 				if typ is types.Alias || typ is types.SumType {
+					g.struct_type_lookup_miss[cache_key] = true
 					return types.Struct{}
 				}
 				if typ is types.Struct {
+					g.struct_type_lookup_cache[cache_key] = typ
 					return typ
 				}
 			}
@@ -890,9 +899,11 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 			if obj := scope.lookup_parent(struct_name, 0) {
 				typ := obj.typ()
 				if typ is types.Alias {
+					g.struct_type_lookup_miss[cache_key] = true
 					return types.Struct{}
 				}
 				if typ is types.Struct {
+					g.struct_type_lookup_cache[cache_key] = typ
 					return typ
 				}
 			}
@@ -909,14 +920,17 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 			if obj := scope.lookup_parent(struct_name, 0) {
 				typ := obj.typ()
 				if typ is types.Alias {
+					g.struct_type_lookup_miss[cache_key] = true
 					return types.Struct{}
 				}
 				if typ is types.Struct {
+					g.struct_type_lookup_cache[cache_key] = typ
 					return typ
 				}
 			}
 		}
 	}
+	g.struct_type_lookup_miss[cache_key] = true
 	return types.Struct{}
 }
 
