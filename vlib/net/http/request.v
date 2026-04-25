@@ -1009,33 +1009,46 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	// dump(boundary)
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
-	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
-	sections := body.split(boundary)
-	fields := sections#[1..sections.len - 1]
+	if body.len == 0 || boundary.len == 0 || boundary.len > body.len {
+		return form, files
+	}
+	mut field_start := body.index_after_(boundary, 0)
+	if field_start == -1 {
+		return form, files
+	}
+	field_start += boundary.len
 	mut line_segments := []LineSegmentIndexes{cap: 100}
-	for field in fields {
+	for {
+		if field_start > body.len - boundary.len {
+			break
+		}
+		field_end := body.index_after_(boundary, field_start)
+		if field_end == -1 {
+			break
+		}
 		line_segments.clear()
-		mut line_idx, mut line_start := 0, 0
-		for cidx, c in field {
+		mut line_idx, mut line_start := 0, field_start
+		for cidx := field_start; cidx < field_end; cidx++ {
 			if line_idx >= 6 {
 				// no need to scan further
 				break
 			}
-			if c == `\n` {
+			if body[cidx] == `\n` {
 				line_segments << LineSegmentIndexes{line_start, cidx}
 				line_start = cidx + 1
 				line_idx++
 			}
 		}
-		line_segments << LineSegmentIndexes{line_start, field.len}
+		line_segments << LineSegmentIndexes{line_start, field_end}
+		field_start = field_end + boundary.len
 		if line_segments.len < 2 {
 			continue
 		}
-		line1 := field#[line_segments[1].start..line_segments[1].end]
+		line1 := body#[line_segments[1].start..line_segments[1].end]
 		line2 := if line_segments.len == 2 {
 			''
 		} else {
-			field#[line_segments[2].start..line_segments[2].end]
+			body#[line_segments[2].start..line_segments[2].end]
 		}
 		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
@@ -1058,7 +1071,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// line4: DATA
 			// ...
 			// lineX: --
-			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
+			data_end := field_end - 4 // each multipart field ends with \r\n--
+			if data_end < line_segments[4].start {
+				continue
+			}
+			data := body[line_segments[4].start..data_end]
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
 			if name !in files {
@@ -1074,7 +1091,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		if line_segments.len < 4 {
 			continue
 		}
-		form[name] = field[line_segments[3].start..field.len - 4]
+		data_end := field_end - 4
+		if data_end < line_segments[3].start {
+			continue
+		}
+		form[name] = body[line_segments[3].start..data_end]
 	}
 	// dump(form)
 	return form, files

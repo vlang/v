@@ -126,11 +126,11 @@ fn close_conn(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr)
 		server.end_request()
 		c.request_active = false
 	}
-	if c.write_buf.len > 0 {
-		c.write_buf.clear()
+	if c.write_buf.cap > 0 {
+		unsafe { c.write_buf.free() }
 	}
-	if c.read_extra.len > 0 {
-		c.read_extra.clear()
+	if c.read_extra.cap > 0 {
+		unsafe { c.read_extra.free() }
 	}
 	if c.file_fd != -1 {
 		C.close(c.file_fd)
@@ -247,8 +247,9 @@ fn complete_response(server Server, kq int, c_ptr voidptr, mut clients map[int]v
 	c.write_buf.clear()
 	c.write_pos = 0
 	c.read_len = 0
-	if c.read_extra.len > 0 {
-		c.read_extra.clear()
+	if c.read_extra.cap > 0 {
+		unsafe { c.read_extra.free() }
+		c.read_extra = []u8{}
 	}
 	c.read_start = 0
 	c.should_close = false
@@ -260,6 +261,10 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 	mut c := unsafe { &Conn(c_ptr) }
 
 	mut req_buf := c.get_full_request_data()
+	if c.read_extra.cap > 0 {
+		unsafe { c.read_extra.free() }
+		c.read_extra = []u8{}
+	}
 
 	mut decoded := decode_http_request(req_buf) or {
 		send_bad_request(c.fd)
