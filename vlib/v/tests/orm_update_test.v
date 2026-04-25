@@ -183,13 +183,13 @@ fn test_dynamic_orm_select_and_update_with_if_guards() {
 		simplified_name: ?string('usd')
 	}
 	where_expr := {
-				if name := select_req.simplified_name {
-						simplified_name == name
-				},
-				if code := select_req.currency_code {
-						currency_code == code
-				}
+		if name := select_req.simplified_name {
+			simplified_name == name
+		},
+		if code := select_req.currency_code {
+			currency_code == code
 		}
+	}
 
 	rows := sql db {
 		dynamic select from DynamicOrmUser where where_expr
@@ -202,13 +202,13 @@ fn test_dynamic_orm_select_and_update_with_if_guards() {
 		simplified_name: ?string('dollar')
 	}
 	set_expr := {
-				if name := update_req.simplified_name {
-						simplified_name == name
-				},
-				if code := update_req.currency_code {
-						currency_code == code
-				}
+		if name := update_req.simplified_name {
+			simplified_name == name
+		},
+		if code := update_req.currency_code {
+			currency_code == code
 		}
+	}
 
 	sql db {
 		dynamic update DynamicOrmUser set set_expr where id == first.id

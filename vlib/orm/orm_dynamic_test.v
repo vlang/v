@@ -60,16 +60,16 @@ fn test_dynamic_select_with_inline_where_block() {
 
 	rows := sql db {
 		dynamic select from DynamicMember where {
-				if name_filter != '' {
-						name == name_filter
-				},
-				if min_age > 0 {
-						age >= min_age
-				},
-				if status_filter != '' {
-						status == status_filter
-				}
-		} order by id
+		if name_filter != '' {
+			name == name_filter
+		},
+		if min_age > 0 {
+			age >= min_age
+		},
+		if status_filter != '' {
+			status == status_filter
+		}
+	} order by id
 	}!
 
 	assert rows.len == 1
@@ -104,14 +104,14 @@ fn test_dynamic_update_with_alias_set_block() {
 	next_email := ''
 	next_status := 'inactive'
 	update_expr := {
-				if next_name != '' {
-						name == next_name
-				},
-				if next_email != '' {
-						email == next_email
-				},
-				status == next_status
-		}
+		if next_name != '' {
+			name == next_name
+		},
+		if next_email != '' {
+			email == next_email
+		},
+		status == next_status
+	}
 
 	sql db {
 		dynamic update DynamicMember set update_expr where id == id
@@ -150,9 +150,9 @@ fn test_dynamic_update_with_alias_set_block_cast_expr() {
 	next_name := 'Alicia'
 	next_required := true
 	update_expr := {
-				name == next_name,
-				is_required == u8(if next_required { 1 } else { 0 })
-		}
+		name == next_name,
+		is_required == u8(if next_required { 1 } else { 0 })
+	}
 
 	sql db {
 		dynamic update DynamicCastMember set update_expr where id == id
@@ -221,13 +221,13 @@ fn test_dynamic_select_with_in_operator_and_additional_condition() {
 
 	rows := sql db {
 		dynamic select from DynamicMember where {
-				if valid_names.len > 0 {
-						name in valid_names
-				},
-				if min_age > 0 {
-						age >= min_age
-				}
-		} order by id
+		if valid_names.len > 0 {
+			name in valid_names
+		},
+		if min_age > 0 {
+			age >= min_age
+		}
+	} order by id
 	}!
 
 	assert rows.len == 2
