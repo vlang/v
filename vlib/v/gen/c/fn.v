@@ -1722,6 +1722,12 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 						g.write('${closure_ctx}->${var_name}[${i}],')
 					}
 					g.writeln('},')
+				} else if g.resolved_ident_is_by_value_auto_deref_capture(ast.Ident{
+					name:  var.name
+					scope: node.decl.scope
+				})
+				{
+					g.writeln('.${var_name} = *${closure_ctx}->${var_name},')
 				} else {
 					g.writeln('.${var_name} = ${closure_ctx}->${var_name},')
 				}
