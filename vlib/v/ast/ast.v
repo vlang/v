@@ -2217,6 +2217,8 @@ pub enum ComptimeCallKind {
 	method
 	pkgconfig
 	embed_file
+	zero
+	new
 	compile_warn
 	compile_error
 }
@@ -2284,6 +2286,9 @@ pub fn (cc ComptimeCall) expr_str() string {
 		}
 	} else if cc.kind == .pkgconfig {
 		str = "\$${cc.method_name}('${cc.args_var}')"
+	} else if cc.kind in [.zero, .new] {
+		arg := cc.args[0] or { return str }
+		str = '\$${cc.method_name}(${arg})'
 	}
 	return str
 }

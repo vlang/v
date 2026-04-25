@@ -542,27 +542,74 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
-fn (mut c Checker) struct_init_selector_type_expr(expr ast.SelectorExpr) ast.Type {
-	if expr.expr is ast.TypeOf {
-		return c.type_resolver.typeof_field_type(c.type_resolver.typeof_type(expr.expr.expr,
-			expr.name_type), expr.field_name)
+fn (mut c Checker) struct_init_selector_type_expr(mut expr ast.SelectorExpr) ast.Type {
+	if !is_array_init_type_expr_field(expr.field_name) {
+		return ast.void_type
 	}
-	return ast.void_type
+	base_type := c.struct_init_type_expr(mut expr.expr)
+	if base_type == ast.void_type {
+		return ast.void_type
+	}
+	return c.type_resolver.typeof_field_type(base_type, expr.field_name)
 }
 
-fn (mut c Checker) struct_init_type_expr(expr ast.Expr) ast.Type {
-	return match expr {
+fn (mut c Checker) struct_init_type_expr(mut expr ast.Expr) ast.Type {
+	return match mut expr {
 		ast.TypeNode {
 			expr.typ
 		}
 		ast.ParExpr {
-			c.struct_init_type_expr(expr.expr)
+			c.struct_init_type_expr(mut expr.expr)
+		}
+		ast.TypeOf {
+			if expr.is_type {
+				c.recheck_concrete_type(expr.typ)
+			} else {
+				if expr.typ == 0 || expr.typ == ast.void_type || expr.typ == ast.no_type {
+					expr.typ = c.expr(mut expr.expr)
+				}
+				resolved_type := c.recheck_concrete_type(expr.typ)
+				if resolved_type != 0 && resolved_type != ast.void_type
+					&& resolved_type != ast.no_type {
+					resolved_type
+				} else {
+					c.recheck_concrete_type(c.type_resolver.typeof_type(expr.expr, expr.typ))
+				}
+			}
+		}
+		ast.Ident {
+			if c.is_generic_type_expr_ident(expr.name) {
+				c.table.find_type(expr.name).set_flag(.generic)
+			} else {
+				c.get_expr_type(expr)
+			}
 		}
 		ast.SelectorExpr {
-			c.struct_init_selector_type_expr(expr)
+			c.struct_init_selector_type_expr(mut expr)
 		}
 		else {
 			ast.void_type
+		}
+	}
+}
+
+fn (c &Checker) struct_init_uses_comptime_type_accessor(expr ast.Expr) bool {
+	return match expr {
+		ast.ParExpr {
+			c.struct_init_uses_comptime_type_accessor(expr.expr)
+		}
+		ast.SelectorExpr {
+			mut is_base_type_expr := expr.expr is ast.TypeOf
+				|| c.struct_init_uses_comptime_type_accessor(expr.expr)
+			if expr.expr is ast.Ident {
+				is_base_type_expr = is_base_type_expr
+					|| c.is_generic_type_expr_ident(expr.expr.name)
+			}
+				expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type']
+				&& is_base_type_expr
+		}
+		else {
+			false
 		}
 	}
 }
@@ -579,14 +626,20 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& c.expected_type != ast.void_type && c.expected_type.has_flag(.generic)
 		&& short_syntax_expected_type_sym.kind == .any
 		&& !short_syntax_expected_type_sym.is_builtin()
-	if node.typ == ast.void_type && !node.is_short_syntax && node.typ_expr !is ast.EmptyExpr {
-		c.expr(mut node.typ_expr)
-		node.typ = c.struct_init_type_expr(node.typ_expr)
-		if node.typ == ast.void_type {
+	is_comptime_type_struct_init := !node.is_short_syntax && node.typ_expr !is ast.EmptyExpr
+		&& c.struct_init_uses_comptime_type_accessor(node.typ_expr)
+	should_resolve_typ_expr := node.typ == ast.void_type
+		|| (is_comptime_type_struct_init && c.has_active_generic_recheck_context())
+	if should_resolve_typ_expr && !node.is_short_syntax && node.typ_expr !is ast.EmptyExpr {
+		if !is_comptime_type_struct_init {
+			c.expr(mut node.typ_expr)
+		}
+		node.typ = c.struct_init_type_expr(mut node.typ_expr)
+		if node.typ == ast.void_type || node.typ == ast.no_type {
 			c.error('cannot use `${node.typ_expr}` as a struct init type', node.typ_expr.pos())
 			return ast.void_type
 		}
-		node.unresolved = node.typ.has_flag(.generic)
+		node.unresolved = !is_comptime_type_struct_init && node.typ.has_flag(.generic)
 	}
 	source_typ := if node.is_short_syntax && c.expected_type != ast.void_type
 		&& !short_syntax_infers_anon_from_generic_param {
@@ -769,6 +822,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	type_sym := c.table.sym(concrete_node_typ)
 	is_generic_zero_struct_init := original_node_typ.has_flag(.generic) && node.init_fields.len == 0
 		&& !node.has_update_expr
+	is_comptime_type_zero_struct_init := node.init_fields.len == 0 && !node.has_update_expr
+		&& is_comptime_type_struct_init
 	if is_generic_zero_struct_init {
 		// Don't early-return for single-letter types (like F{}) in non-generic functions —
 		// these are unknown structs that should be caught by ensure_type_exists below.
@@ -778,7 +833,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			return concrete_node_typ
 		}
 	}
-	if !is_field_zero_struct_init {
+	if !is_field_zero_struct_init && !is_comptime_type_zero_struct_init {
 		type_exists := c.ensure_type_exists(node.typ, node.pos)
 		if !type_exists && node.typ.idx() > 0 && c.table.sym(node.typ).kind == .placeholder {
 			return ast.void_type
@@ -830,7 +885,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
 		&& type_sym.language != .c
 		&& (type_sym.mod != c.mod && !(is_generic_init && type_sym.mod != 'builtin'))
-		&& !is_field_zero_struct_init {
+		&& !is_field_zero_struct_init && !is_comptime_type_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
 	if type_sym.info is ast.Struct && type_sym.mod != c.mod && !is_field_zero_struct_init {

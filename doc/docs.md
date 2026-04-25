@@ -6644,6 +6644,28 @@ println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).forma
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile time `if` and `for` constructs:
 
+#### <h4 id="comptime-type-metadata">Type metadata</h4>
+
+Comptime type expressions expose metadata through fields like `.idx`, `.typ`,
+`.unaliased_typ`, `.indirections`, `.key_type`, `.value_type`, `.element_type`,
+`.pointee_type`, `.payload_type`, and `.variant_types`.
+
+```v
+fn zero_payload[T](x ?T) T {
+	return $zero(typeof(x).payload_type)
+}
+
+fn main() {
+	value := ?int(123)
+	assert zero_payload(value) == 0
+	assert typeof[map[string]int]().key_type == typeof[string]().idx
+	assert typeof[?&int]().payload_type == typeof[&int]().idx
+}
+```
+
+`$zero(Type)` returns the zero value for a comptime type expression.
+`$new(Type)` returns a pointer to a new zero value.
+
 #### <h4 id="comptime-fields">.fields</h4>
 
 You can iterate over struct fields using `.fields`, it also works with generic types

@@ -12,7 +12,7 @@ fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 
 fn is_array_init_type_expr_field(name string) bool {
 	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
-		'indirections']
+		'pointee_type', 'payload_type', 'variant_types', 'indirections']
 }
 
 fn (mut p Parser) parse_fixed_array_literal_elem_type() ast.Type {
@@ -305,7 +305,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				}
 			}
 		}
-		if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
+		if exprs.len == 0 && p.tok.kind != .lcbr && has_type && !p.inside_array_init_type_expr {
 			if !p.pref.is_fmt {
 				modifier := if is_option { '?' } else { '' }
 				p.warn_with_pos('use `x := ${modifier}[]Type{}` instead of `x := ${modifier}[]Type`',

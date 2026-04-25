@@ -6414,12 +6414,52 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						g.write(int(g.unwrap_generic(name_type)).str())
 					}
 					return
-				} else if node.field_name in ['key_type', 'value_type', 'element_type'] {
+				} else if node.field_name in ['key_type', 'value_type', 'element_type',
+					'pointee_type', 'payload_type'] {
 					// `T.<field_name>`, `typeof(expr).<field_name>`
 					mut name_type := node.name_type
-					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr, g.resolve_typeof_expr_type(node.expr,
-						name_type)), node.field_name)
+					if node.expr is ast.TypeOf {
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.resolved_typeof_name_type(node.expr, name_type)
+							}
+						} else {
+							name_type = g.resolved_typeof_name_type(node.expr, name_type)
+						}
+					} else if name_type == 0 {
+						name_type = g.type_resolver.typeof_type(node.expr, g.resolve_typeof_expr_type(node.expr,
+							name_type))
+					}
+					name_type = g.type_resolver.typeof_field_type(name_type, node.field_name)
 					g.write(int(name_type).str())
+					return
+				} else if node.field_name == 'variant_types' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+							resolved := g.resolve_typeof_in_generic(node.expr)
+							if resolved != 0 {
+								name_type = resolved
+							} else {
+								name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+									name_type))
+							}
+						} else {
+							name_type = g.type_resolver.typeof_type(node.expr.expr, g.resolve_typeof_expr_type(node.expr.expr,
+								name_type))
+						}
+					} else {
+						name_type = g.unwrap_generic(name_type)
+					}
+					sym := g.table.final_sym(name_type)
+					if sym.info is ast.SumType {
+						g.write(g.gen_type_array(sym.info.variants))
+					} else {
+						g.write(g.gen_type_array([]ast.Type{}))
+					}
 					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
