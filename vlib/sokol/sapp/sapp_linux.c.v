@@ -627,6 +627,7 @@ mut:
 	event_mask   u64
 }
 
+@[typedef]
 pub struct C.XWindowAttributes {
 mut:
 	width     int
