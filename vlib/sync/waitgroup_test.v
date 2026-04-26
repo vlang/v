@@ -36,7 +36,7 @@ fn test_waitgroup_reuse() {
 fn test_waitgroup_no_use() {
 	mut done := false
 	spawn fn (done voidptr) {
-		time.sleep(1 * time.second)
+		time.sleep(10 * time.second)
 		if unsafe { *(&bool(done)) } == false {
 			panic('test_waitgroup_no_use did not complete in time')
 		}

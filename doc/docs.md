@@ -517,8 +517,8 @@ In development mode the compiler will warn you that you haven't used the variabl
 (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
-The same warning or error also applies to private top-level functions and constants
-in the `main` module when they are never referenced.
+The compiler also emits an informational notice for private top-level functions
+and constants in the `main` module when they are never referenced.
 ```v
 fn main() {
 	a := 10
