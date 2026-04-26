@@ -60,8 +60,8 @@ mut:
 	texture    gfx.Image
 	sampler    gfx.Sampler
 	init_flag  bool
-	mouse_x    int = -1
-	mouse_y    int = -1
+	mouse_x    f32 = -1.0
+	mouse_y    f32 = -1.0
 	scroll_y   int
 
 	state Viewer_state = .scanning
@@ -624,14 +624,14 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 
 	if ev.typ == .mouse_move {
-		app.mouse_x = int(ev.mouse_x)
-		app.mouse_y = int(ev.mouse_y)
+		app.mouse_x = ev.mouse_x
+		app.mouse_y = ev.mouse_y
 	}
 	if ev.typ == .touches_began || ev.typ == .touches_moved {
 		if ev.num_touches > 0 {
 			touch_point := ev.touches[0]
-			app.mouse_x = int(touch_point.pos_x)
-			app.mouse_y = int(touch_point.pos_y)
+			app.mouse_x = touch_point.pos_x
+			app.mouse_y = touch_point.pos_y
 		}
 	}
 

@@ -56,9 +56,9 @@ enum SqliteDbConnection {
 
 fn main() {
 	mut app := &App{}
-	app.serve_static('/favicon.ico', 'favicon.ico')
-	app.serve_static('/draw.js', 'draw.js')
-	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
+	app.serve_static('/favicon.ico', 'favicon.ico') or { panic(err) }
+	app.serve_static('/draw.js', 'draw.js') or { panic(err) }
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/') or { panic(err) }
 
 	veb.run[App, Context](mut app, http_port)
 }

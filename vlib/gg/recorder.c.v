@@ -1,7 +1,12 @@
 module gg
 
+import encoding.base64
 import sokol.sapp
 import os
+
+fn screenshot_stdout_payload(frame u64, png []u8) string {
+	return '${gg_record_stdout_prefix} frame=${frame} format=png encoding=base64 data=${base64.encode(png)}'
+}
 
 fn emit_recorded_frame_to_stdout(frame u64) ! {
 	screenshot_file_path := os.join_path(os.vtmp_dir(),

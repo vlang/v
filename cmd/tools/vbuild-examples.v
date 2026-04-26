@@ -9,8 +9,8 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 const efolders = [
 	'examples/viewer',
 	'examples/fasthttp',
-	'examples/veb_orm_jwt/src',
-	'examples/veb_fullstack/src',
+	'examples/veb_orm_jwt',
+	'examples/veb_fullstack',
 ]
 
 pub fn normalised_vroot_path(path string) string {
@@ -24,7 +24,9 @@ fn main() {
 	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn (mut session testing.TestSession) {
 		for x in efolders {
 			pathsegments := x.split_any('/')
-			session.add(os.real_path(os.join_path(vroot, ...pathsegments)))
+			fpath := os.real_path(os.join_path(vroot, ...pathsegments))
+			session.skip_files = session.skip_files.filter(it != fpath)
+			session.add(fpath)
 		}
 	})
 	if res {
