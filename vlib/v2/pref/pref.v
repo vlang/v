@@ -179,7 +179,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	if backend_str_short.len == 0 {
 		backend_str_short = ''
 	}
-	backend_str := if backend_str_long.len > 0 {
+	eval_backend_requested := '-eval' in args || '--eval' in args
+	backend_str := if eval_backend_requested {
+		'eval'
+	} else if backend_str_long.len > 0 {
 		backend_str_long
 	} else if backend_str_short.len > 0 {
 		backend_str_short
@@ -301,7 +304,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod', '-prealloc']
+		'-single-backend', '-prod', '-prealloc', '-eval', '--eval']
 	$if ownership ? {
 		known_boolean_flags << '-ownership'
 	}
@@ -315,6 +318,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -o <file>              Output file name')
 			eprintln('  -backend <name>        Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc)')
 			eprintln('  -b <name>              Short for -backend')
+			eprintln('  -eval                  Short for -backend eval')
 			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
 			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
 			eprintln('  -stats, --stats        Print compilation statistics')
@@ -375,7 +379,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 pub fn new_preferences_using_options(options []string) Preferences {
 	// Default backend based on OS: macOS defaults to arm64, others to x64
 	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
-	if '--eval' in options || 'eval' in options {
+	if '-eval' in options || '--eval' in options || 'eval' in options {
 		backend = .eval
 	} else if '--cleanc' in options || 'cleanc' in options {
 		backend = .cleanc

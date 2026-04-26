@@ -166,20 +166,6 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line:   '${vexe} interpret examples/hello_world.v'
-			okmsg:  'V can interpret hello world.'
-			runcmd: .execute
-			expect: 'Hello, World!\n'
-		}
-		res << Command{
-			line:        '${vexe} interpret examples/hanoi.v'
-			okmsg:       'V can interpret hanoi.v'
-			runcmd:      .execute
-			starts_with: 'Disc 1 from A to C...\n'
-			ends_with:   'Disc 1 from A to C...\n'
-			contains:    'Disc 7 from A to C...\n'
-		}
-		res << Command{
 			line:  '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
 		}

@@ -157,7 +157,8 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'interpret' {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		'get' {
 			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
@@ -184,7 +185,7 @@ fn main() {
 
 	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'vlib-docs', 'interpret', 'translate']
+		'upgrade', 'vlib-docs', 'translate']
 	mut all_commands := []string{}
 	all_commands << external_tools
 	all_commands << other_commands
@@ -291,7 +292,8 @@ fn rebuild(prefs &pref.Preferences) {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		.wasm {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])

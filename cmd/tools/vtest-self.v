@@ -85,7 +85,6 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/eval/interpret_test.v',
 	'vlib/v/fmt/fmt_keep_test.v',
 	'vlib/v/fmt/fmt_test.v',
 	'vlib/v/gen/c/coutput_test.v',

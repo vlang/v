@@ -376,6 +376,23 @@ fn test_v_cmds_and_flags() {
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
+	eval_removed_message := 'use v -v2 -eval file.v'
+	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
+	assert eval_flag_res.exit_code == 1
+	assert eval_flag_res.output.trim_space() == eval_removed_message
+
+	eval_backend_res := os.execute('${vexe} -backend eval ${vroot}/examples/hello_world.v')
+	assert eval_backend_res.exit_code == 1
+	assert eval_backend_res.output.trim_space() == eval_removed_message
+
+	interpret_flag_res := os.execute('${vexe} -interpret ${vroot}/examples/hello_world.v')
+	assert interpret_flag_res.exit_code == 1
+	assert interpret_flag_res.output.trim_space() == eval_removed_message
+
+	interpret_command_res := os.execute('${vexe} interpret ${vroot}/examples/hello_world.v')
+	assert interpret_command_res.exit_code == 1
+	assert interpret_command_res.output.trim_space() == eval_removed_message
+
 	no_run_files_res := os.execute('${vexe} run')
 	assert no_run_files_res.output.trim_space() == 'v run: no v files listed'
 
