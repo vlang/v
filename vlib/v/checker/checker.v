@@ -4603,8 +4603,20 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	c.scope_returns = false
 }
 
+@[inline]
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
-	has_generic_parts := typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ)
+	if typ == 0 {
+		return typ
+	}
+	has_generic_flag := typ.has_flag(.generic)
+	if !has_generic_flag {
+		idx := typ.idx()
+		if idx <= ast.nil_type_idx
+			|| (idx < c.generic_parts_cache.len && c.generic_parts_cache[idx] == 1) {
+			return typ
+		}
+	}
+	has_generic_parts := has_generic_flag || c.type_has_unresolved_generic_parts(typ)
 	if !has_generic_parts {
 		return typ
 	}

@@ -2127,6 +2127,23 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 // can_implicit_array_cast reports whether `got` can be converted to `expected`
 // by boxing each array element into the expected interface or sum type.
 pub fn (t &Table) can_implicit_array_cast(got Type, expected Type) bool {
+	if got == 0 || expected == 0 || got == expected {
+		return false
+	}
+	got_idx := got.idx()
+	expected_idx := expected.idx()
+	if got_idx == expected_idx {
+		return false
+	}
+	if got_idx > 0 && got_idx < t.type_symbols.len && expected_idx > 0
+		&& expected_idx < t.type_symbols.len {
+		got_kind := t.type_symbols[got_idx].kind
+		expected_kind := t.type_symbols[expected_idx].kind
+		if (got_kind != .array && got_kind != .alias)
+			|| (expected_kind != .array && expected_kind != .alias) {
+			return false
+		}
+	}
 	got_unaliased := t.unaliased_type(got)
 	expected_unaliased := t.unaliased_type(expected)
 	got_sym := t.final_sym(got_unaliased)

@@ -132,22 +132,24 @@ fn (mut w Walker) mark_fn_as_used(fkey string) {
 }
 
 fn (w &Walker) fn_generic_names(node ast.FnDecl) []string {
-	mut generic_names := []string{}
-	if node.is_method {
-		receiver_sym := w.table.sym(node.receiver.typ)
-		match receiver_sym.info {
-			ast.Struct {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			ast.Interface {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			ast.SumType {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			else {}
-		}
+	if !node.is_method {
+		return node.generic_names
 	}
+	mut generic_names := []string{}
+	receiver_sym := w.table.sym(node.receiver.typ)
+	match receiver_sym.info {
+		ast.Struct {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		ast.Interface {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		ast.SumType {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		else {}
+	}
+
 	// Only add method-level generic names that aren't already from the receiver
 	// (V puts inherited receiver generics into node.generic_names too).
 	for gn in node.generic_names {

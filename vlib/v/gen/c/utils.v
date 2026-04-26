@@ -59,6 +59,17 @@ fn (g &Gen) expr_resolution_cache_key(pos int, default_typ ast.Type, salt u64) u
 	return key ^ salt
 }
 
+@[inline]
+fn (g &Gen) type_is_known_concrete(typ ast.Type) bool {
+	if typ == 0 || typ.has_flag(.generic) {
+		return false
+	}
+	idx := typ.idx()
+	return idx <= ast.nil_type_idx
+		|| (idx < g.generic_parts_cache.len && g.generic_parts_cache[idx] == 1)
+}
+
+@[inline]
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return typ
@@ -70,6 +81,10 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			return typ
 		}
 	}
+	return g.unwrap_generic_slow(typ)
+}
+
+fn (mut g Gen) unwrap_generic_slow(typ ast.Type) ast.Type {
 	cache_key := g.type_resolution_cache_key(typ, cgen_unwrap_generic_cache_salt)
 	if cached := g.unwrap_generic_cache[cache_key] {
 		return cached
@@ -986,6 +1001,15 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 		}
 		ast.Ident {
 			if expr.obj is ast.Var {
+				if expr.obj.typ != 0 && expr.obj.generic_typ == 0 && !expr.obj.is_inherited
+					&& !expr.obj.is_unwrapped && !expr.obj.is_assignment_smartcast
+					&& !expr.obj.is_or && expr.obj.orig_type == ast.no_type
+					&& expr.obj.smartcasts.len == 0 && expr.obj.ct_type_var == .no_comptime
+					&& !g.has_current_generic_context() && !g.has_active_call_generic_context() {
+					if g.type_is_known_concrete(expr.obj.typ) {
+						return expr.obj.typ
+					}
+				}
 				if g.cur_fn != unsafe { nil } && g.cur_fn.is_method
 					&& expr.name == g.cur_fn.receiver.name {
 					// In generic contexts, prefer resolving from the receiver declaration
