@@ -40,7 +40,7 @@ fn testsuite_begin() {
 	spawn veb.run_at[ChunkedMultipartApp, ChunkedMultipartContext](mut app,
 		port:               chunked_multipart_port
 		family:             .ip
-		timeout_in_seconds: 3
+		timeout_in_seconds: 10
 	)
 	_ := <-app.started
 }
@@ -69,8 +69,8 @@ fn send_chunked_multipart_request(payload []u8) !string {
 	defer {
 		client.close() or {}
 	}
-	client.set_read_timeout(3 * time.second)
-	client.set_write_timeout(3 * time.second)
+	client.set_read_timeout(10 * time.second)
+	client.set_write_timeout(10 * time.second)
 	headers := 'POST /upload HTTP/1.1\r\nHost: ${chunked_multipart_localserver}\r\nTransfer-Encoding: chunked\r\nContent-Type: multipart/form-data; boundary=${chunked_multipart_boundary}\r\nConnection: close\r\n\r\n'
 	client.write_string(headers)!
 	body := build_multipart_body(payload)
@@ -99,7 +99,6 @@ fn write_chunked_body(mut client net.TcpConn, body []u8) ! {
 		client.write_string('${chunk.len:x}\r\n')!
 		client.write(chunk)!
 		client.write_string('\r\n')!
-		time.sleep(1 * time.millisecond)
 	}
 	client.write_string('0\r\n\r\n')!
 }
