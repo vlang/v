@@ -127,10 +127,10 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	styp := typ.styp
 	str_fn_name := g.get_str_fn(typ.typ)
-	if str_fn_name in g.str_fn_names {
-		return
-	}
 	lock g.str_fn_names {
+		if str_fn_name in g.str_fn_names {
+			return
+		}
 		g.str_fn_names << str_fn_name
 	}
 	if typ.typ.has_flag(.option) {
