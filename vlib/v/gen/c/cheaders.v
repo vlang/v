@@ -546,6 +546,11 @@ V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 V_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);
 V_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
 V_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
+V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);
+V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);
+V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);
+V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);
+V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
 #endif
 #if defined(_MSC_VER) && !defined(__clang__)
 #ifndef _TRUNCATE
@@ -553,8 +558,6 @@ V_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
 #endif
 V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
-V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);
-V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
 #endif
 #endif
 #ifndef _IOFBF

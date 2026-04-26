@@ -22,7 +22,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
-	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nV_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);\nV_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nV_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);\n#endif'), generated_c
+	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nV_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);\nV_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nV_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);\nV_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);\nV_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);\nV_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);\n#endif'), generated_c
 
 	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);'), generated_c
@@ -37,6 +37,9 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);'), generated_c
 	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
