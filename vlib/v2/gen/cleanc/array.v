@@ -226,17 +226,8 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			continue
 		}
 		if info := g.collected_fixed_array_types[name] {
-			if info.elem_type in primitive_types
-				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
-				continue // already emitted in emit_runtime_aliases
-			}
-			// Only emit if the element type is already defined (struct body emitted).
-			// For struct element types, check if the struct body has been emitted.
-			elem_body_key := 'body_${info.elem_type}'
-			elem_alias_key := 'alias_${info.elem_type}'
-			if info.elem_type.contains('__') && elem_body_key !in g.emitted_types
-				&& elem_alias_key !in g.emitted_types && !info.elem_type.starts_with('Array_fixed_') {
-				continue // element struct not yet defined, defer
+			if !g.fixed_array_elem_type_ready(info.elem_type) {
+				continue
 			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
 			body_key := 'body_${name}'
@@ -250,6 +241,28 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			}
 		}
 	}
+}
+
+fn (g &Gen) fixed_array_elem_type_ready(elem_type string) bool {
+	if elem_type in primitive_types
+		|| elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
+		return true
+	}
+	if elem_type in g.primitive_type_aliases {
+		return true
+	}
+	if elem_type.starts_with('Array_fixed_') {
+		return 'body_${elem_type}' in g.emitted_types || 'alias_${elem_type}' in g.emitted_types
+	}
+	if elem_type.ends_with('*') || g.is_c_type_name(elem_type) {
+		return true
+	}
+	if base_type := g.alias_base_types[elem_type] {
+		if base_type != elem_type {
+			return g.fixed_array_elem_type_ready(base_type)
+		}
+	}
+	return 'body_${elem_type}' in g.emitted_types || 'enum_${elem_type}' in g.emitted_types
 }
 
 fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string) {

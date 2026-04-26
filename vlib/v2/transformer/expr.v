@@ -1956,6 +1956,13 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 
 	// Check for string concatenation: string + string
 	if expr.op == .plus {
+		if literal := folded_string_literal_concat(expr) {
+			return ast.Expr(ast.StringLiteral{
+				kind:  .v
+				value: literal
+				pos:   expr.pos
+			})
+		}
 		lhs_is_str := t.is_string_expr(expr.lhs)
 		rhs_is_str := t.is_string_expr(expr.rhs)
 
@@ -2874,6 +2881,43 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	lhs_trans := t.transform_expr(expr.lhs)
 	rhs_trans := t.transform_expr(expr.rhs)
 	return t.make_infix_expr_at(expr.op, lhs_trans, rhs_trans, expr.pos)
+}
+
+fn folded_string_literal_concat(expr ast.Expr) ?string {
+	match expr {
+		ast.StringLiteral {
+			if expr.kind != .v {
+				return none
+			}
+			return strip_string_literal_quotes(expr.value)
+		}
+		ast.InfixExpr {
+			if expr.op != .plus {
+				return none
+			}
+			left := folded_string_literal_concat(expr.lhs) or { return none }
+			right := folded_string_literal_concat(expr.rhs) or { return none }
+			return left + right
+		}
+		ast.ParenExpr {
+			return folded_string_literal_concat(expr.expr)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn strip_string_literal_quotes(raw string) string {
+	if raw.len < 2 {
+		return raw
+	}
+	first := raw[0]
+	last := raw[raw.len - 1]
+	if first == last && first in [`'`, `"`] {
+		return raw[1..raw.len - 1]
+	}
+	return raw
 }
 
 // resolve_field_type looks up the type of a field on a variable

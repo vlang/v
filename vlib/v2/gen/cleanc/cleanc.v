@@ -731,6 +731,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Emit pointer element typedefs (e.g. 'typedef Color* Colorptr;') now that
 	// enums and type aliases have been defined.
 	g.emit_pointer_typedefs()
+	// Fixed arrays over aliases can be emitted once the aliases from pass 2 exist.
+	g.emit_deferred_fixed_array_aliases()
 
 	// Pass 3: Full struct definitions (use named struct/union to match forward decls)
 	// Collect all struct decls, then emit in dependency order

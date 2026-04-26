@@ -68,6 +68,26 @@ fn string_type() types.Type {
 	return types.string_
 }
 
+fn test_transform_folds_string_literal_concat() {
+	mut t := create_test_transformer()
+	result := t.transform_expr(ast.InfixExpr{
+		op:  .plus
+		lhs: ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'left-'"
+		})
+		rhs: ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'right'"
+		})
+	})
+
+	assert result is ast.StringLiteral, 'expected StringLiteral, got ${result.type_name()}'
+	lit := result as ast.StringLiteral
+	assert lit.kind == .v
+	assert lit.value == 'left-right'
+}
+
 // Create a rune-like type that returns 'rune' from name()
 fn rune_type() types.Type {
 	return types.Alias{
