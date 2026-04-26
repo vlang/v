@@ -373,6 +373,34 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	assert normalized.contains('veb__Result main__App_index(main__App app, main__Context* c) { main__App_log(app, *c); GC_reachable_here(&c); return main__App_nested(app, c); }')
 }
 
+fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_veb_context_receiver_tmpl_not_found')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(os.join_path(test_dir, 'web'))!
+	test_source := os.join_path(test_dir, 'main.v')
+	os.write_file(os.join_path(test_dir, 'web', 'notfound.html'), '<h1>@ctx.req.url</h1>\n')!
+	os.write_file(test_source,
+		['module main', '', 'import veb', '', 'pub struct Context {', '\tveb.Context', '}', '', 'pub struct App {}', '', 'pub fn (mut c Context) not_found() veb.Result {', '\tc.res.set_status(.not_found)', "\treturn c.html(\$tmpl('web/notfound.html'))", '}', '', 'fn main() {', '\tmut app := App{}', '\tveb.run[App, Context](mut app, 8080)', '}'].join('\n') +
+		'\n')!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_exe := os.join_path(test_dir, 'app')
+	compile_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o ${os.quoted_path(test_exe)} ${os.quoted_path(test_source)}'
+	ensure_compilation_succeeded(os.execute(compile_cmd), compile_cmd)
+	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(c_cmd)
+	ensure_compilation_succeeded(compilation, c_cmd)
+	not_found_start := 'veb__Result main__Context_not_found(main__Context* c) {'
+	assert compilation.output.contains(not_found_start)
+	not_found_body :=
+		compilation.output.all_after(not_found_start).all_before('VV_LOC void main__main')
+	assert !not_found_body.contains('GC_reachable_here(&ctx);')
+	assert not_found_body.contains('GC_reachable_here(&c);')
+	assert not_found_body.contains('return veb__Context_html(&c->Context, _tmpl_res_')
+}
+
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
 	for cline in generated_c_lines {
 		if line == cline {

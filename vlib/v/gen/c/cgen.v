@@ -7554,7 +7554,7 @@ fn (g &Gen) has_veb_context(typ ast.Type) bool {
 }
 
 // implicit_veb_ctx_alias_target maps the checker-injected `ctx` alias back
-// to the user-declared veb context parameter, when their names differ.
+// to the user-declared veb context parameter or receiver, when their names differ.
 @[inline]
 fn (g &Gen) implicit_veb_ctx_alias_target(obj ast.Var) ?ast.Param {
 	if g.fn_decl == unsafe { nil } || obj.name != 'ctx' || obj.is_arg
@@ -7563,10 +7563,7 @@ fn (g &Gen) implicit_veb_ctx_alias_target(obj ast.Var) ?ast.Param {
 	}
 	mut target := ast.Param{}
 	mut found := 0
-	for i, param in g.fn_decl.params {
-		if g.fn_decl.is_method && i == 0 {
-			continue
-		}
+	for param in g.fn_decl.params {
 		if !g.has_veb_context(param.typ) {
 			continue
 		}
