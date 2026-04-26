@@ -261,34 +261,6 @@ fn send_request_timeout(fd int) {
 	C.send(fd, status_408_response.data, status_408_response.len, send_flags)
 }
 
-// chunked_body_complete checks whether the combined read_buf + read_extra
-// data ends with the chunked transfer encoding terminator \r\n0\r\n\r\n.
-@[direct_array_access]
-fn chunked_body_complete(c &Conn) bool {
-	terminator := [u8(`\r`), `\n`, `0`, `\r`, `\n`, `\r`, `\n`]
-	total := c.read_len + c.read_extra.len
-	if total < 7 {
-		return false
-	}
-	// Get the last 7 bytes from the combined data
-	mut tail := [7]u8{}
-	start := total - 7
-	for i := 0; i < 7; i++ {
-		pos := start + i
-		if pos < c.read_len {
-			tail[i] = c.read_buf[pos]
-		} else {
-			tail[i] = c.read_extra[pos - c.read_len]
-		}
-	}
-	for i := 0; i < 7; i++ {
-		if tail[i] != terminator[i] {
-			return false
-		}
-	}
-	return true
-}
-
 fn handle_write(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	if send_pending(c_ptr) {
 		return
@@ -463,8 +435,9 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 
 	// Enforce the configured header limit without capping large request bodies.
 	mut header_end := -1
+	mut full_data := []u8{}
 	if c.read_extra.len > 0 {
-		full_data := c.get_full_request_data()
+		full_data = c.get_full_request_data()
 		header_end = find_header_end_in_buf(full_data.data, full_data.len)
 	} else {
 		header_end = find_header_end_in_buf(&c.read_buf[0], c.read_len)
@@ -483,38 +456,14 @@ fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr
 
 	// Check if the full body has been received.
 	if c.read_extra.len > 0 {
-		// Large request spilling into dynamic buffer.
-		// Headers are in read_buf; check for chunked encoding.
-		if has_chunked_transfer_encoding_in_buf(&c.read_buf[0], if c.read_len < buf_size {
-			c.read_len
-		} else {
-			buf_size
-		})
-		{
-			// For chunked, check if the tail of the combined data ends with
-			// the terminator \r\n0\r\n\r\n (7 bytes). The terminator could
-			// span the boundary between read_buf and read_extra.
-			if !chunked_body_complete(c) {
-				elapsed_ns := time.sys_mono_now() - c.read_start
-				timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
-				if elapsed_ns >= timeout_ns {
-					send_request_timeout(c.fd)
-					close_conn(server, kq, c_ptr, mut clients)
-				}
-				return
+		if !has_complete_body(full_data.data, full_data.len) {
+			elapsed_ns := time.sys_mono_now() - c.read_start
+			timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
+			if elapsed_ns >= timeout_ns {
+				send_request_timeout(c.fd)
+				close_conn(server, kq, c_ptr, mut clients)
 			}
-		} else {
-			// Non-chunked large requests spill into the dynamic overflow buffer too.
-			full_data := c.get_full_request_data()
-			if !has_complete_body(full_data.data, full_data.len) {
-				elapsed_ns := time.sys_mono_now() - c.read_start
-				timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
-				if elapsed_ns >= timeout_ns {
-					send_request_timeout(c.fd)
-					close_conn(server, kq, c_ptr, mut clients)
-				}
-				return
-			}
+			return
 		}
 	} else if !has_complete_body(&c.read_buf[0], c.read_len) {
 		// Body not complete yet - check for timeout
