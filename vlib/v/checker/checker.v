@@ -4601,46 +4601,46 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 }
 
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
+	has_generic_parts := typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ)
+	if !has_generic_parts {
+		return typ
+	}
 	concrete_typ := c.recheck_concrete_type(typ)
 	if concrete_typ != typ {
 		return concrete_typ
 	}
-	if typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
-		if c.inside_generic_struct_init {
-			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
-			if t_typ := c.table.convert_generic_type(typ, generic_names,
-				c.cur_struct_concrete_types)
-			{
-				return t_typ
-			}
-		}
-		if c.inside_anon_fn && c.anon_fn_generic_names.len > 0
-			&& c.anon_fn_generic_names.len == c.anon_fn_concrete_types.len {
-			if t_typ := c.table.convert_generic_type(typ, c.anon_fn_generic_names,
-				c.anon_fn_concrete_types)
-			{
-				return t_typ
-			}
-		}
-		if c.table.cur_fn != unsafe { nil } {
-			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
-			{
-				return t_typ
-			}
-			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil }
-				&& c.table.cur_lambda.func != unsafe { nil } {
-				if t_typ := c.table.convert_generic_type(typ,
-					c.table.cur_lambda.func.decl.generic_names,
-					c.table.cur_lambda.call_ctx.concrete_types)
-				{
-					return t_typ
-				}
-			}
-		}
-		if t_typ := c.type_resolver.resolve_bound_generic_type(typ) {
+	if c.inside_generic_struct_init {
+		generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+		if t_typ := c.table.convert_generic_type(typ, generic_names, c.cur_struct_concrete_types) {
 			return t_typ
 		}
+	}
+	if c.inside_anon_fn && c.anon_fn_generic_names.len > 0
+		&& c.anon_fn_generic_names.len == c.anon_fn_concrete_types.len {
+		if t_typ := c.table.convert_generic_type(typ, c.anon_fn_generic_names,
+			c.anon_fn_concrete_types)
+		{
+			return t_typ
+		}
+	}
+	if c.table.cur_fn != unsafe { nil } {
+		if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
+			c.table.cur_concrete_types)
+		{
+			return t_typ
+		}
+		if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil }
+			&& c.table.cur_lambda.func != unsafe { nil } {
+			if t_typ := c.table.convert_generic_type(typ,
+				c.table.cur_lambda.func.decl.generic_names,
+				c.table.cur_lambda.call_ctx.concrete_types)
+			{
+				return t_typ
+			}
+		}
+	}
+	if t_typ := c.type_resolver.resolve_bound_generic_type(typ) {
+		return t_typ
 	}
 	return typ
 }

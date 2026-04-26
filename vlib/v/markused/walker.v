@@ -7,6 +7,15 @@ module markused
 import v.ast
 import v.pref
 
+struct MethodFkeyCacheEntry {
+	fkey     string
+	receiver ast.Type
+}
+
+struct SpecializedVarTypeCacheEntry {
+	typ ast.Type
+}
+
 pub struct Walker {
 pub mut:
 	table           &ast.Table        = unsafe { nil }
@@ -51,6 +60,8 @@ mut:
 	expanding_fn_generic_types  map[string]bool
 	keep_all_fn_generic_types   map[string]bool
 	json2_encode_field_helpers  map[string]bool
+	method_fkey_cache           map[string]MethodFkeyCacheEntry
+	specialized_var_type_cache  map[string]SpecializedVarTypeCacheEntry
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -107,6 +118,8 @@ pub fn Walker.new(params Walker) &Walker {
 		...params
 	}
 	new_walker.features = params.table.used_features
+	new_walker.method_fkey_cache = map[string]MethodFkeyCacheEntry{}
+	new_walker.specialized_var_type_cache = map[string]SpecializedVarTypeCacheEntry{}
 	return new_walker
 }
 
@@ -321,7 +334,7 @@ fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concret
 	}
 }
 
-fn (w &Walker) resolve_comptime_condition_type(expr ast.Expr) ast.Type {
+fn (mut w Walker) resolve_comptime_condition_type(expr ast.Expr) ast.Type {
 	match expr {
 		ast.Ident {
 			if expr.obj.typ != 0 {
@@ -2151,7 +2164,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 }
 
-fn (w &Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (string, ast.Type) {
+fn (mut w Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (string, ast.Type) {
+	cache_key := u32(typ).str() + ':' + method_name
+	if cached := w.method_fkey_cache[cache_key] {
+		return cached.fkey, cached.receiver
+	}
 	mut candidate_types := []ast.Type{}
 	for candidate in [typ] {
 		if candidate == 0 {
@@ -2181,19 +2198,42 @@ fn (w &Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (s
 		sym := w.table.sym(candidate)
 		parent_fkey, parent_receiver := w.generic_parent_method_fkey(sym, method_name)
 		if parent_fkey != '' {
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     parent_fkey
+				receiver: parent_receiver
+			}
 			return parent_fkey, parent_receiver
 		}
 		if method := sym.find_method_with_generic_parent(method_name) {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
 		if method := w.table.find_method(sym, method_name) {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
 		method, embed_types := w.table.find_method_from_embeds(w.table.final_sym(candidate),
 			method_name) or { ast.Fn{}, []ast.Type{} }
 		if embed_types.len != 0 {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
+	}
+	w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+		fkey:     ''
+		receiver: ast.no_type
 	}
 	return '', ast.no_type
 }
@@ -2230,7 +2270,7 @@ fn (w &Walker) method_decl_fkey(method ast.Fn) (string, ast.Type) {
 	return method.fkey(), method.receiver_type
 }
 
-fn (w &Walker) resolve_method_call_fkey(node ast.CallExpr) (string, ast.Type) {
+fn (mut w Walker) resolve_method_call_fkey(node ast.CallExpr) (string, ast.Type) {
 	mut candidate_types := []ast.Type{}
 	if node.left is ast.Ident && node.left.obj is ast.Var {
 		resolved_current_type := w.resolve_current_specialized_var_type(node.left.name)
@@ -2353,9 +2393,23 @@ fn (w &Walker) generic_concrete_name(base_name string, concrete_types []ast.Type
 	return name
 }
 
-fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
+fn (w &Walker) specialized_var_type_cache_key(var_name string) string {
+	mut key := w.cur_fn + '\x00' + var_name
+	if !w.cur_fn.contains('_T_') {
+		for typ in w.cur_fn_concrete_types {
+			key += '\x00' + u32(typ).str()
+		}
+	}
+	return key
+}
+
+fn (mut w Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 	if var_name == '' || w.cur_fn == '' {
 		return ast.no_type
+	}
+	cache_key := w.specialized_var_type_cache_key(var_name)
+	if cached := w.specialized_var_type_cache[cache_key] {
+		return cached.typ
 	}
 	mut base_name := w.cur_fn
 	if w.cur_fn.contains('_T_') {
@@ -2370,6 +2424,9 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 			}
 		}
 		if base_fn.name == '' {
+			w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+				typ: ast.no_type
+			}
 			return ast.no_type
 		}
 	}
@@ -2383,6 +2440,9 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 		concrete_types = w.cur_fn_concrete_types.clone()
 	}
 	if generic_names.len == 0 || generic_names.len != concrete_types.len {
+		w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+			typ: ast.no_type
+		}
 		return ast.no_type
 	}
 	for param in base_fn.params {
@@ -2391,9 +2451,20 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 		}
 		mut muttable := unsafe { &ast.Table(w.table) }
 		if resolved := muttable.convert_generic_type(param.typ, generic_names, concrete_types) {
-			return resolved.clear_flag(.generic)
+			resolved_typ := resolved.clear_flag(.generic)
+			w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+				typ: resolved_typ
+			}
+			return resolved_typ
 		}
-		return param.typ.clear_flag(.generic)
+		resolved_typ := param.typ.clear_flag(.generic)
+		w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+			typ: resolved_typ
+		}
+		return resolved_typ
+	}
+	w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+		typ: ast.no_type
 	}
 	return ast.no_type
 }
@@ -2637,15 +2708,16 @@ pub fn (mut w Walker) mark_by_type(typ ast.Type) {
 	if typ == 0 || typ.has_flag(.generic) {
 		return
 	}
-	cleared_typ := typ.clear_option_and_result()
-	if cleared_typ != typ {
-		w.mark_by_type(cleared_typ)
-	}
 	if typ in w.used_types {
 		return
 	}
-	w.mark_by_sym(w.table.sym(typ))
 	w.used_types[typ] = true
+	cleared_typ := typ.clear_option_and_result()
+	if cleared_typ != typ {
+		w.mark_by_type(cleared_typ)
+		return
+	}
+	w.mark_by_sym(w.table.sym(typ))
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
