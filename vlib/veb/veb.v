@@ -678,10 +678,9 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
-@[manualfree]
 fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	mut asked_path := url.path
+	mut asked_path := url.path.clone()
 	static_handler := app
 
 	// Content negotiation for markdown files (if enabled)
