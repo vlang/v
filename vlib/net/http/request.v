@@ -551,6 +551,18 @@ fn parse_received_response(response_text string, info ReceivedResponseInfo) !Res
 	return parse_response(response_text)
 }
 
+// response_has_no_body returns true when the HTTP method or status code
+// guarantees that no response body is sent (HEAD requests, 1xx informational,
+// 204 No Content, 304 Not Modified). For these, a `Content-Length` header
+// describes the body that *would* have been sent for a GET, so it must not
+// drive read termination or completion validation. (RFC 7230 §3.3.3)
+fn response_has_no_body(method Method, status_code int) bool {
+	if method == .head {
+		return true
+	}
+	return status_code in [101, 102, 103, 204, 304]
+}
+
 fn validate_received_response_completion(has_content_length bool, expected_size u64, body_so_far u64, is_chunked_transfer bool, chunked_complete bool) ! {
 	if has_content_length && body_so_far < expected_size {
 		return error('http.request: response body ended early: received ${body_so_far} of ${expected_size} bytes')
@@ -584,8 +596,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 				} else {
 					u64(0)
 				}
-				validate_received_response_completion(has_content_length, expected_size,
-					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				if !response_has_no_body(req.method, status_code) {
+					validate_received_response_completion(has_content_length, expected_size,
+						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				}
 				break
 			}
 			return err
@@ -602,8 +616,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			} else {
 				u64(0)
 			}
-			validate_received_response_completion(has_content_length, expected_size, body_so_far,
-				is_chunked_transfer, chunked_body_tracker.complete)!
+			if !response_has_no_body(req.method, status_code) {
+				validate_received_response_completion(has_content_length, expected_size,
+					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+			}
 			break
 		}
 		new_len = old_len + u64(len)
@@ -687,14 +703,14 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if is_chunked_transfer && chunked_complete {
 			break
 		}
+		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
+			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
+			// stop as soon as the headers terminator is in. Any `Content-Length`
+			// describes a body that will never be sent.
+			break
+		}
 		if has_content_length {
 			if expected_size > 0 && body_so_far >= expected_size {
-				break
-			}
-			// Some streaming responses may incorrectly send `Content-Length: 0` and then stream data.
-			// Only short-circuit zero-length bodies for statuses/methods that must not have a body.
-			if expected_size == 0
-				&& (req.method == .head || status_code in [101, 102, 103, 204, 304]) {
 				break
 			}
 		}

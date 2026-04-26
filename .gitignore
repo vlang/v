@@ -13,6 +13,8 @@
 !vlib/v/checker/tests/modules/c_type_cast_imported_from_module/**
 !vlib/v/checker/tests/modules/c_type_cast_imported_from_module.out
 !vlib/veb/tests/catchall_route_order_regression_test.v
+!vlib/net/http/head_with_content_length_test.v
+!vlib/net/mbedtls/mbedtls_head_with_content_length_test.v
 !vlib/v/checker/tests/modules/imported_struct_field_with_any_type_err/**
 !vlib/v/checker/tests/modules/imported_struct_field_with_any_type_err.out
 
