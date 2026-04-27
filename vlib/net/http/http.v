@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module http
 
 import net.urllib
@@ -197,10 +198,49 @@ pub fn prepare(config FetchConfig) !Request {
 	return req
 }
 
+// SchemeHandlerFn dispatches a `fetch()` call for a non-HTTP scheme. Used by
+// out-of-tree-friendly modules like `net.s3` to register themselves at init
+// time without forcing `net.http` to know about them statically.
+pub type SchemeHandlerFn = fn (config FetchConfig) !Response
+
+__global scheme_handlers = map[string]SchemeHandlerFn{}
+
+// register_scheme attaches `handler` as the dispatcher for URLs with the
+// given `scheme` (e.g. `'s3'`). Handlers are looked up by `fetch()` before
+// the native HTTP path runs. Modules typically call this from `init()`.
+pub fn register_scheme(scheme string, handler SchemeHandlerFn) {
+	scheme_handlers[scheme] = handler
+}
+
+// unregister_scheme removes a previously-registered scheme handler. Mostly
+// useful in tests that install a temporary handler.
+pub fn unregister_scheme(scheme string) {
+	scheme_handlers.delete(scheme)
+}
+
+fn scheme_of(url string) string {
+	colon := url.index(':') or { return '' }
+	if colon == 0 {
+		return ''
+	}
+	return url[..colon]
+}
+
 // TODO: @[noinline] attribute is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
 // fetch sends an HTTP request to the `url` with the given method and configuration.
+// When `config.url` uses a scheme registered via `register_scheme` (e.g.
+// `s3://`), the call is delegated to that handler instead of the native
+// HTTP path.
 @[noinline]
 pub fn fetch(config FetchConfig) !Response {
+	if scheme_handlers.len > 0 {
+		scheme := scheme_of(config.url)
+		if scheme != '' && scheme != 'http' && scheme != 'https' {
+			if h := scheme_handlers[scheme] {
+				return h(config)
+			}
+		}
+	}
 	req := prepare(config)!
 	return req.do()!
 }
