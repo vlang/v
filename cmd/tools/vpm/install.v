@@ -105,6 +105,10 @@ fn (m Module) install() InstallResult {
 		os.rmdir_all(m.tmp_path) or {}
 	}
 	if m.is_installed {
+		if has_local_git_changes(m.install_path) {
+			vpm_error('refusing to install `${m.name}`: `${m.install_path_fmted}` has uncommitted or unpushed git changes. Commit and push your changes, or remove the directory manually before retrying.')
+			exit(1)
+		}
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
 			if m.is_external && m.url.starts_with('http://') {
@@ -164,6 +168,24 @@ fn (m Module) confirm_install() bool {
 			}
 		}
 	}
+}
+
+// has_local_git_changes returns true if `path` is a git repository with
+// uncommitted changes (staged, unstaged, or untracked) or with local commits
+// that have not been pushed to any remote.
+fn has_local_git_changes(path string) bool {
+	if !os.exists(os.join_path(path, '.git')) {
+		return false
+	}
+	quoted := os.quoted_path(path)
+	status := os.execute_opt('git -C ${quoted} status --porcelain') or { return false }
+	if status.output.trim_space() != '' {
+		return true
+	}
+	unpushed := os.execute_opt('git -C ${quoted} rev-list --branches --not --remotes') or {
+		return false
+	}
+	return unpushed.output.trim_space() != ''
 }
 
 fn (m Module) remove() ! {
