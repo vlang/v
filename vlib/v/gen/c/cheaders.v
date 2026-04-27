@@ -373,7 +373,10 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#define V_CRT_LINKAGE
 	#define V_CRT_CALL
 #endif
-#if defined(_MSC_VER) && !defined(__clang__)
+#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)
+// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep
+// noexcept specifiers consistent — the manual extern "C" prototypes below
+// would otherwise conflict with system headers under -std=c++NN.
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -476,10 +479,7 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if !defined(_MSC_VER) || defined(__clang__)
-#ifdef __cplusplus
-extern "C" {
-#endif
+#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)
 // mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
 // when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
 // static-after-extern conflicts; clang+mingw needs them because it builds
@@ -567,9 +567,6 @@ V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
 #endif
 V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
-#endif
-#ifdef __cplusplus
-}
 #endif
 #endif
 #ifndef _IOFBF
