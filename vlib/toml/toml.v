@@ -518,10 +518,6 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
 pub fn ast_to_any(value ast.Value) Any {
-	gc_disable()
-	defer {
-		gc_enable()
-	}
 	return ast_to_any_(value)
 }
 
