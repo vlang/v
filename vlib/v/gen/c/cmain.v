@@ -167,6 +167,10 @@ fn (mut g Gen) gen_boehm_gc_init() {
 		g.writeln('\tGC_allow_register_threads();')
 	}
 	g.writeln('\tGC_INIT();')
+	// Register V's array data header displacement so Boehm always recognises
+	// the interior pointer kept in `array.data` (which is offset by
+	// `array_data_header_size()` bytes from the GC allocation start).
+	g.writeln('\tGC_register_displacement(sizeof(void*));')
 	if g.pref.os == .linux && !g.pref.no_builtin {
 		g.writeln('\tbuiltin__gc_restore_roots_after_debugger_init(__v_gc_debugger_workaround);')
 	}
@@ -186,6 +190,7 @@ fn (mut g Gen) gen_windows_shared_library_boehm_init() {
 		g.writeln('\tGC_set_free_space_divisor(2);')
 	}
 	g.writeln('\tGC_INIT();')
+	g.writeln('\tGC_register_displacement(sizeof(void*));')
 	g.writeln('#endif')
 }
 

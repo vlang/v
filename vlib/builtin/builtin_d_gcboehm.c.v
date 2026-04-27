@@ -255,6 +255,8 @@ pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
 
+fn C.GC_register_displacement(offset usize)
+
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
 	return C.GC_get_warn_proc()
