@@ -398,7 +398,7 @@ fn main() {
 		panic(err)
 	}
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -dump-c-flags - -cc tcc -arch arm64 ${os.quoted_path(src_file)}')
+		os.execute('${os.quoted_path(@VEXE)} -dump-c-flags - -os linux -cc tcc -arch arm64 ${os.quoted_path(src_file)}')
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('thirdparty/stdatomic/nix/atomic.S')
 	assert res.output.contains('libatomic.so')

@@ -336,7 +336,7 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 	c.should_close = resp.should_close
 	c.write_buf = resp.content.clone()
 	if resp.file_path != '' {
-		fd := C.open(resp.file_path.str, C.O_RDONLY)
+		fd := C.open(resp.file_path.str, C.O_RDONLY, 0)
 		if fd != -1 {
 			mut st := C.stat{}
 			if C.fstat(fd, &st) == 0 {

@@ -58,13 +58,24 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		eprintln('Failed to create server: ${err}')
 		return
 	}
-	maybe_init_server[A](mut global_app, new_server_with_lifecycle(server.handle()))
+	handle := server.handle()
+	maybe_init_server[A](mut global_app, new_server_with_lifecycle(handle))
 	println('[veb] Running multi-threaded app on ${server_protocol(params)}://${startup_host(params)}:${params.port}/')
 	flush_stdout()
 	$if A is BeforeAcceptApp {
+		mut server_thread := spawn_fasthttp_server_run(mut server)
+		// Wait until the listener is bound before invoking before_accept_loop,
+		// so callers using `<-app.started` actually see the server ready.
+		handle.wait_till_running() or {}
 		global_app.before_accept_loop()
+		server_thread.wait() or { panic(err) }
+	} $else {
+		server.run() or { panic(err) }
 	}
-	server.run() or { panic(err) }
+}
+
+fn spawn_fasthttp_server_run(mut server fasthttp.Server) thread ! {
+	return spawn server.run()
 }
 
 fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpResponse {

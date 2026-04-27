@@ -270,7 +270,7 @@ fn c_error_missing_library_name(c_output string) string {
 		] {
 			if line.contains(marker) {
 				lib_name := line.all_after(marker).trim_space()
-				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ')
+				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ').all_before(':')
 			}
 		}
 	}

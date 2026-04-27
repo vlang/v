@@ -533,6 +533,14 @@ fn should_skip(relpath string) bool {
 			}
 		}
 	}
+	if gcc_path == '' {
+		test_path := os.join_path(testdata_folder, relpath)
+		file_options := get_file_options(test_path)
+		if file_options.vflags.contains('-cc gcc') {
+			eprintln('> skipping ${relpath} since its vflags require gcc, which is not detected')
+			return true
+		}
+	}
 	return false
 }
 

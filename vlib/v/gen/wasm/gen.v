@@ -1743,7 +1743,7 @@ fn (mut g Gen) eval_enum_field_expr(expr ast.Expr) ?i64 {
 					return left % right
 				}
 				.left_shift {
-					return left << int(right)
+					return i64(u64(left) << int(right))
 				}
 				.right_shift {
 					return left >> int(right)

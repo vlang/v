@@ -385,11 +385,16 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#define _TRUNCATE ((size_t)-1)
 #endif
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
-typedef struct _iobuf FILE;
-FILE* __cdecl __acrt_iob_func(unsigned index);
-#define stdin  (__acrt_iob_func(0))
-#define stdout (__acrt_iob_func(1))
-#define stderr (__acrt_iob_func(2))
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifndef va_copy
+	#define va_copy(dest, src) ((dest) = (src))
+#endif
+#ifndef _TRUNCATE
+	#define _TRUNCATE ((size_t)-1)
+#endif
 #elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))
 #ifndef _FILE_DEFINED
 struct _iobuf {
@@ -476,7 +481,10 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if !defined(_MSC_VER) || defined(__clang__)
+#if !defined(_MSC_VER) && !defined(__MINGW32__) && !defined(__MINGW64__) && !(defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
+#ifdef __cplusplus
+extern "C" {
+#endif
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL fprintf(FILE *stream, const char *format, ...);
@@ -558,6 +566,9 @@ V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
 #endif
 V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
+#endif
+#ifdef __cplusplus
+}
 #endif
 #endif
 #ifndef _IOFBF
