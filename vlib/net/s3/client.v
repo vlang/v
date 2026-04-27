@@ -290,13 +290,15 @@ fn (c &Client) creds_for(bucket string) Credentials {
 // Path style: `/<bucket>/<encoded-key>[+endpoint extra path]`
 // Virtual hosted: `/<encoded-key>`
 // Returns an error if neither bucket nor key is provided.
+// The key is forwarded byte-exact (only percent-encoded): S3 treats keys as
+// opaque identifiers, so `folder/`, `/x` and `a//b` all designate distinct
+// objects and must reach the wire as written.
 pub fn build_object_path(creds Credentials, bucket_override string, key string) !string {
 	bucket := if bucket_override != '' { bucket_override } else { creds.bucket }
-	clean_key := strip_slashes(key)
-	if clean_key == '' {
+	if key == '' {
 		return new_error('InvalidPath', 'Empty object key')
 	}
-	encoded_key := uri_encode_path(clean_key)
+	encoded_key := uri_encode_path(key)
 	extra := creds.extra_path()
 	if creds.virtual_hosted_style {
 		return '${extra}/${encoded_key}'

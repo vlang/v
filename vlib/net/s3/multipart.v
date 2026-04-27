@@ -209,6 +209,11 @@ fn (c &Client) run_parallel_parts(key string, upload_id string, opts PutOptions,
 	mut part_number := 1
 
 	for offset < total && first_err == none {
+		if part_number > max_parts {
+			first_err = new_error('TooManyParts',
+				'Exceeded ${max_parts} parts — increase part_size')
+			break
+		}
 		want := if offset + part_size > total { int(total - offset) } else { int(part_size) }
 		chunk := producer(offset, want) or {
 			first_err = err
@@ -224,11 +229,6 @@ fn (c &Client) run_parallel_parts(key string, upload_id string, opts PutOptions,
 		sent++
 		offset += i64(chunk.len)
 		part_number++
-		if part_number > max_parts {
-			first_err = new_error('TooManyParts',
-				'Exceeded ${max_parts} parts — increase part_size')
-			break
-		}
 		// Drain ready results without blocking — surfaces errors early so we
 		// can stop dispatching new parts.
 		for {

@@ -52,3 +52,28 @@ fn test_fetch_rejects_non_s3_scheme() {
 		assert false
 	}
 }
+
+fn test_fetch_rejects_post_method() {
+	// POST is not part of the s3.fetch contract: object writes use PUT,
+	// and POST in S3 is reserved for multipart-control endpoints which
+	// take an XML body that fetch does not generate. Reject explicitly
+	// rather than silently rewriting to PUT.
+	if _ := fetch('s3://my-bucket/key.txt', method: .post, body: 'x'.bytes()) {
+		assert false, 'POST should be rejected'
+	}
+}
+
+fn test_build_object_path_preserves_leading_and_trailing_slashes() {
+	creds := Credentials{
+		access_key_id:     'K'
+		secret_access_key: 'S'
+		bucket:            'b'
+	}
+	// S3 keys are byte-exact: `folder/`, `/x` and `a//b` must round-trip
+	// untouched (only percent-encoded). Stripping slashes would address a
+	// different object than requested.
+	assert build_object_path(creds, '', 'folder/')! == '/b/folder/'
+	assert build_object_path(creds, '', '/x')! == '/b//x'
+	assert build_object_path(creds, '', 'a//b')! == '/b/a//b'
+	assert build_object_path(creds, '', 'plain.txt')! == '/b/plain.txt'
+}

@@ -94,7 +94,7 @@ pub fn fetch(url string, opts FetchOptions) !FetchResponse {
 				content_length: st.size
 			}
 		}
-		.put, .post {
+		.put {
 			c.put(key, opts.body,
 				bucket:              bucket
 				content_type:        opts.content_type

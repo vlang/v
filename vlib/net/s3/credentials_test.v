@@ -71,6 +71,10 @@ fn test_guess_region_paths() {
 	assert guess_region('https://s3.eu-west-3.amazonaws.com') == 'eu-west-3'
 	assert guess_region('https://my-acct.r2.cloudflarestorage.com') == 'auto'
 	assert guess_region('https://s3.example.com') == 'auto'
+	// AWS global endpoints sign with us-east-1, not 'auto'.
+	assert guess_region('https://s3.amazonaws.com') == 'us-east-1'
+	assert guess_region('s3.amazonaws.com') == 'us-east-1'
+	assert guess_region('https://s3-external-1.amazonaws.com') == 'us-east-1'
 }
 
 fn test_credentials_merge_overrides_only_non_empty() {

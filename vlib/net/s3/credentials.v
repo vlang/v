@@ -184,6 +184,10 @@ pub fn guess_region(endpoint string) string {
 				return endpoint[start..amz_end]
 			}
 		}
+		// AWS global endpoint (`s3.amazonaws.com`) and legacy forms
+		// (`s3-external-1.amazonaws.com`) sign with `us-east-1`. SigV4
+		// rejects `auto` against AWS, so fall back here instead.
+		return 'us-east-1'
 	}
 	return 'auto'
 }
