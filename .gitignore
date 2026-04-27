@@ -1,44 +1,5 @@
-# ignore sub-level untracked files and the v binary
-*/**/*
-
-# unignore checker test files
-!vlib/v/checker/tests/*.vv
-!vlib/v/checker/tests/*.out
-!vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
-!vlib/v/gen/c/testdata/nested_unary_minus_regression.out
-!vlib/v/tests/interfaces/interface_pointer_method_value_issue_22237_test.v
-!vlib/v/tests/net_http_request_proxy_interpolation_test.v
-!vlib/v/tests/project_issue_26873/**
-!vlib/v/tests/project_issue_26873_check_test.v
-!vlib/v/checker/tests/modules/c_type_cast_imported_from_module/**
-!vlib/v/checker/tests/modules/c_type_cast_imported_from_module.out
-!vlib/veb/tests/catchall_route_order_regression_test.v
-!vlib/net/http/head_with_content_length_test.v
-!vlib/net/mbedtls/mbedtls_head_with_content_length_test.v
-!vlib/v/checker/tests/modules/imported_struct_field_with_any_type_err/**
-!vlib/v/checker/tests/modules/imported_struct_field_with_any_type_err.out
-
-# unignore c codegen testdata files
-!vlib/v/gen/c/testdata/*.vv
-!vlib/v/gen/c/testdata/*.out
-!vlib/v/gen/c/testdata/*.c
-!vlib/v/gen/c/testdata/*.c.must_have
-
-# unignore targeted js backend regression testdata files
-!vlib/v/gen/js/tests/testdata/comptime_if_expr_issue_24784.v
-!vlib/v/gen/js/tests/testdata/comptime_if_expr_issue_24784.out
-
-# unignore vlib/x/markdown
-!vlib/x/markdown/**
-!vlib/mcp/server.v
-!vlib/mcp/server_test.v
-
-# unignore vlib/net/s3
-!vlib/net/s3/**
-
-!.github/show_manual_release_cmd_test.v
-!*/
-# Do not add !*.* here; it overrides local excludes from .git/info/exclude.
+# ignore generated binaries and object files
+# Do not add broad unignore rules like !*.*; they override local excludes.
 *.exe
 *.o
 *.so
@@ -78,6 +39,7 @@ fns.txt
 temp/
 tmp/
 cache/
+.cache/
 
 # unignore special files without extension
 !.github/PULL_REQUEST_TEMPLATE
@@ -161,6 +123,7 @@ vls.log
 # ignore v2go tmperror files
 *.tmperr
 
+.vtmp_cov_*/
 */**/tmp.*
 
 # ignore Intellij files
