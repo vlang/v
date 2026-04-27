@@ -982,6 +982,10 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						prev_generic_types := g.active_generic_types.clone()
 						for spec in specs {
 							g.active_generic_types = spec.generic_types.clone()
+							spec_key := 'fn_${spec.name}'
+							if spec_key !in g.fn_owner_file {
+								g.fn_owner_file[spec_key] = fi
+							}
 							g.gen_fn_head_with_name(stmt, spec.name)
 							g.sb.writeln(';')
 						}

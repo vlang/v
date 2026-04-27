@@ -326,6 +326,15 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 			}
 		}
 	}
+	if is_generic_placeholder_c_type_name(elem_type) {
+		rhs_value := append_rhs_value_expr(rhs)
+		if rhs_value is ast.PrefixExpr && rhs_value.op == .mul && rhs_value.expr is ast.CastExpr {
+			target_type := g.expr_type_to_c(rhs_value.expr.typ)
+			if target_type.ends_with('*') {
+				elem_type = target_type.trim_right('*')
+			}
+		}
+	}
 	// When raw_type gives a module-qualified name (e.g. term__Coord) but the rhs
 	// is a local struct (e.g. Coord), prefer the rhs type to match the actual typedef.
 	if elem_type.contains('__') {
@@ -342,13 +351,39 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 	return true, unmangle_c_ptr_type(elem_type)
 }
 
+fn append_rhs_value_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.UnsafeExpr && expr.stmts.len > 0 {
+		last := expr.stmts[expr.stmts.len - 1]
+		if last is ast.ExprStmt {
+			return last.expr
+		}
+	}
+	return expr
+}
+
 fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr is ast.ParenExpr {
 		return g.expr_is_array_value(expr.expr)
 	}
+	if expr is ast.UnsafeExpr {
+		return g.expr_is_array_value(append_rhs_value_expr(expr))
+	}
 	if expr is ast.PrefixExpr && expr.op == .mul {
 		// `*ptr_to_array` is an array value.
 		return g.expr_is_array_value(expr.expr)
+	}
+	if expr is ast.Ident {
+		if local_type := g.get_local_var_c_type(expr.name) {
+			if local_type == 'array' || local_type.starts_with('Array_') {
+				return true
+			}
+		}
+	}
+	if expr is ast.SelectorExpr {
+		field_type := g.selector_field_type(expr)
+		if field_type == 'array' || field_type.starts_with('Array_') {
+			return true
+		}
 	}
 	expr_type := g.get_expr_type(expr)
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
@@ -875,27 +910,8 @@ fn (mut g Gen) gen_typed_array_eq(elem_type string, call_args []ast.Expr) {
 		struct_type := g.lookup_struct_type_by_c_name(elem_type)
 		if struct_type.fields.len > 0 {
 			for field in struct_type.fields {
-				fname := field.name
-				ftype := field.typ
-				match ftype {
-					types.String {
-						g.sb.writeln('  if (!string__eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-					}
-					types.Map {
-						c_type := g.types_type_to_c(ftype)
-						if c_type.starts_with('Map_') {
-							g.sb.writeln('  if (!${c_type}_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-						} else {
-							g.sb.writeln('  if (!map_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-						}
-					}
-					types.Array {
-						g.sb.writeln('  if (!__v2_array_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-					}
-					else {
-						g.sb.writeln('  if (_sa.${fname} != _sb.${fname}) _eq = false;')
-					}
-				}
+				eq_expr := g.eq_expr_for_type(field.typ, '_sa.${field.name}', '_sb.${field.name}')
+				g.sb.writeln('  if (!(${eq_expr})) _eq = false;')
 			}
 		} else {
 			// Struct not found, fall back to memcmp

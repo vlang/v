@@ -8,6 +8,148 @@ import v2.ast
 import v2.types
 import v2.token
 
+fn is_enum_static_selector_name(name string) bool {
+	return name in ['from_string', 'str', 'values', 'zero']
+}
+
+fn enum_type_has_field(typ types.Type, field_name string) bool {
+	if typ is types.Enum {
+		for field in typ.fields {
+			if field.name == field_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt {
+	old_decl_type_overrides := t.decl_type_overrides.clone()
+	old_array_elem_type_overrides := t.array_elem_type_overrides.clone()
+	t.open_scope()
+	transformed := t.transform_stmts(stmts)
+	t.close_scope()
+	t.decl_type_overrides = old_decl_type_overrides.clone()
+	t.array_elem_type_overrides = old_array_elem_type_overrides.clone()
+	return transformed
+}
+
+fn (t &Transformer) enum_type_by_visible_name(name string) ?types.Type {
+	if typ := t.lookup_type(name) {
+		if typ is types.Enum {
+			return typ
+		}
+	}
+	for _, scope in t.cached_scopes {
+		if obj := scope.objects[name] {
+			if obj is types.Type {
+				typ := types.Type(obj)
+				if typ is types.Enum {
+					return typ
+				}
+			}
+		}
+		for key, obj in scope.objects {
+			if key.ends_with('__${name}') {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.Enum {
+						return typ
+					}
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn enum_selector_type_lhs_name(expr ast.Expr) string {
+	match expr {
+		ast.Ident {
+			return expr.name
+		}
+		ast.ParenExpr {
+			return enum_selector_type_lhs_name(expr.expr)
+		}
+		ast.CallOrCastExpr {
+			if expr.expr is ast.EmptyExpr {
+				return enum_selector_type_lhs_name(expr.lhs)
+			}
+		}
+		ast.CastExpr {
+			if expr.expr is ast.EmptyExpr {
+				return enum_selector_type_lhs_name(expr.typ)
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn (mut t Transformer) resolve_enum_selector_by_type_lhs(lhs_name string, field_name string, pos token.Pos, original ast.SelectorExpr) ?ast.Expr {
+	if lhs_name == '' || lhs_name == 'C' || is_generic_placeholder_type_name(lhs_name) {
+		return none
+	}
+	if t.lookup_var_type(lhs_name) != none {
+		return none
+	}
+	if typ := t.enum_type_by_visible_name(lhs_name) {
+		if is_enum_static_selector_name(field_name) && !enum_type_has_field(typ, field_name) {
+			return ast.SelectorExpr{
+				lhs: t.transform_expr(original.lhs)
+				rhs: original.rhs
+				pos: original.pos
+			}
+		}
+		t.register_synth_type(pos, typ)
+		return ast.Ident{
+			name: enum_member_ident(t.type_to_c_name(typ), field_name)
+			pos:  pos
+		}
+	}
+	if lhs_name.len > 0 && lhs_name[0] >= `A` && lhs_name[0] <= `Z` && t.cur_module != ''
+		&& t.cur_module != 'main' && t.cur_module != 'builtin' && field_name.len > 0
+		&& field_name[0] >= `a` && field_name[0] <= `z` {
+		qualified := '${t.cur_module}__${lhs_name}'
+		return ast.Ident{
+			name: enum_member_ident(qualified, field_name)
+			pos:  pos
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) module_selector_object(lhs_name string, rhs_name string) ?types.Object {
+	mut candidates := []string{}
+	if import_module_name := t.cur_import_aliases[lhs_name] {
+		candidates << import_module_name
+		if import_module_name.contains('.') {
+			candidates << import_module_name.all_after_last('.')
+		}
+	} else if module_name := t.selector_module_name(lhs_name) {
+		candidates << module_name
+		if module_name.contains('.') {
+			candidates << module_name.all_after_last('.')
+		}
+	} else {
+		return none
+	}
+	mut seen := map[string]bool{}
+	for module_name in candidates {
+		if module_name == '' || module_name in seen {
+			continue
+		}
+		seen[module_name] = true
+		if mut mod_scope := t.get_module_scope(module_name) {
+			if obj := mod_scope.lookup_parent(rhs_name, 0) {
+				return obj
+			}
+		}
+	}
+	return none
+}
+
 fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 	// Guard against corrupt Expr with NULL data pointer (ARM64 backend issue).
 	// Default-initialized sum types have data_ptr=0, which crashes on field access.
@@ -34,13 +176,74 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			})
 		}
 		ast.PrefixExpr {
+			if lowered := t.lower_addr_of_sumtype_constructor(expr) {
+				return lowered
+			}
+			if expr.op == .amp && expr.expr is ast.CallOrCastExpr {
+				cast_expr := expr.expr as ast.CallOrCastExpr
+				sumtype_name := t.type_expr_name_full(cast_expr.lhs)
+				if t.call_or_cast_lhs_is_type(cast_expr.lhs) && (sumtype_name == ''
+					|| (!t.is_sum_type(sumtype_name) && !t.is_interface_type(sumtype_name))) {
+					return ast.CastExpr{
+						typ:  ast.PrefixExpr{
+							op:   .amp
+							expr: cast_expr.lhs
+							pos:  expr.pos
+						}
+						expr: t.transform_expr(cast_expr.expr)
+						pos:  expr.pos
+					}
+				}
+			}
+			if expr.op == .amp && expr.expr is ast.IndexExpr {
+				index_expr := expr.expr as ast.IndexExpr
+				if index_expr.lhs is ast.CastExpr {
+					cast_expr := index_expr.lhs as ast.CastExpr
+					cast_type := t.type_expr_to_c_name(cast_expr.typ)
+					if cast_type in ['u8', 'byte', 'i8', 'char'] {
+						return ast.IndexExpr{
+							lhs:      ast.CastExpr{
+								typ:  ast.Ident{
+									name: '${cast_type}*'
+								}
+								expr: t.transform_expr(cast_expr.expr)
+								pos:  cast_expr.pos
+							}
+							expr:     t.transform_expr(index_expr.expr)
+							is_gated: index_expr.is_gated
+							pos:      index_expr.pos
+						}
+					}
+				} else if index_expr.lhs is ast.CallOrCastExpr {
+					cast_expr := index_expr.lhs as ast.CallOrCastExpr
+					cast_type := t.type_expr_to_c_name(cast_expr.lhs)
+					if cast_type in ['u8', 'byte', 'i8', 'char'] {
+						return ast.IndexExpr{
+							lhs:      ast.CastExpr{
+								typ:  ast.Ident{
+									name: '${cast_type}*'
+								}
+								expr: t.transform_expr(cast_expr.expr)
+								pos:  cast_expr.pos
+							}
+							expr:     t.transform_expr(index_expr.expr)
+							is_gated: index_expr.is_gated
+							pos:      index_expr.pos
+						}
+					}
+				}
+			}
 			// Check for &ErrorType{} pattern - this gets transformed to IError{...}
 			// and the outer & should be removed since IError is already a value type
 			if expr.op == .amp && expr.expr is ast.InitExpr {
 				type_name := t.get_init_expr_type_name(expr.expr.typ)
 				if t.is_error_type_name(type_name) {
 					// Transform &ErrorType{} to IError{...} (without the &)
-					return t.transform_expr(expr.expr)
+					old_expected_ierror := t.expected_ierror_init
+					t.expected_ierror_init = true
+					result := t.transform_expr(expr.expr)
+					t.expected_ierror_init = old_expected_ierror
+					return result
 				}
 			}
 			// Lower `&{base | field: val}` (AssocExpr) in the transformer so backends do not
@@ -48,6 +251,11 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			if expr.op == .amp {
 				if assoc := t.unwrap_assoc_expr(expr.expr) {
 					return t.lower_assoc_expr(assoc, true)
+				}
+				if expr.expr is ast.OrExpr {
+					if lowered := t.try_expand_addr_of_map_index_or(expr.expr) {
+						return lowered
+					}
 				}
 			}
 			if expr.op == .arrow && expr.expr is ast.OrExpr {
@@ -62,9 +270,22 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					pos:   or_expr.pos
 				}))
 			}
+			transformed_inner := t.transform_expr(expr.expr)
+			if expr.op == .minus {
+				if inner_type := t.get_expr_type(expr.expr) {
+					match inner_type {
+						types.OptionType, types.ResultType {
+							t.register_synth_type(expr.pos, inner_type.base_type)
+						}
+						else {
+							t.register_synth_type(expr.pos, inner_type)
+						}
+					}
+				}
+			}
 			ast.Expr(ast.PrefixExpr{
 				op:   expr.op
-				expr: t.transform_expr(expr.expr)
+				expr: transformed_inner
 				pos:  expr.pos
 			})
 		}
@@ -105,6 +326,11 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 						type_name = t.type_to_c_name(typ)
 					}
 				}
+				if type_name.starts_with('_result_') {
+					type_name = type_name['_result_'.len..]
+				} else if type_name.starts_with('_option_') {
+					type_name = type_name['_option_'.len..]
+				}
 				if type_name != '' {
 					return ast.CastExpr{
 						typ:  ast.Expr(ast.Ident{
@@ -127,13 +353,39 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			// since C does not allow casting a variant struct to the sum type struct.
 			sumtype_name := t.type_expr_name_full(expr.typ)
 			if sumtype_name != '' && t.is_sum_type(sumtype_name) {
+				expr_key := t.expr_to_string(expr.expr)
+				if expr_key != '' {
+					if ctx := t.find_smartcast_for_expr(expr_key) {
+						if t.sumtype_contains_variant_recursive(sumtype_name, ctx.variant_full, 0)
+							|| t.sumtype_contains_variant_recursive(sumtype_name, ctx.variant, 0) {
+							direct_arg := t.apply_smartcast_direct_ctx(expr.expr, ctx)
+							if wrapped := t.build_sumtype_init(direct_arg, ctx.variant_full,
+								sumtype_name)
+							{
+								return wrapped
+							}
+							if wrapped := t.build_sumtype_init(direct_arg, ctx.variant,
+								sumtype_name)
+							{
+								return wrapped
+							}
+						}
+					}
+				}
 				if wrapped := t.wrap_sumtype_value(expr.expr, sumtype_name) {
 					return wrapped
 				}
 			}
+			mut transformed_inner := t.transform_expr(expr.expr)
+			expr_key := t.expr_to_string(expr.expr)
+			if expr_key != '' {
+				if ctx := t.find_smartcast_for_expr(expr_key) {
+					transformed_inner = t.apply_smartcast_direct_ctx(expr.expr, ctx)
+				}
+			}
 			ast.Expr(ast.CastExpr{
 				typ:  expr.typ
-				expr: t.transform_expr(expr.expr)
+				expr: transformed_inner
 				pos:  expr.pos
 			})
 		}
@@ -199,8 +451,22 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			t.transform_selector_expr(expr)
 		}
 		ast.Ident {
-			if expr.name == '@VMODROOT' {
-				return ast.Expr(t.vmodroot_string_literal(expr.pos))
+			if expr.name.len > 0 && expr.name[0] == `@` {
+				if pseudo := t.comptime_pseudo_ident_expr(expr.name, expr.pos) {
+					return pseudo
+				}
+			}
+			if ctx := t.find_smartcast_for_expr(expr.name) {
+				return t.apply_smartcast_direct_ctx(ast.Expr(expr), ctx)
+			}
+			if static_ref := t.static_local_ref_expr(expr.name, expr.pos) {
+				return static_ref
+			}
+			if qualified_global := t.resolve_unqualified_global_ident(expr.name) {
+				return ast.Expr(ast.Ident{
+					name: qualified_global
+					pos:  expr.pos
+				})
 			}
 			// Check for smart cast on simple identifiers (e.g., if x is Type { x })
 			if ctx := t.find_smartcast_for_expr(expr.name) {
@@ -215,6 +481,23 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 		ast.AsCastExpr {
 			transformed_inner := t.transform_expr(expr.expr)
 			target_type := t.type_expr_to_c_name(expr.typ)
+			if target_type != '' {
+				if elem_type := t.array_method_elem_type_name(expr.expr) {
+					if type_names_match_for_smartcast(elem_type, target_type) {
+						if target_typ := t.infer_decl_type_from_type_expr(expr.typ) {
+							return t.with_typed_array_method_receiver(transformed_inner, target_typ)
+						}
+						return transformed_inner
+					}
+				}
+				if source_type := t.resolve_expr_type(expr.expr) {
+					source_base := t.unwrap_alias_and_pointer_type(source_type)
+					source_type_name := t.type_to_c_name(source_base)
+					if type_names_match_for_smartcast(source_type_name, target_type) {
+						return transformed_inner
+					}
+				}
+			}
 			// If smartcast transformation already produced a concrete cast/deref to
 			// the requested type, keep that expression and drop the redundant `as`.
 			if target_type != '' && t.expr_is_casted_to_type(transformed_inner, target_type) {
@@ -411,12 +694,13 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 			}
 
 			// Key temp (so we can take its address safely for the duration of the whole expression).
+			key_type := t.map_key_type_for_expr(expr.expr, map_type)
 			key_tmp := t.gen_temp_name()
 			key_ident := ast.Ident{
 				name: key_tmp
 				pos:  synth_pos
 			}
-			t.register_temp_var(key_tmp, map_type.key_type)
+			t.register_temp_var(key_tmp, key_type)
 			mut key_lhs := []ast.Expr{cap: 1}
 			key_lhs << ast.Expr(key_ident)
 			mut key_rhs := []ast.Expr{cap: 1}
@@ -631,8 +915,83 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 	}
 }
 
+fn (mut t Transformer) transform_selector_on_pointer_deref(expr ast.SelectorExpr) ?ast.Expr {
+	if expr.lhs !is ast.ParenExpr {
+		return none
+	}
+	paren_lhs := expr.lhs as ast.ParenExpr
+	if paren_lhs.expr !is ast.PrefixExpr {
+		return none
+	}
+	deref := paren_lhs.expr as ast.PrefixExpr
+	if deref.op != .mul {
+		return none
+	}
+	ptr_type := t.get_expr_type(deref.expr) or { return none }
+	value_type := match ptr_type {
+		types.Pointer {
+			match ptr_type.base_type {
+				types.Pointer {
+					ptr_type.base_type.base_type
+				}
+				else {
+					return none
+				}
+			}
+		}
+		else {
+			return none
+		}
+	}
+
+	field_type := t.field_type_from_struct_like_type(value_type, expr.rhs.name) or { return none }
+	pos := t.next_synth_pos()
+	t.register_synth_type(pos, value_type)
+	value_lhs := ast.Expr(ast.ParenExpr{
+		expr: ast.PrefixExpr{
+			op:   .mul
+			expr: t.transform_expr(expr.lhs)
+			pos:  pos
+		}
+		pos:  pos
+	})
+	return t.synth_selector(value_lhs, expr.rhs.name, field_type)
+}
+
 // transform_selector_expr transforms a selector expression, applying smart cast if applicable
 fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
+	if expr.lhs is ast.Ident {
+		if expr.lhs.name == 'C' {
+			return expr
+		}
+		if expr.rhs.name == 'name' && is_generic_placeholder_type_name(expr.lhs.name) {
+			return expr
+		}
+		if static_ref := t.static_local_ref_expr(expr.lhs.name, expr.lhs.pos) {
+			return ast.SelectorExpr{
+				lhs: static_ref
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+	}
+	enum_lhs_name := enum_selector_type_lhs_name(expr.lhs)
+	if resolved := t.resolve_enum_selector_by_type_lhs(enum_lhs_name, expr.rhs.name, expr.pos, expr) {
+		return resolved
+	}
+	if expr.lhs is ast.SelectorExpr {
+		lhs_sel := expr.lhs as ast.SelectorExpr
+		if lhs_sel.rhs.name == 'C' {
+			return ast.SelectorExpr{
+				lhs: ast.Ident{
+					name: 'C'
+					pos:  lhs_sel.rhs.pos
+				}
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+	}
 	// typeof(x).name -> string literal with V type name
 	if expr.lhs is ast.KeywordOperator && expr.lhs.op == .key_typeof && expr.rhs.name == 'name' {
 		if expr.lhs.exprs.len > 0 {
@@ -664,6 +1023,67 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			}
 		}
 	}
+	// Enum value reflection: `value.name` has the same value as `value.str()`.
+	// Lower it once here so backends only need to support normal enum method calls.
+	if expr.rhs.name == 'name' {
+		mut lhs_is_enum_type := false
+		if static_enum_type := t.static_enum_receiver_type(expr.lhs) {
+			_ = static_enum_type
+			lhs_is_enum_type = true
+		}
+		if !lhs_is_enum_type {
+			enum_type := t.get_enum_type(expr.lhs)
+			if enum_type != '' {
+				t.register_synth_type(expr.pos, types.Type(types.string_))
+				return ast.CallExpr{
+					lhs:  ast.SelectorExpr{
+						lhs: t.transform_expr(expr.lhs)
+						rhs: ast.Ident{
+							name: 'str'
+							pos:  expr.rhs.pos
+						}
+						pos: expr.pos
+					}
+					args: []
+					pos:  expr.pos
+				}
+			}
+		}
+	}
+	if expr.rhs.name == 'len' {
+		if lhs_type := t.resolve_expr_type(expr.lhs) {
+			base := t.unwrap_alias_and_pointer_type(lhs_type)
+			if base is types.ArrayFixed {
+				t.register_synth_type(expr.pos, types.Type(types.int_))
+				return ast.BasicLiteral{
+					kind:  .number
+					value: base.len.str()
+					pos:   expr.pos
+				}
+			}
+		}
+	}
+	if expr.lhs is ast.AsCastExpr {
+		target_name := t.type_expr_to_c_name(expr.lhs.typ)
+		if target_name != '' {
+			transformed_lhs := t.transform_expr(expr.lhs)
+			if field_type := t.lookup_struct_field_type(target_name, expr.rhs.name) {
+				return t.synth_selector(transformed_lhs, expr.rhs.name, field_type)
+			}
+			return t.synth_selector_from_struct(transformed_lhs, expr.rhs.name, target_name)
+		}
+	}
+	if expr.lhs is ast.ParenExpr && expr.lhs.expr is ast.AsCastExpr {
+		cast_expr := expr.lhs.expr as ast.AsCastExpr
+		target_name := t.type_expr_to_c_name(cast_expr.typ)
+		if target_name != '' {
+			transformed_lhs := t.transform_expr(expr.lhs)
+			if field_type := t.lookup_struct_field_type(target_name, expr.rhs.name) {
+				return t.synth_selector(transformed_lhs, expr.rhs.name, field_type)
+			}
+			return t.synth_selector_from_struct(transformed_lhs, expr.rhs.name, target_name)
+		}
+	}
 	// Check for smart cast field access: check ALL contexts in the stack
 	if t.has_active_smartcast() {
 		full_str := t.expr_to_string(expr)
@@ -673,12 +1093,93 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			// Direct access to smartcast variable - apply direct smartcast
 			return t.apply_smartcast_direct_ctx(expr, direct_ctx)
 		}
+		if concrete_selector := t.concrete_selector_for_known_lhs(expr) {
+			return concrete_selector
+		}
+		if expr.lhs is ast.Ident {
+			if lhs_type := t.decl_type_overrides[expr.lhs.name] {
+				base := t.unwrap_alias_and_pointer_type(lhs_type)
+				if base !is types.SumType {
+					if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
+						return t.synth_selector(ast.Expr(expr.lhs), expr.rhs.name, field_type)
+					}
+					override_name := t.type_to_c_name(base)
+					if override_name != '' && !t.is_sum_type(override_name)
+						&& !t.is_interface_type(override_name) {
+						return t.synth_selector_from_struct(ast.Expr(expr.lhs), expr.rhs.name,
+							override_name)
+					}
+				}
+			} else {
+				if lhs_type := t.lookup_var_type(expr.lhs.name) {
+					base := t.unwrap_alias_and_pointer_type(lhs_type)
+					if base !is types.SumType {
+						if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
+							return t.synth_selector(ast.Expr(expr.lhs), expr.rhs.name, field_type)
+						}
+					}
+				}
+			}
+		}
 		// Check if LHS matches any smartcast context for field access
 		lhs_str := t.expr_to_string(expr.lhs)
 		if ctx := t.find_smartcast_for_expr(lhs_str) {
 			// This is a field access on the smartcast variable
 			// e.g., w.valera.len when w.valera is smartcast to string
-			return t.apply_smartcast_field_access_ctx(expr.lhs, expr.rhs.name, ctx)
+			if t.smartcast_context_applies_to_expr(expr.lhs, ctx) {
+				return t.apply_smartcast_field_access_ctx(expr.lhs, expr.rhs.name, ctx)
+			}
+		}
+	}
+	if expr.rhs.name == 'pos' {
+		if lhs_type := t.resolve_expr_type(expr.lhs) {
+			base := t.unwrap_alias_and_pointer_type(lhs_type)
+			if base is types.SumType {
+				sumtype_name := t.type_to_c_name(base)
+				if t.lookup_method_cached(sumtype_name, 'pos') != none
+					|| t.lookup_method_cached(sumtype_name.all_after_last('__'), 'pos') != none {
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: '${sumtype_name}__pos'
+							pos:  expr.rhs.pos
+						}
+						args: [t.transform_expr(expr.lhs)]
+						pos:  expr.pos
+					}
+				}
+			}
+		}
+	}
+	if expr.lhs is ast.ParenExpr {
+		paren := expr.lhs as ast.ParenExpr
+		if paren.expr is ast.Ident {
+			lhs_name := paren.expr.name
+			if t.lookup_var_type(lhs_name) == none {
+				if typ := t.enum_type_by_visible_name(lhs_name) {
+					if is_enum_static_selector_name(expr.rhs.name)
+						&& !enum_type_has_field(typ, expr.rhs.name) {
+						return ast.SelectorExpr{
+							lhs: t.transform_expr(expr.lhs)
+							rhs: expr.rhs
+							pos: expr.pos
+						}
+					}
+					t.register_synth_type(expr.pos, typ)
+					return ast.Ident{
+						name: enum_member_ident(t.type_to_c_name(typ), expr.rhs.name)
+						pos:  expr.pos
+					}
+				}
+				if lhs_name.len > 0 && lhs_name[0] >= `A` && lhs_name[0] <= `Z` && lhs_name != 'C'
+					&& t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+					&& expr.rhs.name.len > 0 && expr.rhs.name[0] >= `a` && expr.rhs.name[0] <= `z` {
+					qualified := '${t.cur_module}__${lhs_name}'
+					return ast.Ident{
+						name: enum_member_ident(qualified, expr.rhs.name)
+						pos:  expr.pos
+					}
+				}
+			}
 		}
 	}
 	if expr.lhs is ast.Ident && expr.lhs.name == 'os' && expr.rhs.name == 'args' {
@@ -700,9 +1201,17 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			qualified := '${module_name}__${type_name}'
 			if typ := t.lookup_type(qualified) {
 				if typ is types.Enum {
+					if is_enum_static_selector_name(expr.rhs.name)
+						&& !enum_type_has_field(typ, expr.rhs.name) {
+						return ast.SelectorExpr{
+							lhs: t.transform_expr(expr.lhs)
+							rhs: expr.rhs
+							pos: expr.pos
+						}
+					}
 					t.register_synth_type(expr.pos, typ)
 					return ast.Ident{
-						name: enum_member_ident(qualified, expr.rhs.name)
+						name: enum_member_ident(t.type_to_c_name(typ), expr.rhs.name)
 						pos:  expr.pos
 					}
 				}
@@ -710,7 +1219,7 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 			// Nested module reference: rand.seed.time_seed_array -> seed__time_seed_array
 			// Only resolve when both the outer ident is a module AND the inner name
 			// is also a sub-module (not a variable like os.args.len).
-			if t.is_module_ident(module_name) {
+			if t.is_module_ident(module_name) && t.lookup_var_type(module_name) == none {
 				sub_mod := lhs_sel.rhs.name
 				fn_name := expr.rhs.name
 				// Check if sub_mod is actually a module scope
@@ -734,21 +1243,110 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 	// Handle same-module enum access: Op.identify -> discord__Op__identify
 	if expr.lhs is ast.Ident {
 		lhs_name := expr.lhs.name
-		// Check if LHS is an enum type in the current module
-		qualified := if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
-			&& !lhs_name.contains('__') {
-			'${t.cur_module}__${lhs_name}'
-		} else {
-			lhs_name
-		}
-		if typ := t.lookup_type(qualified) {
+		if typ := t.lookup_type(lhs_name) {
 			if typ is types.Enum {
+				if is_enum_static_selector_name(expr.rhs.name)
+					&& !enum_type_has_field(typ, expr.rhs.name) {
+					return ast.SelectorExpr{
+						lhs: t.transform_expr(expr.lhs)
+						rhs: expr.rhs
+						pos: expr.pos
+					}
+				}
 				t.register_synth_type(expr.pos, typ)
+				return ast.Ident{
+					name: enum_member_ident(t.type_to_c_name(typ), expr.rhs.name)
+					pos:  expr.pos
+				}
+			}
+		}
+		// Check if LHS is an enum type in the current module
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& !lhs_name.contains('__') {
+			qualified := '${t.cur_module}__${lhs_name}'
+			if typ := t.lookup_type(qualified) {
+				if typ is types.Enum {
+					if is_enum_static_selector_name(expr.rhs.name)
+						&& !enum_type_has_field(typ, expr.rhs.name) {
+						return ast.SelectorExpr{
+							lhs: t.transform_expr(expr.lhs)
+							rhs: expr.rhs
+							pos: expr.pos
+						}
+					}
+					t.register_synth_type(expr.pos, typ)
+					return ast.Ident{
+						name: enum_member_ident(t.type_to_c_name(typ), expr.rhs.name)
+						pos:  expr.pos
+					}
+				}
+			}
+		}
+		if lhs_name.len > 0 && lhs_name[0] >= `A` && lhs_name[0] <= `Z` {
+			if typ := t.enum_type_by_visible_name(lhs_name) {
+				if is_enum_static_selector_name(expr.rhs.name)
+					&& !enum_type_has_field(typ, expr.rhs.name) {
+					return ast.SelectorExpr{
+						lhs: t.transform_expr(expr.lhs)
+						rhs: expr.rhs
+						pos: expr.pos
+					}
+				}
+				t.register_synth_type(expr.pos, typ)
+				return ast.Ident{
+					name: enum_member_ident(t.type_to_c_name(typ), expr.rhs.name)
+					pos:  expr.pos
+				}
+			}
+			if lhs_name != 'C' && t.cur_module != '' && t.cur_module != 'main'
+				&& t.cur_module != 'builtin' && expr.rhs.name.len > 0 && expr.rhs.name[0] >= `a`
+				&& expr.rhs.name[0] <= `z` {
+				qualified := '${t.cur_module}__${lhs_name}'
 				return ast.Ident{
 					name: enum_member_ident(qualified, expr.rhs.name)
 					pos:  expr.pos
 				}
 			}
+		}
+	}
+	if expr.lhs is ast.Ident {
+		lhs_name := expr.lhs.name
+		if obj := t.module_selector_object(lhs_name, expr.rhs.name) {
+			if obj is types.Fn || obj is types.Const || obj is types.Global {
+				return ast.Ident{
+					name: '${lhs_name}__${expr.rhs.name}'
+					pos:  expr.pos
+				}
+			}
+		}
+		if import_module_name := t.cur_import_aliases[lhs_name] {
+			if expr.rhs.name.len > 0 && expr.rhs.name[0] >= `a` && expr.rhs.name[0] <= `z` {
+				call_mod := if import_module_name.contains('.') {
+					import_module_name.all_after_last('.')
+				} else if import_module_name.contains('__') {
+					import_module_name.all_after_last('__')
+				} else {
+					import_module_name
+				}
+				return ast.Ident{
+					name: '${call_mod}__${expr.rhs.name}'
+					pos:  expr.pos
+				}
+			}
+		}
+	}
+	if concrete_selector := t.concrete_selector_for_known_lhs(expr) {
+		return concrete_selector
+	}
+	if pointer_deref_selector := t.transform_selector_on_pointer_deref(expr) {
+		return pointer_deref_selector
+	}
+	if lowered := t.transform_sumtype_common_field_access(expr.lhs, expr.rhs.name) {
+		return lowered
+	}
+	if expr.lhs is ast.Ident && t.find_smartcast_for_expr(expr.lhs.name) == none {
+		if field_type := t.lookup_unique_struct_field_type(expr.rhs.name) {
+			return t.synth_selector(ast.Expr(expr.lhs), expr.rhs.name, field_type)
 		}
 	}
 	// Default transformation
@@ -843,8 +1441,17 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 					mut c_tag := -1
 					for i, v in variants {
 						v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+						c_variant_alias := if c_variant_name == 'int' {
+							'i32'
+						} else if c_variant_name == 'i32' {
+							'int'
+						} else {
+							''
+						}
 						// For array types, also try matching with [] prefix
-						if v == c_variant_name || v_short == c_variant_name {
+						if v == c_variant_name || v_short == c_variant_name
+							|| (c_variant_alias != '' && (v == c_variant_alias
+							|| v_short == c_variant_alias)) {
 							c_tag = i
 							break
 						}
@@ -878,14 +1485,37 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 							// TODO: implement map matching if needed
 						}
 					}
+					if c_tag < 0 {
+						if cond_type := t.get_expr_type(c) {
+							cond_c_name := t.type_to_c_name(cond_type)
+							if matched := t.match_variant(cond_c_name, variants) {
+								for i, v in variants {
+									if v == matched {
+										c_tag = i
+										break
+									}
+								}
+							}
+						}
+					}
 
 					if c_tag < 0 {
 						can_split_branch = false
 						break
 					}
+					mut final_qualified_variant := qualified_variant
+					mut final_qualified_variant_full := qualified_variant_full
+					mut final_variant_matches := false
+					if _ := t.match_variant(final_qualified_variant, variants) {
+						final_variant_matches = true
+					}
+					if !final_variant_matches {
+						final_qualified_variant = variants[c_tag]
+						final_qualified_variant_full = variants[c_tag]
+					}
 					cond_tags << c_tag
-					cond_variants << qualified_variant
-					cond_variants_full << qualified_variant_full
+					cond_variants << final_qualified_variant
+					cond_variants_full << final_qualified_variant_full
 				}
 
 				if can_split_branch && cond_tags.len > 0 {
@@ -894,7 +1524,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 					for i, c_tag in cond_tags {
 						t.push_smartcast_full(smartcast_expr, cond_variants[i],
 							cond_variants_full[i], sumtype_name)
-						mut transformed_stmts := t.transform_stmts(branch.stmts)
+						mut transformed_stmts := t.transform_match_branch_stmts(branch.stmts)
 						if t.sumtype_return_wrap != '' && transformed_stmts.len > 0 {
 							last_idx := transformed_stmts.len - 1
 							if transformed_stmts[last_idx] is ast.ExprStmt {
@@ -923,7 +1553,21 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 					}
 				} else {
 					// No variant name found, just transform normally
-					mut fallback_stmts := t.transform_stmts(branch.stmts)
+					mut fallback_ctx_pushed := false
+					if branch.cond.len == 1 {
+						cond_value := t.transform_expr(branch.cond[0])
+						if cond_value is ast.BasicLiteral && cond_value.kind == token.Token.number {
+							for i, variant in variants {
+								if cond_value.value == '${i}' {
+									t.push_smartcast_full(smartcast_expr, variant, variant,
+										sumtype_name)
+									fallback_ctx_pushed = true
+									break
+								}
+							}
+						}
+					}
+					mut fallback_stmts := t.transform_match_branch_stmts(branch.stmts)
 					if t.sumtype_return_wrap != '' && fallback_stmts.len > 0 {
 						last_idx := fallback_stmts.len - 1
 						if fallback_stmts[last_idx] is ast.ExprStmt {
@@ -937,6 +1581,9 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 							}
 						}
 					}
+					if fallback_ctx_pushed {
+						t.pop_smartcast()
+					}
 					branches << ast.MatchBranch{
 						cond:  branch.cond
 						stmts: fallback_stmts
@@ -945,7 +1592,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 				}
 			} else {
 				// else branch - no smartcast context
-				mut else_stmts := t.transform_stmts(branch.stmts)
+				mut else_stmts := t.transform_match_branch_stmts(branch.stmts)
 				if t.sumtype_return_wrap != '' && else_stmts.len > 0 {
 					last_idx := else_stmts.len - 1
 					if else_stmts[last_idx] is ast.ExprStmt {
@@ -1019,6 +1666,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		}
 	}
 	mut branches := []ast.MatchBranch{cap: expr.branches.len}
+	match_value_type := t.get_expr_type(ast.Expr(expr))
 	for branch in expr.branches {
 		mut conds := branch.cond.clone()
 		if enum_type_name != '' {
@@ -1027,9 +1675,13 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 				conds << t.resolve_enum_shorthand(c, enum_type_name)
 			}
 		}
+		mut transformed_stmts := t.transform_match_branch_stmts(branch.stmts)
+		if value_type := match_value_type {
+			t.append_zero_value_after_noreturn_tail(mut transformed_stmts, value_type)
+		}
 		branches << ast.MatchBranch{
 			cond:  conds
-			stmts: t.transform_stmts(branch.stmts)
+			stmts: transformed_stmts
 			pos:   branch.pos
 		}
 	}
@@ -1065,6 +1717,38 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 	return current
 }
 
+fn (mut t Transformer) transform_stmts_with_sumtype_tail(stmts []ast.Stmt) []ast.Stmt {
+	if t.sumtype_return_wrap == '' || stmts.len == 0 {
+		return t.transform_stmts(stmts)
+	}
+	last_stmt := stmts[stmts.len - 1]
+	if last_stmt is ast.ExprStmt {
+		if wrapped := t.wrap_sumtype_value(last_stmt.expr, t.sumtype_return_wrap) {
+			mut out := []ast.Stmt{cap: stmts.len}
+			if stmts.len > 1 {
+				out << t.transform_stmts(stmts[..stmts.len - 1])
+			}
+			out << ast.Stmt(ast.ExprStmt{
+				expr: wrapped
+			})
+			return out
+		}
+	}
+	mut transformed := t.transform_stmts(stmts)
+	if transformed.len == 0 {
+		return transformed
+	}
+	last_transformed := transformed[transformed.len - 1]
+	if last_transformed is ast.ExprStmt {
+		if wrapped := t.wrap_sumtype_value_transformed(last_transformed.expr, t.sumtype_return_wrap) {
+			transformed[transformed.len - 1] = ast.Stmt(ast.ExprStmt{
+				expr: wrapped
+			})
+		}
+	}
+	return transformed
+}
+
 fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	// Normalize long && chains containing `is` checks so smartcast lowering can
 	// apply to patterns like `a && x is T && b`.
@@ -1073,7 +1757,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 		if terms.len > 2 {
 			mut is_idx := -1
 			for i, term in terms {
-				if term is ast.InfixExpr && term.op in [.key_is, .eq]
+				if term is ast.InfixExpr && term.op in [.key_is, .key_isreftype, .eq]
 					&& t.smartcast_context_from_is_check(term) != none {
 					is_idx = i
 					break
@@ -1120,7 +1804,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			// Check if LHS is an is-check
 			if cond.lhs is ast.InfixExpr {
 				lhs_infix := cond.lhs as ast.InfixExpr
-				if lhs_infix.op in [.key_is, .eq]
+				if lhs_infix.op in [.key_is, .key_isreftype, .eq]
 					&& t.smartcast_context_from_is_check(lhs_infix) != none {
 					// Transform: if x is Type && rest { body } else { else_body }
 					// Handle directly to ensure else_body is transformed WITHOUT smartcast
@@ -1188,7 +1872,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 										}
 									}
 								}
-								transformed_lhs := t.transform_expr(lhs_infix.lhs)
+								transformed_lhs := t.transform_sumtype_tag_lhs(lhs_infix.lhs)
 								for i2 := removed_for_tag2.len - 1; i2 >= 0; i2-- {
 									entry2 := removed_for_tag2[i2]
 									t.insert_smartcast_at(entry2.idx, entry2.ctx)
@@ -1204,7 +1888,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								})
 								mut inner_smartcast_pushed := false
 								if cond.rhs is ast.InfixExpr
-									&& (cond.rhs as ast.InfixExpr).op in [.key_is, .eq] && t.smartcast_context_from_is_check(cond.rhs as ast.InfixExpr) != none {
+									&& (cond.rhs as ast.InfixExpr).op in [.key_is, .key_isreftype, .eq] && t.smartcast_context_from_is_check(cond.rhs as ast.InfixExpr) != none {
 									orig_inner := cond.rhs as ast.InfixExpr
 									mut inner_vname := ''
 									mut inner_vmodule := ''
@@ -1241,7 +1925,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 											if inner_tag >= 0 {
 												// Transform inner LHS with outer smartcast
 												transformed_inner_lhs :=
-													t.transform_expr(orig_inner.lhs)
+													t.transform_sumtype_tag_lhs(orig_inner.lhs)
 												inner_tag_check = ast.Expr(ast.InfixExpr{
 													op:  token.Token.eq
 													lhs: t.synth_selector(transformed_inner_lhs,
@@ -1281,16 +1965,24 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								} else {
 									t.transform_expr(cond.rhs)
 								}
+								rest_pending_stmts := t.pending_stmts.clone()
+								t.pending_stmts.clear()
 								// Transform body with smartcast(s)
-								transformed_body := t.transform_stmts(expr.stmts)
+								transformed_body := t.transform_stmts_with_sumtype_tail(expr.stmts)
 								// Pop inner smartcast if pushed
 								if inner_smartcast_pushed {
 									t.pop_smartcast()
 								}
 								// Pop outer smartcast BEFORE transforming else
 								t.pop_smartcast()
-								// Transform else WITHOUT smartcast
-								transformed_else := t.transform_expr(expr.else_expr)
+								// Transform else after removing only the smartcast introduced
+								// by this condition; any outer smartcast remains valid.
+								transformed_else := t.transform_expr_without_smartcast_ctx(expr.else_expr, SmartcastContext{
+									expr:         smartcast_expr
+									variant:      qualified_variant
+									variant_full: qualified_variant_full
+									sumtype:      sumtype_name
+								})
 								// Build tag check
 								tag_check := ast.InfixExpr{
 									op:  token.Token.eq
@@ -1309,14 +2001,14 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 									else_expr: transformed_else
 									pos:       expr.pos
 								}
+								mut outer_stmts := rest_pending_stmts.clone()
+								outer_stmts << ast.Stmt(ast.ExprStmt{
+									expr: inner_if
+								})
 								// Build outer if
 								return ast.IfExpr{
 									cond:      tag_check
-									stmts:     [
-										ast.Stmt(ast.ExprStmt{
-											expr: inner_if
-										}),
-									]
+									stmts:     outer_stmts
 									else_expr: transformed_else
 									pos:       expr.pos
 								}
@@ -1332,7 +2024,9 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						t.smartcast_stack << iface_ctx
 						// Transform inner condition and body with smartcast
 						transformed_rest_fallback := t.transform_expr(cond.rhs)
-						transformed_body_fallback := t.transform_stmts(expr.stmts)
+						rest_pending_stmts := t.pending_stmts.clone()
+						t.pending_stmts.clear()
+						transformed_body_fallback := t.transform_stmts_with_sumtype_tail(expr.stmts)
 						// Pop smartcast
 						t.pop_smartcast()
 						inner_if := ast.IfExpr{
@@ -1341,14 +2035,14 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							else_expr: transformed_else_fallback
 							pos:       expr.pos
 						}
+						mut outer_stmts := rest_pending_stmts.clone()
+						outer_stmts << ast.Stmt(ast.ExprStmt{
+							expr: inner_if
+						})
 						// Keep original is-check condition (let cleanc handle it)
 						return ast.IfExpr{
 							cond:      t.transform_expr(ast.Expr(lhs_infix))
-							stmts:     [
-								ast.Stmt(ast.ExprStmt{
-									expr: inner_if
-								}),
-							]
+							stmts:     outer_stmts
 							else_expr: transformed_else_fallback
 							pos:       expr.pos
 						}
@@ -1359,7 +2053,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			// Transform to: if cond { if x is Type { ... } else { else_body } } else { else_body }
 			if cond.rhs is ast.InfixExpr {
 				rhs_infix := cond.rhs as ast.InfixExpr
-				if rhs_infix.op in [.key_is, .eq]
+				if rhs_infix.op in [.key_is, .key_isreftype, .eq]
 					&& t.smartcast_context_from_is_check(rhs_infix) != none {
 					// Transform: if cond && x is Type { body } else { else_body }
 					// To: if cond { if x is Type { body } else { else_body } } else { else_body }
@@ -1387,7 +2081,22 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	// Check for sum type smart cast: if x is Type { ... }
 	if expr.cond is ast.InfixExpr {
 		cond := expr.cond as ast.InfixExpr
-		if cond.op in [.key_is, .eq] && t.smartcast_context_from_is_check(cond) != none {
+		if cond.op in [.key_is, .key_isreftype, .eq]
+			&& t.smartcast_context_from_is_check(cond) != none {
+			if ctx := t.smartcast_context_from_is_check(cond) {
+				if tag_check := t.smartcast_tag_check_from_context(cond.lhs, cond.pos, ctx) {
+					t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+					transformed_stmts := t.transform_stmts_with_sumtype_tail(expr.stmts)
+					t.pop_smartcast()
+					transformed_else := t.transform_expr_without_smartcast_ctx(expr.else_expr, ctx)
+					return ast.IfExpr{
+						cond:      tag_check
+						stmts:     transformed_stmts
+						else_expr: transformed_else
+						pos:       expr.pos
+					}
+				}
+			}
 			// Get the variant type name from RHS
 			// Also extract module for qualified types like types.Type
 			mut variant_name := ''
@@ -1487,7 +2196,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								}
 							}
 						}
-						transformed_lhs := t.transform_expr(cond.lhs)
+						transformed_lhs := t.transform_sumtype_tag_lhs(cond.lhs)
 						// Restore removed smartcasts
 						for i := removed_for_tag.len - 1; i >= 0; i-- {
 							entry := removed_for_tag[i]
@@ -1499,7 +2208,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							qualified_variant_full, sumtype_name)
 
 						// Transform body with smart cast context
-						transformed_stmts := t.transform_stmts(expr.stmts)
+						transformed_stmts := t.transform_stmts_with_sumtype_tail(expr.stmts)
 
 						// Pop context
 						t.pop_smartcast()
@@ -1517,11 +2226,18 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							pos: cond.pos
 						}
 
-						// Transform else_expr (may have its own smart cast context)
+						// Transform else after removing only the smartcast introduced
+						// by this condition; any outer smartcast remains valid.
+						transformed_else := t.transform_expr_without_smartcast_ctx(expr.else_expr, SmartcastContext{
+							expr:         smartcast_expr
+							variant:      qualified_variant
+							variant_full: qualified_variant_full
+							sumtype:      sumtype_name
+						})
 						return ast.IfExpr{
 							cond:      tag_check
 							stmts:     transformed_stmts
-							else_expr: t.transform_expr(expr.else_expr)
+							else_expr: transformed_else
 							pos:       expr.pos
 						}
 					}
@@ -1532,7 +2248,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				// the body are lowered to ((ConcreteType*)(iface._object))->field.
 				if iface_ctx := t.smartcast_context_from_is_check(cond) {
 					t.smartcast_stack << iface_ctx
-					transformed_stmts := t.transform_stmts(expr.stmts)
+					transformed_stmts := t.transform_stmts_with_sumtype_tail(expr.stmts)
 					t.pop_smartcast()
 					return ast.IfExpr{
 						cond:      t.transform_expr(expr.cond)
@@ -1555,10 +2271,21 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			synth_pos := t.next_synth_pos()
 			rhs := guard.stmt.rhs[0]
 
+			mut rhs_is_map_index := false
+			mut map_index_expr := ast.IndexExpr{}
+			if idx := t.map_index_expr_from_guard_rhs(rhs) {
+				rhs_is_map_index = true
+				map_index_expr = idx
+			}
+
 			// Check if RHS returns Result or Option type
-			mut is_result := t.expr_returns_result(rhs)
-			mut is_option := t.expr_returns_option(rhs)
-			if !is_result && !is_option {
+			mut is_result := false
+			mut is_option := false
+			if !rhs_is_map_index {
+				is_result = t.expr_returns_result(rhs)
+				is_option = t.expr_returns_option(rhs)
+			}
+			if !rhs_is_map_index && !is_result && !is_option {
 				fn_name := t.get_call_fn_name(rhs)
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
@@ -1571,6 +2298,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				temp_ident := ast.Ident{
 					name: temp_name
 					pos:  synth_pos
+				}
+				t.register_if_guard_temp_and_payload_types(temp_name, guard.stmt.lhs, rhs)
+				data_type := if wrapper_type := t.expr_wrapper_type_for_or(rhs) {
+					wrapper_data_type(wrapper_type) or { types.Type(types.voidptr_) }
+				} else {
+					types.Type(types.voidptr_)
 				}
 
 				mut is_blank := false
@@ -1600,7 +2333,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				// 3. Body: var := _tmp.data; original_body
 				mut body_stmts := []ast.Stmt{}
 				if !is_blank {
-					data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
+					data_access := t.synth_selector(temp_ident, 'data', data_type)
 					body_stmts << ast.AssignStmt{
 						op:  .decl_assign
 						lhs: guard.stmt.lhs
@@ -1612,10 +2345,37 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					body_stmts << s
 				}
 
+				mut else_expr := expr.else_expr
+				if else_expr is ast.IfExpr {
+					else_if := else_expr as ast.IfExpr
+					if else_if.cond is ast.EmptyExpr {
+						mut else_stmts := []ast.Stmt{cap: else_if.stmts.len + 1}
+						else_stmts << ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(ast.Ident{
+								name: 'err'
+							})]
+							rhs: [
+								t.synth_selector(temp_ident, 'err', types.Type(types.Struct{
+									name: 'IError'
+								})),
+							]
+							pos: else_if.pos
+						}
+						else_stmts << else_if.stmts
+						else_expr = ast.Expr(ast.IfExpr{
+							cond:      else_if.cond
+							stmts:     else_stmts
+							else_expr: else_if.else_expr
+							pos:       else_if.pos
+						})
+					}
+				}
+
 				modified_if := ast.IfExpr{
 					cond:      success_cond
 					stmts:     t.transform_stmts(body_stmts)
-					else_expr: t.transform_expr(expr.else_expr)
+					else_expr: t.transform_if_guard_else_expr(else_expr)
 					pos:       synth_pos
 				}
 				// Propagate the original IfExpr type to the synthesized node
@@ -1640,6 +2400,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				temp_ident := ast.Ident{
 					name: temp_name
 					pos:  synth_pos
+				}
+				t.register_if_guard_temp_and_payload_types(temp_name, guard.stmt.lhs, rhs)
+				data_type := if wrapper_type := t.expr_wrapper_type_for_or(rhs) {
+					wrapper_data_type(wrapper_type) or { types.Type(types.voidptr_) }
+				} else {
+					types.Type(types.voidptr_)
 				}
 				mut is_blank := false
 				if guard.stmt.lhs.len == 1 {
@@ -1669,7 +2435,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 
 				mut body_stmts := []ast.Stmt{}
 				if !is_blank {
-					data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
+					data_access := t.synth_selector(temp_ident, 'data', data_type)
 					body_stmts << ast.AssignStmt{
 						op:  .decl_assign
 						lhs: guard.stmt.lhs
@@ -1684,7 +2450,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				modified_if := ast.IfExpr{
 					cond:      opt_success_cond
 					stmts:     t.transform_stmts(body_stmts)
-					else_expr: t.transform_expr(expr.else_expr)
+					else_expr: t.transform_if_guard_else_expr(expr.else_expr)
 					pos:       synth_pos
 				}
 				// Propagate the original IfExpr type to the synthesized node
@@ -1715,26 +2481,22 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 
 			// Check if RHS is a map or array index expression
 			mut cond_expr := ast.Expr(t.transform_expr(rhs))
-			if rhs is ast.IndexExpr {
-				// Try to see if this is a map index
-				if _ := t.get_map_type_for_expr(rhs.lhs) {
-					// This is a map access - generate "key in map" check
-					cond_expr = ast.Expr(ast.InfixExpr{
-						op:  .key_in
-						lhs: rhs.expr // the key expression
-						rhs: rhs.lhs  // the map expression
-						pos: rhs.pos
-					})
-				} else {
-					// This is an array access - generate bounds check: index < array.len
-					cond_expr = ast.Expr(ast.InfixExpr{
-						op:  .lt
-						lhs: t.transform_expr(rhs.expr) // the index expression
-						rhs: t.synth_selector(t.transform_expr(rhs.lhs), 'len',
-							types.Type(types.int_))
-						pos: rhs.pos
-					})
-				}
+			if rhs_is_map_index {
+				// This is a map access - generate "key in map" check
+				cond_expr = ast.Expr(ast.InfixExpr{
+					op:  .key_in
+					lhs: map_index_expr.expr // the key expression
+					rhs: map_index_expr.lhs  // the map expression
+					pos: map_index_expr.pos
+				})
+			} else if rhs is ast.IndexExpr {
+				// This is an array access - generate bounds check: index < array.len
+				cond_expr = ast.Expr(ast.InfixExpr{
+					op:  .lt
+					lhs: t.transform_expr(rhs.expr) // the index expression
+					rhs: t.synth_selector(t.transform_expr(rhs.lhs), 'len', types.Type(types.int_))
+					pos: rhs.pos
+				})
 			}
 
 			mut new_stmts := []ast.Stmt{cap: expr.stmts.len + 1}
@@ -1802,7 +2564,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	// flushed into the inner branch's transform_stmts.
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	transformed_stmts := t.transform_stmts(expr.stmts)
+	transformed_stmts := t.transform_stmts_with_sumtype_tail(expr.stmts)
 	// Merge any pending_stmts generated by the then-branch transform back into the outer context.
 	inner_pending_then := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
@@ -1821,10 +2583,19 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	for ip in inner_pending {
 		t.pending_stmts << ip
 	}
+	mut final_else := transformed_else
+	if !t.if_expr_is_value(expr) && transformed_else is ast.UnsafeExpr {
+		else_unsafe := transformed_else as ast.UnsafeExpr
+		final_else = ast.Expr(ast.IfExpr{
+			cond:  ast.empty_expr
+			stmts: else_unsafe.stmts
+			pos:   expr.pos
+		})
+	}
 	transformed_if := ast.IfExpr{
 		cond:      t.transform_expr(expr.cond)
 		stmts:     transformed_stmts
-		else_expr: transformed_else
+		else_expr: final_else
 		pos:       expr.pos
 	}
 	// Lower value-position IfExpr: hoist to a temp variable assignment.
@@ -1847,35 +2618,42 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// Preserve short-circuit semantics while making smartcasts available to all
 	// following terms in `&&` chains (including multiple `is` checks).
 	if expr.op == .and {
-		terms := t.flatten_and_terms(expr)
-		if terms.len > 1 {
-			mut transformed_terms := []ast.Expr{cap: terms.len}
-			mut pushed := 0
-			mut changed := false
-			for term in terms {
-				if term is ast.InfixExpr {
-					if ctx := t.smartcast_context_from_is_check(term) {
-						transformed_terms << t.transform_expr(term)
-						t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
-						pushed++
-						changed = true
-						continue
-					}
+		if transformed := t.transform_and_chain_expr(expr) {
+			return transformed
+		}
+	}
+
+	// Resolve enum shorthands before sum type checks. A shorthand like
+	// `sym.kind == .string` must become an enum value comparison, not a
+	// sum type tag comparison against some unrelated variant named `string`.
+	if expr.op in [.eq, .ne] {
+		if expr.rhs is ast.SelectorExpr {
+			rhs_sel := expr.rhs as ast.SelectorExpr
+			if rhs_sel.lhs is ast.EmptyExpr {
+				enum_type := t.get_enum_type_name(expr.lhs)
+				if enum_type != '' {
+					resolved_rhs := t.resolve_enum_shorthand(expr.rhs, enum_type)
+					return t.make_infix_expr_at(expr.op, t.transform_expr(expr.lhs),
+						t.transform_expr(resolved_rhs), expr.pos)
 				}
-				transformed_terms << t.transform_expr(term)
 			}
-			for _ in 0 .. pushed {
-				t.pop_smartcast()
-			}
-			if changed {
-				return t.join_and_terms(transformed_terms)
+		}
+		if expr.lhs is ast.SelectorExpr {
+			lhs_sel := expr.lhs as ast.SelectorExpr
+			if lhs_sel.lhs is ast.EmptyExpr {
+				enum_type := t.get_enum_type_name(expr.rhs)
+				if enum_type != '' {
+					resolved_lhs := t.resolve_enum_shorthand(expr.lhs, enum_type)
+					return t.make_infix_expr_at(expr.op, t.transform_expr(resolved_lhs),
+						t.transform_expr(expr.rhs), expr.pos)
+				}
 			}
 		}
 	}
 
 	// Lower sum type checks/comparisons to tag comparisons.
 	// This also handles parser/checker-lowered `!is` that appears as `!=` with type RHS.
-	if expr.op in [.key_is, .not_is, .eq, .ne] {
+	if expr.op in [.key_is, .key_isreftype, .not_is, .eq, .ne] {
 		mut variant_name := ''
 		mut variant_module := ''
 		if expr.rhs is ast.Ident {
@@ -1892,7 +2670,15 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		}
 		if variant_name != '' {
 			mut sumtype_name := t.get_sumtype_name_for_expr(expr.lhs)
-			if sumtype_name == '' {
+			rhs_is_shorthand := if expr.rhs is ast.SelectorExpr {
+				(expr.rhs as ast.SelectorExpr).lhs is ast.EmptyExpr
+			} else {
+				false
+			}
+			rhs_can_name_sumtype_variant := expr.op in [.key_is, .key_isreftype, .not_is]
+				|| expr.rhs is ast.Type
+				|| (variant_name.len > 0 && variant_name[0] >= `A` && variant_name[0] <= `Z`)
+			if sumtype_name == '' && !rhs_is_shorthand && rhs_can_name_sumtype_variant {
 				sumtype_name = t.find_sumtype_for_variant(variant_name)
 			}
 			if sumtype_name != '' {
@@ -1912,8 +2698,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					}
 				}
 				if tag_value >= 0 {
-					transformed_lhs := t.transform_expr(expr.lhs)
-					cmp_op := if expr.op in [.key_is, .eq] {
+					transformed_lhs := t.transform_sumtype_tag_lhs(expr.lhs)
+					cmp_op := if expr.op in [.key_is, .key_isreftype, .eq] {
 						token.Token.eq
 					} else {
 						token.Token.ne
@@ -1936,7 +2722,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 							|| lhs_base.name == variant_name
 						if is_self_check {
 							transformed_lhs := t.transform_expr(expr.lhs)
-							cmp_op := if expr.op in [.key_is, .eq] {
+							cmp_op := if expr.op in [.key_is, .key_isreftype, .eq] {
 								token.Token.ne
 							} else {
 								token.Token.eq
@@ -2109,11 +2895,11 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				// map__exists call so the pointer stays valid during the call.
 				// Using addr_of_expr_with_temp would nest the temp inside a
 				// statement expression whose scope ends before map__exists reads it.
+				key_type := t.map_key_type_for_expr(expr.lhs, map_typ)
 				lhs_trans := t.transform_expr(expr.lhs)
 				mut key_ptr := ast.Expr(ast.empty_expr)
 				mut key_stmts := []ast.Stmt{}
-				if t.can_take_address_expr(lhs_trans)
-					&& !t.is_enum_rvalue(lhs_trans, map_typ.key_type) {
+				if t.can_take_address_expr(lhs_trans) && !t.is_enum_rvalue(lhs_trans, key_type) {
 					key_ptr = ast.PrefixExpr{
 						op:   .amp
 						expr: lhs_trans
@@ -2123,7 +2909,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					key_ident := ast.Ident{
 						name: key_tmp
 					}
-					t.register_temp_var(key_tmp, map_typ.key_type)
+					t.register_temp_var(key_tmp, key_type)
 					key_stmts << ast.Stmt(ast.AssignStmt{
 						op:  .decl_assign
 						lhs: [ast.Expr(key_ident)]
@@ -2167,6 +2953,41 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		if expr.rhs is ast.ArrayInitExpr {
 			arr := expr.rhs as ast.ArrayInitExpr
 			if arr.exprs.len > 0 {
+				if t.get_sumtype_name_for_expr(expr.lhs) != '' {
+					mut tag_chain := ast.empty_expr
+					mut has_tag_chain := false
+					for elem in arr.exprs {
+						if ctx := t.smartcast_context_from_is_check(ast.InfixExpr{
+							op:  .key_is
+							lhs: expr.lhs
+							rhs: elem
+							pos: expr.pos
+						})
+						{
+							if tag_check := t.smartcast_tag_check_from_context(expr.lhs, expr.pos,
+								ctx)
+							{
+								if !has_tag_chain {
+									tag_chain = tag_check
+									has_tag_chain = true
+								} else {
+									tag_chain = t.make_infix_expr_at(.logical_or, tag_chain,
+										tag_check, expr.pos)
+								}
+							}
+						}
+					}
+					if has_tag_chain {
+						if expr.op == .not_in {
+							return ast.PrefixExpr{
+								op:   .not
+								expr: tag_chain
+								pos:  expr.pos
+							}
+						}
+						return tag_chain
+					}
+				}
 				lhs_trans := t.transform_expr(expr.lhs)
 				// Get enum type from LHS for resolving shorthand in array elements
 				enum_type := t.get_enum_type_name(expr.lhs)
@@ -2440,7 +3261,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			transformed_rhs := t.transform_expr(expr.rhs)
 			// Clone strings when pushing to arrays to prevent use-after-free
 			// (V1 does: array_push(&arr, _MOV((string[]){ string_clone(s) })))
-			cloned_rhs := if elem_type_name == 'string' {
+			mut cloned_rhs := if elem_type_name == 'string' {
 				ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: 'string__clone'
@@ -2450,9 +3271,45 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			} else {
 				transformed_rhs
 			}
+			if rhs_type := t.get_expr_type(expr.rhs) {
+				rhs_c_name := t.type_to_c_name(rhs_type)
+				if rhs_type is types.Pointer {
+					base_c_name := t.type_to_c_name(rhs_type.base_type)
+					if base_c_name == elem_type_name && !elem_type_name.ends_with('*')
+						&& !elem_type_name.ends_with('ptr') {
+						cloned_rhs = ast.PrefixExpr{
+							op:   .mul
+							expr: cloned_rhs
+						}
+					}
+				} else if rhs_c_name.ends_with('*')
+					&& rhs_c_name[..rhs_c_name.len - 1] == elem_type_name {
+					cloned_rhs = ast.PrefixExpr{
+						op:   .mul
+						expr: cloned_rhs
+					}
+				}
+			}
 			// Wrap in sumtype if the array element type is a sumtype
 			push_elem := if t.is_sum_type(elem_type_name) {
-				t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or { cloned_rhs }
+				rhs_key := t.expr_to_string(expr.rhs)
+				if rhs_key != '' {
+					if ctx := t.find_smartcast_for_expr(rhs_key) {
+						t.build_sumtype_init(cloned_rhs, ctx.variant_full, elem_type_name) or {
+							t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or {
+								cloned_rhs
+							}
+						}
+					} else {
+						t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or {
+							t.wrap_sumtype_value(expr.rhs, elem_type_name) or { cloned_rhs }
+						}
+					}
+				} else {
+					t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or {
+						t.wrap_sumtype_value(expr.rhs, elem_type_name) or { cloned_rhs }
+					}
+				}
 			} else {
 				cloned_rhs
 			}
@@ -2818,10 +3675,22 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					} else {
 						'map_map_eq'
 					}
-					map_eq_call := ast.CallExpr{
-						lhs:  ast.Ident{
+					eq_lhs := if eq_fn.starts_with('Map_') {
+						ast.Expr(ast.SelectorExpr{
+							lhs: ast.Expr(ast.Ident{
+								name: 'C'
+							})
+							rhs: ast.Ident{
+								name: eq_fn
+							}
+						})
+					} else {
+						ast.Expr(ast.Ident{
 							name: eq_fn
-						}
+						})
+					}
+					map_eq_call := ast.CallExpr{
+						lhs:  eq_lhs
 						args: [t.transform_expr(expr.lhs), t.transform_expr(expr.rhs)]
 						pos:  expr.pos
 					}
@@ -2878,6 +3747,61 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		}
 	}
 	// Default: just transform children
+	if expr.op == .and {
+		saved_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		lhs_trans := t.transform_expr(expr.lhs)
+		lhs_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		mut pushed := 0
+		if expr.lhs is ast.InfixExpr {
+			if ctx := t.smartcast_context_from_is_check(expr.lhs) {
+				t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+				pushed++
+			}
+		}
+		rhs_trans := t.transform_expr(expr.rhs)
+		rhs_pending := t.pending_stmts.clone()
+		for _ in 0 .. pushed {
+			t.pop_smartcast()
+		}
+		t.pending_stmts = saved_pending
+		if lhs_pending.len > 0 || rhs_pending.len > 0 {
+			t.temp_counter++
+			temp_name := '_and_t${t.temp_counter}'
+			temp_ident := ast.Ident{
+				name: temp_name
+			}
+			t.register_temp_var(temp_name, types.Type(types.bool_))
+			t.pending_stmts << ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [
+					ast.Expr(ast.ModifierExpr{
+						kind: .key_mut
+						expr: temp_ident
+					}),
+				]
+				rhs: [bool_literal_expr(false)]
+			})
+			mut then_stmts := rhs_pending.clone()
+			then_stmts << ast.Stmt(ast.AssignStmt{
+				op:  .assign
+				lhs: [ast.Expr(temp_ident)]
+				rhs: [rhs_trans]
+			})
+			mut outer_stmts := lhs_pending.clone()
+			outer_stmts << ast.Stmt(ast.ExprStmt{
+				expr: ast.IfExpr{
+					cond:  lhs_trans
+					stmts: then_stmts
+					pos:   expr.pos
+				}
+			})
+			t.pending_stmts << outer_stmts
+			return temp_ident
+		}
+		return t.make_infix_expr_at(expr.op, lhs_trans, rhs_trans, expr.pos)
+	}
 	lhs_trans := t.transform_expr(expr.lhs)
 	rhs_trans := t.transform_expr(expr.rhs)
 	return t.make_infix_expr_at(expr.op, lhs_trans, rhs_trans, expr.pos)
@@ -2932,15 +3856,29 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
 			return t.transform_embed_file_comptime_expr(expr, inner.args)
 		}
+		if inner.lhs is ast.Ident && inner.lhs.name == 'res' {
+			return ast.Expr(ast.BasicLiteral{
+				kind:  .key_false
+				value: 'false'
+				pos:   expr.pos
+			})
+		}
 	}
 	if inner is ast.CallOrCastExpr {
 		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
 			return t.transform_embed_file_comptime_expr(expr, [inner.expr])
 		}
+		if inner.lhs is ast.Ident && inner.lhs.name == 'res' {
+			return ast.Expr(ast.BasicLiteral{
+				kind:  .key_false
+				value: 'false'
+				pos:   expr.pos
+			})
+		}
 	}
 	if inner is ast.Ident {
-		if inner.name in ['VMODROOT', '@VMODROOT'] {
-			return ast.Expr(t.vmodroot_string_literal(expr.pos))
+		if pseudo := t.comptime_pseudo_ident_expr(inner.name, expr.pos) {
+			return pseudo
 		}
 	}
 	if transformed := t.transform_embed_file_comptime_chain(inner, expr.pos) {

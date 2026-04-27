@@ -492,6 +492,18 @@ fn is_generic_placeholder_type_name(name string) bool {
 	return name in ['T', 'K', 'V'] || (name.len == 1 && name[0] >= `A` && name[0] <= `Z`)
 }
 
+fn generic_placeholder_c_type_name(name string) string {
+	mut base := unmangle_c_ptr_type(name)
+	base = base.trim_right('*')
+	if base.contains('__') {
+		base = base.all_after_last('__')
+	}
+	if is_generic_placeholder_type_name(base) {
+		return base
+	}
+	return ''
+}
+
 fn (g &Gen) option_result_payload_invalid(val_type string) bool {
 	if val_type == '' {
 		return true
@@ -1004,31 +1016,69 @@ fn (g &Gen) struct_has_ref_fields(s types.Struct) bool {
 	return false
 }
 
+fn (mut g Gen) eq_expr_for_c_type(c_type string, va string, vb string) string {
+	if c_type == '' || c_type == 'void' {
+		return '${va} == ${vb}'
+	}
+	if c_type == 'string' || c_type == 'builtin__string' {
+		return 'string__eq(${va}, ${vb})'
+	}
+	if c_type == 'array' || (c_type.starts_with('Array_') && !c_type.starts_with('Array_fixed_')) {
+		return '__v2_array_eq(${va}, ${vb})'
+	}
+	if c_type.starts_with('Map_') {
+		return '${c_type}_map_eq(${va}, ${vb})'
+	}
+	if c_type == 'map' {
+		return 'map_map_eq(${va}, ${vb})'
+	}
+	if c_type in primitive_types || c_type in ['void*', 'char*', 'u8*'] || c_type.ends_with('*')
+		|| c_type.ends_with('ptr') || g.is_enum_type(c_type) {
+		return '${va} == ${vb}'
+	}
+	return 'memcmp(&${va}, &${vb}, sizeof(${c_type})) == 0'
+}
+
+fn (mut g Gen) eq_expr_for_type(typ types.Type, va string, vb string) string {
+	match typ {
+		types.String {
+			return 'string__eq(${va}, ${vb})'
+		}
+		types.Array {
+			return '__v2_array_eq(${va}, ${vb})'
+		}
+		types.Map {
+			c_type := g.types_type_to_c(typ)
+			return g.eq_expr_for_c_type(c_type, va, vb)
+		}
+		types.Alias {
+			match typ.base_type {
+				types.String, types.Array, types.Map {
+					return g.eq_expr_for_type(typ.base_type, va, vb)
+				}
+				else {}
+			}
+
+			c_type := g.types_type_to_c(typ)
+			return g.eq_expr_for_c_type(c_type, va, vb)
+		}
+		types.Primitive, types.Pointer, types.Rune, types.Char, types.ISize, types.USize,
+		types.Enum, types.Nil {
+			return '${va} == ${vb}'
+		}
+		else {
+			c_type := g.types_type_to_c(typ)
+			return g.eq_expr_for_c_type(c_type, va, vb)
+		}
+	}
+}
+
 // gen_struct_field_eq_expr generates an inline field-by-field equality expression
 // for structs with reference-type fields.
 fn (mut g Gen) gen_struct_field_eq_expr(s types.Struct, va string, vb string) string {
 	mut parts := []string{}
 	for field in s.fields {
-		fname := field.name
-		match field.typ {
-			types.String {
-				parts << 'string__eq(${va}.${fname}, ${vb}.${fname})'
-			}
-			types.Array {
-				parts << '__v2_array_eq(${va}.${fname}, ${vb}.${fname})'
-			}
-			types.Map {
-				c_type := g.types_type_to_c(field.typ)
-				if c_type.starts_with('Map_') {
-					parts << '${c_type}_map_eq(${va}.${fname}, ${vb}.${fname})'
-				} else {
-					parts << 'map_map_eq(${va}.${fname}, ${vb}.${fname})'
-				}
-			}
-			else {
-				parts << '${va}.${fname} == ${vb}.${fname}'
-			}
-		}
+		parts << g.eq_expr_for_type(field.typ, '${va}.${field.name}', '${vb}.${field.name}')
 	}
 	if parts.len == 0 {
 		return '1'
@@ -1901,6 +1951,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	}
 	// Try environment lookup
 	if t := g.get_expr_type_from_env(node) {
+		if node is ast.SelectorExpr {
+			field_type_from_cast := g.selector_explicit_cast_field_type(node)
+			if field_type_from_cast != '' {
+				return field_type_from_cast
+			}
+		}
 		// For array element-returning methods, prefer element type inference over the
 		// generic void* return type from function metadata.
 		if node is ast.CallExpr {
@@ -2107,6 +2163,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return g.get_expr_type(node.expr)
 		}
 		ast.UnsafeExpr {
+			if addr_value_type := g.unsafe_addr_temp_value_type(node) {
+				return '${addr_value_type}*'
+			}
 			// Infer from last statement in the block
 			if node.stmts.len > 0 {
 				last := node.stmts[node.stmts.len - 1]
@@ -2205,7 +2264,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			mut elem := g.extract_array_elem_type(node.typ)
 			if elem != '' {
 				if g.is_dynamic_array_type(node.typ) {
-					return 'Array_' + elem
+					array_type := 'Array_' + elem
+					g.register_alias_type(array_type)
+					return array_type
 				}
 				// Get size from type annotation if available, fallback to exprs.len
 				mut fixed_size := node.exprs.len
@@ -2396,6 +2457,17 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if is_generic_placeholder_type_name(name) {
 				if concrete := g.resolve_active_generic_type(name) {
 					return g.types_type_to_c(concrete)
+				}
+				return 'f64'
+			}
+			generic_name := generic_placeholder_c_type_name(name)
+			if generic_name != '' {
+				if concrete := g.resolve_active_generic_type(generic_name) {
+					mut concrete_name := g.types_type_to_c(concrete)
+					if unmangle_c_ptr_type(name).ends_with('*') && !concrete_name.ends_with('*') {
+						concrete_name += '*'
+					}
+					return concrete_name
 				}
 				return 'f64'
 			}
@@ -3644,6 +3716,35 @@ fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name s
 	return none
 }
 
+fn (mut g Gen) explicit_deref_cast_type_name(expr ast.Expr) string {
+	inner := g.unwrap_parens(expr)
+	if inner is ast.PrefixExpr {
+		if inner.op != .mul {
+			return ''
+		}
+		cast_expr := g.unwrap_parens(inner.expr)
+		if cast_expr is ast.CastExpr {
+			cast_type := g.expr_type_to_c(cast_expr.typ).trim_space()
+			if !cast_type.ends_with('*') {
+				return ''
+			}
+			return cast_type.trim_right('*')
+		}
+	}
+	return ''
+}
+
+fn (mut g Gen) selector_explicit_cast_field_type(sel ast.SelectorExpr) string {
+	struct_name := g.explicit_deref_cast_type_name(sel.lhs)
+	if struct_name == '' {
+		return ''
+	}
+	if field_type := g.lookup_struct_field_type_by_name(struct_name, sel.rhs.name) {
+		return field_type
+	}
+	return ''
+}
+
 fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 	// Fast path: use the type checker's env pos.id lookup (O(1) array access).
 	// Uses get_env_c_type (alias-preserving) since alias types like
@@ -3651,6 +3752,29 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 	// Skip _data and _result_/_option_ internal fields (.data, .err, .is_error, .state):
 	// the checker stores incorrect types for these on wrapper structs.
 	rhs := sel.rhs.name
+	if rhs == 'len' {
+		lhs_type := g.get_expr_type(sel.lhs)
+		if lhs_type == 'string' || lhs_type == 'array' || lhs_type == 'map'
+			|| lhs_type.starts_with('Array_') || lhs_type.starts_with('Map_') {
+			return 'int'
+		}
+		if raw_type := g.get_raw_type(sel.lhs) {
+			base_type := match raw_type {
+				types.Pointer { raw_type.base_type }
+				types.Alias { raw_type.base_type }
+				else { raw_type }
+			}
+
+			if base_type is types.Array || base_type is types.ArrayFixed || base_type is types.Map
+				|| base_type is types.String {
+				return 'int'
+			}
+		}
+	}
+	field_type_from_cast := g.selector_explicit_cast_field_type(sel)
+	if field_type_from_cast != '' {
+		return field_type_from_cast
+	}
 	mut env_type := ''
 	if !rhs.starts_with('_') && rhs !in ['data', 'err', 'is_error', 'state'] {
 		if t := g.get_env_c_type(sel) {
@@ -3849,12 +3973,7 @@ fn short_type_name(name string) string {
 }
 
 fn is_generic_placeholder_c_type_name(name string) bool {
-	mut base := unmangle_c_ptr_type(name)
-	base = base.trim_right('*')
-	if base.contains('__') {
-		base = base.all_after_last('__')
-	}
-	return is_generic_placeholder_type_name(base)
+	return generic_placeholder_c_type_name(name) != ''
 }
 
 fn ierror_wrapper_base_from_ident(name string) string {

@@ -176,6 +176,11 @@ pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
 }
 
+// is_noreturn reports whether the function is annotated with @[noreturn].
+pub fn (f &FnType) is_noreturn() bool {
+	return f.attributes.has(.noreturn)
+}
+
 // get_generic_types returns the concrete generic instantiations inferred for this function.
 pub fn (f &FnType) get_generic_types() []map[string]Type {
 	mut out := []map[string]Type{cap: f.generic_types.len}

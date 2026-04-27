@@ -698,10 +698,40 @@ fn (mut g Gen) gen_call_or_cast_expr(node ast.CallOrCastExpr) {
 }
 
 fn (mut g Gen) selector_use_ptr(lhs_expr ast.Expr) bool {
+	unwrapped := g.unwrap_parens(lhs_expr)
+	if unwrapped is ast.PrefixExpr && unwrapped.op == .mul {
+		inner_type := g.get_expr_type(unwrapped.expr)
+		if inner_type.ends_with('**') {
+			return true
+		}
+		if raw_inner_type := g.get_raw_type(unwrapped.expr) {
+			if raw_inner_type is types.Pointer && raw_inner_type.base_type is types.Pointer {
+				return true
+			}
+		}
+		deref_type := g.get_expr_type(unwrapped)
+		if deref_type.ends_with('*') {
+			return true
+		}
+		if raw_type := g.get_raw_type(unwrapped) {
+			return raw_type is types.Pointer
+		}
+		return false
+	}
+	if unwrapped is ast.SelectorExpr {
+		if field := g.selector_interface_data_field(unwrapped) {
+			return field.c_type.ends_with('*')
+		}
+	}
+	if unwrapped is ast.CallExpr && unwrapped.lhs is ast.Ident {
+		call_lhs := unwrapped.lhs as ast.Ident
+		if call_lhs.name in ['array__last', 'array__first', 'array__pop', 'array__pop_left'] {
+			return g.get_expr_type(unwrapped).ends_with('*')
+		}
+	}
 	if g.expr_is_pointer(lhs_expr) {
 		return true
 	}
-	unwrapped := g.unwrap_parens(lhs_expr)
 	if unwrapped is ast.Ident {
 		if unwrapped.name in g.cur_fn_mut_params {
 			return true
@@ -709,6 +739,35 @@ fn (mut g Gen) selector_use_ptr(lhs_expr ast.Expr) bool {
 		if local_type := g.local_var_c_type_for_expr(unwrapped) {
 			return local_type.ends_with('*')
 		}
+	}
+	return false
+}
+
+fn (mut g Gen) gen_deref_cast_selector(lhs_expr ast.Expr, owner string, field_name string) bool {
+	unwrapped := g.unwrap_parens(lhs_expr)
+	if unwrapped is ast.PrefixExpr {
+		if unwrapped.op != .mul {
+			return false
+		}
+		if unwrapped.expr !is ast.CastExpr {
+			return false
+		}
+		cast_expr := unwrapped.expr as ast.CastExpr
+		target_type := g.expr_type_to_c(cast_expr.typ)
+		if target_type == '' {
+			return false
+		}
+		g.sb.write_string('(*((')
+		g.sb.write_string(target_type)
+		g.sb.write_string(')(')
+		g.expr(cast_expr.expr)
+		g.sb.write_string(')))')
+		if owner != '' {
+			g.sb.write_string('.${escape_c_keyword(owner)}.${field_name}')
+		} else {
+			g.sb.write_string('.${field_name}')
+		}
+		return true
 	}
 	return false
 }
@@ -920,8 +979,15 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		}
 	}
 	// Sum type checks: expr is Type and lowered expr ==/!= Type.
-	rhs_can_match_sum := node.rhs is ast.Ident
-		|| (node.rhs is ast.SelectorExpr && node.rhs.lhs is ast.Ident)
+	rhs_can_match_sum := if node.op in [.key_is, .not_is] {
+		node.rhs is ast.Ident || (node.rhs is ast.SelectorExpr && node.rhs.lhs is ast.Ident)
+	} else if node.rhs is ast.Ident {
+		node.rhs.name.len > 0 && node.rhs.name[0] >= `A` && node.rhs.name[0] <= `Z`
+	} else if node.rhs is ast.SelectorExpr && node.rhs.lhs is ast.Ident {
+		node.rhs.rhs.name.len > 0 && node.rhs.rhs.name[0] >= `A` && node.rhs.rhs.name[0] <= `Z`
+	} else {
+		false
+	}
 	if node.op in [.key_is, .not_is] || (node.op in [.eq, .ne] && rhs_can_match_sum) {
 		mut rhs_name := ''
 		if node.rhs is ast.Ident {
@@ -1600,6 +1666,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 						// Rename V variables that clash with C type names
 						if ident_name == 'array' {
 							ident_name = '_v_array'
+						} else {
+							ident_name = escape_c_keyword(ident_name)
 						}
 						g.sb.write_string(ident_name)
 					}
@@ -2228,6 +2296,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				owner := g.embedded_owner_for(lhs_struct, rhs_name)
 				field_name := escape_c_keyword(rhs_name)
 				selector := if use_ptr { '->' } else { '.' }
+				if g.gen_deref_cast_selector(lhs_expr, owner, field_name) {
+					return
+				}
 				g.sb.write_string('(*(')
 				g.expr(lhs_expr)
 				if owner != '' {
@@ -2270,6 +2341,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				owner := g.embedded_owner_for(lhs_struct, rhs_name)
 				field_name := escape_c_keyword(rhs_name)
 				selector := if use_ptr { '->' } else { '.' }
+				if g.gen_deref_cast_selector(lhs_expr, owner, field_name) {
+					return
+				}
 				g.expr(lhs_expr)
 				if owner != '' {
 					g.sb.write_string('${selector}${escape_c_keyword(owner)}.${field_name}')
@@ -2829,6 +2903,26 @@ fn (mut g Gen) resolve_narrowed_selector_field_type(sel ast.SelectorExpr) ?types
 	return none
 }
 
+fn (mut g Gen) unsafe_addr_temp_value_type(node ast.UnsafeExpr) ?string {
+	if node.stmts.len != 2 {
+		return none
+	}
+	first := node.stmts[0]
+	last_s := node.stmts[1]
+	if first is ast.AssignStmt && first.op == .decl_assign && first.lhs.len == 1
+		&& first.rhs.len == 1 && last_s is ast.ExprStmt {
+		if last_s.expr is ast.PrefixExpr && last_s.expr.op == .amp && last_s.expr.expr is ast.Ident {
+			lhs_ident := first.lhs[0]
+			addr_ident := last_s.expr.expr as ast.Ident
+			if lhs_ident is ast.Ident && lhs_ident.name == addr_ident.name {
+				c_type := g.local_var_c_type_for_expr(lhs_ident) or { return none }
+				return addr_temp_compound_type(c_type, g.get_expr_type(first.rhs[0]))
+			}
+		}
+	}
+	return none
+}
+
 fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	if node.stmts.len == 0 {
 		g.sb.write_string('0')
@@ -2860,7 +2954,7 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 				lhs_ident := first.lhs[0]
 				addr_ident := last_s.expr.expr as ast.Ident
 				if lhs_ident is ast.Ident && lhs_ident.name == addr_ident.name {
-					c_type := g.local_var_c_type_for_expr(lhs_ident) or { '' }
+					c_type := g.unsafe_addr_temp_value_type(node) or { '' }
 					if c_type != '' {
 						g.sb.write_string('&((${c_type}[1]){')
 						g.expr(first.rhs[0])
@@ -2888,6 +2982,20 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 		g.sb.write_string('0; ')
 	}
 	g.sb.write_string('})')
+}
+
+fn addr_temp_compound_type(c_type string, rhs_type string) string {
+	if !c_type.starts_with('_option_') && !c_type.starts_with('_result_') {
+		return c_type
+	}
+	if rhs_type == ''
+		|| rhs_type in ['int', 'int_literal', 'float_literal', 'void', 'void*', 'voidptr'] {
+		return c_type
+	}
+	if rhs_type.starts_with('_option_') || rhs_type.starts_with('_result_') {
+		return c_type
+	}
+	return rhs_type
 }
 
 fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
@@ -3913,6 +4021,16 @@ fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
 	g.expr(node.expr)
 	inner_str := g.sb.str()
 	g.sb = saved
+	source_c_type_direct := g.get_expr_type(node.expr).trim_space()
+	source_base_direct := source_c_type_direct.trim_right('*')
+	if source_base_direct == type_name {
+		if source_c_type_direct.ends_with('*') {
+			g.sb.write_string('(*(${inner_str}))')
+		} else {
+			g.sb.write_string(inner_str)
+		}
+		return
+	}
 	if g.contains_as_cast_expr(node.expr) {
 		g.sb.write_string('((${type_name})(${inner_str}))')
 		return
@@ -3932,6 +4050,25 @@ fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
 	if inner_str.starts_with('((${type_name}*)') || inner_str.starts_with('(${type_name}*)') {
 		g.sb.write_string('(*(${inner_str}))')
 		return
+	}
+	source_c_type := source_c_type_direct.trim_right('*')
+	if variants := g.sum_type_variants[source_c_type] {
+		for variant in variants {
+			variant_short := if variant.contains('__') {
+				variant.all_after_last('__')
+			} else {
+				variant
+			}
+			if variant == type_name || variant_short == short_name {
+				sep := if g.expr_is_pointer(node.expr) { '->' } else { '.' }
+				if !g.is_scalar_sum_payload_type(type_name) && type_name != 'string' {
+					g.sb.write_string('(((${inner_str})${sep}_data._${short_name}) ? (*((${type_name}*)(((${inner_str})${sep}_data._${short_name})))) : (${type_name}){0})')
+				} else {
+					g.sb.write_string('(*((${type_name}*)(((${inner_str})${sep}_data._${short_name}))))')
+				}
+				return
+			}
+		}
 	}
 	if inner_str.starts_with('(*(') || inner_str.starts_with('*(') {
 		g.sb.write_string('((${type_name})(${inner_str}))')

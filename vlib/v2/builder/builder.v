@@ -109,8 +109,6 @@ fn sanitize_staged_c_source(c_source string) string {
 	// UdpSocket result pointer auto-deref: .sock field is UdpSocket (value), result contains &UdpSocket.
 	source = source.replace('.sock = (*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))',
 		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
-	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
-	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
 	source = ensure_string_eq_impl(source)
 	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
 	// The cleanc backend uses DarwinWebViewState singleton instead.
