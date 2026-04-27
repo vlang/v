@@ -34,6 +34,10 @@ const result_name = ast.result_name
 const option_name = ast.option_name
 const max_c_string_literal_segment_len = 12000
 
+struct ScopeGcPin {
+	post_stmt string
+}
+
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -131,6 +135,9 @@ mut:
 	tmp_var_ptr                          map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
 	labeled_loops                        map[string]&ast.Stmt
 	contains_ptr_cache                   map[ast.Type]bool
+	boehm_keep_decl                      map[string]bool
+	boehm_keep_gen                       map[string]bool
+	boehm_keep_busy                      map[string]bool
 	inner_loop                           &ast.Stmt = unsafe { nil }
 	cur_indexexpr                        []int          // list of nested indexexpr which generates array_set/map_set
 	shareds                              map[int]string // types with hidden mutex for which decl has been emitted
@@ -405,6 +412,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
+		boehm_keep_decl:               map[string]bool{}
+		boehm_keep_gen:                map[string]bool{}
+		boehm_keep_busy:               map[string]bool{}
 		generic_parts_cache:           []i8{len: table.type_symbols.len}
 		unwrap_generic_cache:          map[u64]ast.Type{}
 		resolved_scope_var_type_cache: map[u64]ast.Type{}
@@ -1046,6 +1056,9 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
+		boehm_keep_decl:                    map[string]bool{}
+		boehm_keep_gen:                     map[string]bool{}
+		boehm_keep_busy:                    map[string]bool{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 		unwrap_generic_cache:               map[u64]ast.Type{}
 		resolved_scope_var_type_cache:      map[u64]ast.Type{}
@@ -3645,6 +3658,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				call_expr := node.expr as ast.CallExpr
 				needs_tmp_return_autofree = call_expr.or_block.kind == .absent
 			}
+			scope_gc_pins := if can_emit_standalone_expr_stmt && !needs_tmp_return_autofree
+				&& node.expr is ast.CallExpr {
+				g.scope_gc_pin_pregen(node.pos.pos)
+			} else {
+				[]ScopeGcPin{}
+			}
 			mut discarded_ret_tmp_name := ''
 			if needs_tmp_return_autofree {
 				discarded_ret_tmp_name = g.new_tmp_var()
@@ -3687,6 +3706,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				&& node.expr is ast.CallExpr {
 				g.write_scope_gc_pins(node.pos)
 			}
+			g.scope_gc_pin_postgen(scope_gc_pins)
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
@@ -7457,6 +7477,279 @@ fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
 	}
 
 	return true
+}
+
+fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
+	if typ == 0 || typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr()
+		|| !g.contains_ptr(typ) {
+		return ''
+	}
+	mut resolved_typ := g.unwrap_generic(g.recheck_concrete_type(typ))
+	if resolved_typ == 0 {
+		resolved_typ = g.unwrap_generic(typ)
+	}
+	if resolved_typ == 0 || resolved_typ.has_option_or_result()
+		|| resolved_typ.is_any_kind_of_pointer() || resolved_typ.is_ptr() {
+		return ''
+	}
+	if g.table.type_to_str(resolved_typ).contains('*') {
+		return ''
+	}
+	sym := g.table.final_sym(resolved_typ)
+	if sym.kind !in [.string, .array, .struct] {
+		return ''
+	}
+	if sym.kind == .array {
+		info := sym.info as ast.Array
+		if !g.contains_ptr(info.elem_type) {
+			return ''
+		}
+	}
+	styp := g.styp(resolved_typ)
+	if styp.ends_with('_ptr') {
+		return ''
+	}
+	fn_name := '__v_boehm_collect_keepalive_${g.unique_file_path_hash}_${styp.replace('*', '_ptr').replace(' ', '_')}'
+	if g.boehm_keep_gen[fn_name] {
+		return fn_name
+	}
+	if !g.boehm_keep_decl[fn_name] {
+		g.definitions.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx);')
+		g.boehm_keep_decl[fn_name] = true
+	}
+	if g.boehm_keep_busy[fn_name] {
+		return fn_name
+	}
+	g.boehm_keep_busy[fn_name] = true
+	mut sb := strings.new_builder(256)
+	sb.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx) {')
+	match sym.kind {
+		.string {
+			sb.writeln('\tif (it->str != 0) {')
+			sb.writeln('\t\tif (out != 0) { out[idx] = it->str; }')
+			sb.writeln('\t\tidx++;')
+			sb.writeln('\t}')
+			sb.writeln('\treturn idx;')
+		}
+		.array {
+			info := sym.info as ast.Array
+			elem_styp := g.styp(info.elem_type)
+			elem_helper := g.boehm_collect_keep_alive_helper_name(info.elem_type)
+			sb.writeln('\tif (it->data == 0) {')
+			sb.writeln('\t\treturn idx;')
+			sb.writeln('\t}')
+			sb.writeln('\tvoidptr _v_keep_root = it->data;')
+			sb.writeln('\tif ((it->flags & ArrayFlags__managed) != 0) {')
+			sb.writeln('\t\t_v_keep_root = ((u8*)it->data) - it->offset - sizeof(voidptr);')
+			sb.writeln('\t}')
+			sb.writeln('\tif (out != 0) { out[idx] = _v_keep_root; }')
+			sb.writeln('\tidx++;')
+			if elem_helper != '' {
+				sb.writeln('\tfor (int _v_keep_i = 0; _v_keep_i < it->len; ++_v_keep_i) {')
+				sb.writeln('\t\tidx = ${elem_helper}(&(((${elem_styp}*)it->data)[_v_keep_i]), out, idx);')
+				sb.writeln('\t}')
+			}
+			sb.writeln('\treturn idx;')
+		}
+		.struct {
+			info := sym.info as ast.Struct
+			for embed in info.embeds {
+				if !g.contains_ptr(embed) {
+					continue
+				}
+				embed_sym := g.table.final_sym(embed)
+				embed_name := embed_sym.embed_name()
+				embed_helper := g.boehm_collect_keep_alive_helper_name(embed)
+				if embed_helper != '' {
+					sb.writeln('\tidx = ${embed_helper}(&it->${embed_name}, out, idx);')
+				} else if embed.is_any_kind_of_pointer() || embed.is_ptr() {
+					sb.writeln('\tif (it->${embed_name} != 0) {')
+					sb.writeln('\t\tif (out != 0) { out[idx] = it->${embed_name}; }')
+					sb.writeln('\t\tidx++;')
+					sb.writeln('\t}')
+				}
+			}
+			for field in info.fields {
+				mut field_typ := g.unwrap_generic(g.recheck_concrete_type(field.typ))
+				if field_typ == 0 {
+					field_typ = g.unwrap_generic(field.typ)
+				}
+				if !field_typ.is_any_kind_of_pointer() && !g.contains_ptr(field_typ) {
+					continue
+				}
+				fname := c_name(field.name)
+				field_helper := g.boehm_collect_keep_alive_helper_name(field_typ)
+				if field_helper != '' {
+					sb.writeln('\tidx = ${field_helper}(&it->${fname}, out, idx);')
+				} else if field_typ.is_any_kind_of_pointer() || field_typ.is_ptr() {
+					sb.writeln('\tif (it->${fname} != 0) {')
+					sb.writeln('\t\tif (out != 0) { out[idx] = it->${fname}; }')
+					sb.writeln('\t\tidx++;')
+					sb.writeln('\t}')
+				}
+			}
+			sb.writeln('\treturn idx;')
+		}
+		else {
+			sb.writeln('\treturn idx;')
+		}
+	}
+
+	sb.writeln('}')
+	g.auto_fn_definitions << sb.str()
+	g.boehm_keep_gen[fn_name] = true
+	g.boehm_keep_busy.delete(fn_name)
+	return fn_name
+}
+
+fn (mut g Gen) type_needs_deep_scope_gc_pin(typ ast.Type) bool {
+	if typ == 0 || typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr()
+		|| !g.contains_ptr(typ) {
+		return false
+	}
+	mut resolved_typ := g.unwrap_generic(g.recheck_concrete_type(typ))
+	if resolved_typ == 0 {
+		resolved_typ = g.unwrap_generic(typ)
+	}
+	if resolved_typ == 0 || resolved_typ.has_option_or_result()
+		|| resolved_typ.is_any_kind_of_pointer() || resolved_typ.is_ptr() {
+		return false
+	}
+	sym := g.table.final_sym(resolved_typ)
+	match sym.kind {
+		.array {
+			info := sym.info as ast.Array
+			return g.contains_ptr(info.elem_type)
+		}
+		.struct {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) scope_var_needs_deep_gc_pin(obj ast.Var) bool {
+	if obj.name == '_' || obj.is_special || obj.is_inherited || obj.is_auto_heap {
+		return false
+	}
+	if !obj.is_arg && obj.expr is ast.EmptyExpr {
+		return false
+	}
+	return g.type_needs_deep_scope_gc_pin(obj.typ)
+}
+
+@[inline]
+fn (mut g Gen) scope_gc_pin_var_available(obj ast.Var, node_pos int) bool {
+	if !g.check_var_scope(obj, node_pos) {
+		return false
+	}
+	if obj.expr is ast.EmptyExpr {
+		return true
+	}
+	expr_pos := obj.expr.pos()
+	// A variable being initialized is not yet available as a stable C lvalue
+	// for nested `or {}`/`if {}`/other inner call paths emitted during its init.
+	return expr_pos.pos <= 0 || expr_pos.len <= 0 || node_pos < expr_pos.pos
+		|| node_pos > expr_pos.pos + expr_pos.len
+}
+
+fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
+	if !g.pref.is_prod
+		|| g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return []ScopeGcPin{}
+	}
+	if g.inside_defer_generation {
+		return []ScopeGcPin{}
+	}
+	if g.fn_decl == unsafe { nil } || g.fn_decl.scope == unsafe { nil } {
+		return []ScopeGcPin{}
+	}
+	if !g.fn_decl.scope.contains(node_pos) {
+		return []ScopeGcPin{}
+	}
+	scope := g.fn_decl.scope.innermost(node_pos)
+	if scope == unsafe { nil } {
+		return []ScopeGcPin{}
+	}
+	mut seen := map[string]bool{}
+	mut vars := []ast.Var{}
+	for obj in scope.get_all_vars() {
+		if obj !is ast.Var {
+			continue
+		}
+		var_obj := obj as ast.Var
+		if var_obj.name in seen || var_obj.name in g.curr_var_name
+			|| !g.scope_gc_pin_var_available(var_obj, node_pos)
+			|| !g.scope_var_needs_deep_gc_pin(var_obj) {
+			continue
+		}
+		if _ := g.scope_gc_pin_expr(var_obj) {
+			seen[var_obj.name] = true
+			vars << var_obj
+		}
+	}
+	vars.sort_with_compare(fn (a &ast.Var, b &ast.Var) int {
+		if a.pos.pos < b.pos.pos {
+			return -1
+		}
+		if a.pos.pos > b.pos.pos {
+			return 1
+		}
+		if a.name < b.name {
+			return -1
+		}
+		if a.name > b.name {
+			return 1
+		}
+		return 0
+	})
+	mut pins := []ScopeGcPin{}
+	mut opened_scope := false
+	for obj in vars {
+		cvar_name := g.scope_gc_pin_expr(obj) or { continue }
+		collect_helper_name := g.boehm_collect_keep_alive_helper_name(obj.typ)
+		if collect_helper_name == '' {
+			continue
+		}
+		if !opened_scope {
+			g.writeln('{')
+			opened_scope = true
+		}
+		// Snapshot nested heap buffers before the call, then keep those snapshots
+		// reachable after it. This covers Boehm opt/noscan arrays of structs.
+		tmp_name := g.new_tmp_var()
+		len_tmp_name := g.new_tmp_var()
+		roots_tmp_name := g.new_tmp_var()
+		setup_gc_state_name := g.new_tmp_var()
+		cleanup_gc_state_name := g.new_tmp_var()
+		g.writeln('voidptr ${tmp_name} = &${cvar_name};')
+		g.writeln('int ${len_tmp_name} = ${collect_helper_name}((${g.styp(obj.typ)}*)${tmp_name}, 0, 0);')
+		g.writeln('int ${setup_gc_state_name} = GC_is_disabled();')
+		g.writeln('if (!${setup_gc_state_name}) { GC_disable(); }')
+		g.writeln('voidptr* ${roots_tmp_name} = 0;')
+		g.writeln('if (${len_tmp_name} > 0) {')
+		g.writeln('\t${roots_tmp_name} = (voidptr*)calloc(${len_tmp_name}, sizeof(voidptr));')
+		g.writeln('\tif (${roots_tmp_name} == 0) { builtin___memory_panic(_S("calloc"), sizeof(voidptr) * ${len_tmp_name}); }')
+		g.writeln('\t${collect_helper_name}((${g.styp(obj.typ)}*)${tmp_name}, ${roots_tmp_name}, 0);')
+		g.writeln('\tGC_add_roots(${roots_tmp_name}, ${roots_tmp_name} + ${len_tmp_name});')
+		g.writeln('}')
+		g.writeln('if (!${setup_gc_state_name}) { GC_enable(); }')
+		pins << ScopeGcPin{
+			post_stmt: 'GC_reachable_here(${tmp_name}); if (${len_tmp_name} > 0) { for (int _v_keep_i = 0; _v_keep_i < ${len_tmp_name}; ++_v_keep_i) { GC_reachable_here(${roots_tmp_name}[_v_keep_i]); } } int ${cleanup_gc_state_name} = GC_is_disabled(); if (!${cleanup_gc_state_name}) { GC_disable(); } if (${len_tmp_name} > 0) { GC_remove_roots(${roots_tmp_name}, ${roots_tmp_name} + ${len_tmp_name}); free(${roots_tmp_name}); } if (!${cleanup_gc_state_name}) { GC_enable(); }'
+		}
+	}
+	return pins
+}
+
+fn (mut g Gen) scope_gc_pin_postgen(pins []ScopeGcPin) {
+	for pin in pins {
+		g.writeln('${pin.post_stmt}')
+	}
+	if pins.len > 0 {
+		g.writeln('}')
+	}
 }
 
 @[inline]
