@@ -33,6 +33,9 @@
 !vlib/mcp/server.v
 !vlib/mcp/server_test.v
 
+# unignore vlib/net/s3
+!vlib/net/s3/**
+
 !.github/show_manual_release_cmd_test.v
 !*/
 # Do not add !*.* here; it overrides local excludes from .git/info/exclude.
