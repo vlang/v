@@ -73,7 +73,7 @@ fn test_msvc_windows_prelude_uses_msvc_crt_headers() {
 	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\n#ifndef _TRUNCATE'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
 	assert generated_c.contains('#if !defined(_MSC_VER) || defined(__clang__)\n#ifdef __cplusplus\nextern "C" {\n#endif\n'), generated_c
-	assert generated_c.contains('#if !defined(__MINGW32__) && !defined(__MINGW64__)\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('#include <windows.h>'), generated_c

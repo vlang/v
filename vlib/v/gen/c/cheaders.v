@@ -480,10 +480,11 @@ typedef __builtin_va_list va_list;
 #ifdef __cplusplus
 extern "C" {
 #endif
-// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides.
-// Skip them under mingw to avoid static-after-extern conflicts when
-// thirdparty headers later include stdio.h.
-#if !defined(__MINGW32__) && !defined(__MINGW64__)
+// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
+// when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
+// static-after-extern conflicts; clang+mingw needs them because it builds
+// with -Werror=implicit-function-declaration and does not hit the conflict.
+#if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL fprintf(FILE *stream, const char *format, ...);

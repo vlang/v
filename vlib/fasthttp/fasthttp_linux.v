@@ -37,7 +37,7 @@ mut:
 	data   C.epoll_data_t
 }
 
-struct Server {
+pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
 	port                    int            = 3000
