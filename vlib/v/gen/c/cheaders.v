@@ -385,16 +385,11 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#define _TRUNCATE ((size_t)-1)
 #endif
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#ifndef va_copy
-	#define va_copy(dest, src) ((dest) = (src))
-#endif
-#ifndef _TRUNCATE
-	#define _TRUNCATE ((size_t)-1)
-#endif
+typedef struct _iobuf FILE;
+FILE* __cdecl __acrt_iob_func(unsigned index);
+#define stdin  (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
 #elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))
 #ifndef _FILE_DEFINED
 struct _iobuf {
@@ -481,10 +476,14 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if !defined(_MSC_VER) && !defined(__MINGW32__) && !defined(__MINGW64__) && !(defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
+#if !defined(_MSC_VER) || defined(__clang__)
 #ifdef __cplusplus
 extern "C" {
 #endif
+// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides.
+// Skip them under mingw to avoid static-after-extern conflicts when
+// thirdparty headers later include stdio.h.
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL fprintf(FILE *stream, const char *format, ...);
@@ -493,6 +492,7 @@ V_CRT_LINKAGE int V_CRT_CALL snprintf(char *str, size_t size, const char *format
 V_CRT_LINKAGE int V_CRT_CALL sprintf(char *str, const char *format, ...);
 V_CRT_LINKAGE int V_CRT_CALL sscanf(const char *str, const char *format, ...);
 V_CRT_LINKAGE int V_CRT_CALL scanf(const char *format, ...);
+#endif
 V_CRT_LINKAGE int V_CRT_CALL puts(const char *str);
 V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);
 V_CRT_LINKAGE int V_CRT_CALL fputs(const char *str, FILE *stream);

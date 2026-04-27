@@ -32,6 +32,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('RAND_MAX = 2147483647'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
+	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n#include <stdarg.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
@@ -41,7 +42,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);'), generated_c
-	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\n#include <stdarg.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>'), generated_c
+	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
 	assert generated_c.contains('#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))'), generated_c
 	assert generated_c.contains('#ifndef _FILE_DEFINED\nstruct _iobuf {\n\tchar *_ptr;\n\tint _cnt;\n\tchar *_base;\n\tint _flag;\n\tint _file;\n\tint _charbuf;\n\tint _bufsiz;\n\tchar *_tmpfname;\n};\ntypedef struct _iobuf FILE;\n#define _FILE_DEFINED'), generated_c
 	assert generated_c.contains('FILE* __cdecl __iob_func(void);'), generated_c
@@ -71,7 +72,8 @@ fn test_msvc_windows_prelude_uses_msvc_crt_headers() {
 	assert !generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;'), generated_c
 	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\n#ifndef _TRUNCATE'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
-	assert generated_c.contains('#if !defined(_MSC_VER) && !defined(__MINGW32__) && !defined(__MINGW64__) && !(defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\n#ifdef __cplusplus\nextern "C" {\n#endif\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#if !defined(_MSC_VER) || defined(__clang__)\n#ifdef __cplusplus\nextern "C" {\n#endif\n'), generated_c
+	assert generated_c.contains('#if !defined(__MINGW32__) && !defined(__MINGW64__)\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('#include <windows.h>'), generated_c
