@@ -401,7 +401,11 @@ fn main() {
 		os.execute('${os.quoted_path(@VEXE)} -dump-c-flags - -os linux -cc tcc -arch arm64 ${os.quoted_path(src_file)}')
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('thirdparty/stdatomic/nix/atomic.S')
-	assert res.output.contains('libatomic.so')
+	// libatomic.so is only emitted when the host has the aarch64 cross-compile gcc toolchain installed.
+	matches := os.glob('/usr/lib/gcc/aarch64-linux-gnu/*/libatomic.so') or { []string{} }
+	if matches.len > 0 {
+		assert res.output.contains('libatomic.so')
+	}
 }
 
 fn test_live_windows_main_linker_args_export_host_symbols() {
