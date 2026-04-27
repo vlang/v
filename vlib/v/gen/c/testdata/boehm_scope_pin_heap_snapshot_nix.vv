@@ -1,0 +1,28 @@
+// vtest vflags: -prod -gc boehm_full_opt -cc gcc
+struct Objective {
+	id string
+}
+
+struct Stage {
+	objectives []Objective
+}
+
+fn consume(n int) {
+	_ = n
+}
+
+fn main() {
+	stages := [
+		Stage{
+			objectives: [Objective{
+				id: 'objective_0_0'
+			}]
+		},
+		Stage{
+			objectives: [Objective{
+				id: 'objective_1_0'
+			}]
+		},
+	]
+	consume(stages.len)
+}
