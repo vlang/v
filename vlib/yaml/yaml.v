@@ -48,10 +48,14 @@ pub fn parse_text(text string) !Doc {
 		}
 	}
 	if trimmed.starts_with('{') || trimmed.starts_with('[') {
-		raw := json2.decode[json2.Any](trimmed) or { json2.null }
-		if raw !is json2.Null {
+		// JSON-superset fast path. `parse_flow_value` already consumes the
+		// flow-style grammar that YAML borrows from JSON, so it builds the
+		// `yaml.Any` tree directly — no second-pass `from_json2` rebuild.
+		// Falls through to the block parser if the body is anything other
+		// than a clean flow document.
+		if val := parse_flow_value(trimmed) {
 			return Doc{
-				root: from_json2(raw)
+				root: val
 			}
 		}
 	}
