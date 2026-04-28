@@ -98,43 +98,39 @@ fn emit_yaml_scalar(mut sb strings.Builder, value Any) {
 // write_json_escaped_string writes `value` as a JSON string literal directly
 // into `sb`. Matches `json2.encode`'s rules: standard short escapes for control
 // chars, `\u00XX` for the rest below 0x20, and UTF-8 bytes passed through
-// verbatim (no per-byte `\uXXXX` re-escape).
+// verbatim (no per-byte `\uXXXX` re-escape). Passes safe runs through in bulk
+// via `write_string` on the original slice — the overwhelmingly common case for
+// human YAML — and only switches to per-byte handling at escape boundaries.
 fn write_json_escaped_string(mut sb strings.Builder, value string) {
 	sb.write_u8(`"`)
-	for c in value {
+	mut start := 0
+	for i := 0; i < value.len; i++ {
+		c := value[i]
+		if c >= 0x20 && c != `"` && c != `\\` {
+			continue
+		}
+		if start < i {
+			sb.write_string(value[start..i])
+		}
 		match c {
-			`"` {
-				sb.write_string('\\"')
-			}
-			`\\` {
-				sb.write_string('\\\\')
-			}
-			`\n` {
-				sb.write_string('\\n')
-			}
-			`\r` {
-				sb.write_string('\\r')
-			}
-			`\t` {
-				sb.write_string('\\t')
-			}
-			`\b` {
-				sb.write_string('\\b')
-			}
-			`\f` {
-				sb.write_string('\\f')
-			}
+			`"` { sb.write_string('\\"') }
+			`\\` { sb.write_string('\\\\') }
+			`\n` { sb.write_string('\\n') }
+			`\r` { sb.write_string('\\r') }
+			`\t` { sb.write_string('\\t') }
+			`\b` { sb.write_string('\\b') }
+			`\f` { sb.write_string('\\f') }
 			else {
-				if c < 0x20 {
-					sb.write_string('\\u00')
-					hex := '0123456789abcdef'
-					sb.write_u8(hex[(c >> 4) & 0xf])
-					sb.write_u8(hex[c & 0xf])
-				} else {
-					sb.write_u8(c)
-				}
+				sb.write_string('\\u00')
+				hex := '0123456789abcdef'
+				sb.write_u8(hex[(c >> 4) & 0xf])
+				sb.write_u8(hex[c & 0xf])
 			}
 		}
+		start = i + 1
+	}
+	if start < value.len {
+		sb.write_string(value[start..])
 	}
 	sb.write_u8(`"`)
 }
