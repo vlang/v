@@ -1,6 +1,5 @@
 module yaml
 
-import json
 import strings
 
 // write_spaces appends `n` spaces to `sb`.
@@ -34,7 +33,7 @@ fn emit_yaml_map(mut sb strings.Builder, value map[string]Any, indent int) {
 		}
 		first = false
 		write_spaces(mut sb, indent)
-		sb.write_string(yaml_quote_string(key))
+		write_json_escaped_string(mut sb, key)
 		match item {
 			map[string]Any, []Any {
 				sb.write_u8(`:`)
@@ -85,7 +84,7 @@ fn emit_yaml_array(mut sb strings.Builder, value []Any, indent int) {
 // dedicated emitters before falling back here.
 fn emit_yaml_scalar(mut sb strings.Builder, value Any) {
 	match value {
-		string { sb.write_string(yaml_quote_string(value)) }
+		string { write_json_escaped_string(mut sb, value) }
 		bool { sb.write_string(if value { 'true' } else { 'false' }) }
 		f64 { sb.write_string(value.str()) }
 		i64 { sb.write_string(value.str()) }
@@ -94,14 +93,6 @@ fn emit_yaml_scalar(mut sb strings.Builder, value Any) {
 		Null { sb.write_string('null') }
 		[]Any, map[string]Any { emit_yaml_any(mut sb, value, 0) }
 	}
-}
-
-// yaml_quote_string returns `value` as a JSON-style double-quoted literal,
-// reusing `json.encode` so escaping matches the JSON spec exactly. Always
-// quoting (instead of trying to emit a plain scalar) keeps the output
-// unambiguous and lossless under round-trip through `parse_text`.
-fn yaml_quote_string(value string) string {
-	return json.encode(value)
 }
 
 // write_json_escaped_string writes `value` as a JSON string literal directly
