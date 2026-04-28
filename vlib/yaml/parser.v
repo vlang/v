@@ -682,17 +682,27 @@ fn parse_scalar(text string) !Any {
 		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
 		return Any(parse_quoted_string(value)!)
 	}
-	lower := value.to_lower()
-	if lower in ['null', '~'] {
-		return null
+	// Keyword check: only strings of length 1..5 can match `~`, `null`, `true`,
+	// `yes`, `on`, `false`, `no`, `off`. Length-bound first to skip the
+	// allocation of `to_lower()` for every plain scalar (the overwhelmingly
+	// common case in real documents).
+	if value.len <= 5 {
+		if value.len == 1 && value[0] == `~` {
+			return null
+		}
+		if equals_ascii_ci(value, 'null') {
+			return null
+		}
+		if equals_ascii_ci(value, 'true') || equals_ascii_ci(value, 'yes')
+			|| equals_ascii_ci(value, 'on') {
+			return Any(true)
+		}
+		if equals_ascii_ci(value, 'false') || equals_ascii_ci(value, 'no')
+			|| equals_ascii_ci(value, 'off') {
+			return Any(false)
+		}
 	}
-	if lower in ['true', 'yes', 'on'] {
-		return Any(true)
-	}
-	if lower in ['false', 'no', 'off'] {
-		return Any(false)
-	}
-	numeric := if value.contains_u8(`_`) { value.replace('_', '') } else { value }
+	numeric := strip_underscores(value)
 	if is_integer(numeric) {
 		if numeric.starts_with('-') {
 			return Any(numeric.parse_int(0, 64)!)
@@ -1039,4 +1049,41 @@ fn is_float(value string) bool {
 	}
 	strconv.atof64(value) or { return false }
 	return true
+}
+
+// equals_ascii_ci reports whether `s` equals `lower_ref` byte-for-byte once
+// ASCII letters in `s` are lower-cased. `lower_ref` MUST already be lowercase
+// ASCII; mixing case in it silently breaks the comparison. Used by
+// `parse_scalar` to recognize boolean / null keywords without allocating a
+// lower-cased copy of every plain scalar in the document.
+fn equals_ascii_ci(s string, lower_ref string) bool {
+	if s.len != lower_ref.len {
+		return false
+	}
+	for i := 0; i < s.len; i++ {
+		mut c := s[i]
+		if c >= `A` && c <= `Z` {
+			c |= 0x20
+		}
+		if c != lower_ref[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// strip_underscores removes `_` digit separators from a numeric literal in a
+// single pass. Returns `value` unchanged when no `_` is present, avoiding an
+// allocation on the common case.
+fn strip_underscores(value string) string {
+	if !value.contains_u8(`_`) {
+		return value
+	}
+	mut out := []u8{cap: value.len}
+	for c in value {
+		if c != `_` {
+			out << c
+		}
+	}
+	return out.bytestr()
 }
