@@ -1,0 +1,72 @@
+{
+  "title": "streaming",
+  "description": "Streaming, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "Streamed byte string",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'5f42010243030405ff',
+      "decoded": (_ h'0102', h'030405'),
+    },
+    {
+      "description": "Streamed UTF8 string",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'7f657374726561646d696e67ff',
+      "decoded": (_ "strea", "ming"),
+    },
+    {
+      "description": "Streamed array",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'9fff',
+      "decoded": [_ ],
+    },
+    {
+      "description": "Streamed array, nested non-streamed then streamed arrays",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'9f018202039f0405ffff',
+      "decoded": [_ 1, [2, 3], [_ 4, 5]],
+    },
+    {
+      "description": "Streamed array, nested non-streamed arrays",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'9f01820203820405ff',
+      "decoded": [_ 1, [2, 3], [4, 5]],
+    },
+    {
+      "description": "Non-Streamed array, nested non-streamed then streamed array",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'83018202039f0405ff',
+      "decoded": [1, [2, 3], [_ 4, 5]],
+    },
+    {
+      "description": "Non-Streamed array, nested streamed then non-streamed array",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'83019f0203ff820405',
+      "decoded": [1, [_ 2, 3], [4, 5]],
+    },
+    {
+      "description": "Longer streamed array of ints",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff',
+      "decoded": [_ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+    },
+    {
+      "description": "Streamed map",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'bf61610161629f0203ffff',
+      "decoded": {_ "a": 1, "b": [_ 2, 3]},
+    },
+    {
+      "description": "Array with nested streamed map",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'826161bf61626163ff',
+      "decoded": ["a", {_ "b": "c"}],
+    },
+    {
+      "description": "Plain streamed map",
+      "roundtrip": false, # decoded version is de-streamed.
+      "encoded": h'bf6346756ef563416d7421ff',
+      "decoded": {_ "Fun": true, "Amt": -2},
+    },
+  ],
+}

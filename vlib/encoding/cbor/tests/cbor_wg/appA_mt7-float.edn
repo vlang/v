@@ -1,0 +1,131 @@
+{
+  "title": "mt7-float",
+  "description": "Major type 7 (mt7) floats, from RFC 8949 appendix A",
+  "encodeOptions": {
+    "avoidInts": true,
+  },
+  "tests": [
+    {
+      "description": "Zero",
+      "encoded": h'f90000',
+      "decoded": 0.0,
+    },
+    {
+      "description": "Negative zero",
+      "encoded": h'f98000',
+      "decoded": -0.0,
+    },
+    {
+      "description": "One",
+      "encoded": h'f93c00',
+      "decoded": 1.0,
+    },
+    {
+      "description": "1.1 does not fit into a smaller float",
+      "encoded": h'fb3ff199999999999a',
+      "decoded": 1.1,
+    },
+    {
+      "description": "1.5 collapses to an f16"
+      "encoded": h'f93e00',
+      "decoded": 1.5,
+    },
+    {
+      "description": "Largest f16"
+      "encoded": h'f97bff',
+      "decoded": 65504.0,
+    },
+    {
+      "description": "100000"
+      "encoded": h'fa47c35000',
+      "decoded": 100000.0,
+    },
+    {
+      "description": "Largest f32"
+      "encoded": h'fa7f7fffff',
+      "decoded": 3.4028234663852886e+38,
+    },
+    {
+      "description": "Large round f64"
+      "encoded": h'fb7e37e43c8800759c',
+      "decoded": 1.0e+300,
+    },
+    {
+      "description": "Smallest subnormal f16"
+      "encoded": h'f90001',
+      "decoded": 5.960464477539063e-8,
+    },
+    {
+      "description": "Smallest normal f16"
+      "encoded": h'f90400',
+      "decoded": 0.00006103515625,
+    },
+    {
+      "description": "Negative f16"
+      "encoded": h'f9c400',
+      "decoded": -4.0,
+    },
+    {
+      "description": "-4.1 does not reduce"
+      "encoded": h'fbc010666666666666',
+      "decoded": -4.1,
+    },
+    {
+      "description": "Positive infinity"
+      "encoded": h'f97c00',
+      "decoded": Infinity,
+    },
+    {
+      "description": "Trivial NaN"
+      "encoded": h'f97e00',
+      "decoded": NaN,
+    },
+    {
+      "description": "Negative infinity"
+      "encoded": h'f9fc00',
+      "decoded": -Infinity,
+    },
+    {
+      "description": "Infinity coded as f32 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'fa7f800000',
+      "decoded": Infinity,
+    },
+    {
+      "description": "Trivial NaN coded as f32 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'fa7fc00000',
+      "decoded": NaN,
+    },
+        {
+      "description": "Negative Infinity coded as f32 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'faff800000',
+      "decoded": -Infinity,
+    },
+    {
+      "description": "Infinity coded as f64 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'fb7ff0000000000000',
+      "decoded": Infinity,
+    },
+    {
+      "description": "Trivial NaN coded as f64 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'fb7ff8000000000000',
+      "decoded": NaN,
+    },
+        {
+      "description": "Negative Infinity coded as f64 instead of f16",
+      # Can't round-trip to non-preferred
+      "roundtrip": false,
+      "encoded": h'fbfff0000000000000',
+      "decoded": -Infinity,
+    },
+  ],
+}
