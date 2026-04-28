@@ -35,6 +35,21 @@ a.out
 fns.txt
 .noprefix.vrepl_temp.v
 
+# ignore compiled cmd/tools binaries (extensionless on Unix)
+/cmd/tools/vcheck-md
+/cmd/tools/vdoctor
+/cmd/tools/vdoc/vdoc
+/cmd/tools/vfmt
+/cmd/tools/vgit-fmt-hook
+/cmd/tools/vpm/vpm
+/cmd/tools/vself
+/cmd/tools/vsymlink/vsymlink
+/cmd/tools/vtest
+/cmd/tools/vtimeout
+/cmd/tools/vup
+/cmd/tools/vvet/vvet
+/cmd/tools/vwipe-cache
+
 # ignore temp and cache directories
 temp/
 tmp/
