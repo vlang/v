@@ -7200,10 +7200,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		&& exposed_interface_smartcast_type.is_ptr())
 	// Interface→interface smartcast: the conversion `I_X_as_I_Y(parent)` returns
 	// a struct value, not a pointer, so field access must use `.`, not `->`.
+	is_option_unwrapped_interface_ptr := is_interface_smartcast_expr
+		&& smartcast_expr_var.orig_type.has_option_or_result()
+		&& smartcast_expr_var.orig_type.clear_option_and_result().is_ptr()
 	is_interface_to_interface_smartcast := is_interface_smartcast_expr
 		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind == .interface
+		&& !is_option_unwrapped_interface_ptr
+	unwrapped_autoheap_option_payload_is_ptr := expr_is_unwrapped_autoheap_option
+		&& expr_autoheap_option_type.clear_option_and_result().is_ptr()
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
-		false
+		unwrapped_autoheap_option_payload_is_ptr
 	} else if is_interface_to_interface_smartcast {
 		false
 	} else {

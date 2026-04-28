@@ -979,11 +979,108 @@ fn (mut g Gen) resolve_selector_smartcast_type(node ast.SelectorExpr) ast.Type {
 	scope := g.file.scope.innermost(node.pos.pos)
 	field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name)
 	if field != unsafe { nil } && field.smartcasts.len > 0 {
+		smartcast_type := field.smartcasts.last()
+		field_unwrapped_type := field.orig_type.clear_option_and_result()
+		if field.orig_type.has_option_or_result() && !smartcast_type.has_option_or_result()
+			&& smartcast_type == field_unwrapped_type {
+			left_default := if node.expr_type != 0 { node.expr_type } else { field.struct_type }
+			left_type := g.resolved_expr_type(node.expr, left_default)
+			resolved_field_type := g.resolved_selector_field_type(node, left_type)
+			if resolved_field_type != 0 {
+				return resolved_field_type.clear_option_and_result()
+			}
+		}
 		resolved_sc := g.unwrap_generic(g.recheck_concrete_type(g.exposed_smartcast_type(field.orig_type,
-			field.smartcasts.last(), field.is_mut)))
+			smartcast_type, field.is_mut)))
 		if resolved_sc != 0 {
 			return resolved_sc
 		}
+	}
+	return 0
+}
+
+fn (mut g Gen) resolved_selector_field_type(node ast.SelectorExpr, receiver_type ast.Type) ast.Type {
+	if receiver_type == 0 {
+		return 0
+	}
+	sym := g.table.sym(g.unwrap_generic(receiver_type))
+	if field := g.table.find_field_with_embeds(sym, node.field_name) {
+		mut field_type := field.typ
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				mut generic_names := sym.info.generic_types.map(g.table.sym(it).name)
+				mut concrete_types := sym.info.concrete_types.clone()
+				if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
+					&& sym.generic_types != sym.info.generic_types {
+					concrete_types = sym.generic_types.clone()
+				}
+				mut source_field_type := field.typ
+				if sym.info.parent_type.has_flag(.generic) {
+					parent_sym := g.table.sym(sym.info.parent_type)
+					if parent_field := g.table.find_field_with_embeds(parent_sym, node.field_name) {
+						source_field_type = parent_field.typ
+						match parent_sym.info {
+							ast.Struct, ast.Interface, ast.SumType {
+								generic_names =
+									parent_sym.info.generic_types.map(g.table.sym(it).name)
+							}
+							else {}
+						}
+					}
+				}
+				if generic_names.len == concrete_types.len && concrete_types.len > 0 {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					resolved_field_type := muttable.unwrap_generic_type_ex(source_field_type,
+						generic_names, concrete_types, true)
+					if resolved_field_type != source_field_type {
+						field_type = resolved_field_type
+					} else {
+						if converted_field_type := muttable.convert_generic_type(source_field_type,
+							generic_names, concrete_types)
+						{
+							field_type = converted_field_type
+						}
+					}
+				}
+			}
+			ast.GenericInst {
+				parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
+				mut source_field_type := field.typ
+				if parent_field := g.table.find_field_with_embeds(parent_sym, node.field_name) {
+					source_field_type = parent_field.typ
+				}
+				match parent_sym.info {
+					ast.Struct, ast.Interface, ast.SumType {
+						generic_names := parent_sym.info.generic_types.map(g.table.sym(it).name)
+						if generic_names.len == sym.info.concrete_types.len
+							&& sym.info.concrete_types.len > 0 {
+							mut muttable := unsafe { &ast.Table(g.table) }
+							resolved_field_type := muttable.unwrap_generic_type_ex(source_field_type,
+								generic_names, sym.info.concrete_types, true)
+							if resolved_field_type != source_field_type {
+								field_type = resolved_field_type
+							} else {
+								if converted_field_type := muttable.convert_generic_type(source_field_type,
+									generic_names, sym.info.concrete_types)
+								{
+									field_type = converted_field_type
+								}
+							}
+						}
+					}
+					else {}
+				}
+			}
+			else {}
+		}
+
+		$if trace_ci_fixes ? {
+			if g.file.path.contains('binary_search_tree.v') && node.expr is ast.Ident
+				&& node.expr.name == 'tree' {
+				eprintln('resolved selector ${node.expr.name}.${node.field_name} left=${g.table.type_to_str(receiver_type)} field=${g.table.type_to_str(field.typ)} final=${g.table.type_to_str(field_type)} expr_typ=${g.table.type_to_str(node.typ)}')
+			}
+		}
+		return g.unwrap_generic(g.recheck_concrete_type(field_type))
 	}
 	return 0
 }
@@ -1179,89 +1276,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			left_default := if expr.expr_type != 0 { expr.expr_type } else { default_typ }
 			left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.expr, left_default))
 			if left_type != 0 {
-				sym := g.table.sym(g.unwrap_generic(left_type))
-				if field := g.table.find_field_with_embeds(sym, expr.field_name) {
-					mut field_type := field.typ
-					match sym.info {
-						ast.Struct, ast.Interface, ast.SumType {
-							mut generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-							mut concrete_types := sym.info.concrete_types.clone()
-							if concrete_types.len == 0 && sym.generic_types.len == generic_names.len
-								&& sym.generic_types != sym.info.generic_types {
-								concrete_types = sym.generic_types.clone()
-							}
-							mut source_field_type := field.typ
-							if sym.info.parent_type.has_flag(.generic) {
-								parent_sym := g.table.sym(sym.info.parent_type)
-								if parent_field := g.table.find_field_with_embeds(parent_sym,
-									expr.field_name)
-								{
-									source_field_type = parent_field.typ
-									match parent_sym.info {
-										ast.Struct, ast.Interface, ast.SumType {
-											generic_names =
-												parent_sym.info.generic_types.map(g.table.sym(it).name)
-										}
-										else {}
-									}
-								}
-							}
-							if generic_names.len == concrete_types.len && concrete_types.len > 0 {
-								mut muttable := unsafe { &ast.Table(g.table) }
-								resolved_field_type := muttable.unwrap_generic_type_ex(source_field_type,
-									generic_names, concrete_types, true)
-								if resolved_field_type != source_field_type {
-									field_type = resolved_field_type
-								} else {
-									if converted_field_type := muttable.convert_generic_type(source_field_type,
-										generic_names, concrete_types)
-									{
-										field_type = converted_field_type
-									}
-								}
-							}
-						}
-						ast.GenericInst {
-							parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
-							mut source_field_type := field.typ
-							if parent_field := g.table.find_field_with_embeds(parent_sym,
-								expr.field_name)
-							{
-								source_field_type = parent_field.typ
-							}
-							match parent_sym.info {
-								ast.Struct, ast.Interface, ast.SumType {
-									generic_names :=
-										parent_sym.info.generic_types.map(g.table.sym(it).name)
-									if generic_names.len == sym.info.concrete_types.len
-										&& sym.info.concrete_types.len > 0 {
-										mut muttable := unsafe { &ast.Table(g.table) }
-										resolved_field_type := muttable.unwrap_generic_type_ex(source_field_type,
-											generic_names, sym.info.concrete_types, true)
-										if resolved_field_type != source_field_type {
-											field_type = resolved_field_type
-										} else {
-											if converted_field_type := muttable.convert_generic_type(source_field_type,
-												generic_names, sym.info.concrete_types)
-											{
-												field_type = converted_field_type
-											}
-										}
-									}
-								}
-								else {}
-							}
-						}
-						else {}
-					}
-
-					$if trace_ci_fixes ? {
-						if g.file.path.contains('binary_search_tree.v') && expr.expr is ast.Ident
-							&& expr.expr.name == 'tree' {
-							eprintln('resolved selector ${expr.expr.name}.${expr.field_name} left=${g.table.type_to_str(left_type)} field=${g.table.type_to_str(field.typ)} final=${g.table.type_to_str(field_type)} expr_typ=${g.table.type_to_str(expr.typ)}')
-						}
-					}
-					mut resolved_type := g.unwrap_generic(g.recheck_concrete_type(field_type))
+				mut resolved_type := g.resolved_selector_field_type(expr, left_type)
+				if resolved_type != 0 {
 					if expr.or_block.kind != .absent {
 						resolved_type = resolved_type.clear_option_and_result()
 					}
