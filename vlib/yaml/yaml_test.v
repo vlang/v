@@ -44,8 +44,8 @@ folded: >
 	assert doc.value('servers[0].host').string() == 'api.local'
 	assert doc.value('servers[0].ports[1]').int() == 443
 	assert doc.value('quoted."a.b"').int() == 7
-	assert doc.value('notes').string() == 'first line\nsecond line'
-	assert doc.value('folded').string() == 'hello world'
+	assert doc.value('notes').string() == 'first line\nsecond line\n'
+	assert doc.value('folded').string() == 'hello world\n'
 }
 
 fn test_generic_encode_decode_with_json_attrs() ! {
