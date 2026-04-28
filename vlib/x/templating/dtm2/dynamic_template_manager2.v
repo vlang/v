@@ -18,6 +18,7 @@ import strings
 const message_signature = '[Dynamic Template Manager 2]'
 const internal_server_error = 'Internal Server Error'
 const include_html_key_suffix = '_#includehtml'
+const include_directive = '@include '
 const max_include_depth = 32
 const max_extension_config_size = 64 * 1024
 const default_extension_config_filename = 'dtm2_extensions.json'
@@ -109,8 +110,8 @@ mut:
 	resolved_template_paths map[string]string
 	// Parsed-template cache keyed by canonical source path.
 	compiled_templates map[string]&CompiledTemplate
-	// Extension-to-render-mode table. Users can extend or override it through
-	// ManagerParams without changing the parser or renderer.
+	// User-provided extension-to-render-mode overrides. Built-in extensions are
+	// resolved without allocating a per-manager default map.
 	template_extensions map[string]TemplateType
 }
 
@@ -176,7 +177,7 @@ fn canonical_template_dir(template_dir string) string {
 }
 
 fn build_template_extensions(params ManagerParams, template_dir string) map[string]TemplateType {
-	mut extensions := default_template_extensions()
+	mut extensions := map[string]TemplateType{}
 	config_path := extension_config_path(params, template_dir)
 	if config_path != '' {
 		file_extensions := read_extension_config_file(config_path) or {
@@ -198,16 +199,6 @@ fn extension_config_path(params ManagerParams, template_dir string) string {
 		return default_path
 	}
 	return ''
-}
-
-fn default_template_extensions() map[string]TemplateType {
-	return {
-		'.html': .html
-		'.htm':  .html
-		'.xml':  .html
-		'.txt':  .text
-		'.text': .text
-	}
 }
 
 fn read_extension_config_file(config_path string) !map[string]TemplateType {
@@ -333,23 +324,25 @@ fn (mut m Manager) compiled_template_for_path(source_path string) !&CompiledTemp
 			return compiled
 		}
 	}
-	compiled := compile_template_from_file(source_path, m.template_dir, m.template_extensions)!
+	compiled := compile_template_from_file(source_path, m.template_dir, m.template_extensions,
+		m.reload_modified_templates)!
 	m.compiled_templates[source_path] = compiled
 	return compiled
 }
 
 // compile_template_from_file reads a template, expands static includes, parses
 // placeholders, and stores dependency metadata for future invalidation.
-fn compile_template_from_file(source_path string, template_root string, template_extensions map[string]TemplateType) !&CompiledTemplate {
+fn compile_template_from_file(source_path string, template_root string, template_extensions map[string]TemplateType, track_dependencies bool) !&CompiledTemplate {
 	canonical_path := os.real_path(source_path)
 	ensure_path_inside_template_dir(canonical_path, template_root)!
 	template_type := template_type_from_path(canonical_path, template_extensions)!
-	raw_content, dependencies := read_template_with_includes(canonical_path, template_root, 0)!
-	instructions, estimated_size, segment_count := parse_segments(raw_content)
+	content, dependencies := read_template_with_includes(canonical_path, template_root, 0,
+		track_dependencies)!
+	instructions, estimated_size, segment_count := parse_segments(content)
 	dependency_signature := encode_dependencies(dependencies)
 	return &CompiledTemplate{
 		template_type:        template_type
-		content:              copy_string(raw_content)
+		content:              copy_string(content)
 		dependency_signature: copy_string(dependency_signature)
 		instructions:         copy_string(instructions)
 		segment_count:        segment_count
@@ -456,34 +449,85 @@ fn path_without_trailing_separator(path string) string {
 // template_type_from_path keeps rendering rules extension-driven and explicit.
 fn template_type_from_path(source_path string, template_extensions map[string]TemplateType) !TemplateType {
 	ext := normalize_template_extension(os.file_ext(source_path))
-	if template_type := template_extensions[ext] {
+	if template_extensions.len > 0 {
+		if template_type := template_extensions[ext] {
+			return template_type
+		}
+	}
+	if template_type := default_template_type_from_extension(ext) {
 		return template_type
 	}
 	return error('template "${source_path}" uses unsupported extension "${ext}"')
 }
 
+fn default_template_type_from_extension(ext string) ?TemplateType {
+	match ext {
+		'.html', '.htm', '.xml' {
+			return .html
+		}
+		'.txt', '.text' {
+			return .text
+		}
+		else {
+			return none
+		}
+	}
+}
+
 // read_template_with_includes expands simple line-level `@include "path"`
 // directives before parsing placeholders. Includes are part of the parsed tree
 // and are tracked as dependencies for reload checks.
-fn read_template_with_includes(source_path string, template_root string, depth int) !(string, []TemplateDependency) {
+fn read_template_with_includes(source_path string, template_root string, depth int, track_dependencies bool) !(string, []TemplateDependency) {
 	if depth > max_include_depth {
 		return error('maximum @include depth exceeded while reading "${source_path}"')
 	}
 	content := os.read_file(source_path)!
+	mut dependencies := []TemplateDependency{cap: 4}
+	if track_dependencies {
+		dependencies << template_dependency(source_path, content)!
+	}
+	if !content_needs_include_expansion(content) {
+		return content_with_template_newline(content), dependencies
+	}
 	base_dir := os.dir(source_path)
 	mut out := strings.new_builder(content.len)
-	mut dependencies := []TemplateDependency{cap: 4}
-	dependencies << template_dependency(source_path, content)!
 	lines := content.split_into_lines()
 	for line in lines {
 		expanded_line, line_dependencies := expand_include_directives(line, base_dir,
-			template_root, depth)!
+			template_root, depth, track_dependencies)!
 		out.write_string(expanded_line)
 		out.write_u8(`\n`)
 		dependencies << line_dependencies
 	}
 	rendered := out.str()
 	return rendered.clone(), dependencies
+}
+
+fn content_with_template_newline(content string) string {
+	if content == '' || content[content.len - 1] == `\n` {
+		return content.clone()
+	}
+	with_newline := content + '\n'
+	return with_newline.clone()
+}
+
+fn content_needs_include_expansion(content string) bool {
+	for i := 0; i < content.len; i++ {
+		if content[i] == `\r` {
+			return true
+		}
+		if is_include_directive_at(content, i) {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_include_directive_at(content string, pos int) bool {
+	return pos + include_directive.len <= content.len && content[pos] == `@`
+		&& content[pos + 1] == `i` && content[pos + 2] == `n` && content[pos + 3] == `c`
+		&& content[pos + 4] == `l` && content[pos + 5] == `u` && content[pos + 6] == `d`
+		&& content[pos + 7] == `e` && content[pos + 8] == ` `
 }
 
 fn template_dependency(source_path string, content string) !TemplateDependency {
@@ -500,26 +544,26 @@ fn content_fingerprint(content string) u64 {
 	return hash.sum64_string(content, 0)
 }
 
-fn expand_include_directives(line string, base_dir string, template_root string, depth int) !(string, []TemplateDependency) {
+fn expand_include_directives(line string, base_dir string, template_root string, depth int, track_dependencies bool) !(string, []TemplateDependency) {
 	mut out := strings.new_builder(line.len)
 	mut dependencies := []TemplateDependency{}
 	mut offset := 0
 	for {
-		rel_pos := line[offset..].index('@include ') or {
+		rel_pos := line[offset..].index(include_directive) or {
 			out.write_string(line[offset..])
 			break
 		}
 		pos := offset + rel_pos
 		target, end_pos := include_target_from_line_at(line, pos) or {
-			out.write_string(line[offset..pos + '@include '.len])
-			offset = pos + '@include '.len
+			out.write_string(line[offset..pos + include_directive.len])
+			offset = pos + include_directive.len
 			continue
 		}
 		out.write_string(line[offset..pos])
 		include_path := resolve_include_path(base_dir, target, template_root)!
 		next_depth := depth + 1
 		included, include_dependencies := read_template_with_includes(include_path, template_root,
-			next_depth)!
+			next_depth, track_dependencies)!
 		out.write_string(included.trim_right('\n'))
 		dependencies << include_dependencies
 		offset = end_pos
@@ -529,7 +573,7 @@ fn expand_include_directives(line string, base_dir string, template_root string,
 }
 
 fn include_target_from_line_at(line string, pos int) ?(string, int) {
-	mut cursor := pos + '@include '.len
+	mut cursor := pos + include_directive.len
 	for cursor < line.len && line[cursor].is_space() {
 		cursor++
 	}

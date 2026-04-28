@@ -35,9 +35,11 @@ fn testsuite_begin() {
 	os.write_file(os.join_path(root, 'prefix.html'), '<p>@unknown</p>')!
 	os.write_file(os.join_path(root, 'recursive.html'), '@include "recursive"')!
 	os.write_file(os.join_path(root, 'compress.html'), '<div>\n <span>@title</span>\n</div>')!
+	os.write_file(os.join_path(root, 'empty.html'), '')!
 	os.write_file(os.join_path(root, 'feed.xml'), '<feed><title>@title</title></feed>')!
 	os.write_file(os.join_path(root, 'custom.page'), '<article>@title</article>')!
 	os.write_file(os.join_path(root, 'custom.note'), 'Note: @body')!
+	os.write_file(os.join_path(root, 'override.html'), '<div>\n @title\n</div>')!
 	os.write_file(os.join_path(root, 'custom.view'), '<section>@title</section>')!
 	os.write_file(os.join_path(root, 'custom.mail'), 'Subject: @title')!
 	os.write_file(os.join_path(root, 'auto.fragment'), '<aside>@title</aside>')!
@@ -136,6 +138,26 @@ fn test_reload_same_second_same_size_template_content_change() {
 	assert manager.compiled_template_count() == 1
 }
 
+fn test_reload_same_second_same_size_include_content_change() {
+	parent_path := os.join_path(dtm2_test_root(), 'same_size_include_parent.html')
+	include_path := os.join_path(dtm2_test_root(), 'partials', 'same_size_include.html')
+	fixed_time := i64(2_306_102_496)
+	os.write_file(parent_path, '<main>@include "partials/same_size_include"</main>')!
+	os.write_file(include_path, '<p>@title A</p>')!
+	os.utime(include_path, fixed_time, fixed_time)!
+	mut manager := new_test_manager(false)
+	placeholders := {
+		'title': 'One'
+	}
+	first := manager.expand('same_size_include_parent.html', placeholders: &placeholders)
+	assert first == '<main><p>One A</p></main>\n'
+	os.write_file(include_path, '<b>@title B</b>')!
+	os.utime(include_path, fixed_time, fixed_time)!
+	second := manager.expand('same_size_include_parent.html', placeholders: &placeholders)
+	assert second == '<main><b>One B</b></main>\n'
+	assert manager.compiled_template_count() == 1
+}
+
 fn test_reload_modified_include_without_render_cache() {
 	mut manager := new_test_manager(true)
 	placeholders := {
@@ -214,6 +236,49 @@ fn test_cached_template_path_revalidates_symlink_escape() {
 	assert escaped == internal_server_error
 }
 
+fn test_cached_include_dependency_revalidates_symlink_escape() {
+	$if windows {
+		return
+	}
+	parent_path := os.join_path(dtm2_test_root(), 'include_symlink_swap_parent.html')
+	include_path := os.join_path(dtm2_test_root(), 'partials', 'symlink_swap.html')
+	os.write_file(parent_path, '<main>@include "partials/symlink_swap"</main>')!
+	os.write_file(include_path, '<p>@title safe</p>')!
+	mut manager := new_test_manager(false)
+	placeholders := {
+		'title': 'Link'
+	}
+	first := manager.expand('include_symlink_swap_parent.html', placeholders: &placeholders)
+	assert first == '<main><p>Link safe</p></main>\n'
+	os.rm(include_path)!
+	os.symlink(dtm2_outside_template_path(), include_path) or { return }
+	escaped := manager.expand('include_symlink_swap_parent.html', placeholders: &placeholders)
+	assert escaped == internal_server_error
+}
+
+fn test_reload_disabled_does_not_reopen_cached_symlink_swap() {
+	$if windows {
+		return
+	}
+	path := os.join_path(dtm2_test_root(), 'pinned_symlink_swap.html')
+	os.write_file(path, '<p>@title safe</p>')!
+	mut manager := initialize(
+		template_dir:              dtm2_test_root()
+		compress_html:             false
+		reload_modified_templates: false
+	)
+	placeholders := {
+		'title': 'Pinned'
+	}
+	first := manager.expand('pinned_symlink_swap.html', placeholders: &placeholders)
+	assert first == '<p>Pinned safe</p>\n'
+	os.rm(path)!
+	os.symlink(dtm2_outside_template_path(), path) or { return }
+	second := manager.expand('pinned_symlink_swap.html', placeholders: &placeholders)
+	assert second == first
+	assert manager.compiled_template_count() == 1
+}
+
 fn test_include_path_cannot_escape_template_dir() {
 	mut manager := new_test_manager(false)
 	placeholders := {
@@ -253,6 +318,13 @@ fn test_html_compression_is_deterministic() {
 	assert rendered == '<div><span>Compact</span></div>'
 }
 
+fn test_empty_template_renders_empty() {
+	mut manager := new_test_manager(false)
+	placeholders := map[string]string{}
+	rendered := manager.expand('empty.html', placeholders: &placeholders)
+	assert rendered == ''
+}
+
 fn test_xml_template_uses_html_rendering_mode() {
 	mut manager := new_test_manager(false)
 	placeholders := {
@@ -280,6 +352,21 @@ fn test_custom_template_extension_map() {
 	text := manager.expand('custom.note', placeholders: &text_placeholders)
 	assert html.contains('<span>custom</span>&lt;script&gt;blocked&lt;/script&gt;')
 	assert text == 'Note: &lt;span&gt;custom&lt;/span&gt;\n'
+}
+
+fn test_custom_template_extension_map_can_override_builtin_mapping() {
+	mut manager := initialize(
+		template_dir:        dtm2_test_root()
+		compress_html:       true
+		template_extensions: {
+			'.html': TemplateType.text
+		}
+	)
+	placeholders := {
+		'title': 'Text'
+	}
+	rendered := manager.expand('override.html', placeholders: &placeholders)
+	assert rendered == '<div>\n Text\n</div>\n'
 }
 
 fn test_json_extension_config_file() {
