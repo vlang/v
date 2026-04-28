@@ -33,7 +33,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);'), generated_c
 	assert generated_c.contains('extern FILE* stdout;'), generated_c
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
-	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n#include <stdarg.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>'), generated_c
+	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
@@ -67,12 +67,12 @@ fn test_msvc_windows_prelude_uses_msvc_crt_headers() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
-	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n#include <stdarg.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>'), generated_c
+	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
 	assert !generated_c.contains('V_CRT_IMPORT'), generated_c
 	assert !generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;'), generated_c
 	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\n#ifndef _TRUNCATE'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
-	assert generated_c.contains('#if !defined(_MSC_VER) || defined(__clang__)\n#ifdef __cplusplus\nextern "C" {\n#endif\n'), generated_c
+	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)\n// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides'), generated_c
 	assert generated_c.contains('#if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
@@ -174,6 +174,25 @@ fn test_manual_stdio_decls_allow_direct_atof_calls() {
 	os.write_file(source_path, ['fn main() {', "\t_ = C.atof(c'1.25')", '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_atof')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_c_prelude_ctype_decls_do_not_conflict_with_later_ctype_includes() {
+	$if !linux {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_ctype_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_ctype.v')
+	os.write_file(source_path,
+		['fn C.__ctype_b_loc() &&u16', '', 'fn main() {', '\tC.__ctype_b_loc()', '}'].join('\n') +
+		'\n')!
+	output_path := os.join_path(tmp_dir, 'c_ctype')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc clang -show-c-output -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }

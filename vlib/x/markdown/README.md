@@ -47,7 +47,9 @@ fn main() {
 ### With Extensions
 
 ```v oksyntax
-mut md := markdown.new(Options{
+import x.markdown
+
+mut md := markdown.Markdown.new(markdown.Options{
 	extensions: markdown.gfm()
 })
 html := md.convert('| Name |\n|------|\n| Alice |')
@@ -60,7 +62,7 @@ println(html) // Renders as HTML table
 import x.markdown
 
 fn main() {
-	mut md := markdown.new(markdown.Options{
+	mut md := markdown.Markdown.new(markdown.Options{
 		extensions:    [markdown.Extension(markdown.footnote()), markdown.typographer()]
 		parser_opts:   markdown.ParserOptions{
 			auto_heading_id: true
@@ -82,7 +84,7 @@ fn main() {
 import x.markdown
 
 fn main() {
-	mut md := markdown.new(markdown.Options{})
+	mut md := markdown.Markdown.new(markdown.Options{})
 	source := '# Hello\n\n`x`'
 	doc := md.parse(source)
 	doc.walk(fn (node &markdown.Node) bool {
@@ -105,13 +107,14 @@ fn main() {
 
 ### Top-Level Functions
 - `to_html(src: string) string` - Convert Markdown to HTML with default settings
-- `to_html_opts(src: string, opts: Options) string` - Convert with custom options
+- `to_html(src: string, opts: Options) string` - Convert with custom options
 - `parse_inline(src: string, opts: Options, ref_map: map) []&Node` - Parse inline content only
 
 ### Main Structs
 
 #### `Markdown`
-The main processor. Create with `new()`, reuse across multiple calls to share link references.
+The main processor. Create with `Markdown.new()`, reuse across multiple calls
+to share link references.
 
 Methods:
 - `convert(src: string) string` - Parse and render to HTML in one call
@@ -204,26 +207,32 @@ html = markdown.to_html('```v\nfn main() {}\n```')
 ### Lists
 
 ```v oksyntax
+import x.markdown
+
 // Bullet list
 html := markdown.to_html('- item 1\n- item 2')
 // Ordered list
 html = markdown.to_html('1. first\n2. second')
 // Task list (enable via extension or task_list option)
-html = markdown.to_html_opts('- [x] done', Options{ task_list: true })
+html = markdown.to_html('- [x] done', markdown.Options{ task_list: true })
 ```
 
 ### Tables (GFM)
 
 ```v oksyntax
+import x.markdown
+
 src := '| Left | Center | Right |\n|:--|:--:|--:|\n| A | B | C |'
-html := markdown.to_html_opts(src, Options{ tables: true })
+html := markdown.to_html(src, markdown.Options{ tables: true })
 ```
 
 ### Footnotes
 
 ```v oksyntax
+import x.markdown
+
 src := 'Text[^1]\n\n[^1]: Footnote body.'
-html := markdown.to_html_opts(src, Options{ footnotes: true })
+html := markdown.to_html(src, markdown.Options{ footnotes: true })
 // Renders with <sup> reference and footnote section at bottom
 ```
 

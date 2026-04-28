@@ -2023,6 +2023,7 @@ match true {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'else if2' should be printed
 ```
 
@@ -2035,6 +2036,7 @@ match false {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'if' should be printed
 ```
 
@@ -2067,6 +2069,7 @@ typ := match c {
 	`a`...`z` { 'lowercase' }
 	else { 'other' }
 }
+
 println(typ)
 // 'lowercase'
 ```
@@ -2109,6 +2112,7 @@ num := match c {
 		0
 	}
 }
+
 println(num)
 // 1000
 ```
@@ -3758,6 +3762,7 @@ match color {
 	.green { println('the color was green') }
 	.blue { println('the color was blue') }
 }
+
 println(int(color)) // prints 1
 ```
 
@@ -3799,7 +3804,7 @@ Output: `Grocery IDs: 0, 5, 6`.
 
 Compile-time `$if` blocks can also be used inside enum bodies to include fields conditionally.
 
-```v
+```v nofmt
 enum Feature {
 	base
 	$if beta ? {
@@ -7532,7 +7537,7 @@ Operator overloading is possible for the following binary operators:
 
 Indexing can be overloaded too:
 
-```v
+```v oksyntax
 struct Buffer {
 mut:
 	data []int
@@ -8568,7 +8573,7 @@ If you export your own `DllMain`, V will not generate the default one. Call
 `C._vinit_caller()` and `C._vcleanup_caller()` from your entry point to keep
 the standard V runtime setup and teardown:
 
-```v
+```v oksyntax
 pub type C.DWORD = u32
 pub type C.LPVOID = voidptr
 
@@ -8584,7 +8589,7 @@ pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {
 	} else if reason == C.DWORD(0) {
 		C._vcleanup_caller()
 	}
-	return 1
+	return C.BOOL(1)
 }
 ```
 

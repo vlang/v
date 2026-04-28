@@ -62,8 +62,8 @@ pub fn compress(input []u8) []u8 {
 	return out
 }
 
-// decompress decompresses a Snappy-compressed slice and returns the
-// original bytes, or an error if the data is malformed.
+// decompress decompresses a Snappy-compressed slice.
+// It returns the original bytes, or an error if the data is malformed.
 pub fn decompress(input []u8) ![]u8 {
 	// Read the varint-encoded uncompressed length from the header.
 	ulen, hdr_end, ok := read_uvarint(input, 0)

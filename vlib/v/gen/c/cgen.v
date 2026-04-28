@@ -6102,12 +6102,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						typ := g.styp(((node.right as ast.ParExpr).expr as ast.AsCast).typ)
 						tmp_var = g.new_tmp_var()
 						g.writeln('${typ} ${tmp_var};')
-						g.stmts_with_tmp_var([
-							ast.ExprStmt{
-								pos:  node.pos
-								expr: node.right
-							},
-						], tmp_var)
+						mut stmts := []ast.Stmt{cap: 1}
+						stmts << ast.ExprStmt{
+							pos:  node.pos
+							expr: node.right
+						}
+						g.stmts_with_tmp_var(stmts, tmp_var)
 						g.set_current_pos_as_last_stmt_pos()
 						g.write(str)
 					}
@@ -10467,12 +10467,19 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return g.check_expr_is_const(expr.expr)
 		}
 		ast.InfixExpr {
+			if expr.op in [.div, .mod]
+				&& g.table.final_sym(g.unwrap_generic(expr.promoted_type)).is_int() {
+				return false
+			}
 			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
 		}
 		ast.Ident {
 			return expr.kind == .function || g.table.final_sym(expr.obj.typ).kind != .array_fixed
 		}
-		ast.StructInit, ast.EnumVal {
+		ast.StructInit {
+			return expr.init_fields.all(g.check_expr_is_const(it.expr))
+		}
+		ast.EnumVal {
 			return true
 		}
 		ast.CastExpr {

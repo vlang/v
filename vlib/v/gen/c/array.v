@@ -523,9 +523,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
+			mut exprs := []ast.Expr{cap: 1}
+			exprs << ast.IntegerLiteral{}
 			{
 				g.expr(ast.ArrayInit{
-					exprs:     [ast.IntegerLiteral{}]
+					exprs:     exprs
 					typ:       node.elem_type
 					elem_type: arr_info.elem_type
 				})

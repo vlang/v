@@ -56,8 +56,8 @@ const max_chunk_data_size = 65536
 // One-shot API
 // ---------------------------------------------------------------------------
 
-// encode_stream wraps `input` in the Snappy framing format and returns the
-// complete byte stream. Input is split into ≤64 KiB blocks automatically.
+// encode_stream wraps `input` in the Snappy framing format.
+// It returns the complete byte stream. Input is split into <=64 KiB blocks automatically.
 pub fn encode_stream(input []u8) []u8 {
 	// Upper bound: identifier chunk + one compressed chunk per block.
 	// Each block: 4-byte header + 4-byte CRC + max_compressed_length.
@@ -77,8 +77,8 @@ pub fn encode_stream(input []u8) []u8 {
 	return out
 }
 
-// decode_stream decodes a Snappy framing stream and returns the concatenated
-// uncompressed data, or an error if the stream is malformed.
+// decode_stream decodes a Snappy framing stream.
+// It returns the concatenated uncompressed data, or an error if the stream is malformed.
 pub fn decode_stream(input []u8) ![]u8 {
 	// The compressed stream is typically smaller than the uncompressed data,
 	// so use a larger initial capacity estimate.
@@ -201,8 +201,8 @@ mut:
 	closed     bool
 }
 
-// write appends `buf` to the decoder's input buffer and processes as many
-// complete chunks as possible. Returns an error if the stream is malformed.
+// write appends `buf` to the decoder's input buffer.
+// It processes as many complete chunks as possible and errors if the stream is malformed.
 pub fn (mut dec StreamDecoder) write(buf []u8) !int {
 	if dec.closed {
 		return error('snappy: write to closed stream decoder')
@@ -285,9 +285,9 @@ pub fn (mut dec StreamDecoder) write(buf []u8) !int {
 	return buf.len
 }
 
-// read removes and returns decoded bytes. When the output buffer is empty it
-// surfaces any error recorded during write()/close(). Only then does it return
-// io.Eof{} for a cleanly terminated stream.
+// read removes and returns decoded bytes.
+// When the output buffer is empty it surfaces any error recorded during write()/close().
+// Only then does it return io.Eof{} for a cleanly terminated stream.
 pub fn (mut dec StreamDecoder) read(mut buf []u8) !int {
 	// Always drain already-decoded output first so the caller never loses data.
 	if dec.output.len > 0 {

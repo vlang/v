@@ -81,6 +81,7 @@ const c_manual_prelude_decl_names = [
 	'strrchr',
 	'fseek',
 	'getline',
+	'__ctype_b_loc',
 ]
 
 fn collect_function_defer_stmts(node &ast.FnDecl) []ast.DeferStmt {
