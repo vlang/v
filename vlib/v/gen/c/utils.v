@@ -1169,6 +1169,13 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 			}
 		}
 		ast.SelectorExpr {
+			// If this selector has been smart-cast in the current scope (e.g.
+			// `if mut w.face is X { ... w.face ... }`), use the smart-cast type
+			// rather than the field's declared type.
+			smartcast_typ := g.resolve_selector_smartcast_type(expr)
+			if smartcast_typ != 0 {
+				return smartcast_typ
+			}
 			left_default := if expr.expr_type != 0 { expr.expr_type } else { default_typ }
 			left_type := g.recheck_concrete_type(g.resolved_expr_type(expr.expr, left_default))
 			if left_type != 0 {

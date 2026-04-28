@@ -4874,8 +4874,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		}
 	}
 	// Generic dereferencing logic
-	neither_void := ast.voidptr_type !in [got_type, expected_type]
-		&& ast.nil_type !in [got_type, expected_type]
+	neither_void := ast.voidptr_type !in [got_type.idx_type(), expected_type.idx_type()]
+		&& ast.nil_type !in [got_type.idx_type(), expected_type.idx_type()]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_option_or_result() {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
@@ -7198,7 +7198,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		|| (is_interface_smartcast_expr
 		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind != .interface
 		&& exposed_interface_smartcast_type.is_ptr())
+	// Interface→interface smartcast: the conversion `I_X_as_I_Y(parent)` returns
+	// a struct value, not a pointer, so field access must use `.`, not `->`.
+	is_interface_to_interface_smartcast := is_interface_smartcast_expr
+		&& g.table.final_sym(g.unwrap_generic(smartcast_expr_var.smartcasts.last())).kind == .interface
 	left_is_ptr := if expr_is_unwrapped_autoheap_option {
+		false
+	} else if is_interface_to_interface_smartcast {
 		false
 	} else {
 		field_is_opt || expr_is_auto_heap || interface_smartcast_selector_emits_ptr
