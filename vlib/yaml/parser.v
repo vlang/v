@@ -406,7 +406,7 @@ fn (mut b FlowBalance) scan(s string) {
 // parse_block_header reads the `|`/`>` style and the optional `+`/`-` chomp
 // indicator from a block-scalar header like `|`, `|-`, `|+`, `>2-`.
 fn parse_block_header(s string) (u8, u8) {
-	if s.len == 0 {
+	if s == '' {
 		return `|`, 0
 	}
 	style := s[0]
@@ -898,7 +898,7 @@ fn quoted_terminated(s string, quote u8) bool {
 // that doesn't terminate on its first line. The returned string still wraps
 // the original line breaks; `fold_quoted_inner` collapses them later.
 fn (mut p Parser) gather_quoted_continuation(initial string) !string {
-	if initial.len == 0 {
+	if initial == '' {
 		return initial
 	}
 	quote := initial[0]
@@ -1018,7 +1018,7 @@ fn fold_block_scalar(lines []string) string {
 }
 
 fn is_block_scalar(value string) bool {
-	if value.len == 0 || (value[0] != `|` && value[0] != `>`) {
+	if value == '' || (value[0] != `|` && value[0] != `>`) {
 		return false
 	}
 	// Allow `|`, `>`, `|-`, `|+`, `>2`, `|3-`, etc. Any other char rules it out
@@ -1033,7 +1033,7 @@ fn is_block_scalar(value string) bool {
 }
 
 fn is_integer(value string) bool {
-	if value.len == 0 {
+	if value == '' {
 		return false
 	}
 	if value[0] in [`+`, `-`] {
@@ -1052,7 +1052,7 @@ fn is_integer(value string) bool {
 }
 
 fn is_float(value string) bool {
-	if value.len == 0 {
+	if value == '' {
 		return false
 	}
 	if !value.contains('.') && !value.contains('e') && !value.contains('E') {

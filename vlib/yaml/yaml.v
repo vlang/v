@@ -348,8 +348,8 @@ pub fn (a Any) value(key string) Any {
 // (it is not treated as missing); only an absent key or a non-traversable
 // path raises an error.
 pub fn (a Any) value_opt(key string) !Any {
-	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
-	return a.value_(a, key_split) or { error('no value for key') }
+	key_split := parse_dotted_key(key) or { return error('yaml: invalid dotted key `${key}`') }
+	return a.value_(a, key_split) or { error('yaml: no value for key `${key}`') }
 }
 
 // value queries a value from the map.

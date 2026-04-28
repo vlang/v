@@ -20,7 +20,7 @@ fn emit_yaml_any(mut sb strings.Builder, value Any, indent int) {
 
 // emit_yaml_map writes `value` as a block-style YAML mapping. An empty map
 // is emitted as the inline `{}` form; otherwise each key is JSON-quoted (see
-// `yaml_quote_string`) and nested containers indent one level deeper.
+// `write_json_escaped_string`) and nested containers indent one level deeper.
 fn emit_yaml_map(mut sb strings.Builder, value map[string]Any, indent int) {
 	if value.len == 0 {
 		sb.write_string('{}')
@@ -78,10 +78,10 @@ fn emit_yaml_array(mut sb strings.Builder, value []Any, indent int) {
 }
 
 // emit_yaml_scalar writes `value` as a single YAML scalar token: strings go
-// through `yaml_quote_string`, booleans / numbers / null print their literal
-// form. The container branch is type-required by V's exhaustive `match` over
-// `Any` but is unreachable: `emit_yaml_any` routes maps and arrays to their
-// dedicated emitters before falling back here.
+// through `write_json_escaped_string`, booleans / numbers / null print their
+// literal form. The container branch is type-required by V's exhaustive
+// `match` over `Any` but is unreachable: `emit_yaml_any` routes maps and
+// arrays to their dedicated emitters before falling back here.
 fn emit_yaml_scalar(mut sb strings.Builder, value Any) {
 	match value {
 		string { write_json_escaped_string(mut sb, value) }
@@ -113,13 +113,27 @@ fn write_json_escaped_string(mut sb strings.Builder, value string) {
 			sb.write_string(value[start..i])
 		}
 		match c {
-			`"` { sb.write_string('\\"') }
-			`\\` { sb.write_string('\\\\') }
-			`\n` { sb.write_string('\\n') }
-			`\r` { sb.write_string('\\r') }
-			`\t` { sb.write_string('\\t') }
-			`\b` { sb.write_string('\\b') }
-			`\f` { sb.write_string('\\f') }
+			`"` {
+				sb.write_string('\\"')
+			}
+			`\\` {
+				sb.write_string('\\\\')
+			}
+			`\n` {
+				sb.write_string('\\n')
+			}
+			`\r` {
+				sb.write_string('\\r')
+			}
+			`\t` {
+				sb.write_string('\\t')
+			}
+			`\b` {
+				sb.write_string('\\b')
+			}
+			`\f` {
+				sb.write_string('\\f')
+			}
 			else {
 				sb.write_string('\\u00')
 				hex := '0123456789abcdef'
@@ -127,6 +141,7 @@ fn write_json_escaped_string(mut sb strings.Builder, value string) {
 				sb.write_u8(hex[c & 0xf])
 			}
 		}
+
 		start = i + 1
 	}
 	if start < value.len {
