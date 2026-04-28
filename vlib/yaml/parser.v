@@ -729,9 +729,20 @@ fn parse_quoted_string(src string) !string {
 	quote := src[0]
 	inner := fold_quoted_inner(src[1..src.len - 1])
 	if quote == `'` {
+		// Single-quoted strings only undouble `''`. When the body has no
+		// doubled quote, return the slice as-is — `inner` already shares the
+		// source buffer, so this avoids a `replace` allocation.
+		if !inner.contains("''") {
+			return inner
+		}
 		return inner.replace("''", "'")
 	}
-	mut out := []u8{}
+	// Double-quoted fast path: if there's no `\` in the body, no escape
+	// resolution is needed — `inner` is the final value verbatim.
+	if !inner.contains_u8(`\\`) {
+		return inner
+	}
+	mut out := []u8{cap: inner.len}
 	mut i := 0
 	for i < inner.len {
 		ch := inner[i]
