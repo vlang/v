@@ -182,7 +182,10 @@ fn has_local_git_changes(path string) bool {
 	if status.output.trim_space() != '' {
 		return true
 	}
-	unpushed := os.execute_opt('git -C ${quoted} rev-list --branches --not --remotes') or {
+	// Include `HEAD` so commits made on a detached HEAD (e.g. after
+	// `git clone -b <tag>`, the layout vpm uses for versioned installs) are
+	// also detected. `--branches` alone only walks local branch refs.
+	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes') or {
 		return false
 	}
 	return unpushed.output.trim_space() != ''
