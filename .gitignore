@@ -1,5 +1,9 @@
+# ignore sub-level extensionless build outputs
+*/**/*
+!*/
+!*.*
+
 # ignore generated binaries and object files
-# Do not add broad unignore rules like !*.*; they override local excludes.
 *.exe
 *.o
 *.so
@@ -35,6 +39,9 @@ a.out
 fns.txt
 .noprefix.vrepl_temp.v
 
+# Prefix local scratch/repro files with tmp. when they should stay untracked.
+tmp.*
+
 # ignore temp and cache directories
 temp/
 tmp/
@@ -67,7 +74,6 @@ cache/
 *~
 ~*
 .sesskey
-/tmp*
 *.db
 *.swp
 *.swo
@@ -124,7 +130,6 @@ vls.log
 *.tmperr
 
 .vtmp_cov_*/
-*/**/tmp.*
 
 # ignore Intellij files
 .idea/
