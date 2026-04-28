@@ -353,7 +353,7 @@ fn test_thirdparty_cross_compile_config_for_linux_matches_target() {
 		return
 	}
 	assert cfg.target_args == ['-target x86_64-linux-gnu']
-	assert cfg.sysroot.ends_with('/linuxroot')
+	assert normalized_test_path(cfg.sysroot).ends_with('/linuxroot')
 	assert cfg.trailing_include_args == [
 		'-I',
 		os.quoted_path('${cfg.sysroot}/include'),
@@ -370,7 +370,7 @@ fn test_thirdparty_cross_compile_config_for_freebsd_matches_target() {
 		return
 	}
 	assert cfg.target_args == ['-target x86_64-unknown-freebsd14.0']
-	assert cfg.sysroot.ends_with('/freebsdroot')
+	assert normalized_test_path(cfg.sysroot).ends_with('/freebsdroot')
 	assert cfg.trailing_include_args == [
 		'-I',
 		os.quoted_path('${cfg.sysroot}/include'),
@@ -419,7 +419,7 @@ fn test_live_windows_main_linker_args_export_host_symbols() {
 	])
 	assert linker_args.contains('-Wl,--export-all-symbols')
 	assert linker_args.contains('-Wl,--out-implib,')
-	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
+	assert normalized_test_path(linker_args).contains(normalized_test_path(live_windows_import_lib_path(hot_reload_graph_example())))
 }
 
 fn test_live_windows_shared_linker_args_include_host_import_lib() {
@@ -432,7 +432,7 @@ fn test_live_windows_shared_linker_args_include_host_import_lib() {
 		'-shared',
 		hot_reload_graph_example(),
 	])
-	assert linker_args.contains(live_windows_import_lib_path(hot_reload_graph_example()))
+	assert normalized_test_path(linker_args).contains(normalized_test_path(live_windows_import_lib_path(hot_reload_graph_example())))
 }
 
 fn test_windows_cross_compile_args_match_shared_prod_args() {
@@ -558,6 +558,10 @@ fn hello_world_example() string {
 
 fn hot_reload_graph_example() string {
 	return os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'graph.v')
+}
+
+fn normalized_test_path(path string) string {
+	return path.replace('\\', '/')
 }
 
 fn test_c_output_suggests_missing_typedef_for_c_struct_with_issue_19050_output() {

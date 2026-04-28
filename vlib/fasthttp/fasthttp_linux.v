@@ -201,7 +201,7 @@ fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]bool) 
 	}
 }
 
-fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]bool) {
+fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8) {
 	// Never close the listening socket here
 	if client_fd == 0 {
 		return
@@ -211,17 +211,18 @@ fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]boo
 		return
 	}
 	client_fds.delete(client_fd)
+	client_buffers.delete(client_fd)
 	remove_fd_from_epoll(epoll_fd, client_fd)
 	close_socket(client_fd)
 }
 
-fn close_worker_clients(epoll_fd int, mut client_fds map[int]bool) {
+fn close_worker_clients(epoll_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8) {
 	for client_fd in client_fds.keys() {
-		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 	}
 }
 
-fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool) {
+fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool, mut client_buffers map[int][]u8) {
 	server.begin_request()
 	defer {
 		server.end_request()
@@ -230,7 +231,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		eprintln('Error decoding request ${err}')
 		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 			C.MSG_NOSIGNAL)
-		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 		return
 	}
 	decoded_http_request.client_conn_fd = client_fd
@@ -239,7 +240,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		eprintln('Error handling request ${err}')
 		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 			C.MSG_NOSIGNAL)
-		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 		return
 	}
 
@@ -247,6 +248,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		// The handler has taken ownership of the connection.
 		// Remove from epoll and tracking, but do NOT close the fd.
 		client_fds.delete(client_fd)
+		client_buffers.delete(client_fd)
 		remove_fd_from_epoll(epoll_fd, client_fd)
 		return
 	}
@@ -265,7 +267,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			pos += sent
 		}
 		if send_error {
-			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 			return
 		}
 	}
@@ -274,7 +276,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		mut fd := C.open(response.file_path.str, C.O_RDONLY, 0)
 		if fd == -1 {
 			eprintln('ERROR: open file failed')
-			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 			return
 		}
 		defer {
@@ -285,7 +287,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		mut st := C.stat{}
 		if C.fstat(fd, &st) != 0 {
 			eprintln('ERROR: fstat failed')
-			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 			return
 		}
 		mut offset := i64(0)
@@ -333,13 +335,14 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 				}
 			}
 
-			handle_client_closure(epoll_fd, client_fd, mut client_fds)
+			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 			return
 		}
 	}
 
+	client_buffers.delete(client_fd)
 	if server.is_shutting_down() || response.should_close {
-		handle_client_closure(epoll_fd, client_fd, mut client_fds)
+		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 	}
 }
 
@@ -347,12 +350,13 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
 	mut request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
 	mut client_fds := map[int]bool{}
+	mut client_buffers := map[int][]u8{}
 	unsafe {
 		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
 	}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
-			close_worker_clients(epoll_fd, mut client_fds)
+			close_worker_clients(epoll_fd, mut client_fds, mut client_buffers)
 			return
 		}
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
@@ -386,7 +390,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					// Try to send 444 No Response before closing abnormal connection
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
 				}
@@ -394,15 +398,20 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				if server.is_shutting_down() {
-					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 					continue
 				}
 				// Read all available data from the socket
 				mut total_bytes_read := 0
-				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
+				mut readed_request_buffer := client_buffers[client_fd] or {
+					[]u8{cap: server.max_request_buffer_size}
+				}
 				mut headers_complete := false
 				mut header_too_large := false
 				mut header_end_pos := -1
+				mut request_complete := false
+				mut peer_closed := false
+				mut recv_error := false
 
 				for {
 					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] },
@@ -414,9 +423,11 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 						}
 						// Error occurred
 						eprintln('ERROR: recv() failed with errno=${C.errno}')
+						recv_error = true
 						break
 					} else if bytes_read == 0 {
 						// Connection closed by client
+						peer_closed = true
 						break
 					}
 
@@ -426,11 +437,12 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					total_bytes_read += bytes_read
 
 					// Enforce the configured limit on request headers, not on the whole body.
-					if !headers_complete && total_bytes_read >= 4 {
+					buffer_len := readed_request_buffer.len
+					if !headers_complete && buffer_len >= 4 {
 						header_end_pos = find_header_end_in_buf(readed_request_buffer.data,
-							total_bytes_read)
+							buffer_len)
 						if header_end_pos == -1 {
-							if total_bytes_read >= server.max_request_buffer_size {
+							if buffer_len >= server.max_request_buffer_size {
 								header_too_large = true
 								break
 							}
@@ -443,8 +455,8 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 						}
 					}
 
-					if headers_complete
-						&& has_complete_body(readed_request_buffer.data, total_bytes_read) {
+					if headers_complete && has_complete_body(readed_request_buffer.data, buffer_len) {
+						request_complete = true
 						break
 					}
 				}
@@ -452,20 +464,22 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				if header_too_large {
 					C.send(client_fd, status_413_response.data, status_413_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
 					continue
 				}
-				if total_bytes_read > 0 {
+				if request_complete {
 					process_request(server, epoll_fd, client_fd, readed_request_buffer, mut
-						client_fds)
-				} else if total_bytes_read == 0 {
-					// Normal client closure (FIN received)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds)
-				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+						client_fds, mut client_buffers)
+				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
+				} else if peer_closed || (total_bytes_read == 0 && readed_request_buffer.len == 0) {
+					// Normal client closure (FIN received)
+					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers)
+				} else if readed_request_buffer.len > 0 {
+					client_buffers[client_fd] = readed_request_buffer
 				}
 			}
 		}

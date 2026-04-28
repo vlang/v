@@ -79,6 +79,14 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
+	if b.ccoptions.cc == .tcc {
+		tcc_root := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
+		if os.is_dir(tcc_root) {
+			tcc_base_arg := '-B${b.tcc_quoted_path(tcc_root)}'
+			compile_args << tcc_base_arg
+			linker_args << tcc_base_arg
+		}
+	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
