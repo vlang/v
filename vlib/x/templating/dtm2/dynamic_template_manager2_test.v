@@ -118,6 +118,24 @@ fn test_reload_modified_template_without_render_cache() {
 	assert manager.compiled_template_count() == 1
 }
 
+fn test_reload_same_second_same_size_template_content_change() {
+	path := os.join_path(dtm2_test_root(), 'same_size.html')
+	fixed_time := i64(2_306_102_495)
+	os.write_file(path, '<p>@title A</p>')!
+	os.utime(path, fixed_time, fixed_time)!
+	mut manager := new_test_manager(false)
+	placeholders := {
+		'title': 'One'
+	}
+	first := manager.expand('same_size.html', placeholders: &placeholders)
+	assert first == '<p>One A</p>\n'
+	os.write_file(path, '<b>@title B</b>')!
+	os.utime(path, fixed_time, fixed_time)!
+	second := manager.expand('same_size.html', placeholders: &placeholders)
+	assert second == '<b>One B</b>\n'
+	assert manager.compiled_template_count() == 1
+}
+
 fn test_reload_modified_include_without_render_cache() {
 	mut manager := new_test_manager(true)
 	placeholders := {
@@ -176,6 +194,24 @@ fn test_template_path_cannot_escape_template_dir() {
 	assert relative_escape == internal_server_error
 	assert absolute_escape == internal_server_error
 	assert manager.compiled_template_count() == 0
+}
+
+fn test_cached_template_path_revalidates_symlink_escape() {
+	$if windows {
+		return
+	}
+	path := os.join_path(dtm2_test_root(), 'symlink_swap.html')
+	os.write_file(path, '<p>@title safe</p>')!
+	mut manager := new_test_manager(false)
+	placeholders := {
+		'title': 'Link'
+	}
+	first := manager.expand('symlink_swap.html', placeholders: &placeholders)
+	assert first == '<p>Link safe</p>\n'
+	os.rm(path)!
+	os.symlink(dtm2_outside_template_path(), path) or { return }
+	escaped := manager.expand('symlink_swap.html', placeholders: &placeholders)
+	assert escaped == internal_server_error
 }
 
 fn test_include_path_cannot_escape_template_dir() {

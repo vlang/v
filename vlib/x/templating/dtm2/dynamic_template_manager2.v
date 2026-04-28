@@ -1,7 +1,8 @@
 module dtm2
 
-import os
+import hash
 import json
+import os
 import strings
 
 // dtm2 is the modern runtime renderer for Dynamic Template Manager.
@@ -62,9 +63,10 @@ pub:
 // template is still fresh. Includes are tracked as dependencies of the parent
 // template, so editing a partial can invalidate the compiled parent tree.
 struct TemplateDependency {
-	path        string
-	modified_at i64
-	size        u64
+	path         string
+	modified_at  i64
+	size         u64
+	content_hash u64
 }
 
 // CompiledTemplate is the parsed representation stored by Manager.
@@ -303,11 +305,18 @@ pub fn (mut m Manager) expand(template_path string, params RenderParams) string 
 	return rendered.clone()
 }
 
-// cached_template_path resolves caller paths once and then reuses the canonical
-// filesystem path. This removes repeated path normalization from the hot render
-// loop while still keeping template content reload decisions separate.
+// cached_template_path reuses canonical paths when reload checks are disabled.
+// When reload checks are enabled, it revalidates the current real path so a
+// replaced symlink cannot bypass the template directory boundary.
 fn (mut m Manager) cached_template_path(template_path string) !string {
 	if source_path := m.resolved_template_paths[template_path] {
+		if m.reload_modified_templates {
+			current_source_path := m.resolve_template_path(template_path)!
+			if current_source_path != source_path {
+				m.resolved_template_paths[template_path] = current_source_path
+				return current_source_path
+			}
+		}
 		return source_path
 	}
 	source_path := m.resolve_template_path(template_path)!
@@ -320,7 +329,7 @@ fn (mut m Manager) cached_template_path(template_path string) !string {
 // tree can be reused or must be rebuilt from disk.
 fn (mut m Manager) compiled_template_for_path(source_path string) !&CompiledTemplate {
 	if compiled := m.compiled_templates[source_path] {
-		if !m.reload_modified_templates || compiled.dependencies_are_fresh() {
+		if !m.reload_modified_templates || compiled.dependencies_are_fresh(m.template_dir) {
 			return compiled
 		}
 	}
@@ -332,8 +341,10 @@ fn (mut m Manager) compiled_template_for_path(source_path string) !&CompiledTemp
 // compile_template_from_file reads a template, expands static includes, parses
 // placeholders, and stores dependency metadata for future invalidation.
 fn compile_template_from_file(source_path string, template_root string, template_extensions map[string]TemplateType) !&CompiledTemplate {
-	template_type := template_type_from_path(source_path, template_extensions)!
-	raw_content, dependencies := read_template_with_includes(source_path, template_root, 0)!
+	canonical_path := os.real_path(source_path)
+	ensure_path_inside_template_dir(canonical_path, template_root)!
+	template_type := template_type_from_path(canonical_path, template_extensions)!
+	raw_content, dependencies := read_template_with_includes(canonical_path, template_root, 0)!
 	instructions, estimated_size, segment_count := parse_segments(raw_content)
 	dependency_signature := encode_dependencies(dependencies)
 	return &CompiledTemplate{
@@ -358,22 +369,33 @@ fn copy_string(value string) string {
 	return copied.clone()
 }
 
-// dependencies_are_fresh checks root and included files. Both modification time
-// and file size are used so same-second rewrites still invalidate reliably.
-fn (compiled &CompiledTemplate) dependencies_are_fresh() bool {
+// dependencies_are_fresh checks root and included files. The content hash closes
+// the same-second, same-size edit window left by second-resolution mtimes.
+fn (compiled &CompiledTemplate) dependencies_are_fresh(template_root string) bool {
 	signature := compiled.dependency_signature
 	mut offset := 0
 	for offset < signature.len {
 		first_sep := index_byte_from(signature, `|`, offset) or { return false }
 		second_sep := index_byte_from(signature, `|`, first_sep + 1) or { return false }
-		line_end := index_byte_from(signature, `\n`, second_sep + 1) or { signature.len }
+		third_sep := index_byte_from(signature, `|`, second_sep + 1) or { return false }
+		line_end := index_byte_from(signature, `\n`, third_sep + 1) or { signature.len }
 		size := signature[first_sep + 1..second_sep].i64()
 		if size < 0 {
 			return false
 		}
-		path := signature[second_sep + 1..line_end]
+		content_hash := signature[second_sep + 1..third_sep].u64()
+		path := signature[third_sep + 1..line_end]
+		current_path := os.real_path(path)
+		ensure_path_inside_template_dir(current_path, template_root) or { return false }
+		if current_path != path {
+			return false
+		}
 		stat := os.stat(path) or { return false }
 		if stat.mtime != signature[offset..first_sep].i64() || stat.size != u64(size) {
+			return false
+		}
+		content := os.read_file(path) or { return false }
+		if content_fingerprint(content) != content_hash {
 			return false
 		}
 		offset = line_end + 1
@@ -393,7 +415,7 @@ fn index_byte_from(value string, needle u8, start int) ?int {
 fn encode_dependencies(dependencies []TemplateDependency) string {
 	mut out := strings.new_builder(dependencies.len * 64)
 	for dependency in dependencies {
-		out.writeln('${dependency.modified_at}|${dependency.size}|${dependency.path}')
+		out.writeln('${dependency.modified_at}|${dependency.size}|${dependency.content_hash}|${dependency.path}')
 	}
 	encoded := out.str()
 	return encoded.clone()
@@ -451,7 +473,7 @@ fn read_template_with_includes(source_path string, template_root string, depth i
 	base_dir := os.dir(source_path)
 	mut out := strings.new_builder(content.len)
 	mut dependencies := []TemplateDependency{cap: 4}
-	dependencies << template_dependency(source_path)!
+	dependencies << template_dependency(source_path, content)!
 	lines := content.split_into_lines()
 	for line in lines {
 		expanded_line, line_dependencies := expand_include_directives(line, base_dir,
@@ -464,13 +486,18 @@ fn read_template_with_includes(source_path string, template_root string, depth i
 	return rendered.clone(), dependencies
 }
 
-fn template_dependency(source_path string) !TemplateDependency {
+fn template_dependency(source_path string, content string) !TemplateDependency {
 	stat := os.stat(source_path)!
 	return TemplateDependency{
-		path:        source_path.clone()
-		modified_at: stat.mtime
-		size:        stat.size
+		path:         source_path.clone()
+		modified_at:  stat.mtime
+		size:         stat.size
+		content_hash: content_fingerprint(content)
 	}
+}
+
+fn content_fingerprint(content string) u64 {
+	return hash.sum64_string(content, 0)
 }
 
 fn expand_include_directives(line string, base_dir string, template_root string, depth int) !(string, []TemplateDependency) {
