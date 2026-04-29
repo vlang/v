@@ -32,6 +32,21 @@ fn test_parse_empty_and_whitespace_only_documents() ! {
 	}
 }
 
+struct EmptyDecodeTarget {
+	name string
+	port int
+}
+
+fn test_decode_empty_document_yields_default_struct() ! {
+	// An empty config file should decode to a zero-initialized struct, not
+	// raise an error — even though the YAML root is Null per spec.
+	for src in ['', '   ', '\n\n'] {
+		got := decode[EmptyDecodeTarget](src)!
+		assert got.name == ''
+		assert got.port == 0
+	}
+}
+
 fn test_parse_null_variants() ! {
 	doc := parse_text('
 a: ~

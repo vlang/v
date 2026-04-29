@@ -92,8 +92,13 @@ pub fn encode_file[T](path string, value T) ! {
 	os.write_file(path, encode(value))!
 }
 
-// decode decodes the YAML document into the target type `T`.
+// decode decodes the YAML document into the target type `T`. An empty
+// document (parsed as the YAML 1.2 null node) decodes to a default-initialized
+// `T`, matching the common "empty config file = use defaults" idiom.
 pub fn (d Doc) decode[T]() !T {
+	if d.root is Null {
+		return json.decode(T, '{}')!
+	}
 	return json.decode(T, d.to_json())!
 }
 
