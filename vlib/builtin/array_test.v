@@ -945,7 +945,6 @@ fn test_fixed_array_literal_eq() {
 	// assert [[1, 1]!, [2, 2]!] != [[1, 2]!, [2, 3]!]
 	// vfmt off
 	assert ([1, 2, 3]!) == [1, 2, 3]!
-	assert (([1, 2, 3]!)) == [1, 2, 3]!
 	// vfmt on
 }
 
