@@ -5964,11 +5964,31 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
 			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
+			is_atomic_postfix := node.typ.has_flag(.atomic_f) && node.op in [.inc, .dec]
+				&& g.pref.ccompiler_type != .msvc
 			g.inside_map_postfix = true
-			if node.is_c2v_prefix {
+			if is_atomic_postfix {
+				atomic_op := if node.op == .inc {
+					'__atomic_fetch_add'
+				} else {
+					'__atomic_fetch_sub'
+				}
+				atomic_value_styp := g.styp(node.typ.clear_flag(.atomic_f))
+				g.write('${atomic_op}((${atomic_value_styp}*)&(')
+				if node.expr.is_auto_deref_var() {
+					g.write('*')
+				}
+				g.expr(node.expr)
+				if node.typ.has_flag(.shared_f) {
+					g.write('->val')
+				}
+				g.write('), 1, 5)')
+			} else if node.is_c2v_prefix {
 				g.write(node.op.str())
 			}
-			if node.expr.is_auto_deref_var() {
+			if is_atomic_postfix {
+				// already emitted above
+			} else if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
@@ -6023,7 +6043,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				}
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
+			if is_atomic_postfix {
+				// already emitted above
+			} else if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
 			} else if is_safe_inc || is_safe_dec {
 				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
@@ -12898,7 +12920,7 @@ return ${cast_shared_struct_str};
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base + 1
 			if g.pref.build_mode != .build_module {
-				sb.writeln('${g.static_modifier}const u32 ${interface_index_name} = ${iin_idx};')
+				sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
 			} else {
 				sb.writeln('extern const u32 ${interface_index_name};')
 			}
@@ -13005,9 +13027,13 @@ fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 	return paline, pafile, pamod, pafn
 }
 
+// get_guarded_include_text returns C preprocessor code that includes `iname`
+// when available, or emits `imessage` through a C error otherwise.
 pub fn get_guarded_include_text(iname string, imessage string) string {
 	res := '
-	|#if defined(__has_include)
+	|#if defined(__TINYC__)
+	|#include ${iname}
+	|#elif defined(__has_include)
 	|#if __has_include(${iname})
 	|#include ${iname}
 	|#else
@@ -13020,9 +13046,13 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	return res
 }
 
+// get_inttypes_or_stdint_include_text returns C preprocessor code that includes
+// the best available integer types header, or emits `imessage` otherwise.
 pub fn get_inttypes_or_stdint_include_text(imessage string) string {
 	res := '
-	|#if defined(__has_include)
+	|#if defined(__TINYC__)
+	|#include <stdint.h>
+	|#elif defined(__has_include)
 	|#if __has_include(<inttypes.h>)
 	|#include <inttypes.h>
 	|#elif __has_include(<stdint.h>)

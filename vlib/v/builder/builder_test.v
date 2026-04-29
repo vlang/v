@@ -287,7 +287,7 @@ fn test_run_with_obscure_source_filenames() {
 	os.rmdir_all(obscure_dir) or {}
 	os.mkdir_all(obscure_dir)!
 	source := "println('hi')\n"
-	for file_name in [
+	for idx, file_name in [
 		"quote's.v",
 		'"hi".v',
 		"'.v",
@@ -301,11 +301,14 @@ fn test_run_with_obscure_source_filenames() {
 	] {
 		src_file := os.join_path(obscure_dir, file_name)
 		os.write_file(src_file, source)!
+		out_file := os.join_path(obscure_dir, 'obscure_output_${idx}')
 		display_name := file_name.replace('\n', '\\n')
-		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(src_file)}')
+		res :=
+			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_file)} run ${os.quoted_path(src_file)}')
 		assert res.exit_code == 0, '${display_name}: ${res.output}'
 		assert res.output.trim_space() == 'hi', '${display_name}: ${res.output}'
 		assert os.read_file(src_file)! == source
+		os.rm(out_file) or {}
 	}
 }
 
