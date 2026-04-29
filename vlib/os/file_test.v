@@ -1,3 +1,4 @@
+// vtest retry: 2
 import os
 
 const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')

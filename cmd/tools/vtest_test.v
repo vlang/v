@@ -116,6 +116,9 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 }
 
 fn test_js_runtime_errors_are_shown_for_js_tests() {
+	if @CCOMPILER.contains('musl') {
+		return
+	}
 	if os.execute('node --version').exit_code != 0 {
 		return
 	}

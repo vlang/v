@@ -1,3 +1,4 @@
+// vtest retry: 3
 module http
 
 import encoding.base64

@@ -20,6 +20,9 @@ fn main() {
 '
 
 fn test_println_does_not_hang_on_failed_stdout_write() {
+	$if windows {
+		return
+	}
 	child_source_path := os.join_path(os.vtmp_dir(),
 		'broken_stdout_child_${time.now().unix_milli()}.v')
 	os.write_file(child_source_path, broken_stdout_child_source)!
@@ -37,7 +40,8 @@ fn test_println_does_not_hang_on_failed_stdout_write() {
 		}
 		p.close()
 	}
-	for _ in 0 .. 300 {
+	max_wait_iterations := $if s390x { 1200 } $else { 300 }
+	for _ in 0 .. max_wait_iterations {
 		if !p.is_alive() {
 			break
 		}

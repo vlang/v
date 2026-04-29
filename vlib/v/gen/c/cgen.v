@@ -4512,9 +4512,17 @@ fn (mut g Gen) gen_interface_to_interface_conversion(expr ast.Expr, expr_type as
 }
 
 fn (g &Gen) interface_conversion_variants(left_variants []ast.Type, right_variants []ast.Type) []ast.Type {
-	return left_variants.filter(fn [right_variants] (left_variant ast.Type) bool {
-		return right_variants.any(it.idx() == left_variant.idx())
-	})
+	mut variants := []ast.Type{cap: left_variants.len}
+	for left_variant in left_variants {
+		left_idx := left_variant.idx()
+		for right_variant in right_variants {
+			if right_variant.idx() == left_idx {
+				variants << left_variant
+				break
+			}
+		}
+	}
+	return variants
 }
 
 // expr_with_array_element_upcast materializes an array whose elements are boxed into

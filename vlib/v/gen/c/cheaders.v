@@ -540,6 +540,10 @@ V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);
 V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);
 V_CRT_LINKAGE void V_CRT_CALL qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
 V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);
+#if !defined(_WIN32) && !defined(_WIN64)
+V_CRT_LINKAGE int V_CRT_CALL strcasecmp(const char *left, const char *right);
+V_CRT_LINKAGE int V_CRT_CALL strncasecmp(const char *left, const char *right, size_t n);
+#endif
 V_CRT_LINKAGE size_t V_CRT_CALL strlen(const char *str);
 V_CRT_LINKAGE char * V_CRT_CALL strerror(int errnum);
 V_CRT_LINKAGE void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
