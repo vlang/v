@@ -333,9 +333,10 @@ Error behavior:
 
 - if the job returns first, the job error is returned unchanged;
 - if the timeout expires first, the public error is `async: timeout`;
-- if the parent context is canceled first, the parent context error is returned;
-- a job that observes the timeout by returning `context deadline exceeded` is
-  normalized to `async: timeout`.
+- if the parent context is canceled first, including when the parent's own
+  deadline expires first, the parent context error is returned;
+- a job that observes the local `x.async` timeout by returning
+  `context deadline exceeded` is normalized to `async: timeout`.
 
 The result channel used internally is buffered so the spawned job can finish and
 publish its result even if the caller has already returned on timeout.
@@ -451,9 +452,10 @@ rejected submissions after `wait()`, one-shot task waits, task values and
 errors, pool worker limits, pool queue backpressure, pool close/wait behavior,
 periodic execution, periodic cancellation, non-overlapping periodic iterations,
 cooperative cancellation, timeout errors, parent cancellation, nil job rejection,
-invalid intervals, zero/already-expired timeouts, stress cases, and jobs that
-ignore cancellation. Internal tests also verify that the derived `AsyncContext`
-closes `done()` and propagates parent cancellation.
+parent deadline preservation, invalid intervals, zero/already-expired timeouts,
+stress cases, and jobs that ignore cancellation. Internal tests also verify
+that the derived `AsyncContext` closes `done()` and propagates parent
+cancellation.
 
 Module-oriented integration tests live in `vlib/x/async/tests/`. They are
 synthetic and local: no external service, fixed port, path dependency, or fragile

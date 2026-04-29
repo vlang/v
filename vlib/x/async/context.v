@@ -4,6 +4,13 @@ import context
 import sync
 import time
 
+enum CancelSource {
+	unknown
+	parent
+	timeout
+	cancel
+}
+
 // AsyncContext is the small `context.Context` implementation owned by x.async.
 //
 // The public API still accepts and returns the standard `context.Context`
@@ -19,6 +26,7 @@ mut:
 	done         chan int
 	mutex        &sync.Mutex = sync.new_mutex()
 	err          IError      = none
+	cancel_src   CancelSource
 	has_deadline bool
 	deadline_at  time.Time
 }
@@ -33,16 +41,18 @@ fn new_cancel_context(parent context.Context) (&AsyncContext, context.CancelFn) 
 		spawn watch_parent_context(mut ctx)
 	}
 	cancel_fn := fn [mut ctx] () {
-		ctx.cancel_with(error(context_canceled))
+		ctx.cancel_with(error(context_canceled), .cancel)
 	}
 	return ctx, context.CancelFn(cancel_fn)
 }
 
 fn new_timeout_context(parent context.Context, timeout time.Duration) (&AsyncContext, context.CancelFn) {
 	mut deadline_at := time.now().add(timeout)
+	mut deadline_src := CancelSource.timeout
 	if parent_deadline := parent.deadline() {
 		if parent_deadline < deadline_at {
 			deadline_at = parent_deadline
+			deadline_src = .parent
 		}
 	}
 	mut ctx := &AsyncContext{
@@ -55,13 +65,16 @@ fn new_timeout_context(parent context.Context, timeout time.Duration) (&AsyncCon
 	if !ctx.propagate_existing_parent_error() {
 		spawn watch_parent_context(mut ctx)
 	}
-	if timeout.nanoseconds() <= 0 {
-		ctx.cancel_with(error(context_deadline_exceeded))
-	} else {
-		spawn watch_timeout_context(mut ctx, timeout)
+	if deadline_src == .timeout {
+		effective_timeout := deadline_at - time.now()
+		if effective_timeout.nanoseconds() <= 0 {
+			ctx.cancel_with(error(context_deadline_exceeded), .timeout)
+		} else {
+			spawn watch_timeout_context(mut ctx, effective_timeout)
+		}
 	}
 	cancel_fn := fn [mut ctx] () {
-		ctx.cancel_with(error(context_canceled))
+		ctx.cancel_with(error(context_canceled), .cancel)
 	}
 	return ctx, context.CancelFn(cancel_fn)
 }
@@ -100,7 +113,14 @@ pub fn (mut ctx AsyncContext) err() IError {
 	return ctx.parent.err()
 }
 
-fn (mut ctx AsyncContext) cancel_with(err IError) {
+fn (ctx &AsyncContext) was_canceled_by_timeout() bool {
+	ctx.mutex.lock()
+	cancel_src := ctx.cancel_src
+	ctx.mutex.unlock()
+	return cancel_src == .timeout
+}
+
+fn (mut ctx AsyncContext) cancel_with(err IError, cancel_src CancelSource) {
 	if err is none {
 		return
 	}
@@ -110,6 +130,7 @@ fn (mut ctx AsyncContext) cancel_with(err IError) {
 		return
 	}
 	ctx.err = err
+	ctx.cancel_src = cancel_src
 	if !ctx.done.closed {
 		ctx.done <- 0
 		ctx.done.close()
@@ -121,7 +142,7 @@ fn (mut ctx AsyncContext) propagate_existing_parent_error() bool {
 	mut parent := ctx.parent
 	err := parent.err()
 	if err !is none {
-		ctx.cancel_with(err)
+		ctx.cancel_with(err, .parent)
 		return true
 	}
 	return false
@@ -138,7 +159,7 @@ fn watch_parent_context(mut ctx AsyncContext) {
 		_ := <-parent_done {
 			err := parent.err()
 			if err !is none {
-				ctx.cancel_with(err)
+				ctx.cancel_with(err, .parent)
 			}
 		}
 	}
@@ -151,7 +172,7 @@ fn watch_timeout_context(mut ctx AsyncContext, timeout time.Duration) {
 			return
 		}
 		timeout {
-			ctx.cancel_with(error(context_deadline_exceeded))
+			ctx.cancel_with(error(context_deadline_exceeded), .timeout)
 		}
 	}
 }

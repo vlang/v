@@ -28,7 +28,7 @@ pub fn with_timeout_context(parent context.Context, timeout time.Duration, f Job
 	}
 	initial_err := ctx.err()
 	if initial_err !is none {
-		if initial_err.msg() == context_deadline_exceeded {
+		if initial_err.msg() == context_deadline_exceeded && async_ctx.was_canceled_by_timeout() {
 			return error(err_timeout)
 		}
 		return initial_err
@@ -44,7 +44,9 @@ pub fn with_timeout_context(parent context.Context, timeout time.Duration, f Job
 				ctx_err := ctx.err()
 				if ctx_err !is none && ctx_err.msg() == context_deadline_exceeded
 					&& result.err.msg() == context_deadline_exceeded {
-					return error(err_timeout)
+					if async_ctx.was_canceled_by_timeout() {
+						return error(err_timeout)
+					}
 				}
 				return result.err
 			}
@@ -53,7 +55,7 @@ pub fn with_timeout_context(parent context.Context, timeout time.Duration, f Job
 		_ := <-done_ch {
 			err := ctx.err()
 			if err !is none {
-				if err.msg() == context_deadline_exceeded {
+				if err.msg() == context_deadline_exceeded && async_ctx.was_canceled_by_timeout() {
 					return error(err_timeout)
 				}
 				return err
