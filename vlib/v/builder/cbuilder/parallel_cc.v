@@ -77,19 +77,24 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	}
 
 	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
-	mut compile_args := b.get_compile_args()
-	mut linker_args := b.get_linker_args()
-	if b.ccoptions.cc == .tcc {
-		tcc_root := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
-		if os.is_dir(tcc_root) {
-			tcc_base_arg := '-B${b.tcc_quoted_path(tcc_root)}'
-			compile_args << tcc_base_arg
-			linker_args << tcc_base_arg
-		}
-	}
+	compile_args := b.get_compile_args()
+	linker_args := b.get_linker_args()
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
+
+	// tcc resolves its include and library search paths relative to the
+	// directory it is invoked from, so commands must run from the V root for
+	// `thirdparty/tcc/lib/tcc/...` lookups (stddef.h, libtcc1.a, bt-*.o) to work.
+	prev_cwd := os.getwd()
+	if b.ccoptions.cc == .tcc {
+		os.chdir(b.pref.vroot) or {}
+	}
+	defer {
+		if b.ccoptions.cc == .tcc {
+			os.chdir(prev_cwd) or {}
+		}
+	}
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
@@ -138,7 +143,10 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
-	if link_res.exit_code != 0 {
+	// tcc reports duplicate symbol errors via stderr and an executable still gets emitted with exit code 0,
+	// so detect that pattern and treat it as a link failure too.
+	link_failed_with_tcc_dup := b.ccoptions.cc == .tcc && link_res.output.contains('defined twice')
+	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
 }
