@@ -472,10 +472,10 @@ fn (mut cmd Command) run() ? {
 	if vtest_nocleanup {
 		return
 	}
-	if cmd.rmfile != none {
-		mut file_existed := rm_existing(cmd.rmfile)
+	if rmfile := cmd.rmfile {
+		mut file_existed := rm_existing(rmfile)
 		if !file_existed {
-			eprintln('Expected file did not exist: ${cmd.rmfile}')
+			eprintln('Expected file did not exist: ${rmfile}')
 			cmd.ecode = 999
 		}
 	}
