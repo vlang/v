@@ -117,9 +117,9 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 110 failed, 182 passed, 292 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 111 failed, 182 passed, 293 total.'
 // The exact failure count varies slightly across compilers.
-const expected_summary_generics = 'Summary for all V _test.v files: 106 failed, 185 passed, 291 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 107 failed, 185 passed, 292 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
@@ -154,6 +154,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_map_alias_test.v',
 	'vlib/v/tests/generics/generic_match_expr_test.v',
 	'vlib/v/tests/generics/generic_match_generic_interface_type_test.v',
+	'vlib/v/tests/generics/generic_method_fn_field_result_recheck_test.v',
 	'vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v',
 	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',

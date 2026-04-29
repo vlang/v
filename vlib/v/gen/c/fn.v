@@ -2867,6 +2867,28 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 				return_type.clear_option_and_result()
 			}
 		}
+		if node.is_field {
+			selector := ast.SelectorExpr{
+				expr:       node.left
+				expr_type:  left_type
+				field_name: node.name
+			}
+			fn_typ := g.resolved_selector_field_type(selector, left_type)
+			if fn_typ != 0 {
+				fn_sym := g.table.final_sym(fn_typ.clear_option_and_result())
+				if fn_sym.info is ast.FnType {
+					return_type :=
+						g.unwrap_generic(g.recheck_concrete_type(fn_sym.info.func.return_type))
+					if return_type != 0 {
+						return if node.or_block.kind == .absent {
+							return_type
+						} else {
+							return_type.clear_option_and_result()
+						}
+					}
+				}
+			}
+		}
 		func := left_sym.find_method_with_generic_parent(node.name) or {
 			g.table.find_method(left_sym, node.name) or { return ast.void_type }
 		}
