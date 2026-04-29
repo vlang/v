@@ -387,7 +387,9 @@ fn (mut g Gen) is_expr_smartcast_to_sumtype(expr ast.Expr, expected_sumtype ast.
 	if expr is ast.SelectorExpr {
 		v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name)
 		if v != unsafe { nil } && v.smartcasts.len > 0 {
-			return true
+			orig_type := g.unwrap_generic(g.recheck_concrete_type(v.orig_type))
+			resolved_expected_sumtype := g.unwrap_generic(g.recheck_concrete_type(expected_sumtype))
+			return orig_type == resolved_expected_sumtype
 		}
 	} else if expr is ast.Ident {
 		if v := scope.find_var(expr.name) {

@@ -3223,6 +3223,9 @@ fn (mut w Walker) mark_generic_body_dependencies_in_stmts(stmts []ast.Stmt) {
 fn (mut w Walker) mark_generic_body_dependencies_in_expr(expr_ ast.Expr) {
 	expr := unsafe { expr_ }
 	match expr {
+		ast.AnonFn {
+			w.mark_generic_body_dependencies_in_stmts(expr.decl.stmts)
+		}
 		ast.CallExpr {
 			w.mark_direct_non_generic_call(expr)
 			w.mark_generic_body_dependencies_in_expr(expr.left)

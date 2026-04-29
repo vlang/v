@@ -124,3 +124,54 @@ fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
 	assert res.output.contains('x__json2__check_required_struct_fields_T_main__Req')
 	assert res.output.contains('x__json2__create_value_from_optional_T_time__Time')
 }
+
+fn test_skip_unused_marks_dependencies_inside_generic_anon_fns() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_generic_anon_fn_dependencies')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'generic_anon_fn_dependencies.v')
+	binary_path := os.join_path(tmp_dir, 'generic_anon_fn_dependencies')
+	source := [
+		'module main',
+		'',
+		'struct Holder[T] {',
+		'\tdata []T',
+		'}',
+		'',
+		'fn (h &Holder[T]) nmap[T](others []&Holder[T], f fn ([]T) T) T {',
+		'\treturn f([h.data[0], others[0].data[0]])',
+		'}',
+		'',
+		'fn (a &Holder[T]) subtract[T](b &Holder[T]) T {',
+		'\treturn a.nmap([b], fn [T] (xs []T) T {',
+		'\t\tx := xs[0]',
+		'\t\ty := xs[1]',
+		'\t\t$if T is string {',
+		"\t\t\treturn x.replace(y, '')",
+		'\t\t} $else {',
+		'\t\t\treturn x - y',
+		'\t\t}',
+		'\t})',
+		'}',
+		'',
+		'fn unused_string() {',
+		"\ta := &Holder[string]{data: ['abc']}",
+		"\tb := &Holder[string]{data: ['b']}",
+		'\tprintln(a.subtract(b))',
+		'}',
+		'',
+		'fn main() {',
+		'\ta := &Holder[int]{data: [1]}',
+		'\tb := &Holder[int]{data: [2]}',
+		'\tprintln(a.subtract(b))',
+		'}',
+	].join('\n')
+	os.write_file(source_path, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -d no_backtrace -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+}
