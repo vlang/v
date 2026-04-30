@@ -214,7 +214,11 @@ const c_common_macros = '
 		#endif
 	#else
 		#define VV_EXP extern
-		#define VV_LOC static
+		#ifdef _VPARALLELCC
+			#define VV_LOC
+		#else
+			#define VV_LOC static
+		#endif
 	#endif
 #endif
 #ifdef __cplusplus

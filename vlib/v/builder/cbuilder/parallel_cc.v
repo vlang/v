@@ -80,11 +80,18 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
 	if b.ccoptions.cc == .tcc {
-		tcc_root := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
-		if os.is_dir(tcc_root) {
-			tcc_base_arg := '-B${b.tcc_quoted_path(tcc_root)}'
-			compile_args << tcc_base_arg
-			linker_args << tcc_base_arg
+		// vlang/tcc has its system headers under `${vroot}/thirdparty/tcc/lib/tcc/include/`
+		// and its runtime objects (libtcc1.a, bt-*.o) under `${vroot}/thirdparty/tcc/lib/tcc/`.
+		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
+		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
+		// which v was invoked, without affecting how user-supplied relative flags are resolved.
+		tcc_install_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+		if os.is_dir(tcc_install_dir) {
+			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
+			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
+			compile_args << tcc_b_arg
+			linker_args << tcc_b_arg
+			linker_args << tcc_l_arg
 		}
 	}
 	scompile_args := compile_args.join(' ')
@@ -138,7 +145,10 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
-	if link_res.exit_code != 0 {
+	// tcc reports duplicate symbol errors via stderr and an executable still gets emitted with exit code 0,
+	// so detect that pattern and treat it as a link failure too.
+	link_failed_with_tcc_dup := b.ccoptions.cc == .tcc && link_res.output.contains('defined twice')
+	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
 }
