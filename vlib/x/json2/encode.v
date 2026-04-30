@@ -443,21 +443,25 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 		$for variant in T.variants {
 			if val is variant {
 				variant_name := sumtype_variant_name(typeof(variant.typ).name)
-				if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
-					$if variant.typ is $map {
-						encoder.encode_value(val)
-					} $else {
+				$if variant.typ is time.Time {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
-					}
-				} else {
-					$if variant.typ is time.Time {
+					} else {
 						encoder.encode_sumtype_time_variant(val, variant_name)
-					} $else $if variant.typ is $struct {
-						encoder.encode_sumtype_struct_variant(val, variant_name)
-					} $else {
-						encoder.encode_value(val)
 					}
+				} $else $if variant.typ is $struct {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
+						variant_value := val
+						encoder.encode_value(variant_value)
+					} else {
+						encoder.encode_sumtype_struct_variant(val, variant_name)
+					}
+				} $else $if variant.typ is $map {
+					encoder.encode_value(val)
+				} $else {
+					variant_value := val
+					encoder.encode_value(variant_value)
 				}
 			}
 		}
