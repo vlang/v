@@ -133,6 +133,35 @@ fn test_gzip_with_invalid_flags() {
 	assert_decompress_error(compressed, 'reserved flags are set, unsupported field detected')!
 }
 
+fn test_empty_input_roundtrip() {
+	empty := []u8{}
+	compressed := compress(empty)!
+	// Sanity: compress still produces a well-formed stream.
+	assert compressed.len == 20
+	assert compressed[0] == 0x1f && compressed[1] == 0x8b
+	decompressed := decompress(compressed)!
+	assert decompressed.len == 0
+	assert decompressed == empty
+}
+
+fn test_empty_input_trailer_tampered_rejected() {
+	// Confirm the fix still verifies the trailer: flip one byte of
+	// the declared size and decompress must error out.
+	mut compressed := compress([]u8{})!
+	compressed[compressed.len - 4] = 0x01 // claim length = 1, not 0
+	if _ := decompress(compressed) {
+		assert false, 'expected length-verification failure'
+	}
+}
+
+fn test_empty_input_checksum_tampered_rejected() {
+	mut compressed := compress([]u8{})!
+	compressed[compressed.len - 8] = 0x01 // corrupt CRC
+	if _ := decompress(compressed) {
+		assert false, 'expected checksum-verification failure'
+	}
+}
+
 fn test_gzip_decompress_callback() {
 	uncompressed := '321323'.repeat(10_000)
 	gz := compress(uncompressed.bytes())!

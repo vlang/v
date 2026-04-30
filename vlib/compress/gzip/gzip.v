@@ -209,6 +209,22 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
 	header_length := gzip_header.length
 
+	// An empty-payload gzip stream has a 2-byte empty stored deflate
+	// block (03 00). miniz's tinfl_decompress_mem_to_heap returns NULL
+	// for zero-length output, so short-circuit before calling it.
+	if data.len == header_length + 2 + 8 && data[header_length] == 0x03
+		&& data[header_length + 1] == 0x00 {
+		length_expected := (u32(data[data.len - 1]) << 24) | (u32(data[data.len - 2]) << 16) | (u32(data[data.len - 3]) << 8) | data[data.len - 4]
+		checksum_expected := (u32(data[data.len - 5]) << 24) | (u32(data[data.len - 6]) << 16) | (u32(data[data.len - 7]) << 8) | data[data.len - 8]
+		if params.verify_length && length_expected != 0 {
+			return error('length verification failed, got 0, expected ${length_expected}')
+		}
+		if params.verify_checksum && checksum_expected != 0 {
+			return error('checksum verification failed')
+		}
+		return []u8{}
+	}
+
 	decompressed := compr.decompress(data[header_length..data.len - 8], 0)!
 	length_expected := (u32(data[data.len - 1]) << 24) | (u32(data[data.len - 2]) << 16) | (u32(data[data.len - 3]) << 8) | data[data.len - 4]
 	if params.verify_length && decompressed.len != length_expected {
