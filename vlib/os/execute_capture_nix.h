@@ -1,3 +1,11 @@
+#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 28)
+static int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
+	(void)cmd;
+	(void)child_pid;
+	(void)read_fd;
+	return -1;
+}
+#else
 #if defined(__has_include) && __has_include(<spawn.h>)
 #include <spawn.h>
 #else
@@ -47,3 +55,4 @@ static int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read
 	*read_fd = pipefd[0];
 	return 0;
 }
+#endif
