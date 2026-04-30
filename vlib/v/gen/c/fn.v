@@ -89,6 +89,20 @@ const c_manual_prelude_decl_names = [
 	'__ctype_b_loc',
 ]
 
+const vinix_c_linker_symbol_names = [
+	'text_start',
+	'text_end',
+	'rodata_start',
+	'rodata_end',
+	'data_start',
+	'data_end',
+	'interrupt_thunks',
+]
+
+const c_compiler_builtin_decl_names = [
+	'__builtin_return_address',
+]
+
 fn collect_function_defer_stmts(node &ast.FnDecl) []ast.DeferStmt {
 	mut defer_stmts := []ast.DeferStmt{cap: node.defer_stmts.len}
 	for defer_stmt in node.defer_stmts {
@@ -857,6 +871,12 @@ fn (g &Gen) c_prelude_provides_decl(c_sym_name string) bool {
 
 fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
 	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
+	if c_sym_name in c_compiler_builtin_decl_names {
+		return false
+	}
+	if g.pref.os == .vinix && c_sym_name in vinix_c_linker_symbol_names {
+		return false
+	}
 	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file)
 		|| node.mod in g.mods_with_c_includes || g.module_has_c_header_module(node.source_file)
 		|| g.c_prelude_provides_decl(c_sym_name) {
@@ -1426,8 +1446,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
+	is_c_variadic := node.is_c_variadic || (node.language == .c && node.is_variadic)
 	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic,
-		node.is_c_variadic)
+		is_c_variadic)
 	if is_closure {
 		g.nr_closures++
 		if g.pref.no_closures {
@@ -1975,13 +1996,22 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	mut fparams := []string{}
 	mut fparamtypes := []string{}
 	mut heap_promoted := []bool{}
-	if params.len == 0 {
+	param_count := if is_c_variadic && is_variadic && params.len > 0
+		&& params.last().typ.has_flag(.variadic) {
+		params.len - 1
+	} else {
+		params.len
+	}
+	if param_count == 0 {
 		// in C, `()` is untyped, unlike `(void)`
-		if !g.inside_c_extern {
+		if !g.inside_c_extern && !is_c_variadic {
 			g.write('void')
 		}
 	}
 	for i, param in params {
+		if i >= param_count {
+			break
+		}
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
@@ -2068,7 +2098,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			fparamtypes << param_type_name
 			heap_promoted << heap_prom
 		}
-		if i < params.len - 1 {
+		if i < param_count - 1 {
 			if !g.inside_c_extern {
 				g.write(', ')
 			}
@@ -2076,10 +2106,16 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	if (g.pref.translated && is_variadic) || is_c_variadic {
-		if !g.inside_c_extern {
-			g.write(', ... ')
+		if param_count > 0 {
+			if !g.inside_c_extern {
+				g.write(', ')
+			}
+			g.definitions.write_string(', ')
 		}
-		g.definitions.write_string(', ... ')
+		if !g.inside_c_extern {
+			g.write('... ')
+		}
+		g.definitions.write_string('... ')
 	}
 	return fparams, fparamtypes, heap_promoted
 }
