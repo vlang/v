@@ -203,7 +203,7 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
-	if !f.is_opened {
+	if !f.is_opened || isnil(f.cfile) {
 		return error_file_not_opened()
 	}
 	if buf.len == 0 {
@@ -231,7 +231,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []u8) !int {
-	if !f.is_opened {
+	if !f.is_opened || isnil(f.cfile) {
 		return error_file_not_opened()
 	}
 	/*

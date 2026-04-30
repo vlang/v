@@ -437,8 +437,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 fn C.mkstemp(stemplate &u8) i32

@@ -210,7 +210,16 @@ fn decode_windows_captured_output(raw string) string {
 		if !has_null {
 			return raw
 		}
-		// Contains null bytes — likely corrupted UTF-16LE.
+		mut nulls := 0
+		for i in 0 .. raw.len {
+			if raw[i] == 0 {
+				nulls++
+			}
+		}
+		if nulls * 4 < raw.len {
+			return raw
+		}
+		// Contains many null bytes - likely corrupted UTF-16LE.
 		// Strip null bytes and normalize \r\n to \n (text-mode artifacts).
 		mut cleaned := strings.new_builder(raw.len)
 		for i in 0 .. raw.len {
@@ -631,8 +640,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 pub struct ExceptionRecord {

@@ -81,6 +81,9 @@ ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
 TCCOS := android
+ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
+LDFLAGS += -lexecinfo
+endif
 endif
 #####
 

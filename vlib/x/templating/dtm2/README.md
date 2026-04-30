@@ -353,7 +353,8 @@ vlib/x/templating/dtm2/benchmarks/run_dtm2_benchmark.sh
 Useful options:
 
 - `DTM2_BENCH_MODE=prod|prod_o2|dev`
-- `DTM2_BENCH_CASE=all|small_hot|small_cold|many_hot|many_cold|include_hot|include_cold|xml_hot|xml_cold`
+- `DTM2_BENCH_CASE=all|small_hot|small_cold|many_hot|many_cold|include_hot`
+- `DTM2_BENCH_CASE=include_cold|xml_hot|xml_cold`
 - `DTM2_BENCH_ITERATIONS=50000`
 - `DTM2_BENCH_COLD_ITERATIONS=500`
 - `DTM2_BENCH_PLACEHOLDERS=50`

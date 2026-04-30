@@ -40,7 +40,7 @@ fn test_println_does_not_hang_on_failed_stdout_write() {
 		}
 		p.close()
 	}
-	max_wait_iterations := $if s390x { 1200 } $else { 300 }
+	max_wait_iterations := $if s390x || rv64 { 1200 } $else { 300 }
 	for _ in 0 .. max_wait_iterations {
 		if !p.is_alive() {
 			break

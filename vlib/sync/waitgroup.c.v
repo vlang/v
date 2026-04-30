@@ -43,6 +43,7 @@ pub fn new_waitgroup() &WaitGroup {
 
 // init initializes a WaitGroup.
 pub fn (mut wg WaitGroup) init() {
+	C.atomic_store_u64(voidptr(&wg.state), 0)
 	wg.sem.init(0)
 }
 
