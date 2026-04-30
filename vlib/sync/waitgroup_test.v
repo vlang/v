@@ -34,17 +34,20 @@ fn test_waitgroup_reuse() {
 }
 
 fn test_waitgroup_no_use() {
-	mut done := false
-	spawn fn (done voidptr) {
-		time.sleep(10 * time.second)
-		if unsafe { *(&bool(done)) } == false {
-			panic('test_waitgroup_no_use did not complete in time')
+	done := chan bool{cap: 1}
+	watchdog := spawn fn (done chan bool) {
+		select {
+			_ := <-done {}
+			10 * time.second {
+				panic('test_waitgroup_no_use did not complete in time')
+			}
 		}
-	}(voidptr(&done))
+	}(done)
 
 	mut wg := new_waitgroup()
 	wg.wait()
-	done = true
+	done <- true
+	watchdog.wait()
 }
 
 fn test_waitgroup_go() {
