@@ -40,7 +40,7 @@ const win_width = 800
 const win_height = 800
 const bg_color = gg.black
 const pi_2 = 3.14159265359 / 2.0
-const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
+// const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
 const text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
 const text_scanning = 'Scanning...'
@@ -142,17 +142,6 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 
 fn destroy_texture(sg_img gfx.Image) {
 	gfx.destroy_image(sg_img)
-}
-
-// Use only if: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
-	sz := w * h * 4
-	mut tmp_sbc := gfx.ImageData{}
-	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr:  buf
-		size: usize(sz)
-	}
-	gfx.update_image(sg_img, &tmp_sbc)
 }
 
 /******************************************************************************
