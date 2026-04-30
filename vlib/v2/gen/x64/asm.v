@@ -217,6 +217,14 @@ fn asm_xor_reg_reg(mut g Gen, reg Reg) {
 	}
 }
 
+// and rcx, imm8
+fn asm_and_rcx_imm8(mut g Gen, imm u8) {
+	g.emit(0x48)
+	g.emit(0x83)
+	g.emit(0xE1)
+	g.emit(imm)
+}
+
 // === Shifts ===
 
 // shl rax, cl
@@ -237,6 +245,13 @@ fn asm_sar_rax_cl(mut g Gen) {
 fn asm_shr_rax_cl(mut g Gen) {
 	g.emit(0x48)
 	g.emit(0xD3)
+	g.emit(0xE8)
+}
+
+// shr rax, 1
+fn asm_shr_rax_1(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0xD1)
 	g.emit(0xE8)
 }
 
@@ -308,6 +323,15 @@ fn asm_setcc_al_movzx(mut g Gen, cc u8) {
 	g.emit(0x0F)
 	g.emit(0xB6)
 	g.emit(0xC0) // movzx rax, al
+}
+
+fn asm_ucomis_xmm0_xmm1(mut g Gen, size int) {
+	if size == 8 {
+		g.emit(0x66)
+	}
+	g.emit(0x0F)
+	g.emit(0x2E)
+	g.emit(0xC1)
 }
 
 // === Memory ===
@@ -680,6 +704,64 @@ fn asm_load_xmm_rbp_disp(mut g Gen, xmm int, disp int, size int) {
 	}
 }
 
+fn asm_load_xmm_mem_base_disp_size(mut g Gen, xmm int, base Reg, disp int, size int) {
+	base_hw := g.map_reg(int(base))
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	mut rex := u8(0)
+	if xmm >= 8 {
+		rex |= 4
+	}
+	if base_hw >= 8 {
+		rex |= 1
+	}
+	if rex != 0 {
+		g.emit(0x40 | rex)
+	}
+	g.emit(0x0F)
+	g.emit(0x10)
+	asm_emit_modrm_base_disp(mut g, u8(xmm & 7), base_hw, disp)
+}
+
+fn asm_cvtss2sd_xmm0_xmm0(mut g Gen) {
+	g.emit(0xF3)
+	g.emit(0x0F)
+	g.emit(0x5A)
+	g.emit(0xC0)
+}
+
+fn asm_cvtsd2ss_xmm0_xmm0(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x5A)
+	g.emit(0xC0)
+}
+
+fn asm_add_float_xmm0_xmm0(mut g Gen, size int) {
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	g.emit(0x0F)
+	g.emit(0x58)
+	g.emit(0xC0)
+}
+
+fn asm_sub_float_xmm0_xmm1(mut g Gen, size int) {
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	g.emit(0x0F)
+	g.emit(0x5C)
+	g.emit(0xC1)
+}
+
 fn asm_float_binop_xmm0_xmm1(mut g Gen, op u8, size int) {
 	if size == 4 {
 		g.emit(0xF3)
@@ -728,6 +810,16 @@ fn asm_je_rel32(mut g Gen) {
 fn asm_jne_rel32(mut g Gen) {
 	g.emit(0x0F)
 	g.emit(0x85)
+}
+
+fn asm_jns_rel32(mut g Gen) {
+	g.emit(0x0F)
+	g.emit(0x89)
+}
+
+fn asm_jae_rel32(mut g Gen) {
+	g.emit(0x0F)
+	g.emit(0x83)
 }
 
 // === Call ===

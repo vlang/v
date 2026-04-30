@@ -456,7 +456,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 
-			// Load register arguments
+			// Stack arguments were pushed above; this pass only loads register arguments.
 			mut reg_arg_idx := 0
 			for i in 1 .. instr.operands.len {
 				arg_idx := i - 1
@@ -526,7 +526,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 
-			// Load register arguments.
+			// Stack arguments were pushed above; this pass only loads register arguments.
 			mut reg_arg_idx := 0
 			for i := 1; i <= num_args; i++ {
 				arg_idx := i - 1
@@ -590,7 +590,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 
-			// Load register arguments
+			// Stack arguments were pushed above; this pass only loads register arguments.
 			mut reg_arg_idx := 0
 			for i in 1 .. instr.operands.len {
 				arg_idx := i - 1
@@ -713,40 +713,70 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.bitcast, .trunc, .zext, .sext {
 			if instr.operands.len > 0 {
-				g.load_val_to_reg(0, instr.operands[0])
-				if op == .sext {
-					src_size := g.type_size(g.mod.values[instr.operands[0]].typ)
-					if src_size == 1 {
-						asm_movsx_rax_al(mut g)
-					} else if src_size == 2 {
-						asm_movsx_rax_ax(mut g)
-					} else if src_size == 4 {
-						asm_movsxd_rax_eax(mut g)
+				src_typ := g.mod.values[instr.operands[0]].typ
+				dst_typ := instr.typ
+				src_info := g.mod.type_store.types[src_typ]
+				dst_info := g.mod.type_store.types[dst_typ]
+				src_size := g.type_size(src_typ)
+				dst_size := g.type_size(dst_typ)
+				if op in [.trunc, .zext] && src_info.kind == .float_t && dst_info.kind == .float_t {
+					g.load_float_val_to_xmm(0, instr.operands[0], src_size)
+					if op == .trunc && src_size == 8 && dst_size == 4 {
+						asm_cvtsd2ss_xmm0_xmm0(mut g)
+					} else if op == .zext && src_size == 4 && dst_size == 8 {
+						asm_cvtss2sd_xmm0_xmm0(mut g)
+					} else {
+						g.unsupported_numeric_conversion(op, src_size, dst_size, val_id)
 					}
+					asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], dst_size)
+				} else if op in [.trunc, .zext, .sext] && src_info.kind == .int_t
+					&& dst_info.kind == .int_t {
+					g.load_val_to_reg(0, instr.operands[0])
+					if op == .trunc {
+						g.mask_rax_to_size(dst_size, op, val_id)
+					} else if op == .zext {
+						g.mask_rax_to_size(src_size, op, val_id)
+					} else if op == .sext {
+						if src_size == 1 {
+							asm_movsx_rax_al(mut g)
+						} else if src_size == 2 {
+							asm_movsx_rax_ax(mut g)
+						} else if src_size == 4 {
+							asm_movsxd_rax_eax(mut g)
+						} else if src_size != 8 {
+							g.unsupported_numeric_conversion(op, src_size, dst_size, val_id)
+						}
+					}
+					g.store_reg_to_val(0, val_id)
+				} else if op == .bitcast {
+					g.load_val_to_reg(0, instr.operands[0])
+					g.store_reg_to_val(0, val_id)
+				} else {
+					g.unsupported_numeric_conversion(op, src_size, dst_size, val_id)
 				}
-				g.store_reg_to_val(0, val_id)
 			}
 		}
 		.sitofp, .uitofp {
 			if instr.operands.len > 0 {
 				g.load_val_to_reg(0, instr.operands[0])
-				result_size := g.type_size(instr.typ)
-				if result_size == 4 {
-					asm_cvtsi2ss_xmm0_rax(mut g)
+				src_size := g.type_size(g.mod.values[instr.operands[0]].typ)
+				if op == .uitofp {
+					g.emit_unsigned_int_to_float(src_size, g.type_size(instr.typ), val_id)
 				} else {
-					asm_cvtsi2sd_xmm0_rax(mut g)
+					g.emit_signed_int_to_float(g.type_size(instr.typ), op, val_id)
 				}
-				asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], result_size)
+				asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], g.type_size(instr.typ))
 			}
 		}
 		.fptosi, .fptoui {
 			if instr.operands.len > 0 {
 				src_size := g.type_size(g.mod.values[instr.operands[0]].typ)
+				dst_size := g.type_size(instr.typ)
 				g.load_float_val_to_xmm(0, instr.operands[0], src_size)
-				if src_size == 4 {
-					asm_cvttss2si_rax_xmm0(mut g)
+				if op == .fptoui {
+					g.emit_float_to_unsigned_int(src_size, dst_size, val_id)
 				} else {
-					asm_cvttsd2si_rax_xmm0(mut g)
+					g.emit_float_to_signed_int(src_size, op, val_id)
 				}
 				g.store_reg_to_val(0, val_id)
 			}
@@ -819,6 +849,127 @@ fn (mut g Gen) gen_instr(val_id int) {
 			exit(1)
 		}
 	}
+}
+
+fn (mut g Gen) mask_rax_to_size(size int, op ssa.OpCode, val_id int) {
+	match size {
+		1 {
+			asm_mov_reg_imm64(mut g, rcx, 0xff)
+			asm_and_rax_rcx(mut g)
+		}
+		2 {
+			asm_mov_reg_imm64(mut g, rcx, 0xffff)
+			asm_and_rax_rcx(mut g)
+		}
+		4 {
+			asm_mov_reg_imm64(mut g, rcx, 0xffffffff)
+			asm_and_rax_rcx(mut g)
+		}
+		8 {}
+		else {
+			g.unsupported_numeric_conversion(op, size, size, val_id)
+		}
+	}
+}
+
+fn (mut g Gen) emit_signed_int_to_float(result_size int, op ssa.OpCode, val_id int) {
+	if result_size == 4 {
+		asm_cvtsi2ss_xmm0_rax(mut g)
+	} else if result_size == 8 {
+		asm_cvtsi2sd_xmm0_rax(mut g)
+	} else {
+		g.unsupported_numeric_conversion(op, 8, result_size, val_id)
+	}
+}
+
+fn (mut g Gen) emit_unsigned_int_to_float(src_size int, result_size int, val_id int) {
+	if src_size < 8 {
+		g.mask_rax_to_size(src_size, .uitofp, val_id)
+		g.emit_signed_int_to_float(result_size, .uitofp, val_id)
+		return
+	}
+	if src_size != 8 {
+		g.unsupported_numeric_conversion(.uitofp, src_size, result_size, val_id)
+	}
+	asm_test_rax_rax(mut g)
+	asm_jns_rel32(mut g)
+	normal_patch := g.elf.text_data.len
+	g.emit_u32(0)
+	asm_mov_reg_reg(mut g, rcx, rax)
+	asm_and_rcx_imm8(mut g, 1)
+	asm_shr_rax_1(mut g)
+	asm_or_rax_rcx(mut g)
+	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
+	asm_add_float_xmm0_xmm0(mut g, result_size)
+	asm_jmp_rel32(mut g)
+	end_patch := g.elf.text_data.len
+	g.emit_u32(0)
+	g.patch_rel32(normal_patch)
+	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
+	g.patch_rel32(end_patch)
+}
+
+fn (mut g Gen) emit_float_to_signed_int(src_size int, op ssa.OpCode, val_id int) {
+	if src_size == 4 {
+		asm_cvttss2si_rax_xmm0(mut g)
+	} else if src_size == 8 {
+		asm_cvttsd2si_rax_xmm0(mut g)
+	} else {
+		g.unsupported_numeric_conversion(op, src_size, 8, val_id)
+	}
+}
+
+fn (mut g Gen) emit_float_to_unsigned_int(src_size int, dst_size int, val_id int) {
+	if dst_size != 8 {
+		g.emit_float_to_signed_int(src_size, .fptoui, val_id)
+		g.mask_rax_to_size(dst_size, .fptoui, val_id)
+		return
+	}
+	g.load_fp_2p63_to_xmm1(src_size, val_id)
+	asm_ucomis_xmm0_xmm1(mut g, src_size)
+	asm_jae_rel32(mut g)
+	big_patch := g.elf.text_data.len
+	g.emit_u32(0)
+	g.emit_float_to_signed_int(src_size, .fptoui, val_id)
+	asm_jmp_rel32(mut g)
+	end_patch := g.elf.text_data.len
+	g.emit_u32(0)
+	g.patch_rel32(big_patch)
+	asm_sub_float_xmm0_xmm1(mut g, src_size)
+	g.emit_float_to_signed_int(src_size, .fptoui, val_id)
+	asm_mov_reg_imm64(mut g, rcx, 0x8000000000000000)
+	asm_or_rax_rcx(mut g)
+	g.patch_rel32(end_patch)
+}
+
+fn (mut g Gen) load_fp_2p63_to_xmm1(size int, val_id int) {
+	mut bytes := []u8{len: size}
+	if size == 4 {
+		binary.little_endian_put_u32(mut bytes, 0x5f000000)
+	} else if size == 8 {
+		binary.little_endian_put_u64(mut bytes, 0x43e0000000000000)
+	} else {
+		g.unsupported_numeric_conversion(.fptoui, size, 8, val_id)
+	}
+	str_offset := g.elf.rodata.len
+	g.elf.rodata << bytes
+	sym_name := 'L_fp_${g.curr_offset}_${str_offset}'
+	sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+	asm_lea_reg_rip(mut g, r10)
+	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.emit_u32(0)
+	asm_load_xmm_mem_base_disp_size(mut g, 1, r10, 0, size)
+}
+
+fn (mut g Gen) patch_rel32(patch_pos int) {
+	target := g.elf.text_data.len
+	rel := target - (patch_pos + 4)
+	g.write_u32(patch_pos, u32(rel))
+}
+
+fn (g Gen) unsupported_numeric_conversion(op ssa.OpCode, src_size int, dst_size int, val_id int) {
+	eprintln('x64: unsupported numeric conversion ${op} from ${src_size * 8}-bit to ${dst_size * 8}-bit in value ${val_id}')
+	exit(1)
 }
 
 fn (g Gen) const_int_operand(val_id int) int {
