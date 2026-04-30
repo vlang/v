@@ -532,6 +532,7 @@ V_CRT_LINKAGE int V_CRT_CALL rand(void);
 V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);
 V_CRT_LINKAGE int V_CRT_CALL atexit(void (*cb)(void));
 V_CRT_LINKAGE void V_CRT_CALL exit(int status);
+V_CRT_LINKAGE int V_CRT_CALL abs(int n);
 V_CRT_LINKAGE int V_CRT_CALL atoi(const char *str);
 V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);
 V_CRT_LINKAGE char * V_CRT_CALL getenv(const char *name);
@@ -544,8 +545,11 @@ V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);
 V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);
 V_CRT_LINKAGE void V_CRT_CALL qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
 V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);
-#if !defined(_WIN32) && !defined(_WIN64)
+V_CRT_LINKAGE int V_CRT_CALL strncmp(const char *left, const char *right, size_t n);
+#if !defined(_WIN32) && !defined(_WIN64) && !defined(__BIONIC__)
 V_CRT_LINKAGE char * V_CRT_CALL strdup(const char *str);
+#endif
+#if !defined(_WIN32) && !defined(_WIN64)
 V_CRT_LINKAGE int V_CRT_CALL strcasecmp(const char *left, const char *right);
 V_CRT_LINKAGE int V_CRT_CALL strncasecmp(const char *left, const char *right, size_t n);
 #endif

@@ -1084,8 +1084,21 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
+		expected_unwrap_typ := g.unwrap_generic(sfield.expected_type)
+		expected_unwrap_sym := g.table.final_sym(expected_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if field_unwrap_sym.info is ast.ArrayFixed && !sfield.expected_type.has_flag(.option) {
+		if expected_unwrap_sym.info is ast.ArrayFixed && sfield.expr is ast.ArrayInit
+			&& !sfield.expr.is_fixed && !sfield.expr.has_len && !sfield.expr.has_init
+			&& sfield.expr.exprs.len > 0 && !sfield.expected_type.has_flag(.option) {
+			fixed_array_expr := ast.ArrayInit{
+				...sfield.expr
+				is_fixed:  true
+				has_val:   true
+				elem_type: expected_unwrap_sym.info.elem_type
+				typ:       expected_unwrap_typ
+			}
+			g.fixed_array_init(fixed_array_expr, g.unwrap(expected_unwrap_typ), '', false)
+		} else if field_unwrap_sym.info is ast.ArrayFixed && !sfield.expected_type.has_flag(.option) {
 			match sfield.expr {
 				ast.Ident, ast.SelectorExpr {
 					g.fixed_array_var_init(g.expr_string(ast.Expr(sfield.expr)), is_auto_deref_var,

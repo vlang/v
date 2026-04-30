@@ -129,6 +129,7 @@ mut:
 	done_typedef_phase                   bool              // set after write_typedef_types() completes
 	late_chan_types                      shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types                   map[string]bool   // concrete channel typedefs/helpers already emitted
+	c_extern_signature_types             map[string]bool   // C signature-only type decls already emitted
 	chan_pop_options                     map[string]string // types for `x := <-ch or {...}`
 	chan_push_options                    map[string]string // types for `ch <- x or {...}`
 	mtxs                                 string            // array of mutexes if the `lock` has multiple variables
@@ -412,6 +413,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
+		c_extern_signature_types:      map[string]bool{}
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
@@ -1056,6 +1058,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
+		c_extern_signature_types:           map[string]bool{}
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}

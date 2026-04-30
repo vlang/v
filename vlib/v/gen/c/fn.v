@@ -58,6 +58,7 @@ const c_manual_prelude_decl_names = [
 	'srand',
 	'atexit',
 	'exit',
+	'abs',
 	'atoi',
 	'atof',
 	'getenv',
@@ -70,6 +71,10 @@ const c_manual_prelude_decl_names = [
 	'mkstemp',
 	'qsort',
 	'strcmp',
+	'strncmp',
+	'strdup',
+	'strcasecmp',
+	'strncasecmp',
 	'strlen',
 	'strerror',
 	'memcpy',
@@ -866,6 +871,73 @@ fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
 	return node.mod == 'main' || node.source_file.is_test
 }
 
+fn (g &Gen) should_emit_c_signature_type_decls(node ast.FnDecl) bool {
+	return node.is_c_extern || g.should_emit_c_fallback_decl(node)
+		|| (node.no_body && node.attrs.contains('c'))
+}
+
+fn (mut g Gen) ensure_c_extern_signature_type_decls(node ast.FnDecl) {
+	if !g.pref.skip_unused || !g.should_emit_c_signature_type_decls(node) {
+		return
+	}
+	g.ensure_c_extern_signature_type_decl(node.return_type)
+	for param in node.params {
+		g.ensure_c_extern_signature_type_decl(param.typ)
+	}
+}
+
+fn (mut g Gen) ensure_c_extern_signature_type_decl(typ_ ast.Type) {
+	if typ_ == 0 {
+		return
+	}
+	typ := typ_.clear_option_and_result().set_nr_muls(0).clear_flags(.generic, .variadic)
+	if typ == 0 {
+		return
+	}
+	sym := g.table.sym(typ)
+	if sym.is_builtin || sym.name in ['byte', 'i32', 'C.FILE'] {
+		return
+	}
+	if sym.idx in g.table.used_features.used_syms {
+		return
+	}
+	if sym.cname in g.c_extern_signature_types {
+		return
+	}
+	g.c_extern_signature_types[sym.cname] = true
+	match sym.info {
+		ast.Alias {
+			g.ensure_c_extern_signature_type_decl(sym.info.parent_type)
+			g.write_alias_typesymbol_declaration(sym)
+		}
+		ast.FnType {
+			for param in sym.info.func.params {
+				g.ensure_c_extern_signature_type_decl(param.typ)
+			}
+			g.ensure_c_extern_signature_type_decl(sym.info.func.return_type)
+		}
+		ast.Struct {
+			if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
+				c_struct_name := sym.cname[3..]
+				if sym.info.is_typedef {
+					g.typedefs.writeln('typedef struct ${c_struct_name} ${c_struct_name};')
+				} else {
+					g.typedefs.writeln('struct ${c_struct_name};')
+				}
+			} else {
+				g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
+			}
+		}
+		ast.Array {
+			g.ensure_c_extern_signature_type_decl(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			g.ensure_c_extern_signature_type_decl(sym.info.elem_type)
+		}
+		else {}
+	}
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	$if trace_cgen_fn_decl ? {
 		eprintln('>   g.tid: ${g.tid} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | fn_decl: ${node.name}')
@@ -887,6 +959,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if !g.is_used_by_main(node) {
 		return
 	}
+	g.ensure_c_extern_signature_type_decls(node)
 	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.kind == .malloc {
 		g.definitions.write_string('#define builtin___v_malloc GC_MALLOC\n')
 		return
