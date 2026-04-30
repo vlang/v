@@ -81,3 +81,72 @@ fn main() {
 ")
 	assert output == 'Const hello'
 }
+
+fn test_issue_27039_x64_aggregate_arg_spills_to_stack() {
+	output := run_issue_27039_x64_program('aggregate_arg_spill', "module main
+
+struct Pair {
+	a i64
+	b i64
+}
+
+fn sum_after_five(a i64, b i64, c i64, d i64, e i64, p Pair) i64 {
+	return a + b + c + d + e + p.a + p.b
+}
+
+fn main() {
+	if sum_after_five(1, 2, 3, 4, 5, Pair{6, 7}) == 28 {
+		println('ok')
+	} else {
+		println('bad')
+	}
+}
+")
+	assert output == 'ok'
+}
+
+fn test_issue_27039_x64_stack_arg_after_two_chunk_aggregate() {
+	output := run_issue_27039_x64_program('stack_arg_after_pair', "module main
+
+struct Pair {
+	a i64
+	b i64
+}
+
+fn sum_pair_then_scalars(p Pair, a i64, b i64, c i64, d i64, e i64) i64 {
+	return p.a + p.b + a + b + c + d + e
+}
+
+fn main() {
+	if sum_pair_then_scalars(Pair{10, 20}, 1, 2, 3, 4, 5) == 45 {
+		println('ok')
+	} else {
+		println('bad')
+	}
+}
+")
+	assert output == 'ok'
+}
+
+fn test_issue_27039_x64_spilled_aggregate_does_not_consume_remaining_register() {
+	output := run_issue_27039_x64_program('aggregate_spill_then_reg', "module main
+
+struct Pair {
+	a i64
+	b i64
+}
+
+fn sum_spill_then_reg(a i64, b i64, c i64, d i64, e i64, p Pair, z i64) i64 {
+	return p.a + p.b + z
+}
+
+fn main() {
+	if sum_spill_then_reg(1, 2, 3, 4, 5, Pair{10, 20}, 6) == 36 {
+		println('ok')
+	} else {
+		println('bad')
+	}
+}
+")
+	assert output == 'ok'
+}

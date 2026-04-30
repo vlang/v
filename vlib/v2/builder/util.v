@@ -10,7 +10,7 @@ fn list_dir_entries(path string) []string {
 	return os.ls(path) or { []string{} }
 }
 
-pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
+pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
 	if dir == '' {
 		return []string{}
 	}
@@ -30,7 +30,7 @@ pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 			continue
 		}
 		// Skip files specialized for a different target OS before parsing/type checking.
-		if pref.file_has_incompatible_os_suffix(file, os.user_os()) {
+		if pref.file_has_incompatible_os_suffix(file, target_os) {
 			continue
 		}
 		// Conditional compilation files: _d_<feature> included when -d <feature> is set,

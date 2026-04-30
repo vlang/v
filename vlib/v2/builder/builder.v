@@ -1324,8 +1324,8 @@ fn ast_file_module_name(file ast.File) string {
 	return 'main'
 }
 
-fn flag_os_matches(cond string) bool {
-	current := os.user_os().to_lower()
+fn flag_os_matches(cond string, target_os string) bool {
+	current := pref.normalize_os_name(target_os)
 	return match cond.to_lower() {
 		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1406,7 +1406,7 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 	return out.join(' ')
 }
 
-fn parse_flag_directive_line(line string, file_path string) ?string {
+fn parse_flag_directive_line(line string, file_path string, target_os string) ?string {
 	trimmed := line.trim_space()
 	if !trimmed.starts_with('#flag') {
 		return none
@@ -1426,7 +1426,7 @@ fn parse_flag_directive_line(line string, file_path string) ?string {
 		return none
 	}
 	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
-		if !flag_os_matches(parts[0]) {
+		if !flag_os_matches(parts[0], target_os) {
 			return none
 		}
 		rest = rest[parts[0].len..].trim_space()
@@ -1484,7 +1484,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	if !b.pref.skip_builtin {
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
-			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines)
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines,
+				b.pref.get_effective_os())
 			for mf in module_files {
 				if mf !in scanned_files {
 					scan_paths << mf
@@ -1508,7 +1509,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				cond := trimmed[4..].trim_right('?{ ').trim_space()
 				if skip_depth > 0 {
 					skip_depth++
-				} else if !comptime_cond_matches(cond) {
+				} else if !comptime_cond_matches(cond, b.pref.get_effective_os()) {
 					skip_depth = 1
 				}
 				continue
@@ -1531,7 +1532,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path) or { continue }
+			mut flag := parse_flag_directive_line(resolved_line, scan_path,
+				b.pref.get_effective_os()) or { continue }
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1592,18 +1594,18 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 	return compile.join(' '), link.join(' ')
 }
 
-fn comptime_cond_matches(cond string) bool {
+fn comptime_cond_matches(cond string, target_os string) bool {
 	// Handle negation: $if !platform
 	if cond.starts_with('!') {
-		return !comptime_cond_matches(cond[1..])
+		return !comptime_cond_matches(cond[1..], target_os)
 	}
 	// Handle && conjunction
 	if and_idx := cond.index('&&') {
 		left := cond[..and_idx].trim_space()
 		right := cond[and_idx + 2..].trim_space()
-		return comptime_cond_matches(left) && comptime_cond_matches(right)
+		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
 	}
-	current := os.user_os().to_lower()
+	current := pref.normalize_os_name(target_os)
 	return match cond.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1733,7 +1735,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	mod.target = ssa.TargetData{
 		ptr_size:      8
 		endian_little: true
-		os:            os.user_os().to_lower()
+		os:            b.pref.get_effective_os()
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
