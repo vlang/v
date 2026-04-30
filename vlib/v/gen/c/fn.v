@@ -1703,8 +1703,10 @@ fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 fn (mut g Gen) c_call_alias_signature(node ast.CallExpr, name string) string {
 	ret_styp := g.styp(node.return_type)
 	mut sig := '${ret_styp} (*${name})('
-	if node.args.len == 0 && !node.is_c_variadic {
-		sig += 'void'
+	if node.args.len == 0 {
+		if !node.is_c_variadic {
+			sig += 'void'
+		}
 	} else {
 		for i, arg in node.args {
 			arg_typ := if arg.typ != 0 {
@@ -2105,7 +2107,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(', ')
 		}
 	}
-	if (g.pref.translated && is_variadic) || is_c_variadic {
+	if ((g.pref.translated && is_variadic) || is_c_variadic) && (!is_c_variadic || param_count > 0) {
 		if param_count > 0 {
 			if !g.inside_c_extern {
 				g.write(', ')
