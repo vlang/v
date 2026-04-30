@@ -76,17 +76,11 @@ mut:
 
 const is_interactive = false
 
-// Instantly updates CHANGELOG.md without confirming each line
-fn no_interactive(_version string) {
-}
-
 fn main() {
 	mut version := ''
 
 	if os.args.len == 2 && os.args[1].starts_with('0.') {
 		version = os.args[1]
-		// no_interactive(version)
-		// return
 	} else {
 		println('Usage: v run tools/changelog_helper.v 0.4.5')
 		return

@@ -20,8 +20,6 @@ const vargs = args_string.all_before('test-all')
 
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
-const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
-
 const clang_path = os.find_abs_path_of_executable('clang') or { '' }
 
 fn main() {
@@ -87,6 +85,7 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	$if linux {
+		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
 				line:   '${vexe} -os windows examples/hello_world.v'
@@ -265,6 +264,7 @@ fn get_all_commands() []Command {
 	}
 	// Test cross compilation to windows with -shared:
 	$if linux {
+		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
 				line:   '${vexe} -os windows ${common_shared_flags}'
