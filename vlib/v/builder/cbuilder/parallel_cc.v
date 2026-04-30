@@ -77,24 +77,26 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	}
 
 	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
-	compile_args := b.get_compile_args()
-	linker_args := b.get_linker_args()
+	mut compile_args := b.get_compile_args()
+	mut linker_args := b.get_linker_args()
+	if b.ccoptions.cc == .tcc {
+		// vlang/tcc has its system headers under `${vroot}/thirdparty/tcc/lib/tcc/include/`
+		// and its runtime objects (libtcc1.a, bt-*.o) under `${vroot}/thirdparty/tcc/lib/tcc/`.
+		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
+		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
+		// which v was invoked, without affecting how user-supplied relative flags are resolved.
+		tcc_install_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+		if os.is_dir(tcc_install_dir) {
+			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
+			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
+			compile_args << tcc_b_arg
+			linker_args << tcc_b_arg
+			linker_args << tcc_l_arg
+		}
+	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
-
-	// tcc resolves its include and library search paths relative to the
-	// directory it is invoked from, so commands must run from the V root for
-	// `thirdparty/tcc/lib/tcc/...` lookups (stddef.h, libtcc1.a, bt-*.o) to work.
-	prev_cwd := os.getwd()
-	if b.ccoptions.cc == .tcc {
-		os.chdir(b.pref.vroot) or {}
-	}
-	defer {
-		if b.ccoptions.cc == .tcc {
-			os.chdir(prev_cwd) or {}
-		}
-	}
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
