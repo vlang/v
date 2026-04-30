@@ -155,6 +155,13 @@ fn asm_idiv_rcx(mut g Gen) {
 	g.emit(0xF9)
 }
 
+// div rcx (unsigned rdx:rax / rcx -> quotient in rax, remainder in rdx)
+fn asm_div_rcx(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0xF7)
+	g.emit(0xF1)
+}
+
 // mov rax, rdx (for getting remainder after idiv)
 fn asm_mov_rax_rdx(mut g Gen) {
 	g.emit(0x48)
@@ -189,6 +196,12 @@ fn asm_xor_rax_rcx(mut g Gen) {
 fn asm_xor_eax_eax(mut g Gen) {
 	g.emit(0x31)
 	g.emit(0xC0)
+}
+
+// xor edx, edx (clear rdx before unsigned division)
+fn asm_xor_edx_edx(mut g Gen) {
+	g.emit(0x31)
+	g.emit(0xD2)
 }
 
 // xor reg, reg (clear register - handles r8-r15)
@@ -278,6 +291,14 @@ const cc_le = u8(0x9E) // less or equal (signed)
 
 const cc_ge = u8(0x9D) // greater or equal (signed)
 
+const cc_b = u8(0x92) // below (unsigned less)
+
+const cc_a = u8(0x97) // above (unsigned greater)
+
+const cc_be = u8(0x96) // below or equal (unsigned)
+
+const cc_ae = u8(0x93) // above or equal (unsigned)
+
 // setcc al + movzx rax, al
 fn asm_setcc_al_movzx(mut g Gen, cc u8) {
 	g.emit(0x0F)
@@ -303,6 +324,29 @@ fn asm_mov_rax_mem_rcx(mut g Gen) {
 	g.emit(0x48)
 	g.emit(0x8B)
 	g.emit(0x01)
+}
+
+fn asm_emit_modrm_base_disp(mut g Gen, reg_bits u8, base_hw u8, disp int) {
+	rm := base_hw & 7
+	needs_sib := rm == 4 // rsp/r12
+	if disp == 0 && rm != 5 {
+		g.emit((reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+	} else if disp >= -128 && disp <= 127 {
+		g.emit(0x40 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x80 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit_u32(u32(disp))
+	}
 }
 
 // mov rax, [base + disp]
@@ -338,6 +382,56 @@ fn asm_mov_rax_mem_base_disp(mut g Gen, base Reg, disp int) {
 	}
 }
 
+fn asm_load_reg_mem_base_disp_size(mut g Gen, reg Reg, base Reg, disp int, size int) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(base))
+	if size == 8 {
+		mut rex := u8(0x48)
+		if reg_hw >= 8 {
+			rex |= 4 // REX.R
+		}
+		if base_hw >= 8 {
+			rex |= 1 // REX.B
+		}
+		g.emit(rex)
+		g.emit(0x8B)
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	if size == 4 {
+		mut rex := u8(0)
+		if reg_hw >= 8 {
+			rex |= 4
+		}
+		if base_hw >= 8 {
+			rex |= 1
+		}
+		if rex != 0 {
+			g.emit(0x40 | rex)
+		}
+		g.emit(0x8B)
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	if size == 2 || size == 1 {
+		mut rex := u8(0)
+		if reg_hw >= 8 {
+			rex |= 4
+		}
+		if base_hw >= 8 {
+			rex |= 1
+		}
+		if rex != 0 {
+			g.emit(0x40 | rex)
+		}
+		g.emit(0x0F)
+		g.emit(if size == 2 { u8(0xB7) } else { u8(0xB6) })
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	asm_load_reg_mem_base_disp_size(mut g, reg, base, disp, 8)
+}
+
 // mov [base + disp], rax
 fn asm_mov_mem_base_disp_rax(mut g Gen, base Reg, disp int) {
 	base_hw := g.map_reg(int(base))
@@ -369,6 +463,43 @@ fn asm_mov_mem_base_disp_rax(mut g Gen, base Reg, disp int) {
 		}
 		g.emit_u32(u32(disp))
 	}
+}
+
+fn asm_store_mem_base_disp_reg_size(mut g Gen, base Reg, disp int, reg Reg, size int) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(base))
+	if size == 8 {
+		mut rex := u8(0x48)
+		if reg_hw >= 8 {
+			rex |= 4 // REX.R
+		}
+		if base_hw >= 8 {
+			rex |= 1 // REX.B
+		}
+		g.emit(rex)
+		g.emit(0x89)
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	if size == 4 || size == 2 || size == 1 {
+		if size == 2 {
+			g.emit(0x66)
+		}
+		mut rex := u8(0)
+		if reg_hw >= 8 {
+			rex |= 4
+		}
+		if base_hw >= 8 {
+			rex |= 1
+		}
+		if rex != 0 {
+			g.emit(0x40 | rex)
+		}
+		g.emit(if size == 1 { u8(0x88) } else { u8(0x89) })
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	asm_store_mem_base_disp_reg_size(mut g, base, disp, reg, 8)
 }
 
 // lea rax, [rbp + disp8]
@@ -477,6 +608,107 @@ fn asm_store_rbp_disp_reg(mut g Gen, disp int, reg Reg) {
 		g.emit(0x85 | ((hw_reg & 7) << 3)) // ModRM 10 = disp32
 		g.emit_u32(u32(disp))
 	}
+}
+
+fn asm_store_rbp_disp_reg_size(mut g Gen, disp int, reg Reg, size int) {
+	asm_store_mem_base_disp_reg_size(mut g, rbp, disp, reg, size)
+}
+
+fn asm_cvtsi2ss_xmm0_rax(mut g Gen) {
+	g.emit(0xF3)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2A)
+	g.emit(0xC0)
+}
+
+fn asm_cvtsi2sd_xmm0_rax(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2A)
+	g.emit(0xC0)
+}
+
+fn asm_cvttss2si_rax_xmm0(mut g Gen) {
+	g.emit(0xF3)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2C)
+	g.emit(0xC0)
+}
+
+fn asm_cvttsd2si_rax_xmm0(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2C)
+	g.emit(0xC0)
+}
+
+fn asm_store_xmm0_rbp_disp(mut g Gen, disp int, size int) {
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	g.emit(0x0F)
+	g.emit(0x11)
+	if disp >= -128 && disp <= 127 {
+		g.emit(0x45)
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x85)
+		g.emit_u32(u32(disp))
+	}
+}
+
+fn asm_load_xmm_rbp_disp(mut g Gen, xmm int, disp int, size int) {
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	g.emit(0x0F)
+	g.emit(0x10)
+	if disp >= -128 && disp <= 127 {
+		g.emit(0x45 | (u8(xmm & 7) << 3))
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x85 | (u8(xmm & 7) << 3))
+		g.emit_u32(u32(disp))
+	}
+}
+
+fn asm_float_binop_xmm0_xmm1(mut g Gen, op u8, size int) {
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	g.emit(0x0F)
+	g.emit(op)
+	g.emit(0xC1)
+}
+
+fn asm_movsxd_rax_eax(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x63)
+	g.emit(0xC0)
+}
+
+fn asm_movsx_rax_ax(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xBF)
+	g.emit(0xC0)
+}
+
+fn asm_movsx_rax_al(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xBE)
+	g.emit(0xC0)
 }
 
 // === Branches ===

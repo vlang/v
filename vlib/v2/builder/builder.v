@@ -1730,6 +1730,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		eprintln('hint: use v2 compiled with v1 for native code generation')
 		return
 	}
+	mod.target = ssa.TargetData{
+		ptr_size:      8
+		endian_little: true
+		os:            os.user_os().to_lower()
+	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
 
