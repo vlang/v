@@ -477,6 +477,22 @@ extern struct __sFstub __stderr[];
 #define stdin ((struct __sFILE *)__stdin)
 #define stdout ((struct __sFILE *)__stdout)
 #define stderr ((struct __sFILE *)__stderr)
+	#elif defined(__BIONIC__)
+struct __sFILE;
+typedef struct __sFILE FILE;
+		#if __ANDROID_API__ >= 23
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+			#define stdin stdin
+			#define stdout stdout
+			#define stderr stderr
+		#else
+extern FILE __sF[];
+			#define stdin (&__sF[0])
+			#define stdout (&__sF[1])
+			#define stderr (&__sF[2])
+		#endif
 	#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)
 typedef struct _IO_FILE FILE;
 // musl exposes the stdio streams as `FILE *const`, so match that to stay

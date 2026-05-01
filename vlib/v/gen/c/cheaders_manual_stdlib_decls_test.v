@@ -62,6 +62,24 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('#if defined(__vinix__)\nV_CRT_LINKAGE int V_CRT_CALL strcmp(char *left, char *right);\nV_CRT_LINKAGE int V_CRT_CALL strncmp(char *left, char *right, size_t n);\n#else\nV_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);'), generated_c
 }
 
+fn test_android_prelude_uses_bionic_file_decls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_android_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'android.v')
+	output_path := os.join_path(tmp_dir, 'android.c')
+	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -os android -apk -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	assert generated_c.contains('#elif defined(__BIONIC__)\nstruct __sFILE;\ntypedef struct __sFILE FILE;'), generated_c
+	assert generated_c.contains('#if __ANDROID_API__ >= 23\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;'), generated_c
+	assert !generated_c.contains('#elif defined(__BIONIC__)\ntypedef struct _IO_FILE FILE;'), generated_c
+}
+
 fn test_vinix_prelude_leaves_stdio_and_stdlib_to_vinix_stubs() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_vinix_${os.getpid()}')
 	os.mkdir_all(tmp_dir)!
@@ -83,6 +101,7 @@ fn test_vinix_prelude_leaves_stdio_and_stdlib_to_vinix_stubs() {
 	assert !generated_c.contains('extern void printf_panic(charptr _d1, Array_voidptr _d2);'), generated_c
 	assert !generated_c.contains('extern void text_start();'), generated_c
 	assert !generated_c.contains('extern voidptr __builtin_return_address(int _d1);'), generated_c
+	assert !generated_c.contains('builtin__unbuffer_stdout();'), generated_c
 }
 
 fn test_msvc_windows_prelude_uses_msvc_crt_headers() {

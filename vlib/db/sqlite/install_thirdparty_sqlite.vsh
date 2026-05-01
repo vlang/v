@@ -10,7 +10,6 @@ fn should_be_ok(http_status_code int, msg string) {
 }
 
 fn main() {
-	unbuffer_stdout()
 	os.chdir(@VEXEROOT)!
 
 	download_page_url := 'https://sqlite.org/download.html'

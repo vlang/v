@@ -290,6 +290,52 @@ fn main() {
 	assert !compilation.output.contains('extern int c_header_decl(')
 }
 
+fn test_c_fallback_decl_uses_c_helper_submodule_includes() {
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_c_helper_include')
+	module_path := os.join_path(test_source, 'sdl')
+	c_module_path := os.join_path(module_path, 'c')
+	os.rmdir_all(test_source) or {}
+	os.mkdir_all(c_module_path)!
+	defer {
+		os.rmdir_all(test_source) or {}
+	}
+	header_path := os.join_path(c_module_path, 'c_helper_decl.h')
+	os.write_file(header_path,
+		['#include <stdbool.h>', 'typedef enum { false_value, true_value } foreign_bool;', 'foreign_bool c_helper_decl(void);'].join('\n') +
+		'\n')!
+	header_include_path := header_path.replace('\\', '/')
+	os.write_file(os.join_path(c_module_path, 'c.c.v'), 'module c
+
+pub const used_import = 1
+
+#include "${header_include_path}"
+')!
+	os.write_file(os.join_path(module_path, 'sdl.v'), 'module sdl
+
+import sdl.c
+
+pub const used_import = c.used_import
+')!
+	os.write_file(os.join_path(module_path, 'atomic.c.v'), 'module sdl
+
+fn C.c_helper_decl() bool
+
+pub fn call() {
+	_ = C.c_helper_decl()
+}
+')!
+	old_wd := os.getwd()
+	os.chdir(test_source) or {}
+	defer {
+		os.chdir(old_wd) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -shared -o - sdl'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('#include "${header_include_path}"')
+	assert !compilation.output.contains('extern bool c_helper_decl(')
+}
+
 fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_user_defined_windows_dllmain.vv')

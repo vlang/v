@@ -832,6 +832,9 @@ fn modules_with_c_includes(files []&ast.File) map[string]bool {
 	for file in files {
 		if file_has_c_includes(file) {
 			mods[file.mod.name] = true
+			if file.mod.name.ends_with('.c') {
+				mods[file.mod.name.all_before_last('.')] = true
+			}
 		}
 	}
 	return mods

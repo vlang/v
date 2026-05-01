@@ -103,7 +103,9 @@ pub fn flush_stderr() {
 // See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
 // See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
 pub fn unbuffer_stdout() {
-	$if freestanding {
+	$if vinix {
+		return
+	} $else $if freestanding {
 		not_implemented := 'unbuffer_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
 	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
