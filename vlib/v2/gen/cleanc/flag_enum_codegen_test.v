@@ -91,4 +91,3 @@ fn test_generate_c_uses_concrete_map_method_name_in_generic_comptime_body() {
 	assert csrc.contains('Map_string_int__query_item(')
 	assert !csrc.contains('map__query_item(')
 }
-

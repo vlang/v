@@ -55,4 +55,3 @@ fn find_stop() int {
 	assert csrc.contains('_option_int _or_t')
 	assert csrc.contains('stop_index')
 }
-

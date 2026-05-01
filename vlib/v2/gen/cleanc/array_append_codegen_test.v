@@ -50,4 +50,3 @@ fn main() {
 	assert csrc.contains('array__push_many(')
 	assert !csrc.contains('&(u8[1]){new_array_from_c_array(')
 }
-
