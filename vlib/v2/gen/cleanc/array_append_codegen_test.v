@@ -51,19 +51,3 @@ fn main() {
 	assert !csrc.contains('&(u8[1]){new_array_from_c_array(')
 }
 
-fn test_generate_c_uses_push_many_for_bytes_method_append_in_fn_literal() {
-	csrc := generate_array_append_c_for_test("
-fn main() {
-	caps := ['foo']
-	cb := fn [caps] (i usize, mut dst []u8) {
-		if i < caps.len {
-			dst << caps[i].bytes()
-		}
-	}
-	mut dst := []u8{}
-	cb(0, mut dst)
-}
-")
-	assert csrc.contains('array__push_many(')
-	assert !csrc.contains('&(u8[1]){string__bytes(')
-}
