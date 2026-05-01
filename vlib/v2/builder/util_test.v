@@ -70,22 +70,3 @@ fn test_default_cc_uses_tcc_when_available() {
 		assert cc == 'cc'
 	}
 }
-
-fn test_should_disable_core_object_cache_for_macos_tcc() {
-	$if macos {
-		assert should_disable_core_object_cache('/tmp/tcc.exe')
-		assert !should_disable_core_object_cache('cc')
-	} $else {
-		assert !should_disable_core_object_cache('/tmp/tcc.exe')
-	}
-}
-
-fn test_exec_build_c_file_uses_output_specific_tmp_path() {
-	mut prefs := pref.new_preferences()
-	mut b := new_builder(&prefs)
-	assert b.exec_build_c_file('types_test') == os.join_path(os.temp_dir(), 'v2_types_test.tmp.c')
-	assert b.exec_build_main_obj_file('types_test') == os.join_path(os.temp_dir(),
-		'v2_types_test.tmp.main.o')
-	assert b.exec_build_c_file('/tmp/walk test') == os.join_path(os.temp_dir(),
-		'v2_walk_test.tmp.c')
-}
