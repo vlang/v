@@ -924,8 +924,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 					} else if val is ast.ComptimeCall {
-						key_str := '${val.method_name}.return_type'
-						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
+						var_type = if val.kind in [.zero, .new] {
+							g.comptime_zero_new_result_type(val, var_type)
+						} else {
+							key_str := '${val.method_name}.return_type'
+							g.type_resolver.get_ct_type_or_default(key_str, var_type)
+						}
 						val_type = var_type
 						left.obj.typ = var_type
 						g.type_resolver.update_ct_type(left.name, var_type)
@@ -1140,6 +1144,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				ast.ComptimeSelector {
 					should_recompute_decl_type = true
 				}
+				ast.ComptimeCall {
+					should_recompute_decl_type = val.kind in [.zero, .new]
+				}
 				ast.CastExpr {
 					should_recompute_decl_type = val.typ.has_flag(.generic)
 						|| g.type_has_unresolved_generic_parts(val.typ)
@@ -1166,8 +1173,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					|| val.receiver_type.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(val.receiver_type)))
 			}
-			mut resolved_val_type := if val is ast.Ident && val.or_expr.kind != .absent
-				&& g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			mut resolved_val_type := if val is ast.ComptimeCall && val.kind in [.zero, .new] {
+				g.comptime_zero_new_result_type(val, val_type)
+			} else if val is ast.Ident && val.or_expr.kind != .absent && g.cur_fn != unsafe { nil }
+				&& g.cur_concrete_types.len > 0 {
 				or_value_type := g.resolved_or_block_value_type(val.or_expr)
 				if or_value_type != 0 {
 					or_value_type
