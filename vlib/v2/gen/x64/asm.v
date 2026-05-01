@@ -185,6 +185,12 @@ fn asm_or_rax_rcx(mut g Gen) {
 	g.emit(0xC8)
 }
 
+fn asm_or_rax_r11(mut g Gen) {
+	g.emit(0x4C)
+	g.emit(0x09)
+	g.emit(0xD8)
+}
+
 // xor rax, rcx
 fn asm_xor_rax_rcx(mut g Gen) {
 	g.emit(0x48)
@@ -255,12 +261,26 @@ fn asm_shr_rax_1(mut g Gen) {
 	g.emit(0xE8)
 }
 
+fn asm_shr_rax_imm8(mut g Gen, imm u8) {
+	g.emit(0x48)
+	g.emit(0xC1)
+	g.emit(0xE8)
+	g.emit(imm)
+}
+
 // shl rcx, 3 (for GEP: index * 8)
 fn asm_shl_rcx_3(mut g Gen) {
 	g.emit(0x48)
 	g.emit(0xC1)
 	g.emit(0xE1)
 	g.emit(0x03)
+}
+
+fn asm_shl_r11_imm8(mut g Gen, imm u8) {
+	g.emit(0x49)
+	g.emit(0xC1)
+	g.emit(0xE3)
+	g.emit(imm)
 }
 
 // === Compare ===
@@ -314,6 +334,10 @@ const cc_be = u8(0x96) // below or equal (unsigned)
 
 const cc_ae = u8(0x93) // above or equal (unsigned)
 
+const cc_p = u8(0x9A) // parity (unordered for ucomis)
+
+const cc_np = u8(0x9B) // not parity (ordered for ucomis)
+
 // setcc al + movzx rax, al
 fn asm_setcc_al_movzx(mut g Gen, cc u8) {
 	g.emit(0x0F)
@@ -323,6 +347,16 @@ fn asm_setcc_al_movzx(mut g Gen, cc u8) {
 	g.emit(0x0F)
 	g.emit(0xB6)
 	g.emit(0xC0) // movzx rax, al
+}
+
+fn asm_setcc_cl_movzx(mut g Gen, cc u8) {
+	g.emit(0x0F)
+	g.emit(cc)
+	g.emit(0xC1) // setcc cl
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xB6)
+	g.emit(0xC9) // movzx rcx, cl
 }
 
 fn asm_ucomis_xmm0_xmm1(mut g Gen, size int) {
@@ -453,7 +487,36 @@ fn asm_load_reg_mem_base_disp_size(mut g Gen, reg Reg, base Reg, disp int, size 
 		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
 		return
 	}
-	asm_load_reg_mem_base_disp_size(mut g, reg, base, disp, 8)
+	asm_unsupported_memory_size('load', size)
+}
+
+fn asm_load_reg_mem_base_disp_size_signed(mut g Gen, reg Reg, base Reg, disp int, size int) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(base))
+	if size == 8 {
+		asm_load_reg_mem_base_disp_size(mut g, reg, base, disp, size)
+		return
+	}
+	mut rex := u8(0x48)
+	if reg_hw >= 8 {
+		rex |= 4
+	}
+	if base_hw >= 8 {
+		rex |= 1
+	}
+	g.emit(rex)
+	if size == 4 {
+		g.emit(0x63)
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	if size == 2 || size == 1 {
+		g.emit(0x0F)
+		g.emit(if size == 2 { u8(0xBF) } else { u8(0xBE) })
+		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+		return
+	}
+	asm_unsupported_memory_size('signed load', size)
 }
 
 // mov [base + disp], rax
@@ -523,7 +586,12 @@ fn asm_store_mem_base_disp_reg_size(mut g Gen, base Reg, disp int, reg Reg, size
 		asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
 		return
 	}
-	asm_store_mem_base_disp_reg_size(mut g, base, disp, reg, 8)
+	asm_unsupported_memory_size('store', size)
+}
+
+fn asm_unsupported_memory_size(op string, size int) {
+	eprintln('x64: unsupported ${op} memory size ${size}')
+	exit(1)
 }
 
 // lea rax, [rbp + disp8]
@@ -671,18 +739,25 @@ fn asm_cvttsd2si_rax_xmm0(mut g Gen) {
 }
 
 fn asm_store_xmm0_rbp_disp(mut g Gen, disp int, size int) {
+	asm_store_xmm_rbp_disp(mut g, 0, disp, size)
+}
+
+fn asm_store_xmm_rbp_disp(mut g Gen, xmm int, disp int, size int) {
 	if size == 4 {
 		g.emit(0xF3)
 	} else {
 		g.emit(0xF2)
 	}
+	if xmm >= 8 {
+		g.emit(0x44)
+	}
 	g.emit(0x0F)
 	g.emit(0x11)
 	if disp >= -128 && disp <= 127 {
-		g.emit(0x45)
+		g.emit(0x45 | (u8(xmm & 7) << 3))
 		g.emit(u8(disp))
 	} else {
-		g.emit(0x85)
+		g.emit(0x85 | (u8(xmm & 7) << 3))
 		g.emit_u32(u32(disp))
 	}
 }
@@ -731,6 +806,13 @@ fn asm_cvtss2sd_xmm0_xmm0(mut g Gen) {
 	g.emit(0x0F)
 	g.emit(0x5A)
 	g.emit(0xC0)
+}
+
+fn asm_cvtss2sd_xmm1_xmm1(mut g Gen) {
+	g.emit(0xF3)
+	g.emit(0x0F)
+	g.emit(0x5A)
+	g.emit(0xC9)
 }
 
 fn asm_cvtsd2ss_xmm0_xmm0(mut g Gen) {

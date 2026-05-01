@@ -7,6 +7,7 @@ module ssa
 import v2.ast
 import v2.markused
 import v2.types
+import os
 
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
@@ -127,7 +128,7 @@ fn (b &Builder) c_stdio_target_os() string {
 	if b.mod.target.os.len > 0 {
 		return b.mod.target.os
 	}
-	return 'linux'
+	return os.user_os().to_lower()
 }
 
 pub fn Builder.new(mod &Module) &Builder {

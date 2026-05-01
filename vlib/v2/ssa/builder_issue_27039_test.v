@@ -22,3 +22,35 @@ fn test_c_float_epsilon_macros_are_inline_constants() {
 	assert unknown_width == 0
 	assert unknown_value == ''
 }
+
+fn test_worker_module_preserves_target_os_for_stdio_symbols() {
+	mut m := Module.new('main')
+	m.target = TargetData{
+		ptr_size:      8
+		endian_little: true
+		os:            'macos'
+	}
+	worker := m.new_worker_module()
+	assert worker.target.os == 'macos'
+	b := Builder.new(worker)
+	assert c_stdio_symbol_for_os('stdout', b.c_stdio_target_os()) == '__stdoutp'
+}
+
+fn test_merge_worker_module_preserves_external_function_metadata() {
+	mut m := Module.new('main')
+	mut worker := Module.new('worker')
+	func_idx := worker.new_function('C.external_fn', 0, []TypeID{})
+	mut f := worker.funcs[func_idx]
+	f.is_c_extern = true
+	f.linkage = .external
+	f.call_conv = .fast_call
+	worker.funcs[func_idx] = f
+
+	m.merge_worker_module(worker, []FuncSSAData{}, 1, 0, 0, 0, 0)
+
+	assert m.funcs.len == 1
+	assert m.funcs[0].name == 'C.external_fn'
+	assert m.funcs[0].is_c_extern
+	assert m.funcs[0].linkage == .external
+	assert m.funcs[0].call_conv == .fast_call
+}

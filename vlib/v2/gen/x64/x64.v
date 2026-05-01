@@ -208,6 +208,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	abi_regs := [7, 6, 2, 1, 8, 9]
 	arg_reg_base := if func.abi_ret_indirect { 1 } else { 0 }
 	mut reg_arg_idx := arg_reg_base
+	mut sse_arg_idx := 0
 	if func.abi_ret_indirect && g.sret_save_offset != 0 {
 		asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rdi)
 	}
@@ -215,6 +216,15 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	for i, pid in func.params {
 		is_indirect_param := i < func.abi_param_class.len && func.abi_param_class[i] == .indirect
 		param_size := g.type_size(g.mod.values[pid].typ)
+		if g.value_is_float_type(pid) {
+			g.ensure_float_abi_scalar(pid, 'parameter')
+			if sse_arg_idx >= 8 {
+				g.unsupported_float_abi('stack parameter', pid)
+			}
+			asm_store_xmm_rbp_disp(mut g, sse_arg_idx, g.stack_map[pid], param_size)
+			sse_arg_idx++
+			continue
+		}
 		param_chunks := if !is_indirect_param && g.value_is_aggregate(pid) && param_size > 8
 			&& param_size <= 16 {
 			(param_size + 7) / 8
@@ -228,13 +238,16 @@ fn (mut g Gen) gen_func(func mir.Function) {
 			} else if param_chunks > 1 {
 				offset := g.stack_map[pid]
 				for chunk := 0; chunk < param_chunks; chunk++ {
-					asm_store_rbp_disp_reg_size(mut g, offset + chunk * 8, Reg(abi_regs[
-						reg_arg_idx + chunk]), if chunk == param_chunks - 1 {
+					chunk_size := if chunk == param_chunks - 1 {
 						param_size - chunk * 8
 					} else {
 						8
-					})
+					}
+					g.store_reg_to_rbp_exact(Reg(abi_regs[reg_arg_idx + chunk]),
+						offset + chunk * 8, chunk_size)
 				}
+			} else if g.value_needs_raw_abi_reg_bytes(pid, param_size) {
+				g.store_reg_to_rbp_exact(Reg(src), g.stack_map[pid], param_size)
 			} else if reg := g.reg_map[pid] {
 				asm_mov_reg_reg(mut g, Reg(reg), Reg(src))
 			} else {
@@ -250,6 +263,9 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				g.copy_indirect_param_from_reg(pid, int(rax))
 			} else if param_chunks > 1 {
 				g.copy_memory(int(rbp), g.stack_map[pid], int(rbp), stack_param_offset, param_size)
+			} else if g.value_needs_raw_abi_reg_bytes(pid, param_size) {
+				asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
+				g.store_reg_to_rbp_exact(rax, g.stack_map[pid], param_size)
 			} else if reg := g.reg_map[pid] {
 				asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
 				asm_mov_reg_reg(mut g, Reg(reg), rax)
@@ -301,6 +317,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 	match op {
 		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq,
 		.ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
+			if op in [.eq, .ne, .lt, .gt, .le, .ge] && g.value_is_float_type(instr.operands[0]) {
+				g.emit_float_compare(op, instr.operands[0], instr.operands[1], val_id)
+				return
+			}
 			g.load_val_to_reg(0, instr.operands[0]) // RAX
 			g.load_val_to_reg(1, instr.operands[1]) // RCX
 
@@ -378,7 +398,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			src_typ := g.mod.values[src_id].typ
 			src_type_info := g.mod.type_store.types[src_typ]
 			src_size := g.type_size(src_typ)
-			if src_type_info.kind == .struct_t || src_size > 8 {
+			if src_type_info.kind in [.struct_t, .array_t] || src_size > 8 {
 				g.load_struct_src_address_to_reg(int(r10), src_id, src_typ)
 				g.load_val_to_reg(int(r11), instr.operands[1])
 				g.copy_memory(int(r11), 0, int(r10), 0, src_size)
@@ -391,8 +411,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.load {
 			g.load_val_to_reg(1, instr.operands[0]) // Ptr -> RCX
 			load_size := g.type_size(instr.typ)
-			asm_load_reg_mem_base_disp_size(mut g, rax, rcx, 0, load_size)
-			g.store_reg_to_val(0, val_id)
+			load_type_info := g.mod.type_store.types[instr.typ]
+			if load_type_info.kind in [.struct_t, .array_t] || load_size > 8 {
+				g.copy_memory(int(rbp), g.stack_map[val_id], int(rcx), 0, load_size)
+			} else {
+				g.load_typed_mem_to_reg(rax, rcx, 0, instr.typ, load_size)
+				g.store_reg_to_val(0, val_id)
+			}
 		}
 		.alloca {
 			off := g.alloca_offsets[val_id]
@@ -457,28 +482,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			mut reg_arg_idx := 0
-			for i in 1 .. instr.operands.len {
-				arg_idx := i - 1
-				arg_id := instr.operands[i]
-				if stack_args[arg_idx] {
-					continue
-				}
-				arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
-				if reg_arg_idx + arg_chunks <= 6 {
-					if arg_chunks > 1 {
-						g.load_aggregate_arg_to_regs(arg_id, abi_regs[reg_arg_idx..reg_arg_idx +
-							arg_chunks], g.type_size(g.mod.values[arg_id].typ))
-					} else {
-						g.load_call_arg_to_reg(abi_regs[reg_arg_idx], arg_id, arg_idx, instr)
-					}
-					reg_arg_idx += arg_chunks
-				}
-			}
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
 			fn_val := g.mod.values[instr.operands[0]]
 
-			// xor eax, eax (Clear AL for variadic function calls)
-			asm_xor_eax_eax(mut g)
+			// AL carries the number of SSE argument registers for variadic calls.
+			g.emit_sse_arg_count(sse_arg_idx)
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
@@ -502,7 +510,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.store_reg_to_val(0, val_id)
+				g.store_call_result(val_id)
 			}
 		}
 		.call_sret {
@@ -527,29 +535,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			mut reg_arg_idx := 0
-			for i := 1; i <= num_args; i++ {
-				arg_idx := i - 1
-				arg_id := instr.operands[i]
-				if stack_args[arg_idx] {
-					continue
-				}
-				arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
-				if reg_arg_idx + arg_chunks <= abi_regs.len {
-					if arg_chunks > 1 {
-						g.load_aggregate_arg_to_regs(arg_id, abi_regs[reg_arg_idx..reg_arg_idx +
-							arg_chunks], g.type_size(g.mod.values[arg_id].typ))
-					} else {
-						g.load_call_arg_to_reg(abi_regs[reg_arg_idx], arg_id, arg_idx, instr)
-					}
-					reg_arg_idx += arg_chunks
-				}
-			}
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
 
 			fn_val := g.mod.values[instr.operands[0]]
 
-			// xor eax, eax (Clear AL for variadic function calls)
-			asm_xor_eax_eax(mut g)
+			// AL carries the number of SSE argument registers for variadic calls.
+			g.emit_sse_arg_count(sse_arg_idx)
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
@@ -591,30 +582,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			mut reg_arg_idx := 0
-			for i in 1 .. instr.operands.len {
-				arg_idx := i - 1
-				arg_id := instr.operands[i]
-				if stack_args[arg_idx] {
-					continue
-				}
-				arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
-				if reg_arg_idx + arg_chunks <= abi_regs.len {
-					if arg_chunks > 1 {
-						g.load_aggregate_arg_to_regs(arg_id, abi_regs[reg_arg_idx..reg_arg_idx +
-							arg_chunks], g.type_size(g.mod.values[arg_id].typ))
-					} else {
-						g.load_call_arg_to_reg(abi_regs[reg_arg_idx], arg_id, arg_idx, instr)
-					}
-					reg_arg_idx += arg_chunks
-				}
-			}
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
 
 			// Load function pointer to r10 (caller-saved, not used for args)
 			g.load_val_to_reg(10, instr.operands[0])
 
-			// xor eax, eax (Clear AL for variadic function calls)
-			asm_xor_eax_eax(mut g)
+			// AL carries the number of SSE argument registers for variadic calls.
+			g.emit_sse_arg_count(sse_arg_idx)
 
 			// call *r10
 			asm_call_r10(mut g)
@@ -630,7 +604,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.store_reg_to_val(0, val_id)
+				g.store_call_result(val_id)
 			}
 		}
 		.ret {
@@ -643,18 +617,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 					ret_size := g.type_size(g.cur_func_ret_type)
 					if ret_size > 0 {
 						g.load_struct_src_address_to_reg(int(r10), ret_val_id, g.cur_func_ret_type)
-						num_chunks := (ret_size + 7) / 8
-						for i := 0; i < num_chunks; i++ {
-							disp := i * 8
-							asm_mov_rax_mem_base_disp(mut g, r10, disp)
-							asm_mov_mem_base_disp_rax(mut g, rdi, disp)
-						}
+						g.copy_memory(int(rdi), 0, int(r10), 0, ret_size)
 					}
 				}
 				// SysV returns sret pointer in RAX.
 				asm_mov_reg_reg(mut g, rax, rdi)
 			} else if instr.operands.len > 0 {
-				g.load_val_to_reg(0, instr.operands[0])
+				ret_val_id := instr.operands[0]
+				if g.value_is_float_type(ret_val_id) {
+					g.ensure_float_abi_scalar(ret_val_id, 'return')
+					g.load_float_val_to_xmm(0, ret_val_id,
+						g.type_size(g.mod.values[ret_val_id].typ))
+				} else {
+					g.load_val_to_reg(0, ret_val_id)
+				}
 			}
 			g.emit_epilogue()
 		}
@@ -832,7 +808,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if result_size > 8 || g.value_is_aggregate(val_id) {
 				g.copy_memory(int(rbp), g.stack_map[val_id], int(r10), field_off, result_size)
 			} else {
-				asm_load_reg_mem_base_disp_size(mut g, rax, r10, field_off, result_size)
+				g.load_typed_mem_to_reg(rax, r10, field_off, instr.typ, result_size)
 				g.store_reg_to_val(0, val_id)
 			}
 		}
@@ -870,6 +846,57 @@ fn (mut g Gen) mask_rax_to_size(size int, op ssa.OpCode, val_id int) {
 			g.unsupported_numeric_conversion(op, size, size, val_id)
 		}
 	}
+}
+
+fn (mut g Gen) emit_float_compare(op ssa.OpCode, lhs int, rhs int, val_id int) {
+	lhs_size := g.type_size(g.mod.values[lhs].typ)
+	rhs_size := g.type_size(g.mod.values[rhs].typ)
+	if lhs_size !in [4, 8] || rhs_size !in [4, 8] || !g.value_is_float_type(rhs) {
+		g.unsupported_numeric_conversion(op, lhs_size, rhs_size, val_id)
+	}
+	g.load_float_val_to_xmm(0, lhs, lhs_size)
+	g.load_float_val_to_xmm(1, rhs, rhs_size)
+	size := if lhs_size == 8 || rhs_size == 8 { 8 } else { 4 }
+	if lhs_size == 4 && size == 8 {
+		asm_cvtss2sd_xmm0_xmm0(mut g)
+	}
+	if rhs_size == 4 && size == 8 {
+		asm_cvtss2sd_xmm1_xmm1(mut g)
+	}
+	asm_ucomis_xmm0_xmm1(mut g, size)
+	match op {
+		.eq {
+			asm_setcc_al_movzx(mut g, cc_e)
+			asm_setcc_cl_movzx(mut g, cc_np)
+			asm_and_rax_rcx(mut g)
+		}
+		.ne {
+			asm_setcc_al_movzx(mut g, cc_ne)
+			asm_setcc_cl_movzx(mut g, cc_p)
+			asm_or_rax_rcx(mut g)
+		}
+		.lt {
+			asm_setcc_al_movzx(mut g, cc_b)
+			asm_setcc_cl_movzx(mut g, cc_np)
+			asm_and_rax_rcx(mut g)
+		}
+		.gt {
+			asm_setcc_al_movzx(mut g, cc_a)
+		}
+		.le {
+			asm_setcc_al_movzx(mut g, cc_be)
+			asm_setcc_cl_movzx(mut g, cc_np)
+			asm_and_rax_rcx(mut g)
+		}
+		.ge {
+			asm_setcc_al_movzx(mut g, cc_ae)
+		}
+		else {
+			g.unsupported_numeric_conversion(op, size, size, val_id)
+		}
+	}
+
+	g.store_reg_to_val(0, val_id)
 }
 
 fn (mut g Gen) emit_signed_int_to_float(result_size int, op ssa.OpCode, val_id int) {
@@ -1141,9 +1168,10 @@ fn (mut g Gen) store_repeated_zero(base int, off int, size int) {
 		asm_store_mem_base_disp_reg_size(mut g, Reg(base), off + done, rax, 8)
 		done += 8
 	}
-	if done < size {
-		tail := size - done
-		asm_store_mem_base_disp_reg_size(mut g, Reg(base), off + done, rax, tail)
+	for done < size {
+		chunk := raw_memory_chunk_size(size - done)
+		asm_store_mem_base_disp_reg_size(mut g, Reg(base), off + done, rax, chunk)
+		done += chunk
 	}
 }
 
@@ -1162,10 +1190,82 @@ fn (mut g Gen) copy_memory(dst_base int, dst_off int, src_base int, src_off int,
 		asm_store_mem_base_disp_reg_size(mut g, Reg(dst_base), dst_off + done, rax, 8)
 		done += 8
 	}
-	if done < size {
-		tail := size - done
-		asm_load_reg_mem_base_disp_size(mut g, rax, Reg(src_base), src_off + done, tail)
-		asm_store_mem_base_disp_reg_size(mut g, Reg(dst_base), dst_off + done, rax, tail)
+	for done < size {
+		chunk := raw_memory_chunk_size(size - done)
+		asm_load_reg_mem_base_disp_size(mut g, rax, Reg(src_base), src_off + done, chunk)
+		asm_store_mem_base_disp_reg_size(mut g, Reg(dst_base), dst_off + done, rax, chunk)
+		done += chunk
+	}
+}
+
+fn raw_memory_chunk_size(size int) int {
+	if size >= 4 {
+		return 4
+	}
+	if size >= 2 {
+		return 2
+	}
+	return 1
+}
+
+fn is_raw_abi_reg_size(size int) bool {
+	return size !in [1, 2, 4, 8]
+}
+
+fn (mut g Gen) load_typed_mem_to_reg(reg Reg, base Reg, disp int, typ_id int, size int) {
+	typ := g.mod.type_store.types[typ_id]
+	if typ.kind == .int_t && !typ.is_unsigned {
+		asm_load_reg_mem_base_disp_size_signed(mut g, reg, base, disp, size)
+		return
+	}
+	asm_load_reg_mem_base_disp_size(mut g, reg, base, disp, size)
+}
+
+fn (mut g Gen) load_raw_mem_to_reg(reg Reg, base Reg, disp int, size int) {
+	if size in [1, 2, 4, 8] {
+		asm_load_reg_mem_base_disp_size(mut g, reg, base, disp, size)
+		return
+	}
+	if size <= 0 || size > 8 {
+		eprintln('x64: unsupported raw memory size ${size}')
+		exit(1)
+	}
+	asm_xor_reg_reg(mut g, rax)
+	mut done := 0
+	for done < size {
+		chunk := raw_memory_chunk_size(size - done)
+		asm_load_reg_mem_base_disp_size(mut g, r11, base, disp + done, chunk)
+		if done > 0 {
+			asm_shl_r11_imm8(mut g, u8(done * 8))
+		}
+		asm_or_rax_r11(mut g)
+		done += chunk
+	}
+	if reg != rax {
+		asm_mov_reg_reg(mut g, reg, rax)
+	}
+}
+
+fn (mut g Gen) store_reg_to_rbp_exact(reg Reg, off int, size int) {
+	if size in [1, 2, 4, 8] {
+		asm_store_rbp_disp_reg_size(mut g, off, reg, size)
+		return
+	}
+	if size <= 0 || size > 8 {
+		eprintln('x64: unsupported raw register spill size ${size}')
+		exit(1)
+	}
+	if reg != rax {
+		asm_mov_reg_reg(mut g, rax, reg)
+	}
+	mut done := 0
+	for done < size {
+		chunk := raw_memory_chunk_size(size - done)
+		asm_store_rbp_disp_reg_size(mut g, off + done, rax, chunk)
+		done += chunk
+		if done < size {
+			asm_shr_rax_imm8(mut g, u8(chunk * 8))
+		}
 	}
 }
 
@@ -1173,6 +1273,11 @@ fn (mut g Gen) store_field_value(dst_id int, dst_typ int, field_idx int, src_id 
 	field_off := g.struct_field_offset_bytes(dst_typ, field_idx)
 	dst_off := g.stack_map[dst_id] + field_off
 	if size > 8 || g.value_is_aggregate(src_id) {
+		if g.value_is_zero_constant(src_id) {
+			asm_xor_reg_reg(mut g, rax)
+			g.store_repeated_zero(int(rbp), dst_off, size)
+			return
+		}
 		g.load_struct_src_address_to_reg(int(r10), src_id, g.mod.values[src_id].typ)
 		g.copy_memory(int(rbp), dst_off, int(r10), 0, size)
 		return
@@ -1245,7 +1350,71 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.
 		g.load_address_of_val_to_reg(reg, val_id)
 		return
 	}
+	size := g.type_size(g.mod.values[val_id].typ)
+	if g.value_needs_raw_abi_reg_bytes(val_id, size) {
+		if g.value_is_zero_constant(val_id) {
+			asm_xor_reg_reg(mut g, Reg(reg))
+			return
+		}
+		g.load_struct_src_address_to_reg(int(r10), val_id, g.mod.values[val_id].typ)
+		g.load_raw_mem_to_reg(Reg(reg), r10, 0, size)
+		return
+	}
 	g.load_val_to_reg(reg, val_id)
+}
+
+fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, stack_args []bool) int {
+	mut reg_arg_idx := 0
+	mut sse_arg_idx := 0
+	for i in 1 .. instr.operands.len {
+		arg_idx := i - 1
+		arg_id := instr.operands[i]
+		if g.value_is_float_type(arg_id) {
+			g.load_float_call_arg_to_xmm(sse_arg_idx, arg_id)
+			sse_arg_idx++
+			continue
+		}
+		if stack_args[arg_idx] {
+			continue
+		}
+		arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
+		if reg_arg_idx + arg_chunks <= abi_regs.len {
+			if arg_chunks > 1 {
+				g.load_aggregate_arg_to_regs(arg_id,
+					abi_regs[reg_arg_idx..reg_arg_idx + arg_chunks],
+					g.type_size(g.mod.values[arg_id].typ))
+			} else {
+				g.load_call_arg_to_reg(abi_regs[reg_arg_idx], arg_id, arg_idx, instr)
+			}
+			reg_arg_idx += arg_chunks
+		}
+	}
+	return sse_arg_idx
+}
+
+fn (mut g Gen) load_float_call_arg_to_xmm(xmm int, val_id int) {
+	g.ensure_float_abi_scalar(val_id, 'argument')
+	if xmm >= 8 {
+		g.unsupported_float_abi('stack argument', val_id)
+	}
+	g.load_float_val_to_xmm(xmm, val_id, g.type_size(g.mod.values[val_id].typ))
+}
+
+fn (mut g Gen) store_call_result(val_id int) {
+	if g.value_is_float_type(val_id) {
+		g.ensure_float_abi_scalar(val_id, 'call result')
+		asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], g.type_size(g.mod.values[val_id].typ))
+		return
+	}
+	g.store_reg_to_val(0, val_id)
+}
+
+fn (mut g Gen) emit_sse_arg_count(count int) {
+	if count == 0 {
+		asm_xor_eax_eax(mut g)
+	} else {
+		asm_mov_reg_imm32(mut g, rax, u32(count))
+	}
 }
 
 fn (g Gen) param_stack_slots(is_indirect bool, reg_chunks int, size int) int {
@@ -1291,8 +1460,17 @@ fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int) []bool 
 	num_args := instr.operands.len - 1
 	mut stack_args := []bool{len: num_args}
 	mut reg_arg_idx := 0
+	mut sse_arg_idx := 0
 	for arg_idx := 0; arg_idx < num_args; arg_idx++ {
 		arg_id := instr.operands[arg_idx + 1]
+		if g.value_is_float_type(arg_id) {
+			g.ensure_float_abi_scalar(arg_id, 'argument')
+			if sse_arg_idx >= 8 {
+				g.unsupported_float_abi('stack argument', arg_id)
+			}
+			sse_arg_idx++
+			continue
+		}
 		arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
 		if reg_arg_idx + arg_chunks <= abi_reg_count {
 			reg_arg_idx += arg_chunks
@@ -1322,7 +1500,7 @@ fn (mut g Gen) push_call_stack_arg(val_id int, arg_idx int, instr mir.Instructio
 		g.load_struct_src_address_to_reg(int(r10), val_id, g.mod.values[val_id].typ)
 		for chunk := slots - 1; chunk >= 0; chunk-- {
 			chunk_size := if chunk == slots - 1 { size - chunk * 8 } else { 8 }
-			asm_load_reg_mem_base_disp_size(mut g, rax, r10, chunk * 8, chunk_size)
+			g.load_raw_mem_to_reg(rax, r10, chunk * 8, chunk_size)
 			asm_push(mut g, rax)
 		}
 		return
@@ -1335,7 +1513,7 @@ fn (mut g Gen) load_aggregate_arg_to_regs(val_id int, regs []int, size int) {
 	g.load_struct_src_address_to_reg(int(r10), val_id, g.mod.values[val_id].typ)
 	for chunk, reg in regs {
 		chunk_size := if chunk == regs.len - 1 { size - chunk * 8 } else { 8 }
-		asm_load_reg_mem_base_disp_size(mut g, Reg(reg), r10, chunk * 8, chunk_size)
+		g.load_raw_mem_to_reg(Reg(reg), r10, chunk * 8, chunk_size)
 	}
 }
 
@@ -1367,12 +1545,7 @@ fn (mut g Gen) copy_indirect_param_from_reg(param_id int, src_reg int) {
 		asm_mov_reg_reg(mut g, r10, Reg(src_reg))
 	}
 	g.load_address_of_val_to_reg(int(r11), param_id)
-	num_chunks := (param_size + 7) / 8
-	for i := 0; i < num_chunks; i++ {
-		disp := i * 8
-		asm_mov_rax_mem_base_disp(mut g, r10, disp)
-		asm_mov_mem_base_disp_rax(mut g, r11, disp)
-	}
+	g.copy_memory(int(r11), 0, int(r10), 0, param_size)
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
@@ -1633,6 +1806,10 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 			alloca_vals[pid] = true
 			continue
 		}
+		if g.value_is_float_type(pid) {
+			alloca_vals[pid] = true
+			continue
+		}
 		intervals[pid] = &Interval{
 			val_id: pid
 			start:  0
@@ -1728,6 +1905,43 @@ fn (g Gen) value_is_aggregate(val_id int) bool {
 	}
 	typ := g.mod.type_store.types[typ_id]
 	return typ.kind in [.struct_t, .array_t]
+}
+
+fn (g Gen) value_is_float_type(val_id int) bool {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return false
+	}
+	typ_id := g.mod.values[val_id].typ
+	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
+		return false
+	}
+	return g.mod.type_store.types[typ_id].kind == .float_t
+}
+
+fn (g Gen) ensure_float_abi_scalar(val_id int, context string) {
+	size := g.type_size(g.mod.values[val_id].typ)
+	if size == 4 || size == 8 {
+		return
+	}
+	g.unsupported_float_abi(context, val_id)
+}
+
+fn (g Gen) unsupported_float_abi(context string, val_id int) {
+	size := g.type_size(g.mod.values[val_id].typ)
+	eprintln('x64: unsupported float ABI ${context} with ${size * 8}-bit type in value ${val_id}')
+	exit(1)
+}
+
+fn (g Gen) value_is_zero_constant(val_id int) bool {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return false
+	}
+	val := g.mod.values[val_id]
+	return val.kind == .constant && val.name == '0'
+}
+
+fn (g Gen) value_needs_raw_abi_reg_bytes(val_id int, size int) bool {
+	return size > 0 && size <= 8 && (g.value_is_aggregate(val_id) || is_raw_abi_reg_size(size))
 }
 
 fn (g Gen) stack_storage_size(val_id int) int {

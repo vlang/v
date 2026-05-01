@@ -387,6 +387,7 @@ pub fn (mut m Module) new_worker_module() &Module {
 
 	mut w := &Module{
 		name:              m.name
+		target:            m.target
 		shared_type_store: unsafe { nil }
 		type_store:        wts
 		env:               m.env
