@@ -79,9 +79,7 @@ fn main() {
 		return error('stop the group')
 	})!
 
-	group.wait() or {
-		eprintln('group failed: ${err.msg()}')
-	}
+	group.wait() or { eprintln('group failed: ${err.msg()}') }
 }
 ```
 
