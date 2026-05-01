@@ -586,7 +586,7 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 	if info.is_empty_struct() {
 		g.writeln('${styp}* ${tmp_var} = HEAP(${styp}, ((${styp}){E_STRUCT}));')
 	} else {
-		g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin___v_malloc(sizeof(${styp}));')
+		g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin___v_malloc(sizeof(${styp}) == 0 ? 1 : sizeof(${styp}));')
 	}
 	for i, init_field in node.init_fields {
 		mut resolved_field := init_field

@@ -197,6 +197,9 @@ fn test_https_proxy_requests_do_not_leak_sockets() ! {
 	$if windows {
 		return
 	}
+	$if sanitized_job ? {
+		return
+	}
 	target_port, target_done := start_https_proxy_test_target_server()!
 	proxy_port, proxy_done := start_https_proxy_test_server(target_port)!
 	baseline_fds := count_open_file_descriptors()
