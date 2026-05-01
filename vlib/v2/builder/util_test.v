@@ -1,6 +1,7 @@
 module builder
 
 import os
+import v2.pref
 
 fn test_get_v_files_from_dir_uses_target_os() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_target_os_${os.getpid()}')
@@ -37,4 +38,54 @@ fn test_flag_helpers_use_target_os() {
 	linux_flag := parse_flag_directive_line('#flag linux -lm', '/tmp/source.v', 'mac') or { '' }
 	assert macos_flag == '-framework Cocoa'
 	assert linux_flag == ''
+}
+
+fn test_file_has_incompatible_os_suffix_windows() {
+	assert pref.file_has_incompatible_os_suffix('time_solaris.c.v', 'windows')
+	assert pref.file_has_incompatible_os_suffix('time_freebsd.c.v', 'windows')
+	assert pref.file_has_incompatible_os_suffix('time_openbsd.c.v', 'windows')
+	assert pref.file_has_incompatible_os_suffix('time_netbsd.c.v', 'windows')
+	assert pref.file_has_incompatible_os_suffix('time_dragonfly.c.v', 'windows')
+	assert pref.file_has_incompatible_os_suffix('time_nix.c.v', 'windows')
+	assert !pref.file_has_incompatible_os_suffix('time_windows.c.v', 'windows')
+}
+
+fn test_file_has_incompatible_os_suffix_non_windows_targets() {
+	assert !pref.file_has_incompatible_os_suffix('time_solaris.c.v', 'solaris')
+	assert !pref.file_has_incompatible_os_suffix('time_freebsd.c.v', 'freebsd')
+	assert !pref.file_has_incompatible_os_suffix('time_darwin.c.v', 'macos')
+	assert !pref.file_has_incompatible_os_suffix('time_macos.c.v', 'darwin')
+	assert !pref.file_has_incompatible_os_suffix('time_android_outside_termux.c.v', 'android')
+	assert pref.file_has_incompatible_os_suffix('time_windows.c.v', 'linux')
+	assert pref.file_has_incompatible_os_suffix('time_android_outside_termux.c.v', 'linux')
+}
+
+fn test_default_cc_uses_tcc_when_available() {
+	vroot := os.dir(os.dir(@FILE))
+	tcc_path := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	cc := default_cc(vroot)
+	if os.exists(tcc_path) {
+		assert cc.contains('tcc')
+	} else {
+		assert cc == 'cc'
+	}
+}
+
+fn test_should_disable_core_object_cache_for_macos_tcc() {
+	$if macos {
+		assert should_disable_core_object_cache('/tmp/tcc.exe')
+		assert !should_disable_core_object_cache('cc')
+	} $else {
+		assert !should_disable_core_object_cache('/tmp/tcc.exe')
+	}
+}
+
+fn test_exec_build_c_file_uses_output_specific_tmp_path() {
+	mut prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	assert b.exec_build_c_file('types_test') == os.join_path(os.temp_dir(), 'v2_types_test.tmp.c')
+	assert b.exec_build_main_obj_file('types_test') == os.join_path(os.temp_dir(),
+		'v2_types_test.tmp.main.o')
+	assert b.exec_build_c_file('/tmp/walk test') == os.join_path(os.temp_dir(),
+		'v2_walk_test.tmp.c')
 }

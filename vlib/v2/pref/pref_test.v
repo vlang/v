@@ -13,3 +13,13 @@ fn test_effective_os_defaults_to_host_os() {
 	assert prefs.target_os == ''
 	assert prefs.get_effective_os() == normalize_os_name(os.user_os())
 }
+
+fn test_nomarkused_flag_parsing() {
+	p := new_preferences_from_args(['-nomarkused', '-backend', 'cleanc', 'main.v'])
+	assert p.no_markused
+}
+
+fn test_nomarkused_flag_default_is_false() {
+	p := new_preferences_from_args(['-backend', 'cleanc', 'main.v'])
+	assert !p.no_markused
+}
