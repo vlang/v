@@ -179,14 +179,14 @@ fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestP
 			write_ssl_response(mut ssl_conn, http_400) or {}
 			return
 		}
-		if completed_context.takeover {
-			eprintln('[veb] HTTPS connections do not support `ctx.takeover_conn()` yet; closing the connection after this response.')
+		if completed_context.takeover_mode != .none {
+			eprintln('[veb] HTTPS connections do not support takeover connections yet; closing the connection after this response.')
 		}
 		write_ssl_context_response(mut ssl_conn, completed_context) or {
 			eprintln('[veb] error sending HTTPS response: ${err}')
 			return
 		}
-		if completed_context.takeover
+		if completed_context.takeover_mode != .none
 			|| should_close_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
 			return
 		}
@@ -427,14 +427,14 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// send only the headers, because if the response body is too big, TcpConn code will
 		// actually block, because it has to wait for the socket to become ready to write. veb
 		// will handle this case.
-		if !was_done && !user_context.Context.done && !user_context.Context.takeover {
+		if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
 			eprintln('[veb] handler for route "${url.path}" does not send any data!')
 			// send response anyway so the connection won't block
 			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-		} else if !user_context.Context.takeover {
+		} else if user_context.Context.takeover_mode == .none {
 			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
 		}
-		// Context.takeover is set to true, so the user must close the connection and sent a response.
+		// Context.takeover_mode is set, so the user must send a response.
 	}
 
 	url_words := url.path.split('/').filter(it != '')
