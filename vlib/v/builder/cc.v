@@ -986,14 +986,20 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	$if windows {
 		// Adding default options for tcc, gcc and clang as done in msvc.v.
 		// This is done before pre_args is added so that it can be overwritten if needed.
-		// -Wl,-stack=33554432 == /F33554432
+		// -Wl,-stack=268435456 == /F268435456 (256 MiB reserve)
+		// 32 MiB was too small for V's own self-compile of multi-import .vsh
+		// scripts (e.g. vlib/db/sqlite/install_thirdparty_sqlite.vsh) on tcc
+		// Windows builds — checker/transformer recursion exceeded the reserve
+		// and crashed with EXCEPTION_STACK_OVERFLOW (0xC00000FD). On x64
+		// Windows the stack reserve is purely virtual address space, so a
+		// generous bump has no real cost.
 		// -Werror=implicit-function-declaration == /we4013
 		// /volatile:ms - there seems to be no equivalent,
 		// normally msvc should use /volatile:iso
 		// but it could have an impact on vinix if it is created with msvc.
 		if ccoptions.cc != .msvc {
 			if v.pref.os != .wasm32_emscripten {
-				all << '-Wl,-stack=33554432'
+				all << '-Wl,-stack=268435456'
 			}
 			if !v.pref.is_cstrict {
 				all << '-Werror=implicit-function-declaration'

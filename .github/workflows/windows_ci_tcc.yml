@@ -38,6 +38,20 @@ jobs:
         run: |
           .\makev.bat -tcc
           .\v.exe symlink
+      - name: Verify v.exe PE SizeOfStackReserve
+        # Confirms the cc.v default Windows stack reserve bump (32 MiB -> 256 MiB)
+        # actually propagated to the linked v.exe. If this prints anything below
+        # 256 MiB, the flag was overridden somewhere in the build pipeline.
+        run: |
+          $bytes = [IO.File]::ReadAllBytes('v.exe')
+          $peoff = [BitConverter]::ToInt32($bytes, 0x3C)
+          $magic = [BitConverter]::ToUInt16($bytes, $peoff + 24)
+          if ($magic -eq 0x20B) {
+            $stack = [BitConverter]::ToUInt64($bytes, $peoff + 24 + 72)
+          } else {
+            $stack = [BitConverter]::ToUInt32($bytes, $peoff + 24 + 72)
+          }
+          Write-Host "v.exe PE SizeOfStackReserve = 0x$($stack.ToString('X')) ($stack bytes, $([math]::Round($stack/1MB, 2)) MiB)"
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c
