@@ -820,7 +820,7 @@ void _vcleanup(void);
 		#define pthread_rwlockattr_setkind_np(a, b)
 	#endif
 #endif
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)
+#if (defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)) && !defined(__vinix__)
 	#include <sys/types.h>
 	#include <sys/wait.h> // for os__wait
 #endif
