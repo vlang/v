@@ -44,21 +44,52 @@ jobs:
         run: |
           v -o v.c cmd/v
           .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
+      - name: Diagnostic - bisect which module triggers the SEH crash
+        # Last run showed v.exe (tcc-built) crashes while *compiling*
+        # install_thirdparty_sqlite.vsh, before any -showcc output appears.
+        # Bisect by compiling tiny scripts that import each transitive dep
+        # one at a time, so we know exactly which import is fatal.
+        # Continue on failure so we see *all* the probe results, not just the first crash.
+        continue-on-error: true
+        run: |
+          where gcc; gcc --version
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path probes | Out-Null
+          # Use double-quoted strings so `n is interpreted as newline.
+          # V accepts single-quoted string literals, so we can safely embed them inside PS double-quotes.
+          Set-Content -Encoding ascii probes\trivial.v  "fn main() { println('hi') }"
+          Set-Content -Encoding ascii probes\imp_os.v   "import os`nfn main() { println(os.args.len) }"
+          Set-Content -Encoding ascii probes\imp_http.v "import net.http`nfn main() { _ := http.new_request(.get, 'http://x', '') }"
+          Set-Content -Encoding ascii probes\imp_szip.v "import compress.szip`nfn main() { println(int(szip.CompressionLevel.no_compression)) }"
+          Set-Content -Encoding ascii probes\imp_sha3.v "import crypto.sha3`nfn main() { println(sha3.sum256('hi'.bytes()).hex()) }"
+          Get-Content probes\imp_http.v
+          foreach ($cc in 'gcc','tcc') {
+            foreach ($probe in 'trivial','imp_os','imp_http','imp_szip','imp_sha3') {
+              $src = "probes\${probe}.v"
+              $exe = "probes\${probe}_${cc}.exe"
+              Write-Host "==== probe: $cc / $probe ===="
+              v -cc $cc -g -stats -o $exe $src
+              if (Test-Path $exe) { & $exe } else { Write-Host "(no exe produced)" }
+            }
+          }
+          Write-Host "==== full vsh: gcc ===="
+          v -cc gcc -g -stats -o probes\full_gcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
+          if (Test-Path probes\full_gcc.exe) { .\probes\full_gcc.exe } else { Write-Host "(no exe)" }
+          Write-Host "==== full vsh: tcc ===="
+          v -cc tcc -g -stats -o probes\full_tcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
+          if (Test-Path probes\full_tcc.exe) { .\probes\full_tcc.exe } else { Write-Host "(no exe)" }
+          # Rebuild v itself with gcc and retry the script. If THIS works but the tcc-built v
+          # crashes on the same input, the bug is in tcc's codegen of v.exe, not in v's source.
+          Write-Host "==== rebuild v with gcc, then compile vsh ===="
+          v -cc gcc -o v_gcc.exe cmd/v
+          if (Test-Path v_gcc.exe) {
+            .\v_gcc.exe -cc gcc -g -stats -o probes\full_vgcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
+            if (Test-Path probes\full_vgcc.exe) { .\probes\full_vgcc.exe } else { Write-Host "(no exe from gcc-built v)" }
+          } else { Write-Host "(could not build v_gcc.exe)" }
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype
-          # Diagnostic probe: try the same script with gcc first.
-          # If this passes but the tcc invocation below fails, the SEH crash is
-          # tcc-specific (calling-convention / runtime / SEH interaction), not a
-          # bug in install_thirdparty_sqlite.vsh itself.
-          where gcc
-          gcc --version
-          v -cc gcc -showcc -g -o sqlite_probe_gcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
-          .\sqlite_probe_gcc.exe
-          # Now run the original tcc path with extra debug info, so the crash
-          # backtrace (if any) has line info and the exception code reaches the log.
-          v -cc tcc -showcc -g -o sqlite_probe_tcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
-          .\sqlite_probe_tcc.exe
+          .\.github\workflows\windows-install-sqlite.bat
       - name: v -g self
         run: v -g self
       - name: v doctor
