@@ -9005,6 +9005,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 						smartcast_types = [unwrapped_option_type]
 					}
 				}
+				match_variant_type := g.current_sumtype_match_variant_type(node, node.info.typ)
+				if match_variant_type != 0 {
+					smartcast_types = [match_variant_type]
+				}
 				interface_source_is_interface :=
 					g.table.final_sym(g.unwrap_generic(resolved_var.typ)).kind == .interface
 					|| (resolved_var.orig_type != 0

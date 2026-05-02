@@ -20,6 +20,43 @@ fn (mut g Gen) clear_type_resolution_caches() {
 	g.resolved_scope_var_type_cache.clear()
 }
 
+fn (mut g Gen) current_sumtype_match_variant_type(ident ast.Ident, sumtype_type ast.Type) ast.Type {
+	if g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0 {
+		return ast.Type(0)
+	}
+	mut branch_type := ast.Type(0)
+	if typ := g.type_resolver.type_map[ident.name] {
+		branch_type = typ
+	}
+	if branch_type == 0 {
+		cname := c_name(ident.name)
+		if cname != ident.name {
+			if typ := g.type_resolver.type_map[cname] {
+				branch_type = typ
+			}
+		}
+	}
+	if branch_type == 0 || branch_type == ast.void_type {
+		return ast.Type(0)
+	}
+	variant_type := g.unwrap_generic(g.recheck_concrete_type(branch_type))
+	if variant_type == 0 || variant_type == ast.void_type || variant_type.has_flag(.generic)
+		|| g.type_has_unresolved_generic_parts(variant_type) {
+		return ast.Type(0)
+	}
+	mut parent_type := g.unwrap_generic(g.recheck_concrete_type(sumtype_type)).set_nr_muls(0)
+	if parent_type != 0 && g.table.final_sym(parent_type).kind == .sum_type
+		&& g.table.sumtype_has_variant(parent_type, variant_type, false) {
+		return variant_type
+	}
+	parent_type = g.resolve_current_fn_generic_param_type(ident.name).set_nr_muls(0)
+	if parent_type == 0 || g.table.final_sym(parent_type).kind != .sum_type
+		|| !g.table.sumtype_has_variant(parent_type, variant_type, false) {
+		return ast.Type(0)
+	}
+	return variant_type
+}
+
 fn (g &Gen) type_resolution_context_key() u64 {
 	mut key := cgen_resolution_hash_seed
 	if g.inside_struct_init {

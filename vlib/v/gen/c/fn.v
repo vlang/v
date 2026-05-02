@@ -4229,10 +4229,16 @@ fn (mut g Gen) resolve_current_fn_generic_param_key_type(name string) ast.Type {
 
 fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	mut left_type := g.unwrap_generic(node.left_type)
+	mut match_variant_type := ast.Type(0)
 	if node.left is ast.Ident {
-		resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
-		if resolved_left_type != 0 {
-			left_type = resolved_left_type
+		match_variant_type = g.current_sumtype_match_variant_type(node.left, node.left_type)
+		if match_variant_type != 0 {
+			left_type = match_variant_type
+		} else {
+			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
+			if resolved_left_type != 0 {
+				left_type = resolved_left_type
+			}
 		}
 	} else if node.left is ast.StructInit {
 		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
@@ -4291,7 +4297,9 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		}
 	}
 	if node.from_embed_types.len == 0 && node.left is ast.Ident {
-		if node.left.obj is ast.Var {
+		if match_variant_type != 0 {
+			unwrapped_rec_type = match_variant_type
+		} else if node.left.obj is ast.Var {
 			if node.left.obj.smartcasts.len > 0 {
 				if node.left.obj.ct_type_var == .smartcast {
 					unwrapped_rec_type =
@@ -4403,14 +4411,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut receiver_type := node.receiver_type
 	match node.left {
 		ast.Ident {
-			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
-			if resolved_left_type != 0 {
-				left_type = resolved_left_type
-			} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
-				scope_type := g.resolved_scope_var_type(node.left)
-				if scope_type != 0 && !scope_type.has_flag(.generic)
-					&& !g.type_has_unresolved_generic_parts(scope_type) {
-					left_type = scope_type
+			match_variant_type := g.current_sumtype_match_variant_type(node.left, node.left_type)
+			if match_variant_type != 0 {
+				left_type = match_variant_type
+			} else {
+				resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
+				if resolved_left_type != 0 {
+					left_type = resolved_left_type
+				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					scope_type := g.resolved_scope_var_type(node.left)
+					if scope_type != 0 && !scope_type.has_flag(.generic)
+						&& !g.type_has_unresolved_generic_parts(scope_type) {
+						left_type = scope_type
+					}
 				}
 			}
 		}
