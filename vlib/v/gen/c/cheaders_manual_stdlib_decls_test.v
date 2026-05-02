@@ -75,8 +75,8 @@ fn test_android_prelude_uses_bionic_file_decls() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
-	assert generated_c.contains('#elif defined(__BIONIC__)\nstruct __sFILE;\ntypedef struct __sFILE FILE;'), generated_c
-	assert generated_c.contains('#if __ANDROID_API__ >= 23\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;'), generated_c
+	assert generated_c.contains('#elif defined(__BIONIC__)\nstruct __sFILE;\ntypedef struct __sFILE FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;'), generated_c
+	assert !generated_c.contains('extern FILE __sF[];'), generated_c
 	assert !generated_c.contains('#elif defined(__BIONIC__)\ntypedef struct _IO_FILE FILE;'), generated_c
 }
 

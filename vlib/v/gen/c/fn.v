@@ -1899,7 +1899,8 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 				if obj := node.decl.scope.parent.find(var.name) {
 					if obj is ast.Var {
 						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
-						is_auto_deref_capture = obj.is_auto_deref && !var.is_mut && is_ptr
+						is_auto_deref_capture = obj.is_auto_deref && !var.is_mut
+							&& (is_ptr || obj.typ.is_ptr())
 						if obj.smartcasts.len > 0 {
 							if g.table.type_kind(obj.typ) == .sum_type {
 								cast_sym := g.table.sym(obj.smartcasts.last())

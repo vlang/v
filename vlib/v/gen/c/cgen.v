@@ -7619,6 +7619,13 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 				if field_typ == 0 {
 					field_typ = g.unwrap_generic(field.typ)
 				}
+				// Option/Result-wrapped pointers are stored inside a struct wrapper,
+				// not as raw pointers, so the simple `it->field != 0` keepalive code
+				// would generate invalid C. Skip them; Boehm conservative scanning
+				// will still find the wrapped pointer.
+				if field_typ.has_option_or_result() {
+					continue
+				}
 				if !field_typ.is_any_kind_of_pointer() && !g.contains_ptr(field_typ) {
 					continue
 				}
@@ -12760,6 +12767,22 @@ return ${cast_shared_struct_str};
 				if method.name !in methodidx {
 					// a method that is not part of the interface should be just skipped
 					continue
+				}
+				// Skip generic methods whose generic parameters have not been concretized.
+				// This happens when a struct has a generic method (e.g. `write[T]`) sharing
+				// a name with an interface method but is not actually implementing it; without
+				// this guard, cgen would emit literal `T` types in the adapter signature.
+				if method.generic_names.len > 0 {
+					mut has_unresolved_generic := method.return_type.has_flag(.generic)
+					for p in method.params {
+						if p.typ.has_flag(.generic) {
+							has_unresolved_generic = true
+							break
+						}
+					}
+					if has_unresolved_generic {
+						continue
+					}
 				}
 				// Concrete generic receiver methods keep their generic suffix in C names.
 				if st_sym.info is ast.Struct {
