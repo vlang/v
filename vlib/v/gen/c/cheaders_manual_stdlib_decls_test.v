@@ -52,7 +52,8 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('FILE* __cdecl __iob_func(void);'), generated_c
 	assert generated_c.contains('extern FILE (*_imp___iob)[];'), generated_c
 	assert generated_c.contains('#define stdout (&__iob_func()[1])'), generated_c
-	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;\ntypedef struct __thread_data *pthread_t;\ntypedef __builtin_va_list va_list;'), generated_c
+	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;\n'), generated_c
+	assert generated_c.contains('#if defined(__has_include) && __has_include(<pthread.h>)\n#include <pthread.h>\n#else\ntypedef struct __thread_data *pthread_t;\n#endif\ntypedef __builtin_va_list va_list;'), generated_c
 	assert generated_c.contains('#if defined(__APPLE__) || defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__NetBSD__) || defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
 	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\n#ifndef _STDFILES_DECLARED\n\t#define _STDFILES_DECLARED\nstruct __sFstub { long _stub; };\nextern struct __sFstub __stdin[];\nextern struct __sFstub __stdout[];\nextern struct __sFstub __stderr[];\n#endif\n#define stdin ((struct __sFILE *)__stdin)\n#define stdout ((struct __sFILE *)__stdout)\n#define stderr ((struct __sFILE *)__stderr)'), generated_c
@@ -95,7 +96,8 @@ fn test_vinix_prelude_leaves_stdio_and_stdlib_to_vinix_stubs() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
-	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;\ntypedef struct __thread_data *pthread_t;\ntypedef __builtin_va_list va_list;'), generated_c
+	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;\n'), generated_c
+	assert generated_c.contains('#if defined(__has_include) && __has_include(<pthread.h>)\n#include <pthread.h>\n#else\ntypedef struct __thread_data *pthread_t;\n#endif\ntypedef __builtin_va_list va_list;'), generated_c
 	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)'), generated_c
 	assert generated_c.contains('extern void printf_panic(charptr _d1, ... );'), generated_c
 	assert !generated_c.contains('extern void printf_panic(charptr _d1, Array_voidptr _d2);'), generated_c
