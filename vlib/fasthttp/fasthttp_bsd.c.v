@@ -537,7 +537,7 @@ pub fn (mut s Server) run() ! {
 	// TcpConn.write).
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 
-	s.socket_fd = C.socket(s.family, net.SocketType.tcp, 0)
+	s.socket_fd = C.socket(i32(s.family), i32(net.SocketType.tcp), 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
