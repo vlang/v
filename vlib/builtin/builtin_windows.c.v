@@ -181,11 +181,21 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 			return 0
 		}
 		else {
-			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
-				ptr_str(e.exception_record.address))
+			er := e.exception_record
+			eprintln('=== V_UNHANDLED_EXCEPTION ===')
+			eprintln('  e ptr:       ' + ptr_str(e))
+			eprintln('  er ptr:      ' + ptr_str(er))
+			eprintln('  code:        0x' + er.code.hex())
+			eprintln('  flags:       0x' + er.flags.hex())
+			eprintln('  inner rec:   ' + ptr_str(er.record))
+			eprintln('  address:     ' + ptr_str(er.address))
+			eprintln('  param_count: ' + er.param_count.str())
 			flush_stdout()
 			flush_stderr()
+			eprintln('=== begin V backtrace ===')
+			flush_stderr()
 			print_backtrace_skipping_top_frames(5)
+			eprintln('=== end V backtrace ===')
 			flush_stdout()
 			flush_stderr()
 		}
