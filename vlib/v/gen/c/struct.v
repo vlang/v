@@ -1087,7 +1087,18 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 		expected_unwrap_typ := g.unwrap_generic(sfield.expected_type)
 		expected_unwrap_sym := g.table.final_sym(expected_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if expected_unwrap_sym.info is ast.ArrayFixed && sfield.expr is ast.ArrayInit
+		if expected_unwrap_sym.kind == .map && sfield.expr is ast.MapInit
+			&& !sfield.expected_type.has_option_or_result()
+			&& !sfield.expected_type.has_flag(.shared_f)
+			&& !sfield.expected_type.has_flag(.atomic_f) {
+			expected_map_info := expected_unwrap_sym.map_info()
+			g.map_init(ast.MapInit{
+				...sfield.expr
+				typ:        expected_unwrap_typ
+				key_type:   expected_map_info.key_type
+				value_type: expected_map_info.value_type
+			})
+		} else if expected_unwrap_sym.info is ast.ArrayFixed && sfield.expr is ast.ArrayInit
 			&& !sfield.expr.is_fixed && !sfield.expr.has_len && !sfield.expr.has_init
 			&& sfield.expr.exprs.len > 0 && !sfield.expected_type.has_flag(.option) {
 			fixed_array_expr := ast.ArrayInit{

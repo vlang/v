@@ -5,6 +5,25 @@ module c
 
 import v.ast
 
+fn (mut g Gen) resolved_if_guard_expr_type(expr ast.Expr, default_type ast.Type) ast.Type {
+	if expr is ast.IndexExpr {
+		left_type := g.resolved_map_type_from_expr(expr.left, expr.left_type)
+		left_sym := g.table.final_sym(g.unwrap_generic(left_type))
+		if left_sym.kind == .map {
+			map_info := left_sym.map_info()
+			_, mut value_type := g.resolved_map_key_value_types(left_type, map_info.key_type,
+				map_info.value_type)
+			if default_type.has_flag(.option) && !value_type.has_flag(.option) {
+				value_type = value_type.set_flag(.option)
+			} else if default_type.has_flag(.result) && !value_type.has_flag(.result) {
+				value_type = value_type.set_flag(.result)
+			}
+			return value_type
+		}
+	}
+	return g.unwrap_generic(g.recheck_concrete_type(default_type))
+}
+
 fn (mut g Gen) if_guard_var_needs_gc_pin(scope &ast.Scope, name string) bool {
 	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 		return false
@@ -509,7 +528,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						}
 					}
 				} else {
-					resolved := g.unwrap_generic(g.recheck_concrete_type(guard_expr_type))
+					resolved := g.resolved_if_guard_expr_type(branch.cond.expr, guard_expr_type)
 					if resolved != ast.void_type {
 						guard_expr_type = resolved
 					}
