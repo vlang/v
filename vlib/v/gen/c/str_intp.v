@@ -126,6 +126,74 @@ fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bo
 	}
 }
 
+fn (mut g Gen) resolved_if_guard_ident_str_intp_type(expr ast.Ident) ast.Type {
+	if g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0 {
+		return 0
+	}
+	mut if_guard := ast.IfGuardExpr{}
+	mut found_guard := false
+	if expr.obj is ast.Var {
+		if expr.obj.smartcasts.len > 0 || expr.obj.ct_type_var == .smartcast {
+			return 0
+		}
+		if expr.obj.expr is ast.IfGuardExpr {
+			if_guard = expr.obj.expr as ast.IfGuardExpr
+			found_guard = true
+		}
+	}
+	if !found_guard {
+		mut scope := if expr.scope != unsafe { nil } {
+			expr.scope.innermost(expr.pos.pos)
+		} else {
+			expr.scope
+		}
+		if scope == unsafe { nil } || scope.find_var(expr.name) == none {
+			scope = if g.file.scope != unsafe { nil } {
+				g.file.scope.innermost(expr.pos.pos)
+			} else {
+				expr.scope
+			}
+		}
+		if scope != unsafe { nil } {
+			if v := scope.find_var(expr.name) {
+				if v.smartcasts.len > 0 || v.ct_type_var == .smartcast {
+					return 0
+				}
+				if v.expr is ast.IfGuardExpr {
+					if_guard = v.expr as ast.IfGuardExpr
+					found_guard = true
+				}
+			}
+		}
+	}
+	if !found_guard {
+		return 0
+	}
+	if if_guard.vars.len > 1 {
+		return 0
+	}
+	mut guard_var_idx := -1
+	for i, guard_var in if_guard.vars {
+		if guard_var.name == expr.name {
+			guard_var_idx = i
+			break
+		}
+	}
+	if guard_var_idx < 0 {
+		return 0
+	}
+	mut guard_expr_type := g.resolved_expr_type(if_guard.expr, if_guard.expr_type)
+	if guard_expr_type == 0 || guard_expr_type == ast.void_type {
+		guard_expr_type = if_guard.expr_type
+	}
+	if guard_expr_type == 0 || guard_expr_type == ast.void_type {
+		return 0
+	}
+	guard_value_type :=
+		g.unwrap_generic(g.recheck_concrete_type(guard_expr_type)).clear_option_and_result()
+	return guard_value_type
+}
+
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
@@ -362,7 +430,14 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	} else {
 		ast.string_type
 	}
-	if g.should_resolve_str_intp_expr_type(expr, orig_typ) {
+	resolved_if_guard_typ := if expr is ast.Ident {
+		g.resolved_if_guard_ident_str_intp_type(expr)
+	} else {
+		ast.Type(0)
+	}
+	if resolved_if_guard_typ != 0 {
+		orig_typ = resolved_if_guard_typ
+	} else if g.should_resolve_str_intp_expr_type(expr, orig_typ) {
 		resolved_expr_typ := g.resolved_expr_type(expr, orig_typ)
 		if resolved_expr_typ != 0 {
 			orig_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
@@ -526,6 +601,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			&& fmts[i] != `_` {
 			fmts[i] = `_`
 		}
+		mut resolved_if_guard_typ := ast.Type(0)
 		mut field_typ := if g.is_type_name_string_expr(expr) {
 			ast.string_type
 		} else if mut expr is ast.AsCast {
@@ -537,7 +613,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
 			g.comptime.comptime_for_field_type
 		} else if mut expr is ast.Ident && expr.obj is ast.Var {
-			if expr.obj.smartcasts.len > 0 {
+			resolved_if_guard_typ = g.resolved_if_guard_ident_str_intp_type(expr)
+			if resolved_if_guard_typ != 0 {
+				resolved_if_guard_typ
+			} else if expr.obj.smartcasts.len > 0 {
 				if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
 					&& i < node_.expr_types.len && node_.expr_types[i] != ast.void_type {
 					node_.expr_types[i]
@@ -600,7 +679,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		} else {
-			if g.should_resolve_str_intp_expr_type(expr, field_typ) {
+			if resolved_if_guard_typ == 0 && g.should_resolve_str_intp_expr_type(expr, field_typ) {
 				resolved_field_typ := g.resolved_expr_type(expr, field_typ)
 				if resolved_field_typ != ast.void_type {
 					field_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
@@ -655,9 +734,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	if g.gen_simple_string_inter_literal(node_, fmts) {
 		return
 	}
-	g.write2('builtin__str_intp(', node.vals.len.str())
+	g.write2('builtin__str_intp(', node_.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
-	for i, val in node.vals {
+	for i, val in node_.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
@@ -668,20 +747,20 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('{_SLIT0, ')
 		}
 
-		if i >= node.exprs.len {
+		if i >= node_.exprs.len {
 			// last part of the string
 			g.write('0, { .d_c = 0 }, 0, 0, 0}')
 			break
 		}
 
-		ft_u64, ft_str := g.str_format(node, i, fmts)
+		ft_u64, ft_str := g.str_format(node_, i, fmts)
 		$if trace_ci_fixes ? {
 			if g.file.path.contains('comptime_for_in_options_struct_test.v')
 				|| g.file.path.contains('comptime_map_fields_decode_test.v') {
 				g.write('/*trace_str_intp expr=')
-				g.write(node.exprs[i].str().replace('*/', '* /'))
+				g.write(node_.exprs[i].str().replace('*/', '* /'))
 				g.write(' typ=')
-				g.write(g.table.type_to_str(node.expr_types[i]).replace('*/', '* /'))
+				g.write(g.table.type_to_str(node_.expr_types[i]).replace('*/', '* /'))
 				g.write(' fmt=')
 				g.write(ft_str)
 				g.write('*/')
@@ -694,26 +773,26 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {
 			g.write('(void*)(')
-			g.str_val(node, i, fmts)
+			g.str_val(node_, i, fmts)
 			g.write(')')
 		} else {
-			g.str_val(node, i, fmts)
+			g.str_val(node_, i, fmts)
 		}
 
 		g.write('}')
-		has_dynamic_width := i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr
-		has_dynamic_precision := i < node.precision_exprs.len
-			&& node.precision_exprs[i] !is ast.EmptyExpr
+		has_dynamic_width := i < node_.fwidth_exprs.len && node_.fwidth_exprs[i] !is ast.EmptyExpr
+		has_dynamic_precision := i < node_.precision_exprs.len
+			&& node_.precision_exprs[i] !is ast.EmptyExpr
 		if has_dynamic_width || has_dynamic_precision {
 			g.write(', ')
 			if has_dynamic_width {
-				g.expr(node.fwidth_exprs[i])
+				g.expr(node_.fwidth_exprs[i])
 			} else {
 				g.write('0')
 			}
 			g.write(', ')
 			if has_dynamic_precision {
-				g.expr(node.precision_exprs[i])
+				g.expr(node_.precision_exprs[i])
 			} else {
 				g.write('0')
 			}
@@ -729,7 +808,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write(', 0, 0, 0')
 		}
 		g.write('}')
-		if i < (node.vals.len - 1) {
+		if i < (node_.vals.len - 1) {
 			g.write(', ')
 		}
 	}
