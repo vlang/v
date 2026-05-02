@@ -574,6 +574,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		g.assign_op = .unknown
 		g.inside_assign = false
 		g.assign_ct_type.clear()
+		g.expected_rhs_type_by_pos.clear()
 		g.arraymap_set_pos = 0
 		g.is_arraymap_set = false
 		g.is_assign_lhs = false
@@ -731,6 +732,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 		}
 		mut val := node.right[i]
+		expected_lhs_type := var_type
+		if expected_lhs_type != 0 && expected_lhs_type != ast.void_type
+			&& !expected_lhs_type.has_option_or_result() && val in [ast.IfExpr, ast.MatchExpr] {
+			g.expected_rhs_type_by_pos[val.pos().pos] = expected_lhs_type
+		}
 		mut str_add_rhs_tmp := ''
 		mut str_add_rhs_needs_free := false
 		mut skip_str_add_rhs_clone := false

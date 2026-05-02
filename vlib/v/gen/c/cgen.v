@@ -160,6 +160,7 @@ mut:
 	inside_match_result                  bool
 	inside_veb_tmpl                      bool
 	inside_return                        bool
+	inside_return_expr                   bool
 	inside_return_tmpl                   bool
 	inside_struct_init                   bool
 	inside_or_block                      bool
@@ -199,6 +200,7 @@ mut:
 	left_is_opt                          bool             // left hand side on assignment is an option
 	right_is_opt                         bool             // right hand side on assignment is an option
 	assign_ct_type                       map[int]ast.Type // left hand side resolved comptime type
+	expected_rhs_type_by_pos             map[int]ast.Type // expected value type for local RHS expressions
 	indent                               int
 	empty_line                           bool
 	assign_op                            token.Kind // *=, =, etc (for array_set)
@@ -9994,9 +9996,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info_stmt(node)
 
 	old_inside_return := g.inside_return
+	old_inside_return_expr := g.inside_return_expr
 	g.inside_return = true
+	g.inside_return_expr = true
 	defer {
 		g.inside_return = old_inside_return
+		g.inside_return_expr = old_inside_return_expr
 	}
 
 	exprs_len := node.exprs.len
