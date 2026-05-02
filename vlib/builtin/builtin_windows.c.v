@@ -181,8 +181,13 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 			return 0
 		}
 		else {
-			println('Unhandled Exception 0x' + ptr_str(e.exception_record.code))
+			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
+				ptr_str(e.exception_record.address))
+			flush_stdout()
+			flush_stderr()
 			print_backtrace_skipping_top_frames(5)
+			flush_stdout()
+			flush_stderr()
 		}
 	}
 

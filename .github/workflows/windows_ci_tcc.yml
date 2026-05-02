@@ -47,7 +47,18 @@ jobs:
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
+          # Diagnostic probe: try the same script with gcc first.
+          # If this passes but the tcc invocation below fails, the SEH crash is
+          # tcc-specific (calling-convention / runtime / SEH interaction), not a
+          # bug in install_thirdparty_sqlite.vsh itself.
+          where gcc
+          gcc --version
+          v -cc gcc -showcc -g -o sqlite_probe_gcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
+          .\sqlite_probe_gcc.exe
+          # Now run the original tcc path with extra debug info, so the crash
+          # backtrace (if any) has line info and the exception code reaches the log.
+          v -cc tcc -showcc -g -o sqlite_probe_tcc.exe vlib/db/sqlite/install_thirdparty_sqlite.vsh
+          .\sqlite_probe_tcc.exe
       - name: v -g self
         run: v -g self
       - name: v doctor
