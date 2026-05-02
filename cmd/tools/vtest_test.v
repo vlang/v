@@ -116,7 +116,8 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 }
 
 fn test_js_runtime_errors_are_shown_for_js_tests() {
-	if @CCOMPILER.contains('musl') || os.getenv('VFLAGS').contains('musl') {
+	if @CCOMPILER.contains('musl') || os.getenv('VFLAGS').contains('musl')
+		|| os.getenv('V_CI_MUSL') == '1' {
 		return
 	}
 	if os.execute('node --version').exit_code != 0 {
