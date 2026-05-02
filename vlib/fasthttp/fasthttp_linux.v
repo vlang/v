@@ -113,7 +113,7 @@ fn close_socket(fd int) bool {
 
 fn create_server_socket(server Server) int {
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(server.family, net.SocketType.tcp, 0)
+	server_fd := C.socket(i32(server.family), i32(net.SocketType.tcp), 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')

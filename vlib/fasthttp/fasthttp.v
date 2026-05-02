@@ -23,7 +23,7 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol i32) i32
+fn C.socket(domain i32, typ i32, protocol i32) i32
 
 fn C.bind(sockfd i32, addr &net.Addr, addrlen u32) i32
 

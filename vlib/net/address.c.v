@@ -117,7 +117,7 @@ const max_ip6_len = 46
 pub fn (a Ip) str() string {
 	buf := [max_ip_len]char{}
 
-	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(i32(AddrFamily.ip), &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
@@ -132,7 +132,7 @@ pub fn (a Ip) str() string {
 pub fn (a Ip6) str() string {
 	buf := [max_ip6_len]char{}
 
-	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(i32(AddrFamily.ip6), &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'

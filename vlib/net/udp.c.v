@@ -337,7 +337,7 @@ pub fn listen_udp(laddr string) !&UdpConn {
 fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	family := local_addr.family()
 
-	sockfd := socket_error(C.socket(family, SocketType.udp, 0))!
+	sockfd := socket_error(C.socket(i32(family), i32(SocketType.udp), 0))!
 	mut s := &UdpSocket{
 		handle: sockfd
 		l:      local_addr
@@ -416,7 +416,7 @@ fn parse_ipv4_interface_addr(iface_addr string) ![4]u8 {
 	}
 	address := normalize_ip_literal(iface_addr)
 	mut parsed := [4]u8{}
-	if C.inet_pton(.ip, &char(address.str), &parsed[0]) != 1 {
+	if C.inet_pton(i32(AddrFamily.ip), &char(address.str), &parsed[0]) != 1 {
 		return error('net: ipv4 multicast interface must be an ipv4 address')
 	}
 	return parsed
@@ -425,7 +425,7 @@ fn parse_ipv4_interface_addr(iface_addr string) ![4]u8 {
 fn parse_ipv4_multicast_addr(multicast_addr string) ![4]u8 {
 	address := normalize_ip_literal(multicast_addr)
 	mut parsed := [4]u8{}
-	if C.inet_pton(.ip, &char(address.str), &parsed[0]) != 1 {
+	if C.inet_pton(i32(AddrFamily.ip), &char(address.str), &parsed[0]) != 1 {
 		return error('net: invalid ipv4 multicast address `${multicast_addr}`')
 	}
 	if parsed[0] < 224 || parsed[0] > 239 {
@@ -437,7 +437,7 @@ fn parse_ipv4_multicast_addr(multicast_addr string) ![4]u8 {
 fn parse_ipv6_multicast_addr(multicast_addr string) ![16]u8 {
 	address := normalize_ip_literal(multicast_addr)
 	mut parsed := [16]u8{}
-	if C.inet_pton(.ip6, &char(address.str), &parsed[0]) != 1 {
+	if C.inet_pton(i32(AddrFamily.ip6), &char(address.str), &parsed[0]) != 1 {
 		return error('net: invalid ipv6 multicast address `${multicast_addr}`')
 	}
 	if parsed[0] != 0xff {
