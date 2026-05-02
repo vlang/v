@@ -249,9 +249,9 @@ fn should_skip_compression(ctx Context) bool {
 	if ctx.already_compressed {
 		return true
 	}
-	// Skip compression for files in streaming mode (takeover == false)
+	// Skip compression for files in streaming mode (no takeover)
 	// Files in takeover mode (small files loaded in memory) are compressed
-	if ctx.return_type == .file && !ctx.takeover {
+	if ctx.return_type == .file && ctx.takeover_mode == .none {
 		return true
 	}
 	return false

@@ -282,15 +282,27 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		return
 	}
 
-	if response.takeover {
-		// The handler has taken ownership of the connection.
-		// Remove from epoll and tracking, but do NOT close the fd.
-		client_fds.delete(client_fd)
-		client_buffers.delete(client_fd)
-		client_read_starts.delete(client_fd)
-		closing_client_fds.delete(client_fd)
-		remove_fd_from_epoll(epoll_fd, client_fd)
-		return
+	match response.takeover_mode {
+		.manual {
+			// The handler has taken ownership of the connection.
+			// Remove from epoll and tracking, but do NOT close the fd.
+			client_fds.delete(client_fd)
+			client_buffers.delete(client_fd)
+			client_read_starts.delete(client_fd)
+			closing_client_fds.delete(client_fd)
+			remove_fd_from_epoll(epoll_fd, client_fd)
+			return
+		}
+		.reusable {
+			set_blocking(client_fd, false)
+			client_buffers.delete(client_fd)
+			if server.is_shutting_down() || response.should_close {
+				handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds)
+			}
+			return
+		}
+		.none {}
 	}
 
 	if response.content.len > 0 {

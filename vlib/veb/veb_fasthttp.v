@@ -110,13 +110,23 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
 
-	if completed_context.takeover {
-		// The handler has taken over the connection (e.g. for SSE or WebSocket).
-		// The response was already sent directly over ctx.conn.
-		// Tell fasthttp to hand off the fd without closing it.
-		return fasthttp.HttpResponse{
-			takeover: true
+	match completed_context.takeover_mode {
+		.manual {
+			// The handler has taken over the connection (e.g. for SSE or WebSocket).
+			// The response was already sent directly over ctx.conn.
+			// Tell fasthttp to hand off the fd without closing it.
+			return fasthttp.HttpResponse{
+				takeover_mode: .manual
+			}
 		}
+		.reusable {
+			return fasthttp.HttpResponse{
+				takeover_mode: .reusable
+				should_close:  should_close_connection(completed_context.req,
+					completed_context.res, completed_context.client_wants_to_close)
+			}
+		}
+		.none {}
 	}
 
 	if completed_context.return_type == .file {

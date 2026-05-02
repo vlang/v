@@ -319,18 +319,35 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 		return
 	}
 
-	if resp.takeover {
-		// The handler has taken ownership of the connection.
-		// Remove from kqueue and tracking, but do NOT close the fd.
-		clients.delete(c.fd)
-		delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
-		delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
-		if c.request_active {
-			server.end_request()
-			c.request_active = false
+	match resp.takeover_mode {
+		.manual {
+			// The handler has taken ownership of the connection.
+			// Remove from kqueue and tracking, but do NOT close the fd.
+			clients.delete(c.fd)
+			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
+			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
+			unsafe { free(c_ptr) }
+			return
 		}
-		unsafe { free(c_ptr) }
-		return
+		.reusable {
+			set_nonblocking(c.fd)
+			c.read_len = 0
+			c.read_extra.clear()
+			c.read_start = 0
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
+			if server.is_shutting_down() || resp.should_close {
+				close_conn(server, kq, c_ptr, mut clients)
+			}
+			return
+		}
+		.none {}
 	}
 
 	c.should_close = resp.should_close
