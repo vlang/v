@@ -296,7 +296,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			// Try to unwrap generic, and if that doesn't work, check if we should use
 			// the function's return type
 			unwrapped := g.unwrap_generic(node_typ)
-			if unwrapped == node_typ && g.cur_fn.return_type.has_flag(.generic) {
+			if g.inside_return_expr && !g.inside_struct_init && unwrapped == node_typ
+				&& g.cur_fn.return_type.has_flag(.generic) {
 				// The node type didn't unwrap, but the function return type is generic
 				// Get the unwrapped function return type for this instance
 				mut fn_ret_typ := g.unwrap_generic(g.cur_fn.return_type)

@@ -1982,7 +1982,13 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.stmt_path_pos = []
 	g.skip_stmt_pos = false
 	g.anon_fn = node
+	old_inside_return := g.inside_return
+	old_inside_return_expr := g.inside_return_expr
+	g.inside_return = false
+	g.inside_return_expr = false
 	g.fn_decl(decl)
+	g.inside_return_expr = old_inside_return_expr
+	g.inside_return = old_inside_return
 	g.anon_fn = was_anon_fn
 	g.skip_stmt_pos = prev_skip_stmt_pos
 	g.stmt_path_pos = prev_stmt_path_pos
