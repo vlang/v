@@ -200,6 +200,10 @@ fn test_https_proxy_requests_do_not_leak_sockets() ! {
 	$if sanitized_job ? {
 		return
 	}
+	$if tinyc {
+		// TinyCC hangs in the bundled mbedtls handshake path on linux CI.
+		return
+	}
 	target_port, target_done := start_https_proxy_test_target_server()!
 	proxy_port, proxy_done := start_https_proxy_test_server(target_port)!
 	baseline_fds := count_open_file_descriptors()
@@ -252,6 +256,10 @@ fn test_http_proxy_do() {
 const multipart_https_payload_len = 20 * 1024 + 137
 
 fn test_https_multipart_form_preserves_large_binary_body() ! {
+	$if tinyc {
+		// TinyCC hangs in the bundled mbedtls handshake path on linux CI.
+		return
+	}
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := port_listener.addr()!.port()!
 	port_listener.close()!
