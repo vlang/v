@@ -436,9 +436,13 @@ struct __thread_data;
 struct __threadattr;
 // pthread_t is taken from libc (<pthread.h>) when available, so that
 // cross-compiling for vinix on a libc-providing host (e.g. glibc on Linux)
-// does not produce conflicting redefinitions of pthread_t.
+// does not produce conflicting redefinitions of pthread_t. On a true
+// freestanding vinix build (no libc, no <pthread.h>), fall back to V
+// own forward declaration so generated typedef pthread_t ... still parses.
 #if defined(__has_include) && __has_include(<pthread.h>)
 #include <pthread.h>
+#else
+typedef struct __thread_data *pthread_t;
 #endif
 typedef __builtin_va_list va_list;
 #ifndef va_start
