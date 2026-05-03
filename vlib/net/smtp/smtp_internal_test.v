@@ -85,3 +85,26 @@ fn test_fold_base64_wraps_long_lines() {
 	assert lines[0].len == 76
 	assert lines[1].len == 32
 }
+
+fn test_envelope_addr_strips_display_name() {
+	assert envelope_addr('ivan@example.com') == 'ivan@example.com'
+	assert envelope_addr('  ivan@example.com  ') == 'ivan@example.com'
+	assert envelope_addr('<ivan@example.com>') == 'ivan@example.com'
+	assert envelope_addr('Ivan Petrov <ivan@example.com>') == 'ivan@example.com'
+	assert envelope_addr('"Petrov, Ivan" <ivan@example.com>') == 'ivan@example.com'
+	// Tolerate a malformed input with no closing '>' rather than panicking.
+	assert envelope_addr('Ivan <ivan@example.com') == 'ivan@example.com'
+}
+
+fn test_mail_message_data_preserves_display_name_in_from_header() {
+	mail := Mail{
+		from:    'Ivan Petrov <ivan@example.com>'
+		to:      'recipient@example.com'
+		subject: 'Test'
+		body:    'hi'
+	}
+
+	message := mail.message_data()
+
+	assert message.contains('From: Ivan Petrov <ivan@example.com>\r\n')
+}

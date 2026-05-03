@@ -242,14 +242,32 @@ fn (mut c Client) send_auth() ! {
 	c.expect_reply(.auth_ok)!
 }
 
+// envelope_addr extracts the bare mailbox from an address that may include a
+// display name. The SMTP envelope (`MAIL FROM:` / `RCPT TO:`) only accepts a
+// bare mailbox (RFC 5321), while `Mail.from`/`Mail.to` may also be written in
+// the RFC 5322 `Display Name <addr@example.com>` form for the message header.
+fn envelope_addr(s string) string {
+	trimmed := s.trim_space()
+	lt := trimmed.index_u8(`<`)
+	if lt < 0 {
+		return trimmed
+	}
+	rest := trimmed[lt + 1..]
+	gt := rest.index_u8(`>`)
+	if gt < 0 {
+		return rest
+	}
+	return rest[..gt]
+}
+
 fn (mut c Client) send_mailfrom(from string) ! {
-	c.send_str('MAIL FROM: <${from}>\r\n')!
+	c.send_str('MAIL FROM:<${envelope_addr(from)}>\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
 fn (mut c Client) send_mailto(to string) ! {
 	for rcpt in to.split(';') {
-		c.send_str('RCPT TO: <${rcpt}>\r\n')!
+		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }
