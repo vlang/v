@@ -1587,7 +1587,12 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 		// E.g. `neg` (a specific fn) should produce the same name as `fn(int) int`.
 		sym := g.table.sym(normalized_typ)
 		if sym.info is ast.FnType && sym.kind == .function {
-			anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			mut anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			if normalized_typ.has_flag(.shared_f) {
+				anon_cname = '__shared__${anon_cname}'
+			} else if normalized_typ.has_flag(.atomic_f) {
+				anon_cname = 'atomic_${anon_cname}'
+			}
 			if anon_cname != typ_name {
 				typ_name = anon_cname
 			}

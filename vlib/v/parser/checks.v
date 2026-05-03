@@ -222,6 +222,16 @@ fn (p &Parser) is_generic_call() bool {
 		tok5 = p.peek_token(6)
 		kind5 = tok5.kind
 	}
+	if kind2 in [.key_shared, .key_atomic] && kind3 == .key_fn {
+		tok2 = tok3
+		kind2 = kind3
+		tok3 = tok4
+		kind3 = kind4
+		tok4 = tok5
+		kind4 = kind5
+		tok5 = p.peek_token(6)
+		kind5 = tok5.kind
+	}
 
 	if kind2 == .lsbr {
 		// case 1 (array or fixed array type)
@@ -229,6 +239,27 @@ fn (p &Parser) is_generic_call() bool {
 	}
 	if kind2 == .key_struct {
 		return p.is_anon_struct_generic_arg(.lpar)
+	}
+	if kind2 == .key_fn {
+		mut i := 3
+		mut nested_sbr_count := 0
+		for {
+			cur_tok := p.peek_token(i)
+			if cur_tok.kind == .eof
+				|| cur_tok.kind !in [.amp, .dot, .comma, .ellipsis, .name, .number, .lpar, .rpar, .lsbr, .rsbr, .question, .not, .key_fn, .key_mut, .key_shared, .key_atomic] {
+				break
+			}
+			if cur_tok.kind == .lsbr {
+				nested_sbr_count++
+			} else if cur_tok.kind == .rsbr {
+				if nested_sbr_count > 0 {
+					nested_sbr_count--
+				} else {
+					return p.peek_token(i + 1).kind == .lpar
+				}
+			}
+			i++
+		}
 	}
 
 	if kind2 == .name {
