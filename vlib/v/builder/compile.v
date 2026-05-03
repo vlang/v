@@ -119,6 +119,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.backend == .wasm && !compiled_file.ends_with('.wasm') {
 		compiled_file += '.wasm'
 	}
+	if b.pref.backend == .c && b.pref.os == .windows && !compiled_file.ends_with('.exe') {
+		compiled_file += '.exe'
+	}
 	compiled_file = os.real_path(compiled_file)
 
 	mut run_args := []string{cap: b.pref.run_args.len + 1}

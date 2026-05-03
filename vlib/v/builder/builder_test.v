@@ -78,6 +78,33 @@ fn test_run_from_workdir_with_spaces() {
 	assert run_dir_res.output.trim_space() == 'Hello from a spaced path'
 }
 
+fn test_existing_vsh_executable_runs_on_second_invocation() {
+	project_dir := os.join_path(test_path, 'existing vsh executable')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir)!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'script.vsh'), "println('Hello from cached vsh')\n")!
+	os.chdir(project_dir)!
+
+	cmd := '${os.quoted_path(vexe)} script.vsh'
+	first_res := os.execute(cmd)
+	assert first_res.exit_code == 0, first_res.output
+	assert first_res.output.trim_space() == 'Hello from cached vsh'
+
+	mut executable := os.join_path(project_dir, 'script')
+	$if windows {
+		executable += '.exe'
+	}
+	assert os.is_file(executable)
+
+	second_res := os.execute(cmd)
+	assert second_res.exit_code == 0, second_res.output
+	assert second_res.output.trim_space() == 'Hello from cached vsh'
+}
+
 fn test_file_list() {
 	os.chdir(test_path)!
 	os.mkdir_all('filelist')!
