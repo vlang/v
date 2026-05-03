@@ -121,11 +121,22 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			sym := c.table.sym(field.typ)
 			if sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(sym.info) {
 				mut size_expr := unsafe { sym.info.size_expr }
+				old_typ := field.typ
 				field.typ = c.eval_array_fixed_sizes(mut size_expr, 0, sym.info.elem_type)
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.typ = field.typ
 					}
+				}
+				// Overwrite the previously unresolved type symbol so that earlier
+				// expressions which captured its idx (e.g. IndexExpr.left_type from
+				// another file checked first) observe the resolved size. See #27078.
+				if old_typ.idx() != field.typ.idx() {
+					new_sym := c.table.sym(field.typ)
+					mut old_sym := c.table.type_symbols[old_typ.idx()]
+					old_sym.name = new_sym.name
+					old_sym.cname = new_sym.cname
+					old_sym.info = new_sym.info
 				}
 			}
 		}
