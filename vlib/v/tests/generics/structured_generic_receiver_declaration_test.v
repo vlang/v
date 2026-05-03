@@ -7,6 +7,10 @@ struct MixedReceiverPatternBox[T, U] {
 	items  U
 }
 
+type IntListExpect = ReceiverPatternExpect[[]int]
+type StringIntMapExpect = ReceiverPatternExpect[map[string]int]
+type MixedIntStringListBox = MixedReceiverPatternBox[int, []string]
+
 fn (e ReceiverPatternExpect[T]) broad_receiver_returns_value() T {
 	return e.value
 }
@@ -172,6 +176,46 @@ fn test_map_receiver_pattern_method_generic_can_be_explicit() {
 	assert extra == 'extra'
 }
 
+fn test_alias_to_array_receiver_pattern_binds_element_type() {
+	assert IntListExpect{
+		value: [1, 2, 3]
+	}.dynamic_array_receiver_pattern_returns_first_or_value(9) == 1
+	value, extra := IntListExpect{
+		value: [1, 2, 3]
+	}.dynamic_array_receiver_pattern_pairs_with_method_generic[string](9, 'alias')
+	assert value == 1
+	assert extra == 'alias'
+	inferred_value, inferred_extra := IntListExpect{
+		value: [1, 2, 3]
+	}.dynamic_array_receiver_pattern_pairs_with_method_generic(9, 'inferred')
+	assert inferred_value == 1
+	assert inferred_extra == 'inferred'
+}
+
+fn test_alias_to_map_receiver_pattern_binds_key_and_value_types() {
+	assert StringIntMapExpect{
+		value: {
+			'one': 1
+		}
+	}.map_receiver_pattern_returns_existing_or_default('one', 0) == 1
+	value, extra := StringIntMapExpect{
+		value: {
+			'one': 1
+		}
+	}.map_receiver_pattern_pairs_with_method_generic[bool]('missing', 7, true)
+	assert value == 7
+	assert extra
+}
+
+fn test_alias_receiver_exact_method_takes_precedence_over_structured_pattern() {
+	assert IntListExpect{
+		value: [1, 2, 3]
+	}.same_name_prefers_concrete_receiver() == 'concrete'
+	assert IntListExpect{
+		value: [1]
+	}.same_name_with_method_generic_prefers_concrete_receiver[string]('extra') == 'concrete'
+}
+
 fn test_mixed_direct_and_structured_receiver_pattern_method_generic() {
 	direct, item, marker := MixedReceiverPatternBox[int, []string]{
 		direct: 7
@@ -187,6 +231,20 @@ fn test_mixed_direct_and_structured_receiver_pattern_method_generic() {
 	assert inferred_direct == 9
 	assert inferred_item == 'fallback'
 	assert inferred_marker == 1.5
+}
+
+fn test_alias_to_mixed_receiver_pattern_binds_direct_and_structured_slots() {
+	direct, item, marker := MixedIntStringListBox{
+		direct: 7
+		items:  ['alpha']
+	}.mixed_receiver_pattern_values_with_method_generic[bool]('fallback', true)
+	assert direct == 7
+	assert item == 'alpha'
+	assert marker
+	assert MixedIntStringListBox{
+		direct: 1
+		items:  ['alpha']
+	}.same_name_with_method_generic_prefers_concrete_mixed_receiver[bool](true) == 'concrete'
 }
 
 fn test_exact_mixed_receiver_method_with_method_generic_takes_precedence_over_structured_pattern() {

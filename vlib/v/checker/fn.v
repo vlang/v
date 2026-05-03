@@ -3176,6 +3176,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if m := lookup_sym.find_method(method_name) {
 			method = m
 			has_method = true
+		} else if m := c.table.find_alias_parent_exact_method(left_type, method_name) {
+			method = m
+			has_method = true
 		} else {
 			method = structured_method.method
 			structured_receiver_concrete_types = structured_method.concrete_types.clone()

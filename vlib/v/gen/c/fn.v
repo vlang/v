@@ -3415,6 +3415,8 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 	if left_type != 0 {
 		if exact_method := g.table.sym(left_type).find_method(method_name) {
 			exact_method_exists = exact_method.name == method_name
+		} else if exact_method := g.table.find_alias_parent_exact_method(left_type, method_name) {
+			exact_method_exists = exact_method.name == method_name
 		}
 	}
 	mut structured_method_for_exact := ast.Fn{}

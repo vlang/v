@@ -2138,6 +2138,26 @@ fn (t &Table) receiver_generic_types(typ Type) ?ReceiverGenericTypes {
 	return none
 }
 
+fn (t &Table) actual_receiver_generic_types(typ Type) ?ReceiverGenericTypes {
+	if receiver := t.receiver_generic_types(typ) {
+		return receiver
+	}
+	sym := t.sym(typ)
+	if sym.info is Alias {
+		return t.receiver_generic_types(sym.info.parent_type.derive(typ))
+	}
+	return none
+}
+
+pub fn (t &Table) find_alias_parent_exact_method(typ Type, name string) ?Fn {
+	sym := t.sym(typ)
+	if sym.info is Alias {
+		parent_sym := t.sym(sym.info.parent_type.derive(typ))
+		return parent_sym.find_method(name)
+	}
+	return none
+}
+
 fn (t &Table) collect_receiver_generic_pattern_type_names(typ Type, mut names []string, depth int) bool {
 	if typ == 0 || depth > max_receiver_generic_pattern_depth {
 		return false
@@ -2254,7 +2274,7 @@ fn (t &Table) bind_receiver_generic_type_with_depth(pattern Type, actual Type, g
 
 fn (t &Table) infer_generic_receiver_pattern_types(pattern_receiver Type, actual_receiver Type, generic_names []string) ?[]Type {
 	pattern := t.receiver_generic_types(pattern_receiver)?
-	actual := t.receiver_generic_types(actual_receiver)?
+	actual := t.actual_receiver_generic_types(actual_receiver)?
 	if pattern.parent_idx != actual.parent_idx || pattern.types.len != actual.types.len {
 		return none
 	}
@@ -2316,7 +2336,7 @@ fn (t &Table) receiver_generic_type_has_voidptr_binding_with_depth(pattern Type,
 
 fn (t &Table) receiver_pattern_has_voidptr_binding(pattern_receiver Type, actual_receiver Type, generic_names []string) bool {
 	pattern := t.receiver_generic_types(pattern_receiver) or { return false }
-	actual := t.receiver_generic_types(actual_receiver) or { return false }
+	actual := t.actual_receiver_generic_types(actual_receiver) or { return false }
 	if pattern.parent_idx != actual.parent_idx || pattern.types.len != actual.types.len {
 		return false
 	}
@@ -2329,7 +2349,7 @@ fn (t &Table) receiver_pattern_has_voidptr_binding(pattern_receiver Type, actual
 }
 
 pub fn (table &Table) structured_receiver_method_rejects_voidptr(actual_type Type, name string) bool {
-	actual := table.receiver_generic_types(actual_type) or { return false }
+	actual := table.actual_receiver_generic_types(actual_type) or { return false }
 	key := receiver_pattern_method_key(actual.parent_idx, name)
 	methods := table.structured_receiver_methods[key] or { return false }
 	for method in methods {
@@ -2344,7 +2364,7 @@ pub fn (table &Table) structured_receiver_method_rejects_voidptr(actual_type Typ
 }
 
 pub fn (table &Table) find_structured_receiver_method_with_types(actual_type Type, name string) ?StructuredReceiverMethod {
-	actual := table.receiver_generic_types(actual_type) or { return none }
+	actual := table.actual_receiver_generic_types(actual_type) or { return none }
 	key := receiver_pattern_method_key(actual.parent_idx, name)
 	methods := table.structured_receiver_methods[key] or { return none }
 	for method in methods {
