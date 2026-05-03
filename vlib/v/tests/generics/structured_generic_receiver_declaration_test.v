@@ -66,6 +66,24 @@ fn (e ReceiverPatternExpect[map[K]V]) map_receiver_pattern_pairs_with_method_gen
 	return value, extra
 }
 
+fn (e ReceiverPatternExpect[map[K]V]) same_name_map_exact_prefers_concrete[U](extra U) string {
+	_ = extra
+	return 'pattern'
+}
+
+fn (e ReceiverPatternExpect[map[string]int]) same_name_map_exact_prefers_concrete[U](extra U) string {
+	_ = extra
+	return 'concrete'
+}
+
+fn (e ReceiverPatternExpect[map[K]V]) same_name_map_method() string {
+	return 'pattern'
+}
+
+fn (e ReceiverPatternExpect[map[string]int]) same_name_map_method() string {
+	return 'concrete'
+}
+
 fn (b MixedReceiverPatternBox[T, []U]) mixed_receiver_pattern_values_with_method_generic[V](fallback U,
 	marker V) (T, U, V) {
 	if b.items.len == 0 {
@@ -205,6 +223,22 @@ fn test_alias_to_map_receiver_pattern_binds_key_and_value_types() {
 	}.map_receiver_pattern_pairs_with_method_generic[bool]('missing', 7, true)
 	assert value == 7
 	assert extra
+}
+
+fn test_alias_to_map_exact_generic_method_takes_precedence_over_structured_pattern() {
+	assert StringIntMapExpect{
+		value: {
+			'one': 1
+		}
+	}.same_name_map_exact_prefers_concrete('alias') == 'concrete'
+}
+
+fn test_alias_to_map_exact_method_takes_precedence_over_structured_pattern() {
+	assert StringIntMapExpect{
+		value: {
+			'one': 1
+		}
+	}.same_name_map_method() == 'concrete'
 }
 
 fn test_alias_receiver_exact_method_takes_precedence_over_structured_pattern() {

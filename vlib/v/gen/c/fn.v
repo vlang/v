@@ -121,6 +121,28 @@ fn (g &Gen) method_decl_fkey(method ast.Fn) string {
 	return method.fkey()
 }
 
+fn (g &Gen) receiver_exact_method_for_type(typ ast.Type, method_name string) ?ast.Fn {
+	if typ == 0 {
+		return none
+	}
+	sym := g.table.sym(typ)
+	for method in sym.methods {
+		if method.name == method_name && method.receiver_type == typ {
+			return method
+		}
+	}
+	if sym.info is ast.Alias {
+		parent_type := sym.info.parent_type.derive(typ)
+		parent_sym := g.table.sym(parent_type)
+		for method in parent_sym.methods {
+			if method.name == method_name && method.receiver_type == parent_type {
+				return method
+			}
+		}
+	}
+	return none
+}
+
 fn (g &Gen) generic_parent_method_fkey(sym ast.TypeSymbol, method_name string) string {
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -242,6 +264,22 @@ fn (g &Gen) prefers_msvc_compatible_code() bool {
 
 fn (mut g Gen) node_decl_fkey(node ast.FnDecl) string {
 	if node.is_method && !node.name.contains('_T_') {
+		if !node.receiver.typ.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(node.receiver.typ) {
+			if structured_method := g.table.find_structured_receiver_method_with_types(node.receiver.typ,
+				node.name)
+			{
+				if structured_method.method.receiver_type != node.receiver.typ {
+					if exact_method := g.receiver_exact_method_for_type(node.receiver.typ,
+						node.name)
+					{
+						if g.method_decl_fkey(exact_method) == node.fkey() {
+							return node.fkey()
+						}
+					}
+				}
+			}
+		}
 		receiver_sym := g.table.sym(node.receiver.typ)
 		receiver_has_concrete_generics := match receiver_sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
@@ -755,6 +793,20 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		}
 		fkey := g.node_decl_fkey(node)
 		is_used_by_main = g.table.used_features.used_fns[fkey]
+		if !is_used_by_main && node.is_method && !node.receiver.typ.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(node.receiver.typ) {
+			if structured_method := g.table.find_structured_receiver_method_with_types(node.receiver.typ,
+				node.name)
+			{
+				if structured_method.method.receiver_type != node.receiver.typ {
+					if exact_method := g.receiver_exact_method_for_type(node.receiver.typ,
+						node.name)
+					{
+						is_used_by_main = g.method_decl_fkey(exact_method) == node.fkey()
+					}
+				}
+			}
+		}
 		if !is_used_by_main && g.effective_fn_generic_names(node).len > 0
 			&& g.table.fn_generic_types[fkey].len > 0 {
 			is_used_by_main = true
@@ -3411,21 +3463,19 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 }
 
 fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name string) ([]ast.Type, ast.Fn) {
+	mut exact_method := ast.Fn{}
 	mut exact_method_exists := false
 	if left_type != 0 {
-		if exact_method := g.table.sym(left_type).find_method(method_name) {
-			exact_method_exists = exact_method.name == method_name
-		} else if exact_method := g.table.find_alias_parent_exact_method(left_type, method_name) {
-			exact_method_exists = exact_method.name == method_name
+		if method := g.receiver_exact_method_for_type(left_type, method_name) {
+			exact_method = method
+			exact_method_exists = true
 		}
 	}
-	mut structured_method_for_exact := ast.Fn{}
 	mut has_structured_method_for_exact := false
 	if structured_method := g.table.find_structured_receiver_method_with_types(left_type,
 		method_name)
 	{
 		if exact_method_exists {
-			structured_method_for_exact = structured_method.method
 			has_structured_method_for_exact = true
 		} else {
 			return structured_method.concrete_types.map(g.unwrap_generic(it)), structured_method.method
@@ -3434,6 +3484,9 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 	rec_sym := g.table.final_sym(left_type)
 	mut receiver_concrete_types := []ast.Type{}
 	mut parent_method := ast.Fn{}
+	if has_structured_method_for_exact {
+		parent_method = exact_method
+	}
 	match rec_sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if rec_sym.info.concrete_types.len > 0 {
@@ -3445,8 +3498,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_type.has_flag(.generic) {
 				parent_sym := g.table.sym(rec_sym.info.parent_type)
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact
-						|| m.fkey() != structured_method_for_exact.fkey() {
+					if !has_structured_method_for_exact {
 						parent_method = m
 					}
 				}
@@ -3457,8 +3509,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_idx > 0 {
 				parent_sym := g.table.sym(ast.idx_to_type(rec_sym.info.parent_idx))
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact
-						|| m.fkey() != structured_method_for_exact.fkey() {
+					if !has_structured_method_for_exact {
 						parent_method = m
 					}
 				}
@@ -3477,8 +3528,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if non_final_sym.info.parent_idx > 0 {
 				parent_sym := g.table.sym(ast.idx_to_type(non_final_sym.info.parent_idx))
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact
-						|| m.fkey() != structured_method_for_exact.fkey() {
+					if !has_structured_method_for_exact {
 						parent_method = m
 					}
 				}
@@ -3490,8 +3540,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			receiver_concrete_types = non_final_sym.generic_types.map(g.unwrap_generic(it))
 			parent_sym := g.table.sym(ast.idx_to_type(non_final_sym.parent_idx))
 			if m := parent_sym.find_method(method_name) {
-				if !has_structured_method_for_exact
-					|| m.fkey() != structured_method_for_exact.fkey() {
+				if !has_structured_method_for_exact {
 					parent_method = m
 				}
 			}
@@ -5210,7 +5259,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 			}
 			concrete_types = concrete_types.filter(it != ast.void_type)
-			mut name_fkey := g.resolve_method_decl_fkey_for_type(left_type, method_name)
+			mut name_fkey := ''
+			if _ := g.table.find_structured_receiver_method_with_types(left_type, method_name) {
+				if exact_method := g.receiver_exact_method_for_type(left_type, method_name) {
+					name_fkey = g.method_decl_fkey(exact_method)
+				}
+			}
+			if name_fkey == '' {
+				name_fkey = g.resolve_method_decl_fkey_for_type(left_type, method_name)
+			}
 			if name_fkey == '' {
 				name_fkey = g.method_decl_fkey(full_method)
 			}
