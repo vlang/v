@@ -434,11 +434,16 @@ extern FILE* stdout;
 extern FILE* stderr;
 struct __thread_data;
 struct __threadattr;
-// pthread_t is taken from libc (<pthread.h>) when available, so that
-// cross-compiling for vinix on a libc-providing host (e.g. glibc on Linux)
-// does not produce conflicting redefinitions of pthread_t.
-#if defined(__has_include) && __has_include(<pthread.h>)
+// pthread_t handling for vinix builds:
+//  - Vinix kernel (freestanding, __STDC_HOSTED__=0): no libc, define
+//    pthread_t ourselves so V code that references it compiles.
+//  - util-vinix cross-compiled on a libc-providing host (hosted, e.g.
+//    glibc on Linux or macOS with -D__vinix__): pull pthread_t from
+//    libc to avoid colliding with the libc typedef.
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ && defined(__has_include) && __has_include(<pthread.h>)
 #include <pthread.h>
+#else
+typedef struct __thread_data *pthread_t;
 #endif
 typedef __builtin_va_list va_list;
 #ifndef va_start
