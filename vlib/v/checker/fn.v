@@ -3474,6 +3474,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	mut rec_concrete_types := []ast.Type{}
 	mut method_generic_names_len := method.generic_names.len
+	mut receiver_generics_in_selected_method := false
 	if !is_structured_receiver_method {
 		match rec_sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
@@ -3481,6 +3482,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				receiver_generics_in_method := receiver_generic_names.len > 0
 					&& method.generic_names.len >= receiver_generic_names.len
 					&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+				receiver_generics_in_selected_method = receiver_generics_in_method
 				if rec_sym.info.concrete_types.len > 0 {
 					rec_concrete_types = rec_sym.info.concrete_types.clone()
 				}
@@ -3514,6 +3516,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 						receiver_generics_in_method := receiver_generic_names.len > 0
 							&& method.generic_names.len >= receiver_generic_names.len
 							&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+						receiver_generics_in_selected_method = receiver_generics_in_method
 						rec_concrete_types = rec_sym.info.concrete_types.clone()
 						concrete_types_len := node.concrete_types.len
 						if !rec_is_generic && receiver_generics_in_method
@@ -3548,8 +3551,18 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 	if structured_receiver_concrete_types.len > 0 {
 		rec_concrete_types = structured_receiver_concrete_types.clone()
-		if structured_receiver_concrete_types.len == method.generic_names.len {
+		receiver_generics_in_selected_method = true
+		concrete_types_len := node.concrete_types.len
+		if structured_receiver_concrete_types.len == method_generic_names_len {
 			node.concrete_types = structured_receiver_concrete_types.clone()
+		} else if structured_receiver_concrete_types.len < method_generic_names_len {
+			if concrete_types_len == 0 {
+				node.concrete_types = structured_receiver_concrete_types.clone()
+			} else if structured_receiver_concrete_types.len + concrete_types_len == method_generic_names_len {
+				t_concrete_types := node.concrete_types.clone()
+				node.concrete_types = structured_receiver_concrete_types.clone()
+				node.concrete_types << t_concrete_types
+			}
 		}
 	}
 
@@ -3656,7 +3669,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			param_is_mut = false
 			no_type_promotion = false
 		}
-		resolved_method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
+		resolved_method_concrete_types := if receiver_generics_in_selected_method
+			&& method_generic_names_len == rec_concrete_types.len {
 			rec_concrete_types
 		} else {
 			concrete_types
@@ -3768,7 +3782,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 			}
 		}
-		method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
+		method_concrete_types := if receiver_generics_in_selected_method
+			&& method_generic_names_len == rec_concrete_types.len {
 			rec_concrete_types
 		} else {
 			concrete_types
@@ -3960,7 +3975,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		node.return_type = ret_type
 		return ret_type
 	}
-	if method_generic_names_len > 0 {
+	if method_generic_names_len > 0 && receiver_generics_in_selected_method {
 		if !left_type.has_flag(.generic) {
 			if left_sym.info is ast.Struct {
 				if method_generic_names_len == left_sym.info.concrete_types.len {

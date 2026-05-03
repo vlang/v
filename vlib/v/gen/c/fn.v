@@ -337,7 +337,7 @@ fn (g &Gen) generic_file_fn_by_fkey(fkey string) ?ast.FnDecl {
 // find_all_receiver_concrete_types finds all concrete type instantiations
 // of the receiver's generic type by examining registered concrete types of
 // sibling methods on the same receiver that have complete type sets.
-fn (g &Gen) find_all_receiver_concrete_types(node ast.FnDecl, receiver_generic_count int) [][]ast.Type {
+fn (mut g Gen) find_all_receiver_concrete_types(node ast.FnDecl, receiver_generic_count int) [][]ast.Type {
 	receiver_typ_int := int(node.receiver.typ)
 	prefix := '${receiver_typ_int}.'
 	mut result := [][]ast.Type{}
@@ -348,7 +348,7 @@ fn (g &Gen) find_all_receiver_concrete_types(node ast.FnDecl, receiver_generic_c
 			continue
 		}
 		for concrete_types in type_sets {
-			if concrete_types.any(it.has_flag(.generic)) {
+			if concrete_types.any(it.has_flag(.generic) || g.type_has_unresolved_generic_parts(it)) {
 				continue
 			}
 			// We need sets that have both receiver + method generics
@@ -376,7 +376,7 @@ fn (g &Gen) find_all_receiver_concrete_types(node ast.FnDecl, receiver_generic_c
 					|| (sym.info.parent_type != 0
 					&& g.table.sym(sym.info.parent_type).name.all_before('<') == receiver_base_name)) {
 					cts := sym.info.concrete_types
-					if !cts.any(it.has_flag(.generic)) {
+					if !cts.any(it.has_flag(.generic) || g.type_has_unresolved_generic_parts(it)) {
 						key := cts.str()
 						if key !in seen {
 							seen[key] = true
@@ -491,6 +491,18 @@ fn (mut g Gen) receiver_concrete_types_for_type(typ ast.Type) []ast.Type {
 			return []ast.Type{}
 		}
 	}
+}
+
+fn (mut g Gen) method_receiver_generic_names(method ast.Fn) []string {
+	if method.params.len == 0 {
+		return []string{}
+	}
+	structured_receiver_generic_names :=
+		g.table.structured_receiver_generic_pattern_names(method.params[0].typ)
+	if structured_receiver_generic_names.len > 0 {
+		return structured_receiver_generic_names
+	}
+	return g.table.generic_type_names(method.params[0].typ)
 }
 
 fn (mut g Gen) method_receiver_only_specialization_types(method ast.Fn, concrete_receiver_type ast.Type) []ast.Type {
@@ -4756,6 +4768,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut method_generic_names_len := 0
 	mut receiver_generic_names := []string{}
 	mut receiver_generics_in_method := false
+	mut receiver_method_concrete_types := []ast.Type{}
 	mut has_method := false
 	mut method_for_generics := ast.Fn{}
 	if left_type != g.unwrap_generic(node.left_type)
@@ -4803,12 +4816,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			receiver_type =
 				receiver_type.derive(method_for_generics.params[0].typ).clear_flag(.generic)
 			receiver_is_mut = method_for_generics.params[0].is_mut
-			receiver_generic_names = g.table.generic_type_names(method_for_generics.params[0].typ)
 		}
 		method_generic_names_len = method_for_generics.generic_names.len
-		receiver_generics_in_method = receiver_generic_names.len > 0
-			&& method_generic_names_len >= receiver_generic_names.len
-			&& method_for_generics.generic_names[..receiver_generic_names.len] == receiver_generic_names
 		if node.concrete_types.len == method_generic_names_len && node.concrete_types.len > 0 {
 			trust_node_concrete_types = node.raw_concrete_types.len == method_generic_names_len
 				&& node.raw_concrete_types.len > 0
@@ -4863,76 +4872,97 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 			}
 		}
-		if method_generic_names_len > 0 && g.cur_fn != unsafe { nil }
-			&& g.cur_concrete_types.len > 0 {
-			mut resolved_arg_types := []ast.Type{}
-			expected_arg_generic_slots :=
-				int_max(method_generic_names_len - receiver_concrete_types.len, 0)
-			if expected_arg_generic_slots > 0 {
-				offset := if method_for_generics.is_method { 1 } else { 0 }
-				for i, arg in node.args {
-					param := if method_for_generics.is_variadic
-						&& i >= method_for_generics.params.len - (offset + 1) {
-						method_for_generics.params.last()
-					} else {
-						method_for_generics.params[offset + i]
-					}
-					param_infer_typ := g.generic_param_infer_type(param)
-					if !param_infer_typ.has_flag(.generic)
-						&& !g.type_has_unresolved_generic_parts(param_infer_typ) {
-						continue
-					}
-					param_sym := g.table.sym(param_infer_typ)
-					if param_sym.name !in method_for_generics.generic_names {
-						continue
-					}
-					if param.typ == method_for_generics.params[0].typ {
-						continue
-					}
-					if arg.expr is ast.Ident && arg.expr.obj is ast.Var
-						&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param {
-						mut resolved_arg_type :=
-							g.resolve_current_fn_generic_param_type(arg.expr.name)
-						if (arg.is_mut || (arg.expr.obj as ast.Var).is_mut)
-							&& resolved_arg_type.is_ptr() {
-							resolved_arg_type = resolved_arg_type.deref()
-						}
-						if resolved_arg_type != 0 {
-							resolved_arg_types << resolved_arg_type
-						}
-					}
-				}
-			}
-			if !trust_node_concrete_types && resolved_arg_types.len == expected_arg_generic_slots {
-				concrete_types = receiver_concrete_types.clone()
-				concrete_types << resolved_arg_types
-				concrete_types_from_resolved_args = true
-			}
-		}
 	}
-	if concrete_types.len == 0 && receiver_concrete_types.len > 0
-		&& (!has_method || method_generic_names_len == 0 || receiver_generics_in_method) {
-		concrete_types = receiver_concrete_types.clone()
-		concrete_types_from_receiver = true
+	method_receiver_names_for_full := g.method_receiver_generic_names(method_for_generics)
+	parent_receiver_names_for_full := if parent_generic_method.params.len > 0 {
+		g.method_receiver_generic_names(parent_generic_method)
+	} else {
+		[]string{}
 	}
-	full_method_generic_names_len := if parent_method_generic_names_len > method_generic_names_len {
+	use_parent_generic_method := parent_method_generic_names_len > method_generic_names_len
+		|| (method_receiver_names_for_full.len == 0 && parent_receiver_names_for_full.len > 0)
+	full_method_generic_names_len := if use_parent_generic_method {
 		parent_method_generic_names_len
 	} else {
 		method_generic_names_len
 	}
-	full_method := if parent_method_generic_names_len > method_generic_names_len {
+	full_method := if use_parent_generic_method {
 		parent_generic_method
 	} else {
 		method_for_generics
 	}
-	full_method_generic_names := if parent_method_generic_names_len > method_generic_names_len {
+	full_method_generic_names := if use_parent_generic_method {
 		parent_generic_method.generic_names.clone()
 	} else {
 		method_for_generics.generic_names.clone()
 	}
 	if has_method {
+		receiver_generic_names = g.method_receiver_generic_names(full_method)
+		receiver_only_generic_method := receiver_generic_names.len > 0
+			&& full_method.generic_names.len == 0
+		receiver_prefixed_generic_method := receiver_generic_names.len > 0
+			&& full_method.generic_names.len >= receiver_generic_names.len
+			&& full_method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+		receiver_generics_in_method = receiver_concrete_types.len >= receiver_generic_names.len
+			&& (receiver_only_generic_method || receiver_prefixed_generic_method)
+		if receiver_generics_in_method {
+			receiver_method_concrete_types =
+				receiver_concrete_types[..receiver_generic_names.len].clone()
+		}
+	}
+	if has_method && method_generic_names_len > 0 && g.cur_fn != unsafe { nil }
+		&& g.cur_concrete_types.len > 0 {
+		mut resolved_arg_types := []ast.Type{}
+		expected_arg_generic_slots :=
+			int_max(method_generic_names_len - receiver_method_concrete_types.len, 0)
+		if expected_arg_generic_slots > 0 {
+			offset := if method_for_generics.is_method { 1 } else { 0 }
+			for i, arg in node.args {
+				param := if method_for_generics.is_variadic
+					&& i >= method_for_generics.params.len - (offset + 1) {
+					method_for_generics.params.last()
+				} else {
+					method_for_generics.params[offset + i]
+				}
+				param_infer_typ := g.generic_param_infer_type(param)
+				if !param_infer_typ.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(param_infer_typ) {
+					continue
+				}
+				param_sym := g.table.sym(param_infer_typ)
+				if param_sym.name !in method_for_generics.generic_names {
+					continue
+				}
+				if param.typ == method_for_generics.params[0].typ {
+					continue
+				}
+				if arg.expr is ast.Ident && arg.expr.obj is ast.Var
+					&& (arg.expr.obj as ast.Var).ct_type_var == .generic_param {
+					mut resolved_arg_type := g.resolve_current_fn_generic_param_type(arg.expr.name)
+					if (arg.is_mut || (arg.expr.obj as ast.Var).is_mut)
+						&& resolved_arg_type.is_ptr() {
+						resolved_arg_type = resolved_arg_type.deref()
+					}
+					if resolved_arg_type != 0 {
+						resolved_arg_types << resolved_arg_type
+					}
+				}
+			}
+		}
+		if !trust_node_concrete_types && resolved_arg_types.len == expected_arg_generic_slots {
+			concrete_types = receiver_method_concrete_types.clone()
+			concrete_types << resolved_arg_types
+			concrete_types_from_resolved_args = true
+		}
+	}
+	if concrete_types.len == 0 && receiver_method_concrete_types.len > 0
+		&& (!has_method || method_generic_names_len == 0 || receiver_generics_in_method) {
+		concrete_types = receiver_method_concrete_types.clone()
+		concrete_types_from_receiver = true
+	}
+	if has_method {
 		name = g.specialized_method_name_from_receiver_context(full_method,
-			receiver_concrete_types, parent_generic_method, name)
+			receiver_method_concrete_types, parent_generic_method, name)
 	}
 	if has_method && full_method_generic_names_len == 0 {
 		concrete_types = []ast.Type{}
@@ -4948,15 +4978,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if concrete_types.len == 0 && has_method && full_method_generic_names_len > 0 {
 		concrete_types = []ast.Type{len: full_method_generic_names_len, init: ast.void_type}
 	}
-	if concrete_types.len > 0 && !concrete_types_from_receiver && receiver_concrete_types.len > 0
+	if concrete_types.len > 0 && !concrete_types_from_receiver
+		&& receiver_method_concrete_types.len > 0
 		&& full_method_generic_names_len > concrete_types.len
-		&& receiver_concrete_types.len + concrete_types.len == full_method_generic_names_len {
+		&& receiver_method_concrete_types.len + concrete_types.len == full_method_generic_names_len {
 		method_concrete_types := concrete_types.clone()
-		concrete_types = receiver_concrete_types.clone()
+		concrete_types = receiver_method_concrete_types.clone()
 		concrete_types << method_concrete_types
 	}
-	if receiver_concrete_types.len > 0 {
-		for i, receiver_ct in receiver_concrete_types {
+	if receiver_method_concrete_types.len > 0 {
+		for i, receiver_ct in receiver_method_concrete_types {
 			if i < concrete_types.len {
 				concrete_types[i] = receiver_ct
 			}
@@ -4971,7 +5002,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 		name_already_specialized := specialized_suffix != '' && name.ends_with(specialized_suffix)
-		rec_len := receiver_concrete_types.len
+		rec_len := receiver_method_concrete_types.len
 		if has_method {
 			expected_method_generic_names_len := if full_method_generic_names_len > method_generic_names_len {
 				full_method_generic_names_len
@@ -5042,9 +5073,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						continue
 					}
 					mut explicit_slot := slot
-					if receiver_concrete_types.len > 0 && node.raw_concrete_types.len > 0
+					if receiver_method_concrete_types.len > 0 && node.raw_concrete_types.len > 0
 						&& full_method_generic_names_len > node.raw_concrete_types.len
-						&& receiver_concrete_types.len + node.raw_concrete_types.len == full_method_generic_names_len {
+						&& receiver_method_concrete_types.len + node.raw_concrete_types.len == full_method_generic_names_len {
 						explicit_slot = slot - rec_len
 					}
 					mut explicit_concrete_type := ast.no_type
@@ -5147,7 +5178,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			// When the receiver's generics are part of the method's generic params,
 			// arg-resolved concrete types may be stale (scope var types from a
 			// different checker pass). Validate node.concrete_types against
-			// receiver_concrete_types: if receiver positions match, the checker
+			// receiver_method_concrete_types: if receiver positions match, the checker
 			// processed this instantiation, so trust the method's own positions.
 			if receiver_generics_in_method && !trust_node_concrete_types
 				&& !concrete_types_from_resolved_args
@@ -5159,7 +5190,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						break
 					}
 					node_ct := ast.mktyp(g.unwrap_generic(node.concrete_types[i]))
-					if node_ct != receiver_concrete_types[i] {
+					if node_ct != receiver_method_concrete_types[i] {
 						receiver_validated = false
 						break
 					}
@@ -5196,7 +5227,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				expected_name_concrete_types := if recovered_concrete_types.len > 0 {
 					recovered_concrete_types.clone()
 				} else {
-					g.method_name_concrete_types(name_fkey, concrete_types, receiver_concrete_types)
+					g.method_name_concrete_types(name_fkey, concrete_types,
+						receiver_method_concrete_types)
 				}
 				if expected_name_concrete_types.len > 0
 					&& g.generic_fn_name(expected_name_concrete_types, method_name) != raw_method_name {
@@ -5210,7 +5242,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 			} else {
 				raw_name_concrete_types := g.raw_method_name_concrete_types(raw_method_name,
-					method_name, node.raw_concrete_types, receiver_concrete_types)
+					method_name, node.raw_concrete_types, receiver_method_concrete_types)
 				mut placeholder_raw_name_concrete_types := []ast.Type{}
 				if raw_name_concrete_types.len == 0 && node.raw_concrete_types.len > 0
 					&& full_method_generic_names.any(raw_method_name.contains('_T_${it}')) {
@@ -5239,7 +5271,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					|| g.type_has_unresolved_generic_parts(it))) {
 					recovered_concrete_types.clone()
 				} else {
-					g.method_name_concrete_types(name_fkey, concrete_types, receiver_concrete_types)
+					g.method_name_concrete_types(name_fkey, concrete_types,
+						receiver_method_concrete_types)
 				}
 				method_suffix := g.generic_fn_name(name_concrete_types, '')
 				method_name_already_specialized = method_suffix != ''

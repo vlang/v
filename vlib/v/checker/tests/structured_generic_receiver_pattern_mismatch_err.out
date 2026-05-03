@@ -3,11 +3,11 @@ vlib/v/checker/tests/structured_generic_receiver_pattern_mismatch_err.vv:24:4: e
    23 |         }
    24 |     }.array_item(0)
       |       ~~~~~~~~~~~~~
-   25 | 
-   26 |     ReceiverPatternExpect[[]int]{
-vlib/v/checker/tests/structured_generic_receiver_pattern_mismatch_err.vv:28:4: error: unknown method or field: `ReceiverPatternExpect.map_value`
-   26 |     ReceiverPatternExpect[[]int]{
-   27 |         value: [1, 2, 3]
-   28 |     }.map_value(0, 0)
+   25 |     ReceiverPatternExpect[[]int]{
+   26 |         value: [1, 2, 3]
+vlib/v/checker/tests/structured_generic_receiver_pattern_mismatch_err.vv:27:4: error: unknown method or field: `ReceiverPatternExpect.map_value`
+   25 |     ReceiverPatternExpect[[]int]{
+   26 |         value: [1, 2, 3]
+   27 |     }.map_value(0, 0)
       |       ~~~~~~~~~~~~~~~
-   29 | }
+   28 | }

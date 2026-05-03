@@ -2350,7 +2350,8 @@ pub fn (table &Table) find_structured_receiver_method_with_types(actual_type Typ
 	for method in methods {
 		receiver_generic_names :=
 			table.structured_receiver_generic_pattern_names(method.receiver_type)
-		if receiver_generic_names.len == 0 || receiver_generic_names.len != method.generic_names.len {
+		if receiver_generic_names.len == 0 || receiver_generic_names.len > method.generic_names.len
+			|| method.generic_names[..receiver_generic_names.len] != receiver_generic_names {
 			continue
 		}
 		concrete_types := table.infer_generic_receiver_pattern_types(method.receiver_type,

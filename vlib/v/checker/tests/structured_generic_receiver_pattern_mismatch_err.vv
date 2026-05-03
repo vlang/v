@@ -22,7 +22,6 @@ fn main() {
 			'one': 1
 		}
 	}.array_item(0)
-
 	ReceiverPatternExpect[[]int]{
 		value: [1, 2, 3]
 	}.map_value(0, 0)
