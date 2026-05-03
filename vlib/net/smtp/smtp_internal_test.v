@@ -92,8 +92,15 @@ fn test_envelope_addr_strips_display_name() {
 	assert envelope_addr('<ivan@example.com>') == 'ivan@example.com'
 	assert envelope_addr('Ivan Petrov <ivan@example.com>') == 'ivan@example.com'
 	assert envelope_addr('"Petrov, Ivan" <ivan@example.com>') == 'ivan@example.com'
-	// Tolerate a malformed input with no closing '>' rather than panicking.
-	assert envelope_addr('Ivan <ivan@example.com') == 'ivan@example.com'
+	// Quoted local-parts may legitimately contain '<'. Without a trailing '>',
+	// the input is not an angle-addr wrapper and must pass through unchanged.
+	assert envelope_addr('"a<b"@example.com') == '"a<b"@example.com'
+	// Quoted display name and quoted local-part both containing '<'/'>'.
+	assert envelope_addr('"a<b" <"a<b"@example.com>') == '"a<b"@example.com'
+	// Escaped quote inside a quoted display name must not end the quoted run.
+	assert envelope_addr('"a\\"<b" <ivan@example.com>') == 'ivan@example.com'
+	// Malformed input (no closing '>') passes through; the server can reject.
+	assert envelope_addr('Ivan <ivan@example.com') == 'Ivan <ivan@example.com'
 }
 
 fn test_mail_message_data_preserves_display_name_in_from_header() {
