@@ -2557,10 +2557,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				rtyp = rtyp.set_flag(.option_mut_param_t)
 			}
 		}
-		if typ.has_flag(.shared_f) {
+		resolved_typ_sym := t.sym(t.fully_unaliased_type(typ))
+		if resolved_typ_sym.info is FnType && typ.has_flag(.shared_f) {
 			rtyp = rtyp.set_flag(.shared_f)
 		}
-		if typ.has_flag(.atomic_f) {
+		if resolved_typ_sym.info is FnType && typ.has_flag(.atomic_f) {
 			rtyp = rtyp.set_flag(.atomic_f)
 		}
 		return rtyp

@@ -1588,6 +1588,11 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 		sym := g.table.sym(normalized_typ)
 		if sym.info is ast.FnType && sym.kind == .function {
 			mut anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			if normalized_typ.has_flag(.option) {
+				anon_cname = '${option_name}_${anon_cname}'
+			} else if normalized_typ.has_flag(.result) {
+				anon_cname = '${result_name}_${anon_cname}'
+			}
 			if normalized_typ.has_flag(.shared_f) {
 				anon_cname = '__shared__${anon_cname}'
 			} else if normalized_typ.has_flag(.atomic_f) {
@@ -6319,7 +6324,9 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 	sym := g.table.sym(typ)
 	mut s := ''
 	if sym.kind == .function {
-		if typ.is_ptr() {
+		if typ.has_option_or_result() {
+			s = g.table.type_to_str(g.unwrap_generic(typ))
+		} else if typ.is_ptr() {
 			s = '&' + g.fn_decl_str(sym.info as ast.FnType)
 		} else {
 			s = g.fn_decl_str(sym.info as ast.FnType)
@@ -6415,8 +6422,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
 		g.write('_S("[${fixed_info.size}]${util.strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
-		info := sym.info as ast.FnType
-		g.write('_S("${g.fn_decl_str(info)}")')
+		g.write('_S("${util.strip_main_name(g.table.type_to_str(g.unwrap_generic(typ)))}")')
 	} else if typ.has_flag(.variadic) {
 		varg_elem_type_sym := g.table.sym(g.table.value_type(typ))
 		g.write('_S("...${util.strip_main_name(varg_elem_type_sym.name)}")')

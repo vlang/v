@@ -222,7 +222,7 @@ fn (p &Parser) is_generic_call() bool {
 		tok5 = p.peek_token(6)
 		kind5 = tok5.kind
 	}
-	if kind2 in [.key_shared, .key_atomic] && kind3 == .key_fn {
+	if (kind2 == .question || kind2 in [.key_shared, .key_atomic]) && kind3 == .key_fn {
 		tok2 = tok3
 		kind2 = kind3
 		tok3 = tok4

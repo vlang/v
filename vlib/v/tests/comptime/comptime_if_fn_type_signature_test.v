@@ -18,6 +18,10 @@ fn is_ref_int_mapper[T]() bool {
 	}
 }
 
+fn forwarded_is_int_mapper[T]() bool {
+	return is_int_mapper[T]()
+}
+
 fn accepts_fixed_array_param_mapper[T]() bool {
 	return true
 }
@@ -34,6 +38,12 @@ fn test_comptime_if_fn_type_signature_with_shared_modifier() {
 	assert is_ref_int_mapper[&fn (int) int]()
 	assert !is_ref_int_mapper[shared fn (int) int]()
 	assert !is_int_mapper[atomic fn (int) int]()
+}
+
+fn test_comptime_if_fn_type_signature_with_forwarded_modifier() {
+	assert forwarded_is_int_mapper[fn (int) int]()
+	assert !forwarded_is_int_mapper[shared fn (int) int]()
+	assert !forwarded_is_int_mapper[atomic fn (int) int]()
 }
 
 fn test_fn_type_generic_call_detection_with_fixed_array_param() {
