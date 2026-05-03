@@ -1,0 +1,29 @@
+struct ReceiverPatternExpect[T] {
+	value T
+}
+
+fn (e ReceiverPatternExpect[[]T]) array_item(value T) T {
+	if e.value.len == 0 {
+		return value
+	}
+	return e.value[0]
+}
+
+fn (e ReceiverPatternExpect[map[K]V]) map_value(key K, value V) V {
+	if key in e.value {
+		return e.value[key]
+	}
+	return value
+}
+
+fn main() {
+	ReceiverPatternExpect[map[string]int]{
+		value: {
+			'one': 1
+		}
+	}.array_item(0)
+
+	ReceiverPatternExpect[[]int]{
+		value: [1, 2, 3]
+	}.map_value(0, 0)
+}

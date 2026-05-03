@@ -3162,12 +3162,31 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
+	mut structured_receiver_concrete_types := []ast.Type{}
+	mut is_structured_receiver_method := false
 	defer {
 		if has_method && node.is_method {
 			c.check_must_use_call_result(node, method, 'method')
 		}
 	}
-	if m := left_sym.find_method_with_generic_parent(method_name) {
+	lookup_sym := c.table.sym(left_type)
+	if structured_method := c.table.find_structured_receiver_method_with_types(left_type,
+		method_name)
+	{
+		if m := lookup_sym.find_method(method_name) {
+			method = m
+			has_method = true
+		} else {
+			method = structured_method.method
+			structured_receiver_concrete_types = structured_method.concrete_types.clone()
+			is_structured_receiver_method = true
+			has_method = true
+		}
+		if lookup_sym.kind == .interface && method.from_embedded_type != 0 {
+			is_method_from_embed = true
+			node.from_embed_types = [method.from_embedded_type]
+		}
+	} else if m := left_sym.find_method_with_generic_parent(method_name) {
 		method = m
 		has_method = true
 		if left_sym.kind == .interface && m.from_embedded_type != 0 {
@@ -3411,7 +3430,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if left_type != ast.void_type {
 			suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
 			if unknown_method_msg == '' {
-				if field := c.table.find_field(left_sym, method_name) {
+				if c.table.structured_receiver_method_rejects_voidptr(left_type, method_name) {
+					unknown_method_msg = 'method `${left_sym.name}.${method_name}` cannot bind `voidptr` to a generic receiver pattern; cast the receiver to a concrete V type first'
+				} else if field := c.table.find_field(left_sym, method_name) {
 					unknown_method_msg = 'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 				} else {
 					mut sname := left_sym.symbol_name_except_generic()
@@ -3453,74 +3474,83 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	mut rec_concrete_types := []ast.Type{}
 	mut method_generic_names_len := method.generic_names.len
-	match rec_sym.info {
-		ast.Struct, ast.SumType, ast.Interface {
-			receiver_generic_names := rec_sym.info.generic_types.map(c.table.sym(it).name)
-			receiver_generics_in_method := receiver_generic_names.len > 0
-				&& method.generic_names.len >= receiver_generic_names.len
-				&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
-			if rec_sym.info.concrete_types.len > 0 {
-				rec_concrete_types = rec_sym.info.concrete_types.clone()
-			}
-			concrete_types_len := node.concrete_types.len
-			if rec_is_generic && concrete_types_len == 0 && receiver_generics_in_method {
-				node.concrete_types = rec_sym.info.generic_types
-			} else if rec_is_generic && concrete_types_len > 0 && receiver_generics_in_method
-				&& method_generic_names_len > concrete_types_len
-				&& rec_sym.info.generic_types.len + concrete_types_len == method_generic_names_len {
-				t_concrete_types := node.concrete_types.clone()
-				node.concrete_types = rec_sym.info.generic_types
-				node.concrete_types << t_concrete_types
-			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
-				&& receiver_generics_in_method && concrete_types_len > 0
-				&& rec_sym.info.concrete_types.len + concrete_types_len == method_generic_names_len {
-				t_concrete_types := node.concrete_types.clone()
-				node.concrete_types = rec_sym.info.concrete_types
-				node.concrete_types << t_concrete_types
-			} else if !rec_is_generic && receiver_generics_in_method && rec_concrete_types.len > 0
-				&& concrete_types_len == 0 {
-				node.concrete_types = rec_concrete_types
-			}
-		}
-		ast.GenericInst {
-			// Concrete generic instance (e.g. Vec2[f64]): resolve from parent struct
-			parent_sym := c.table.sym(ast.new_type(rec_sym.info.parent_idx))
-			match parent_sym.info {
-				ast.Struct, ast.SumType, ast.Interface {
-					receiver_generic_names :=
-						parent_sym.info.generic_types.map(c.table.sym(it).name)
-					receiver_generics_in_method := receiver_generic_names.len > 0
-						&& method.generic_names.len >= receiver_generic_names.len
-						&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+	if !is_structured_receiver_method {
+		match rec_sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				receiver_generic_names := rec_sym.info.generic_types.map(c.table.sym(it).name)
+				receiver_generics_in_method := receiver_generic_names.len > 0
+					&& method.generic_names.len >= receiver_generic_names.len
+					&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+				if rec_sym.info.concrete_types.len > 0 {
 					rec_concrete_types = rec_sym.info.concrete_types.clone()
-					concrete_types_len := node.concrete_types.len
-					if !rec_is_generic && receiver_generics_in_method && rec_concrete_types.len > 0
-						&& concrete_types_len == 0 {
-						node.concrete_types = rec_concrete_types
-					} else if !rec_is_generic && receiver_generics_in_method
-						&& rec_concrete_types.len > 0 && concrete_types_len > 0
-						&& rec_concrete_types.len + concrete_types_len == method_generic_names_len {
-						t_concrete_types := node.concrete_types.clone()
-						node.concrete_types = rec_concrete_types
-						node.concrete_types << t_concrete_types
-					}
 				}
-				else {}
-			}
-		}
-		ast.FnType {
-			if rec_sym.parent_idx > 0 {
-				parent_sym := c.table.sym(ast.idx_to_type(rec_sym.parent_idx))
-				if parent_sym.info is ast.FnType {
-					rec_concrete_types = rec_sym.generic_types.clone()
-					if rec_concrete_types.len > 0
-						&& method_generic_names_len == rec_concrete_types.len {
-						node.concrete_types = rec_concrete_types
-					}
+				concrete_types_len := node.concrete_types.len
+				if rec_is_generic && concrete_types_len == 0 && receiver_generics_in_method {
+					node.concrete_types = rec_sym.info.generic_types
+				} else if rec_is_generic && concrete_types_len > 0 && receiver_generics_in_method
+					&& method_generic_names_len > concrete_types_len
+					&& rec_sym.info.generic_types.len + concrete_types_len == method_generic_names_len {
+					t_concrete_types := node.concrete_types.clone()
+					node.concrete_types = rec_sym.info.generic_types
+					node.concrete_types << t_concrete_types
+				} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
+					&& receiver_generics_in_method && concrete_types_len > 0
+					&& rec_sym.info.concrete_types.len + concrete_types_len == method_generic_names_len {
+					t_concrete_types := node.concrete_types.clone()
+					node.concrete_types = rec_sym.info.concrete_types
+					node.concrete_types << t_concrete_types
+				} else if !rec_is_generic && receiver_generics_in_method
+					&& rec_concrete_types.len > 0 && concrete_types_len == 0 {
+					node.concrete_types = rec_concrete_types
 				}
 			}
+			ast.GenericInst {
+				// Concrete generic instance (e.g. Vec2[f64]): resolve from parent struct
+				parent_sym := c.table.sym(ast.new_type(rec_sym.info.parent_idx))
+				match parent_sym.info {
+					ast.Struct, ast.SumType, ast.Interface {
+						receiver_generic_names :=
+							parent_sym.info.generic_types.map(c.table.sym(it).name)
+						receiver_generics_in_method := receiver_generic_names.len > 0
+							&& method.generic_names.len >= receiver_generic_names.len
+							&& method.generic_names[..receiver_generic_names.len] == receiver_generic_names
+						rec_concrete_types = rec_sym.info.concrete_types.clone()
+						concrete_types_len := node.concrete_types.len
+						if !rec_is_generic && receiver_generics_in_method
+							&& rec_concrete_types.len > 0 && concrete_types_len == 0 {
+							node.concrete_types = rec_concrete_types
+						} else if !rec_is_generic && receiver_generics_in_method
+							&& rec_concrete_types.len > 0 && concrete_types_len > 0
+							&& rec_concrete_types.len + concrete_types_len == method_generic_names_len {
+							t_concrete_types := node.concrete_types.clone()
+							node.concrete_types = rec_concrete_types
+							node.concrete_types << t_concrete_types
+						}
+					}
+					else {}
+				}
+			}
+			ast.FnType {
+				if rec_sym.parent_idx > 0 {
+					parent_sym := c.table.sym(ast.idx_to_type(rec_sym.parent_idx))
+					if parent_sym.info is ast.FnType {
+						rec_concrete_types = rec_sym.generic_types.clone()
+						if rec_concrete_types.len > 0
+							&& method_generic_names_len == rec_concrete_types.len {
+							node.concrete_types = rec_concrete_types
+						}
+					}
+				}
+			}
+			else {}
 		}
-		else {}
+	}
+
+	if structured_receiver_concrete_types.len > 0 {
+		rec_concrete_types = structured_receiver_concrete_types.clone()
+		if structured_receiver_concrete_types.len == method.generic_names.len {
+			node.concrete_types = structured_receiver_concrete_types.clone()
+		}
 	}
 
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
@@ -3874,6 +3904,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	// if receiver_type is T, then `receiver_concrete_type` is concrete type, otherwise it is the same as `receiver_type`.
 	node.receiver_concrete_type = if is_method_from_embed {
 		node.from_embed_types.last().derive(method.params[0].typ)
+	} else if is_structured_receiver_method {
+		left_type.derive(method.params[0].typ).clear_flag(.generic)
 	} else if is_generic {
 		left_type.derive(method.params[0].typ).clear_flag(.generic)
 	} else {

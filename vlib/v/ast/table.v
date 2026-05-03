@@ -65,31 +65,32 @@ pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
-	type_symbols       []&TypeSymbol
-	type_idxs          map[string]int
-	fns                map[string]Fn
-	iface_types        map[string][]Type
-	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string       // List of all imports
-	modules            []string       // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope = unsafe { nil }
-	cflags             []cflag.CFlag
-	redefined_fns      []string
-	fn_generic_types   map[string][][]Type // for generic functions
-	interfaces         map[int]InterfaceDecl
-	sumtypes           map[int]SumTypeDecl
-	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
-	is_fmt             bool
-	used_features      &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
-	veb_res_idx_cache  int // Cache of `veb.Result` type
-	veb_ctx_idx_cache  int // Cache of `veb.Context` type
-	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
-	panic_npanics      int
-	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
-	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
-	cur_concrete_types []Type // current concrete types, e.g. [int, string]
-	gostmts            int    // how many `go` statements there were in the parsed files.
+	type_symbols                []&TypeSymbol
+	type_idxs                   map[string]int
+	fns                         map[string]Fn
+	iface_types                 map[string][]Type
+	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports                     []string       // List of all imports
+	modules                     []string       // Topologically sorted list of all modules registered by the application
+	global_scope                &Scope = unsafe { nil }
+	cflags                      []cflag.CFlag
+	redefined_fns               []string
+	fn_generic_types            map[string][][]Type // for generic functions
+	structured_receiver_methods map[string][]Fn
+	interfaces                  map[int]InterfaceDecl
+	sumtypes                    map[int]SumTypeDecl
+	cmod_prefix                 string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt                      bool
+	used_features               &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
+	veb_res_idx_cache           int // Cache of `veb.Result` type
+	veb_ctx_idx_cache           int // Cache of `veb.Context` type
+	panic_handler               FnPanicHandler = default_table_panic_handler
+	panic_userdata              voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
+	panic_npanics               int
+	cur_fn                      &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_lambda                  &LambdaExpr = unsafe { nil } // current lambda node
+	cur_concrete_types          []Type // current concrete types, e.g. [int, string]
+	gostmts                     int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	vls_info          map[string]VlsInfo
@@ -388,6 +389,21 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// for faster lookup in the checker's fn_decl method
 	t.methods << new_fn
 	return t.methods.len - 1
+}
+
+fn receiver_pattern_method_key(parent_idx int, name string) string {
+	return '${parent_idx}.${name}'
+}
+
+pub fn (mut t Table) register_structured_receiver_method(new_fn Fn) {
+	if !t.receiver_type_is_structured_generic_pattern(new_fn.receiver_type) {
+		return
+	}
+	receiver := t.receiver_generic_types(new_fn.receiver_type) or { return }
+	key := receiver_pattern_method_key(receiver.parent_idx, new_fn.name)
+	mut methods := t.structured_receiver_methods[key] or { []Fn{} }
+	methods << new_fn
+	t.structured_receiver_methods[key] = methods
 }
 
 pub fn (mut t TypeSymbol) update_method(f Fn) int {
@@ -4067,6 +4083,9 @@ fn (t &Table) type_contains_transformed_parent_inst(typ Type, parent_idx int, co
 fn (mut t Table) should_auto_register_concrete_method(method Fn, parent_type Type, concrete_types []Type) bool {
 	parent_idx := parent_type.clear_flag(.generic).idx()
 	if parent_idx == 0 || method.generic_names.len != concrete_types.len {
+		return false
+	}
+	if t.receiver_type_is_structured_generic_pattern(method.receiver_type) {
 		return false
 	}
 	for i in 1 .. method.params.len {

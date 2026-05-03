@@ -2022,6 +2022,352 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
+struct ReceiverGenericTypes {
+	parent_idx int
+	types      []Type
+}
+
+const max_receiver_generic_pattern_depth = 64
+
+pub struct StructuredReceiverMethod {
+pub:
+	method         Fn
+	concrete_types []Type
+}
+
+fn (t &Table) receiver_generic_types(typ Type) ?ReceiverGenericTypes {
+	idx := typ.clear_flag(.generic).idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return none
+	}
+	sym := t.sym(typ)
+	match sym.info {
+		Struct {
+			if sym.info.concrete_types.len > 0 {
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
+				} else if sym.parent_idx != 0 {
+					sym.parent_idx
+				} else {
+					sym.idx
+				}
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.info.concrete_types.clone()
+				}
+			}
+			if sym.generic_types.len > 0 {
+				parent_idx := if sym.parent_idx != 0 { sym.parent_idx } else { sym.idx }
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.generic_types.clone()
+				}
+			}
+			if sym.info.generic_types.len > 0 {
+				return ReceiverGenericTypes{
+					parent_idx: sym.idx
+					types:      sym.info.generic_types.clone()
+				}
+			}
+		}
+		Interface {
+			if sym.info.concrete_types.len > 0 {
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
+				} else if sym.parent_idx != 0 {
+					sym.parent_idx
+				} else {
+					sym.idx
+				}
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.info.concrete_types.clone()
+				}
+			}
+			if sym.generic_types.len > 0 {
+				parent_idx := if sym.parent_idx != 0 { sym.parent_idx } else { sym.idx }
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.generic_types.clone()
+				}
+			}
+			if sym.info.generic_types.len > 0 {
+				return ReceiverGenericTypes{
+					parent_idx: sym.idx
+					types:      sym.info.generic_types.clone()
+				}
+			}
+		}
+		SumType {
+			if sym.info.concrete_types.len > 0 {
+				parent_idx := if sym.info.parent_type != 0 {
+					sym.info.parent_type.clear_flag(.generic).idx()
+				} else if sym.parent_idx != 0 {
+					sym.parent_idx
+				} else {
+					sym.idx
+				}
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.info.concrete_types.clone()
+				}
+			}
+			if sym.generic_types.len > 0 {
+				parent_idx := if sym.parent_idx != 0 { sym.parent_idx } else { sym.idx }
+				return ReceiverGenericTypes{
+					parent_idx: parent_idx
+					types:      sym.generic_types.clone()
+				}
+			}
+			if sym.info.generic_types.len > 0 {
+				return ReceiverGenericTypes{
+					parent_idx: sym.idx
+					types:      sym.info.generic_types.clone()
+				}
+			}
+		}
+		GenericInst {
+			return ReceiverGenericTypes{
+				parent_idx: sym.info.parent_idx
+				types:      sym.info.concrete_types.clone()
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Table) collect_receiver_generic_pattern_type_names(typ Type, mut names []string, depth int) bool {
+	if typ == 0 || depth > max_receiver_generic_pattern_depth {
+		return false
+	}
+	sym := t.sym(typ)
+	if typ.has_flag(.generic) && sym.kind == .any {
+		if sym.name !in names {
+			names << sym.name
+		}
+		return true
+	}
+	next_depth := depth + 1
+	match sym.info {
+		Array {
+			return t.collect_receiver_generic_pattern_type_names(sym.info.elem_type, mut names,
+				next_depth)
+		}
+		Map {
+			has_key_name := t.collect_receiver_generic_pattern_type_names(sym.info.key_type, mut
+				names, next_depth)
+			has_value_name := t.collect_receiver_generic_pattern_type_names(sym.info.value_type, mut
+				names, next_depth)
+			return has_key_name || has_value_name
+		}
+		else {}
+	}
+
+	return false
+}
+
+pub fn (t &Table) structured_receiver_generic_pattern_names(typ Type) []string {
+	receiver := t.receiver_generic_types(typ) or { return []string{} }
+	mut names := []string{}
+	mut has_structured_pattern := false
+	for receiver_type in receiver.types {
+		sym := t.sym(receiver_type)
+		match sym.info {
+			Array, Map {
+				if t.collect_receiver_generic_pattern_type_names(receiver_type, mut names, 0) {
+					has_structured_pattern = true
+				}
+			}
+			else {
+				t.collect_receiver_generic_pattern_type_names(receiver_type, mut names, 0)
+			}
+		}
+	}
+	if !has_structured_pattern {
+		return []string{}
+	}
+	return names
+}
+
+fn (t &Table) receiver_type_is_structured_generic_pattern(typ Type) bool {
+	return t.structured_receiver_generic_pattern_names(typ).len > 0
+}
+
+fn (t &Table) bind_receiver_generic_type(pattern Type, actual Type, generic_names []string, mut bindings []Type) bool {
+	return t.bind_receiver_generic_type_with_depth(pattern, actual, generic_names, mut bindings, 0)
+}
+
+fn (t &Table) bind_receiver_generic_type_with_depth(pattern Type, actual Type, generic_names []string, mut bindings []Type, depth int) bool {
+	if depth > max_receiver_generic_pattern_depth {
+		return false
+	}
+	pattern_sym := t.sym(pattern)
+	if pattern.has_flag(.generic) && pattern_sym.name in generic_names {
+		if actual.clear_flags() in voidptr_types {
+			return false
+		}
+		idx := generic_names.index(pattern_sym.name)
+		if idx < 0 || idx >= bindings.len {
+			return false
+		}
+		if bindings[idx] == 0 {
+			bindings[idx] = actual
+			return true
+		}
+		return bindings[idx] == actual
+	}
+	actual_sym := t.sym(actual)
+	match pattern_sym.info {
+		Array {
+			match actual_sym.info {
+				Array {
+					return t.bind_receiver_generic_type_with_depth(pattern_sym.info.elem_type,
+						actual_sym.info.elem_type, generic_names, mut bindings, depth + 1)
+				}
+				else {
+					return false
+				}
+			}
+		}
+		Map {
+			match actual_sym.info {
+				Map {
+					if !t.bind_receiver_generic_type_with_depth(pattern_sym.info.key_type,
+						actual_sym.info.key_type, generic_names, mut bindings, depth + 1) {
+						return false
+					}
+					return t.bind_receiver_generic_type_with_depth(pattern_sym.info.value_type,
+						actual_sym.info.value_type, generic_names, mut bindings, depth + 1)
+				}
+				else {
+					return false
+				}
+			}
+		}
+		else {}
+	}
+
+	return pattern == actual
+}
+
+fn (t &Table) infer_generic_receiver_pattern_types(pattern_receiver Type, actual_receiver Type, generic_names []string) ?[]Type {
+	pattern := t.receiver_generic_types(pattern_receiver)?
+	actual := t.receiver_generic_types(actual_receiver)?
+	if pattern.parent_idx != actual.parent_idx || pattern.types.len != actual.types.len {
+		return none
+	}
+	mut bindings := []Type{len: generic_names.len}
+	for i, pattern_type in pattern.types {
+		if !t.bind_receiver_generic_type(pattern_type, actual.types[i], generic_names, mut bindings) {
+			return none
+		}
+	}
+	for binding in bindings {
+		if binding == 0 {
+			return none
+		}
+	}
+	return bindings
+}
+
+fn (t &Table) receiver_generic_type_has_voidptr_binding(pattern Type, actual Type, generic_names []string) bool {
+	return t.receiver_generic_type_has_voidptr_binding_with_depth(pattern, actual, generic_names, 0)
+}
+
+fn (t &Table) receiver_generic_type_has_voidptr_binding_with_depth(pattern Type, actual Type, generic_names []string, depth int) bool {
+	if depth > max_receiver_generic_pattern_depth {
+		return false
+	}
+	pattern_sym := t.sym(pattern)
+	if pattern.has_flag(.generic) && pattern_sym.name in generic_names {
+		return actual.clear_flags() in voidptr_types
+	}
+	actual_sym := t.sym(actual)
+	match pattern_sym.info {
+		Array {
+			if actual_sym.info is Array {
+				return t.receiver_generic_type_has_voidptr_binding_with_depth(pattern_sym.info.elem_type,
+					actual_sym.info.elem_type, generic_names, depth + 1)
+			}
+		}
+		Map {
+			match actual_sym.info {
+				Map {
+					if t.receiver_generic_type_has_voidptr_binding_with_depth(pattern_sym.info.key_type,
+						actual_sym.info.key_type, generic_names, depth + 1)
+					{
+						return true
+					}
+					return t.receiver_generic_type_has_voidptr_binding_with_depth(pattern_sym.info.value_type,
+						actual_sym.info.value_type, generic_names, depth + 1)
+				}
+				else {
+					return false
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (t &Table) receiver_pattern_has_voidptr_binding(pattern_receiver Type, actual_receiver Type, generic_names []string) bool {
+	pattern := t.receiver_generic_types(pattern_receiver) or { return false }
+	actual := t.receiver_generic_types(actual_receiver) or { return false }
+	if pattern.parent_idx != actual.parent_idx || pattern.types.len != actual.types.len {
+		return false
+	}
+	for i, pattern_type in pattern.types {
+		if t.receiver_generic_type_has_voidptr_binding(pattern_type, actual.types[i], generic_names) {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn (table &Table) structured_receiver_method_rejects_voidptr(actual_type Type, name string) bool {
+	actual := table.receiver_generic_types(actual_type) or { return false }
+	key := receiver_pattern_method_key(actual.parent_idx, name)
+	methods := table.structured_receiver_methods[key] or { return false }
+	for method in methods {
+		receiver_generic_names :=
+			table.structured_receiver_generic_pattern_names(method.receiver_type)
+		if receiver_generic_names.len > 0
+			&& table.receiver_pattern_has_voidptr_binding(method.receiver_type, actual_type, receiver_generic_names) {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn (table &Table) find_structured_receiver_method_with_types(actual_type Type, name string) ?StructuredReceiverMethod {
+	actual := table.receiver_generic_types(actual_type) or { return none }
+	key := receiver_pattern_method_key(actual.parent_idx, name)
+	methods := table.structured_receiver_methods[key] or { return none }
+	for method in methods {
+		receiver_generic_names :=
+			table.structured_receiver_generic_pattern_names(method.receiver_type)
+		if receiver_generic_names.len == 0 || receiver_generic_names.len != method.generic_names.len {
+			continue
+		}
+		concrete_types := table.infer_generic_receiver_pattern_types(method.receiver_type,
+			actual_type, receiver_generic_names) or { continue }
+		return StructuredReceiverMethod{
+			method:         method
+			concrete_types: concrete_types
+		}
+	}
+	return none
+}
+
+fn (table &Table) find_structured_receiver_method(actual_type Type, name string) ?Fn {
+	structured_method := table.find_structured_receiver_method_with_types(actual_type, name)?
+	return structured_method.method
+}
+
 fn specialize_method_with_concrete_types(method Fn, generic_names []string, concrete_types []Type) Fn {
 	mut table := global_table
 	mut resolved := method
@@ -2078,6 +2424,9 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
 			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
 		}
+		return m
+	}
+	if m := table.find_structured_receiver_method(new_type(t.idx), name) {
 		return m
 	}
 	if generic_inst_parent_idx != 0 {
