@@ -10544,7 +10544,17 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return expr.kind == .function || g.table.final_sym(expr.obj.typ).kind != .array_fixed
 		}
 		ast.StructInit {
-			return expr.init_fields.all(g.check_expr_is_const(it.expr))
+			// String fields expand to the `_S()` compound literal, which strict
+			// GCC rejects in a static initializer; fall back to runtime init.
+			for f in expr.init_fields {
+				if f.expr is ast.StringLiteral {
+					return false
+				}
+				if !g.check_expr_is_const(f.expr) {
+					return false
+				}
+			}
+			return true
 		}
 		ast.EnumVal {
 			return true
