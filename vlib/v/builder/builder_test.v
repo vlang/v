@@ -78,7 +78,7 @@ fn test_run_from_workdir_with_spaces() {
 	assert run_dir_res.output.trim_space() == 'Hello from a spaced path'
 }
 
-fn test_existing_vsh_executable_runs_on_second_invocation() {
+fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	project_dir := os.join_path(test_path, 'existing vsh executable')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir)!
@@ -86,7 +86,8 @@ fn test_existing_vsh_executable_runs_on_second_invocation() {
 		os.chdir(test_path) or {}
 		os.rmdir_all(project_dir) or {}
 	}
-	os.write_file(os.join_path(project_dir, 'script.vsh'), "println('Hello from cached vsh')\n")!
+	script_path := os.join_path(project_dir, 'script.vsh')
+	os.write_file(script_path, "println('Hello from cached vsh')\n")!
 	os.chdir(project_dir)!
 
 	cmd := '${os.quoted_path(vexe)} script.vsh'
@@ -100,9 +101,27 @@ fn test_existing_vsh_executable_runs_on_second_invocation() {
 	}
 	assert os.is_file(executable)
 
-	second_res := os.execute(cmd)
-	assert second_res.exit_code == 0, second_res.output
-	assert second_res.output.trim_space() == 'Hello from cached vsh'
+	warm_cache_res := os.execute(cmd)
+	assert warm_cache_res.exit_code == 0, warm_cache_res.output
+	assert warm_cache_res.output.trim_space() == 'Hello from cached vsh'
+
+	cache_stamp := os.file_last_mod_unix(executable) + 3600
+	os.utime(executable, cache_stamp, cache_stamp)!
+
+	os.write_file(script_path, "println('Hello from rebuilt vsh')\n")!
+	os.utime(script_path, cache_stamp - 1, cache_stamp - 1)!
+	assert os.file_last_mod_unix(script_path) < cache_stamp
+
+	cached_res := os.execute(cmd)
+	assert cached_res.exit_code == 0, cached_res.output
+	assert cached_res.output.trim_space() == 'Hello from cached vsh'
+
+	os.utime(script_path, cache_stamp + 60, cache_stamp + 60)!
+	assert os.file_last_mod_unix(script_path) > cache_stamp
+
+	rebuilt_res := os.execute(cmd)
+	assert rebuilt_res.exit_code == 0, rebuilt_res.output
+	assert rebuilt_res.output.trim_space() == 'Hello from rebuilt vsh'
 }
 
 fn test_file_list() {
